@@ -1,0 +1,53 @@
+/* Shared brandbrain-language styling for the Relay example apps. Ink-black canvas, panel cards on
+   hairline edges, lime as the one accent, Bricolage display + Hanken body + Spline mono. */
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap");
+
+:root {
+  --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+  --edge: #262C38; --edge-soft: #1C212B;
+  --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+  --lime: #C8F250; --lime-soft: #232B0D;
+  --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E;
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Spline Sans Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+::selection { background: rgba(200, 242, 80, 0.3); }
+a { color: var(--lime); text-decoration: none; }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+.topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.glyph { width: 16px; height: 16px; border-radius: 5px; background: var(--lime); box-shadow: 0 0 14px rgba(200,242,80,.35); }
+.brand { font: 600 16px/1 var(--display); letter-spacing: -0.02em; }
+.status { margin-left: auto; font: 400 12px/1 var(--mono); color: var(--ink-faint); }
+.status b { color: var(--ok); font-weight: 500; }
+
+h1 { font: 600 28px/1.15 var(--display); letter-spacing: -0.02em; margin: 0 0 8px; }
+.sub { color: var(--ink-dim); margin: 0 0 24px; max-width: 56ch; }
+.kicker { font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-dim); }
+em.you { color: var(--lime); font-style: normal; font-weight: 600; }
+code { font-family: var(--mono); font-size: .9em; background: var(--raised); padding: 1px 6px; border-radius: 5px; color: var(--ink-sec); }
+
+.panel { border: 1px solid var(--edge); background: var(--panel); border-radius: 16px; padding: 16px; }
+
+textarea, input[type=text], input[type=url], select {
+  width: 100%; font: inherit; color: var(--ink); background: var(--inset);
+  border: 1px solid var(--edge); border-radius: 10px; padding: 11px 13px; outline: none; transition: border-color .15s;
+}
+textarea:focus, input:focus, select:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+textarea { min-height: 84px; resize: vertical; }
+select { -webkit-appearance: none; appearance: none; cursor: pointer; }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.btn { font: 500 14px/1 var(--sans); border-radius: 10px; padding: 11px 16px; cursor: pointer; border: 1px solid var(--edge); background: var(--panel); color: var(--ink-sec); transition: border-color .15s, opacity .15s; }
+.btn:hover { border-color: var(--edge-soft); }
+.btn-primary { background: var(--lime); color: var(--page); border-color: transparent; font-weight: 600; }
+.btn-primary:hover { opacity: .9; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.chip { font: 400 12px/1 var(--mono); padding: 5px 10px; border-radius: 999px; background: var(--raised); color: var(--ink-dim); }
+.chip.write { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--raised)); }
+.event { font: 400 13px/1.5 var(--mono); color: var(--ink-faint); margin: 6px 0; }

@@ -1,0 +1,33 @@
+{
+  "name": "relay",
+  "private": true,
+  "version": "0.0.0",
+  "description": "BYO-Claude broker — MetaMask, but for AI. A local sidekick brokers your model + MCP tools to any website through window.claude, under per-origin, out-of-band consent.",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && npm run build -w @relay/sdk && npm run build -w @relay/extension && npm run build -w @relay/demo-site && npm run build -w @relay/example-apps",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "sidekick": "npm run start --workspace @relay/sidekick",
+    "demo": "npm run dev --workspace @relay/demo-site",
+    "apps": "npm run dev --workspace @relay/example-apps",
+    "try-apps": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-apps.mjs",
+    "try-adgen": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-adgen.mjs",
+    "try-imagegen": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-imagegen.mjs",
+    "daemon:install": "npm run build -w @relay/sidekick && node packages/sidekick/scripts/install-daemon.mjs",
+    "daemon:uninstall": "node packages/sidekick/scripts/install-daemon.mjs --uninstall",
+    "menubar:build": "bash packages/menubar/build.sh",
+    "menubar": "bash packages/menubar/build.sh && open packages/menubar/Relay.app",
+    "daemon:restart": "npm run build -w @relay/sidekick && launchctl kickstart -k gui/$(id -u)/com.relay.sidekick && echo restarted",
+    "runner": "node examples/runner/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

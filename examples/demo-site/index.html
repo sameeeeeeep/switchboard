@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Relay demo — BYO-Claude in 5 lines</title>
+    <style>
+      body { font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+      h1 { font-size: 22px; }
+      textarea { width: 100%; box-sizing: border-box; min-height: 80px; font: inherit; padding: 8px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+      #out { white-space: pre-wrap; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 12px; min-height: 40px; }
+      .note { color: #666; font-size: 13px; }
+      code { background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>This site runs on <em>your</em> Claude</h1>
+    <p class="note">
+      No API key here. No inference bill for the operator. The prompt goes to the sidekick on your
+      machine, runs on your model, and only the answer comes back — under per-site consent you
+      control in the Relay extension.
+    </p>
+
+    <textarea id="prompt" placeholder="Ask anything…">Explain what a confused-deputy attack is, in two sentences.</textarea>
+    <div>
+      <button id="connect">Connect Relay</button>
+      <button id="ask" disabled>Ask (streamed)</button>
+    </div>
+    <div id="out"></div>
+
+    <p class="note" style="margin-top:24px">The entire integration — the “5 lines”:</p>
+    <pre class="note"><code>import { whenRelayReady } from "@relay/sdk";
+const relay = await whenRelayReady();
+await relay.connect({ reason: "demo chat" });
+for await (const d of relay.stream({ prompt }))
+  if (d.type === "text") out.textContent += d.text;</code></pre>
+
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>

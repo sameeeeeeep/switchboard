@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat — on your Claude</title>
+    <style>
+      body { font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 32px auto; padding: 0 16px; }
+      h1 { font-size: 20px; }
+      .status { font-size: 13px; color: #666; }
+      .msg { padding: 8px 12px; border-radius: 10px; margin: 8px 0; white-space: pre-wrap; }
+      .msg.user { background: #eef; }
+      .msg.assistant { background: #f4f4f5; }
+      #log { min-height: 60px; margin: 16px 0; }
+      textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; min-height: 60px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>💬 Chat <span class="status" id="status">— not connected</span></h1>
+    <p class="status">This chat runs on the visitor's own Claude via <code>window.claude</code>. Connect once (a consent window opens), then chat.</p>
+    <button id="connect">Connect Relay</button>
+    <div id="log"></div>
+    <textarea id="prompt" placeholder="Ask anything…">Give me three creative names for a local-first AI broker.</textarea>
+    <div><button id="send" disabled>Send</button></div>
+    <script type="module" src="./dist/chat.js"></script>
+  </body>
+</html>

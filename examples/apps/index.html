@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Switchboard — App Store</title>
+    <link rel="stylesheet" href="./app.css" />
+    <style>
+      .cards { display: grid; gap: 12px; margin-top: 8px; }
+      .appcard { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--edge); background: var(--panel); border-radius: 16px; padding: 16px; text-decoration: none; color: inherit; transition: border-color .15s; }
+      .appcard:hover { border-color: var(--edge-soft); }
+      .appcard .em { width: 44px; height: 44px; border-radius: 12px; background: var(--lime-soft); display: grid; place-items: center; font-size: 21px; flex: none; }
+      .appcard .body { flex: 1; min-width: 0; }
+      .appcard .titlerow { display: flex; align-items: center; gap: 8px; }
+      .appcard h2 { font: 600 16px/1.2 var(--display); letter-spacing: -0.01em; margin: 2px 0 3px; }
+      .appcard p { margin: 0; color: var(--ink-dim); font-size: 13.5px; }
+      .badge { font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 3px 7px; border-radius: 999px; }
+      .badge.verified { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+      .badge.air { color: var(--ink-dim); background: var(--raised); }
+      .flag { border-color: color-mix(in srgb, var(--lime) 35%, var(--edge)); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar"><span class="glyph"></span><span class="brand">Switchboard</span><span class="status kicker">App Store</span></div>
+      <div class="kicker">Runs on your own AI</div>
+      <h1>Apps that bring nothing<br />but the interface.</h1>
+      <p class="sub">Every app here runs on <em class="you">your</em> Claude and <em class="you">your</em> connected tools, under consent you control — the operator never holds a key, pays for inference, or sees your data. Connect one to try it.</p>
+      <div class="cards">
+        <a class="appcard flag" href="./brandbrain.html">
+          <span class="em">🧠</span>
+          <div class="body"><div class="titlerow"><h2>brandbrain</h2><span class="badge verified">Verified</span></div>
+          <p>Find the white space for a new consumer brand — grounded, scored openings. A full app adopted to Switchboard with a lib swap; runs its real logic on your Claude.</p></div>
+        </a>
+        <a class="appcard" href="./imagegen.html">
+          <span class="em">🖼️</span>
+          <div class="body"><div class="titlerow"><h2>Prism</h2><span class="badge air">Airgapped</span></div>
+          <p>Prompt → image on your Higgsfield connector. Text + reference, each generation a per-action consent.</p></div>
+        </a>
+        <a class="appcard" href="./adgen.html">
+          <span class="em">🎨</span>
+          <div class="body"><div class="titlerow"><h2>Ad generator</h2></div>
+          <p>Reads a website's brand with your Claude, then generates ads with your Higgsfield. Full AI + connectors.</p></div>
+        </a>
+        <a class="appcard" href="./assistant.html">
+          <span class="em">🛠️</span>
+          <div class="body"><div class="titlerow"><h2>Tool assistant</h2></div>
+          <p>Agentic — discovers your connected tools and uses them, writes gated by per-action consent.</p></div>
+        </a>
+        <a class="appcard" href="./chat.html">
+          <span class="em">💬</span>
+          <div class="body"><div class="titlerow"><h2>Chat</h2></div>
+          <p>Pure completion on your own Claude — no API key, no operator bill.</p></div>
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

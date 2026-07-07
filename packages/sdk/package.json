@@ -1,0 +1,16 @@
+{
+  "name": "@relay/sdk",
+  "version": "0.0.0",
+  "description": "Add BYO-Claude to your app in ~5 lines. A tiny wrapper over window.claude with a graceful install-the-sidekick fallback — the way dapps use wagmi/ethers over window.ethereum.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@relay/protocol": "*"
+  }
+}

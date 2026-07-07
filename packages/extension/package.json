@@ -1,0 +1,19 @@
+{
+  "name": "@relay/extension",
+  "version": "0.0.0",
+  "description": "The relay MV3 browser extension — injects window.claude, bridges page↔daemon (holding the pairing token so the page never touches the daemon), and hosts the consent + status + audit UI.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@relay/protocol": "*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.28.1"
+  }
+}

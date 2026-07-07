@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ad generator — brand → ads on your Claude + Higgsfield</title>
+    <style>
+      body { font: 15px/1.6 system-ui, sans-serif; max-width: 760px; margin: 32px auto; padding: 0 16px; }
+      h1 { font-size: 20px; }
+      .status { font-size: 13px; color: #666; }
+      .row { display: flex; gap: 8px; margin: 12px 0; }
+      input[type=url] { flex: 1; font: inherit; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+      .event { color: #555; font-size: 13px; margin: 4px 0; }
+      #brand { background: #f7f7f8; border-radius: 10px; padding: 12px; margin: 12px 0; white-space: pre-wrap; }
+      #ads { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+      .ad { border: 1px solid #eee; border-radius: 12px; overflow: hidden; }
+      .ad img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; background: #eee; }
+      .ad .cap { padding: 8px; font-size: 12px; color: #444; }
+    </style>
+  </head>
+  <body>
+    <h1>🎨 Ad generator <span class="status" id="status">— not connected</span></h1>
+    <p class="status">
+      Paste a website. The app uses <em>your</em> Claude to read the site and extract its brand, then
+      <em>your</em> Higgsfield connector to generate ads — all via <code>window.claude</code>. The site
+      integrates nothing and pays for nothing. Reading the page is auto-approved; each image generation
+      (it spends credits) pops a per-action consent.
+    </p>
+    <button id="connect">Connect Relay</button>
+    <div class="row">
+      <input id="url" type="url" value="https://www.anthropic.com" placeholder="https://a-brand.com" />
+      <button id="go" disabled>Generate ads</button>
+    </div>
+    <div id="events"></div>
+    <div id="brand"></div>
+    <div id="ads"></div>
+    <script type="module" src="./dist/adgen.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+# Sidekick runtime state (secrets, tokens, grants, audit log) — never commit.
+.relay/
+*.log
+
+# menu-bar app build output
+packages/menubar/build/
+packages/menubar/Relay.app/

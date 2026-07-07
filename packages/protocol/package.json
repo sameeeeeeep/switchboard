@@ -1,0 +1,15 @@
+{
+  "name": "@relay/protocol",
+  "version": "0.0.0",
+  "description": "BYOP-1: the shared wire contract for the relay broker — provider methods, events, permission grants, tool classification. Imported by the daemon, extension, and SDK so the three can never drift.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
