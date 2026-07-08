@@ -1,0 +1,15 @@
+{
+  "name": "my-wrapp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "@relay/sdk": "*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  }
+}

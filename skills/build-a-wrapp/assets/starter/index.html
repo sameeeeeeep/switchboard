@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Wrapp</title>
+    <style>
+      body { font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 32px auto; padding: 0 16px; }
+      h1 { font-size: 20px; display: flex; align-items: center; gap: 12px; }
+      #connect { margin-left: auto; }
+      .status { font-size: 13px; color: #666; }
+      #out { min-height: 60px; margin: 16px 0; white-space: pre-wrap; padding: 12px;
+             background: #f4f4f5; border-radius: 10px; }
+      textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; min-height: 60px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <!-- The connect chip mounts here — the one standard affordance. Don't build your own. -->
+    <h1>✨ My Wrapp <span id="connect"></span></h1>
+    <p class="status" id="status">Runs on your own Claude via Switchboard. Connect once to start.</p>
+
+    <textarea id="prompt" placeholder="Ask anything…">Give me three names for a local-first AI broker.</textarea>
+    <div><button id="send" disabled>Generate</button></div>
+    <div id="out"></div>
+
+    <script type="module" src="./dist/app.js"></script>
+  </body>
+</html>
