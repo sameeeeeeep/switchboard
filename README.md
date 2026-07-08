@@ -12,6 +12,8 @@ your tools, and your context.*
 > The repo is still scoped `@relay/*`; the product is **Switchboard**. The injected provider stays
 > `window.claude`.
 
+![Many apps point at one Switchboard, which holds your data, context and inference (Claude or local models); Claude reaches your tools](docs/diagrams/one-connection.svg)
+
 ## The idea: a vault you own and lend out
 
 Switchboard is a wallet for AI. You own three things and lend them to apps under consent — **inference**
@@ -40,10 +42,16 @@ mode); nothing bypasses it.
 | `claude_storage` | a private per-origin folder; **`bind`** points it at a real project folder | reads free; `bind` = path consent |
 | `claude_context` | shared, cross-app **context** (publish / read the one you're lent) | selection = consent; never enumerable |
 | `claude_callTool` | any MCP tool / claude.ai connector the user granted | read auto · write per-action |
+| `claude_speak` | on-device text-to-speech — a local TTS server or macOS `say` | local · no cloud, no credits |
 
 **Context can be backed by a source you already keep** — a published Google Sheet's CSV is fetched and
 parsed to JSON rows (SSRF-guarded, cached), so a spreadsheet becomes live shared context with zero new
 infra. A global **"working on" project** scopes every connected app at once.
+
+**One surface, any brain.** `window.claude` looks identical whether it's served by your Claude
+subscription, a local model (Ollama / LM Studio), or an on-device engine — `claude_speak` even
+synthesizes voice locally. Switchboard is the orchestrator: Claude **+** connectors **+** local models,
+all on your compute.
 
 ## Porting existing apps
 
@@ -67,7 +75,13 @@ project, in its own brand palette) · **Connectors** (friendly capability tiles)
 tucked into per-app expanders) · a **Wrapp store** launcher (open any app in a new tab, already
 connected). A bottom-sheet project switcher includes **Connect a Google Sheet**. Activity, budgets,
 and the kill switch live behind a menu. Consent (connect / write / folder-bind / context-pick) renders
-**inline** — and survives an MV3 worker eviction via a durable, re-pushed prompt queue.
+**inline** — and survives an MV3 worker eviction via a durable, re-pushed prompt queue; the panel is
+self-healing, so a new connection appears live without a reopen.
+
+**This tab** shows the site you're on and, when it hasn't opted into Switchboard, suggests a wrapp that
+does the same job on your own compute, context and data. And every wrapp carries the *same* **connect
+chip** (`mountConnect`) — a standard, un-restylable lockup that greets you by name and shows the one
+project lent to that app.
 
 ## Packages
 
@@ -76,9 +90,9 @@ and the kill switch live behind a menu. Consent (connect / write / folder-bind /
 | [`@relay/protocol`](packages/protocol) | BYOP-1 wire contract (types) shared by all three below — the design-in-code |
 | [`@relay/sidekick`](packages/sidekick) | The daemon: model backends + MCP tools + storage + context + warm sessions + **the out-of-band gate** + audit |
 | [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
-| [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context`) with an install fallback |
+| [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
 | [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | The wrapp store (brandbrain, Prism, ad generator, …) |
+| [`examples/apps`](examples/apps) | Wrapps + the store home — brandbrain, Prism, ad generator, **Cast** (AI persona studio), `store.html` |
 | [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the trust chain, the gate, and how a request flows.
