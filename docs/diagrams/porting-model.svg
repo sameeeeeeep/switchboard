@@ -1,0 +1,125 @@
+<svg viewBox="0 0 920 600" xmlns="http://www.w3.org/2000/svg" role="img" font-family="'Hanken Grotesk',system-ui,sans-serif">
+  <title>Porting apps into Switchboard by substituting runtime seams</title>
+  <desc>An app's four runtime seams (model, persistence, API routes, media) are retargeted at build time via a bundler alias map to four gated broker primitives. Frameworks reduce to thin presets. A doctor linter gates portability. The result runs airgapped in the store.</desc>
+  <style>
+    .bg{fill:#0A0C10}
+    .panel{fill:#12151C;stroke:#262C38;stroke-width:1}
+    .raised{fill:#1A1F29;stroke:#262C38;stroke-width:1}
+    .lime{fill:#C8F250}
+    .limestroke{stroke:#C8F250;stroke-width:1.5;fill:#232B0D}
+    .h{fill:#E8EDF4;font-weight:700}
+    .t{fill:#E8EDF4;font-weight:600}
+    .dim{fill:#99A3B7;font-weight:500}
+    .faint{fill:#6E7C90;font-weight:500}
+    .ink{fill:#0A0C10;font-weight:700}
+    .mono{font-family:'Spline Sans Mono',ui-monospace,monospace}
+    .arrow{stroke:#6E7C90;stroke-width:1.5;fill:none;marker-end:url(#ah)}
+    .arrowl{stroke:#C8F250;stroke-width:1.5;fill:none;marker-end:url(#al)}
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6E7C90"/></marker>
+    <marker id="al" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#C8F250"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="920" height="600" rx="14"/>
+
+  <text x="34" y="42" class="h" font-family="'Bricolage Grotesque',sans-serif" font-size="21">Porting = substituting seams, not rewriting</text>
+  <text x="34" y="64" class="dim" font-size="13">Every app of this class touches the world through 4 seams. Retarget each to a gated broker primitive at build time.</text>
+
+  <text x="60" y="108" class="faint mono" font-size="11">ANY APP · UNCHANGED SOURCE</text>
+  <rect class="panel" x="34" y="120" width="210" height="300" rx="12"/>
+  <g font-size="13">
+    <rect class="raised" x="52" y="140" width="174" height="56" rx="9"/>
+    <text x="66" y="165" class="t">Model calls</text>
+    <text x="66" y="183" class="faint mono" font-size="10.5">@/lib/claude</text>
+
+    <rect class="raised" x="52" y="204" width="174" height="56" rx="9"/>
+    <text x="66" y="229" class="t">Persistence</text>
+    <text x="66" y="247" class="faint mono" font-size="10.5">fs · lib/server/store</text>
+
+    <rect class="raised" x="52" y="268" width="174" height="56" rx="9"/>
+    <text x="66" y="293" class="t">API routes</text>
+    <text x="66" y="311" class="faint mono" font-size="10.5">fetch('/api/*')</text>
+
+    <rect class="raised" x="52" y="332" width="174" height="56" rx="9"/>
+    <text x="66" y="357" class="t">Media</text>
+    <text x="66" y="375" class="faint mono" font-size="10.5">hosted URLs</text>
+  </g>
+
+  <text x="356" y="108" class="faint mono" font-size="11">BUILD-TIME ALIAS MAP</text>
+  <rect class="limestroke" x="330" y="120" width="150" height="300" rx="12"/>
+  <text x="405" y="258" class="lime" font-size="13" font-weight="700" text-anchor="middle">retarget</text>
+  <text x="405" y="278" class="dim" font-size="11" text-anchor="middle">imports →</text>
+  <text x="405" y="293" class="dim" font-size="11" text-anchor="middle">shims</text>
+  <text x="405" y="360" class="faint" font-size="10.5" text-anchor="middle">no fork ·</text>
+  <text x="405" y="374" class="faint" font-size="10.5" text-anchor="middle">one config</text>
+
+  <path class="arrow" d="M244 168 H326"/>
+  <path class="arrow" d="M244 232 H326"/>
+  <path class="arrow" d="M244 296 H326"/>
+  <path class="arrow" d="M244 360 H326"/>
+  <path class="arrowl" d="M480 168 H562"/>
+  <path class="arrowl" d="M480 232 H562"/>
+  <path class="arrowl" d="M480 296 H562"/>
+  <path class="arrowl" d="M480 360 H562"/>
+
+  <text x="590" y="108" class="faint mono" font-size="11">BROKER · GATED PROVIDER</text>
+  <rect class="panel" x="566" y="120" width="320" height="300" rx="12"/>
+  <line x1="566" y1="120" x2="566" y2="420" stroke="#C8F250" stroke-width="3"/>
+  <g font-size="13">
+    <rect class="raised" x="584" y="140" width="284" height="56" rx="9"/>
+    <text x="600" y="165" class="t">claude_complete / stream</text>
+    <text x="600" y="183" class="faint mono" font-size="10.5">claude.mjs</text>
+    <circle cx="850" cy="168" r="4" class="lime"/>
+
+    <rect class="raised" x="584" y="204" width="284" height="56" rx="9"/>
+    <text x="600" y="229" class="t">claude_storage · bind</text>
+    <text x="600" y="247" class="faint mono" font-size="10.5">claude_storage.mjs</text>
+    <circle cx="850" cy="232" r="4" class="lime"/>
+
+    <rect class="raised" x="584" y="268" width="284" height="56" rx="9"/>
+    <text x="600" y="293" class="t">client fetch-router</text>
+    <text x="600" y="311" class="faint mono" font-size="10.5">router.mjs + fetch-shim</text>
+    <circle cx="850" cy="296" r="4" class="lime"/>
+
+    <rect class="raised" x="584" y="332" width="284" height="56" rx="9"/>
+    <text x="600" y="357" class="t">media data-URIs</text>
+    <text x="600" y="375" class="faint mono" font-size="10.5">roadmap #4</text>
+    <circle cx="850" cy="360" r="4" fill="#6E7C90"/>
+  </g>
+
+  <text x="34" y="470" class="faint mono" font-size="11">THE PORT PIPELINE · FRAMEWORK = A THIN PRESET</text>
+  <g font-size="12.5">
+    <rect class="raised" x="34" y="484" width="150" height="72" rx="10"/>
+    <text x="50" y="512" class="t">doctor</text>
+    <text x="50" y="531" class="faint" font-size="10.5">proves portability</text>
+    <text x="50" y="546" class="faint" font-size="10.5">= the gate</text>
+
+    <path class="arrow" d="M184 520 H214"/>
+    <rect class="raised" x="214" y="484" width="180" height="72" rx="10"/>
+    <text x="230" y="512" class="t">preset build</text>
+    <text x="230" y="531" class="faint mono" font-size="10">next · vite · sveltekit</text>
+    <text x="230" y="546" class="faint" font-size="10.5">export + collect /api</text>
+
+    <path class="arrow" d="M394 520 H424"/>
+    <rect class="raised" x="424" y="484" width="170" height="72" rx="10"/>
+    <text x="440" y="512" class="t">alias + bootstrap</text>
+    <text x="440" y="531" class="faint" font-size="10.5">wire window.claude</text>
+    <text x="440" y="546" class="faint" font-size="10.5">mount handlers</text>
+
+    <path class="arrow" d="M594 520 H624"/>
+    <rect class="limestroke" x="624" y="484" width="120" height="72" rx="10"/>
+    <text x="640" y="512" class="lime" font-weight="700">store card</text>
+    <text x="640" y="531" class="dim" font-size="10.5">manifest →</text>
+    <text x="640" y="546" class="dim" font-size="10.5">listing + scope</text>
+
+    <path class="arrowl" d="M744 520 H774"/>
+    <rect class="raised" x="774" y="484" width="112" height="72" rx="10"/>
+    <text x="790" y="512" class="t">airgap</text>
+    <text x="790" y="531" class="faint" font-size="10.5">runs sandboxed</text>
+    <text x="790" y="546" class="faint" font-size="10.5">by construction</text>
+  </g>
+
+  <circle cx="600" cy="574" r="4" class="lime"/>
+  <text x="612" y="578" class="faint" font-size="11">lime = broker-backed &amp; gated · brandbrain is preset #1's proof</text>
+</svg>

@@ -1,0 +1,85 @@
+<svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" font-family="'Hanken Grotesk',system-ui,sans-serif">
+  <title>Switchboard as a BYO vault: apps publish brand context, you lend one to another app per session</title>
+  <desc>brandbrain publishes brand contexts into your Switchboard vault (inference, context library, backend). A second app, the ad generator, requests context; you select one brand in the side panel; only that brand is handed over, and the ad is built on your own compute.</desc>
+  <style>
+    .bg{fill:#0A0C10}
+    .panel{fill:#12151C;stroke:#262C38;stroke-width:1}
+    .raised{fill:#1A1F29;stroke:#262C38;stroke-width:1}
+    .vault{fill:#0E1116;stroke:#C8F250;stroke-width:1.5}
+    .lime{fill:#C8F250}
+    .limebox{fill:#232B0D;stroke:#C8F250;stroke-width:1.5}
+    .h{fill:#E8EDF4;font-weight:700}
+    .t{fill:#E8EDF4;font-weight:600}
+    .dim{fill:#99A3B7;font-weight:500}
+    .faint{fill:#6E7C90;font-weight:500}
+    .ink{fill:#0A0C10;font-weight:700}
+    .mono{font-family:'Spline Sans Mono',ui-monospace,monospace}
+    .ap{stroke:#6E7C90;stroke-width:1.5;fill:none;marker-end:url(#ah)}
+    .al{stroke:#C8F250;stroke-width:2;fill:none;marker-end:url(#alm)}
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6E7C90"/></marker>
+    <marker id="alm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#C8F250"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="600" rx="14"/>
+  <text x="34" y="42" class="h" font-family="'Bricolage Grotesque',sans-serif" font-size="21">Your vault: BYO inference + context + backend</text>
+  <text x="34" y="64" class="dim" font-size="13">Apps publish brand context into your vault. You lend one brand to another app — per session, revocable, never the whole book.</text>
+
+  <text x="40" y="118" class="faint mono" font-size="11">PRODUCES CONTEXT</text>
+  <rect class="panel" x="34" y="130" width="180" height="120" rx="12"/>
+  <text x="52" y="166" class="t" font-size="15" font-family="'Bricolage Grotesque',sans-serif">brandbrain</text>
+  <text x="52" y="188" class="dim" font-size="12">builds a brand</text>
+  <text x="52" y="228" class="faint mono" font-size="10.5">publishes →</text>
+
+  <text x="300" y="118" class="faint mono" font-size="11">SWITCHBOARD · YOURS</text>
+  <rect class="vault" x="290" y="130" width="330" height="360" rx="14"/>
+  <rect class="raised" x="308" y="150" width="294" height="52" rx="9"/>
+  <circle cx="326" cy="176" r="4" class="lime"/>
+  <text x="342" y="172" class="t" font-size="13">Inference</text>
+  <text x="342" y="190" class="faint mono" font-size="10">your Claude · window.claude</text>
+  <rect class="limebox" x="308" y="212" width="294" height="150" rx="9"/>
+  <text x="326" y="238" class="lime" font-size="13" font-weight="700">Context library</text>
+  <text x="326" y="256" class="dim mono" font-size="10">your portable brand knowledge</text>
+  <g font-size="11.5">
+    <rect class="raised" x="326" y="270" width="120" height="30" rx="7"/><text x="340" y="289" class="t">Aamras</text>
+    <rect class="raised" x="454" y="270" width="120" height="30" rx="7"/><text x="468" y="289" class="t">Piqual</text>
+    <rect class="raised" x="326" y="308" width="120" height="30" rx="7"/><text x="340" y="327" class="t">Haazma</text>
+    <rect class="raised" x="454" y="308" width="120" height="30" rx="7"/><text x="468" y="327" class="dim">+ Sheet</text>
+  </g>
+  <rect class="raised" x="308" y="372" width="294" height="52" rx="9"/>
+  <circle cx="326" cy="398" r="4" class="lime"/>
+  <text x="342" y="394" class="t" font-size="13">Backend</text>
+  <text x="342" y="412" class="faint mono" font-size="10">app routes run local · fetch-router</text>
+  <rect class="panel" x="308" y="434" width="294" height="42" rx="9"/>
+  <text x="326" y="453" class="t" font-size="12">Side-panel selector</text>
+  <text x="326" y="468" class="lime mono" font-size="10">you pick → Aamras</text>
+
+  <text x="660" y="118" class="faint mono" font-size="11">CONSUMES CONTEXT</text>
+  <rect class="panel" x="654" y="130" width="272" height="360" rx="12"/>
+  <text x="672" y="166" class="t" font-size="15" font-family="'Bricolage Grotesque',sans-serif">ad generator / Prism</text>
+  <text x="672" y="188" class="dim" font-size="12">a wrapper app (different origin)</text>
+  <rect class="raised" x="672" y="206" width="236" height="46" rx="9"/>
+  <text x="688" y="234" class="dim mono" font-size="11">claude_context() → Aamras</text>
+  <g font-size="11.5">
+    <rect class="raised" x="672" y="264" width="236" height="30" rx="7"/><text x="688" y="283" class="dim">voice · palette · audience prefilled</text>
+    <rect class="raised" x="672" y="302" width="236" height="30" rx="7"/><text x="688" y="321" class="dim">you pick a product</text>
+  </g>
+  <rect class="limebox" x="672" y="342" width="236" height="52" rx="9"/>
+  <text x="688" y="368" class="lime" font-size="13" font-weight="700">built on-brand</text>
+  <text x="688" y="384" class="dim mono" font-size="10">on your Claude · your context</text>
+  <text x="672" y="430" class="faint" font-size="11">gets ONLY Aamras — never your</text>
+  <text x="672" y="446" class="faint" font-size="11">whole library.</text>
+
+  <path class="al" d="M214 200 C 250 210, 262 250, 306 265"/>
+  <text x="228" y="248" class="lime mono" font-size="10">publish</text>
+  <path class="ap" d="M654 224 C 630 224, 626 250, 604 258"/>
+  <text x="612" y="214" class="faint mono" font-size="10">request</text>
+  <path class="al" d="M602 455 C 636 455, 640 380, 670 366"/>
+  <text x="612" y="486" class="lime mono" font-size="10">hand one brand →</text>
+
+  <text x="34" y="524" class="faint mono" font-size="11">THE INVARIANT</text>
+  <text x="34" y="548" class="dim" font-size="13">selection = consent · apps never enumerate your library · they receive only what you hand them, per session, revocable</text>
+  <rect class="limebox" x="34" y="562" width="360" height="26" rx="8"/>
+  <text x="48" y="579" class="lime mono" font-size="11">BYO: inference · context · backend</text>
+</svg>
