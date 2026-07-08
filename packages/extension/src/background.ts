@@ -171,7 +171,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === "relay-panel") {
     panelPort = port;
-    // Surface any consent that arrived while the panel was closed.
+    // Opening the panel wakes the worker — reconnect the socket so the daemon can RE-PUSH any consent
+    // that was queued while we were evicted (its `prompt` messages then flow through openConsent).
+    void ensureSocket();
+    // Surface any consent already in memory (panel reopened without a worker restart).
     for (const id of consentBodies.keys()) { try { port.postMessage({ type: "consent:new", id }); } catch { /* ignore */ } }
     port.onDisconnect.addListener(() => { if (panelPort === port) panelPort = null; });
     return;

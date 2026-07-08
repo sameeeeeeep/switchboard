@@ -22,6 +22,12 @@
       .scorerow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font: 500 11px/1 var(--mono); color: var(--ink-faint); }
       .comp { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
       .comp span { font: 400 10.5px/1 var(--mono); color: var(--ink-dim); background: var(--raised); border-radius: 6px; padding: 4px 7px; }
+      .ws { margin-top: 18px; }
+      .ws .foot { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); margin-top: 9px; }
+      .ws .foldrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+      .brands { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .brands .bchip { font: 500 12px/1 var(--sans); color: var(--ink); background: var(--raised); border: 1px solid var(--edge); border-radius: 999px; padding: 6px 11px; }
+      .brands .bchip.active { background: var(--lime-soft); border-color: var(--lime); color: var(--lime); }
     </style>
   </head>
   <body>
@@ -43,6 +49,17 @@
       </div>
       <div id="events"></div>
       <div class="gaps" id="gaps"></div>
+
+      <div class="panel ws" id="ws" hidden>
+        <div class="kicker k">Your workspace</div>
+        <p class="sub" style="margin:4px 0 12px">brandbrain's brands live in a local folder you own. Bind your existing project's <code>.data</code> and your current brands appear here — same files, no migration. Leave it and each app auto-gets its own private folder.</p>
+        <div class="foldrow">
+          <label style="display:block"><span class="kicker k">Project folder</span><input type="text" id="folder" placeholder="~/Documents/Projects/brandbrain/.data" value="~/Documents/Projects/brandbrain/.data" /></label>
+          <button class="btn" id="bind">Bind &amp; load</button>
+        </div>
+        <div class="brands" id="brands"></div>
+        <div class="foot" id="storeInfo"></div>
+      </div>
     </div>
     <script type="module" src="./dist/brandbrain.js"></script>
   </body>

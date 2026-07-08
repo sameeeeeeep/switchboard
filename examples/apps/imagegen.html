@@ -53,6 +53,18 @@
       .gen:hover { background: #4038cc; }
       .gen:disabled { opacity: .4; cursor: not-allowed; }
 
+      /* brand context bar — the loaded brand + its product/style pickers (Prism's own paper look) */
+      .brandbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 14px; }
+      .bchip { display: inline-flex; align-items: center; gap: 8px; background: var(--indigo-soft); color: var(--indigo); border: 1px solid #DEDCF7; border-radius: 999px; padding: 8px 13px; font: 600 13px/1 var(--disp); }
+      .bchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--indigo); }
+      .bchip .sw { width: 13px; height: 13px; border-radius: 4px; border: 1px solid rgba(0,0,0,.12); }
+      .bfield { display: flex; flex-direction: column; gap: 5px; }
+      .bfield > span { font: 500 11px/1 var(--body); color: var(--ink-faint); text-transform: uppercase; letter-spacing: .06em; }
+      .bfield select { border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: 500 13.5px/1 var(--body); padding: 9px 11px; min-width: 150px; cursor: pointer; -webkit-appearance: none; appearance: none; }
+      .bchange { margin-left: auto; border: 1px solid var(--line); background: var(--card); color: var(--ink-dim); border-radius: 10px; padding: 9px 12px; font: 500 13px/1 var(--body); cursor: pointer; }
+      .bchange:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .bchange:disabled { opacity: .5; cursor: default; }
+
       .note { color: var(--ink-faint); font-size: 12.5px; margin: 12px 4px 0; }
       #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 30px; }
       .shot { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--card); box-shadow: 0 10px 26px -20px rgba(20,18,30,.35); }
@@ -68,15 +80,24 @@
     <div class="wrap">
       <header>
         <div class="logo"><span class="prism"></span>Prism</div>
-        <button class="relay-btn" id="connect"><span class="glyph"></span>Connect Relay</button>
+        <button class="relay-btn" id="connect"><span class="glyph"></span>Connect Switchboard</button>
         <span class="relay-status" id="status" hidden><span class="glyph"></span><span id="statusText"></span></span>
       </header>
 
-      <h1>Text & reference,<br />to image.</h1>
-      <p class="lede">Prism has no image model of its own. It runs on <b>your</b> Higgsfield, connected through Relay — you approve each generation, and it never touches your credentials.</p>
+      <h1>On-brand,<br />to image.</h1>
+      <p class="lede">Prism has no image model and no brand data of its own. It runs on <b>your</b> Higgsfield and loads a brand <b>you</b> built elsewhere — you lend it one brand in Switchboard, pick a product and style, and generate on your own compute.</p>
+
+      <div class="brandbar" id="brandbar" hidden>
+        <span class="bchip" id="bchip" hidden></span>
+        <span id="brandFields" hidden style="display:flex; gap:12px; align-items:flex-end;">
+          <label class="bfield"><span>Product</span><select id="product"></select></label>
+          <label class="bfield"><span>Design style</span><select id="style"></select></label>
+        </span>
+        <button class="bchange" id="loadBrand" hidden>Load brand</button>
+      </div>
 
       <div class="studio">
-        <textarea id="prompt" placeholder="Describe the image…">A neon koi swimming through a rainy Tokyo alley, cinematic, 85mm, teal &amp; magenta</textarea>
+        <textarea id="prompt" placeholder="Describe the image, or add art direction to the brand…"></textarea>
         <div class="bar">
           <div class="ref" id="ref">
             <input type="file" id="refInput" accept="image/*" hidden />
@@ -90,7 +111,7 @@
           <button class="gen" id="go" disabled>Generate</button>
         </div>
       </div>
-      <p class="note" id="note">Connect Relay to start. Each image is a per-action consent — Relay shows the prompt before it spends a credit.</p>
+      <p class="note" id="note">Connect Switchboard to start. Each image is a per-action consent — Switchboard shows the prompt before it spends a credit.</p>
 
       <div id="grid"></div>
     </div>

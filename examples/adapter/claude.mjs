@@ -10,8 +10,21 @@
  * The provider is window.claude in the browser sandbox; in a headless test you inject one.
  */
 let provider = (typeof window !== "undefined" && window.claude && window.claude.isRelay) ? window.claude : null;
-export function setProvider(p) { provider = p; }
+// A one-shot "provider is ready" gate. The app's own data load (e.g. brandbrain's /api/workspace GET
+// on mount) can race the bootstrap's connect; `whenProvider` lets storage briefly await the provider
+// instead of failing the race and showing an empty workspace.
+let _resolveReady;
+const _ready = new Promise((r) => { _resolveReady = r; });
+export function setProvider(p) { provider = p; if (p && _resolveReady) { _resolveReady(p); _resolveReady = null; } }
 export function getProvider() { return provider; }
+/** Resolve with the provider once set, or with the current value after `timeoutMs` (default 3s). */
+export function whenProvider(timeoutMs = 3000) {
+  if (provider) return Promise.resolve(provider);
+  return Promise.race([_ready, new Promise((r) => setTimeout(() => r(provider), timeoutMs))]);
+}
+/** Called by the bootstrap when it determines no provider will connect (first visit) — unblocks any
+ *  storage await immediately instead of paying the full timeout. */
+export function abandonProvider() { if (_resolveReady) { _resolveReady(null); _resolveReady = null; } }
 
 /** @typedef {{ system?: string, allowedTools?: string[], model?: string, mcp?: boolean, effort?: "low"|"medium"|"high", timeoutMs?: number }} RunOpts */
 

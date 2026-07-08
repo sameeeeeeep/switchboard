@@ -16,7 +16,10 @@ interface ConnectBody {
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
 }
 interface WriteBody { origin: string; tool: { name: string; arguments: Record<string, unknown> }; }
-export interface Prompt { kind: "consent:connect" | "consent:write"; body: unknown; }
+interface StorageBindBody { origin: string; path: string; }
+interface ContextMetaRow { id: string; name: string; kind?: string; source?: string }
+interface ContextPickBody { origin: string; contexts: ContextMetaRow[] }
+export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:context-pick"; body: unknown; }
 
 const el = (tag: string, cls?: string, text?: string): HTMLElement => {
   const n = document.createElement(tag);
@@ -74,6 +77,8 @@ export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d:
   const rc = el("div", "rc");
   root.appendChild(rc);
   if (prompt.kind === "consent:connect") renderConnect(rc, prompt.body as ConnectBody, onDecision);
+  else if (prompt.kind === "consent:storage-bind") renderStorageBind(rc, prompt.body as StorageBindBody, onDecision);
+  else if (prompt.kind === "consent:context-pick") renderContextPick(rc, prompt.body as ContextPickBody, onDecision);
   else renderWrite(rc, prompt.body as WriteBody, onDecision);
 }
 
@@ -144,6 +149,45 @@ function renderWrite(rc: HTMLElement, body: WriteBody, onDecision: (d: Decision)
   const actions = el("div", "actions");
   const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
   const approve = el("button", "approve", "Approve once"); approve.onclick = () => onDecision(true as unknown as Decision);
+  actions.append(deny, approve);
+  rc.append(actions);
+}
+
+function renderStorageBind(rc: HTMLElement, body: StorageBindBody, onDecision: (d: Decision) => void) {
+  rc.append(el("div", "kick", "Folder access"));
+  const h = el("h2"); h.append(document.createTextNode("Let "), Object.assign(el("span", "o"), { textContent: host(body.origin) }), document.createTextNode(" use a folder?")); rc.append(h);
+  const p = el("div", "reason"); p.append(document.createTextNode("This binds the app's local store to a real folder on your machine — it can read and write files there, and nowhere else.")); rc.append(p);
+  const sec = section(rc, "Folder");
+  sec.append(el("div", "args", body.path));
+  rc.append(el("div", "reason warn", "Only approve a folder you want this app to read and write."));
+  const actions = el("div", "actions");
+  const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
+  const approve = el("button", "approve", "Bind folder"); approve.onclick = () => onDecision(true as unknown as Decision);
+  actions.append(deny, approve);
+  rc.append(actions);
+}
+
+function renderContextPick(rc: HTMLElement, body: ContextPickBody, onDecision: (d: Decision) => void) {
+  rc.append(el("div", "kick", "Load context"));
+  const h = el("h2"); h.append(document.createTextNode("Lend a brand to "), Object.assign(el("span", "o"), { textContent: host(body.origin) }), document.createTextNode("?")); rc.append(h);
+  rc.append(el("div", "reason", "The app receives ONLY the one you pick, for this session. It never sees the rest of your library."));
+  const sec = section(rc, "Your brands");
+  const contexts = body.contexts || [];
+  if (!contexts.length) { sec.append(el("div", "empty", "No brands yet — build one in brandbrain first.")); }
+  let picked: string | null = contexts.length ? contexts[0]!.id : null;
+  const rows: Array<[string, HTMLInputElement]> = [];
+  for (const c of contexts) {
+    const cb = el("input") as HTMLInputElement; cb.type = "radio"; cb.name = "sb-ctx"; cb.checked = c.id === picked;
+    cb.onchange = () => { picked = c.id; };
+    rows.push([c.id, cb]);
+    const label = el("label", "item");
+    label.append(cb, el("span", "name", c.name), el("span", "badge read", c.kind || "brand"));
+    sec.append(label);
+  }
+  const actions = el("div", "actions");
+  const deny = el("button", "deny", "Cancel"); deny.onclick = () => onDecision(null);
+  const approve = el("button", "approve", "Lend brand"); approve.onclick = () => onDecision((picked ? { contextId: picked } : null) as unknown as Decision);
+  if (!contexts.length) approve.setAttribute("disabled", "true");
   actions.append(deny, approve);
   rc.append(actions);
 }

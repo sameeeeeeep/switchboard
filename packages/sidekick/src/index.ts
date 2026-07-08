@@ -7,6 +7,9 @@ import { Gate } from "./security/gate.js";
 import { McpRegistry } from "./mcp/registry.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { BackendRegistry } from "./backends/registry.js";
+import { StorageStore } from "./storage/store.js";
+import { ContextLibrary } from "./context/library.js";
+import { SessionManager } from "./session/manager.js";
 import { Broker } from "./server.js";
 
 // Safety net: a long-lived daemon must NEVER die on a stray socket error or an unhandled
@@ -27,6 +30,9 @@ async function main() {
   const audit = new AuditLog(config.stateDir);
   const mcp = await McpRegistry.boot(loadMcpConfig(config.stateDir));
   const backends = await BackendRegistry.boot();
+  const storage = new StorageStore(config.stateDir);
+  const contexts = new ContextLibrary(config.stateDir);
+  const sessions = new SessionManager();
 
   // The Gate needs a ConsentPrompter, and the Broker IS the prompter. Break the cycle with a
   // holder the Gate reads through.
@@ -36,7 +42,7 @@ async function main() {
     requestConnectConsent: (o: string, req: unknown) => broker.requestConnectConsent(o, req),
   };
   const gate = new Gate(grants, budgets, audit, prompter, mcp);
-  broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends });
+  broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions });
   broker.start();
 
   console.error(`[relay] pairing token (paste into the extension): ${config.pairingToken}`);

@@ -1,0 +1,15 @@
+{
+  "name": "brandbrain",
+  "reason": "brandbrain — launch & growth hub for consumer brands",
+  "models": ["sonnet"],
+  "tools": [
+    "WebSearch",
+    "WebFetch",
+    "mcp__claude_ai_Higgsfield__*",
+    "mcp__claude_ai_Shopify__*",
+    "mcp__claude_ai_Gmail__*"
+  ],
+  "storage": {
+    "defaultFolder": "~/Documents/Projects/brandbrain/.data"
+  }
+}

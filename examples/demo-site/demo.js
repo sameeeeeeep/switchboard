@@ -63,6 +63,44 @@ var Relay = class {
   on(event, handler) {
     this.provider.on(event, handler);
   }
+  /**
+   * Per-origin local storage — a private on-disk key/value store for this app, plus `bind` to point
+   * it at a real folder the user picks. Values are opaque strings (store JSON). Isolated per origin;
+   * reads are free, writes need the site not to be read-only, and `bind` prompts for the exact path.
+   *
+   *   await relay.storage.set("workspace", JSON.stringify(data));
+   *   const raw = await relay.storage.get("workspace");
+   *   await relay.storage.bind("~/Documents/Projects/brandbrain/.data"); // existing files appear as records
+   */
+  get storage() {
+    const req = (params) => this.provider.request({ method: "claude_storage", params });
+    return {
+      get: (key) => req({ op: "get", key }).then((r) => r.value ?? null),
+      set: (key, value) => req({ op: "set", key, value }).then(() => void 0),
+      delete: (key) => req({ op: "delete", key }).then((r) => r.ok),
+      list: () => req({ op: "list" }).then((r) => r.keys ?? []),
+      info: () => req({ op: "info" }).then((r) => r.info),
+      /** Point this app's store at a real folder (triggers a path-consent click). */
+      bind: (path) => req({ op: "bind", path }).then((r) => r.info)
+    };
+  }
+  /**
+   * Shared, cross-app context — your portable brand knowledge. Publish a whole context; read the one
+   * the user selected for this app; or open the picker. Selection happens in the side panel, so an
+   * app only ever receives the context the user chose to lend it — never the whole library.
+   *
+   *   await relay.context.publish({ name: "Aamras", kind: "brand", data: brand });
+   *   const active = await relay.context.active();   // the brand the user loaded for this app, or null
+   */
+  get context() {
+    const req = (params) => this.provider.request({ method: "claude_context", params });
+    return {
+      publish: (context) => req({ op: "publish", context }).then((r) => r.id),
+      list: () => req({ op: "list" }).then((r) => r.contexts ?? []),
+      active: () => req({ op: "active" }).then((r) => r.context ?? null),
+      pick: () => req({ op: "pick" }).then((r) => r.context ?? null)
+    };
+  }
 };
 var DEFAULT_INSTALL_URL = "https://relay.dev/install";
 function getRelay(opts) {

@@ -5,6 +5,7 @@ import { whenRelayReady } from "@relay/sdk";
 import { setProvider } from "../../adapter/claude.mjs";
 import { createApp } from "../../adapter/router.mjs";
 import { POST as gapsPOST } from "../../adapter/proof/gaps-route.mjs";
+import { bindFolder, readWorkspace, storageInfo } from "../../adapter/claude_storage.mjs";
 
 const $ = (id) => document.getElementById(id);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -20,9 +21,43 @@ $("connect").addEventListener("click", async () => {
     connected = true;
     $("go").disabled = false;
     $("connect").hidden = true;
+    $("ws").hidden = false;
     setStatus(`connected · ${grant.models.join(", ") || "your Claude"}`, true);
+    // Show wherever storage currently resolves (an auto-assigned sandbox until the user binds a folder),
+    // and surface any brands already there.
+    await refreshWorkspace();
   } catch (err) { setStatus(`connect rejected (${err?.code ?? "?"})`); }
 });
+
+$("bind").addEventListener("click", async () => {
+  if (!connected) return;
+  const path = $("folder").value.trim();
+  if (!path) return;
+  $("bind").disabled = true; const label = $("bind").textContent; $("bind").textContent = "Waiting for consent…";
+  const info = await bindFolder(path); // one-time path-consent click in the broker
+  $("bind").disabled = false; $("bind").textContent = label;
+  if (!info) { $("storeInfo").textContent = "bind declined — your data stays where it is."; return; }
+  await refreshWorkspace();
+});
+
+async function refreshWorkspace() {
+  let info = null, ws = null;
+  try { info = await storageInfo(); ws = await readWorkspace(); } catch {}
+  const brands = Array.isArray(ws?.brands) ? ws.brands : [];
+  const box = $("brands"); box.textContent = "";
+  for (const b of brands) {
+    const name = b?.name || b?.id || "untitled";
+    const chip = el("span", "bchip" + (b?.id && b.id === ws.activeId ? " active" : ""), name);
+    box.append(chip);
+  }
+  if (info) {
+    const where = info.autoAssigned ? "auto-assigned sandbox" : "bound folder";
+    $("folder").value = info.folder;
+    $("storeInfo").textContent = `${brands.length} brand${brands.length === 1 ? "" : "s"} · ${where} · ${info.folder}`;
+  } else {
+    $("storeInfo").textContent = "";
+  }
+}
 function setStatus(text, ok) { const s = $("status"); s.hidden = false; $("statusText").textContent = text; s.querySelector(".g").style.background = ok ? "#3DD68C" : "#9C9AA3"; }
 
 $("go").addEventListener("click", async () => {

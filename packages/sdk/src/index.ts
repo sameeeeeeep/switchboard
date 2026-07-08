@@ -10,6 +10,11 @@ import {
   type OriginGrant,
   type ScopeRequest,
   type StreamDelta,
+  type StorageRequest,
+  type StorageInfo,
+  type ContextRequest,
+  type Context,
+  type ContextMeta,
   type ToolCallRequest,
   type ToolCallResult,
   type ToolDescriptor,
@@ -101,6 +106,46 @@ export class Relay {
 
   on(event: "connect" | "disconnect" | "permissionsChanged", handler: (payload: unknown) => void) {
     this.provider.on(event, handler);
+  }
+
+  /**
+   * Per-origin local storage — a private on-disk key/value store for this app, plus `bind` to point
+   * it at a real folder the user picks. Values are opaque strings (store JSON). Isolated per origin;
+   * reads are free, writes need the site not to be read-only, and `bind` prompts for the exact path.
+   *
+   *   await relay.storage.set("workspace", JSON.stringify(data));
+   *   const raw = await relay.storage.get("workspace");
+   *   await relay.storage.bind("~/Documents/Projects/brandbrain/.data"); // existing files appear as records
+   */
+  get storage() {
+    const req = (params: StorageRequest) => this.provider.request({ method: "claude_storage", params });
+    return {
+      get: (key: string): Promise<string | null> => req({ op: "get", key }).then((r) => r.value ?? null),
+      set: (key: string, value: string): Promise<void> => req({ op: "set", key, value }).then(() => undefined),
+      delete: (key: string): Promise<boolean> => req({ op: "delete", key }).then((r) => r.ok),
+      list: (): Promise<string[]> => req({ op: "list" }).then((r) => r.keys ?? []),
+      info: (): Promise<StorageInfo | undefined> => req({ op: "info" }).then((r) => r.info),
+      /** Point this app's store at a real folder (triggers a path-consent click). */
+      bind: (path: string): Promise<StorageInfo | undefined> => req({ op: "bind", path }).then((r) => r.info),
+    };
+  }
+
+  /**
+   * Shared, cross-app context — your portable brand knowledge. Publish a whole context; read the one
+   * the user selected for this app; or open the picker. Selection happens in the side panel, so an
+   * app only ever receives the context the user chose to lend it — never the whole library.
+   *
+   *   await relay.context.publish({ name: "Aamras", kind: "brand", data: brand });
+   *   const active = await relay.context.active();   // the brand the user loaded for this app, or null
+   */
+  get context() {
+    const req = (params: ContextRequest) => this.provider.request({ method: "claude_context", params });
+    return {
+      publish: (context: { id?: string; name: string; kind?: string; data: unknown }): Promise<string | undefined> => req({ op: "publish", context }).then((r) => r.id),
+      list: (): Promise<ContextMeta[]> => req({ op: "list" }).then((r) => r.contexts ?? []),
+      active: (): Promise<Context | null> => req({ op: "active" }).then((r) => r.context ?? null),
+      pick: (): Promise<Context | null> => req({ op: "pick" }).then((r) => r.context ?? null),
+    };
   }
 }
 

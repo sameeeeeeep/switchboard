@@ -1,27 +1,33 @@
-// Prism — an independent image studio. It runs on the visitor's own Higgsfield connector through
-// window.claude. It requests the whole Higgsfield connector at connect (so the model can submit the
-// generation AND poll it), then an agentic completion does: generate_image (per-action write
-// consent) → poll job_status (auto-approved read) → return the URL. Prism holds no key, pays nothing.
+// Prism — an independent image studio, now BRAND-CONTEXT aware. It runs on the visitor's own
+// Higgsfield connector through window.claude, AND it can load a brand the user built elsewhere
+// (e.g. brandbrain) via claude_context: the user picks which brand to lend Prism in the side panel,
+// then chooses a product + a design style FROM that brand, and Prism generates on-brand — on their
+// own compute, holding no key and no brand data of its own. BYO inference + context.
 import { whenRelayReady } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
 const CONNECTOR = "mcp__claude_ai_Higgsfield__*";        // the user's inherited claude.ai connector
 const GEN = "generate_image";
+// Fallback styles when a brand context doesn't carry its own.
+const DEFAULT_STYLES = ["editorial minimal", "vibrant maximal", "matte product studio", "lifestyle candid", "bold graphic", "soft pastel"];
 let relay = null;
 let referenceDataUrl = null;
+let brand = null; // the loaded brand context (normalized), or null
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
-// ---- Relay connect (the "wallet" affordance) ----
+// ---- Switchboard connect (the "wallet" affordance) ----
 $("connect").addEventListener("click", async () => {
   const r = await whenRelayReady();
-  if (!("connect" in r)) { setStatus("Relay not installed"); return; }
+  if (!("connect" in r)) { setStatus("Switchboard not installed"); return; }
   try {
-    const grant = await r.connect({ reason: "Prism — generate images with Higgsfield", tools: [CONNECTOR] });
+    const grant = await r.connect({ reason: "Prism — generate on-brand images with Higgsfield", tools: [CONNECTOR] });
     relay = r;
     $("go").disabled = false;
     $("connect").hidden = true;
-    setStatus(`Connected via Relay · ${grant.models.join(", ") || "your Claude"}`, true);
+    setStatus(`Connected · ${grant.models.join(", ") || "your Claude"}`, true);
+    $("note").textContent = "Load a brand to generate on-brand, or just describe an image. Each generation is a per-action consent.";
+    await loadBrandContext(); // surface whatever brand the user has already lent Prism
   } catch (err) {
     setStatus(`Connect rejected (${err?.code ?? "?"})`);
   }
@@ -32,7 +38,79 @@ function setStatus(text, connected) {
   s.querySelector(".glyph").style.background = connected ? "#3DD68C" : "#9C9AA3";
 }
 
-// ---- reference image (best-effort; see note on generate) ----
+// ---- brand context: read the one the user lent Prism, or open the panel picker ----
+async function loadBrandContext() {
+  try {
+    const ctx = await relay.context.active();
+    if (ctx) applyBrand(ctx);
+    else revealLoadButton("Load brand");
+  } catch { revealLoadButton("Load brand"); }
+}
+function revealLoadButton(label) {
+  const b = $("loadBrand"); b.hidden = false; b.textContent = label; $("brandbar").hidden = false;
+  $("brandFields").hidden = true; $("bchip").hidden = true;
+}
+$("loadBrand").addEventListener("click", async () => {
+  if (!relay) return;
+  const prev = $("loadBrand").textContent; $("loadBrand").textContent = "Choose in Switchboard…"; $("loadBrand").disabled = true;
+  try {
+    const ctx = await relay.context.pick(); // opens the side-panel picker; selecting one lends it to Prism
+    if (ctx) applyBrand(ctx);
+    else { $("loadBrand").textContent = prev; }
+  } finally { $("loadBrand").disabled = false; }
+});
+
+// Normalize an opaque brand context into what Prism uses (defensive — no locked schema).
+function normalizeBrand(ctx) {
+  const d = (ctx && ctx.data) || {};
+  const arr = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : []);
+  const products = arr(d.products).length ? arr(d.products) : arr(d.range);
+  const styles = arr(d.styles).length ? arr(d.styles) : DEFAULT_STYLES;
+  return {
+    name: ctx.name || d.name || "Brand",
+    voice: String(d.voice || d.vibe || d.positioning || "").trim(),
+    palette: arr(d.palette),
+    products,
+    styles,
+  };
+}
+
+function applyBrand(ctx) {
+  brand = normalizeBrand(ctx);
+  $("brandbar").hidden = false;
+  $("brandFields").hidden = false;
+  const chip = $("bchip"); chip.hidden = false; chip.textContent = "";
+  chip.append(el("span", "dot"), el("span", null, brand.name));
+  if (brand.palette.length) for (const c of brand.palette.slice(0, 4)) { const sw = el("span", "sw"); sw.style.background = c; chip.append(sw); }
+  fillSelect($("product"), brand.products, brand.products.length ? null : "— brand has no products —");
+  fillSelect($("style"), brand.styles);
+  $("loadBrand").textContent = "Change brand"; $("loadBrand").hidden = false;
+  $("prompt").placeholder = "Add art direction (optional) — e.g. on a marble surface, morning light";
+  $("note").textContent = `Generating on-brand for ${brand.name}. Pick a product + style; Prism folds in the brand's voice and palette.`;
+}
+function fillSelect(sel, items, emptyLabel) {
+  sel.textContent = "";
+  if (!items.length && emptyLabel) { sel.append(new Option(emptyLabel, "")); sel.disabled = true; return; }
+  sel.disabled = false;
+  for (const it of items) sel.append(new Option(it, it));
+}
+
+// Build the generation prompt: brand context + chosen product + style + any extra art direction.
+function buildPrompt() {
+  const extra = $("prompt").value.trim();
+  if (!brand) return extra; // no brand loaded → plain text-to-image, as before
+  const product = $("product").value.trim();
+  const style = $("style").value.trim();
+  return [
+    product ? `${product} for ${brand.name}` : `${brand.name} brand image`,
+    style ? `${style} style` : "",
+    brand.voice ? `brand voice: ${brand.voice}` : "",
+    brand.palette.length ? `brand palette: ${brand.palette.join(", ")}` : "",
+    extra,
+  ].filter(Boolean).join(". ");
+}
+
+// ---- reference image (best-effort) ----
 $("refBtn").addEventListener("click", () => $("refInput").click());
 $("refInput").addEventListener("change", () => {
   const file = $("refInput").files?.[0];
@@ -54,7 +132,6 @@ function refButton() { const b = el("button", "refbtn", "＋ Reference image"); 
 const URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
 function extractUrl(text) { const m = text.match(URL_RE); return m ? (m[1] || m[2] || m[0]) : null; }
 
-// Downscale a data URL to keep the attachment small (max edge ~1024px) before sending to relay.
 async function downscale(dataUrl, max = 1024) {
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; });
   const scale = Math.min(1, max / Math.max(img.width, img.height));
@@ -67,14 +144,13 @@ async function downscale(dataUrl, max = 1024) {
 // ---- generate (agentic: the model runs the connector's upload + generate flow, each step gated) ----
 $("go").addEventListener("click", async () => {
   if (!relay) return;
-  const prompt = $("prompt").value.trim();
+  const prompt = buildPrompt();
   if (!prompt) return;
 
   const card = el("div", "shot load");
   card.append(el("div", "scan"), el("div", "cap", referenceDataUrl ? "uploading reference…" : "generating…"));
   $("grid").prepend(card);
 
-  // With a reference, attach the (downscaled) bytes and tell the model the exact upload flow.
   let attachments;
   let instruction;
   if (referenceDataUrl) {

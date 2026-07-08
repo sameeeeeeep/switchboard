@@ -38,6 +38,52 @@ network egress) so a stranger's app can't exfiltrate your data — the basis for
   openings, model via the broker, no server.
 - **App Store** (`examples/apps`): brandbrain (demo card), Prism (airgapped image gen), Ad
   generator, Tool assistant, Chat. Provider SDK: `@relay/sdk`. Spec: `spec/BYOP-1.md`.
+- **`claude_context` primitive** (`packages/sidekick/src/context`): the shared, cross-app CONTEXT
+  layer — the third BYO pillar (inference + backend + **context**). An app `publish`es a whole,
+  opaque context (e.g. a brand); another app reads it ONLY via `active` — the one context the user
+  **selected** for that origin in the panel (selection = consent, set out of band via the
+  `selectContext` control action). Apps can't enumerate the library (`list` returns only their own);
+  the whole-library view is panel-only (`listContexts`). Per-origin, revocable. Proven cross-origin
+  (`spike/context-spike.mjs`, 9/9): brandbrain publishes "Aamras" → ad-gen gets null until lent →
+  whole context after selection → third origin stays null → clearable. SDK: `relay.context.*`.
+  Library at `~/.relay/contexts.json` + `~/.relay/context-selection.json`.
+- **`claude_session` primitive** (`packages/sidekick/src/session`): warm, stateful completion threads —
+  one long-lived `claude -p --input-format stream-json` process per (origin, sessionId), turns queued
+  sequentially, recycled every 6 turns, idle-swept. Read-only by construction (`--strict-mcp-config` +
+  only the origin's granted web reads — never a write tool). Gated like a completion (grant + model
+  scope + budget per turn). This is the daemon port of brandbrain's proven warm-session model
+  (`lib/claude-session.ts` / `scripts/sidekick.mjs`), replacing the first port's stateless
+  one-shot-per-card (which cold-started every card and flooded the machine with concurrent processes —
+  the cause of brandbrain's Studio stalling/slowness). Proven (`spike/session-spike.mjs`, 6/6): 3
+  sequential turns on one warm thread, all valid cards, later turns ~40% faster than the cold first.
+  The pool caps live warm processes across all apps×projects (LRU idle-eviction; eviction is free since
+  context is re-sent inline) so a whole ecosystem stays at a handful of processes.
+- **Projects (scoping unit) + consumer side panel** (`packages/extension`): a *project* is the unit a
+  brand is an instance of. A global "working on" project (`setActiveProject`) is lent to every connected
+  app by default (`context.active` falls back to it), while a per-app pick still overrides. The side
+  panel was rebuilt from a logs dashboard into a consumer surface: **Working on** (the active project in
+  its own brand palette) · **Connectors** (friendly capability tiles derived from grants — Higgsfield,
+  Shopify, Web…) · **Apps** (clean rows; token meters, tool names, trust mode, disconnect tucked inside a
+  per-app expander) · a **bottom-sheet project switcher** · Activity + kill switch moved into a `⋯` menu.
+  The panel is also the **wrapp launcher** (a store grid → open any app in a new tab, + "open any URL";
+  connected apps get a live dot) — `chrome.tabs.create`, static registry for now.
+- **Source-backed contexts (Sheets → JSON)** (`packages/sidekick/src/context/resolver.ts`): a context
+  can carry `source: { kind: "csv"|"gsheet", url }`. On read, if the cache is stale (5-min TTL), the
+  daemon fetches the CSV directly (Node fetch; **SSRF-guarded** — public http(s) only, no localhost/
+  private) and parses it (RFC4180: quoted commas + embedded newlines) into `{ columns, rows }`. **Zero
+  new infra** — a published Google Sheet IS the database; the user's spreadsheet becomes live shared
+  context, selected + lent like any project. Panel: "Connect a Google Sheet" (paste published CSV URL)
+  → appears in the switcher badged `live · N rows`. Proven (`spike/context-source-spike.mjs`, 13/13) +
+  a live fetch of a real 50-row public CSV. Read-only v1; write-back is a later gated write.
+- **`claude_storage` primitive** (`packages/sidekick/src/storage`): per-origin, on-disk key/value
+  store gated like everything else. Auto-assigns a private sandbox (`~/.relay/storage/<origin>/`)
+  with no prompt; `bind` points an origin at a real user folder behind a one-time path-consent.
+  Structural isolation (path derived from the authoritative origin), traversal-safe keys, keys map
+  1:1 to `<key>.json` so an existing project folder's files appear as records with **zero
+  migration**. Proven headless (`spike/storage-spike.mjs`, 23/23) and end-to-end through the live
+  daemon + adapter shim (`examples/adapter/proof/run-storage.mjs`, 10/10 — brandbrain's real
+  `.data/workspace.json` read + written through `window.claude`). SDK: `relay.storage.*`. Adapter
+  drop-in for `workspace-store.ts`: `examples/adapter/claude_storage.mjs`.
 
 ---
 
@@ -52,15 +98,23 @@ SSR data), 32 Web-standard routes, **no server secrets**, and it already has `sc
   *Hard part:* Next.js App Router is server-coupled — needs a careful static export or a custom
   client bundle + router.
 - **1b.** Auto-collect all 32 route handlers into the adapter's fetch-router (dispatch `/api/*` locally).
-- **1c.** Swap two libs: `lib/claude.ts` → the `window.claude` shim; `lib/server/workspace-store.ts`
-  → `claude_storage`.
+- **1c.** ✅ Swap two libs: `lib/claude.ts` → the `window.claude` shim (done earlier);
+  `lib/server/workspace-store.ts` → `claude_storage` (**done** — `examples/adapter/claude_storage.mjs`
+  is the drop-in, proven binding brandbrain's real `.data`). The bundled port (1a/1b) just imports it.
 - **1d.** Serve as the store's brandbrain; run it in the airgapped runner.
 
-### 2. `claude_storage` primitive (brandbrain persistence + stateful apps)
-Per-origin local store + user-picked **project folder** (`bindFolder`). Replaces
-`workspace-store.ts` (`.data/workspace.json`). Isolated per origin (an app can only touch its own
-folder), writes gated by the site's mode. This is the "self-contained backend": local logic + a
-local, user-owned folder. New BYOP method `claude_storage` (get/set/list/delete/bindFolder).
+### 2. ✅ `claude_storage` primitive — DONE (see Built & proven)
+Per-origin local store + user-picked **project folder** (`bind`), auto-assigned sandbox otherwise.
+Replaces `workspace-store.ts`. Isolated per origin, writes blocked in readonly mode, `bind` behind a
+path-consent. New BYOP method `claude_storage` (get/set/list/delete/bind/info). The store card
+(`examples/apps/brandbrain.html`) now surfaces the bound folder + existing brands.
+
+### B. Panel launcher / wrapp store — near-term
+Make the side panel the hub (MetaMask's dApp browser). A **Wrapps** view: a curated grid from a static
+registry JSON (name, icon, url) — click to open in a new tab, Switchboard already there to connect —
+plus "open any URL" quick-launch and a "recently used" row from the grants list. `chrome.tabs.create`
+to open; listing ≠ endorsement (per-origin consent still gates; untrusted wrapps run in the airgap
+runner). Nearly free; makes the whole thing feel like a product.
 
 ### 3. Structured output on completions
 `jsonSchema` param (the Agent SDK supports `--json-schema`). `system` is already done. brandbrain

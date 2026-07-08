@@ -1,10 +1,9 @@
 /**
- * Relay side panel. Inside the extension it pulls live data from the daemon via the background
- * control channel (grants + budget usage + audit). Outside (a plain browser preview) it renders
- * representative mock data so the design is viewable without the daemon. Same file, both worlds.
- *
- * The signature is the budget meter: its fill color encodes how much of your daily compute a site
- * has drained — mint (healthy) → amber (heavy) → coral (near the ceiling). Numbers are mono/tabular.
+ * Switchboard side panel. A calm home for the things you own — your active PROJECT, your CONNECTORS,
+ * and the APPS using them — not a wall of logs. It pulls live data from the daemon via the background
+ * control channel; outside the extension it renders representative mock data so the design is viewable
+ * without the daemon. The technical detail (token meters, tool names, trust mode, the audit feed) is
+ * tucked inside per-app expanders and a collapsed Activity section — surfaced only when you go looking.
  */
 
 type Mode = "ask" | "trust" | "readonly";
@@ -15,35 +14,72 @@ interface Grant {
   tools: { name: string; access: "read" | "write" }[];
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
   usage: { tokensToday: number; callsThisMinute: number };
+  storage?: { folder: string; autoAssigned: boolean; count: number } | null;
   pending?: { tool: string; args: Record<string, unknown> } | null;
 }
 interface AuditEntry { ts: number; origin: string; method?: string; toolName?: string; kind: string; decision?: string; outcome: string; }
-interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; }
+interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number }
+interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 
 const inExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
-let consentActive = false; // when true, the consent overlay owns the panel; render() won't override
+let consentActive = false;
+const openApps = new Set<string>(); // origins whose detail is expanded (preserved across refreshes)
+
+// ---- friendly connector identities (framed as capabilities, not raw tool names) ----
+const CONNECTORS: Record<string, { label: string; color: string; hint: string }> = {
+  higgsfield: { label: "Higgsfield", color: "#EE46BC", hint: "images" },
+  shopify: { label: "Shopify", color: "#95BF47", hint: "store" },
+  gmail: { label: "Gmail", color: "#EA4335", hint: "email" },
+  drive: { label: "Drive", color: "#1FA463", hint: "files" },
+  sheets: { label: "Sheets", color: "#1FA463", hint: "data" },
+  meta: { label: "Meta Ads", color: "#1264FF", hint: "ads" },
+  web: { label: "Web", color: "#4F8CFF", hint: "search" },
+};
+function connectorOf(tool: string): { key: string; label: string; color: string; hint: string } | null {
+  if (/^web(search|fetch)$/i.test(tool)) return { key: "web", ...CONNECTORS.web! };
+  const m = tool.match(/mcp__claude_ai_([A-Za-z0-9]+)/i) || tool.match(/^([a-z]+)__/i);
+  const raw = (m?.[1] || "").toLowerCase();
+  if (!raw) return null;
+  for (const key of Object.keys(CONNECTORS)) if (raw.includes(key)) return { key, ...CONNECTORS[key]! };
+  return { key: raw, label: raw[0]!.toUpperCase() + raw.slice(1), color: "#C8F250", hint: "" };
+}
+
+// ---- wrapp store: a static registry of launchable apps (a real registry replaces this later) ----
+const WRAPPS: Array<{ name: string; desc: string; url: string; color: string }> = [
+  { name: "brandbrain", desc: "Build & operate consumer brands", url: "http://127.0.0.1:5178/build", color: "#C8F250" },
+  { name: "Prism", desc: "Generate on-brand images", url: "http://localhost:5174/imagegen.html", color: "#4F46E5" },
+  { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC" },
+  { name: "Tool assistant", desc: "Chat over your connectors", url: "http://localhost:5174/assistant.html", color: "#3DD68C" },
+  { name: "Chat", desc: "Plain chat on your Claude", url: "http://localhost:5174/chat.html", color: "#F59E0B" },
+];
+function openWrapp(url: string) {
+  try { if (inExtension && chrome.tabs?.create) { chrome.tabs.create({ url }); return; } } catch { /* fall through */ }
+  window.open(url, "_blank", "noopener");
+}
 
 const MOCK: PanelData = {
-  paired: true,
-  reachable: true,
+  paired: true, reachable: true,
+  contexts: [
+    { id: "aamras", name: "Aamras", kind: "brand", updatedAt: Date.now() - 3_600_000, swatches: ["#8B1A1A", "#F4A000", "#0D0D0D", "#D4C89A"] },
+    { id: "haazma", name: "Haazma", kind: "brand", updatedAt: Date.now() - 86_400_000, swatches: ["#F5A623", "#6B2737", "#3D7D4E", "#F5F0E8"] },
+    { id: "piqual", name: "Piqual", kind: "brand", updatedAt: Date.now() - 200_000_000, swatches: ["#7AB648", "#F4F1E8", "#1C1C1A", "#C8A84B"] },
+    { id: "sheet1", name: "Vendor book (Sheet)", kind: "csv", updatedAt: Date.now() - 600_000, sourceKind: "gsheet", rowCount: 42 },
+  ],
+  activeProject: "aamras",
+  // (a Sheet-backed project shows up alongside brand projects — same picker, marked "live")
   grants: [
-    { origin: "adgen.example", mode: "ask", models: ["sonnet"], tools: [{ name: "WebFetch", access: "read" }, { name: "higgsfield__generate_image", access: "write" }],
-      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 148_200, callsThisMinute: 4 }, pending: null },
-    { origin: "shop-copilot.example", mode: "trust", models: ["sonnet"], tools: [{ name: "shopify__search_products", access: "read" }, { name: "shopify__create-discount", access: "write" }],
-      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 61_400, callsThisMinute: 2 },
-      pending: { tool: "shopify__create-discount", args: { code: "SUMMER20", value: 20 } } },
-    { origin: "chat.example", mode: "ask", models: ["sonnet"], tools: [],
-      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 12_050, callsThisMinute: 1 }, pending: null },
+    { origin: "https://brandbrain.app", mode: "trust", models: ["sonnet"], tools: [{ name: "WebSearch", access: "read" }, { name: "WebFetch", access: "read" }, { name: "mcp__claude_ai_Higgsfield__*", access: "write" }, { name: "mcp__claude_ai_Shopify__*", access: "write" }],
+      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 148_200, callsThisMinute: 4 }, storage: { folder: "/Users/you/Projects/brandbrain/.data", autoAssigned: false, count: 6 }, pending: null },
+    { origin: "https://prism.app", mode: "ask", models: ["sonnet"], tools: [{ name: "mcp__claude_ai_Higgsfield__*", access: "write" }],
+      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 12_400, callsThisMinute: 1 }, storage: { folder: "~/.relay/storage/prism", autoAssigned: true, count: 0 },
+      pending: { tool: "mcp__claude_ai_Higgsfield__generate_image", args: {} } },
   ],
   audit: [
-    { ts: Date.now() - 8_000, origin: "shop-copilot.example", toolName: "shopify__create-discount", kind: "consent", decision: "pending", outcome: "ok" },
-    { ts: Date.now() - 41_000, origin: "adgen.example", toolName: "higgsfield__generate_image", kind: "consent", decision: "user-approved", outcome: "ok" },
-    { ts: Date.now() - 52_000, origin: "adgen.example", toolName: "WebFetch", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
-    { ts: Date.now() - 180_000, origin: "shop-copilot.example", toolName: "shopify__create-discount", kind: "consent", decision: "user-denied", outcome: "denied" },
-    { ts: Date.now() - 240_000, origin: "chat.example", method: "claude_stream", kind: "request", outcome: "ok" },
-    { ts: Date.now() - 900_000, origin: "adgen.example", kind: "connect", outcome: "ok" },
+    { ts: Date.now() - 9_000, origin: "https://brandbrain.app", toolName: "claude_session", kind: "request", outcome: "ok" },
+    { ts: Date.now() - 44_000, origin: "https://prism.app", toolName: "mcp__claude_ai_Higgsfield__generate_image", kind: "consent", decision: "user-approved", outcome: "ok" },
+    { ts: Date.now() - 240_000, origin: "https://brandbrain.app", toolName: "claude_context__publish", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
   ],
 };
 
@@ -52,7 +88,18 @@ const el = (tag: string, cls?: string, text?: string) => { const n = document.cr
 const kfmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k` : String(n));
 const host = (o: string) => { try { return new URL(o.includes("://") ? o : `https://${o}`).host; } catch { return o; } };
 const meterColor = (pct: number) => (pct < 0.5 ? "var(--lime)" : pct < 0.8 ? "var(--warn)" : "var(--danger)");
-const ago = (ts: number) => { const s = Math.round((Date.now() - ts) / 1000); if (s < 60) return `${s}s`; const m = Math.round(s / 60); if (m < 60) return `${m}m`; return `${Math.round(m / 60)}h`; };
+const ago = (ts: number) => { const s = Math.round((Date.now() - ts) / 1000); if (s < 60) return `${s}s ago`; const m = Math.round(s / 60); if (m < 60) return `${m}m ago`; return `${Math.round(m / 60)}h ago`; };
+const short = (name: string) => name.includes("__") ? name.split("__").pop()!.replace(/[-_*]/g, " ").trim() : name;
+
+/** A human name for an app from its origin. Real domains → the memorable label; local dev → "Local app". */
+const KNOWN: Record<string, string> = { "127.0.0.1:5178": "brandbrain", "localhost:5178": "brandbrain", "localhost:5174": "Prism", "127.0.0.1:5174": "Prism" };
+function appName(origin: string): string {
+  const h = host(origin);
+  if (KNOWN[h]) return KNOWN[h]!;
+  if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/.test(h)) return "Local app";
+  const parts = h.replace(/^www\./, "").split(".");
+  return parts.length >= 2 ? parts[parts.length - 2]! : h;
+}
 
 function control(action: string, args?: unknown): Promise<any> {
   return new Promise((res) => chrome.runtime.sendMessage({ type: "control", action, args }, res));
@@ -61,112 +108,231 @@ function control(action: string, args?: unknown): Promise<any> {
 async function load(): Promise<PanelData> {
   if (!inExtension) return MOCK;
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
-  if (!status?.paired) return { paired: false, reachable: false, grants: [], audit: [] };
-  if (!status?.reachable) return { paired: true, reachable: false, grants: [], audit: [] };
+  if (!status?.paired) return { paired: false, reachable: false, grants: [], audit: [], contexts: [], activeProject: null };
+  if (!status?.reachable) return { paired: true, reachable: false, grants: [], audit: [], contexts: [], activeProject: null };
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
-  return { paired: true, reachable: true, grants: (g?.grants ?? []).map((x: any) => ({ ...x, pending: null })), audit: a?.entries ?? [] };
+  const c = await control("listContexts");
+  return {
+    paired: true, reachable: true,
+    grants: (g?.grants ?? []).map((x: any) => ({ ...x, pending: x.pending ?? null })),
+    audit: a?.entries ?? [],
+    contexts: c?.contexts ?? [],
+    activeProject: c?.activeProject ?? null,
+  };
 }
 
-function render(data: PanelData) {
-  if (consentActive) return; // a consent is showing; don't flip the dashboard/pairing underneath it
-  const online = data.paired && data.reachable;
-  const st = $("statusText"); st.textContent = "";
-  const dot = el("b", undefined, "●");
-  dot.style.color = online ? "var(--ok)" : data.paired ? "var(--danger)" : "var(--ink-faint)";
-  st.append(dot, document.createTextNode(` ${online ? "connected" : data.paired ? "sidekick offline" : "not paired"}`));
+function lastSeen(origin: string, audit: AuditEntry[]): number { for (const e of audit) if (e.origin === origin) return e.ts; return 0; }
 
-  // Show the dashboard only when actually connected. Not paired OR paired-but-daemon-down → the
-  // pairing card, with an offline hint in the latter case so the fix is obvious.
-  ($("dashboard") as HTMLElement).hidden = !online;
+function render(data: PanelData) {
+  if (consentActive) return;
+  const online = data.paired && data.reachable;
+  const st = $("status"); st.className = "status" + (online ? " on" : "");
+  $("statusText").textContent = online ? "on" : data.paired ? "sidekick offline" : "not paired";
+  ($("home") as HTMLElement).hidden = !online;
   ($("pairing") as HTMLElement).hidden = online;
-  ($("pairErr") as HTMLElement).textContent =
-    data.paired && !data.reachable ? "Paired, but the sidekick isn’t running. Start it: npm run sidekick (port 8787)." : "";
-  ($("pairBtn") as HTMLElement).textContent = data.paired && !data.reachable ? "Retry" : "Pair";
+  if (data.paired && !data.reachable) { $("pairErr").textContent = "Paired, but the sidekick isn’t running. Start it: npm run sidekick."; $("pairBtn").textContent = "Retry"; }
   if (!online) return;
 
-  // aggregate
-  const usedTotal = data.grants.reduce((s, g) => s + g.usage.tokensToday, 0);
-  const capTotal = data.grants.reduce((s, g) => s + g.budgets.maxTokensPerDay, 0);
-  const totalPct = capTotal ? Math.min(1, usedTotal / capTotal) : 0;
-  $("totalNum").textContent = "";
-  // No sites yet → just "0 tokens" (no cap to show). Otherwise "used / cap tokens".
-  $("totalNum").append(document.createTextNode(kfmt(usedTotal)), Object.assign(el("small"), { textContent: capTotal ? ` / ${kfmt(capTotal)} tokens` : " tokens" }));
-  Object.assign(($("totalBar") as HTMLElement).style, { width: `${Math.max(2, totalPct * 100)}%`, background: meterColor(totalPct) });
+  renderProject(data);
+  renderConnectors(data);
+  renderApps(data);
+  renderWrapps(data);
+  renderActivity(data);
+}
 
-  $("siteCount").textContent = `${data.grants.length}`;
-  const sites = $("sites"); sites.textContent = "";
-  if (!data.grants.length) sites.append(el("div", "empty", "No sites connected. When one asks, you'll approve it here."));
+// ---- Wrapp store: launch an app in a new tab (a green dot marks ones already connected) ----
+function renderWrapps(data: PanelData) {
+  const box = $("wrapps"); box.textContent = "";
+  const connected = new Set(data.grants.map((g) => host(g.origin)));
+  for (const w of WRAPPS) {
+    const card = el("button", "wrapp");
+    const t2 = el("div", "t2");
+    const ic = el("div", "ic", w.name[0]!.toUpperCase()); ic.style.background = w.color;
+    t2.append(ic, el("div", "nm", w.name));
+    if (connected.has(host(w.url))) { const d = el("div", "live"); d.title = "connected"; t2.append(d); }
+    card.append(t2, el("div", "ds", w.desc), el("div", "go", "Open →"));
+    card.onclick = () => openWrapp(w.url);
+    box.append(card);
+  }
+}
+
+// ---- Working on: the active project, in its own colours ----
+function renderProject(data: PanelData) {
+  const box = $("project"); box.textContent = "";
+  const active = data.contexts.find((c) => c.id === data.activeProject) || null;
+  const usedBy = active ? data.grants.filter((g) => g.tools.length || true).length : 0; // apps that could receive it
+  const card = el("div", "project" + (active ? "" : " empty"));
+  card.append(el("i", "stripe"));
+  const row = el("div", "row");
+  row.append(el("div", "mark", (active?.name || "—")[0]?.toUpperCase() ?? "—"));
+  const txt = el("div"); txt.style.minWidth = "0";
+  txt.append(el("div", "name", active ? active.name : "No project yet"));
+  txt.append(el("div", "meta", active ? `${active.kind ?? "project"} · lent to every app you connect` : "Pick one to share it with your apps"));
+  row.append(txt);
+  const sw = el("button", "switch", data.contexts.length ? (active ? "Switch" : "Choose") : "None yet");
+  if (data.contexts.length) sw.onclick = () => openPicker(data);
+  row.append(sw);
+  card.append(row);
+  if (active?.swatches?.length) { const s = el("div", "swatches"); for (const c of active.swatches) { const i = el("i"); i.style.background = c; s.append(i); } card.append(s); }
+  box.append(card);
+}
+
+// ---- Connectors: friendly capability tiles derived from what apps are granted ----
+function renderConnectors(data: PanelData) {
+  const box = $("connectors"); box.textContent = "";
+  const seen = new Map<string, { label: string; color: string; hint: string; apps: number }>();
+  for (const g of data.grants) {
+    const keys = new Set<string>();
+    for (const t of g.tools) { const c = connectorOf(t.name); if (c) keys.add(c.key); }
+    for (const k of keys) { const c = connectorOf([...g.tools].find((t) => connectorOf(t.name)?.key === k)!.name)!; const e = seen.get(k) ?? { label: c.label, color: c.color, hint: c.hint, apps: 0 }; e.apps++; seen.set(k, e); }
+  }
+  if (!seen.size) { box.append(el("div", "empty-note", "No connectors in use yet. Apps you connect will ask for the ones they need.")); return; }
+  for (const [, c] of seen) {
+    const tile = el("div", "conn");
+    const ic = el("div", "ic", c.label[0]!.toUpperCase()); ic.style.background = c.color;
+    tile.append(ic, el("div", "nm", c.label), el("div", "use", `${c.apps} app${c.apps === 1 ? "" : "s"}${c.hint ? " · " + c.hint : ""}`));
+    box.append(tile);
+  }
+}
+
+// ---- Apps: connected wrapps; the technical detail lives in the expander ----
+function renderApps(data: PanelData) {
+  $("appCount").textContent = data.grants.length ? `${data.grants.length}` : "";
+  const box = $("apps"); box.textContent = "";
+  if (!data.grants.length) { box.append(el("div", "empty-note", "No apps connected yet. When one asks to use your Claude, you’ll approve it here.")); return; }
 
   for (const g of data.grants) {
+    const isOpen = openApps.has(g.origin);
+    const card = el("div", "app" + (isOpen ? " open" : "") + (g.pending ? " pending" : ""));
+    const seen = lastSeen(g.origin, data.audit);
+    const activeNow = seen && Date.now() - seen < 120_000;
+
+    const row = el("div", "row");
+    row.append(el("div", "av", appName(g.origin)[0]?.toUpperCase() ?? "•"));
+    const txt = el("div"); txt.style.minWidth = "0";
+    txt.append(el("div", "nm", appName(g.origin)));
+    const sub = el("div", "sub");
+    sub.append(Object.assign(el("span", "dot" + (activeNow ? "" : " idle")), {}), document.createTextNode(g.pending ? "waiting for you" : activeNow ? "active now" : seen ? ago(seen) : "connected"));
+    txt.append(sub); row.append(txt);
+    row.append(el("div", "chev", "▾"));
+    row.onclick = () => { if (isOpen) openApps.delete(g.origin); else openApps.add(g.origin); refresh(); };
+    card.append(row);
+
+    // ---- detail ----
+    const detail = el("div", "detail");
+    const conns = new Map<string, string>();
+    for (const t of g.tools) { const c = connectorOf(t.name); if (c) conns.set(c.key, c.label); }
+    if (conns.size) { const d = el("div"); d.append(el("div", "k", "Can use")); const pills = el("div", "pills"); pills.style.marginTop = "7px"; for (const [, label] of conns) pills.append(el("span", "pill", label)); d.append(pills); detail.append(d); }
+    if (g.storage) { const d = el("div", "drow"); d.append(el("span", "k", g.storage.autoAssigned ? "Private data" : "Project folder")); d.append(el("span", "pill", `${g.storage.count} record${g.storage.count === 1 ? "" : "s"}`)); detail.append(d); }
+
+    // usage (moved out of the surface)
     const pct = Math.min(1, g.usage.tokensToday / (g.budgets.maxTokensPerDay || 1));
-    const card = el("div", "site" + (g.pending ? " pending" : ""));
+    const use = el("div"); use.append(el("div", "k", "Compute today"));
+    const bar = el("div", "usebar"); bar.style.marginTop = "7px"; const m = el("div", "m"); const fill = el("i"); Object.assign(fill.style, { width: `${Math.max(3, pct * 100)}%`, background: meterColor(pct) }); m.append(fill);
+    bar.append(m, el("span", "v", `${kfmt(g.usage.tokensToday)} / ${kfmt(g.budgets.maxTokensPerDay)}`)); use.append(bar); detail.append(use);
 
-    const head = el("div", "head");
-    head.append(el("div", "fav", host(g.origin)[0]?.toUpperCase() ?? "•"), el("div", "origin", host(g.origin)));
-    const rev = el("button", "revoke", "Revoke") as HTMLButtonElement;
-    rev.onclick = () => { if (inExtension) control("revoke", { origin: g.origin }).then(refresh); };
-    head.append(rev);
-    card.append(head);
-
-    const metrics = el("div", "metrics");
-    metrics.append(el("span", "num", kfmt(g.usage.tokensToday)), el("span", "of", `/ ${kfmt(g.budgets.maxTokensPerDay)} tok`),
-      el("span", "rate", `${g.usage.callsThisMinute}/${g.budgets.maxCallsPerMin} per min`));
-    card.append(metrics);
-
-    const meter = el("div", "meter"); const fill = el("i");
-    Object.assign(fill.style, { width: `${Math.max(2, pct * 100)}%`, background: meterColor(pct) });
-    meter.append(fill); card.append(meter);
-
-    if (g.tools.length) {
-      const chips = el("div", "chips");
-      for (const t of g.tools) chips.append(el("span", `chip ${t.access}`, `${host2(t.name)} · ${t.access}`));
-      card.append(chips);
+    // trust + disconnect
+    const foot = el("div", "drow");
+    const seg = el("div", "modeseg");
+    for (const [mode, label, warn] of [["ask", "Ask", false], ["trust", "Trust", false], ["readonly", "Read-only", true]] as Array<[Mode, string, boolean]>) {
+      const on = (g.mode ?? "ask") === mode;
+      const b = el("button", (on ? "on" : "") + (warn && on ? " warn" : ""), label);
+      b.onclick = (e) => { e.stopPropagation(); if (inExtension) control("setMode", { origin: g.origin, mode }).then(refresh); };
+      seg.append(b);
     }
+    const dc = el("button", "disconnect", "Disconnect");
+    dc.onclick = (e) => { e.stopPropagation(); if (inExtension) control("revoke", { origin: g.origin }).then(() => { openApps.delete(g.origin); refresh(); }); };
+    foot.append(seg, dc); detail.append(foot);
 
-    // Per-site trust mode — how writes are handled for this site.
-    const mode = el("div", "mode");
-    const modes: Array<[Mode, string, boolean]> = [["ask", "Ask", false], ["trust", "Trust", false], ["readonly", "Read-only", true]];
-    for (const [m, label, warn] of modes) {
-      const active = (g.mode ?? "ask") === m;
-      const b = el("button", (active ? "on" : "") + (warn && active ? " warn" : ""), label) as HTMLButtonElement;
-      b.title = m === "ask" ? "Ask before every write action" : m === "trust" ? "Auto-approve writes for this site (still budget-capped)" : "Block all write actions";
-      b.onclick = () => { if (inExtension) control("setMode", { origin: g.origin, mode: m }).then(refresh); };
-      mode.append(b);
-    }
-    card.append(mode);
-
+    // pending consent (rare on the surface — usually the inline consent view takes over)
     if (g.pending) {
-      const bar = el("div", "pend");
-      const txt = el("div", "txt"); txt.append(document.createTextNode("Wants to "), Object.assign(el("b"), { textContent: host2(g.pending.tool) }));
-      const btns = el("div", "btns");
-      btns.append(el("button", "approve", "Approve"), el("button", "deny", "Deny"));
-      bar.append(txt, btns); card.append(bar);
+      const pend = el("div", "pend");
+      const t = el("div", "txt"); t.append(document.createTextNode("Wants to "), Object.assign(el("b"), { textContent: short(g.pending.tool) }));
+      const btns = el("div", "btns"); btns.append(el("button", "approve", "Approve"), el("button", "deny", "Deny"));
+      pend.append(t, btns); detail.append(pend);
     }
-    sites.append(card);
+    card.append(detail);
+    box.append(card);
   }
+}
 
-  // activity
+function renderActivity(data: PanelData) {
   const feed = $("feed"); feed.textContent = "";
-  if (!data.audit.length) feed.append(el("div", "empty", "Nothing yet."));
-  for (const e of data.audit.slice(0, 30)) {
-    const cls = e.outcome === "denied" ? "deny" : e.decision === "user-approved" || e.toolName?.length ? (e.decision === "auto-approved" ? "ok" : "write") : "ok";
+  if (!data.audit.length) { feed.append(el("div", "empty-note", "Nothing yet.")); return; }
+  for (const e of data.audit.slice(0, 24)) {
+    const cls = e.outcome === "denied" ? "deny" : e.decision === "auto-approved" ? "ok" : e.toolName ? "write" : "ok";
     const row = el("div", `ev ${cls}`);
-    const what = e.toolName ? host2(e.toolName) : (e.method ?? e.kind);
-    const verb = e.decision ? e.decision.replace("user-", "") : e.outcome;
-    row.append(el("span", "t", ago(e.ts)));
-    const d = el("div", "d"); d.append(Object.assign(el("b"), { textContent: host(e.origin) }), document.createTextNode(` ${what} · ${verb}`));
+    const what = e.toolName ? short(e.toolName) : (e.method ?? e.kind);
+    row.append(el("div", "t", ago(e.ts)));
+    const d = el("div", "d"); d.append(Object.assign(el("b"), { textContent: appName(e.origin) }), document.createTextNode(` · ${what}`));
     row.append(d); feed.append(row);
   }
 }
 
-/** shorten server-qualified tool names for display: mcp__shopify__create-discount → create-discount */
-function host2(name: string) { return name.includes("__") ? name.split("__").pop()! : name; }
+// ---- project switcher overlay ----
+function openPicker(data: PanelData) {
+  const picker = $("picker") as HTMLElement; picker.hidden = false;
+  const list = $("plist"); list.textContent = "";
+  for (const c of data.contexts) {
+    const item = el("button", "pitem" + (c.id === data.activeProject ? " on" : ""));
+    item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
+    const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
+    if (c.sourceKind) txt.append(el("span", "badge", `live · ${c.rowCount ?? 0} rows`));
+    else if (c.swatches?.length) { const s = el("div", "sw"); for (const col of c.swatches) { const i = el("i"); i.style.background = col; s.append(i); } txt.append(s); }
+    item.append(txt);
+    if (c.id === data.activeProject) item.append(el("div", "tick", "✓"));
+    item.onclick = () => { if (inExtension) control("setActiveProject", { contextId: c.id === data.activeProject ? null : c.id }).then(() => { picker.hidden = true; refresh(); }); else { picker.hidden = true; } };
+    list.append(item);
+  }
+  renderAddSheet();
+}
+
+// "Connect a Google Sheet": paste a published CSV link → it becomes a live project other apps can read.
+function renderAddSheet() {
+  const box = $("addSheet"); box.className = "addsrc"; box.textContent = "";
+  const toggle = el("button", "toggle", "＋ Connect a Google Sheet");
+  toggle.onclick = () => (box.className = "addsrc open");
+  const form = el("div", "form");
+  const name = el("input") as HTMLInputElement; name.placeholder = "Name (e.g. Vendor book)";
+  const url = el("input") as HTMLInputElement; url.placeholder = "Published CSV URL (File → Share → Publish to web → CSV)";
+  const hint = el("div", "hint", "In Google Sheets: File → Share → Publish to web → choose the tab → Comma-separated values (.csv). Paste that link.");
+  const err = el("div", "err");
+  const go = el("button", "go", "Add data source");
+  go.onclick = async () => {
+    const n = name.value.trim(), u = url.value.trim();
+    if (!n || !u) { err.textContent = "Add a name and a CSV URL."; return; }
+    err.textContent = "Fetching…"; go.setAttribute("disabled", "true");
+    const r = inExtension ? await control("addSourceContext", { name: n, url: u, kind: "gsheet" }) : { ok: true, rowCount: 0 };
+    go.removeAttribute("disabled");
+    if (!r?.ok) { err.textContent = r?.error || "Couldn’t read that sheet."; return; }
+    (($("picker") as HTMLElement).hidden = true); refresh();
+  };
+  form.append(name, url, hint, err, go);
+  box.append(toggle, form);
+}
+$("pickerClose").addEventListener("click", () => (($("picker") as HTMLElement).hidden = true));
+
+// ---- open any URL ----
+function openTyped() {
+  const inp = $("openUrlInput") as HTMLInputElement;
+  const v = inp.value.trim();
+  if (!v) return;
+  openWrapp(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+  inp.value = "";
+}
+$("openUrlBtn").addEventListener("click", openTyped);
+$("openUrlInput").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") openTyped(); });
+
+// ---- header menu ----
+$("menuBtn").addEventListener("click", (e) => { e.stopPropagation(); const m = $("menu") as HTMLElement; m.hidden = !m.hidden; });
+document.addEventListener("click", (e) => { const m = $("menu") as HTMLElement; if (!m.hidden && !m.contains(e.target as Node) && (e.target as HTMLElement).id !== "menuBtn") m.hidden = true; });
+$("menuActivity").addEventListener("click", () => { ($("menu") as HTMLElement).hidden = true; const a = $("activity") as HTMLDetailsElement; a.open = true; a.scrollIntoView({ behavior: "smooth" }); });
+$("menuKill").addEventListener("click", async () => { ($("menu") as HTMLElement).hidden = true; if (inExtension) { await new Promise((r) => chrome.runtime.sendMessage({ type: "killSwitch" }, r)); refresh(); } });
 
 async function refresh() { if (!consentActive) render(await load()); }
 
-// ---- inline consent: the daemon pushes a prompt here (via the background port) when the panel is
-// open, so approvals happen in the sidebar instead of a separate window. ----
+// ---- inline consent (unchanged flow) ----
 if (inExtension) {
   const port = chrome.runtime.connect({ name: "relay-panel" });
   port.onMessage.addListener((m: { type: string; id: string }) => { if (m.type === "consent:new") void showConsent(m.id); });
@@ -176,30 +342,20 @@ async function showConsent(id: string) {
   if (!prompt) return;
   consentActive = true;
   const box = $("consent");
-  ($("dashboard") as HTMLElement).hidden = true;
+  ($("home") as HTMLElement).hidden = true;
   ($("pairing") as HTMLElement).hidden = true;
   box.hidden = false;
   renderConsent(box, prompt, (result) => {
-    chrome.runtime.sendMessage({ type: "consentDecision", id, result }, () => {
-      box.hidden = true; box.textContent = "";
-      consentActive = false;
-      refresh();
-    });
+    chrome.runtime.sendMessage({ type: "consentDecision", id, result }, () => { box.hidden = true; box.textContent = ""; consentActive = false; refresh(); });
   });
 }
 
-$("kill").addEventListener("click", async () => {
-  if (inExtension) { await new Promise((r) => chrome.runtime.sendMessage({ type: "killSwitch" }, r)); refresh(); }
-});
-
-// Pairing: store the token in the background worker, then re-check (the socket auths on the token).
+// ---- pairing ----
 async function pair() {
   if (!inExtension) return;
   const token = ($("token") as HTMLInputElement).value.trim();
   if (token) await new Promise((r) => chrome.runtime.sendMessage({ type: "pair", token }, r));
-  // With a new token we store it; on Retry (no token) we just re-check the daemon. Either way,
-  // refresh runs getStatus → ensureSocket, which reconnects and flips to "connected" if it's up.
-  ($("pairErr") as HTMLElement).textContent = "Connecting…";
+  $("pairErr").textContent = "Connecting…";
   setTimeout(refresh, 600);
 }
 $("pairBtn")?.addEventListener("click", pair);

@@ -32,6 +32,14 @@
         "examples/runner/serve.mjs"
       ],
       "port": 5177
+    },
+    {
+      "name": "brandbrain-port",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "examples/brandbrain-port/serve.mjs"
+      ],
+      "port": 5178
     }
   ]
 }

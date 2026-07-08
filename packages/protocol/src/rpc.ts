@@ -10,6 +10,9 @@ import type {
 } from "./permissions.js";
 import type { ToolCallRequest, ToolCallResult, ToolDescriptor } from "./tools.js";
 import type { CompletionParams, CompletionResult } from "./completion.js";
+import type { StorageRequest, StorageResult } from "./storage.js";
+import type { ContextRequest, ContextResult } from "./context.js";
+import type { SessionRequest, SessionResult } from "./session.js";
 
 /** Provider capabilities, returned by claude_capabilities for feature detection. */
 export interface Capabilities {
@@ -47,6 +50,17 @@ export interface BYOPMethods {
     params: { request?: ScopeRequest } | void;
     result: OriginGrant | null;
   };
+  /** Per-origin local storage. get/list/info are reads; set/delete are writes (denied in
+   *  readonly mode); bind (point the store at a real folder) always triggers a path-consent
+   *  popup. The store is isolated per origin — an app can only ever touch its own records. */
+  claude_storage: { params: StorageRequest; result: StorageResult };
+  /** Shared, cross-app context. publish/list/read-own are the producer side; `active` returns the
+   *  one context the user selected for this origin in the panel (selection = consent); `pick` opens
+   *  that picker. Apps never enumerate the library — only the panel (control channel) can. */
+  claude_context: { params: ContextRequest; result: ContextResult };
+  /** Warm, stateful completion thread (read-only): one long-lived process per (origin, sessionId),
+   *  turns queued sequentially. For apps that generate a long sequence of cards in one conversation. */
+  claude_session: { params: SessionRequest; result: SessionResult };
 }
 
 export type BYOPMethod = keyof BYOPMethods;
@@ -77,4 +91,4 @@ export interface RequestEnvelope<M extends BYOPMethod = BYOPMethod> {
   sentAt: number;
 }
 
-export type { OriginGrant, ScopeRequest, ToolCallRequest, ToolCallResult, ToolDescriptor, CompletionParams, CompletionResult };
+export type { OriginGrant, ScopeRequest, ToolCallRequest, ToolCallResult, ToolDescriptor, CompletionParams, CompletionResult, StorageRequest, StorageResult, ContextRequest, ContextResult, SessionRequest, SessionResult };

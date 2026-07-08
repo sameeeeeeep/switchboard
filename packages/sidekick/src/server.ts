@@ -7,6 +7,13 @@ import type {
   OriginGrant,
   RequestEnvelope,
   ScopeRequest,
+  StorageRequest,
+  StorageResult,
+  ContextRequest,
+  ContextResult,
+  Context,
+  SessionRequest,
+  SessionResult,
   StreamDelta,
   ToolCallRequest,
   ToolDescriptor,
@@ -22,6 +29,10 @@ import type { McpRegistry } from "./mcp/registry.js";
 import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
+import { StorageStore, StorageKeyError } from "./storage/store.js";
+import { ContextLibrary } from "./context/library.js";
+import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
+import { SessionManager } from "./session/manager.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
  *  attachments (so the agentic loop can upload them via relay__put_blob). Empty attachments → no
@@ -51,9 +62,15 @@ export interface BrokerDeps {
   audit: AuditLog;
   mcp: McpRegistry;
   backends: BackendRegistry;
+  storage: StorageStore;
+  contexts: ContextLibrary;
+  sessions: SessionManager;
 }
 
 interface Pending { resolve: (v: any) => void; reject: (e: any) => void; }
+
+/** How long a resolved source-backed context (Sheet/CSV) stays cached before the next read re-fetches. */
+const SOURCE_TTL_MS = 5 * 60_000;
 
 /** Built-in (non-MCP) tools the model can be granted. Classified by the daemon like any tool
  *  (WebFetch/WebSearch are reads). They're offered in the connect flow and gated identically. */
@@ -67,6 +84,10 @@ export class Broker implements ConsentPrompter {
   private extensions = new Set<WebSocket>();
   /** Consent + control requests awaiting a reply from the extension. */
   private pending = new Map<string, Pending>();
+  /** DURABLE prompt queue: every open consent prompt, kept so it can be RE-PUSHED to any extension
+   *  that (re)connects. This is what lets a consent survive an MV3 worker eviction — the daemon's
+   *  prompt would otherwise land on a dropped socket and fail closed. Cleared on reply/timeout. */
+  private promptQueue = new Map<string, { kind: string; body: unknown }>();
   /** In-flight streams for cancellation. */
   private streams = new Map<string, AbortController>();
 
@@ -90,7 +111,11 @@ export class Broker implements ConsentPrompter {
         let msg: any;
         try { msg = JSON.parse(data.toString()); } catch { return; }
         if (!authed) {
-          if (msg?.type === "auth" && msg.token === pairingToken) { authed = true; this.extensions.add(ws); ws.send(JSON.stringify({ type: "auth_ok" })); }
+          if (msg?.type === "auth" && msg.token === pairingToken) {
+            authed = true; this.extensions.add(ws); ws.send(JSON.stringify({ type: "auth_ok" }));
+            // A (re)connecting extension may have missed prompts sent while it was evicted — re-push them.
+            for (const [id, p] of this.promptQueue) { try { ws.send(JSON.stringify({ type: "prompt", id, kind: p.kind, body: p.body })); } catch { /* ignore */ } }
+          }
           else { ws.close(1008, "unauthorized"); }
           return;
         }
@@ -117,6 +142,16 @@ export class Broker implements ConsentPrompter {
   requestWriteConsent(reqBody: PerActionConsentRequest): Promise<boolean> {
     return this.ask<boolean>("consent:write", reqBody, 120_000, false);
   }
+  /** Ask the user to authorize pointing an origin's storage at a real folder. The exact absolute
+   *  path is shown; this is the one storage escalation that always needs a human click. */
+  requestStorageBindConsent(origin: string, path: string): Promise<boolean> {
+    return this.ask<boolean>("consent:storage-bind", { origin, path }, 120_000, false);
+  }
+  /** Ask the user to pick a context to lend this origin — the picker shows the library (names only)
+   *  and returns the chosen id, or null. Selecting IS the consent to share that whole context. */
+  requestContextPick(origin: string, contexts: unknown): Promise<{ contextId: string } | null> {
+    return this.ask<{ contextId: string } | null>("consent:context-pick", { origin, contexts }, 120_000, null);
+  }
   async requestConnectConsent(_origin: string, body: unknown) {
     // `body` is already the full consent payload (origin, reason, models, tools, budgets) — send it
     // through as-is so the consent view can read it directly.
@@ -125,14 +160,25 @@ export class Broker implements ConsentPrompter {
     );
   }
   private ask<T>(kind: string, body: unknown, timeoutMs: number, failValue: T): Promise<T> {
-    const ext = [...this.extensions][0];
-    if (!ext) return Promise.resolve(failValue); // no paired UI ⇒ deny
+    // The prompt is DURABLE: queued so it re-pushes to any extension that (re)connects. The MV3 worker
+    // can evict mid-consent and drop its socket; instead of fail-closing that gap, we hold the prompt
+    // and re-deliver it when the worker wakes (e.g. the user opens the panel). Only a real timeout
+    // (no human decision within `timeoutMs`) fails closed.
     const id = randomUUID();
     return new Promise<T>((resolve) => {
-      const timer = setTimeout(() => { this.pending.delete(id); resolve(failValue); }, timeoutMs);
-      this.pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v as T); }, reject: () => { clearTimeout(timer); resolve(failValue); } });
-      ext.send(JSON.stringify({ type: "prompt", id, kind, body }));
+      const done = (v: T) => { clearTimeout(timer); this.pending.delete(id); this.promptQueue.delete(id); resolve(v); };
+      const timer = setTimeout(() => done(failValue), timeoutMs);
+      this.pending.set(id, { resolve: (v) => done(v as T), reject: () => done(failValue) });
+      this.promptQueue.set(id, { kind, body });
+      this.pushPrompt(id, kind, body); // deliver to a currently-connected extension, if any
     });
+  }
+
+  /** Send a prompt to the currently-connected extension (if any); harmless if none — it's re-pushed
+   *  from `promptQueue` the moment an extension (re)connects. */
+  private pushPrompt(id: string, kind: string, body: unknown) {
+    const ext = [...this.extensions][0];
+    if (ext) { try { ext.send(JSON.stringify({ type: "prompt", id, kind, body })); } catch { /* re-pushed on reconnect */ } }
   }
 
   // ---- request routing: one authoritative `origin` per envelope, set by the extension. ----
@@ -173,6 +219,12 @@ export class Broker implements ConsentPrompter {
         this.streams.get(streamId)?.abort();
         return { ok: true };
       }
+      case "claude_storage":
+        return this.storageOp(origin, env.params as StorageRequest);
+      case "claude_context":
+        return this.contextOp(origin, env.params as ContextRequest);
+      case "claude_session":
+        return this.sessionOp(origin, env.params as SessionRequest);
       default:
         throw new ProviderError(BYOPErrorCode.UNSUPPORTED_METHOD, `unknown method ${method}`);
     }
@@ -181,7 +233,7 @@ export class Broker implements ConsentPrompter {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions"],
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session"],
       models: await this.deps.backends.models(),
       backends: await this.deps.backends.onlineIds(),
       agentic: true,
@@ -197,7 +249,13 @@ export class Broker implements ConsentPrompter {
     switch (action) {
       case "listGrants":
         return {
-          grants: this.deps.grants.list().map((g) => ({ ...g, usage: this.deps.budgets.usage(g.origin) })),
+          grants: this.deps.grants.list().map((g) => ({
+            ...g,
+            usage: this.deps.budgets.usage(g.origin),
+            // Where this origin's data lives — the folder it's bound to (or its private sandbox) and
+            // how many records are there. This is the "your data" the side panel surfaces per site.
+            storage: (() => { try { return this.deps.storage.info(g.origin); } catch { return null; } })(),
+          })),
           tokenPresent: true,
         };
       case "audit":
@@ -214,6 +272,47 @@ export class Broker implements ConsentPrompter {
         const g = this.deps.grants.setMode(String(args?.origin ?? ""), args?.mode);
         if (g) { this.deps.audit.record({ origin: g.origin, kind: "request", method: `mode:${g.mode}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g }); }
         return { ok: !!g, grant: g };
+      }
+      case "listContexts":
+        // The WHOLE library — panel-only (an app never gets this). Powers the project switcher.
+        return {
+          contexts: this.deps.contexts.listAll(),
+          activeProject: this.deps.contexts.activeProject(),
+          selections: this.deps.grants.list().map((g) => ({ origin: g.origin, contextId: this.deps.contexts.selectionFor(g.origin) })),
+        };
+      case "selectContext": {
+        // The user lends a context to ONE app (or clears it with null). Selection = consent, out of band.
+        const origin = String(args?.origin ?? "");
+        this.deps.contexts.select(origin, args?.contextId ?? null);
+        this.deps.audit.record({ origin, kind: "request", method: `context:${args?.contextId ? "select" : "clear"}`, outcome: "ok" });
+        const g = this.deps.grants.get(origin);
+        if (g) this.broadcast({ type: "event", event: "permissionsChanged", payload: g });
+        return { ok: true };
+      }
+      case "setActiveProject": {
+        // The user's global "working on" project — the default context every connected app inherits.
+        this.deps.contexts.setActiveProject(args?.contextId ?? null);
+        this.deps.audit.record({ origin: "*", kind: "request", method: `project:${args?.contextId ? "set" : "clear"}`, outcome: "ok" });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "project-changed" } });
+        return { ok: true };
+      }
+      case "addSourceContext": {
+        // The user adds a live data source (a published Google Sheet / CSV URL) as a context. Panel-driven.
+        const name = String(args?.name ?? "").trim();
+        const url = String(args?.url ?? "").trim();
+        if (!name || !url) return { ok: false, error: "name and url required" };
+        try { assertPublicUrl(url); } catch (e) { return { ok: false, error: String((e as Error).message) }; }
+        const ctx = this.deps.contexts.publish("panel", { name, kind: args?.kind === "gsheet" ? "gsheet" : "csv", source: { kind: args?.kind === "gsheet" ? "gsheet" : "csv", url } });
+        const resolved = await this.resolveContext(this.deps.contexts.get(ctx.id)); // fetch once now
+        this.deps.audit.record({ origin: "panel", kind: "request", method: "context:add-source", outcome: "ok", note: name.slice(0, 40) });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "context-added" } });
+        return { ok: true, id: ctx.id, rowCount: (resolved?.data as any)?.rowCount ?? 0 };
+      }
+      case "refreshContext": {
+        this.deps.contexts.markStale(String(args?.id ?? ""));
+        await this.resolveContext(this.deps.contexts.get(String(args?.id ?? "")));
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "context-refreshed" } });
+        return { ok: true };
       }
       case "killSwitch":
         // Drop every grant and sever all sockets. The extension also drops its local token.
@@ -257,6 +356,145 @@ export class Broker implements ConsentPrompter {
   private async permissions(origin: string, params?: { request?: ScopeRequest }): Promise<OriginGrant | null> {
     if (params?.request) return this.connect(origin, params.request); // change ⇒ re-consent
     return this.deps.grants.get(origin);
+  }
+
+  /**
+   * claude_storage — per-origin persistence. Consent tiers, enforced out of band:
+   *   - get / list / info  → reads, auto-approved within the origin's grant.
+   *   - set / delete       → writes, allowed unless the site's mode is "readonly". These touch only
+   *                          the origin's OWN folder (sandbox or a folder the user already bound), so
+   *                          like localStorage they don't prompt per write.
+   *   - bind               → the escalation: point the store at a real folder. ALWAYS a consent click
+   *                          showing the exact path; the model/page can never satisfy it alone.
+   */
+  private async storageOp(origin: string, req: StorageRequest): Promise<StorageResult> {
+    const grant = this.deps.grants.get(origin);
+    if (!grant) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using storage");
+    const store = this.deps.storage;
+    const log = (op: string, outcome: "ok" | "denied", note?: string) =>
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_storage__${op}`, outcome, note });
+    try {
+      switch (req.op) {
+        case "get": {
+          const value = store.get(origin, requireKey(req.key));
+          log("get", "ok");
+          return { ok: true, value };
+        }
+        case "list":
+          return { ok: true, keys: store.list(origin) };
+        case "info":
+          return { ok: true, info: store.info(origin) };
+        case "set": {
+          if (grant.mode === "readonly") { log("set", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
+          store.set(origin, requireKey(req.key), req.value ?? "");
+          log("set", "ok");
+          return { ok: true };
+        }
+        case "delete": {
+          if (grant.mode === "readonly") { log("delete", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
+          const existed = store.delete(origin, requireKey(req.key));
+          log("delete", "ok");
+          return { ok: existed };
+        }
+        case "bind": {
+          if (!req.path) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "bind requires a path");
+          const approved = await this.requestStorageBindConsent(origin, req.path);
+          if (!approved) { log("bind", "denied", req.path.slice(0, 120)); throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user rejected folder bind"); }
+          store.bind(origin, req.path);
+          const info = store.info(origin);
+          log("bind", "ok", info.folder.slice(0, 120));
+          this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
+          return { ok: true, info };
+        }
+        default:
+          throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, `unknown storage op ${(req as any).op}`);
+      }
+    } catch (err) {
+      if (err instanceof StorageKeyError) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * claude_context — the shared, cross-app context primitive.
+   *   - publish → producer writes a whole context to the library (a write; blocked in readonly mode).
+   *   - list    → the caller's OWN published contexts (metadata) — safe, it made them.
+   *   - active  → the ONE context the user selected for THIS origin (or null). This is the only way
+   *               an app sees another app's context, and only because the user chose to lend it.
+   *   - pick    → open the panel picker; the user's choice becomes this origin's selection + returns it.
+   * An app can never enumerate the whole library — that's panel-only (handleControl).
+   */
+  private async contextOp(origin: string, req: ContextRequest): Promise<ContextResult> {
+    const grant = this.deps.grants.get(origin);
+    if (!grant) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using context");
+    const lib = this.deps.contexts;
+    const log = (op: string, outcome: "ok" | "denied", note?: string) =>
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_context__${op}`, outcome, note });
+    switch (req.op) {
+      case "publish": {
+        if (grant.mode === "readonly") { log("publish", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
+        if (!req.context?.name) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "publish requires context.name");
+        const ctx = lib.publish(origin, req.context);
+        log("publish", "ok", ctx.name.slice(0, 60));
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
+        return { ok: true, id: ctx.id };
+      }
+      case "list":
+        return { ok: true, contexts: lib.listOwn(origin) };
+      case "active":
+        return { ok: true, context: await this.resolveContext(lib.active(origin)) };
+      case "pick": {
+        const choice = await this.requestContextPick(origin, lib.listAll());
+        if (!choice) { log("pick", "denied"); return { ok: true, context: null }; }
+        lib.select(origin, choice.contextId);
+        log("pick", "ok", choice.contextId);
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
+        return { ok: true, context: await this.resolveContext(lib.active(origin)) };
+      }
+      default:
+        throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, `unknown context op ${(req as any).op}`);
+    }
+  }
+
+  /** For a source-backed context (a Google Sheet / CSV), fetch + parse it into JSON rows when the cache
+   *  is missing or stale, then hand back the resolved context. Plain contexts pass through untouched.
+   *  Failures are non-fatal — the app just gets the last cached value (or null rows). */
+  private async resolveContext(ctx: Context | null): Promise<Context | null> {
+    if (!ctx?.source) return ctx;
+    const fresh = ctx.source.fetchedAt && Date.now() - ctx.source.fetchedAt < SOURCE_TTL_MS;
+    if (fresh) return ctx;
+    try {
+      const resolved = await resolveCsv(ctx.source.url, { timeoutMs: 12_000 });
+      this.deps.contexts.setResolved(ctx.id, resolved, resolved.fetchedAt);
+      this.deps.audit.record({ origin: ctx.publishedBy ?? "panel", kind: "tool_call", toolName: "claude_context__resolve", outcome: "ok", note: `${resolved.rowCount} rows` });
+      return this.deps.contexts.get(ctx.id);
+    } catch (err) {
+      this.deps.audit.record({ origin: ctx.publishedBy ?? "panel", kind: "tool_call", toolName: "claude_context__resolve", outcome: "error", note: String(err).slice(0, 80) });
+      return ctx; // fall back to last cached value
+    }
+  }
+
+  /**
+   * claude_session — a warm, read-only completion thread. Gated like a completion: the origin must be
+   * connected and the model in scope, and each turn is budget-counted. The session runs with only the
+   * web read tools the origin granted (never a write tool), so no gated write can happen inside it.
+   */
+  private async sessionOp(origin: string, req: SessionRequest): Promise<SessionResult> {
+    const grant = this.deps.grants.get(origin);
+    if (!grant) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using a session");
+    if (!req.sessionId) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "session requires a sessionId");
+    if (req.op === "end") { this.deps.sessions.end(origin, req.sessionId); return { ok: true }; }
+    if (req.op !== "send") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, `unknown session op ${(req as any).op}`);
+    // Gate the turn exactly like a completion: model in scope + rate/token budget.
+    this.deps.gate.assertCompletionAllowed(origin, req.model, 4096);
+    // A session may use ONLY the web reads the origin already granted — never a write tool.
+    const granted = new Set(grant.tools.map((t) => t.name));
+    const allowedReadTools = ["WebSearch", "WebFetch"].filter((t) => granted.has(t));
+    const text = await this.deps.sessions.send(origin, req.sessionId, req.prompt ?? "", {
+      system: req.system, model: req.model, effort: req.effort, allowedReadTools,
+    });
+    this.deps.gate.recordCompletion(origin, estimateTokens(text ?? ""));
+    return { ok: true, text };
   }
 
   private listTools(origin: string): ToolDescriptor[] {
@@ -330,6 +568,12 @@ function connectorLabel(name: string): string {
   const m = name.match(/^mcp__claude_ai_([^_]+(?:_[^_]+)*?)__(.+)$/);
   if (m) return m[2] === "*" ? `${m[1]} connector (all tools)` : `${m[1]} · ${m[2]}`;
   return name.endsWith("*") ? `${name.replace(/^mcp__/, "").replace(/__\*$/, "")} (all tools)` : name;
+}
+
+/** A storage key is required for get/set/delete; missing → INVALID_PARAMS before touching disk. */
+function requireKey(key: string | undefined): string {
+  if (typeof key !== "string" || key.length === 0) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "storage op requires a key");
+  return key;
 }
 
 function e_code(err: ProviderError): number { return (err as any).code ?? BYOPErrorCode.BACKEND_ERROR; }
