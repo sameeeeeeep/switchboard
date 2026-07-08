@@ -45,7 +45,7 @@ export class ClaudeCodeBackend implements ModelBackend {
 
   async listModels(): Promise<string[]> {
     // Aliases the SDK/CLI accepts; the daemon routes any of these here.
-    return [DEFAULT_MODEL, "opus", "sonnet", "haiku", "claude-opus-4-8", "claude-sonnet-5"];
+    return [DEFAULT_MODEL, "opus", "sonnet", "haiku", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"];
   }
 
   async run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }> {

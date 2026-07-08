@@ -4,6 +4,23 @@ import type { OriginGrant, ScopeRequest, ToolGrant } from "@relay/protocol";
 import { DEFAULT_BUDGETS } from "@relay/protocol";
 
 /**
+ * Model ids come in two forms — short aliases ("haiku", "sonnet", "opus") and full ids
+ * ("claude-haiku-4-5", "claude-sonnet-5", "claude-opus-4-8"). The CLI accepts both, and a consent
+ * that granted "haiku" means the SAME model an app requests as "claude-haiku-4-5". Fold known
+ * equivalents to one canonical key so the exact-match grant check treats them as one model. Unknown
+ * ids pass through unchanged — this never widens a grant beyond known-equivalent aliases.
+ */
+const MODEL_ALIASES: Record<string, string> = {
+  "claude-haiku-4-5": "haiku",
+  "claude-haiku-4-5-20251001": "haiku",
+  "claude-sonnet-5": "sonnet",
+  "claude-opus-4-8": "opus",
+};
+export function canonicalModel(model: string): string {
+  return MODEL_ALIASES[model] ?? model;
+}
+
+/**
  * Authoritative per-origin grant store. The daemon is the source of truth (the extension only
  * mirrors it for display). Persisted to ~/.relay/grants.json (0600). A grant is created only
  * after the user approves a connect consent; the granted scope may be NARROWER than requested,
@@ -97,7 +114,8 @@ export class GrantStore {
     const g = this.get(origin);
     if (!g) return false;
     if (!model) return g.models.length > 0;
-    return g.models.includes(model);
+    const want = canonicalModel(model);
+    return g.models.some((m) => canonicalModel(m) === want);
   }
 
   toolGrant(origin: string, name: string): ToolGrant | null {
