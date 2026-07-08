@@ -62,8 +62,11 @@ const bar = () => {
 // manifest). This is what makes the connect consent ask for exactly what brandbrain uses — its
 // tools (Higgsfield visuals, Shopify, Gmail, web search) and its models — instead of nothing.
 const DEFAULTS = { reason: "brandbrain", models: ["sonnet"], tools: [], storage: {} };
+// PORT_BASE_PATH (esbuild-defined at build) prefixes the manifest fetch so it resolves under a
+// subpath deploy; "" (root deploy) preserves the original absolute /switchboard.json.
+const BASE = process.env.PORT_BASE_PATH || ""; // esbuild `define` inlines this to a string literal
 async function loadManifest() {
-  try { const r = await fetch("/switchboard.json"); if (r.ok) return { ...DEFAULTS, ...(await r.json()) }; } catch {}
+  try { const r = await fetch(`${BASE}/switchboard.json`); if (r.ok) return { ...DEFAULTS, ...(await r.json()) }; } catch {}
   return DEFAULTS;
 }
 const grantCoversTools = (grant, tools) => {

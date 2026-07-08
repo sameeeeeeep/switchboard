@@ -15,12 +15,15 @@ export const metadata: Metadata = {
 // Switchboard app — the route bundle (mounts the fetch-router) then the bootstrap (connect + bind).
 // Loaded from the static export root; `defer` keeps them after brandbrain's own hydration.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // PORT_BASE_PATH prefixes the injected script src so they resolve under a subpath deploy;
+  // basePath does not rewrite hand-written <script src>, so we prefix here.
+  const base = process.env.PORT_BASE_PATH || "";
   return (
     <html lang="en" className={`${sans.variable} ${display.variable} ${mono.variable}`}>
       <body className="bg-page font-sans text-ink antialiased">
         {children}
-        <script src="/sb/routes.js" defer />
-        <script src="/sb/bootstrap.js" defer />
+        <script src={`${base}/sb/routes.js`} defer />
+        <script src={`${base}/sb/bootstrap.js`} defer />
       </body>
     </html>
   );

@@ -155,6 +155,8 @@ await esbuild.build({
   platform: "browser",
   target: "chrome111",
   outfile: join(OUT, "sb/bootstrap.js"),
+  // Inline the deploy base path so the bootstrap's absolute fetches resolve under a subpath deploy.
+  define: { "process.env.PORT_BASE_PATH": JSON.stringify(process.env.PORT_BASE_PATH || "") },
   logLevel: "info",
 });
 // The capability manifest — served at /switchboard.json; the bootstrap reads it for the connect

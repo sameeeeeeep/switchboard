@@ -1,7 +1,7 @@
 {
   "name": "brandbrain",
   "reason": "brandbrain — launch & growth hub for consumer brands",
-  "models": ["sonnet"],
+  "models": ["sonnet", "claude-haiku-4-5"],
   "tools": [
     "WebSearch",
     "WebFetch",
