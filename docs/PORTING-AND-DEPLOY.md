@@ -100,6 +100,17 @@ Requirements for a clean port:
 - **Storage keys map to files** deliberately: key `workspace` → `<folder>/workspace.json`. So
   binding an existing project folder surfaces the user's real data verbatim, no migration.
 
+### The connect affordance is standard — don't hand-roll it
+
+Every ported app uses the **one** SDK chip, `mountConnect` (`@relay/sdk`), for connecting — never a
+bespoke bar. The chip carries **identity only**: "Connect Switchboard" → "Hi {name} · {project}" +
+the lent-project switcher, in a shadow root so the host CSS can't restyle it away. **Do not render
+folder, connector, budget, trust-mode, or revoke UI in the app** — all of that lives in the
+Switchboard side panel; the chip is a door to it, never a copy. The app's declared data folder
+(`switchboard.json` → `storage.defaultFolder`) binds **silently on connect** — its path-consent
+prompt surfaces inside Switchboard, not as an input box on the page. (brandbrain's port originally
+injected its own connect/folder/Bind bar; that was replaced with `mountConnect`.)
+
 ### Design constraints to hold for every app
 - **No server-only capability beyond the shimmed set.** If a route needs a Node API the shims don't
   emulate (raw `child_process`, native addons, writing real files), it won't work in-tab. Either add
