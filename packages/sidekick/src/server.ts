@@ -14,12 +14,14 @@ import type {
   Context,
   SessionRequest,
   SessionResult,
+  SpeakParams,
   StreamDelta,
   ToolCallRequest,
   ToolDescriptor,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
+import { saveProfile } from "./config.js";
 import type { Gate } from "./security/gate.js";
 import type { GrantStore } from "./security/grant-store.js";
 import type { BudgetLedger } from "./security/budgets.js";
@@ -33,6 +35,7 @@ import { StorageStore, StorageKeyError } from "./storage/store.js";
 import { ContextLibrary } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
+import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
  *  attachments (so the agentic loop can upload them via relay__put_blob). Empty attachments → no
@@ -204,6 +207,8 @@ export class Broker implements ConsentPrompter {
         return this.connect(origin, (env.params as ScopeRequest) ?? {});
       case "claude_disconnect":
         return { ok: true };
+      case "claude_speak":
+        return this.speak(origin, env.params as SpeakParams);
       case "claude_permissions":
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
@@ -233,11 +238,29 @@ export class Broker implements ConsentPrompter {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session"],
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak"],
       models: await this.deps.backends.models(),
       backends: await this.deps.backends.onlineIds(),
       agentic: true,
+      user: this.deps.config.profile,
+      local: { tts: ttsAvailable(), voices: ttsVoices() },
     };
+  }
+
+  /** claude_speak — synthesize speech on-device (local TTS server or the OS engine). No cloud, no
+   *  connector, no credits; it only touches local audio synthesis, so a connected origin may call it
+   *  freely (audited, no per-action consent). The orchestrator leaning on a local model. */
+  private async speak(origin: string, params: SpeakParams): Promise<{ audio: string; backend: string; voice?: string }> {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using speech");
+    if (!ttsAvailable()) throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "no local TTS on this machine");
+    try {
+      const out = await localTTS(params.text, params.voice);
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_speak__${out.backend}`, outcome: "ok", note: `${params.text.length} chars` });
+      return out;
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "claude_speak", outcome: "denied", note: String((e as Error).message).slice(0, 80) });
+      throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "local TTS failed");
+    }
   }
 
   /**
@@ -295,6 +318,18 @@ export class Broker implements ConsentPrompter {
         this.deps.audit.record({ origin: "*", kind: "request", method: `project:${args?.contextId ? "set" : "clear"}`, outcome: "ok" });
         this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "project-changed" } });
         return { ok: true };
+      }
+      case "getProfile":
+        return { profile: this.deps.config.profile };
+      case "setProfile": {
+        // The user tells us their name (or a connected account provides it) — the REAL source of the
+        // greeting, persisted. Updates the in-memory config so capabilities() reflects it immediately.
+        const name = String(args?.name ?? "").trim();
+        if (!name) return { ok: false, error: "name required" };
+        this.deps.config.profile = saveProfile({ name, avatar: args?.avatar });
+        this.deps.audit.record({ origin: "*", kind: "request", method: "profile:set", outcome: "ok" });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "profile-changed" } });
+        return { ok: true, profile: this.deps.config.profile };
       }
       case "addSourceContext": {
         // The user adds a live data source (a published Google Sheet / CSV URL) as a context. Panel-driven.

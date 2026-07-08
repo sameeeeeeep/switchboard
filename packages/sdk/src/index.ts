@@ -18,6 +18,8 @@ import {
   type ToolCallRequest,
   type ToolCallResult,
   type ToolDescriptor,
+  type UserIdentity,
+  type SpeakResult,
 } from "@relay/protocol";
 
 /**
@@ -58,8 +60,30 @@ export class Relay {
     return this.provider.request({ method: "claude_connect", params: scope });
   }
 
+  /** Drop this app's connection for the current page session. The grant persists (a later connect()
+   *  won't reprompt) — this is "disconnect from this tab", not "revoke". Full revoke lives in the panel. */
+  disconnect(): Promise<{ ok: true }> {
+    return this.provider.request({ method: "claude_disconnect" });
+  }
+
   permissions(): Promise<OriginGrant | null> {
     return this.provider.request({ method: "claude_permissions" });
+  }
+
+  /** The paired user's public identity (name/avatar), or null if unavailable. Convenience over
+   *  capabilities().user — what the connect chip greets with ("Hi Sameep"). */
+  identity(): Promise<UserIdentity | null> {
+    return this.capabilities().then((c) => c.user ?? null).catch(() => null);
+  }
+
+  /** Synthesize speech ON-DEVICE via a local model/engine (no cloud, no connector, no credits).
+   *  Returns audio as a playable data: URL, or null if no local TTS is available.
+   *
+   *    const clip = await relay.speak("hey, it's Maya");
+   *    if (clip) new Audio(clip.audio).play();
+   */
+  speak(text: string, opts?: { voice?: string }): Promise<SpeakResult | null> {
+    return this.provider.request({ method: "claude_speak", params: { text, voice: opts?.voice } }).catch(() => null);
   }
 
   listTools(): Promise<ToolDescriptor[]> {
@@ -172,4 +196,5 @@ export function whenRelayReady(timeoutMs = 3000, opts?: { installUrl?: string })
 }
 
 export { BYOPErrorCode };
-export type { CompletionParams, CompletionResult, OriginGrant, ScopeRequest, StreamDelta, ToolDescriptor, ToolCallResult };
+export type { CompletionParams, CompletionResult, OriginGrant, ScopeRequest, StreamDelta, ToolDescriptor, ToolCallResult, UserIdentity, SpeakResult };
+export { mountConnect, type ConnectChipOptions, type ConnectChipHandle } from "./connect-chip.js";

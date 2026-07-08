@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cast — an AI persona studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet" />
+    <style>
+      /* CAST — an independent AI-persona studio (Spira-inspired). Its OWN brand: warm cream, ink,
+         coral. Switchboard is the standard connect chip in the corner. Cast holds no model and no
+         data of its own: personas live in the user's own claude_storage (Cast's private DB) and each
+         is published as a shareable CONTEXT; rendering runs on the user's Higgsfield. A persona is a
+         small consistent world — face, wardrobe, locations, supporting cast — reused across content. */
+      :root {
+        --paper: #FBF6EF; --card: #FFFFFF; --ink: #1B1712; --ink-dim: #6E655B; --ink-faint: #A79C8E;
+        --line: #EBE4D9; --line-2: #F1EBE1; --coral: #FF5A3C; --coral-soft: #FFEDE8; --violet: #6B4CF0; --violet-soft: #EFEAFE;
+        --ok: #2FA96B;
+        --disp: "Space Grotesk", system-ui, sans-serif; --body: "Inter", system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body { background: var(--paper); color: var(--ink); font: 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 22px 22px 90px; }
+      button { font-family: inherit; }
+
+      header { display: flex; align-items: center; margin-bottom: 22px; }
+      .logo { font: 700 21px/1 var(--disp); letter-spacing: -0.03em; display: flex; align-items: center; gap: 9px; }
+      .logo .mk { width: 22px; height: 22px; border-radius: 7px; background: radial-gradient(120% 120% at 30% 20%, #FF8A3D, var(--coral) 55%, var(--violet)); }
+      #sbchip { margin-left: auto; }
+
+      /* pre-connect hero */
+      .hero { text-align: center; padding: 40px 0 30px; }
+      .hero h1 { font: 600 36px/1.06 var(--disp); letter-spacing: -0.03em; margin: 0 0 12px; }
+      .hero p { color: var(--ink-dim); margin: 0 auto; max-width: 54ch; font-size: 16px; }
+      .hero p b { color: var(--ink); font-weight: 600; }
+
+      /* app shell */
+      .app { display: grid; grid-template-columns: 244px 1fr; gap: 20px; align-items: start; }
+      @media (max-width: 780px) { .app { grid-template-columns: 1fr; } }
+
+      .rail { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; position: sticky; top: 16px; }
+      .rail .rh { display: flex; align-items: center; justify-content: space-between; margin: 4px 4px 10px; }
+      .rail .rh .t { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); }
+      .rail .new { border: 0; background: var(--ink); color: #fff; border-radius: 8px; padding: 6px 10px; font: 600 12px/1 var(--body); cursor: pointer; }
+      .rail .plist { display: flex; flex-direction: column; gap: 4px; }
+      .prow { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+      .prow:hover { background: var(--paper); }
+      .prow.on { background: var(--coral-soft); border-color: #FBD9CF; }
+      .prow .face { width: 30px; height: 30px; border-radius: 8px; object-fit: cover; background: var(--line); flex: none; display: grid; place-items: center; font: 600 13px/1 var(--disp); color: var(--ink-faint); }
+      .prow .nm { font: 600 13.5px/1.15 var(--body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .prow .ni { font: 500 11px/1 var(--body); color: var(--ink-dim); margin-top: 2px; }
+      .prow .dup { margin-left: auto; opacity: 0; border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 14px; padding: 4px; }
+      .prow:hover .dup { opacity: 1; }
+      .prow .dup:hover { color: var(--ink); }
+      .rail .empty { color: var(--ink-faint); font-size: 12.5px; padding: 8px; }
+
+      .main { min-width: 0; }
+      .tabs { display: inline-flex; gap: 2px; background: var(--line-2); border-radius: 11px; padding: 3px; margin-bottom: 16px; }
+      .tabs button { border: 0; background: transparent; color: var(--ink-dim); border-radius: 9px; padding: 8px 15px; font: 600 13px/1 var(--body); cursor: pointer; }
+      .tabs button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(20,18,30,.08); }
+
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+      .card > .eyebrow { font: 600 11px/1 var(--body); text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); display: block; margin-bottom: 14px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+      label.field { display: flex; flex-direction: column; gap: 6px; }
+      label.field > span { font: 500 12px/1 var(--body); color: var(--ink-dim); }
+      input[type=text], textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); color: var(--ink); font: 400 15px/1.4 var(--body); padding: 11px 12px; outline: none; resize: none; }
+      input[type=text]:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--coral) 55%, var(--line)); background: var(--card); }
+      textarea { min-height: 60px; }
+
+      .facelock { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+      .facewell { width: 74px; height: 74px; border-radius: 14px; border: 1px dashed var(--line); background: var(--paper); display: grid; place-items: center; overflow: hidden; flex: none; cursor: pointer; }
+      .facewell img { width: 100%; height: 100%; object-fit: cover; }
+      .facewell .ph { font: 500 22px/1 var(--disp); color: var(--ink-faint); }
+      .facemeta .t { font: 600 14px/1.2 var(--disp); }
+      .facemeta .d { font: 400 12.5px/1.4 var(--body); color: var(--ink-dim); margin-top: 2px; max-width: 46ch; }
+      .facemeta .d b { color: var(--ink); font-weight: 600; }
+      .facebtns { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+      .genbtn { background: var(--ink); color: #fff; border: 0; border-radius: 10px; padding: 9px 15px; font: 600 13px/1 var(--body); cursor: pointer; white-space: nowrap; }
+      .genbtn:hover { background: #000; }
+      .genbtn:disabled { opacity: .5; cursor: default; }
+
+      /* steer: the brandbrain "never a blank box" input — sparkle + describe + generate, with chips */
+      .card.steer { background: linear-gradient(180deg, #FFF7F0, var(--card)); border-color: #F3D9C8; }
+      .steerrow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+      .steerrow:focus-within { border-color: color-mix(in srgb, var(--coral) 55%, var(--line)); }
+      .steerrow .spark { font-size: 15px; }
+      .steerrow input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: 500 14.5px/1.3 var(--body); color: var(--ink); }
+      .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .chip { border: 1px solid var(--line); background: var(--card); color: var(--ink-dim); border-radius: 999px; padding: 6px 12px; font: 500 12.5px/1 var(--body); cursor: pointer; }
+      .chip:hover { color: var(--ink); border-color: var(--coral); }
+      .chip .s { color: var(--coral); margin-right: 5px; }
+      /* option cards: a recommended path + paths you can choose (brandbrain's pattern) */
+      .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 12px; }
+      .opt { text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 13px; padding: 14px; cursor: pointer; position: relative; }
+      .opt:hover { border-color: var(--coral); }
+      .opt.rec { border-color: var(--coral); box-shadow: 0 0 0 1px var(--coral) inset; }
+      .opt .rb { position: absolute; top: 11px; right: 11px; font: 700 8.5px/1 var(--body); letter-spacing: .07em; color: #fff; background: var(--coral); border-radius: 5px; padding: 4px 6px; }
+      .opt .nm { font: 700 15px/1.1 var(--disp); letter-spacing: -.01em; padding-right: 70px; }
+      .opt .ni { font: 500 12px/1 var(--body); color: var(--coral); margin-top: 4px; }
+      .opt .an { font: 400 12.5px/1.45 var(--body); color: var(--ink-dim); margin-top: 8px; }
+      .opt .use { margin-top: 11px; font: 600 12.5px/1 var(--body); color: var(--ink); }
+
+      /* asset galleries (wardrobe / locations / cast) */
+      .asset { }
+      .asset .ah { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+      .asset .ah .t { font: 600 13.5px/1 var(--disp); }
+      .asset .ah .add { border: 1px solid var(--line); background: var(--card); color: var(--ink-dim); border-radius: 9px; padding: 7px 11px; font: 500 12.5px/1 var(--body); cursor: pointer; }
+      .asset .ah .add:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+      .tile { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); position: relative; }
+      .tile .img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--line-2); }
+      .tile .lb { padding: 7px 9px; font: 500 12px/1.2 var(--body); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tile .lb .sub { color: var(--ink-faint); font-size: 10.5px; }
+      .tile .x { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; background: rgba(27,23,18,.72); color: #fff; border: 0; font-size: 12px; line-height: 1; cursor: pointer; }
+      .tile.empty { display: grid; place-items: center; aspect-ratio: 1; border-style: dashed; color: var(--ink-faint); font-size: 12px; cursor: pointer; text-align: center; padding: 8px; }
+
+      .rowbtns { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+      .ghost { border: 1px solid var(--line); background: var(--card); color: var(--ink-dim); border-radius: 11px; padding: 10px 15px; font: 500 13.5px/1 var(--body); cursor: pointer; }
+      .ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .primary { margin-left: auto; background: var(--ink); color: #fff; border: 0; border-radius: 11px; padding: 11px 18px; font: 600 14px/1 var(--body); cursor: pointer; }
+      .primary:hover { background: #000; }
+      .primary:disabled, .ghost:disabled, .gen:disabled { opacity: .4; cursor: not-allowed; }
+      .saved { font: 500 12.5px/1 var(--body); color: var(--ok); opacity: 0; transition: opacity .2s; }
+      .saved.show { opacity: 1; }
+
+      /* pick chips (studio) */
+      .picks { display: flex; flex-wrap: wrap; gap: 8px; }
+      .pick { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px 5px 6px; cursor: pointer; font: 500 13px/1 var(--body); color: var(--ink-dim); }
+      .pick img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+      .pick.on { border-color: var(--coral); background: var(--coral-soft); color: var(--ink); }
+      .pick .none { width: 22px; height: 22px; border-radius: 50%; background: var(--line-2); display: grid; place-items: center; color: var(--ink-faint); font-size: 12px; }
+      .subhead { font: 500 12px/1 var(--body); color: var(--ink-faint); text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 8px; }
+
+      .brandchip { display: inline-flex; align-items: center; gap: 8px; background: var(--violet-soft); border: 1px solid #DED6FC; border-radius: 999px; padding: 6px 13px; font: 600 12.5px/1 var(--disp); color: var(--violet); }
+      .brandchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--violet); }
+      .linkbtn { border: 0; background: transparent; color: var(--coral); font: 600 12.5px/1 var(--body); cursor: pointer; padding: 0; }
+
+      .shootbar { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+      .aspect { width: auto; -webkit-appearance: none; appearance: none; cursor: pointer; }
+      .gen { margin-left: auto; background: var(--coral); color: #fff; border: 0; border-radius: 11px; padding: 11px 20px; font: 600 14px/1 var(--body); cursor: pointer; }
+      .gen:hover { background: #ef4a2d; }
+
+      #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 8px; }
+      .shot { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card); }
+      .shot img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; background: var(--coral-soft); }
+      .shot.load { aspect-ratio: 1; display: grid; place-items: center; }
+      .shot .cap { padding: 10px 12px; font: 400 12.5px/1.4 var(--body); color: var(--ink-dim); }
+      .scan { width: 26px; height: 26px; border: 2.5px solid var(--coral-soft); border-top-color: var(--coral); border-radius: 50%; animation: spin .8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .scan { animation: none; } }
+
+      /* plan / research / calendar */
+      .topics { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+      .topic { display: flex; align-items: flex-start; gap: 11px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+      .topic .body { min-width: 0; }
+      .topic .tt { font: 600 14px/1.25 var(--disp); }
+      .topic .td { font: 400 12.5px/1.45 var(--body); color: var(--ink-dim); margin-top: 3px; }
+      .topic .tag { display: inline-block; font: 500 10.5px/1 var(--body); color: var(--violet); background: var(--violet-soft); border-radius: 6px; padding: 4px 7px; margin-top: 7px; }
+      .topic .plus { margin-left: auto; border: 1px solid var(--line); background: var(--card); color: var(--ink-dim); border-radius: 9px; padding: 8px 11px; font: 600 12.5px/1 var(--body); cursor: pointer; white-space: nowrap; }
+      .topic .plus:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .cal { display: flex; flex-direction: column; gap: 8px; }
+      .slot { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+      .slot .when { font: 600 12px/1.1 var(--disp); color: var(--coral); text-align: center; width: 52px; flex: none; }
+      .slot .when .d { font-size: 18px; }
+      .slot .what { min-width: 0; }
+      .slot .what .tt { font: 600 13.5px/1.2 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .slot .what .meta { font: 500 11.5px/1 var(--body); color: var(--ink-faint); margin-top: 3px; }
+      .slot .make { margin-left: auto; background: var(--ink); color: #fff; border: 0; border-radius: 9px; padding: 8px 13px; font: 600 12.5px/1 var(--body); cursor: pointer; white-space: nowrap; }
+      .note { color: var(--ink-faint); font-size: 12.5px; margin: 10px 2px 0; }
+      .empty-note { color: var(--ink-faint); font-size: 13.5px; padding: 6px 2px; }
+
+      /* reel: script beats, storyboard filmstrip, phone-frame preview */
+      .beat { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+      .beat:first-child { border-top: 0; }
+      .beat .n { width: 24px; height: 24px; border-radius: 7px; background: var(--coral-soft); color: var(--coral); flex: none; display: grid; place-items: center; font: 700 12px/1 var(--disp); }
+      .beat .b { min-width: 0; }
+      .beat .shot { font: 600 13.5px/1.3 var(--body); }
+      .beat .line { font: 400 13px/1.4 var(--body); color: var(--ink-dim); margin-top: 3px; }
+      .beat .line::before { content: "“"; } .beat .line::after { content: "”"; }
+      .filmstrip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+      .frame { position: relative; width: 118px; flex: none; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
+      .frame .img { width: 118px; height: 210px; object-fit: cover; display: block; background: var(--line-2); }
+      .frame.load { height: 210px; display: grid; place-items: center; }
+      .frame .cap { padding: 6px 8px; font: 500 10.5px/1.25 var(--body); color: var(--ink-dim); }
+      .frame .idx { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; border-radius: 50%; background: rgba(27,23,18,.7); color: #fff; font: 700 10px/18px var(--disp); text-align: center; }
+      .reelwrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+      .phone { width: 240px; aspect-ratio: 9/16; border-radius: 26px; overflow: hidden; background: #000; position: relative; box-shadow: 0 20px 50px -24px rgba(20,18,30,.5); flex: none; }
+      .phone video, .phone .cyc { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .phone .cyc { background-size: cover; background-position: center; transition: background-image .1s; animation: kb 6s ease-in-out infinite alternate; }
+      @keyframes kb { from { transform: scale(1.04); } to { transform: scale(1.12); } }
+      .phone .cap { position: absolute; left: 12px; right: 12px; bottom: 16px; color: #fff; font: 600 14px/1.3 var(--body); text-shadow: 0 1px 8px rgba(0,0,0,.7); }
+      .phone .live { position: absolute; top: 12px; left: 12px; font: 700 9px/1 var(--body); letter-spacing: .08em; color: #fff; background: var(--coral); padding: 4px 7px; border-radius: 5px; }
+      .phone .playbtn { position: absolute; top: 12px; right: 12px; border: 0; background: rgba(255,255,255,.92); color: var(--ink); border-radius: 999px; padding: 7px 12px; font: 600 12px/1 var(--body); cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+      .phone .playbtn:hover { background: #fff; }
+      .reelmeta { min-width: 200px; flex: 1; }
+      .reelmeta .vo { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--paper); font: 400 13px/1.5 var(--body); color: var(--ink-dim); }
+      .reelmeta .vo b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+
+      /* image source modal */
+      .modal { position: fixed; inset: 0; z-index: 60; background: rgba(27,23,18,.42); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+      .modal .sheet { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 30px 70px -30px rgba(20,18,30,.5); }
+      .modal .mh { display: flex; align-items: center; justify-content: space-between; font: 600 16px/1 var(--disp); margin-bottom: 14px; }
+      .modal .mx { border: 0; background: transparent; color: var(--ink-faint); font-size: 22px; line-height: 1; cursor: pointer; }
+      .modal .mfoot { display: flex; align-items: center; margin-top: 14px; }
+      .modal .fromrow { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .modal .fromrow .src { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 12px; font: 500 12.5px/1 var(--body); color: var(--ink-dim); cursor: pointer; }
+      .modal .fromrow .src:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .modal .fromrow .src .sw { width: 12px; height: 12px; border-radius: 3px; }
+      .modal .mprev { margin-top: 14px; display: grid; place-items: center; }
+      .modal .mprev img { max-width: 100%; max-height: 260px; border-radius: 12px; border: 1px solid var(--line); }
+      .modal .mprev.load { min-height: 120px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo"><span class="mk"></span>Cast</div>
+        <span id="sbchip"></span>
+      </header>
+
+      <!-- pre-connect -->
+      <div class="hero" id="hero">
+        <h1>Cast a persona.<br />Keep it consistent.</h1>
+        <p>Cast has no model and no faces of its own. Build an AI persona — a face, a wardrobe, locations, a supporting cast — and it stays <b>consistent</b> across every post. Each persona is a <b>context you own</b>, produced on <b>your</b> Claude and Higgsfield, and lendable to any other wrapp. Connect Switchboard to start.</p>
+      </div>
+
+      <!-- app -->
+      <div class="app" id="app" hidden>
+        <aside class="rail">
+          <div class="rh"><span class="t">Personas</span><button class="new" id="newPersona">＋ New</button></div>
+          <div class="plist" id="plist"></div>
+        </aside>
+
+        <section class="main" id="main">
+          <div class="tabs">
+            <button data-tab="build" class="on">Build</button>
+            <button data-tab="studio">Studio</button>
+            <button data-tab="reel">Reel</button>
+            <button data-tab="plan">Plan</button>
+          </div>
+
+          <!-- BUILD -->
+          <div class="tabpanel" id="tab-build">
+            <div class="card steer">
+              <span class="eyebrow">Start here — no blank forms</span>
+              <div class="steerrow">
+                <span class="spark">✨</span>
+                <input type="text" id="ideaInput" placeholder="Describe your persona in a line — Cast proposes directions, from your brand" />
+                <button class="genbtn" id="ideaGo">Suggest personas</button>
+              </div>
+              <div class="chips" id="ideaChips"></div>
+              <div class="opts" id="ideaOptions"></div>
+            </div>
+
+            <div class="card">
+              <div class="ah" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <span class="eyebrow" style="margin:0">Identity</span>
+                <button class="mini" id="regenIdentity">✨ Regenerate</button>
+              </div>
+              <div class="grid2">
+                <label class="field"><span>Name</span><input type="text" id="pname" placeholder="e.g. Maya Chen" /></label>
+                <label class="field"><span>Niche</span><input type="text" id="pniche" placeholder="e.g. sustainable skincare" /></label>
+              </div>
+              <label class="field" style="margin-top:14px"><span>Personality &amp; voice</span><textarea id="pvibe" placeholder="warm, plain-spoken, a little witty; talks like a friend who reads labels"></textarea></label>
+              <label class="field" style="margin-top:14px"><span>Backstory (optional)</span><textarea id="pstory" placeholder="ex-lab chemist in Lisbon, makes small-batch serums, obsessed with sunscreen"></textarea></label>
+              <div class="facelock">
+                <div class="facewell" id="facewell"><span class="ph">✨</span></div>
+                <div class="facemeta">
+                  <div class="t">Face lock</div>
+                  <div class="d">No photo needed — <b>generate</b> the face from your description or brand, and every render stays on it. Upload only if you want.</div>
+                  <div class="facebtns">
+                    <button class="genbtn" id="faceGen">✨ Generate with AI</button>
+                    <button class="mini" id="faceUpload">Upload</button>
+                  </div>
+                  <input type="file" id="faceInput" accept="image/*" hidden />
+                </div>
+              </div>
+            </div>
+
+            <div class="card asset"><div class="ah"><span class="t">Wardrobe</span><button class="add" data-add="wardrobe">✨ Generate outfit</button></div><div class="tiles" id="tiles-wardrobe"></div></div>
+            <div class="card asset"><div class="ah"><span class="t">Locations</span><button class="add" data-add="locations">✨ Generate location</button></div><div class="tiles" id="tiles-locations"></div></div>
+            <div class="card asset"><div class="ah"><span class="t">Supporting cast</span><button class="add" data-add="cast">✨ Generate character</button></div><div class="tiles" id="tiles-cast"></div></div>
+
+            <div class="rowbtns">
+              <span class="saved" id="savedFlag">Saved ✓</span>
+              <button class="primary" id="save">Save persona</button>
+            </div>
+            <p class="note">Saving publishes this persona as a context — other wrapps (UGC, ads, shorts) can then run on it, on your compute.</p>
+          </div>
+
+          <!-- STUDIO -->
+          <div class="tabpanel" id="tab-studio" hidden>
+            <div class="card">
+              <span class="eyebrow">Compose the shot</span>
+              <div class="subhead">Outfit</div>
+              <div class="picks" id="pickWardrobe"></div>
+              <div class="subhead" style="margin-top:14px">Location</div>
+              <div class="picks" id="pickLocations"></div>
+              <div class="subhead" style="margin-top:14px">Also in frame</div>
+              <div class="picks" id="pickCast"></div>
+              <div class="subhead" style="margin-top:14px">Brand</div>
+              <div id="brandRow"></div>
+              <label class="field" style="margin-top:14px"><span>Scene / caption idea</span><textarea id="scene" placeholder="unboxing the new serum on a sunlit bathroom shelf, candid, morning light"></textarea></label>
+              <div class="chips" id="sceneChips"></div>
+              <div class="shootbar">
+                <select class="aspect" id="aspect"><option value="9:16">Tall (9:16)</option><option value="1:1">Square (1:1)</option><option value="16:9">Wide (16:9)</option></select>
+                <button class="gen" id="go">Generate shot</button>
+              </div>
+            </div>
+            <div id="grid"></div>
+          </div>
+
+          <!-- REEL -->
+          <div class="tabpanel" id="tab-reel" hidden>
+            <div class="card">
+              <span class="eyebrow">Script</span>
+              <label class="field"><span>What's this reel about?</span><textarea id="reelTopic" placeholder="a calm 4-step morning routine with the new serum"></textarea></label>
+              <div class="chips" id="reelChips"></div>
+              <div class="shootbar">
+                <label style="display:flex;align-items:center;gap:8px;font:500 13px/1 var(--body);color:var(--ink-dim);cursor:pointer"><input type="checkbox" id="voiceover" checked /> Voiceover in persona's voice</label>
+                <button class="gen" id="writeScript">Write the script</button>
+              </div>
+              <div id="beats" style="margin-top:14px"></div>
+            </div>
+
+            <div class="card" id="storyCard" hidden>
+              <div class="ah" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <span class="eyebrow" style="margin:0">Storyboard</span>
+                <button class="ghost" id="animate" style="margin:0;padding:8px 14px">Animate to reel →</button>
+              </div>
+              <div class="filmstrip" id="filmstrip"></div>
+            </div>
+
+            <div class="card" id="reelCard" hidden>
+              <span class="eyebrow">Reel</span>
+              <div id="reelOut"></div>
+            </div>
+          </div>
+
+          <!-- PLAN -->
+          <div class="tabpanel" id="tab-plan" hidden>
+            <div class="card">
+              <span class="eyebrow">Research topics</span>
+              <p class="empty-note" style="margin:-4px 0 12px">Pull what's trending in this persona's niche — from live web + news on your own Claude — and turn it into a plan.</p>
+              <div class="rowbtns" style="margin-bottom:6px">
+                <button class="ghost" id="research">Research this niche</button>
+              </div>
+              <div class="topics" id="topics"></div>
+            </div>
+            <div class="card">
+              <span class="eyebrow">Content calendar</span>
+              <div class="cal" id="cal"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- image source picker: generate with AI (primary), from brand, or upload -->
+      <div class="modal" id="imgModal" hidden>
+        <div class="sheet">
+          <div class="mh"><span id="imgTitle">Add image</span><button class="mx" id="imgClose">×</button></div>
+          <label class="field"><span>Describe it — Cast generates it on your Higgsfield</span><textarea id="imgPrompt" rows="3"></textarea></label>
+          <div id="imgFrom" class="fromrow" hidden></div>
+          <div class="mfoot">
+            <button class="ghost" id="imgUpload">Upload instead</button>
+            <button class="primary" id="imgGen" style="margin-left:auto">✨ Generate with AI</button>
+          </div>
+          <div class="mprev" id="imgPreview" hidden></div>
+        </div>
+        <input type="file" id="imgFile" accept="image/*" hidden />
+      </div>
+    </div>
+    <script type="module" src="./dist/persona.js"></script>
+  </body>
+</html>

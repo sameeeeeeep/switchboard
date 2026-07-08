@@ -46,6 +46,7 @@ async function main() {
   broker.start();
 
   console.error(`[relay] pairing token (paste into the extension): ${config.pairingToken}`);
+  console.error(`[relay] paired as: ${config.profile.name} (set ~/.relay/profile.json or RELAY_USER to change)`);
   console.error(`[relay] backends online: ${(await backends.onlineIds()).join(", ") || "(none)"}`);
 }
 

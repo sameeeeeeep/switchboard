@@ -47,12 +47,17 @@ function connectorOf(tool: string): { key: string; label: string; color: string;
 }
 
 // ---- wrapp store: a static registry of launchable apps (a real registry replaces this later) ----
-const WRAPPS: Array<{ name: string; desc: string; url: string; color: string }> = [
+// `alternativeTo` lists sites this wrapp can stand in for — so when you're on a site that hasn't
+// opted into Switchboard (e.g. canva.com), the panel can offer a wrapp you CAN run on your own
+// compute, context and data.
+interface Wrapp { name: string; desc: string; url: string; color: string; alternativeTo?: string[] }
+const WRAPPS: Wrapp[] = [
   { name: "brandbrain", desc: "Build & operate consumer brands", url: "http://127.0.0.1:5178/build", color: "#C8F250" },
-  { name: "Prism", desc: "Generate on-brand images", url: "http://localhost:5174/imagegen.html", color: "#4F46E5" },
-  { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC" },
+  { name: "Cast", desc: "AI personas that stay on-model", url: "http://localhost:5174/persona.html", color: "#FF5A3C", alternativeTo: ["spira.ai", "app.spira.ai", "arcads.ai", "captions.ai"] },
+  { name: "Prism", desc: "Generate on-brand images", url: "http://localhost:5174/imagegen.html", color: "#4F46E5", alternativeTo: ["canva.com", "figma.com", "adobe.com", "leonardo.ai"] },
+  { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC", alternativeTo: ["business.facebook.com", "ads.tiktok.com", "adcreative.ai"] },
   { name: "Tool assistant", desc: "Chat over your connectors", url: "http://localhost:5174/assistant.html", color: "#3DD68C" },
-  { name: "Chat", desc: "Plain chat on your Claude", url: "http://localhost:5174/chat.html", color: "#F59E0B" },
+  { name: "Chat", desc: "Plain chat on your Claude", url: "http://localhost:5174/chat.html", color: "#F59E0B", alternativeTo: ["chatgpt.com", "chat.openai.com", "gemini.google.com"] },
 ];
 function openWrapp(url: string) {
   try { if (inExtension && chrome.tabs?.create) { chrome.tabs.create({ url }); return; } } catch { /* fall through */ }
@@ -124,8 +129,11 @@ async function load(): Promise<PanelData> {
 
 function lastSeen(origin: string, audit: AuditEntry[]): number { for (const e of audit) if (e.origin === origin) return e.ts; return 0; }
 
+let lastData: PanelData | null = null; // so tab-change events can re-render the "This tab" card
+
 function render(data: PanelData) {
   if (consentActive) return;
+  lastData = data;
   const online = data.paired && data.reachable;
   const st = $("status"); st.className = "status" + (online ? " on" : "");
   $("statusText").textContent = online ? "on" : data.paired ? "sidekick offline" : "not paired";
@@ -134,11 +142,66 @@ function render(data: PanelData) {
   if (data.paired && !data.reachable) { $("pairErr").textContent = "Paired, but the sidekick isn’t running. Start it: npm run sidekick."; $("pairBtn").textContent = "Retry"; }
   if (!online) return;
 
+  void renderCurrentSite(data);
   renderProject(data);
   renderConnectors(data);
   renderApps(data);
   renderWrapps(data);
   renderActivity(data);
+}
+
+// ---- This tab: the active site, and whether Switchboard can help here ----
+// The panel is your window's control surface; it should react to WHERE you are. If the site you're
+// on runs on Switchboard you see it's connected; if it hasn't opted in (e.g. Canva), we suggest a
+// wrapp that does the same job on YOUR compute, context and data — for free.
+async function activeTabHost(): Promise<string | null> {
+  if (!inExtension) return "canva.com"; // outside the extension (design preview): show the suggestion case
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab?.url) return null;
+    const u = new URL(tab.url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null; // ignore chrome://, about:, file:, the panel itself
+    return u.host;
+  } catch { return null; }
+}
+const hostMatch = (a: string, b: string) => a === b || a.endsWith("." + b) || b.endsWith("." + a);
+
+async function renderCurrentSite(data: PanelData) {
+  const sec = $("siteSec") as HTMLElement; const box = $("site"); box.textContent = "";
+  const h = await activeTabHost();
+  if (!h) { sec.hidden = true; return; }
+
+  const connected = data.grants.find((g) => hostMatch(h, host(g.origin)));
+  const ownWrapp = WRAPPS.find((w) => hostMatch(h, host(w.url)));
+  const alts = connected || ownWrapp ? [] : WRAPPS.filter((w) => (w.alternativeTo ?? []).some((d) => hostMatch(h, d)));
+
+  const card = el("div", "site");
+  const row = el("div", "row");
+  const txt = el("div"); txt.style.minWidth = "0";
+  txt.append(el("div", "h", h.replace(/^www\./, "")));
+  const stt = el("div", "st"); const dot = el("span", "dot");
+  if (connected) { dot.style.background = "var(--ok)"; stt.style.color = "var(--ok)"; stt.append(dot, document.createTextNode("Connected — running on your Claude")); }
+  else if (ownWrapp) { dot.style.background = "var(--lime)"; stt.style.color = "var(--ink-dim)"; stt.append(dot, document.createTextNode("Works with Switchboard — connect it on the page")); }
+  else { dot.style.background = "var(--ink-faint)"; stt.style.color = "var(--ink-faint)"; stt.append(dot, document.createTextNode("Hasn’t opted into Switchboard")); }
+  txt.append(stt);
+  row.append(el("div", "fav", h.replace(/^www\./, "")[0]?.toUpperCase() ?? "•"), txt);
+  card.append(row);
+
+  if (alts.length) {
+    card.append(el("div", "free", "Use one of these instead — free, on your own compute, context & data:"));
+    const list = el("div", "alts");
+    for (const w of alts.slice(0, 3)) {
+      const a = el("button", "alt");
+      const ic = el("div", "ic", w.name[0]!.toUpperCase()); ic.style.background = w.color;
+      const t = el("div"); t.style.minWidth = "0"; t.append(el("div", "nm", w.name), el("div", "ds", w.desc));
+      a.append(ic, t, el("div", "go", "Open →"));
+      a.onclick = () => openWrapp(w.url);
+      list.append(a);
+    }
+    card.append(list);
+  }
+  box.append(card);
+  sec.hidden = false;
 }
 
 // ---- Wrapp store: launch an app in a new tab (a green dot marks ones already connected) ----
@@ -174,7 +237,8 @@ function renderProject(data: PanelData) {
   if (data.contexts.length) sw.onclick = () => openPicker(data);
   row.append(sw);
   card.append(row);
-  if (active?.swatches?.length) { const s = el("div", "swatches"); for (const c of active.swatches) { const i = el("i"); i.style.background = c; s.append(i); } card.append(s); }
+  // No brand swatches here: a context's colours belong INSIDE the app that uses them, in its own
+  // field — showing them in Switchboard's chrome just decorates and dilutes the meaning.
   box.append(card);
 }
 
@@ -270,20 +334,44 @@ function renderActivity(data: PanelData) {
   }
 }
 
-// ---- project switcher overlay ----
+// ---- context switcher overlay ----
+// Contexts aren't only brands: projects, brands, data sources — any directory of work you own and
+// can lend to an app. The picker GROUPS by kind so the taxonomy is visible and extensible; a new
+// `kind` just forms its own group.
+function contextCategory(c: ContextMeta): string {
+  if (c.sourceKind) return "Data sources";
+  const k = (c.kind || "").toLowerCase();
+  if (!k || k === "context") return "Other";
+  return k.charAt(0).toUpperCase() + k.slice(1) + (k.endsWith("s") ? "" : "s");
+}
+const CATEGORY_ORDER = ["Projects", "Brands", "Data sources"]; // the rest fall in alphabetically after
+
 function openPicker(data: PanelData) {
   const picker = $("picker") as HTMLElement; picker.hidden = false;
   const list = $("plist"); list.textContent = "";
-  for (const c of data.contexts) {
-    const item = el("button", "pitem" + (c.id === data.activeProject ? " on" : ""));
-    item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
-    const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
-    if (c.sourceKind) txt.append(el("span", "badge", `live · ${c.rowCount ?? 0} rows`));
-    else if (c.swatches?.length) { const s = el("div", "sw"); for (const col of c.swatches) { const i = el("i"); i.style.background = col; s.append(i); } txt.append(s); }
-    item.append(txt);
-    if (c.id === data.activeProject) item.append(el("div", "tick", "✓"));
-    item.onclick = () => { if (inExtension) control("setActiveProject", { contextId: c.id === data.activeProject ? null : c.id }).then(() => { picker.hidden = true; refresh(); }); else { picker.hidden = true; } };
-    list.append(item);
+
+  const groups = new Map<string, ContextMeta[]>();
+  for (const c of data.contexts) { const g = contextCategory(c); (groups.get(g) ?? groups.set(g, []).get(g)!).push(c); }
+  const names = [...groups.keys()].sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+    if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    return a.localeCompare(b);
+  });
+
+  for (const gname of names) {
+    if (groups.size > 1) list.append(el("div", "pgroup", gname)); // header only when there's more than one kind
+    for (const c of groups.get(gname)!) {
+      const item = el("button", "pitem" + (c.id === data.activeProject ? " on" : ""));
+      item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
+      const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
+      // No colour swatches in the picker — a context's palette is meaningful inside the app that
+      // uses it, not as decoration here. A live data source keeps its row-count badge (that's status).
+      if (c.sourceKind) txt.append(el("span", "badge", `live · ${c.rowCount ?? 0} rows`));
+      item.append(txt);
+      if (c.id === data.activeProject) item.append(el("div", "tick", "✓"));
+      item.onclick = () => { if (inExtension) control("setActiveProject", { contextId: c.id === data.activeProject ? null : c.id }).then(() => { picker.hidden = true; refresh(); }); else { picker.hidden = true; } };
+      list.append(item);
+    }
   }
   renderAddSheet();
 }
@@ -323,19 +411,60 @@ function openTyped() {
 }
 $("openUrlBtn").addEventListener("click", openTyped);
 $("openUrlInput").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") openTyped(); });
+// The full Wrapp Store (use-case categories, stacks, search) opens as its own page.
+$("browseStore").addEventListener("click", () => openWrapp("http://localhost:5174/store.html"));
 
 // ---- header menu ----
 $("menuBtn").addEventListener("click", (e) => { e.stopPropagation(); const m = $("menu") as HTMLElement; m.hidden = !m.hidden; });
 document.addEventListener("click", (e) => { const m = $("menu") as HTMLElement; if (!m.hidden && !m.contains(e.target as Node) && (e.target as HTMLElement).id !== "menuBtn") m.hidden = true; });
+$("menuName").addEventListener("click", async () => {
+  ($("menu") as HTMLElement).hidden = true;
+  const cur = inExtension ? await control("getProfile") : { profile: { name: "" } };
+  const name = window.prompt("What should apps call you? (used for the “Hi …” greeting)", cur?.profile?.name || "");
+  if (name && name.trim() && inExtension) { await control("setProfile", { name: name.trim() }); refresh(); }
+});
 $("menuActivity").addEventListener("click", () => { ($("menu") as HTMLElement).hidden = true; const a = $("activity") as HTMLDetailsElement; a.open = true; a.scrollIntoView({ behavior: "smooth" }); });
 $("menuKill").addEventListener("click", async () => { ($("menu") as HTMLElement).hidden = true; if (inExtension) { await new Promise((r) => chrome.runtime.sendMessage({ type: "killSwitch" }, r)); refresh(); } });
 
 async function refresh() { if (!consentActive) render(await load()); }
 
-// ---- inline consent (unchanged flow) ----
+// Coalesce bursts of daemon events (a connect fires several) into one re-pull. Never clobbers an
+// open consent — refresh() guards on consentActive — and preserves expanded apps via `openApps`.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRefresh() {
+  if (refreshTimer != null) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; void refresh(); }, 160);
+}
+
+// ---- inline consent + live state (the panel stays in sync without being reopened) ----
+// The port is SELF-HEALING. MV3 evicts the service worker when idle; that kills this long-lived
+// port, and a dead port silently drops the consent/state pushes the worker sends when it wakes on
+// the next request (e.g. an app connecting) — which is exactly why the panel used to need a
+// close/reopen. So on disconnect we reconnect and re-pull: the panel repairs itself in place.
 if (inExtension) {
-  const port = chrome.runtime.connect({ name: "relay-panel" });
-  port.onMessage.addListener((m: { type: string; id: string }) => { if (m.type === "consent:new") void showConsent(m.id); });
+  const connectPort = () => {
+    const port = chrome.runtime.connect({ name: "relay-panel" });
+    port.onMessage.addListener((m: { type: string; id: string }) => {
+      if (m.type === "consent:new") void showConsent(m.id);
+      else if (m.type === "state:changed") scheduleRefresh(); // a grant/pick/permission change landed
+    });
+    port.onDisconnect.addListener(() => {
+      // Worker went away. Reconnect (which wakes it), then refresh so we catch anything missed while
+      // the port was down. A short delay avoids a tight loop if the worker is mid-restart.
+      setTimeout(connectPort, 300);
+      scheduleRefresh();
+    });
+    // On (re)connect, background re-pushes any queued consent; pull fresh state to match.
+    scheduleRefresh();
+  };
+  connectPort();
+  // The side panel document survives window/tab switches (it just hides). On re-show, pull fresh
+  // state in case an event arrived while the worker couldn't reach us.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleRefresh(); });
+  // Keep the "This tab" card in step with the active tab — switching or navigating re-evaluates it.
+  const reSite = () => { if (lastData) void renderCurrentSite(lastData); };
+  chrome.tabs?.onActivated.addListener(reSite);
+  chrome.tabs?.onUpdated.addListener((_id, info) => { if (info.status === "complete" || info.url) reSite(); });
 }
 async function showConsent(id: string) {
   const prompt = await new Promise<Prompt | null>((r) => chrome.runtime.sendMessage({ type: "getConsentPrompt", id }, r));

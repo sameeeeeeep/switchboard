@@ -1,7 +1,7 @@
 // brandbrain, as a Switchboard app — running its REAL gaps route (examples/adapter/proof) client-
 // side via the adapter, on the visitor's own Claude. This is the "adopt an existing app" thesis in
 // a store listing: brandbrain's route logic is unchanged; only its model transport is window.claude.
-import { whenRelayReady } from "@relay/sdk";
+import { mountConnect } from "@relay/sdk";
 import { setProvider } from "../../adapter/claude.mjs";
 import { createApp } from "../../adapter/router.mjs";
 import { POST as gapsPOST } from "../../adapter/proof/gaps-route.mjs";
@@ -12,21 +12,23 @@ const el = (t, c, x) => { const n = document.createElement(t); if (c) n.classNam
 const app = createApp({ "/api/studio/gaps": { POST: gapsPOST } });
 let connected = false;
 
-$("connect").addEventListener("click", async () => {
-  const r = await whenRelayReady();
-  if (!("connect" in r)) { setStatus("Switchboard not installed"); return; }
-  try {
-    const grant = await r.connect({ reason: "brandbrain — find white space", models: ["sonnet"] });
+// The standard Switchboard header chip: it owns the whole connect lifecycle (connect / identity /
+// project / disconnect). brandbrain just reacts to the transitions — no bespoke connect button.
+mountConnect($("sbchip"), {
+  scope: { reason: "brandbrain — find white space", models: ["sonnet"] },
+  onConnect: async () => {
     setProvider(window.claude); // ← the entire migration: brandbrain's runClaude now uses your Claude
     connected = true;
     $("go").disabled = false;
-    $("connect").hidden = true;
     $("ws").hidden = false;
-    setStatus(`connected · ${grant.models.join(", ") || "your Claude"}`, true);
-    // Show wherever storage currently resolves (an auto-assigned sandbox until the user binds a folder),
-    // and surface any brands already there.
-    await refreshWorkspace();
-  } catch (err) { setStatus(`connect rejected (${err?.code ?? "?"})`); }
+    await refreshWorkspace(); // surface brands wherever storage resolves (sandbox until a folder is bound)
+  },
+  onDisconnect: () => {
+    connected = false;
+    $("go").disabled = true;
+    $("ws").hidden = true;
+  },
+  onProjectChange: () => { if (connected) refreshWorkspace(); },
 });
 
 $("bind").addEventListener("click", async () => {
@@ -58,7 +60,6 @@ async function refreshWorkspace() {
     $("storeInfo").textContent = "";
   }
 }
-function setStatus(text, ok) { const s = $("status"); s.hidden = false; $("statusText").textContent = text; s.querySelector(".g").style.background = ok ? "#3DD68C" : "#9C9AA3"; }
 
 $("go").addEventListener("click", async () => {
   if (!connected) return;

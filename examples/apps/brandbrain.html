@@ -6,10 +6,7 @@
     <title>brandbrain — find your white space</title>
     <link rel="stylesheet" href="./app.css" />
     <style>
-      .topbar .connect { margin-left: auto; }
-      .relay-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--lime); color: var(--page); border: 0; border-radius: 999px; padding: 9px 15px; font: 600 13px/1 var(--sans); cursor: pointer; }
-      .relay-status { margin-left: auto; font: 500 12px/1 var(--sans); color: var(--ink-dim); display: inline-flex; align-items: center; gap: 7px; }
-      .relay-status .g { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+      .topbar .sbchip { margin-left: auto; }
       .form { display: grid; gap: 12px; margin-top: 8px; }
       .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
       label .k { display: block; margin-bottom: 5px; }
@@ -34,8 +31,7 @@
     <div class="wrap">
       <div class="topbar">
         <span class="glyph"></span><span class="brand">brandbrain</span>
-        <button class="relay-btn connect" id="connect">Connect Switchboard</button>
-        <span class="relay-status" id="status" hidden><span class="g"></span><span id="statusText"></span></span>
+        <span class="sbchip" id="sbchip"></span>
       </div>
 
       <div class="kicker">Find your white space</div>

@@ -59,6 +59,10 @@ function ensureSocket(): Promise<boolean> {
           }
           case "event":
             for (const p of pagePorts) { try { p.postMessage({ event: msg.event, payload: msg.payload }); } catch { /* gone */ } }
+            // Also nudge the side panel: a grant/pick/permission change means its view is stale, so
+            // it re-pulls fresh state instead of needing a reopen. Skip `delta` — it fires per stream
+            // token and changes nothing the panel shows (that would be a refresh on every token).
+            if (msg.event !== "delta") { try { panelPort?.postMessage({ type: "state:changed", event: msg.event }); } catch { /* panel gone */ } }
             break;
           case "prompt":
             void openConsent(msg.id, msg.kind, msg.body);

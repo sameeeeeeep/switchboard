@@ -49,6 +49,22 @@
       .menu .sep { height: 1px; background: var(--edge-soft); margin: 5px 4px; }
 
       .body { padding: 16px; display: flex; flex-direction: column; gap: 22px; }
+
+      /* ---- this tab: what site you're on, and whether Switchboard can help here ---- */
+      .site { border: 1px solid var(--edge); background: var(--panel); border-radius: 14px; padding: 13px 14px; }
+      .site .row { display: flex; align-items: center; gap: 10px; }
+      .site .fav { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; font: 700 13px/1 var(--display); background: var(--raised-2); color: var(--ink-dim); }
+      .site .h { font: 600 13.5px/1.2 var(--sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .site .st { font: 500 11.5px/1 var(--sans); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+      .site .st .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+      .site .free { font: 500 11.5px/1.45 var(--sans); color: var(--ink-dim); margin-top: 12px; }
+      .site .alts { display: flex; flex-direction: column; gap: 7px; margin-top: 9px; }
+      .site .alt { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--edge); border-radius: 11px; background: var(--raised); cursor: pointer; text-align: left; color: var(--ink); }
+      .site .alt:hover { border-color: var(--ink-faint); background: var(--raised-2); }
+      .site .alt .ic { width: 24px; height: 24px; border-radius: 7px; flex: none; display: grid; place-items: center; font: 700 12px/1 var(--display); color: var(--page); }
+      .site .alt .nm { font: 600 13px/1 var(--sans); }
+      .site .alt .ds { font: 500 11px/1.25 var(--sans); color: var(--ink-dim); margin-top: 2px; }
+      .site .alt .go { margin-left: auto; font: 600 11.5px/1 var(--sans); color: var(--lime); white-space: nowrap; }
       .sec { display: flex; flex-direction: column; gap: 10px; }
       .sec > .head { display: flex; align-items: center; justify-content: space-between; }
       .sec > .head .act { font: 600 12px/1 var(--sans); color: var(--lime); background: none; border: 0; cursor: pointer; padding: 0; }
@@ -137,6 +153,8 @@
       .picker h3 { font: 700 16px/1 var(--display); letter-spacing: -0.01em; margin: 4px 0 3px; }
       .picker p { color: var(--ink-dim); font-size: 12.5px; margin: 0 0 14px; }
       .plist { display: flex; flex-direction: column; gap: 8px; }
+      .picker .pgroup { font: 600 11px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin: 12px 2px 2px; }
+      .picker .pgroup:first-child { margin-top: 2px; }
       .pitem { display: flex; align-items: center; gap: 11px; padding: 11px; border: 1px solid var(--edge); background: var(--raised); border-radius: 12px; cursor: pointer; text-align: left; width: 100%; color: var(--ink); }
       .pitem:hover { border-color: var(--ink-faint); }
       .pitem.on { border-color: var(--lime); background: var(--lime-soft); }
@@ -193,6 +211,7 @@
         <button class="menu-btn" id="menuBtn" title="More" aria-label="More">⋯</button>
       </div>
       <div class="menu" id="menu" hidden>
+        <button id="menuName">Set your name</button>
         <button id="menuActivity">📊 Activity &amp; usage</button>
         <div class="sep"></div>
         <button class="danger" id="menuKill">⏻ Disconnect everything</button>
@@ -210,6 +229,11 @@
       </div>
 
       <div class="body" id="home" hidden>
+        <div class="sec" id="siteSec" hidden>
+          <div class="head"><span class="eyebrow">This tab</span></div>
+          <div id="site"></div>
+        </div>
+
         <div class="sec">
           <div class="head"><span class="eyebrow">Working on</span></div>
           <div id="project"></div>
@@ -226,7 +250,7 @@
         </div>
 
         <div class="sec">
-          <div class="head"><span class="eyebrow">Wrapp store</span></div>
+          <div class="head"><span class="eyebrow">Wrapp store</span><button class="act" id="browseStore">Browse all →</button></div>
           <div class="wrapps" id="wrapps"></div>
           <div class="openurl"><input id="openUrlInput" placeholder="or paste any tool URL…" spellcheck="false" /><button id="openUrlBtn">Open</button></div>
         </div>
@@ -239,9 +263,9 @@
 
       <div class="picker" id="picker" hidden>
         <div class="sheet">
-          <div class="eyebrow">Switch project</div>
+          <div class="eyebrow">Switch context</div>
           <h3>What are you working on?</h3>
-          <p>The project you pick is lent to every app you connect — its brands, folder, and context.</p>
+          <p>Pick a project, brand, or data source. Whatever you choose is lent to every app you connect — its files, data, and context.</p>
           <div class="plist" id="plist"></div>
           <div id="addSheet" class="addsrc"></div>
           <button class="close" id="pickerClose">Close</button>

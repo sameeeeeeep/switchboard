@@ -14,6 +14,26 @@ import type { StorageRequest, StorageResult } from "./storage.js";
 import type { ContextRequest, ContextResult } from "./context.js";
 import type { SessionRequest, SessionResult } from "./session.js";
 
+/** Who the paired human is — enough for a connected app to greet them ("Hi Sameep") and show whose
+ *  Claude it's running on. Public, non-sensitive: a display name the user chose (or their OS name),
+ *  never the pairing token. The app gets this the moment it connects, so any wrapp feels like "yours". */
+export interface UserIdentity {
+  /** Display name, e.g. "Sameep". */
+  name: string;
+  /** Optional avatar as a URL or data: URI. */
+  avatar?: string;
+}
+
+/** On-device capabilities the daemon can serve WITHOUT a cloud call — this is the orchestrator
+ *  story: an app can lean on local models/engines (TTS today; local image/transcription later)
+ *  that already run on the user's machine, free and private. */
+export interface LocalCapabilities {
+  /** Text-to-speech is available locally (a local TTS server, or the OS engine e.g. macOS `say`). */
+  tts: boolean;
+  /** A few local voice ids the app can offer, if known. */
+  voices?: string[];
+}
+
 /** Provider capabilities, returned by claude_capabilities for feature detection. */
 export interface Capabilities {
   version: typeof BYOP_VERSION;
@@ -24,6 +44,25 @@ export interface Capabilities {
   backends: string[];
   /** Whether the gated agentic loop is available. */
   agentic: boolean;
+  /** The paired user's public identity, for greeting + attribution in the app's own UI. */
+  user?: UserIdentity;
+  /** On-device capabilities served without a cloud call (local TTS, etc.). */
+  local?: LocalCapabilities;
+}
+
+/** claude_speak — synthesize speech LOCALLY (no cloud, no connector, no credits). Routes to a
+ *  configured local TTS server, else the OS engine. The orchestrator using a local model. */
+export interface SpeakParams {
+  text: string;
+  /** A local voice id (backend-specific); omit for the default. */
+  voice?: string;
+}
+export interface SpeakResult {
+  /** The synthesized audio as a data: URL (audio/wav) the page can play directly. */
+  audio: string;
+  /** Which local backend produced it, e.g. "macos-say" or "local-server". */
+  backend: string;
+  voice?: string;
 }
 
 /** The typed method table: each method's params and result. */
@@ -61,6 +100,8 @@ export interface BYOPMethods {
   /** Warm, stateful completion thread (read-only): one long-lived process per (origin, sessionId),
    *  turns queued sequentially. For apps that generate a long sequence of cards in one conversation. */
   claude_session: { params: SessionRequest; result: SessionResult };
+  /** Local text-to-speech — synthesized on-device, no cloud/connector/credits. Requires a grant. */
+  claude_speak: { params: SpeakParams; result: SpeakResult };
 }
 
 export type BYOPMethod = keyof BYOPMethods;

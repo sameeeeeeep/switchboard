@@ -32,4 +32,26 @@ server.registerTool(
   },
 );
 
+// generate_video — same shape as the real connector: animate a keyframe into a short clip. Also a
+// WRITE (spends credits, irreversible), so the daemon gates each call with a per-action consent.
+// Returns a real, playable sample clip URL (poster seeded by the prompt) so the reel flow completes.
+server.registerTool(
+  "generate_video",
+  {
+    description: "Animate a keyframe image into a short vertical video clip. Spends generation credits (irreversible).",
+    inputSchema: {
+      prompt: z.string().describe("Motion / scene description"),
+      keyframe: z.string().optional().describe("Start-frame image URL or asset id"),
+      aspect_ratio: z.enum(["1:1", "16:9", "9:16"]).optional(),
+    },
+  },
+  async ({ prompt, keyframe, aspect_ratio }) => {
+    const seed = createHash("sha1").update(prompt + (keyframe ? "|kf:" + keyframe.slice(0, 24) : "")).digest("hex").slice(0, 12);
+    // A small, widely-mirrored sample clip stands in for a real render; poster is a seeded still.
+    const url = "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4";
+    const poster = `https://picsum.photos/seed/${seed}/720/1280`;
+    return { content: [{ type: "text", text: JSON.stringify({ url, poster, prompt, aspect_ratio: aspect_ratio ?? "9:16", duration_s: 6, credits_spent: 20 }) }] };
+  },
+);
+
 await server.connect(new StdioServerTransport());
