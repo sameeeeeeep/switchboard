@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cartridge — form → game, on your own Claude</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      /* CARTRIDGE — an arcade cabinet. Its OWN brand (CRT violet-black, magenta/cyan neon,
+         Press Start 2P). Switchboard is not the app; it's the standard chip in the corner. */
+      :root {
+        --void: #0B0713; --panel: #140D20; --raised: #1C1230; --line: #2A1D45; --line-hot: #43307a;
+        --ink: #EDE7FA; --ink-dim: #A79BC8; --ink-faint: #6B5F8C;
+        --magenta: #FF2E97; --magenta-soft: #3d1030; --cyan: #29F3FF; --gold: #FFC532;
+        --danger: #FF4D4D; --ok: #39E58C;
+        --pix: "Press Start 2P", monospace; --body: "Inter", system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body {
+        background:
+          radial-gradient(900px 480px at 80% -10%, rgba(255,46,151,.09), transparent 60%),
+          radial-gradient(700px 420px at 8% 0%, rgba(41,243,255,.06), transparent 55%),
+          var(--void);
+        color: var(--ink); font: 15px/1.6 var(--body); -webkit-font-smoothing: antialiased;
+      }
+      /* faint CRT scanlines over everything */
+      body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+        background: repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px); }
+      .wrap { position: relative; z-index: 2; max-width: 860px; margin: 0 auto; padding: 26px 22px 100px; }
+
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 34px; }
+      .logo { font: 400 17px/1 var(--pix); color: var(--magenta); letter-spacing: .04em;
+        text-shadow: 0 0 18px rgba(255,46,151,.55); }
+      .logo .cyan { color: var(--cyan); text-shadow: 0 0 18px rgba(41,243,255,.5); }
+      .tag { font: 500 12px/1.4 var(--body); color: var(--ink-faint); margin-top: 2px; }
+      #chip-dock { margin-left: auto; }
+
+      .kick { font: 400 9px/1 var(--pix); color: var(--ink-faint); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 14px; }
+
+      /* ---- the console (form) ---- */
+      .console { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+      .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+      .field { margin-bottom: 14px; }
+      .field label { display: block; font: 600 11.5px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 7px; }
+      .field input[type="text"], .field textarea {
+        width: 100%; background: var(--raised); border: 1px solid var(--line); border-radius: 10px;
+        color: var(--ink); padding: 11px 13px; font: 450 14px/1.5 var(--body); outline: none; resize: vertical;
+      }
+      .field input:focus, .field textarea:focus { border-color: var(--magenta); box-shadow: 0 0 0 3px rgba(255,46,151,.15); }
+      .seg { display: flex; flex-wrap: wrap; gap: 7px; }
+      .seg button {
+        background: var(--raised); border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+        color: var(--ink-dim); padding: 8px 13px; font: 500 12.5px/1 var(--body); transition: all .12s;
+      }
+      .seg button:hover { border-color: var(--line-hot); color: var(--ink); }
+      .seg button.on { background: var(--magenta-soft); border-color: var(--magenta); color: #ffd7ea; }
+
+      .actions { display: flex; gap: 12px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+      .btn-start {
+        font: 400 12px/1 var(--pix); letter-spacing: .06em; cursor: pointer;
+        background: var(--magenta); color: #14040d; border: 0; border-radius: 12px; padding: 16px 26px;
+        box-shadow: 0 0 26px rgba(255,46,151,.35); transition: transform .1s, box-shadow .15s;
+      }
+      .btn-start:hover { transform: translateY(-1px); box-shadow: 0 0 40px rgba(255,46,151,.5); }
+      .btn-start:disabled { background: var(--raised); color: var(--ink-faint); box-shadow: none; cursor: not-allowed; }
+      .btn-dice {
+        background: transparent; border: 1px solid var(--line-hot); color: var(--cyan); cursor: pointer;
+        border-radius: 12px; padding: 14px 18px; font: 500 13.5px/1 var(--body);
+      }
+      .btn-dice:hover { background: rgba(41,243,255,.07); }
+      .hint { font: 450 12.5px/1.5 var(--body); color: var(--ink-faint); }
+      .hint b { color: var(--ink-dim); }
+
+      /* ---- generation state ---- */
+      .genbox { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-top: 18px; }
+      .gen-status { display: flex; align-items: center; gap: 12px; font: 400 10px/1.6 var(--pix); color: var(--cyan); }
+      .gen-status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: blink 1s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: .25; } }
+      .gen-meta { font: 500 12px/1 var(--mono); color: var(--ink-faint); margin-left: auto; }
+      .code-rain {
+        margin-top: 14px; height: 130px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px;
+        background: #0a0612; padding: 10px 13px; font: 400 10.5px/1.55 var(--mono); color: #574a7e;
+        white-space: pre; mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+      }
+      .cancel { background: none; border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: 500 12px/1 var(--body); }
+      .cancel:hover { border-color: var(--danger); color: var(--danger); }
+
+      /* ---- the cabinet (play) ---- */
+      .cabinet { margin-top: 18px; }
+      .bezel {
+        background: linear-gradient(180deg, #1a1128, #120b1e); border: 1px solid var(--line-hot); border-radius: 18px;
+        padding: 14px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.9), 0 0 60px rgba(255,46,151,.06);
+      }
+      .bezel-top { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; }
+      .gtitle { font: 400 11px/1.5 var(--pix); color: var(--gold); text-shadow: 0 0 14px rgba(255,197,50,.4); }
+      .gver { font: 500 11px/1 var(--mono); color: var(--ink-faint); margin-left: 8px; }
+      .bezel-top .spacer { margin-left: auto; }
+      .iconbtn { background: var(--raised); border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: 500 12.5px/1 var(--body); }
+      .iconbtn:hover { color: var(--ink); border-color: var(--line-hot); }
+      #stage { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; border: 0; display: block; }
+      .remixrow { display: flex; gap: 10px; margin-top: 12px; }
+      .remixrow input { flex: 1; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); padding: 12px 14px; font: 450 14px/1 var(--body); outline: none; }
+      .remixrow input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(41,243,255,.12); }
+      .btn-remix { background: var(--cyan); color: #04222a; border: 0; border-radius: 10px; padding: 0 20px; font: 600 13.5px/1 var(--body); cursor: pointer; }
+      .btn-remix:disabled { background: var(--raised); color: var(--ink-faint); cursor: not-allowed; }
+
+      /* ---- the shelf (gallery) ---- */
+      .shelf { margin-top: 40px; }
+      .carts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+      .cart {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+        transition: border-color .12s, transform .12s;
+      }
+      .cart:hover { border-color: var(--magenta); transform: translateY(-2px); }
+      .cart .ct { font: 400 10px/1.6 var(--pix); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cart .cm { font: 500 11px/1 var(--mono); color: var(--ink-faint); margin: 8px 0 12px; }
+      .cart .cbtns { display: flex; gap: 7px; }
+      .cart .cbtns button { flex: 1; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; color: var(--ink-dim); padding: 7px 0; cursor: pointer; font: 500 12px/1 var(--body); }
+      .cart .cbtns button:hover { color: var(--ink); border-color: var(--line-hot); }
+      .cart .cbtns button.del:hover { color: var(--danger); border-color: var(--danger); }
+
+      /* ---- states / errors ---- */
+      .note { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 0 12px 12px 0; padding: 13px 16px; font: 450 13.5px/1.55 var(--body); color: var(--ink-dim); }
+      .note.err { border-left-color: var(--danger); }
+      .note b { color: var(--ink); }
+      .empty { border: 1px dashed var(--line); border-radius: 14px; padding: 28px; text-align: center; color: var(--ink-faint); font: 450 13.5px/1.6 var(--body); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <div class="logo">CART<span class="cyan">RIDGE</span></div>
+          <div class="tag">form → playable game · generated on <b>your own Claude</b> · yours to keep</div>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <p class="kick">insert coin · describe a game</p>
+      <section class="console" id="console">
+        <div class="field">
+          <label for="f-idea">The game (one line)</label>
+          <input type="text" id="f-idea" placeholder="a tiny ninja dodges shuriken storms and steals lanterns" maxlength="220" />
+        </div>
+        <div class="frow">
+          <div class="field">
+            <label>Genre</label>
+            <div class="seg" id="f-genre"></div>
+          </div>
+          <div class="field">
+            <label>Art vibe</label>
+            <div class="seg" id="f-vibe"></div>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="field">
+            <label for="f-twist">Twist (optional)</label>
+            <input type="text" id="f-twist" placeholder="gravity flips every 10 seconds" maxlength="160" />
+          </div>
+          <div class="field">
+            <label>Difficulty</label>
+            <div class="seg" id="f-diff"></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-start" id="go">▶ GENERATE</button>
+          <button class="btn-dice" id="dice" title="fill the form with a random game">🎲 surprise me</button>
+          <span class="hint" id="conn-hint"></span>
+        </div>
+      </section>
+
+      <section class="genbox" id="genbox" hidden>
+        <div class="gen-status">
+          <span class="dot"></span><span id="gen-line">BOOTING THE FORGE…</span>
+          <span class="gen-meta" id="gen-meta">0 kb</span>
+          <button class="cancel" id="cancel">stop</button>
+        </div>
+        <div class="code-rain" id="code-rain"></div>
+      </section>
+
+      <div class="note err" id="errbox" hidden></div>
+
+      <section class="cabinet" id="cabinet" hidden>
+        <p class="kick">now playing</p>
+        <div class="bezel">
+          <div class="bezel-top">
+            <span class="gtitle" id="g-title">—</span><span class="gver" id="g-ver"></span>
+            <span class="spacer"></span>
+            <button class="iconbtn" id="restart" title="restart">⟳ restart</button>
+            <button class="iconbtn" id="save" title="save to shelf">＋ shelf</button>
+            <button class="iconbtn" id="download" title="download the .html artifact">⬇ .html</button>
+          </div>
+          <iframe id="stage" sandbox="allow-scripts" title="your generated game"></iframe>
+          <div class="remixrow">
+            <input type="text" id="remix-in" placeholder="remix it — “add a boss every 500 points”, “make it two-player”…" maxlength="240" />
+            <button class="btn-remix" id="remix">REMIX</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="shelf">
+        <p class="kick">the shelf</p>
+        <div class="carts" id="carts"></div>
+        <div class="empty" id="shelf-empty">No cartridges yet. Generate your first game and hit <b>＋ shelf</b>.</div>
+      </section>
+    </div>
+    <script type="module" src="./dist/cartridge.js"></script>
+  </body>
+</html>
