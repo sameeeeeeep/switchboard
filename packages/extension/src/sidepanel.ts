@@ -52,12 +52,18 @@ function connectorOf(tool: string): { key: string; label: string; color: string;
 // compute, context and data.
 interface Wrapp { name: string; desc: string; url: string; color: string; alternativeTo?: string[] }
 const WRAPPS: Wrapp[] = [
-  { name: "brandbrain", desc: "Build & operate consumer brands", url: "http://127.0.0.1:5178/build", color: "#C8F250" },
+  { name: "brandbrain", desc: "Build & operate consumer brands", url: "https://brandbrain.thelastprompt.ai/build", color: "#C8F250" },
+  { name: "AdPulse", desc: "Meta ads post-mortem in 30 seconds", url: "https://adpulse.thelastprompt.ai", color: "#FFB224", alternativeTo: ["adsmanager.facebook.com"] },
+  { name: "AdForge", desc: "URL in, Meta ads out", url: "https://adforge.thelastprompt.ai", color: "#FF6A2B", alternativeTo: ["adcreative.ai"] },
+  { name: "Shelf", desc: "Your inventory, triaged", url: "https://shelf.thelastprompt.ai", color: "#E8B34B" },
+  { name: "Studio", desc: "Product shots without the studio", url: "https://studio.thelastprompt.ai", color: "#E4572E", alternativeTo: ["photoroom.com", "pebblely.com"] },
+  { name: "A-Plus", desc: "Amazon A+ content in one pass", url: "https://aplus.thelastprompt.ai", color: "#F0B429" },
+  { name: "NATAL", desc: "Your chart, read bluntly", url: "https://natal.thelastprompt.ai", color: "#EDEDF5", alternativeTo: ["costarastrology.com"] },
+  { name: "Arcana", desc: "Three cards, no mercy", url: "https://arcana.thelastprompt.ai", color: "#C9A227" },
+  { name: "Cartridge", desc: "Form → playable game", url: "https://cartridge.thelastprompt.ai", color: "#FF2E97" },
   { name: "Cast", desc: "AI personas that stay on-model", url: "http://localhost:5174/persona.html", color: "#FF5A3C", alternativeTo: ["spira.ai", "app.spira.ai", "arcads.ai", "captions.ai"] },
   { name: "Prism", desc: "Generate on-brand images", url: "http://localhost:5174/imagegen.html", color: "#4F46E5", alternativeTo: ["canva.com", "figma.com", "adobe.com", "leonardo.ai"] },
-  { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC", alternativeTo: ["business.facebook.com", "ads.tiktok.com", "adcreative.ai"] },
-  { name: "Tool assistant", desc: "Chat over your connectors", url: "http://localhost:5174/assistant.html", color: "#3DD68C" },
-  { name: "Chat", desc: "Plain chat on your Claude", url: "http://localhost:5174/chat.html", color: "#F59E0B", alternativeTo: ["chatgpt.com", "chat.openai.com", "gemini.google.com"] },
+  { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC", alternativeTo: ["business.facebook.com", "ads.tiktok.com"] },
 ];
 function openWrapp(url: string) {
   try { if (inExtension && chrome.tabs?.create) { chrome.tabs.create({ url }); return; } } catch { /* fall through */ }

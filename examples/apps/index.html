@@ -3,92 +3,193 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Switchboard — App Store</title>
-    <link rel="stylesheet" href="./app.css" />
+    <title>Wrapp Store — Switchboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      .cards { display: grid; gap: 12px; margin-top: 8px; }
-      .appcard { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--edge); background: var(--panel); border-radius: 16px; padding: 16px; text-decoration: none; color: inherit; transition: border-color .15s; }
-      .appcard:hover { border-color: var(--edge-soft); }
-      .appcard .em { width: 44px; height: 44px; border-radius: 12px; background: var(--lime-soft); display: grid; place-items: center; font-size: 21px; flex: none; }
-      .appcard .body { flex: 1; min-width: 0; }
-      .appcard .titlerow { display: flex; align-items: center; gap: 8px; }
-      .appcard h2 { font: 600 16px/1.2 var(--display); letter-spacing: -0.01em; margin: 2px 0 3px; }
-      .appcard p { margin: 0; color: var(--ink-dim); font-size: 13.5px; }
-      .badge { font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 3px 7px; border-radius: 999px; }
-      .badge.verified { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
-      .badge.air { color: var(--ink-dim); background: var(--raised); }
-      .flag { border-color: color-mix(in srgb, var(--lime) 35%, var(--edge)); }
+      /* Wrapp Store — ONE store. The glossy identity from the store.html exploration (dark, iconful,
+         violet→magenta, low-text) carrying the REAL catalog that used to live in the plain list.
+         No ratings, no install counts, no fake workspaces — apps that exist, links that work. */
+      :root {
+        --bg: #0A0A12; --bg2: #07070D; --panel: #14141F; --panel-2: #191926; --raised: #1E1E2C;
+        --edge: #262636; --edge-soft: #30304A;
+        --ink: #ECECF5; --ink-2: #B9B9CC; --dim: #8E8EA3; --faint: #63637A;
+        --v1: #8B5CF6; --v2: #D946EF; --violet-soft: #1C1730;
+        --ok: #34D399;
+        --grad: linear-gradient(135deg, #8B5CF6, #D946EF);
+        --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body {
+        background:
+          radial-gradient(1100px 500px at 85% -10%, rgba(139, 92, 246, 0.10), transparent 60%),
+          radial-gradient(800px 420px at 0% 0%, rgba(217, 70, 239, 0.05), transparent 55%),
+          var(--bg);
+        color: var(--ink); font: 14.5px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+      }
+      ::selection { background: rgba(217, 70, 239, 0.3); }
+      a { text-decoration: none; color: inherit; }
+      .wrap { max-width: 1060px; margin: 0 auto; padding: 30px 24px 90px; }
+
+      /* ---- header ---- */
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+      .brand { display: flex; align-items: center; gap: 11px; font: 700 17px/1 var(--sans); letter-spacing: -0.01em; }
+      .brand .g { width: 30px; height: 30px; border-radius: 9px; background: var(--grad); display: grid; place-items: center; box-shadow: 0 0 20px rgba(139, 92, 246, 0.45); font: 800 15px/1 var(--sans); color: #fff; }
+      .brand .sub { color: var(--faint); font-weight: 500; }
+      .get {
+        margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+        background: var(--panel); border: 1px solid var(--edge); border-radius: 999px;
+        padding: 9px 16px; font: 600 13px/1 var(--sans); color: var(--ink-2); transition: border-color .15s, color .15s;
+      }
+      .get:hover { border-color: var(--v1); color: var(--ink); }
+
+      /* ---- hero ---- */
+      .eyebrow { font: 700 10.5px/1 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+      h1 { font: 800 34px/1.15 var(--sans); letter-spacing: -0.025em; margin: 10px 0 12px; }
+      h1 .hl { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .sub-copy { color: var(--dim); max-width: 60ch; margin: 0 0 34px; font-size: 15px; }
+      .sub-copy b { color: var(--ink-2); }
+
+      /* ---- featured ---- */
+      .featured {
+        position: relative; display: flex; gap: 20px; align-items: center; overflow: hidden;
+        background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--edge);
+        border-radius: 18px; padding: 24px; margin-bottom: 40px; transition: border-color .15s, transform .12s;
+      }
+      .featured::before { content: ""; position: absolute; inset: 0; background: radial-gradient(600px 200px at 12% 0%, rgba(200, 242, 80, 0.09), transparent 60%); pointer-events: none; }
+      .featured:hover { border-color: var(--edge-soft); transform: translateY(-1px); }
+      .featured .tile { width: 64px; height: 64px; border-radius: 17px; flex: none; display: grid; place-items: center; font-size: 30px; background: linear-gradient(135deg, #3A4A12, #1C240A); box-shadow: 0 8px 26px -10px rgba(200, 242, 80, 0.4); }
+      .featured h2 { margin: 0 0 4px; font: 700 19px/1.2 var(--sans); display: flex; align-items: center; gap: 9px; }
+      .featured p { margin: 0; color: var(--dim); font-size: 13.5px; max-width: 62ch; }
+      .arrow { margin-left: auto; color: var(--faint); font-size: 20px; flex: none; }
+
+      /* ---- sections + cards ---- */
+      .sec-h { display: flex; align-items: baseline; gap: 10px; margin: 34px 0 14px; }
+      .sec-h h3 { margin: 0; font: 700 15px/1 var(--sans); letter-spacing: -0.01em; }
+      .sec-h span { color: var(--faint); font-size: 12px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+      .card {
+        display: flex; gap: 14px; align-items: flex-start; background: var(--panel); border: 1px solid var(--edge);
+        border-radius: 15px; padding: 16px; transition: border-color .15s, transform .12s, background .15s;
+      }
+      .card:hover { border-color: var(--edge-soft); background: var(--panel-2); transform: translateY(-1px); }
+      .tile { width: 46px; height: 46px; border-radius: 13px; flex: none; display: grid; place-items: center; font-size: 22px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+      .card .body { min-width: 0; }
+      .card h4 { margin: 1px 0 3px; font: 650 14.5px/1.25 var(--sans); display: flex; align-items: center; gap: 7px; }
+      .card p { margin: 0; color: var(--dim); font-size: 12.8px; line-height: 1.5; }
+      .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); flex: none; }
+      .tag { font: 600 9.5px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); background: var(--raised); border: 1px solid var(--edge); border-radius: 999px; padding: 3px 8px; flex: none; }
+
+      footer { margin-top: 60px; color: var(--faint); font-size: 12.5px; max-width: 68ch; line-height: 1.7; }
+      footer a { color: var(--ink-2); border-bottom: 1px solid var(--edge-soft); }
+      footer a:hover { color: var(--ink); }
+
+      @media (max-width: 880px) {
+        h1 { font-size: 27px; }
+        .featured { flex-wrap: wrap; }
+        .grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="topbar"><span class="glyph"></span><span class="brand">Switchboard</span><span class="status kicker">App Store</span></div>
-      <div class="kicker">Runs on your own AI</div>
-      <h1>Apps that bring nothing<br />but the interface.</h1>
-      <p class="sub">Every app here runs on <em class="you">your</em> Claude and <em class="you">your</em> connected tools, under consent you control — the operator never holds a key, pays for inference, or sees your data. Connect one to try it.</p>
-      <div class="cards">
-        <a class="appcard flag" href="./brandbrain.html">
-          <span class="em">🧠</span>
-          <div class="body"><div class="titlerow"><h2>brandbrain</h2><span class="badge verified">Verified</span></div>
-          <p>Find the white space for a new consumer brand — grounded, scored openings. A full app adopted to Switchboard with a lib swap; runs its real logic on your Claude.</p></div>
+      <header>
+        <span class="brand"><span class="g">S</span>Wrapp Store <span class="sub">· Switchboard</span></span>
+        <a class="get" href="https://thelastprompt.ai/switchboard/" target="_blank" rel="noreferrer">Get Switchboard ↗</a>
+      </header>
+
+      <p class="eyebrow">Runs on your own AI</p>
+      <h1>Apps that bring nothing<br />but <span class="hl">the interface.</span></h1>
+      <p class="sub-copy">
+        Every app here runs on <b>your</b> Claude and <b>your</b> connected tools, under consent you
+        control — the operator never holds a key, pays for inference, or sees your data. Connect one to try it.
+      </p>
+
+      <a class="featured" href="https://brandbrain.thelastprompt.ai/build">
+        <span class="tile">🧠</span>
+        <span>
+          <h2>brandbrain <span class="dot" title="live"></span></h2>
+          <p>Build &amp; operate consumer brands — find the white space, lock every decision with real-brand receipts, launch. The full product, running its real logic on your Claude.</p>
+        </span>
+        <span class="arrow">→</span>
+      </a>
+
+      <div class="sec-h"><h3>The founder stack</h3><span>run your brand on your own model</span></div>
+      <div class="grid">
+        <a class="card" href="https://adpulse.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #4A3208, #241802)">📈</span>
+          <span class="body"><h4>AdPulse <span class="dot" title="live"></span></h4>
+          <p>Meta ads post-mortem — paste your Ads Manager export or pull it live through your own Meta connector; your Claude finds the wasted spend and what to scale.</p></span>
         </a>
-        <a class="appcard" href="./imagegen.html">
-          <span class="em">🖼️</span>
-          <div class="body"><div class="titlerow"><h2>Prism</h2><span class="badge air">Airgapped</span></div>
-          <p>Prompt → image on your Higgsfield connector. Text + reference, each generation a per-action consent.</p></div>
+        <a class="card" href="https://adforge.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #4A2208, #240F02)">🧲</span>
+          <span class="body"><h4>AdForge <span class="dot" title="live"></span></h4>
+          <p>URL in, Meta ads out — three concepts, one recommended, rendered as a real feed ad with creative generated on your Higgsfield.</p></span>
         </a>
-        <a class="appcard" href="./adgen.html">
-          <span class="em">🎨</span>
-          <div class="body"><div class="titlerow"><h2>Ad generator</h2></div>
-          <p>Reads a website's brand with your Claude, then generates ads with your Higgsfield. Full AI + connectors.</p></div>
+        <a class="card" href="https://shelf.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #453308, #201702)">📦</span>
+          <span class="body"><h4>Shelf <span class="dot" title="live"></span></h4>
+          <p>Inventory triage — reorder-now, watch, dead weight, and the cash locked on your shelf.</p></span>
         </a>
-        <a class="appcard" href="./cartridge.html">
-          <span class="em">🕹️</span>
-          <div class="body"><div class="titlerow"><h2>Cartridge</h2></div>
-          <p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact. Remix forever.</p></div>
+        <a class="card" href="https://studio.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #4A1D0E, #260C04)">📸</span>
+          <span class="body"><h4>Studio <span class="dot" title="live"></span></h4>
+          <p>Product shots without the studio — one photo in, finished frames out, shot on your Higgsfield. The product stays exactly itself.</p></span>
         </a>
-      </div>
-      <p class="kicker" style="margin: 28px 0 10px;">The founder stack</p>
-      <div class="cards">
-        <a class="appcard" href="./adpulse.html">
-          <span class="em">📈</span>
-          <div class="body"><div class="titlerow"><h2>AdPulse</h2></div>
-          <p>Paste your Meta Ads Manager export — your Claude finds the wasted spend, the fatigued creatives, and what to scale.</p></div>
-        </a>
-        <a class="appcard" href="./adforge.html">
-          <span class="em">🧲</span>
-          <div class="body"><div class="titlerow"><h2>AdForge</h2></div>
-          <p>URL in, Meta ads out. Reads your brand, drafts three concepts, renders the winner as a real feed ad with generated creative.</p></div>
-        </a>
-        <a class="appcard" href="./shelf.html">
-          <span class="em">📦</span>
-          <div class="body"><div class="titlerow"><h2>Shelf</h2></div>
-          <p>Inventory triage — paste stock + sales, get reorder-now, dead weight, and the cash locked on your shelf.</p></div>
-        </a>
-        <a class="appcard" href="./studio.html">
-          <span class="em">📸</span>
-          <div class="body"><div class="titlerow"><h2>Studio</h2></div>
-          <p>Product shots without the studio. Drop one photo, pick a scene, your Higgsfield does the shoot.</p></div>
-        </a>
-        <a class="appcard" href="./aplus.html">
-          <span class="em">🛍️</span>
-          <div class="body"><div class="titlerow"><h2>A-Plus</h2></div>
-          <p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story, rendered as the real module stack.</p></div>
+        <a class="card" href="https://aplus.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #443A0A, #201B03)">🛍️</span>
+          <span class="body"><h4>A-Plus <span class="dot" title="live"></span></h4>
+          <p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story, rendered as the real module stack.</p></span>
         </a>
       </div>
-      <p class="kicker" style="margin: 28px 0 10px;">After hours</p>
-      <div class="cards">
-        <a class="appcard" href="./natal.html">
-          <span class="em">🪐</span>
-          <div class="body"><div class="titlerow"><h2>NATAL</h2></div>
-          <p>Your chart, read bluntly. Birth data in, sun/moon/rising and an unsentimental daily brief — on your own Claude.</p></div>
+
+      <div class="sec-h"><h3>After hours</h3><span>the fun ones</span></div>
+      <div class="grid">
+        <a class="card" href="https://natal.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #1E1E2E, #0C0C14)">🪐</span>
+          <span class="body"><h4>NATAL <span class="dot" title="live"></span></h4>
+          <p>Your chart, read bluntly — birth data in, sun/moon/rising and an unsentimental daily brief.</p></span>
         </a>
-        <a class="appcard" href="./arcana.html">
-          <span class="em">🔮</span>
-          <div class="body"><div class="titlerow"><h2>Arcana</h2></div>
-          <p>Three cards, no mercy. Ask, draw, and your Claude reads the spread you actually pulled.</p></div>
+        <a class="card" href="https://arcana.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #2E2410, #140F05)">🔮</span>
+          <span class="body"><h4>Arcana <span class="dot" title="live"></span></h4>
+          <p>Three cards, no mercy — draw a spread and your Claude reads the exact cards you pulled.</p></span>
         </a>
       </div>
+
+      <div class="sec-h"><h3>Play &amp; make</h3><span>studios and experiments</span></div>
+      <div class="grid">
+        <a class="card" href="https://cartridge.thelastprompt.ai">
+          <span class="tile" style="background: linear-gradient(135deg, #3A0E28, #1C0512)">🕹️</span>
+          <span class="body"><h4>Cartridge <span class="dot" title="live"></span></h4>
+          <p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact. Remix forever.</p></span>
+        </a>
+        <a class="card" href="./persona.html">
+          <span class="tile" style="background: linear-gradient(135deg, #431408, #200902)">🎬</span>
+          <span class="body"><h4>Cast <span class="tag">local demo</span></h4>
+          <p>An AI persona studio — creators that stay on-model across faces, scenes, and reels.</p></span>
+        </a>
+        <a class="card" href="./imagegen.html">
+          <span class="tile" style="background: linear-gradient(135deg, #1E1A4A, #0D0B24)">🖼️</span>
+          <span class="body"><h4>Prism <span class="tag">local demo</span></h4>
+          <p>Prompt → image on your Higgsfield connector, on-brand when you lend it a brand context.</p></span>
+        </a>
+        <a class="card" href="./adgen.html">
+          <span class="tile" style="background: linear-gradient(135deg, #42103A, #20071C)">🎨</span>
+          <span class="body"><h4>Ad generator <span class="tag">local demo</span></h4>
+          <p>The original demo — reads a website's brand with your Claude, then generates ads with your Higgsfield.</p></span>
+        </a>
+      </div>
+
+      <footer>
+        Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
+        your machine enforces. Open source at
+        <a href="https://github.com/sameeeeeeep/switchboard" target="_blank" rel="noreferrer">github.com/sameeeeeeep/switchboard</a>
+        — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
+      </footer>
     </div>
   </body>
 </html>

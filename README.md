@@ -92,7 +92,7 @@ project lent to that app.
 | [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
 | [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
 | [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | Wrapps + the store home — brandbrain, Prism, ad generator, **Cast** (AI persona studio), `store.html` |
+| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge |
 | [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the trust chain, the gate, and how a request flows.
