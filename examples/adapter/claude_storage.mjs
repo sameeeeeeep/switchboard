@@ -57,10 +57,25 @@ export async function bindFolder(path) {
 // wouldn't catch. Tying writes to a confirmed read closes that regardless of what the app holds.
 let workspaceRead = false;
 let vendorsRead = false;
+let workspaceLost = false; // a read was attempted and failed (provider not ready) — the grid rendered empty over real data
+
+/** Did the app's workspace load fire before the provider was ready and fail? The bootstrap checks
+ *  this after connect: if true, the page is showing an empty grid over real data and needs one
+ *  reload — regardless of which path (probe or click) the connect arrived through. */
+export function workspaceLoadLost() { return workspaceLost && !workspaceRead; }
 
 export async function readWorkspace() {
-  const raw = await storageGet(WORKSPACE_KEY); // throws if no provider → `workspaceRead` stays false
-  workspaceRead = true;                         // storage was reachable — safe to persist from here on
+  let raw;
+  try {
+    raw = await storageGet(WORKSPACE_KEY); // throws if no provider → `workspaceRead` stays false
+  } catch (err) {
+    workspaceLost = true;
+    throw err;
+  }
+  workspaceRead = true;                    // storage was reachable — safe to persist from here on
+  // A successful read means the page is showing real data — re-arm the one-per-session rehydrate
+  // guard so a FUTURE lost race in this tab can still cure itself with a reload.
+  try { sessionStorage.removeItem("sb:rehydrated"); } catch { /* headless */ }
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
 }

@@ -26,9 +26,26 @@ export function createApp(routes, { prefix = "/api" } = {}) {
   };
 }
 
-/** Browser only: patch fetch so the app's own /api/* calls dispatch to local handlers. Any other
- *  fetch is left alone (and, in the airgapped sandbox, blocked by CSP anyway). */
+/** Browser only: route the app's own /api/* calls to local handlers.
+ *
+ *  Preferred path: the build-injected HEAD preamble (see the port's overlays/layout.tsx) already
+ *  owns window.fetch from the first parsed byte and has been QUEUEING /api/* calls — async Next
+ *  chunks can hydrate and fetch before any deferred script runs, so patching fetch here was too
+ *  late on real CDNs (the app's workspace read escaped to the static host and 404'd). Hand the
+ *  preamble the dispatcher and drain its backlog; handlers that need the provider await the
+ *  whenProvider hold, so early-queued reads still land on real data.
+ *
+ *  Fallback (headless tests / preamble absent): patch fetch directly, as before. */
 export function installFetchShim(app) {
+  const dispatch = (input, init) => {
+    const raw = typeof input === "string" ? input : input.url;
+    return app.handle(new Request(raw, init));
+  };
+  if (typeof window !== "undefined" && Array.isArray(window.__sbQ)) {
+    window.__sbRoute = dispatch;
+    for (const [input, init, res, rej] of window.__sbQ.splice(0)) dispatch(input, init).then(res, rej);
+    return;
+  }
   const orig = globalThis.fetch?.bind(globalThis);
   globalThis.fetch = (input, init) => {
     const raw = typeof input === "string" ? input : input.url;

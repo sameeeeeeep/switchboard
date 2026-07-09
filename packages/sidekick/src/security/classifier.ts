@@ -56,7 +56,7 @@ const CURATED: Record<string, ToolAccess> = {
 };
 
 const WRITE_VERBS = /(create|update|delete|remove|send|pay|charge|purchase|order|set|write|move|copy|cancel|deploy|publish|revoke|transfer|update|edit|draft|post)/i;
-const READ_VERBS = /^(get|list|search|read|show|find|query|fetch|describe|preview|count)/i;
+const READ_VERBS = /^(get|list|search|read|show|find|query|fetch|describe|preview|count|insights?)/i;
 
 /** Classify a tool. Order: pinned override → curated → heuristic → default write. */
 export function classifyTool(name: string, pinned?: Record<string, ToolAccess>): ToolAccess {
@@ -65,6 +65,11 @@ export function classifyTool(name: string, pinned?: Record<string, ToolAccess>):
   // Heuristic runs on the bare tool name — the LAST `__`-delimited segment. MCP tools are
   // `mcp__<server>__<tool>`, so the tool is the final segment, not everything after the first.
   const short = name.includes("__") ? name.split("__").pop()! : name;
-  if (READ_VERBS.test(short) && !WRITE_VERBS.test(short)) return "read";
+  // Connectors often namespace their tools ("ads_get_ad_accounts", "ads_insights_performance_trend"),
+  // so a read verb may hide behind ONE leading namespace token. The write-verb guard always runs
+  // against the FULL bare name, so stripping the namespace can widen only the read side — anything
+  // containing a write verb anywhere stays write, and unknown shapes still default to write.
+  const deNamespaced = short.replace(/^[a-z0-9]+_/i, "");
+  if (!WRITE_VERBS.test(short) && (READ_VERBS.test(short) || READ_VERBS.test(deNamespaced))) return "read";
   return "write"; // default-deny
 }

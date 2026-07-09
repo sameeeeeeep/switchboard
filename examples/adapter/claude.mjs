@@ -17,8 +17,13 @@ let _resolveReady;
 const _ready = new Promise((r) => { _resolveReady = r; });
 export function setProvider(p) { provider = p; if (p && _resolveReady) { _resolveReady(p); _resolveReady = null; } }
 export function getProvider() { return provider; }
-/** Resolve with the provider once set, or with the current value after `timeoutMs` (default 3s). */
-export function whenProvider(timeoutMs = 3000) {
+/** Resolve with the provider once set, or with the current value after `timeoutMs`. The bootstrap
+ *  always DECIDES — setProvider on a grant, abandonProvider otherwise — so this timer is only a
+ *  backstop against a decision that never arrives, not the expected release path. It must outlast
+ *  the slowest legitimate decision: a cold extension service worker re-authing its daemon socket
+ *  (~6s) before the grant probe can answer. 3s lost that race and rendered an empty workspace over
+ *  real data; the no-extension case is still released fast via abandonProvider (~1.5s). */
+export function whenProvider(timeoutMs = 15000) {
   if (provider) return Promise.resolve(provider);
   return Promise.race([_ready, new Promise((r) => setTimeout(() => r(provider), timeoutMs))]);
 }
