@@ -95,6 +95,7 @@ Hard requirements — every one matters:
 - Juice: particles, hit flashes, subtle screen shake, a little WebAudio blip on events. Small file, big feel.
 - The page must never scroll; the canvas scales to fit the window (letterboxed) and stays crisp.
 - No console errors. No TODOs. No placeholder art comments — finished code only.
+- Keep it TIGHT: one perfect mechanic beats three rough ones. Target under ~350 lines / ~12kb — ship the smallest game that feels great.
 
 Respond with ONLY the html document. No prose, no markdown fences.`;
 
