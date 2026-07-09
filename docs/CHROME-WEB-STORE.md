@@ -77,8 +77,12 @@ Source: https://github.com/sameeeeeeep/switchboard (MIT)
 | `downloads` | Lets the user export their own local activity log as a JSON file. |
 | `sidePanel` | The side panel is the product's control surface: per-site grants, consent prompts, and the kill switch. |
 | Host permissions `http://127.0.0.1/*`, `http://localhost/*` | A WebSocket to the user's own local daemon. The extension communicates with no external host. |
-| Content script on `<all_urls>` | The core product function: inject the `window.claude` provider so any site the user chooses can request access. The script only installs the provider and relays request/response messages; it reads no page content, and sites get nothing until the user approves a per-site consent prompt rendered by the extension. |
+| Content script on `thelastprompt.ai`, `*.thelastprompt.ai`, `sameeeeeeep.github.io`, localhost | Injects the `window.claude` provider **only on the Switchboard wrapp store's own domains** (each wrapp is a `*.thelastprompt.ai` subdomain) and localhost for development. The script only installs the provider and relays request/response messages; it reads no page content, and pages get nothing until the user approves a per-site consent prompt rendered by the extension. No broad host access is requested. |
 | **Remote code** | None. All JavaScript is bundled in the package. |
+
+> Deliberately **not** `<all_urls>`: the store's domains are the trust boundary for v0.1. Arbitrary
+> third-party wrapp domains are future work via `activeTab` (inject on explicit icon click) +
+> `optional_host_permissions` — never a blanket grant.
 
 ## 5. Assets
 
@@ -98,8 +102,10 @@ no other network connections. Without the daemon the extension idles ("not
 paired") — to test end-to-end: git clone
 https://github.com/sameeeeeeep/switchboard && npm install && npm run build &&
 npm run sidekick, then paste the printed token into the extension.
-The <all_urls> content script only injects a provider object (window.claude);
-sites receive no capability until the user approves a per-site consent prompt
+The content script runs ONLY on the product's own domains (thelastprompt.ai
+and its wrapp subdomains, sameeeeeeep.github.io, and localhost for
+development) and only injects a provider object (window.claude); pages
+receive no capability until the user approves a per-site consent prompt
 rendered inside the extension's side panel. Docs:
 https://thelastprompt.ai/switchboard/
 ```

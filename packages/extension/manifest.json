@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Switchboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bring your own AI. Lend any website your Claude, tools, context and data — under per-site consent. MetaMask, but for AI.",
   "icons": {
     "16": "icons/icon16.png",
@@ -26,7 +26,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://thelastprompt.ai/*",
+        "https://*.thelastprompt.ai/*",
+        "https://sameeeeeeep.github.io/*",
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
       "js": ["dist/content.js"],
       "run_at": "document_start"
     }
@@ -34,7 +40,13 @@
   "web_accessible_resources": [
     {
       "resources": ["dist/inject.js"],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "https://thelastprompt.ai/*",
+        "https://*.thelastprompt.ai/*",
+        "https://sameeeeeeep.github.io/*",
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ]
     }
   ],
   "permissions": ["storage", "tabs", "downloads", "sidePanel"],
