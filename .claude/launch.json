@@ -41,6 +41,18 @@
         "examples/brandbrain-port/serve.mjs"
       ],
       "port": 5178
+    },
+    {
+      "name": "tlp",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5179",
+        "--directory",
+        "/Users/sameeprehlan/Documents/Projects/the-last-prompt"
+      ],
+      "port": 5179
     }
   ]
 }
