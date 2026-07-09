@@ -89,7 +89,7 @@ const STYLE = `
 `;
 
 export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {}): ConnectChipHandle {
-  const installUrl = opts.installUrl ?? "https://relay.dev/install";
+  const installUrl = opts.installUrl ?? "https://thelastprompt.ai/switchboard/";
   const host = document.createElement("div");
   host.style.display = "inline-block";
   const root = host.attachShadow({ mode: "open" });

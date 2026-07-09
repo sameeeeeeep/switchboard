@@ -7,7 +7,7 @@ import { whenRelayReady, mountConnect, BYOPErrorCode } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
 const SHELF_KEY = "cartridge:shelf";
-const INSTALL_URL = "https://sameeeeeeep.github.io/switchboard/";
+const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 
 let relay = null;
 let cart = null;          // { id, title, html, version, meta:{genre,vibe,diff,idea,twist} }

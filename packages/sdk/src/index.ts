@@ -173,7 +173,7 @@ export class Relay {
   }
 }
 
-const DEFAULT_INSTALL_URL = "https://relay.dev/install";
+const DEFAULT_INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 
 /** Get the Relay client, or a `{ installed: false }` sentinel with an install link. Poll-free:
  *  the provider is injected at document_start, so it's present by the time app code runs. */
