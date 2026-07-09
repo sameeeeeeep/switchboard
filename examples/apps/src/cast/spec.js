@@ -18,16 +18,16 @@
 export const STAGES = [
   {
     id: "reference",
-    title: "Reference",
-    kicker: "Ground the account in something real",
-    blurb: "Point Cast at a niche and a few accounts you admire. A research agent reads them and grounds every option that follows — so the persona isn't generic, it's a considered answer to a real corner of Instagram.",
+    title: "Start",
+    kicker: "One thing to build from",
+    blurb: "You gave Cast one thing — a line, a reference account, or a photo. This is the brief a research agent grounded from it; edit anything here and everything downstream is judged against it.",
     advance: "brief locked", // reference.locked === true
   },
   {
     id: "foundation",
     title: "Foundation",
     kicker: "Decide who this account is",
-    blurb: "Every facet of the account — the person, their voice, the world they film in, who they're for, what they post — proposed as distinct directions. You lock one per facet; each lock sharpens the next. This is the persona's spec.",
+    blurb: "Every facet of the account — the person, their voice, the world they film in, who they're for, what they post — proposed as distinct directions. Cast locks the recommended one as options land; tap any other card to overrule it. Each lock sharpens the next. This is the persona's spec.",
     advance: "all facets locked",
   },
   {
@@ -81,6 +81,7 @@ export const FACETS = [
     deps: [],
     fields:
       "Propose distinct HUMAN creators who could credibly own this niche. Each card: title = a real first+last name; subtitle = their one-line identity (age-ish, where they are, what they did before); body = why this person is a sharp fit for the niche in one sentence; chips = 3 personality traits. Never name them after any brand. Make the three genuinely different people, not variations of one.",
+    steer: "e.g. 'make them Mumbai-based, ex-engineer' — or write your exact person",
   },
   {
     id: "voice",
@@ -93,6 +94,7 @@ export const FACETS = [
     deps: ["persona"],
     fields:
       "Propose distinct on-camera voices for this exact person. Each card: title = the voice in 2-3 words (e.g. 'Dry & deadpan'); body = one sentence on how they sound; bullets = 2 example caption openers written in that voice; chips = 3 tone words. The voices must plausibly belong to the locked person.",
+    steer: "e.g. 'drier, faster, no emojis' — or describe your exact voice",
   },
   {
     id: "aesthetic",
@@ -105,6 +107,7 @@ export const FACETS = [
     deps: ["persona"],
     fields:
       "Propose distinct visual signatures the account is shot in. Each card: title = the look in 2-3 words; body = one sentence on grade + framing + light; palette = 3-4 named hex swatches that define the grade; chips = 2 texture/mood words. These are directable image-generation styles, so be concrete about colour and light.",
+    steer: "e.g. 'shot on iPhone, warmer, no studio look'",
   },
   {
     id: "setting",
@@ -117,6 +120,7 @@ export const FACETS = [
     deps: ["persona", "aesthetic"],
     fields:
       "Propose distinct home-base worlds this person films in, consistent with their identity and the locked aesthetic. Each card: title = the place in 2-3 words (e.g. 'Sunlit Lisbon flat'); body = one sentence describing the space and light; bullets = 3 recurring backdrops within it (kitchen counter, balcony, etc). Must be a plausible single lived-in world, not a mood board.",
+    steer: "e.g. 'a small Bangalore flat, lots of plants' — or your real space",
   },
   {
     id: "audience",
@@ -129,6 +133,7 @@ export const FACETS = [
     deps: ["persona", "voice"],
     fields:
       "Propose distinct core-follower profiles this account is built to win. Each card: title = the follower in a phrase; subtitle = a rough demographic; body = one sentence on what they come to the account FOR; chips = 2 things they'd double-tap. Pick the audience the locked person + voice would actually pull.",
+    steer: "e.g. 'founders and PMs, not hobbyists'",
   },
   {
     id: "pillars",
@@ -141,6 +146,7 @@ export const FACETS = [
     deps: ["persona", "voice", "audience"],
     fields:
       "Propose recurring content pillars for this account — the repeatable themes it posts against. Use current web signal for what's landing in this niche. Each card: title = the pillar in 2-4 words; body = one sentence on what a post in this pillar looks like; chips = 2 example post ideas. Founder picks 3-4. These become the spine of the content calendar, so make them distinct and productive.",
+    steer: "e.g. 'add a weekly myth-busting series' — or add your own pillar",
   },
 ];
 export const FACET_IDS = FACETS.map((f) => f.id);
@@ -168,6 +174,7 @@ export function facetContext(account) {
   const brand = brandLine(account);
   if (brand) lines.push(brand);
   if (ref.brief) lines.push(`The account's brief (the founder's starting intent): ${ref.brief}`);
+  if (ref.fromPhoto && account.assets?.face?.url) lines.push("The founder supplied a real photo of the person — the face is already locked. Every persona option must plausibly BE the person in that photo; do not invent a different look.");
   if (ref.niche) lines.push(`Niche: ${ref.niche}.`);
   if (ref.inspirations?.length) lines.push(`Reference accounts the founder admires: ${ref.inspirations.map((i) => i.handle).filter(Boolean).join(", ")}.`);
   if (ref.moodNotes) lines.push(`Mood / direction notes: ${ref.moodNotes}`);
@@ -212,11 +219,13 @@ export function facetValues(account) {
 // upstream locks. Returns a prompt whose ONLY output is a JSON array of option cards.
 export function facetPrompt(account, facet) {
   const ctx = facetContext(account);
+  const note = account.foundation?.steers?.[facet.id];
   const shape = `{"title","subtitle"?,"body"?,"bullets"?:[..],"chips"?:[..],"palette"?:[{"name","hex"}],"recommended"?:bool}`;
   return [
     ctx,
     "",
     `Now generate ${facet.count} DISTINCT options for the facet "${facet.title}". ${facet.fields}`,
+    note ? `The founder's steering note for this facet — every option must honour it: "${note}"` : "",
     facet.web ? "Use WebSearch for current, real signal in this niche before answering." : "Answer from what's already decided — do not contradict a lock.",
     facet.select === "one" ? "Mark exactly one option as recommended." : "Do not mark any as recommended; the founder picks several.",
     `Reply with ONLY a JSON array of ${facet.count} objects shaped ${shape}. No prose.`,

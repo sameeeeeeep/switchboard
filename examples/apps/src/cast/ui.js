@@ -102,7 +102,7 @@ export function gateBar(account, stageId, onContinue) {
   return bar;
 }
 function advanceHint(stage) {
-  return { "brief locked": "Confirm the brief to begin.", "all facets locked": "Lock a choice for every facet.", "face + setting approved": "Approve the face and the setting.", "≥1 slot approved": "Approve at least one calendar slot.", "≥1 script approved": "Approve at least one script.", "done": "" }[stage.advance] || stage.advance;
+  return { "brief locked": "Give Cast one thing — a line, an account, or a photo.", "all facets locked": "Lock a choice for every facet.", "face + setting approved": "Approve the face and the setting.", "≥1 slot approved": "Approve at least one calendar slot.", "≥1 script approved": "Approve at least one script.", "done": "" }[stage.advance] || stage.advance;
 }
 
 // A stage header: eyebrow kicker + title + blurb.

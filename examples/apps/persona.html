@@ -92,6 +92,31 @@
       .pbar { height: 5px; background: var(--raised); border-radius: 999px; margin-top: 12px; overflow: hidden; }
       .pbar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .35s ease; }
 
+      /* the one-action entry */
+      .entry { max-width: 640px; margin: 6vh auto 0; padding: 26px 28px 28px; }
+      .entry .et { font: 600 30px/1.1 var(--disp); letter-spacing: -0.02em; margin: 10px 0; color: var(--ink); }
+      .entry .ed { color: var(--ink-dim); font-size: 14px; margin: 0 0 18px; max-width: 52ch; }
+      .modes { display: inline-flex; gap: 4px; background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; padding: 4px; margin-bottom: 16px; }
+      .mode { border: 0; background: transparent; color: var(--ink-dim); border-radius: 999px; padding: 8px 14px; font: 500 12.5px/1 var(--body); cursor: pointer; }
+      .mode:hover { color: var(--ink); }
+      .mode.on { background: var(--accent); color: var(--page); font-weight: 600; }
+      .entryline { margin-bottom: 12px; }
+      .camwell { position: relative; width: 100%; max-width: 320px; margin: 0 auto; aspect-ratio: 1; border-radius: var(--r-lg); border: 1px dashed var(--edge); background: var(--inset); overflow: hidden; display: grid; place-items: center; }
+      .camwell:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+      .camwell video { display: none; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); grid-area: 1 / 1; }
+      .camwell .camidle { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px; grid-area: 1 / 1; }
+      .camwell .dd { font: 400 12.5px/1.5 var(--body); color: var(--ink-faint); max-width: 34ch; text-align: center; }
+      .camwell.live { border-style: solid; border-color: var(--accent); }
+      .camwell.live video { display: block; }
+      .camwell.live .camidle { display: none; }
+      .shutter { display: none; position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); width: 54px; height: 54px; border-radius: 50%; border: 4px solid rgba(255,255,255,.92); background: var(--accent); cursor: pointer; }
+      .shutter:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); }
+      .camwell.live .shutter { display: block; }
+      .uploadrow { text-align: center; font: 400 12.5px/1 var(--body); color: var(--ink-faint); margin-top: 10px; }
+      .uploadrow button { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+      .briefphoto { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .briefphoto img { width: 56px; height: 56px; border-radius: var(--r-md); object-fit: cover; border: 1px solid var(--edge); }
+
       /* stage head */
       .stagehead { margin-bottom: 18px; }
       .stagehead h2 { font: 600 27px/1.08 var(--disp); letter-spacing: -0.02em; margin: 8px 0 8px; color: var(--ink); }
@@ -143,6 +168,8 @@
       .opt .ometa b { color: var(--ink-sec); font-weight: 600; }
       .opt .use { margin-top: auto; padding-top: 12px; font: 500 12px/1 var(--body); color: var(--ink-sec); }
       .opt.sel .use, .opt.rec .use { color: var(--accent); }
+
+      .fsteer { margin-top: 12px; }
 
       /* facet card (Foundation assembly board) */
       .card.facet .fhead { display: flex; align-items: center; justify-content: space-between; }
@@ -279,9 +306,9 @@
       <!-- pre-connect -->
       <div class="hero" id="hero">
         <h1>Cast an account.<br />Ship it stage by stage.</h1>
-        <p>Cast builds a whole Instagram presence as a <b>gated pipeline</b>: the model proposes every option — the person, the voice, the world, the plan — and <b>you lock each one</b> before it advances. Every choice becomes context for the next. Produced on <b>your</b> Claude and Higgsfield; each persona is a <b>context you own</b>. Connect Switchboard to start.</p>
+        <p>Give Cast <b>one thing</b> — a line, a reference account, or a photo — and it builds a whole Instagram presence as a <b>gated pipeline</b>: the model proposes every option — the person, the voice, the world, the plan — and <b>you lock each one</b> before it advances. Produced on <b>your</b> Claude and Higgsfield; each persona is a <b>context you own</b>. Connect Switchboard to start.</p>
         <div class="flow">
-          <span><b>1</b> Reference</span><span><b>2</b> Foundation</span><span><b>3</b> Base assets</span><span><b>4</b> Calendar</span><span><b>5</b> Scripts</span><span><b>6</b> Produce</span>
+          <span><b>1</b> Start</span><span><b>2</b> Foundation</span><span><b>3</b> Base assets</span><span><b>4</b> Calendar</span><span><b>5</b> Scripts</span><span><b>6</b> Produce</span>
         </div>
       </div>
 

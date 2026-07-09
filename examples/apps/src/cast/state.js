@@ -19,7 +19,7 @@ export function blankAccount() {
     updatedAt: Date.now(),
     brand: null, // the ONE brand context lent from Switchboard — a {id,name,kind,data} snapshot
     reference: { brief: "", niche: "", inspirations: [], moodNotes: "", locked: false },
-    foundation: { locks: {}, cards: {}, more: {}, auto: {} }, // more: facetId → extra picks for select:many
+    foundation: { locks: {}, cards: {}, more: {}, auto: {}, steers: {} }, // more: facetId → extra picks for select:many; steers: facetId → the founder's steering note
     assets: { face: null, setting: null, wardrobe: [], cast: [] }, // each asset: {id?,url,status,approved,prompt}
     calendar: { slots: [] },  // {id,date,pillar,title,angle,source,status,approved}
     scripts: {},              // slotId → {beats:[{shot,line}],approved,status}
@@ -174,7 +174,7 @@ export function progress(a) {
 // Old Cast stored "persona:*" as {name,niche,vibe,story,look,wardrobe,locations,cast}. If we find one
 // (or a half-built new doc), fold it forward so nobody loses work.
 export function migrate(doc) {
-  if (doc && doc.stage && doc.foundation) return doc; // already an Account
+  if (doc && doc.stage && doc.foundation) { doc.foundation.steers = doc.foundation.steers || {}; return doc; } // already an Account
   const a = blankAccount();
   if (!doc) return a;
   a.id = doc.id || a.id;

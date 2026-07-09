@@ -12,13 +12,29 @@ import { $, el, clear, optionCard, optionGrid, steer, gateBar, stageHead, loadin
 // A single running reel-preview timer, cleared whenever a stage (re)renders so it never leaks.
 let reelTimer = null;
 export function stopReel() { if (reelTimer) { clearInterval(reelTimer); reelTimer = null; } }
+// The live camera stream for the photo entry — stopped on every stage (re)render so it never lingers.
+let camStream = null;
+function stopCam() { if (camStream) { for (const t of camStream.getTracks()) t.stop(); camStream = null; } }
 
-// ============================================================ 1 · REFERENCE
+// ============================================================ 1 · START (the one-action entry)
+// The entry is ONE action: a line, a reference account, or a photo. Whichever the founder gives locks
+// the brief on the spot and drops them into Foundation, where the board starts proposing on its own —
+// brandbrain's shape: one input, everything else made (and approved) inside. The grounding research
+// (niche + mood) runs in the background so it never blocks the action.
+let entryMode = "describe";
 export function renderReference(root, ctx) {
   const a = ctx.account, r = a.reference;
+  if (!r.locked) return renderEntry(root, ctx);
+  // ---- already begun: the grounded brief lives INSIDE the app, editable, never a gate again ----
   root.append(stageHead("reference"));
   const card = el("div", "card");
   card.append(el("span", "eyebrow", "The brief"));
+  if (r.fromPhoto && a.assets?.face?.url) {
+    const ph = el("div", "briefphoto");
+    ph.append(Object.assign(el("img"), { src: a.assets.face.url, alt: "The uploaded photo" }));
+    ph.append(el("span", "empty-note", "Started from this photo — it's locked as the face."));
+    card.append(ph);
+  }
   // one-line brief
   const brief = steer({
     placeholder: "Describe the account in a line — 'a plain-spoken skincare creator in Lisbon'",
@@ -72,10 +88,128 @@ export function renderReference(root, ctx) {
   }
 }
 
+// The one-action entry screen. Three ways in, one action each: type a line, name a reference
+// account, or upload a photo (choosing the file IS the action). No secondary fields, no confirm.
+function renderEntry(root, ctx) {
+  const r = ctx.account.reference;
+  const card = el("div", "card entry");
+  card.append(el("span", "eyebrow", "Start"));
+  card.append(el("h2", "et", "Give Cast one thing."));
+  card.append(el("p", "ed", "A line, an account you admire, or a photo. Cast makes everything else inside — the person, the voice, the world, the plan — and you approve every step."));
+
+  const seg = el("div", "modes");
+  for (const [id, label] of [["describe", "✏️ A line"], ["reference", "＠ An account"], ["photo", "📷 A photo"]]) {
+    const b = el("button", "mode" + (entryMode === id ? " on" : ""), label);
+    b.onclick = () => { entryMode = id; ctx.rerender(); };
+    seg.append(b);
+  }
+  card.append(seg);
+
+  if (entryMode === "describe") {
+    card.append(steer({
+      placeholder: "Describe the account in a line — 'a plain-spoken skincare creator in Lisbon'",
+      value: r.brief,
+      cta: "✨ Make it →",
+      chips: ["a Gen-Z skincare creator in Lisbon", "a streetwear sneakerhead in Seoul", "a cozy home-cook mum", "a no-BS fitness coach", "a minimalist interiors creator"],
+      onSubmit: (v) => { if (v) begin(ctx, { brief: v }); },
+    }));
+  } else if (entryMode === "reference") {
+    card.append(steer({
+      placeholder: "@handle of an account whose feel you admire",
+      cta: "✨ Make it →",
+      chips: ["@dailyoriginalvids", "@softlife.journal", "@minimal.kitchen"],
+      onSubmit: (v) => { if (v) begin(ctx, { handle: v }); },
+    }));
+  } else {
+    // Photo entry: name yourself in a line (optional), then CLICK the photo — the shutter is the
+    // action. The frame is square-cropped from the camera; the preview is mirrored, the capture isn't.
+    const line = Object.assign(el("input"), { type: "text", placeholder: "Who is this? — 'Sameep — I talk about AI apps and how to use them'", value: r.brief || "" });
+    const lrow = el("div", "steerrow entryline"); lrow.append(el("span", "spark", "✨"), line); card.append(lrow);
+
+    const well = el("div", "camwell");
+    const idle = el("div", "camidle");
+    const openBtn = el("button", "genbtn", "📷 Open the camera");
+    idle.append(openBtn, el("span", "dd", "Click a photo of the person — their face becomes the locked identity, and every post is shot on it."));
+    const video = Object.assign(el("video"), { autoplay: true, playsInline: true, muted: true });
+    const shutter = el("button", "shutter"); shutter.title = "Click the photo";
+    well.append(idle, video, shutter);
+
+    const start = (photo) => begin(ctx, { photo, brief: line.value.trim() });
+    openBtn.onclick = async () => {
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 } }, audio: false });
+        video.srcObject = camStream; well.classList.add("live");
+      } catch { openBtn.textContent = "Camera unavailable — upload below"; openBtn.disabled = true; }
+    };
+    shutter.onclick = () => {
+      const s = Math.min(video.videoWidth, video.videoHeight); if (!s) return;
+      const c = document.createElement("canvas"); c.width = c.height = Math.min(720, s);
+      c.getContext("2d").drawImage(video, (video.videoWidth - s) / 2, (video.videoHeight - s) / 2, s, s, 0, 0, c.width, c.height);
+      const shot = c.toDataURL("image/png");
+      stopCam();
+      start(shot);
+    };
+
+    const file = Object.assign(el("input"), { type: "file", accept: "image/*", hidden: true });
+    const take = async (f) => {
+      if (!f) return;
+      const raw = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(f); });
+      start(await gen.downscale(raw));
+    };
+    file.addEventListener("change", () => take(file.files?.[0]));
+    well.addEventListener("dragover", (e) => e.preventDefault());
+    well.addEventListener("drop", (e) => { e.preventDefault(); take(e.dataTransfer?.files?.[0]); });
+    const up = el("div", "uploadrow");
+    const ub = el("button", null, "upload a photo instead"); ub.onclick = () => file.click();
+    up.append(document.createTextNode("or "), ub, document.createTextNode(" · or drag one onto the frame"));
+    card.append(well, up, file);
+  }
+  root.append(card);
+}
+
+// The single entry action: whatever the founder gave locks the brief and drops them into Foundation,
+// where the assembly board starts generating on its own. Grounding fills niche/mood in the background.
+function begin(ctx, { brief, handle, photo }) {
+  const a = ctx.account, r = a.reference;
+  if (brief) r.brief = brief;
+  if (handle) { r.inspirations = [{ handle, note: "" }]; r.brief = r.brief || `an account with the feel of ${handle}`; }
+  if (photo) { a.assets.face = { url: photo, status: "done", approved: true, source: "upload" }; r.fromPhoto = true; } // brief stays the founder's line (or grounding fills it)
+  r.locked = true;
+  ctx.save(); ctx.go("foundation");
+  groundInBackground(ctx);
+}
+
+async function groundInBackground(ctx) {
+  const a = ctx.account, r = a.reference;
+  if (r.niche && r.moodNotes) return;
+  if (ctx.mock) { r.niche = r.niche || deriveNiche(r.brief); r.moodNotes = r.moodNotes || "warm, plain-spoken, considered"; ctx.save(); ctx.rerender(); return; }
+  try {
+    const attachments = r.fromPhoto && a.assets.face?.url ? [{ handle: "face", filename: "face.png", contentType: "image/png", dataUrl: a.assets.face.url }] : undefined;
+    const ask = attachments
+      ? `A founder photographed the person their new Instagram account is built around (attached as "face").${r.brief ? ` The founder says: "${r.brief}".` : ""} Study the photo. `
+      : `A founder wants to build an Instagram account: "${r.brief}".${r.inspirations?.length ? " Reference accounts they admire: " + r.inspirations.map((i) => i.handle).join(", ") + "." : ""} Use WebSearch to understand this corner of Instagram. `;
+    const obj = await gen.streamJsonObject(ctx.relay, ask + `Reply with ONLY JSON {"brief": "one line for the account", "niche": "...", "mood": "one line on tone & aesthetic"}.`, { attachments });
+    if (obj) {
+      if (!r.brief) r.brief = obj.brief || ""; // never overwrite the founder's own line
+      r.niche = obj.niche || r.niche; r.moodNotes = obj.mood || r.moodNotes;
+      ctx.save(); ctx.rerender();
+    }
+  } catch { /* grounding is best-effort; the fields stay editable inside */ }
+}
+
 // ============================================================ 2 · FOUNDATION (the assembly board)
 export function renderFoundation(root, ctx) {
   const a = ctx.account;
   root.append(stageHead("foundation"));
+  // The entry was ONE action, so the board makes the rest itself: any facet whose deps are locked
+  // and that has nothing yet starts generating on its own; a lock then wakes its dependents.
+  // Deferred to a microtask so runFacet's rerender never re-enters this render mid-append; a facet
+  // that failed leaves cards=[] (not undefined), so a failure never re-kicks in a loop.
+  queueMicrotask(() => {
+    for (const facet of FACETS) {
+      if (!a.foundation.locks[facet.id] && !a.foundation.cards[facet.id] && !ctx.loading.has(facet.id) && facetUnlocked(a, facet.id)) runFacet(facet, ctx);
+    }
+  });
   for (const facet of FACETS) root.append(facetCard(facet, ctx));
   root.append(gateBar(a, "foundation", ctx.go));
 }
@@ -101,17 +235,63 @@ function facetCard(facet, ctx) {
   if (status === "blocked") { card.append(el("div", "empty-note", `Locks first: ${facet.deps.map((d) => facetAt(d).title).join(", ")}.`)); return card; }
   if (status === "researching") { const g = el("div", "opts"); for (let i = 0; i < facet.count; i++) g.append(loadingCard(facet.web ? "researching…" : "thinking…")); card.append(g); return card; }
 
-  const cards = fnd.cards[facet.id] || (lock ? [lock, ...(fnd.more[facet.id] || [])] : []);
-  if (!cards.length) { card.append(el("div", "empty-note", "Generate options to choose a direction.")); return card; }
+  // The grid always includes what's chosen, even when it isn't one of the generated cards — a custom
+  // "Lock mine" answer must show up selected, not vanish.
+  const genCards = fnd.cards[facet.id];
+  let cards = genCards || [];
+  for (const c of [lock, ...(fnd.more[facet.id] || [])].filter(Boolean)) if (!cards.some((x) => x.id === c.id)) cards = [c, ...cards];
+  if (!cards.length) {
+    card.append(el("div", "empty-note", genCards ? "Nothing came back — steer below and regenerate, or write your own." : "Generate options to choose a direction."));
+    card.append(steerRow(facet, ctx, status));
+    return card;
+  }
   const picked = new Set([lock?.id, ...(fnd.more[facet.id] || []).map((c) => c.id)].filter(Boolean));
   const grid = optionGrid(cards, {
     isSelected: (c) => picked.has(c.id),
     pickLabel: facet.select === "many" ? "Add pillar +" : "Lock this →",
-    onPick: (c) => { lockFacet(a, facet.id, c); ctx.save(); ctx.rerender(); },
+    onPick: (c) => { relock(a, facet.id, c); ctx.save(); ctx.rerender(); },
   });
   card.append(grid);
+  card.append(steerRow(facet, ctx, status));
+  if (lock && fnd.auto[facet.id]) card.append(el("div", "note", "✨ Cast locked the recommended direction — tap another card, steer, or write your own to overrule it."));
   if (facet.select === "many" && picked.size) card.append(el("div", "note", `${picked.size} pillar${picked.size === 1 ? "" : "s"} picked — lock 3-4 for a strong calendar.`));
   return card;
+}
+// brandbrain's "never a blank box", per facet: steer the regeneration with a note, or lock your own
+// words as the answer outright. The note persists on the account and threads into every regeneration
+// (spec.facetPrompt), so a steer isn't a one-off — it becomes part of the facet's brief.
+function steerRow(facet, ctx, status) {
+  const a = ctx.account, fnd = a.foundation;
+  const steers = fnd.steers || (fnd.steers = {});
+  const row = el("div", "steerrow fsteer");
+  row.append(el("span", "spark", "✎"));
+  const inp = Object.assign(el("input"), { type: "text", placeholder: facet.steer || "Steer the options, or write your own…", value: steers[facet.id] || "" });
+  inp.addEventListener("input", () => { steers[facet.id] = inp.value; });
+  const reg = el("button", "mini", "↻ Steer options");
+  reg.disabled = status === "researching";
+  reg.onclick = () => { steers[facet.id] = inp.value.trim(); ctx.save(); runFacet(facet, ctx); };
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && !reg.disabled) reg.onclick(); });
+  const mine = el("button", "genbtn", facet.select === "many" ? "Add mine +" : "Lock mine →");
+  mine.onclick = () => {
+    const v = inp.value.trim(); if (!v) { inp.focus(); return; }
+    relock(a, facet.id, ownCard(v));
+    steers[facet.id] = ""; ctx.save(); ctx.rerender();
+  };
+  row.append(inp, reg, mine);
+  return row;
+}
+function ownCard(v) {
+  const short = v.length <= 60;
+  return { id: newId(), title: short ? v : v.slice(0, 57) + "…", body: short ? undefined : v, chips: ["yours"], custom: true };
+}
+// A human (re)lock: lock the card, then clear any AUTO-locked dependents whose options the change
+// invalidated — autopilot regenerates and re-locks them against the new truth. A dependent the human
+// locked themselves is kept and simply goes stale, exactly as before.
+function relock(a, facetId, card) {
+  const fnd = a.foundation;
+  for (const d of lockFacet(a, facetId, card)) {
+    if (fnd.auto[d] && !fnd.cards[d]) { delete fnd.locks[d]; delete fnd.more[d]; delete fnd.auto[d]; }
+  }
 }
 async function runFacet(facet, ctx) {
   const a = ctx.account;
@@ -120,8 +300,24 @@ async function runFacet(facet, ctx) {
     const cards = ctx.mock ? mockFacet(facet, a) : await gen.generateCards(ctx.relay, facetPrompt(a, facet), { web: facet.web });
     if (facet.select === "one" && cards.length && !cards.some((c) => c.recommended)) cards[0].recommended = true;
     a.foundation.cards[facet.id] = cards;
-  } catch { a.foundation.cards[facet.id] = a.foundation.cards[facet.id] || []; }
+    autoLock(facet, ctx);
+  } catch (e) { console.warn("[cast] facet generation failed:", facet.id, e); a.foundation.cards[facet.id] = a.foundation.cards[facet.id] || []; }
   ctx.loading.delete(facet.id); ctx.save(); ctx.rerender();
+}
+// Autopilot: the entry was ONE action, so Cast locks the recommended direction itself the moment the
+// options land (top 3 for select:many) and marks it auto. The human overrules by tapping another
+// card, steering, or writing their own — any manual lock clears the auto flag, and autopilot never
+// touches a facet the human locked. A steer on an auto-locked facet replaces the auto pick with the
+// new recommendation, cascading so downstream auto decisions re-run against it.
+function autoLock(facet, ctx) {
+  const a = ctx.account, fnd = a.foundation;
+  const cards = fnd.cards[facet.id] || [];
+  const humanLocked = fnd.locks[facet.id] && !fnd.auto[facet.id];
+  if (humanLocked || !cards.length) return;
+  if (fnd.auto[facet.id]) { delete fnd.locks[facet.id]; delete fnd.more[facet.id]; } // replace the previous auto pick
+  if (facet.select === "many") for (const c of cards.slice(0, 3)) relock(a, facet.id, c);
+  else relock(a, facet.id, cards.find((c) => c.recommended) || cards[0]);
+  fnd.auto[facet.id] = true;
 }
 
 // ============================================================ 3 · BASE ASSETS
@@ -129,6 +325,10 @@ export function renderAssets(root, ctx) {
   const a = ctx.account;
   root.append(stageHead("assets"));
   const vals = facetValues(a);
+  // Autopilot: the gate assets start generating on arrival (a photo-entry face is already approved);
+  // the human still approves each one. genAsset sets the record synchronously, so re-renders can't
+  // double-kick, and a failed record ("fail") never re-kicks.
+  queueMicrotask(() => { for (const spec of ASSETS) if (spec.gate && spec.one && !a.assets[spec.id]) genAsset(spec, spec.seed(vals), ctx); });
   for (const spec of ASSETS) root.append(assetCard(spec, vals, ctx));
   root.append(gateBar(a, "assets", ctx.go));
 }
@@ -200,13 +400,18 @@ export function renderCalendar(root, ctx) {
   const a = ctx.account;
   root.append(stageHead("calendar"));
   const pillars = pillarList(a);
+  // Autopilot: the first plan proposes itself on arrival; the human approves slots into the calendar.
+  // `_proposed` stays undefined until a run finishes (a failed run leaves []), so this fires once.
+  if (a.calendar._proposed === undefined && !(a.calendar.slots || []).length && !ctx.loading.has("plan")) queueMicrotask(() => proposePlan(ctx));
   const research = el("div", "card");
   research.append(el("span", "eyebrow", "Research → plan"));
   research.append(el("p", "empty-note", `A research agent proposes dated posts across your ${pillars.length} pillar${pillars.length === 1 ? "" : "s"}, using what's trending now. Approve the ones you want.`));
-  const btn = el("button", "primary", "✨ Propose a content plan");
+  const btn = el("button", "primary", a.calendar._proposed?.length ? "✨ Propose more" : "✨ Propose a content plan");
+  btn.disabled = ctx.loading.has("plan");
   btn.onclick = () => proposePlan(ctx);
   research.append(btn);
   const props = el("div", "topics"); props.id = "planProps";
+  if (ctx.loading.has("plan")) for (let i = 0; i < 3; i++) props.append(loadingCard("researching the niche…"));
   (a.calendar._proposed || []).forEach((tp) => props.append(topicRow(tp, ctx)));
   research.append(props);
   root.append(research);
@@ -242,7 +447,7 @@ function slotRow(s, ctx) {
 }
 async function proposePlan(ctx) {
   const a = ctx.account;
-  const box = $("planProps"); clear(box); for (let i = 0; i < 3; i++) box.append(loadingCard("researching the niche…"));
+  ctx.loading.add("plan"); ctx.rerender();
   try {
     const pillars = pillarList(a).map((p) => p.title);
     const props = ctx.mock ? mockPlan(a) : await gen.generateCards(ctx.relay,
@@ -250,9 +455,9 @@ async function proposePlan(ctx) {
       (brandLine(a) ? brandLine(a) + " Weave the brand in naturally where it fits, never forced. " : "") +
       `Pillars: ${pillars.join(", ") || "general"}. Use WebSearch for what's trending right now. Propose 6 specific posts spread over the next few weeks. ` +
       `Reply with ONLY a JSON array of {"title","angle","pillar","source","date":"2026-07-DD"}.`, { web: true });
-    a.calendar._proposed = props.map((c) => ({ title: c.title, angle: c.body || c.angle, pillar: c.chips?.[0] || c.pillar, source: c.subtitle || c.source, date: c.date }));
-  } catch { a.calendar._proposed = []; }
-  ctx.save(); ctx.rerender();
+    a.calendar._proposed = [...(a.calendar._proposed || []), ...props.map((c) => ({ title: c.title, angle: c.body || c.angle, pillar: c.chips?.[0] || c.pillar, source: c.subtitle || c.source, date: c.date }))];
+  } catch { a.calendar._proposed = a.calendar._proposed || []; }
+  ctx.loading.delete("plan"); ctx.save(); ctx.rerender();
 }
 
 // ============================================================ 5 · SCRIPTS
@@ -260,6 +465,9 @@ export function renderScripts(root, ctx) {
   const a = ctx.account;
   root.append(stageHead("scripts"));
   const slots = (a.calendar.slots || []).filter((s) => s.approved);
+  // Autopilot: draft a script for every approved slot that has none; the human approves or steers.
+  // A failed write leaves a null marker (see writeScript), so failures never re-kick in a loop.
+  queueMicrotask(() => { for (const s of slots) if (!(s.id in a.scripts) && !ctx.loading.has("script:" + s.id)) writeScript(s, ctx); });
   if (!slots.length) root.append(el("div", "empty-note", "Approve calendar slots first — each becomes a script here."));
   for (const s of slots) root.append(scriptCard(s, ctx));
   root.append(gateBar(a, "scripts", ctx.go));
@@ -300,7 +508,7 @@ async function writeScript(slot, ctx) {
       `Topic: ${slot.title}. ${slot.angle || ""}. 4 beats: hook, two middles, CTA. Each beat: {"shot": what we see on-location, "line": what they say in their voice}. ` +
       `Reply with ONLY a JSON array of {"shot","line"}.`).then((cards) => cards.map((c) => ({ shot: c.title, line: c.body || "" })));
     a.scripts[slot.id] = { beats, approved: false, status: "written" };
-  } catch {}
+  } catch { if (!(slot.id in a.scripts)) a.scripts[slot.id] = null; } // marker: tried & failed, don't auto-retry
   ctx.loading.delete("script:" + slot.id); ctx.save(); ctx.rerender();
 }
 
@@ -517,14 +725,14 @@ function field(label, value, ph, onInput) {
 }
 function deriveNiche(idea) {
   const i = (idea || "").toLowerCase();
-  return /skin|serum|beauty/.test(i) ? "sustainable skincare" : /sneaker|street|hype/.test(i) ? "streetwear & sneakers" : /cook|food|recipe/.test(i) ? "home cooking" : /fit|gym|coach/.test(i) ? "fitness & mobility" : /home|interior|decor/.test(i) ? "home & interiors" : (idea || "lifestyle").split(/\s+/).slice(-2).join(" ");
+  return /\bai\b|artificial intel|prompt|chatgpt|claude/.test(i) ? "AI apps & how to use them" : /skin|serum|beauty/.test(i) ? "sustainable skincare" : /sneaker|street|hype/.test(i) ? "streetwear & sneakers" : /cook|food|recipe/.test(i) ? "home cooking" : /fit|gym|coach/.test(i) ? "fitness & mobility" : /home|interior|decor/.test(i) ? "home & interiors" : (idea || "lifestyle").split(/\s+/).slice(-2).join(" ");
 }
 function nextDate(a) { const n = (a.calendar.slots || []).length; const day = 3 + n * 3; return `2026-07-${String(Math.min(28, day)).padStart(2, "0")}`; }
 function monthShort(m) { return ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][(parseInt(m, 10) || 7) - 1] || "JUL"; }
 
 // ---------- demo (mock) fixtures ----------
 const ROUTER = { reference: renderReference, foundation: renderFoundation, assets: renderAssets, calendar: renderCalendar, scripts: renderScripts, produce: renderProduce };
-export function renderStage(stageId, root, ctx) { stopReel(); clear(root); (ROUTER[stageId] || renderReference)(root, ctx); }
+export function renderStage(stageId, root, ctx) { stopReel(); stopCam(); clear(root); (ROUTER[stageId] || renderReference)(root, ctx); }
 
 function mockFacet(facet, a) {
   const niche = a.reference.niche || "the niche";

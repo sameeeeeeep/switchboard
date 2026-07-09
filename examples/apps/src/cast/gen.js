@@ -26,6 +26,30 @@ export const MODELS = {
 };
 const TTS = "generate_audio"; // Higgsfield text-to-speech
 
+// ---------- the generation queue ----------
+// ONE agentic stream at a time. The extension → daemon transport is reliable serially, but autopilot
+// fans several intents out at once (grounding + facets + assets) and concurrent streams trip over
+// each other live — facets came back silently empty. Every stream below funnels through this queue,
+// so parallel intents run as a clean series. NOTE: never call a queued function from inside another
+// queued function — that deadlocks; compose sequences in the stage code instead.
+let q = Promise.resolve();
+function queued(run) { const p = q.then(run, run); q = p.then(() => {}, () => {}); return p; }
+
+// Consume one stream: accumulate text, surface proposed tools, let `pick` capture a URL from
+// successful tool results. Throws on a stream error so callers can show a failed state.
+function runStream(relay, req, { onTool, pick } = {}) {
+  return queued(async () => {
+    let acc = "", picked = null;
+    for await (const d of relay.stream(req)) {
+      if (d.type === "tool_proposed") onTool?.(d.call.name);
+      else if (d.type === "tool_result" && d.result?.ok && pick) { const u = pick(text(d)); if (u) picked = u; }
+      else if (d.type === "text") acc += d.text;
+      else if (d.type === "error") throw new Error(d.error.message);
+    }
+    return { acc, picked };
+  });
+}
+
 // ---------- text → option cards ----------
 // Run a facet/prompt that must return a JSON array, parse it, and normalise into option cards with
 // stable ids. Used by Foundation facets, calendar research and script writing.
@@ -47,24 +71,24 @@ function normalizeCard(o) {
   };
 }
 // Stream an agentic turn and pull the first JSON array out of the accumulated text.
-async function streamJsonArray(relay, prompt, agentic) {
-  let acc = "";
-  for await (const d of relay.stream({ prompt, agentic: true })) {
-    if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
+async function streamJsonArray(relay, prompt) {
+  const { acc } = await runStream(relay, { prompt, agentic: true });
+  // Models sometimes fence the JSON or wrap it in prose — try the fenced block first, then greedy.
+  for (const raw of [acc.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1], acc.match(/\[[\s\S]*\]/)?.[0]]) {
+    if (!raw) continue;
+    try { const v = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] || raw); if (Array.isArray(v)) return v; } catch {}
   }
-  const m = acc.match(/\[[\s\S]*\]/);
-  return m ? JSON.parse(m[0]) : [];
+  return [];
 }
 // Stream an agentic turn and return its raw JSON object (for scripts / structured single results).
-export async function streamJsonObject(relay, prompt) {
-  let acc = "";
-  for await (const d of relay.stream({ prompt, agentic: true })) {
-    if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
+// `attachments` (optional) rides along for vision grounding — e.g. the entry's uploaded photo.
+export async function streamJsonObject(relay, prompt, { attachments } = {}) {
+  const { acc } = await runStream(relay, { prompt, agentic: true, ...(attachments ? { attachments } : {}) });
+  for (const raw of [acc.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1], acc.match(/\{[\s\S]*\}/)?.[0]]) {
+    if (!raw) continue;
+    try { return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || raw); } catch {}
   }
-  const m = acc.match(/\{[\s\S]*\}/);
-  return m ? JSON.parse(m[0]) : null;
+  return null;
 }
 
 // ---------- image generation ----------
@@ -91,13 +115,8 @@ export async function generateVideo(relay, keyframeUrl, motion = "subtle, natura
     `Keyframe image URL: ${keyframeUrl}\n` +
     `Use the Higgsfield ${VID} tool with model "${model}" and that keyframe as the start frame; motion: ${motion}.\n` +
     `Poll job status until done, then reply with ONLY the final video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc);
 }
 
 // Stitch an ordered list of clip URLs into one reel. Higgsfield exposes concatenation; we ask the
@@ -108,13 +127,8 @@ export async function stitchClips(relay, clipUrls) {
   const instruction =
     `Stitch these vertical clips into ONE continuous 9:16 reel, in this order:\n${clipUrls.map((u, i) => `${i + 1}. ${u}`).join("\n")}\n` +
     `Use a Higgsfield video concatenation/stitch tool. Poll until done, then reply with ONLY the final stitched video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc) || clipUrls[0];
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc) || clipUrls[0];
 }
 
 // ---------- audio / voice (Higgsfield TTS + audio-driven video) ----------
@@ -125,13 +139,8 @@ export async function generateSpeech(relay, line, voice) {
   const instruction =
     `Use the Higgsfield ${TTS} tool to speak this line as natural, warm creator narration: "${line}".` +
     `${voice ? ` Use the voice "${voice}".` : ""} Poll until done, then reply with ONLY the final audio URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_result" && d.result?.ok) { const u = extractAudioUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractAudioUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { pick: extractAudioUrl });
+  return picked || extractAudioUrl(acc);
 }
 
 // A voiced clip: the persona performs a beat AND says its line, lip-synced / paced to a Higgsfield
@@ -143,14 +152,8 @@ export async function voicedClip(relay, shotUrl, audioUrl, action, onTool, model
     `Persona start image URL: ${shotUrl}\nVoiceover audio URL: ${audioUrl}\n` +
     `Steps: media_upload+confirm the image ⇒ start_image; media_import_url the audio ⇒ audio_id. ` +
     `Then call ${VID} with model "${model}", medias [{role:"start_image",value:start_image},{role:"audio_references",value:audio_id}], aspect_ratio "9:16". Poll until done, reply with ONLY the final video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_proposed") onTool?.(d.call.name);
-    else if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { onTool, pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc);
 }
 
 // A real per-beat VIDEO clip — NOT a still being animated. Seedance 2.0 generates fresh motion while
@@ -168,26 +171,14 @@ export async function beatClip(relay, startImageUrl, faceUrl, audioUrl, action, 
     `Generate a REAL short vertical (9:16) video clip of the persona performing: "${action}". Not a still pan — actual motion, cooking/action as described, ${audioUrl ? "lip-synced / paced to the voiceover, " : ""}keeping the SAME identity, using Higgsfield ${VID} with model "${model}".\n` +
     `Storyboard still URL: ${startImageUrl}\nFace identity URL: ${faceUrl}\n${audioUrl ? `Voiceover audio URL: ${audioUrl}\n` : ""}` +
     `Steps: ${steps}. Then call ${VID} with model "${model}", medias [${medias}], aspect_ratio "9:16". Poll until done, reply with ONLY the final video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_proposed") onTool?.(d.call.name);
-    else if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { onTool, pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc);
 }
 
 // ---------- shared agentic image loop ----------
 async function agenticImage(relay, instruction, attachments, onTool) {
-  let url = null, acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true, attachments })) {
-    if (d.type === "tool_proposed") onTool?.(d.call.name);
-    else if (d.type === "tool_result" && d.result?.ok) url = extractUrl(text(d)) || url;
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return url || extractUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true, attachments }, { onTool, pick: extractUrl });
+  return picked || extractUrl(acc);
 }
 function refInstruction(promptText, aspect, refs, model = MODELS.shot) {
   const steps = refs.map((r, i) => `${i + 1}) media_upload({filename:"${r.filename}",content_type:"image/png"}) → relay put_blob({handle:"${r.handle}",url:<uploadUrl>}) → media_confirm ⇒ media_id_${r.handle}`).join("\n");
@@ -209,14 +200,8 @@ export async function refDrive(relay, identityUrl, refVideoUrl, prompt, onTool, 
     `Persona identity image URL: ${identityUrl}\nReference reel URL: ${refVideoUrl}\nWhat happens: ${prompt}\n` +
     `Steps: media_upload+confirm the identity image ⇒ id_a; media_import_url the reference reel ⇒ id_b. ` +
     `Then call ${VID} with model "${model}", the prompt, and medias [{role:"image_references",value:id_a},{role:"video_references",value:id_b}], aspect_ratio "9:16". Poll until done, then reply with ONLY the final video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_proposed") onTool?.(d.call.name);
-    else if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { onTool, pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc);
 }
 
 // ---------- video → video: motion transfer (Kling 3.0 Motion Control) ----------
@@ -230,14 +215,8 @@ export async function motionTransfer(relay, characterUrl, motionVideoUrl, onTool
     `Character image URL: ${characterUrl}\nReference motion video URL: ${motionVideoUrl}\n` +
     `Steps: 1) media_upload + confirm the character image ⇒ image_id. 2) media_import_url the motion video ⇒ motion_video_id. ` +
     `3) Call motion_control with { image_id, motion_video_id, scene_control:"image" }. Poll until done, then reply with ONLY the final video URL on its own line.`;
-  let acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_proposed") onTool?.(d.call.name);
-    else if (d.type === "tool_result" && d.result?.ok) { const u = extractVideoUrl(text(d)); if (u) acc = u; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  return extractVideoUrl(acc);
+  const { acc, picked } = await runStream(relay, { prompt: instruction, agentic: true }, { onTool, pick: extractVideoUrl });
+  return picked || extractVideoUrl(acc);
 }
 async function attachmentsFor(refs) {
   return Promise.all(refs.map(async (r) => ({ handle: r.handle, filename: r.filename, contentType: "image/png", dataUrl: await downscale(r.url) })));
