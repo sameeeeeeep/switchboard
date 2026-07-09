@@ -1,7 +1,7 @@
 {
   "name": "@relay/sidekick",
   "version": "0.0.0",
-  "description": "The relay sidekick daemon — owns the user's model backends (Claude Code + local runners) and MCP tools, and is the sole out-of-band enforcement point for per-origin permissions and consent.",
+  "description": "The relay sidekick daemon \u2014 owns the user's model backends (Claude Code + local runners) and MCP tools, and is the sole out-of-band enforcement point for per-origin permissions and consent.",
   "type": "module",
   "bin": {
     "relay-sidekick": "./dist/index.js"
@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "dev": "tsc -p tsconfig.json && node dist/index.js"
+    "dev": "tsc -p tsconfig.json && node dist/index.js",
+    "build:npm": "node scripts/build-npm.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.202",
