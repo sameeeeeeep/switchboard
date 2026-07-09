@@ -9,24 +9,43 @@ let relay = null;
 
 function event(text) { const d = document.createElement("div"); d.className = "event"; d.textContent = text; $("events").append(d); }
 
+function onConnected(r, models) {
+  relay = r;
+  $("go").disabled = false;
+  $("connect").disabled = true;
+  $("status").textContent = `— connected · ${models?.join(", ") || "default model"}`;
+}
+function showInstallLink(installUrl) {
+  $("status").textContent = "— sidekick not installed · ";
+  const a = document.createElement("a");
+  a.href = installUrl; a.target = "_blank"; a.rel = "noreferrer";
+  a.textContent = "Get Switchboard →";
+  $("status").append(a);
+}
+
 $("connect").addEventListener("click", async () => {
   const r = await whenRelayReady();
-  if (!("connect" in r)) { $("status").textContent = `— sidekick not installed (${r.installUrl})`; return; }
+  if (!("connect" in r)) { showInstallLink(r.installUrl); return; }
   try {
     // Ask for exactly what this app needs: read the web + generate images. The consent window
     // shows WebFetch as read and generate_image as write.
     const grant = await r.connect({
       reason: "generate ads from a website's brand",
-      tools: ["WebFetch", "mcp__higgsfield__generate_image"],
+      tools: ["WebFetch", "mcp__claude_ai_Higgsfield__*"],
     });
-    relay = r;
-    $("go").disabled = false;
-    $("connect").disabled = true;
-    $("status").textContent = `— connected · ${grant.models.join(", ") || "default model"}`;
+    onConnected(r, grant.models);
   } catch (err) {
     $("status").textContent = `— connect rejected (${err?.code ?? "?"})`;
   }
 });
+
+// Returning-user probe: a persisted grant connects on load, no click needed.
+(async () => {
+  const r = await whenRelayReady(2000);
+  if (!("connect" in r)) { showInstallLink(r.installUrl); return; }
+  const grant = await r.permissions().catch(() => null);
+  if (grant) onConnected(r, grant.models);
+})();
 
 $("go").addEventListener("click", async () => {
   if (!relay) return;

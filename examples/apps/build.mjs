@@ -1,7 +1,7 @@
 import { build, context } from "esbuild";
 const watch = process.argv.includes("--watch");
 const options = {
-  entryPoints: { chat: "src/chat.js", assistant: "src/assistant.js", adgen: "src/adgen.js", imagegen: "src/imagegen.js", brandbrain: "src/brandbrain.js", persona: "src/persona.js", store: "src/store.js", cartridge: "src/cartridge.js" },
+  entryPoints: { chat: "src/chat.js", adgen: "src/adgen.js", imagegen: "src/imagegen.js", brandbrain: "src/brandbrain.js", persona: "src/persona.js", store: "src/store.js", cartridge: "src/cartridge.js", adpulse: "src/adpulse.js", adforge: "src/adforge.js", shelf: "src/shelf.js", studio: "src/studio.js", aplus: "src/aplus.js", natal: "src/natal.js", arcana: "src/arcana.js" },
   bundle: true, format: "esm", target: "chrome111", outdir: "dist", sourcemap: true, logLevel: "info",
 };
 if (watch) { const ctx = await context(options); await ctx.watch(); console.error("[apps] watching…"); }

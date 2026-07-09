@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AdForge — URL in, Meta ads out</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      /* ADFORGE — a foundry. Near-black iron, ember orange, molten gradient used sparingly.
+         Its OWN brand; the only Switchboard element is the untouched chip in #chip-dock. */
+      :root {
+        --coal: #0C0A08; --iron: #151210; --pig: #1E1915; --bed: #0F0D0A;
+        --seam: #2B241C; --seam-hot: #4A3A28;
+        --ink: #EDE6DA; --ink-dim: #B0A392; --ink-faint: #7A6E5C;
+        --ember: #FF6A1A; --ember-hot: #FFB347; --ember-soft: rgba(255, 106, 26, 0.12);
+        --molten: linear-gradient(115deg, #FF3D00 0%, #FF7A1A 55%, #FFB347 100%);
+        --good: #8FBF5A; --danger: #FF5A48;
+        --display: "Archivo", ui-sans-serif, system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+        /* the fake Meta feed uses Meta's own stack, never ours */
+        --meta: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body {
+        background:
+          radial-gradient(1100px 460px at 78% -12%, rgba(255, 90, 20, 0.11), transparent 62%),
+          radial-gradient(700px 380px at 4% -6%, rgba(255, 170, 60, 0.05), transparent 55%),
+          var(--coal);
+        color: var(--ink); font: 400 15px/1.6 var(--display); -webkit-font-smoothing: antialiased;
+      }
+      /* faint mill-scale hatch over the whole shop floor */
+      body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+        background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 7px); }
+      /* the molten seam along the top of the shop */
+      .seam-top { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60;
+        background: var(--molten); box-shadow: 0 0 18px rgba(255, 106, 26, 0.55); }
+      .wrap { position: relative; z-index: 2; max-width: 940px; margin: 0 auto; padding: 34px 22px 100px; }
+
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 36px; flex-wrap: wrap; }
+      .markrow { display: flex; align-items: center; gap: 11px; }
+      .ingot { width: 20px; height: 15px; flex: none; background: var(--molten);
+        clip-path: polygon(10% 0, 90% 0, 100% 100%, 0 100%);
+        box-shadow: 0 0 16px rgba(255, 106, 26, 0.5); }
+      .logo { font: 800 22px/1 var(--display); letter-spacing: 0.02em; }
+      .logo .molt { background: var(--molten); -webkit-background-clip: text; background-clip: text;
+        color: transparent; filter: drop-shadow(0 0 10px rgba(255, 106, 26, 0.35)); }
+      .tag { font: 500 12.5px/1.4 var(--display); color: var(--ink-faint); margin-top: 4px; }
+      .tag b { color: var(--ink-dim); }
+      #chip-dock { margin-left: auto; }
+
+      .kick { font: 500 10px/1 var(--mono); letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--ink-faint); margin: 0 0 13px; }
+      .kick .no { color: var(--ember); }
+
+      .panel { background: var(--iron); border: 1px solid var(--seam); border-radius: 15px; padding: 22px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02); }
+
+      /* ---- 01 · the furnace (input) ---- */
+      .flabel { display: block; font: 600 11px/1 var(--display); letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--ink-dim); margin: 0 0 8px; }
+      .flabel .opt { color: var(--ink-faint); text-transform: none; letter-spacing: 0; font-weight: 500; }
+      .urlrow { display: flex; gap: 10px; }
+      .urlrow input {
+        flex: 1; min-width: 0; background: var(--bed); border: 1px solid var(--seam); border-radius: 10px;
+        color: var(--ink); padding: 13px 15px; font: 500 14.5px/1.4 var(--mono); outline: none;
+      }
+      .urlrow input:focus { border-color: var(--ember); box-shadow: 0 0 0 3px var(--ember-soft); }
+      .btn-ember {
+        font: 700 13px/1 var(--display); letter-spacing: 0.08em; cursor: pointer; white-space: nowrap;
+        background: var(--molten); color: #1F0B00; border: 0; border-radius: 10px; padding: 14px 22px;
+        box-shadow: 0 0 26px rgba(255, 106, 26, 0.32); transition: transform 0.1s, box-shadow 0.15s;
+      }
+      .btn-ember:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 38px rgba(255, 106, 26, 0.48); }
+      .btn-ember:disabled { background: var(--pig); color: var(--ink-faint); box-shadow: none; cursor: not-allowed; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+      .chips button {
+        background: var(--pig); border: 1px solid var(--seam); border-radius: 999px; cursor: pointer;
+        color: var(--ink-dim); padding: 7px 13px; font: 500 12px/1 var(--mono); transition: all 0.12s;
+      }
+      .chips button:hover { border-color: var(--seam-hot); color: var(--ink); }
+      .chips button.on { background: var(--ember-soft); border-color: var(--ember); color: var(--ember-hot); }
+      .subrow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+      .btn-ghost { background: transparent; border: 1px solid var(--seam-hot); color: var(--ink-dim);
+        border-radius: 10px; padding: 11px 16px; cursor: pointer; font: 500 13px/1 var(--display); }
+      .btn-ghost:hover { color: var(--ember-hot); border-color: var(--ember); }
+      .hint { font: 500 12.5px/1.5 var(--display); color: var(--ink-faint); }
+      .hint a { color: var(--ember-hot); text-decoration: underline; }
+
+      /* ---- forge log ---- */
+      .forgelog { margin-top: 16px; padding: 16px 18px; }
+      .loghead { display: flex; align-items: center; gap: 9px; font: 600 10px/1 var(--mono);
+        letter-spacing: 0.18em; color: var(--ember-hot); margin-bottom: 10px; }
+      .firedot { width: 8px; height: 8px; border-radius: 50%; background: var(--ember); flex: none;
+        box-shadow: 0 0 12px var(--ember); animation: flicker 1.15s ease-in-out infinite; }
+      @keyframes flicker { 0%, 100% { opacity: 1; } 42% { opacity: 0.35; } 68% { opacity: 0.8; } }
+      #log { max-height: 190px; overflow-y: auto; }
+      .logline { font: 400 12.5px/1.7 var(--mono); color: #8E8069; }
+      .logline.live { color: var(--ember-hot); }
+      .logline.bad { color: var(--danger); }
+      .logline.good { color: var(--good); }
+
+      .errbox { margin-top: 16px; background: var(--iron); border: 1px solid var(--seam);
+        border-left: 3px solid var(--danger); border-radius: 0 12px 12px 0; padding: 14px 16px;
+        display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+        font: 500 13.5px/1.55 var(--display); color: var(--ink-dim); }
+      .errbox button { background: var(--pig); border: 1px solid var(--seam-hot); color: var(--ember-hot);
+        border-radius: 8px; padding: 8px 16px; cursor: pointer; font: 600 12.5px/1 var(--display); }
+      .errbox button:hover { border-color: var(--ember); }
+
+      /* ---- 02 · concept castings ---- */
+      #concepts-sec { margin-top: 40px; }
+      .brandline { font: 400 12.5px/1.7 var(--mono); color: var(--ink-faint); margin: -4px 0 16px;
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .brandline b { color: var(--ink-dim); font-weight: 600; }
+      .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.15); flex: none; }
+      .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .card {
+        text-align: left; background: var(--iron); border: 1px solid var(--seam); border-radius: 15px;
+        padding: 18px; cursor: pointer; color: var(--ink); font: inherit; display: flex; flex-direction: column;
+        transition: border-color 0.13s, transform 0.13s, box-shadow 0.13s;
+      }
+      .card:hover { border-color: var(--seam-hot); transform: translateY(-2px); }
+      .card.picked { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember), 0 0 34px rgba(255, 106, 26, 0.14); }
+      .cardtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .anglechip { font: 500 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--ember-hot); background: var(--ember-soft); border-radius: 999px; padding: 5px 9px; }
+      .recflag { font: 600 9px/1 var(--mono); letter-spacing: 0.14em; color: #1F0B00;
+        background: var(--molten); border-radius: 4px; padding: 4px 7px; }
+      .hook { font: 700 18px/1.3 var(--display); letter-spacing: -0.01em; margin: 13px 0 9px; }
+      .copyprev { font: 400 13px/1.55 var(--display); color: var(--ink-dim); flex: 1; }
+      .cardfoot { border-top: 1px dashed var(--seam); margin-top: 14px; padding-top: 11px;
+        display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .cardfoot .fh { font: 600 12.5px/1.3 var(--display); color: var(--ink); }
+      .cardfoot .fc { font: 500 11px/1 var(--mono); color: var(--ember); white-space: nowrap; }
+      .picktag { font: 500 10px/1 var(--mono); letter-spacing: 0.16em; color: var(--ink-faint); margin-top: 12px; }
+      .card.picked .picktag { color: var(--ember-hot); }
+
+      /* ---- 03 · casting floor ---- */
+      #studio-sec { margin-top: 40px; }
+      .studio { display: grid; grid-template-columns: minmax(0, 520px) minmax(240px, 1fr); gap: 20px; align-items: start; }
+      .feedwrap { background: var(--iron); border: 1px solid var(--seam); border-radius: 16px; padding: 24px;
+        display: flex; justify-content: center; }
+
+      /* pixel-faithful Meta feed ad — light card, Meta's type stack */
+      .feed { width: 100%; max-width: 480px; background: #fff; border-radius: 8px; overflow: hidden;
+        font-family: var(--meta); color: #050505; box-shadow: 0 12px 34px -14px rgba(0, 0, 0, 0.7); }
+      .fhead { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px; }
+      .favatar { width: 40px; height: 40px; border-radius: 50%; background: #212A2F; color: #fff;
+        display: grid; place-items: center; font-size: 18px; font-weight: 700; flex: none; }
+      .fwho { min-width: 0; }
+      .fname { font-size: 15px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fsub { font-size: 13px; color: #65676B; display: flex; align-items: center; gap: 4px; line-height: 1.3; }
+      .fsub svg { width: 12px; height: 12px; stroke: #65676B; fill: none; stroke-width: 2; }
+      .fdots { margin-left: auto; color: #65676B; font-weight: 700; letter-spacing: 1.5px; align-self: flex-start; padding-top: 2px; }
+      .fprimary { padding: 0 16px 12px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: break-word; }
+      .fimgbox { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #E9EBEE; overflow: hidden; }
+      .fimgbox img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+      .fimghint { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+        padding: 20px; color: #8A8D91; font-size: 13.5px; font-weight: 600; }
+      .fcard { background: #F0F2F5; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+      .fmeta { flex: 1; min-width: 0; }
+      .fdomain { font-size: 13px; color: #65676B; text-transform: uppercase; letter-spacing: 0.01em;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fheadline { font-size: 17px; font-weight: 600; line-height: 1.25; margin-top: 2px; overflow-wrap: break-word; }
+      .fdesc { font-size: 15px; color: #65676B; line-height: 1.3; margin-top: 1px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fcta { flex: none; background: #E4E6EB; color: #050505; border-radius: 6px; padding: 9px 13px;
+        font-size: 15px; font-weight: 600; white-space: nowrap; }
+      .fbar { border-top: 1px solid #CED0D4; margin: 0 12px; display: flex; }
+      .fbar span { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+        padding: 10px 0; color: #65676B; font-size: 14px; font-weight: 600; }
+      .fbar svg { width: 17px; height: 17px; stroke: #65676B; fill: none; stroke-width: 2;
+        stroke-linecap: round; stroke-linejoin: round; }
+
+      /* the bench (controls) */
+      .bench { background: var(--iron); border: 1px solid var(--seam); border-radius: 16px; padding: 20px; }
+      .picked-name { font: 500 11.5px/1.5 var(--mono); color: var(--ember-hot); margin: 0 0 16px; }
+      .blabel { font: 500 9.5px/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--ink-faint); margin: 18px 0 8px; }
+      .blabel:first-of-type { margin-top: 0; }
+      .aspseg { display: inline-flex; border: 1px solid var(--seam); border-radius: 10px; overflow: hidden; }
+      .aspseg button { background: transparent; border: 0; cursor: pointer; color: var(--ink-dim);
+        padding: 10px 18px; font: 600 13px/1 var(--mono); }
+      .aspseg button + button { border-left: 1px solid var(--seam); }
+      .aspseg button.on { background: var(--ember-soft); color: var(--ember-hot); }
+      .aspseg button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .wide { width: 100%; margin-top: 16px; padding: 15px 0; }
+      .cast-status { display: flex; align-items: center; gap: 9px; margin-top: 12px;
+        font: 500 12px/1.5 var(--mono); color: var(--ember-hot); }
+      .benchrow { display: flex; flex-wrap: wrap; gap: 8px; }
+      .benchrow button { background: var(--pig); border: 1px solid var(--seam); border-radius: 9px;
+        color: var(--ink-dim); padding: 9px 13px; cursor: pointer; font: 500 12.5px/1 var(--display); }
+      .benchrow button:hover:not(:disabled) { color: var(--ink); border-color: var(--seam-hot); }
+      .benchrow button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .benchrow button.did { color: var(--good); border-color: var(--good); }
+      .bnote { font: 400 12px/1.6 var(--display); color: var(--ink-faint); margin: 16px 0 0; }
+
+      .foot { margin-top: 56px; font: 400 12px/1.7 var(--mono); color: var(--ink-faint);
+        border-top: 1px solid var(--seam); padding-top: 18px; }
+
+      @media (max-width: 880px) {
+        .cards { grid-template-columns: 1fr; }
+        .studio { grid-template-columns: 1fr; }
+        .urlrow { flex-direction: column; }
+        .urlrow .btn-ember { width: 100%; }
+        header { gap: 10px; }
+        #chip-dock { margin-left: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="seam-top"></div>
+    <div class="wrap">
+      <header>
+        <div>
+          <div class="markrow">
+            <span class="ingot"></span>
+            <span class="logo">AD<span class="molt">FORGE</span></span>
+          </div>
+          <div class="tag">URL in → Meta ads out · read and rendered on <b>your own Claude</b></div>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <p class="kick"><span class="no">01</span> · charge the furnace</p>
+      <section class="panel">
+        <label class="flabel" for="f-url">Founder's site</label>
+        <div class="urlrow">
+          <input id="f-url" type="url" value="https://www.allbirds.com" spellcheck="false"
+            placeholder="https://your-startup.com" />
+          <button class="btn-ember" id="forge">FORGE CONCEPTS</button>
+        </div>
+        <div class="chips" id="url-chips"></div>
+        <label class="flabel">Angle steer <span class="opt">· multi-select, optional</span></label>
+        <div class="chips" id="angle-chips"></div>
+        <div class="subrow">
+          <button class="btn-ghost" id="sample">See a sample forge — Allbirds</button>
+          <span class="hint" id="conn-hint"></span>
+        </div>
+      </section>
+
+      <section class="panel forgelog" id="forgelog" hidden>
+        <div class="loghead"><span class="firedot"></span><span>FORGE LOG</span></div>
+        <div id="log"></div>
+      </section>
+
+      <div class="errbox" id="errbox" hidden>
+        <span id="err-msg"></span>
+        <button id="err-retry">Retry</button>
+      </div>
+
+      <section id="concepts-sec" hidden>
+        <p class="kick"><span class="no">02</span> · three castings — pick one</p>
+        <div class="brandline" id="brandline"></div>
+        <div class="cards" id="cards"></div>
+      </section>
+
+      <section id="studio-sec" hidden>
+        <p class="kick"><span class="no">03</span> · the casting floor</p>
+        <div class="studio">
+          <div class="feedwrap">
+            <div class="feed">
+              <div class="fhead">
+                <div class="favatar" id="m-avatar">A</div>
+                <div class="fwho">
+                  <div class="fname" id="m-name">Allbirds</div>
+                  <div class="fsub">Sponsored ·
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                  </div>
+                </div>
+                <div class="fdots">···</div>
+              </div>
+              <div class="fprimary" id="m-primary">I forgot I was wearing shoes on my 6am flight.</div>
+              <div class="fimgbox" id="m-imgbox">
+                <img id="m-img" alt="generated ad creative" hidden />
+                <div class="fimghint" id="m-imghint">no creative cast yet</div>
+              </div>
+              <div class="fcard">
+                <div class="fmeta">
+                  <div class="fdomain" id="m-domain">ALLBIRDS.COM</div>
+                  <div class="fheadline" id="m-headline">The World's Most Comfortable Shoe</div>
+                  <div class="fdesc" id="m-desc">Machine washable. 30-day trial</div>
+                </div>
+                <div class="fcta" id="m-cta">Shop Now</div>
+              </div>
+              <div class="fbar">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>Like</span>
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>Comment</span>
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"></path></svg>Share</span>
+              </div>
+            </div>
+          </div>
+          <aside class="bench">
+            <p class="picked-name" id="picked-name">—</p>
+            <div class="blabel">Aspect</div>
+            <div class="aspseg">
+              <button id="asp-11" class="on" type="button">1:1</button>
+              <button id="asp-45" type="button">4:5</button>
+            </div>
+            <button class="btn-ember wide" id="cast">CAST THE CREATIVE</button>
+            <div class="cast-status" id="cast-status" hidden>
+              <span class="firedot"></span><span id="cast-line">firing the kiln…</span>
+            </div>
+            <div class="blabel">Copy the copy</div>
+            <div class="benchrow">
+              <button id="copy-primary" type="button">primary text</button>
+              <button id="copy-headline" type="button">headline</button>
+              <button id="copy-desc" type="button">description</button>
+            </div>
+            <div class="blabel">Rework</div>
+            <div class="benchrow">
+              <button id="regen-copy" type="button">Regenerate copy</button>
+              <button id="recast" type="button">Recast image</button>
+            </div>
+            <p class="bnote" id="bench-note"></p>
+          </aside>
+        </div>
+      </section>
+
+      <footer class="foot">AdForge ships only the interface. The site read, every word of copy, and every rendered
+        creative run on the visitor's own Claude and their own connectors, brokered by Switchboard.</footer>
+    </div>
+    <script type="module" src="./dist/adforge.js"></script>
+  </body>
+</html>

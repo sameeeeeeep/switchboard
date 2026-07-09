@@ -17,21 +17,40 @@ let brand = null; // the loaded brand context (normalized), or null
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
 // ---- Switchboard connect (the "wallet" affordance) ----
+async function onConnected(r, models) {
+  relay = r;
+  $("go").disabled = false;
+  $("connect").hidden = true;
+  setStatus(`Connected · ${models?.join(", ") || "your Claude"}`, true);
+  $("note").textContent = "Load a brand to generate on-brand, or just describe an image. Each generation is a per-action consent.";
+  await loadBrandContext(); // surface whatever brand the user has already lent Prism
+}
+// Not installed: repurpose the connect button as the install door instead of a dead status line.
+function becomeInstallButton(installUrl) {
+  setStatus("Switchboard not installed");
+  const b = $("connect");
+  b.textContent = "Get Switchboard ↗";
+  b.onclick = () => window.open(installUrl, "_blank", "noreferrer");
+}
+
 $("connect").addEventListener("click", async () => {
   const r = await whenRelayReady();
-  if (!("connect" in r)) { setStatus("Switchboard not installed"); return; }
+  if (!("connect" in r)) { becomeInstallButton(r.installUrl); return; }
   try {
     const grant = await r.connect({ reason: "Prism — generate on-brand images with Higgsfield", tools: [CONNECTOR] });
-    relay = r;
-    $("go").disabled = false;
-    $("connect").hidden = true;
-    setStatus(`Connected · ${grant.models.join(", ") || "your Claude"}`, true);
-    $("note").textContent = "Load a brand to generate on-brand, or just describe an image. Each generation is a per-action consent.";
-    await loadBrandContext(); // surface whatever brand the user has already lent Prism
+    await onConnected(r, grant.models);
   } catch (err) {
     setStatus(`Connect rejected (${err?.code ?? "?"})`);
   }
 });
+
+// Returning-user probe: a persisted grant connects on load, no click needed.
+(async () => {
+  const r = await whenRelayReady(2000);
+  if (!("connect" in r)) { becomeInstallButton(r.installUrl); return; }
+  const grant = await r.permissions().catch(() => null);
+  if (grant) await onConnected(r, grant.models);
+})();
 function setStatus(text, connected) {
   const s = $("status"); s.hidden = false;
   $("statusText").textContent = text;

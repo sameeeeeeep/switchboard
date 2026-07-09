@@ -15,7 +15,8 @@
       "runtimeArgs": [
         "examples/apps/serve.mjs"
       ],
-      "port": 5174
+      "port": 5174,
+      "autoPort": true
     },
     {
       "name": "extension-ui",

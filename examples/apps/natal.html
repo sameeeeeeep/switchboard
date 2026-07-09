@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NATAL — the sky, read bluntly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* NATAL — a printed ephemeris. Pure black, white ink, hairline rules, thin serif,
+         letterspaced mono labels. Monochrome. The only Switchboard element is the chip. */
+      :root {
+        color-scheme: dark;
+        --ink: #ffffff;
+        --dim: rgba(255, 255, 255, 0.64);
+        --faint: rgba(255, 255, 255, 0.38);
+        --hair: rgba(255, 255, 255, 0.3);
+        --hair-soft: rgba(255, 255, 255, 0.14);
+        --serif: "Cormorant Garamond", "Times New Roman", Georgia, serif;
+        --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body { background: #000; color: var(--ink); font: 400 18px/1.55 var(--serif); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+      ::selection { background: #fff; color: #000; }
+      a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+      .page { max-width: 980px; margin: 0 auto; padding: 30px 26px 90px; }
+
+      /* masthead — double rule under it, like a broadsheet */
+      header { display: flex; align-items: flex-end; gap: 18px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); position: relative; margin-bottom: 46px; }
+      header::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; border-bottom: 1px solid var(--hair-soft); }
+      .wordmark { font: 500 34px/1 var(--serif); letter-spacing: 0.5em; margin-right: -0.5em; }
+      .mast-sub { font: 400 10px/1.6 var(--mono); letter-spacing: 0.22em; color: var(--faint); margin-top: 10px; text-transform: uppercase; }
+      #chip-dock { margin-left: auto; }
+
+      .kicker { font: 500 10px/1 var(--mono); letter-spacing: 0.28em; color: var(--dim); text-transform: uppercase; display: flex; align-items: center; gap: 16px; margin: 0 0 26px; }
+      .kicker::after { content: ""; flex: 1; border-top: 1px solid var(--hair-soft); }
+      #chart .kicker { margin-top: 56px; }
+      #chart .kicker:first-child { margin-top: 0; }
+
+      /* ---- intake ---- */
+      #intake { position: relative; }
+      .watermark { position: absolute; top: -90px; right: -24px; font: 300 340px/1 var(--serif); color: rgba(255, 255, 255, 0.05); pointer-events: none; user-select: none; z-index: 0; }
+      .formgrid { position: relative; z-index: 1; }
+      .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 26px; }
+      .field label { display: block; font: 500 10px/1 var(--mono); letter-spacing: 0.26em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+      .field input[type="text"], .field input[type="date"], .field input[type="time"] {
+        width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--hair); border-radius: 0;
+        color: var(--ink); font: 400 22px/1.3 var(--serif); padding: 6px 2px 10px; outline: none;
+      }
+      .field input:focus { border-bottom-color: #fff; }
+      .field input:disabled { color: var(--faint); border-bottom-style: dashed; }
+      .toggle { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; font: 500 10px/1 var(--mono); letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; user-select: none; }
+      .toggle input { appearance: none; -webkit-appearance: none; width: 13px; height: 13px; margin: 0; border: 1px solid var(--hair); background: transparent; cursor: pointer; border-radius: 0; }
+      .toggle input:checked { background: #fff; }
+      .time-note { font: italic 400 15px/1.5 var(--serif); color: var(--dim); margin: 10px 0 0; }
+
+      .souls-row { margin: 8px 0 36px; }
+      .souls-label { font: 500 10px/1 var(--mono); letter-spacing: 0.26em; text-transform: uppercase; color: var(--faint); margin-bottom: 12px; }
+      .souls { display: flex; flex-wrap: wrap; gap: 10px; }
+      .soul { background: transparent; border: 1px solid var(--hair-soft); border-radius: 0; color: var(--dim); font: 400 11px/1 var(--mono); letter-spacing: 0.08em; padding: 9px 14px; cursor: pointer; transition: border-color 0.12s, color 0.12s; }
+      .soul:hover { border-color: #fff; color: #fff; }
+
+      .actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+      .btn { background: transparent; border: 1px solid #fff; border-radius: 0; color: #fff; font: 500 12px/1 var(--mono); letter-spacing: 0.3em; text-transform: uppercase; padding: 16px 26px; cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
+      .btn:hover:not(:disabled) { background: #fff; color: #000; }
+      .btn:disabled { border-color: var(--hair-soft); color: var(--faint); cursor: not-allowed; }
+      .btn.small { padding: 12px 16px; font-size: 10px; letter-spacing: 0.24em; }
+      .hint { font: italic 400 15px/1.5 var(--serif); color: var(--faint); }
+      .fine { font: 400 10px/1.8 var(--mono); letter-spacing: 0.12em; color: var(--faint); text-transform: uppercase; margin: 36px 0 0; }
+
+      /* ---- reading in progress ---- */
+      #progress { text-align: center; padding: 64px 0 34px; }
+      .prog-glyph { font: 300 110px/1 var(--serif); }
+      .prog-line { font: 500 10px/1 var(--mono); letter-spacing: 0.3em; color: var(--dim); margin-top: 24px; text-transform: uppercase; animation: pulse 1.4s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+
+      /* ---- system line (errors, visible, terse) ---- */
+      #sysline { display: flex; align-items: center; gap: 16px; border-top: 1px solid #fff; border-bottom: 1px solid #fff; padding: 13px 2px; margin: 28px 0; font: 400 12px/1.5 var(--mono); }
+      #sys-msg { flex: 1; }
+
+      /* ---- the chart ---- */
+      .name-line { font: 400 11px/1.8 var(--mono); letter-spacing: 0.18em; color: var(--dim); margin: -8px 0 30px; text-transform: uppercase; }
+
+      .trip { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+      .tcell { padding: 36px 28px 32px; border-left: 1px solid var(--hair-soft); min-width: 0; }
+      .tcell:first-child { border-left: 0; padding-left: 2px; }
+      .tglyph { font: 300 96px/1 var(--serif); }
+      .tlabel { font: 500 10px/1 var(--mono); letter-spacing: 0.3em; color: var(--faint); margin: 18px 0 8px; text-transform: uppercase; }
+      .tsign { font: 500 30px/1.15 var(--serif); text-transform: uppercase; letter-spacing: 0.05em; }
+      .tgloss { font: italic 400 16.5px/1.5 var(--serif); color: var(--dim); border-top: 1px solid var(--hair-soft); margin-top: 14px; padding-top: 12px; }
+      .withheld .tglyph, .withheld .tsign { color: var(--faint); }
+
+      .erow { display: grid; grid-template-columns: 44px 140px 170px 1fr; gap: 16px; align-items: baseline; padding: 14px 2px; border-bottom: 1px solid var(--hair-soft); }
+      .erow:first-child { border-top: 1px solid var(--hair); }
+      .eg { font: 300 24px/1 var(--serif); }
+      .ep { font: 500 10px/1 var(--mono); letter-spacing: 0.24em; text-transform: uppercase; color: var(--dim); }
+      .es { font: 500 19px/1.2 var(--serif); text-transform: uppercase; letter-spacing: 0.04em; }
+      .eo { font: italic 400 16px/1.5 var(--serif); color: var(--dim); }
+
+      .today { max-width: 62ch; }
+      .today-date { font: 500 10px/1 var(--mono); letter-spacing: 0.26em; color: var(--faint); margin-bottom: 14px; text-transform: uppercase; }
+      #today-title { font: 500 30px/1.15 var(--serif); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 12px; }
+      #today-body { font: 400 19px/1.6 var(--serif); margin: 0; }
+
+      .power { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--hair); margin-top: 48px; }
+      .pcol { padding: 26px 28px 6px 2px; }
+      .pcol + .pcol { border-left: 1px solid var(--hair-soft); padding-left: 28px; }
+      .plabel { font: 500 10px/1 var(--mono); letter-spacing: 0.3em; color: var(--dim); text-transform: uppercase; margin: 0 0 4px; }
+      .pcol ul { list-style: none; margin: 0; padding: 0; }
+      .pcol li { font: 400 18px/1.45 var(--serif); padding: 12px 0; border-bottom: 1px solid var(--hair-soft); }
+
+      #pin-quote { margin: 56px 0 48px; padding: 34px 12px; border-top: 3px double var(--hair); border-bottom: 3px double var(--hair); font: italic 300 clamp(26px, 4.5vw, 42px)/1.25 var(--serif); text-align: center; }
+
+      .chart-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+      footer { margin-top: 84px; border-top: 1px solid var(--hair-soft); padding-top: 18px; font: 400 10px/1.9 var(--mono); letter-spacing: 0.14em; color: var(--faint); text-transform: uppercase; }
+
+      @media (max-width: 880px) {
+        .page { padding: 22px 18px 70px; }
+        header { flex-wrap: wrap; }
+        .wordmark { font-size: 26px; }
+        .frow { grid-template-columns: 1fr; gap: 22px; }
+        .watermark { font-size: 200px; top: -40px; right: -12px; }
+        .trip { grid-template-columns: 1fr; }
+        .tcell { border-left: 0; border-top: 1px solid var(--hair-soft); padding: 26px 2px; }
+        .tcell:first-child { border-top: 0; }
+        .erow { grid-template-columns: 40px 1fr; gap: 6px 14px; }
+        .es, .eo { grid-column: 2; }
+        .power { grid-template-columns: 1fr; }
+        .pcol { padding-right: 2px; }
+        .pcol + .pcol { border-left: 0; border-top: 1px solid var(--hair-soft); padding-left: 2px; margin-top: 10px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div>
+          <div class="wordmark">NATAL</div>
+          <div class="mast-sub">The sky, read bluntly — on your own Claude</div>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <section id="intake">
+        <div class="watermark" aria-hidden="true">☽</div>
+        <div class="formgrid">
+          <p class="kicker">Birth data</p>
+          <div class="frow">
+            <div class="field">
+              <label for="f-name">Name or initial</label>
+              <input type="text" id="f-name" value="S." maxlength="40" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="f-place">Place of birth</label>
+              <input type="text" id="f-place" value="Bombay, India" maxlength="80" autocomplete="off" />
+            </div>
+          </div>
+          <div class="frow">
+            <div class="field">
+              <label for="f-date">Date of birth</label>
+              <input type="date" id="f-date" value="1994-11-02" />
+            </div>
+            <div class="field">
+              <label for="f-time">Time of birth</label>
+              <input type="time" id="f-time" value="09:40" />
+              <label class="toggle" for="f-unknown"><input type="checkbox" id="f-unknown" /> Time unknown</label>
+              <p class="time-note" id="time-note" hidden>No time, no rising sign. It is withheld, not guessed.</p>
+            </div>
+          </div>
+          <div class="souls-row">
+            <div class="souls-label">Or try a sample soul</div>
+            <div class="souls" id="souls"></div>
+          </div>
+          <div class="actions">
+            <button class="btn" id="read">Read the sky</button>
+            <span class="hint" id="conn-hint"></span>
+          </div>
+          <p class="fine">Approximate positions, computed by your own model. No ephemeris. No hedging.</p>
+        </div>
+      </section>
+
+      <section id="progress" hidden>
+        <div class="prog-glyph" id="prog-glyph">♈</div>
+        <div class="prog-line" id="prog-line">Reading the sky</div>
+      </section>
+
+      <div id="sysline" hidden>
+        <span id="sys-msg"></span>
+        <button class="btn small" id="sys-retry">Retry</button>
+      </div>
+
+      <section id="chart" hidden>
+        <p class="kicker">The chart</p>
+        <div class="name-line" id="c-name-line"></div>
+        <div class="trip" id="trip"></div>
+        <p class="fine">Positions approximate — computed without an ephemeris. The verdicts are not.</p>
+
+        <p class="kicker">Placements</p>
+        <div class="eph" id="eph"></div>
+
+        <p class="kicker">Today</p>
+        <div class="today">
+          <div class="today-date" id="today-date"></div>
+          <h2 id="today-title"></h2>
+          <p id="today-body"></p>
+        </div>
+
+        <div class="power">
+          <div class="pcol"><p class="plabel">Do</p><ul id="do-list"></ul></div>
+          <div class="pcol"><p class="plabel">Don't</p><ul id="dont-list"></ul></div>
+        </div>
+
+        <blockquote id="pin-quote"></blockquote>
+
+        <div class="chart-actions">
+          <button class="btn" id="rebrief">New day, new brief</button>
+          <button class="btn small" id="reread">Re-read the sky</button>
+          <button class="btn small" id="edit">Edit birth data</button>
+          <span class="hint" id="chart-hint"></span>
+        </div>
+      </section>
+
+      <footer>NATAL brings only the interface. The reading runs on your Claude, through Switchboard. Nothing leaves your machine but the sky.</footer>
+    </div>
+    <script type="module" src="./dist/natal.js"></script>
+  </body>
+</html>
