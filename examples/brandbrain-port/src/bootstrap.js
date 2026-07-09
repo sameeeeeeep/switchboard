@@ -9,14 +9,30 @@
 // consent prompt surfaces in Switchboard, not as an input box on the page.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { setProvider, abandonProvider } from "../../adapter/claude.mjs";
-import { bindFolder, storageInfo, storageGet } from "../../adapter/claude_storage.mjs";
+import { bindFolder, storageInfo, storageGet, workspaceLoadLost } from "../../adapter/claude_storage.mjs";
 
 // Map a rich brandbrain Brand → a slim, portable context other apps (e.g. Prism) can use. Opaque
 // `data`, no locked schema — just the fields a downstream wrapper is likely to want.
+//
+// Consumers (Prism, persona, Cast) read `data.palette` as flat CSS color strings, but brandbrain's
+// locked identity palette is [{ name, hex }] swatches — published raw, every swatch renders as
+// "[object Object]". Flatten at this boundary; the named swatches survive as `paletteRich`.
+// docs/CONTEXT-KINDS.md is the contract. Mirrored in proof/run-context-demo.mjs — keep in sync.
+function flattenPalette(raw) {
+  const flat = [], rich = [];
+  for (const p of Array.isArray(raw) ? raw : []) {
+    if (typeof p === "string" && p.trim()) flat.push(p.trim());
+    else if (p && typeof p.hex === "string" && p.hex.trim()) {
+      flat.push(p.hex.trim());
+      rich.push({ name: String(p.name || "").trim(), hex: p.hex.trim() });
+    }
+  }
+  return { flat, rich };
+}
 function brandToContext(b) {
   const L = b.locks || {};
   const line = (c) => (c && (c.title || c.name)) || "";
-  const palette = (L.identity && L.identity.palette) || b.palette || [];
+  const { flat: palette, rich: paletteRich } = flattenPalette((L.identity && L.identity.palette) || b.palette || []);
   const products = [line(L.range), line(L.format), b.idea].filter(Boolean);
   return {
     id: b.id,                       // stable → re-publish updates in place, never duplicates
@@ -26,7 +42,8 @@ function brandToContext(b) {
       voice: line(L.voice) || (b.brief && b.brief.vibe) || "",
       positioning: line(L.positioning) || "",
       audience: line(L.audience) || (b.brief && b.brief.audience) || "",
-      palette: Array.isArray(palette) ? palette : [],
+      palette,
+      ...(paletteRich.length ? { paletteRich } : {}),
       products,
     },
   };
@@ -76,25 +93,38 @@ async function main() {
     window.__switchboardRoutes?.mount(window.claude);
   };
 
+  // One guarded reload per tab-session: re-runs brandbrain's one-shot workspace read now that the
+  // provider is live. Both rehydration paths below share the guard, so it can never loop.
+  function rehydrate() {
+    if (sessionStorage.getItem("sb:rehydrated")) return;
+    sessionStorage.setItem("sb:rehydrated", "1");
+    location.reload();
+  }
+
   // Once connected: wire the provider, bind the declared data folder if we're still on the empty
   // sandbox (the path-consent surfaces inside Switchboard — no folder UI here), and publish the
   // workspace's brands so they're lendable to other apps. Runs once.
   let connected = false;
-  async function afterConnect(relay) {
+  async function afterConnect(relay, fresh = false) {
     if (connected) return; connected = true;
     wireProvider();
     const info = await storageInfo().catch(() => null);
     if (defaultFolder && info && info.autoAssigned) {
       const bound = await bindFolder(defaultFolder).catch(() => null);
       // We just pointed storage at the real folder AFTER the app's one-shot workspace read — reload
-      // once so those records surface. Guarded per tab-session so it never loops.
-      if (bound && bound.count > 0 && !sessionStorage.getItem("sb:rehydrated")) {
-        sessionStorage.setItem("sb:rehydrated", "1");
-        location.reload();
-        return;
-      }
+      // once so those records surface.
+      if (bound && bound.count > 0) { rehydrate(); return; }
     }
     await publishBrands(relay);
+    // Two ways the grid can be showing empty over real data by the time we get here:
+    //   1. fresh chip CLICK — the workspace read fired pre-consent and was denied (the already-bound
+    //      twin of the bind case above);
+    //   2. the PROBE path lost the race — the app's read timed out waiting for the provider (e.g. a
+    //      cold extension worker re-authing its daemon socket answers the grant probe late) even
+    //      though this very afterConnect then succeeded. The adapter records that as
+    //      workspaceLoadLost().
+    // Same cure for both: one guarded reload; on the reloaded page the provider wires BEFORE the read.
+    if (fresh || workspaceLoadLost()) rehydrate();
   }
 
   // The ONE standard connect affordance — identity + connect + the lent-project switcher. Connectors,
@@ -103,7 +133,7 @@ async function main() {
   const dock = document.createElement("div");
   dock.style.cssText = "position:fixed;right:14px;bottom:14px;z-index:2147483000";
   document.body.appendChild(dock);
-  mountConnect(dock, { scope, onConnect: (relay) => { void afterConnect(relay); } });
+  mountConnect(dock, { scope, onConnect: (relay) => { void afterConnect(relay, true); } });
 
   // Fast provider probe: set the provider the instant we confirm an existing grant — BEFORE brandbrain's
   // workspace load races in — so a returning user's brands appear on first paint without a reload. No

@@ -20,12 +20,21 @@ const relayDir = mkdtempSync(join(tmpdir(), "relay-demo-"));
 const checks = [];
 const check = (n, c, d = "") => { checks.push(!!c); console.error(`${c ? "✓" : "✗"} ${n}${d ? ` — ${d}` : ""}`); };
 
-// Same Brand → context mapping the port's bootstrap uses.
+// Same Brand → context mapping the port's bootstrap uses (src/bootstrap.js — keep in sync).
+// `data.palette` is flat CSS color strings per docs/CONTEXT-KINDS.md; named swatches → `paletteRich`.
+function flattenPalette(raw) {
+  const flat = [], rich = [];
+  for (const p of Array.isArray(raw) ? raw : []) {
+    if (typeof p === "string" && p.trim()) flat.push(p.trim());
+    else if (p && typeof p.hex === "string" && p.hex.trim()) { flat.push(p.hex.trim()); rich.push({ name: String(p.name || "").trim(), hex: p.hex.trim() }); }
+  }
+  return { flat, rich };
+}
 function brandToContext(b) {
   const L = b.locks || {}; const line = (c) => (c && (c.title || c.name)) || "";
-  const palette = (L.identity && L.identity.palette) || b.palette || [];
+  const { flat: palette, rich: paletteRich } = flattenPalette((L.identity && L.identity.palette) || b.palette || []);
   const products = [line(L.range), line(L.format), b.idea].filter(Boolean);
-  return { id: b.id, name: b.name || "Brand", kind: "brand", data: { voice: line(L.voice) || (b.brief && b.brief.vibe) || "", positioning: line(L.positioning) || "", palette: Array.isArray(palette) ? palette : [], products } };
+  return { id: b.id, name: b.name || "Brand", kind: "brand", data: { voice: line(L.voice) || (b.brief && b.brief.vibe) || "", positioning: line(L.positioning) || "", palette, ...(paletteRich.length ? { paletteRich } : {}), products } };
 }
 
 const daemon = spawn("node", [DAEMON], { env: { ...process.env, RELAY_DIR: relayDir, RELAY_PORT: String(PORT) }, stdio: ["ignore", "ignore", "pipe"] });
@@ -53,13 +62,16 @@ try {
 
   // You pick one in the panel (control) → Prism reads the whole brand.
   const lib = (await control("listContexts")).contexts ?? [];
-  const pick = lib[0];
+  // Prefer a brand with a palette so the palette-shape check below actually exercises the flatten.
+  const pick = lib.find((c) => Array.isArray(c.data?.palette) && c.data.palette.length) || lib[0];
   await control("selectContext", { origin: PRISM, contextId: pick.id });
   const active = (await rpc(PRISM, "claude_context", { op: "active" })).context;
   check("after you lend it, Prism reads the brand", active?.name === pick.name, active?.name);
   const d = active?.data || {};
   check("Prism has product options to choose from", Array.isArray(d.products) && d.products.length > 0, (d.products || []).slice(0, 3).join(" · "));
   check("Prism has the brand palette + voice", Array.isArray(d.palette), `palette:${(d.palette || []).length} voice:${d.voice ? "yes" : "—"}`);
+  // Guards the CONTEXT-KINDS contract: swatch objects published raw would stringify to "[object Object]".
+  check("palette entries are flat CSS color strings", (d.palette || []).every((c) => typeof c === "string" && /^#[0-9a-f]{3,8}$/i.test(c.trim())), (d.palette || []).slice(0, 4).join(" "));
 
   // NEW: the panel's global "Working on" project — one selection scopes every app (no per-app pick).
   await control("selectContext", { origin: PRISM, contextId: null });                 // clear Prism's per-app pick
