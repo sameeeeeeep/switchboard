@@ -90,14 +90,19 @@ export class StorageStore {
     return binding;
   }
 
-  /** Resolve `<folder>/<key>.json`, refusing any key that would escape the folder. */
+  /** Resolve a key to its file, refusing any key that would escape the folder.
+   *  Two record dialects share one namespace: a key ending in `.md` maps to that LITERAL markdown
+   *  file (so a bound folder doubles as a plain notes vault — Obsidian et al. read/write the same
+   *  files); every other key keeps the classic `<key>.json`. Isolation is unchanged: KEY_RE forbids
+   *  separators, and the resolved path must still sit directly inside the folder. */
   private fileFor(origin: string, key: string): string {
     if (!KEY_RE.test(key)) throw new StorageKeyError(key);
     const { folder } = this.folderFor(origin);
     const root = resolve(folder);
-    const abs = resolve(root, `${key}.json`);
+    const name = key.endsWith(".md") ? key : `${key}.json`;
+    const abs = resolve(root, name);
     // Defense-in-depth beyond KEY_RE: the resolved file must sit directly inside the folder.
-    if (abs !== join(root, `${key}.json`) || !abs.startsWith(root + sep)) throw new StorageKeyError(key);
+    if (abs !== join(root, name) || !abs.startsWith(root + sep)) throw new StorageKeyError(key);
     return abs;
   }
 
@@ -125,8 +130,8 @@ export class StorageStore {
     const { folder } = this.folderFor(origin);
     if (!existsSync(folder)) return [];
     return readdirSync(folder)
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => f.slice(0, -5))
+      .filter((f) => f.endsWith(".json") || f.endsWith(".md"))
+      .map((f) => (f.endsWith(".json") ? f.slice(0, -5) : f)) // .md keys keep their extension
       .filter((k) => KEY_RE.test(k))
       .sort();
   }

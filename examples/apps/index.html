@@ -83,6 +83,30 @@
       .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); flex: none; }
       .tag { font: 600 9.5px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); background: var(--raised); border: 1px solid var(--edge); border-radius: 999px; padding: 3px 8px; flex: none; }
 
+      /* ---- header search + your-library shelf ---- */
+      .search {
+        margin-left: auto; width: 240px; background: var(--panel); border: 1px solid var(--edge);
+        border-radius: 999px; padding: 9px 16px; color: var(--ink); font: 500 13px/1 var(--sans); outline: none;
+        transition: border-color .15s, width .2s;
+      }
+      .search:focus { border-color: var(--v1); width: 300px; }
+      .search::placeholder { color: var(--faint); }
+      #chip-dock { flex: none; }
+      #library-sec { margin-bottom: 40px; }
+      .lib-kicker { font: 700 10.5px/1 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); margin: 14px 0 8px; }
+      .lib-row { display: flex; flex-wrap: wrap; gap: 10px; }
+      .lib-card {
+        display: inline-flex; align-items: center; gap: 9px; background: var(--panel); border: 1px solid var(--edge);
+        border-radius: 12px; padding: 9px 14px 9px 9px; transition: border-color .15s;
+      }
+      .lib-card:hover { border-color: var(--edge-soft); }
+      .lib-mk { width: 26px; height: 26px; border-radius: 8px; background: var(--violet-soft); color: #E9D5FF; display: grid; place-items: center; font: 700 12px/1 var(--sans); }
+      .lib-nm { font: 600 13.5px/1 var(--sans); color: var(--ink-2); }
+      .lib-badge { font: 600 10px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); background: rgba(52,211,153,.1); border-radius: 999px; padding: 3px 8px; }
+      .lib-foot, .lib-empty { color: var(--faint); font-size: 12.5px; margin-top: 12px; line-height: 1.6; }
+      .lib-empty { background: var(--panel); border: 1px dashed var(--edge); border-radius: 12px; padding: 14px 16px; }
+      @media (max-width: 880px) { .search { width: 150px; } .search:focus { width: 180px; } }
+
       footer { margin-top: 60px; color: var(--faint); font-size: 12.5px; max-width: 68ch; line-height: 1.7; }
       footer a { color: var(--ink-2); border-bottom: 1px solid var(--edge-soft); }
       footer a:hover { color: var(--ink); }
@@ -98,7 +122,8 @@
     <div class="wrap">
       <header>
         <span class="brand"><span class="g">S</span>Wrapp Store <span class="sub">· Switchboard</span></span>
-        <a class="get" href="https://thelastprompt.ai/switchboard/" target="_blank" rel="noreferrer">Get Switchboard ↗</a>
+        <input id="search" class="search" type="search" placeholder="Search apps…   ⌘K" autocomplete="off" />
+        <div id="chip-dock"></div>
       </header>
 
       <p class="eyebrow">Runs on your own AI</p>
@@ -108,7 +133,12 @@
         control — the operator never holds a key, pays for inference, or sees your data. Connect one to try it.
       </p>
 
-      <a class="featured" href="https://brandbrain.thelastprompt.ai/build">
+      <section id="library-sec" hidden>
+        <div class="sec-h"><h3>Your library</h3><span>what your apps can borrow — names only, lending is per app</span></div>
+        <div id="library"></div>
+      </section>
+
+      <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning">
         <span class="tile">🧠</span>
         <span>
           <h2>brandbrain <span class="dot" title="live"></span></h2>
@@ -117,29 +147,38 @@
         <span class="arrow">→</span>
       </a>
 
+      <a class="featured" href="./bank.html" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy">
+        <span class="tile" style="background: linear-gradient(135deg, #23283A, #101320)">🧠</span>
+        <span>
+          <h2>Bank <span class="tag">local demo</span></h2>
+          <p>Your context bank — notes, tasks, [[links]] and everything you own, in one place that knows things. Plain .md files in a folder you own (an Obsidian vault works); ask it questions on your Claude.</p>
+        </span>
+        <span class="arrow">→</span>
+      </a>
+
       <div class="sec-h"><h3>The founder stack</h3><span>run your brand on your own model</span></div>
       <div class="grid">
-        <a class="card" href="https://adpulse.thelastprompt.ai">
+        <a class="card" href="https://adpulse.thelastprompt.ai" data-tags="meta ads analyse performance facebook roas spend">
           <span class="tile" style="background: linear-gradient(135deg, #4A3208, #241802)">📈</span>
           <span class="body"><h4>AdPulse <span class="dot" title="live"></span></h4>
           <p>Meta ads post-mortem — paste your Ads Manager export or pull it live through your own Meta connector; your Claude finds the wasted spend and what to scale.</p></span>
         </a>
-        <a class="card" href="https://adforge.thelastprompt.ai">
+        <a class="card" href="https://adforge.thelastprompt.ai" data-tags="meta ads generate creative facebook copy">
           <span class="tile" style="background: linear-gradient(135deg, #4A2208, #240F02)">🧲</span>
           <span class="body"><h4>AdForge <span class="dot" title="live"></span></h4>
           <p>URL in, Meta ads out — three concepts, one recommended, rendered as a real feed ad with creative generated on your Higgsfield.</p></span>
         </a>
-        <a class="card" href="https://shelf.thelastprompt.ai">
+        <a class="card" href="https://shelf.thelastprompt.ai" data-tags="inventory stock reorder sku warehouse">
           <span class="tile" style="background: linear-gradient(135deg, #453308, #201702)">📦</span>
           <span class="body"><h4>Shelf <span class="dot" title="live"></span></h4>
           <p>Inventory triage — reorder-now, watch, dead weight, and the cash locked on your shelf.</p></span>
         </a>
-        <a class="card" href="https://studio.thelastprompt.ai">
+        <a class="card" href="https://studio.thelastprompt.ai" data-tags="product images photos shots photography">
           <span class="tile" style="background: linear-gradient(135deg, #4A1D0E, #260C04)">📸</span>
           <span class="body"><h4>Studio <span class="dot" title="live"></span></h4>
           <p>Product shots without the studio — one photo in, finished frames out, shot on your Higgsfield. The product stays exactly itself.</p></span>
         </a>
-        <a class="card" href="https://aplus.thelastprompt.ai">
+        <a class="card" href="https://aplus.thelastprompt.ai" data-tags="amazon a+ content listing seller ecommerce">
           <span class="tile" style="background: linear-gradient(135deg, #443A0A, #201B03)">🛍️</span>
           <span class="body"><h4>A-Plus <span class="dot" title="live"></span></h4>
           <p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story, rendered as the real module stack.</p></span>
@@ -148,12 +187,12 @@
 
       <div class="sec-h"><h3>After hours</h3><span>the fun ones</span></div>
       <div class="grid">
-        <a class="card" href="https://natal.thelastprompt.ai">
+        <a class="card" href="https://natal.thelastprompt.ai" data-tags="astrology horoscope costar birth chart zodiac">
           <span class="tile" style="background: linear-gradient(135deg, #1E1E2E, #0C0C14)">🪐</span>
           <span class="body"><h4>NATAL <span class="dot" title="live"></span></h4>
           <p>Your chart, read bluntly — birth data in, sun/moon/rising and an unsentimental daily brief.</p></span>
         </a>
-        <a class="card" href="https://arcana.thelastprompt.ai">
+        <a class="card" href="https://arcana.thelastprompt.ai" data-tags="tarot cards reading spread fortune">
           <span class="tile" style="background: linear-gradient(135deg, #2E2410, #140F05)">🔮</span>
           <span class="body"><h4>Arcana <span class="dot" title="live"></span></h4>
           <p>Three cards, no mercy — draw a spread and your Claude reads the exact cards you pulled.</p></span>
@@ -162,27 +201,29 @@
 
       <div class="sec-h"><h3>Play &amp; make</h3><span>studios and experiments</span></div>
       <div class="grid">
-        <a class="card" href="https://cartridge.thelastprompt.ai">
+        <a class="card" href="https://cartridge.thelastprompt.ai" data-tags="game arcade play build">
           <span class="tile" style="background: linear-gradient(135deg, #3A0E28, #1C0512)">🕹️</span>
           <span class="body"><h4>Cartridge <span class="dot" title="live"></span></h4>
           <p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact. Remix forever.</p></span>
         </a>
-        <a class="card" href="./persona.html">
+        <a class="card" href="./persona.html" data-tags="persona creator ugc influencer video">
           <span class="tile" style="background: linear-gradient(135deg, #431408, #200902)">🎬</span>
           <span class="body"><h4>Cast <span class="tag">local demo</span></h4>
           <p>An AI persona studio — creators that stay on-model across faces, scenes, and reels.</p></span>
         </a>
-        <a class="card" href="./imagegen.html">
+        <a class="card" href="./imagegen.html" data-tags="image generate brand higgsfield">
           <span class="tile" style="background: linear-gradient(135deg, #1E1A4A, #0D0B24)">🖼️</span>
           <span class="body"><h4>Prism <span class="tag">local demo</span></h4>
           <p>Prompt → image on your Higgsfield connector, on-brand when you lend it a brand context.</p></span>
         </a>
-        <a class="card" href="./adgen.html">
+        <a class="card" href="./adgen.html" data-tags="ads website brand generate">
           <span class="tile" style="background: linear-gradient(135deg, #42103A, #20071C)">🎨</span>
           <span class="body"><h4>Ad generator <span class="tag">local demo</span></h4>
           <p>The original demo — reads a website's brand with your Claude, then generates ads with your Higgsfield.</p></span>
         </a>
       </div>
+
+      <div id="no-hits" class="lib-empty" hidden>Nothing matches — try a shorter search.</div>
 
       <footer>
         Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
@@ -191,5 +232,6 @@
         — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
       </footer>
     </div>
+    <script type="module" src="./dist/home.js"></script>
   </body>
 </html>

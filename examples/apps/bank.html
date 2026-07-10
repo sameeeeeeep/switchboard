@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bank — your context bank, on your own Claude</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* BANK — the context bank, in the house design system: ink-black canvas, panel cards on
+         hairline edges, lime as THE accent, Bricolage display + Hanken body + Spline mono for data.
+         Obsidian-inspired mechanics ([[links]], backlinks, tasks-in-notes), not Obsidian's clothes. */
+      :root {
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --lime: #C8F250; --lime-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body { background: var(--page); color: var(--ink); font: 14.5px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      .wrap { max-width: 880px; margin: 0 auto; padding: 26px 22px 90px; }
+
+      header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--edge-soft); }
+      .word { font: 700 21px/1 var(--display); letter-spacing: -0.02em; }
+      .word em { font-style: normal; color: var(--lime); }
+      .tagline { font: 400 12.5px/1.4 var(--sans); color: var(--ink-faint); margin-top: 5px; }
+      .tagline b { color: var(--ink-dim); font-weight: 500; }
+      #chip-dock { margin-left: auto; }
+
+      .vault { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font: 400 11.5px/1.5 var(--mono); color: var(--ink-faint); }
+      .vault b { color: var(--ink-dim); font-weight: 500; }
+      #vault-path { color: var(--ink-sec); }
+      #vault-bind { font: 500 11px/1 var(--mono); background: none; border: 1px solid var(--edge); border-radius: 8px; color: var(--lime); padding: 6px 10px; cursor: pointer; }
+      #vault-bind:hover { border-color: var(--lime); }
+
+      .sysline { margin-top: 12px; font: 400 12px/1.6 var(--mono); color: var(--danger); }
+
+      .sec { margin-top: 34px; }
+      .kick { display: flex; align-items: center; gap: 12px; font: 500 10px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin: 0 0 12px; }
+      .kick b { color: var(--lime); font-weight: 500; }
+      .kick i { font-style: normal; color: var(--ink-faint); letter-spacing: 0.06em; text-transform: none; }
+      .kick::after { content: ""; flex: 1; height: 1px; background: var(--edge-soft); }
+
+      .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; padding: 16px; }
+      textarea, input[type=text] {
+        width: 100%; background: var(--inset); color: var(--ink); border: 1px solid var(--edge); border-radius: 10px;
+        padding: 12px 14px; outline: none; font: 400 13.5px/1.7 var(--mono); transition: border-color .15s;
+      }
+      textarea { min-height: 96px; resize: vertical; white-space: pre-wrap; }
+      textarea:focus, input:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      .row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+      .btn { font: 500 13.5px/1 var(--sans); border-radius: 10px; padding: 11px 16px; cursor: pointer; border: 1px solid var(--edge); background: var(--panel); color: var(--ink-sec); transition: border-color .15s, opacity .15s; }
+      .btn:hover { border-color: var(--edge-soft); }
+      .btn-primary { background: var(--lime); color: var(--page); border-color: transparent; font-weight: 600; }
+      .btn-primary:hover { opacity: .9; }
+      .btn:disabled { opacity: .45; cursor: not-allowed; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip { font: 400 12px/1 var(--mono); padding: 6px 11px; border-radius: 999px; background: var(--raised); color: var(--ink-dim); border: 1px solid transparent; cursor: pointer; }
+      .chip:hover { border-color: var(--edge); color: var(--ink-sec); }
+      .microhint { font: 400 11.5px/1.5 var(--mono); color: var(--ink-faint); }
+
+      /* shelf: the library in one strip */
+      .shelfrow { display: flex; flex-wrap: wrap; gap: 8px; }
+      .shelfchip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 7px 12px 7px 7px; cursor: pointer; transition: border-color .15s; }
+      .shelfchip:hover { border-color: var(--edge-soft); }
+      .shelfchip.on { border-color: var(--lime); background: var(--lime-soft); }
+      .shelfchip b { width: 22px; height: 22px; border-radius: 7px; background: var(--raised); color: var(--ink-sec); display: grid; place-items: center; font: 600 11px/1 var(--display); }
+      .shelfchip span { font: 500 13px/1 var(--sans); color: var(--ink-sec); }
+      .shelfchip i { font: 400 10px/1 var(--mono); color: var(--ink-faint); font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+      .shelf-empty { font: 400 12px/1.6 var(--mono); color: var(--ink-faint); background: var(--panel); border: 1px dashed var(--edge); border-radius: 12px; padding: 12px 14px; }
+
+      /* tasks */
+      .taskrow { display: flex; align-items: baseline; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--edge-soft); cursor: pointer; }
+      .taskrow:last-child { border-bottom: 0; }
+      .taskrow input { accent-color: var(--lime); }
+      .taskrow span { flex: 1; color: var(--ink-sec); }
+      .taskrow i { font: 400 10.5px/1 var(--mono); color: var(--ink-faint); font-style: normal; white-space: nowrap; }
+
+      /* notes */
+      .notes { display: grid; gap: 12px; }
+      .note { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 14px 16px; position: relative; }
+      .note .nt { font: 600 15px/1.3 var(--display); letter-spacing: -0.01em; }
+      .note .nb { color: var(--ink-dim); font-size: 13px; margin-top: 5px; }
+      .nlinks { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 10px; }
+      .wikilink { font: 400 11.5px/1 var(--mono); color: var(--lime); background: var(--lime-soft); border: 0; border-radius: 7px; padding: 5px 8px; cursor: pointer; }
+      .backl { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); }
+      .ndel { position: absolute; top: 12px; right: 14px; font: 400 10.5px/1 var(--mono); color: var(--ink-faint); background: none; border: 0; cursor: pointer; }
+      .ndel:hover { color: var(--danger); }
+
+      /* ask */
+      #ask-out { margin-top: 12px; white-space: pre-wrap; font: 400 13.5px/1.75 var(--sans); color: var(--ink-sec); background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; padding: 14px 16px; }
+
+      footer { margin-top: 60px; font: 400 12px/1.7 var(--mono); color: var(--ink-faint); max-width: 66ch; }
+      @media (max-width: 880px) { header { flex-wrap: wrap; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <div class="word">Ba<em>nk</em></div>
+          <div class="tagline">your context bank — notes, tasks and everything you own, in one place <b>that knows things</b></div>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <div class="vault" id="vault" hidden>
+        <b>vault</b> <span id="vault-path"></span> · <span id="vault-state"></span>
+        <button id="vault-bind" hidden>bind a folder (Obsidian vault works)</button>
+      </div>
+      <div class="sysline" id="sysline" hidden></div>
+
+      <section class="sec">
+        <p class="kick"><b>01</b> bank it <i>one box — notes, [[links]] and “- [ ] tasks” all go here</i></p>
+        <div class="panel">
+          <textarea id="capture" spellcheck="false" placeholder="# Diwali launch&#10;&#10;gifting bundles for [[Haazma]] — kraft boxes, 3 SKUs&#10;- [ ] price the bundle"></textarea>
+          <div class="row">
+            <button class="btn btn-primary" id="bank-it" disabled>Bank it ⌘↵</button>
+            <div class="chips" id="capture-chips"></div>
+            <span class="microhint" id="capture-hint"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>02</b> the shelf <i>everything your apps can borrow — click one to trace it through your notes</i></p>
+        <div class="shelfrow" id="shelf"></div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>03</b> tasks <i id="tasks-count"></i></p>
+        <div class="panel" id="tasks"></div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>04</b> the brain <i id="brain-note"></i></p>
+        <div class="notes" id="notes"></div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>05</b> ask the bank <i>answers from your notes, on your Claude</i></p>
+        <div class="panel">
+          <input type="text" id="ask-in" placeholder="what am I forgetting about the launch?" />
+          <div class="row">
+            <button class="btn btn-primary" id="ask-go" disabled>Ask</button>
+            <div class="chips" id="ask-chips"></div>
+          </div>
+          <div id="ask-out" hidden></div>
+        </div>
+      </section>
+
+      <footer>
+        Bank ships only the interface. Notes are plain .md files in a folder you own (bind your
+        Obsidian vault and they're the same files); answers run on your Claude through Switchboard.
+        Nothing leaves your machine but the questions you ask your own model.
+      </footer>
+    </div>
+    <script type="module" src="./dist/bank.js"></script>
+  </body>
+</html>

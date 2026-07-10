@@ -61,6 +61,7 @@ const WRAPPS: Wrapp[] = [
   { name: "NATAL", desc: "Your chart, read bluntly", url: "https://natal.thelastprompt.ai", color: "#EDEDF5", alternativeTo: ["costarastrology.com"] },
   { name: "Arcana", desc: "Three cards, no mercy", url: "https://arcana.thelastprompt.ai", color: "#C9A227" },
   { name: "Cartridge", desc: "Form → playable game", url: "https://cartridge.thelastprompt.ai", color: "#FF2E97" },
+  { name: "Bank", desc: "Notes, tasks & your library — one place that knows things", url: "http://localhost:5174/bank.html", color: "#8FA3C8", alternativeTo: ["notion.so", "obsidian.md", "www.notion.so"] },
   { name: "Cast", desc: "AI personas that stay on-model", url: "http://localhost:5174/persona.html", color: "#FF5A3C", alternativeTo: ["spira.ai", "app.spira.ai", "arcads.ai", "captions.ai"] },
   { name: "Prism", desc: "Generate on-brand images", url: "http://localhost:5174/imagegen.html", color: "#4F46E5", alternativeTo: ["canva.com", "figma.com", "adobe.com", "leonardo.ai"] },
   { name: "Ad generator", desc: "Ads from your brand", url: "http://localhost:5174/adgen.html", color: "#EE46BC", alternativeTo: ["business.facebook.com", "ads.tiktok.com"] },
