@@ -331,6 +331,29 @@ export class Broker implements ConsentPrompter {
         this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "profile-changed" } });
         return { ok: true, profile: this.deps.config.profile };
       }
+      case "saveContext": {
+        // Panel-authored context — e.g. kind "personal": the founder's own contact card (name,
+        // phone, email, address, company). The panel is the trusted author; an app still only
+        // ever receives it when the user LENDS it (selection = consent, same as any context).
+        const name = String(args?.name ?? "").trim();
+        if (!name) return { ok: false, error: "name required" };
+        const kind = String(args?.kind ?? "note").trim() || "note";
+        const saved = this.deps.contexts.publish("panel", { id: args?.id ? String(args.id) : undefined, name, kind, data: args?.data ?? null });
+        this.deps.audit.record({ origin: "*", kind: "request", method: "context:save", outcome: "ok", note: name });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "context-changed" } });
+        return { ok: true, id: saved.id };
+      }
+      case "getContext": {
+        // Panel-only: the FULL context (data included) so the manager can prefill an edit form.
+        const ctx = this.deps.contexts.get(String(args?.contextId ?? ""));
+        return ctx ? { ok: true, context: ctx } : { ok: false, error: "not found" };
+      }
+      case "deleteContext": {
+        const removed = this.deps.contexts.remove(String(args?.contextId ?? ""));
+        this.deps.audit.record({ origin: "*", kind: "request", method: "context:delete", outcome: removed ? "ok" : "denied" });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "context-changed" } });
+        return { ok: removed };
+      }
       case "addSourceContext": {
         // The user adds a live data source (a published Google Sheet / CSV URL) as a context. Panel-driven.
         const name = String(args?.name ?? "").trim();

@@ -350,7 +350,7 @@ function contextCategory(c: ContextMeta): string {
   if (!k || k === "context") return "Other";
   return k.charAt(0).toUpperCase() + k.slice(1) + (k.endsWith("s") ? "" : "s");
 }
-const CATEGORY_ORDER = ["Projects", "Brands", "Data sources"]; // the rest fall in alphabetically after
+const CATEGORY_ORDER = ["Personal", "Projects", "Brands", "Data sources"]; // the rest fall in alphabetically after
 
 function openPicker(data: PanelData) {
   const picker = $("picker") as HTMLElement; picker.hidden = false;
@@ -380,6 +380,50 @@ function openPicker(data: PanelData) {
     }
   }
   renderAddSheet();
+  renderPersonalCard(data);
+}
+
+// "Your details" — the personal context card (kind "personal"): name, phone, email, address,
+// company. Panel-authored, stored in the same library as every other context, and an app only
+// receives it when the user LENDS it — contact info never flows implicitly.
+function renderPersonalCard(data: PanelData) {
+  const box = $("addPersonal"); box.className = "addsrc"; box.textContent = "";
+  const existing = data.contexts.find((c) => (c.kind || "").toLowerCase() === "personal") || null;
+  const toggle = el("button", "toggle", existing ? "✎ Your details (personal card)" : "＋ Your details (name, phone, email…)");
+  const form = el("div", "form");
+  const f = (ph: string) => { const i = el("input") as HTMLInputElement; i.placeholder = ph; return i; };
+  const nameI = f("Full name"), phoneI = f("Phone"), emailI = f("Email"), companyI = f("Company / brand"), addressI = f("Address"), notesI = f("Notes (GST, hours, anything an app may need)");
+  const err = el("div", "err");
+  const go = el("button", "go", existing ? "Save details" : "Add your details");
+  toggle.onclick = async () => {
+    box.className = "addsrc open";
+    if (existing && inExtension) {
+      const r = (await control("getContext", { contextId: existing.id })) as { ok?: boolean; context?: { data?: Record<string, unknown> } };
+      const d = (r?.context?.data ?? {}) as Record<string, unknown>;
+      nameI.value = String(d.fullName ?? existing.name ?? ""); phoneI.value = String(d.phone ?? "");
+      emailI.value = String(d.email ?? ""); companyI.value = String(d.company ?? "");
+      addressI.value = String(d.address ?? ""); notesI.value = String(d.notes ?? "");
+    }
+  };
+  go.onclick = async () => {
+    const nm = nameI.value.trim();
+    if (!nm) { err.textContent = "At least your name."; return; }
+    err.textContent = "";
+    const payload = {
+      id: existing?.id, name: nm, kind: "personal",
+      data: { fullName: nm, phone: phoneI.value.trim(), email: emailI.value.trim(), company: companyI.value.trim(), address: addressI.value.trim(), notes: notesI.value.trim() },
+    };
+    const r = inExtension ? ((await control("saveContext", payload)) as { ok?: boolean; error?: string }) : { ok: true };
+    if (!r?.ok) { err.textContent = r?.error || "Couldn't save."; return; }
+    (($("picker") as HTMLElement).hidden = true); refresh();
+  };
+  form.append(nameI, phoneI, emailI, companyI, addressI, notesI, err, go);
+  if (existing) {
+    const del = el("button", "toggle", "Remove this card");
+    del.onclick = async () => { if (inExtension) await control("deleteContext", { contextId: existing.id }); (($("picker") as HTMLElement).hidden = true); refresh(); };
+    form.append(del);
+  }
+  box.append(toggle, form);
 }
 
 // "Connect a Google Sheet": paste a published CSV link → it becomes a live project other apps can read.

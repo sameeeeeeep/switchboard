@@ -89,6 +89,15 @@ export class ContextLibrary {
   }
 
   /** The whole library — PANEL/control only, never handed to an app. */
+  /** Panel-only: delete a context outright and clear any selections pointing at it. */
+  remove(id: string): boolean {
+    if (!this.items.delete(id)) return false;
+    for (const [o, cid] of [...this.selection]) if (cid === id) this.selection.delete(o);
+    this.persist();
+    this.persistSel();
+    return true;
+  }
+
   listAll(): ContextMeta[] {
     return [...this.items.values()].map(meta).sort(byRecent);
   }

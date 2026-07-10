@@ -31,6 +31,35 @@ here is enforced by the broker; violating it doesn't error, it just renders wron
 
 ---
 
+## `kind: "personal"`
+
+Produced by the **side panel only** (the "Your details" card — `publishedBy: "panel"`); never by an
+app. The founder's own contact card: the stable facts (name, phone, email, address, company) that
+apps otherwise make users retype. Consumed like any context — an app receives it ONLY when the user
+lends it; contact info never flows implicitly.
+
+```jsonc
+{
+  "id": "…",
+  "name": "Sameep",              // display = the person's name
+  "kind": "personal",
+  "data": {
+    "fullName": "Sameep Rehlan", // all flat strings; absent = unknown (never invent)
+    "phone": "+91 …",
+    "email": "sameep@…",
+    "company": "nailinit",
+    "address": "…",
+    "notes": "GSTIN …, support hours 10–6 IST"  // free-form overflow (GST, hours, whatever apps may need)
+  }
+}
+```
+
+Consumers: fill "seller contact" blocks (A-Plus brand story, storefront footers, ad CTAs that need a
+business address), sign-offs in outreach drafts, invoice headers. Same defensive-normalization rules
+as every kind.
+
+---
+
 ## `kind: "brand"`
 
 Produced by the brandbrain port (`examples/brandbrain-port/src/bootstrap.js` → `brandToContext`)
