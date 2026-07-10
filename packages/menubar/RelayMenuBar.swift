@@ -1,9 +1,11 @@
-// Switchboard — macOS menu-bar app. The ambient face of the sidekick: the REAL Switchboard glyph
-// (lime rounded square, dark top-right notch) that lights when the daemon runs and PULSES while
-// your model is actually working; a menu that shows what you own (the context library), which apps
-// are connected, and what just happened (the audit tail) — read straight from ~/.relay's files.
-// Controls stay: pairing token, logs, start/restart/stop the LaunchAgent. No terminal required.
+// Switchboard — macOS menu-bar app. The ambient face of the sidekick.
+// The ICON is the real Switchboard mark (lime rounded square, page-dark notch): slate when the
+// daemon is offline, lime when connected, breathing while your model is actually WORKING (a live
+// `claude … stream-json` child under the daemon — the process table knows what no log shows).
+// Clicking it opens a designed POPOVER, not a text menu: status, your contexts as marks, the last
+// thing that happened, and quiet icon controls. Reads ~/.relay's files directly; no daemon changes.
 import AppKit
+import SwiftUI
 import Darwin
 
 let LABEL = "com.relay.sidekick"
@@ -17,37 +19,42 @@ let GRANTS_FILE = (RELAY_DIR as NSString).appendingPathComponent("grants.json")
 let AUDIT_FILE = (RELAY_DIR as NSString).appendingPathComponent("audit.log")
 let PLIST = (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents/\(LABEL).plist")
 
-// Lime #C8F250 — the house accent — signals connected. Page #0A0C10 is the notch.
-let LIME = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1)
-let PAGE = NSColor(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0, alpha: 1)
-let SLATE = NSColor(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0, alpha: 1)
+// ---------- house palette ----------
+let LIME_NS = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1)
+let PAGE_NS = NSColor(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0, alpha: 1)
+let SLATE_NS = NSColor(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0, alpha: 1)
+extension Color {
+    static let page = Color(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0)
+    static let panel = Color(red: 0x12/255.0, green: 0x15/255.0, blue: 0x1C/255.0)
+    static let raised = Color(red: 0x1A/255.0, green: 0x1F/255.0, blue: 0x29/255.0)
+    static let edge = Color(red: 0x26/255.0, green: 0x2C/255.0, blue: 0x38/255.0)
+    static let ink = Color(red: 0xE8/255.0, green: 0xED/255.0, blue: 0xF4/255.0)
+    static let inkDim = Color(red: 0x99/255.0, green: 0xA3/255.0, blue: 0xB7/255.0)
+    static let inkFaint = Color(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0)
+    static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
+}
 
-// ---------- the glyph, drawn in code so it matches the chip/panel mark exactly ----------
-// A rounded square with a small page-dark dot inset at the top-right. Lime when the sidekick runs,
-// slate when offline; while the model is WORKING the whole mark breathes (alpha pulse per tick).
+// ---------- the status-bar glyph (matches the chip/panel mark) ----------
 func glyphImage(running: Bool, working: Bool, phase: Int) -> NSImage {
     let size = NSSize(width: 18, height: 18)
     let img = NSImage(size: size, flipped: false) { rect in
-        let body = running ? LIME : SLATE
+        let body = running ? LIME_NS : SLATE_NS
         let alpha: CGFloat = working ? (phase % 2 == 0 ? 1.0 : 0.55) : 1.0
         body.withAlphaComponent(alpha).setFill()
         let r = rect.insetBy(dx: 1.5, dy: 1.5)
         NSBezierPath(roundedRect: r, xRadius: 4.5, yRadius: 4.5).fill()
-        // the notch: a page-dark dot inset top-right (matches .glyph::after in the panel css)
-        PAGE.withAlphaComponent(alpha).setFill()
+        PAGE_NS.withAlphaComponent(alpha).setFill()
         let d: CGFloat = 3.6
-        let dot = NSRect(x: r.maxX - d - 3.0, y: r.maxY - d - 3.0, width: d, height: d)
-        NSBezierPath(ovalIn: dot).fill()
+        NSBezierPath(ovalIn: NSRect(x: r.maxX - d - 3.0, y: r.maxY - d - 3.0, width: d, height: d)).fill()
         return true
     }
-    img.isTemplate = false // it carries the brand colour on purpose
+    img.isTemplate = false
     return img
 }
 
-// ---------- tiny readers over ~/.relay (the daemon's world, as files) ----------
-struct Ctx { let id: String; let name: String; let kind: String }
-struct Grantee { let origin: String; let mode: String }
-struct AuditRow { let ts: Double; let origin: String; let what: String; let note: String }
+// ---------- readers over ~/.relay ----------
+struct Ctx: Identifiable { let id: String; let name: String; let kind: String }
+struct LastAct { let origin: String; let verb: String; let note: String; let ts: Double }
 
 func readJSON(_ path: String) -> Any? {
     guard let data = FileManager.default.contents(atPath: path) else { return nil }
@@ -60,97 +67,288 @@ func readContexts() -> [Ctx] {
         return Ctx(id: id, name: name, kind: (c["kind"] as? String) ?? "context")
     }
 }
-func readDefaultContext(_ contexts: [Ctx]) -> Ctx? {
-    guard let sel = readJSON(SELECTION_FILE) as? [String: String], let id = sel["*global*"] else { return nil }
-    return contexts.first { $0.id == id }
+func readDefaultId() -> String? { (readJSON(SELECTION_FILE) as? [String: String])?["*global*"] }
+func readGrantCount() -> Int {
+    if let arr = readJSON(GRANTS_FILE) as? [[String: Any]] { return arr.count }
+    if let map = readJSON(GRANTS_FILE) as? [String: Any] { return map.count }
+    return 0
 }
-func readGrants() -> [Grantee] {
-    // grants.json is either an array of grants or an {origin: grant} map — accept both.
-    if let arr = readJSON(GRANTS_FILE) as? [[String: Any]] {
-        return arr.compactMap { g in (g["origin"] as? String).map { Grantee(origin: $0, mode: (g["mode"] as? String) ?? "ask") } }
-    }
-    if let map = readJSON(GRANTS_FILE) as? [String: [String: Any]] {
-        return map.map { Grantee(origin: $0.key, mode: ($0.value["mode"] as? String) ?? "ask") }.sorted { $0.origin < $1.origin }
-    }
-    return []
-}
-func readAuditTail(_ n: Int) -> [AuditRow] {
+func readLastAct() -> LastAct? {
     guard let data = FileManager.default.contents(atPath: AUDIT_FILE),
-          let text = String(data: data.suffix(16_384), encoding: .utf8) else { return [] }
-    var rows: [AuditRow] = []
+          let text = String(data: data.suffix(16_384), encoding: .utf8) else { return nil }
     for line in text.split(separator: "\n").reversed() {
         guard let d = line.data(using: .utf8),
               let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
               let ts = o["ts"] as? Double, let origin = o["origin"] as? String else { continue }
-        let what = (o["toolName"] as? String) ?? (o["method"] as? String) ?? (o["kind"] as? String) ?? "event"
-        let note = (o["note"] as? String) ?? ""
-        // skip the chatter that means nothing to a human glancing at a menu
-        if ["claude_permissions", "claude_capabilities", "claude_context", "claude_storage"].contains(what) { continue }
-        rows.append(AuditRow(ts: ts, origin: origin, what: what, note: note))
-        if rows.count == n { break }
+        let what = (o["toolName"] as? String) ?? (o["method"] as? String) ?? ""
+        if ["claude_permissions", "claude_capabilities", "claude_context", "claude_storage", ""].contains(what) { continue }
+        let verb: String
+        if what.contains("__publish") { verb = "published" }
+        else if what.contains("__use") { verb = "borrowed" }
+        else if what.contains("__get") || what.contains("__set") { verb = "touched storage" }
+        else if what == "connect" { verb = "connected" }
+        else if what == "consent" { verb = "asked consent" }
+        else if what.hasPrefix("mcp__") { verb = what.components(separatedBy: "__").last ?? "ran a tool" }
+        else { verb = what }
+        return LastAct(origin: origin, verb: verb, note: (o["note"] as? String) ?? "", ts: ts)
     }
-    return rows
+    return nil
 }
-func host(_ origin: String) -> String {
+func hostOf(_ origin: String) -> String {
     origin.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
 }
-func ago(_ ts: Double) -> String {
+func agoText(_ ts: Double) -> String {
     let s = max(0, Date().timeIntervalSince1970 - ts / 1000)
-    if s < 60 { return "\(Int(s))s ago" }
-    if s < 3600 { return "\(Int(s / 60))m ago" }
-    if s < 86_400 { return "\(Int(s / 3600))h ago" }
-    return "\(Int(s / 86_400))d ago"
-}
-func humanize(_ what: String) -> String {
-    if what.contains("__publish") { return "published" }
-    if what.contains("__get") { return "read storage" }
-    if what.contains("__set") { return "saved" }
-    if what.contains("__use") { return "borrowed context" }
-    if what == "connect" { return "connected" }
-    if what == "consent" { return "asked consent" }
-    if what.hasPrefix("mcp__") { return what.components(separatedBy: "__").last ?? what }
-    return what
+    if s < 60 { return "\(Int(s))s" }
+    if s < 3600 { return "\(Int(s / 60))m" }
+    if s < 86_400 { return "\(Int(s / 3600))h" }
+    return "\(Int(s / 86_400))d"
 }
 
+// ---------- observable state ----------
 @MainActor
-final class RelayController: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class Model: ObservableObject {
+    @Published var running = false
+    @Published var working = false
+    @Published var contexts: [Ctx] = []
+    @Published var defaultId: String? = nil
+    @Published var apps = 0
+    @Published var last: LastAct? = nil
+    var toast: String? = nil { didSet { objectWillChange.send() } }
+
+    func refreshFiles() {
+        contexts = readContexts()
+        defaultId = readDefaultId()
+        apps = readGrantCount()
+        last = readLastAct()
+    }
+}
+
+// ---------- the popover — the side panel's grammar, not a list ----------
+// Hierarchy mirrors the Chrome side panel: top bar (glyph + wordmark + on-dot), ONE hero card for
+// the default context (lime stripe, mark tile, name + honest meta), a marks strip for the rest of
+// the library, one line of life, quiet controls. Information display = hero + kicker + marks.
+struct Panel: View {
+    @ObservedObject var model: Model
+    let onToken: () -> Void
+    let onLogs: () -> Void
+    let onRestart: () -> Void
+    let onQuit: () -> Void
+    @State private var breathe = false
+
+    private var defaultCtx: Ctx? { model.contexts.first { $0.id == model.defaultId } }
+    private var others: [Ctx] { model.contexts.filter { $0.id != model.defaultId } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ---- top bar: glyph + wordmark + status, exactly the panel's header ----
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.lime)
+                    .frame(width: 17, height: 17)
+                    .overlay(Circle().fill(Color.page).frame(width: 5, height: 5).offset(x: 4.5, y: -4.5))
+                    .shadow(color: Color.lime.opacity(0.4), radius: 7)
+                Text("Switchboard").font(.system(size: 15, weight: .bold)).foregroundColor(.ink)
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(model.running ? Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0) : Color.inkFaint)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: model.running ? Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0).opacity(0.6) : .clear, radius: 4)
+                    Text(model.running ? "on" : "off").font(.system(size: 12, weight: .semibold)).foregroundColor(.inkDim)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 13)
+            Rectangle().fill(Color.edge).frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 18) {
+                // ---- the moment: only exists when something is happening ----
+                if model.running && model.working {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color.lime).frame(width: 6, height: 6)
+                            .opacity(breathe ? 1.0 : 0.3)
+                            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: breathe)
+                        Text("your model is working")
+                            .font(.system(size: 10, weight: .semibold)).kerning(1.2)
+                            .foregroundColor(.lime)
+                        if let a = model.last {
+                            Text("· for \(hostOf(a.origin).prefix(26))")
+                                .font(.system(size: 10)).foregroundColor(.inkFaint)
+                        }
+                        Spacer()
+                    }
+                }
+
+                // ---- working on: the hero card, straight from the panel ----
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("WORKING ON").kicker()
+                    HStack(spacing: 11) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color.lime).frame(width: 3, height: 34)
+                        Text(String((defaultCtx?.name ?? "—").prefix(1)).uppercased())
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(defaultCtx != nil ? .page : .inkFaint)
+                            .frame(width: 32, height: 32)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(defaultCtx != nil ? Color.lime : Color.raised))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(defaultCtx?.name ?? "No default yet")
+                                .font(.system(size: 15, weight: .bold)).foregroundColor(defaultCtx != nil ? .ink : .inkDim)
+                            Text(defaultCtx != nil ? "\(defaultCtx!.kind) · lent to apps that ask" : "pick one in the side panel")
+                                .font(.system(size: 10.5)).foregroundColor(.inkFaint)
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 13).fill(LinearGradient(colors: [Color.raised, Color.panel], startPoint: .top, endPoint: .bottom)))
+                    .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
+                }
+
+                // ---- the rest of the library: a marks strip, hover for names ----
+                if !others.isEmpty || model.apps > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("LIBRARY").kicker()
+                            Spacer()
+                            Text("\(model.contexts.count) contexts · \(model.apps) apps")
+                                .font(.system(size: 10, design: .monospaced)).foregroundColor(.inkFaint)
+                        }
+                        HStack(spacing: 6) {
+                            ForEach(others.prefix(9)) { c in
+                                Text(String(c.name.prefix(1)).uppercased())
+                                    .font(.system(size: 11, weight: .bold)).foregroundColor(.inkDim)
+                                    .frame(width: 24, height: 24)
+                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.raised))
+                                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1))
+                                    .help("\(c.name) · \(c.kind)")
+                            }
+                            if others.count > 9 {
+                                Text("+\(others.count - 9)")
+                                    .font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
+                                    .frame(width: 24, height: 24)
+                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel))
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+
+                // ---- one line of life ----
+                if model.running, let a = model.last, !model.working {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color.lime.opacity(0.7)).frame(width: 5, height: 5)
+                        (Text(hostOf(a.origin).prefix(24)).foregroundColor(.ink).fontWeight(.semibold)
+                            + Text("  \(a.verb)\(a.note.isEmpty ? "" : " \u{201C}\(a.note.prefix(20))\u{201D}")").foregroundColor(.inkDim))
+                            .font(.system(size: 11)).lineLimit(1)
+                        Spacer()
+                        Text(agoText(a.ts)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkFaint)
+                    }
+                }
+            }
+            .padding(16)
+
+            Rectangle().fill(Color.edge).frame(height: 1)
+
+            // ---- quiet controls ----
+            HStack(spacing: 8) {
+                GhostButton(icon: "doc.on.doc", label: "token", action: onToken)
+                GhostButton(icon: "text.alignleft", label: "logs", action: onLogs)
+                GhostButton(icon: "arrow.clockwise", label: model.running ? "restart" : "start", action: onRestart)
+                Spacer()
+                if let t = model.toast {
+                    Text(t).font(.system(size: 10)).foregroundColor(.lime).lineLimit(1)
+                }
+                GhostButton(icon: "power", label: nil, action: onQuit)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+        }
+        .frame(width: 324)
+        .background(Color.page)
+        .onAppear { breathe = true }
+    }
+}
+
+extension Text {
+    func kicker() -> some View {
+        self.font(.system(size: 9.5, weight: .semibold)).kerning(1.4).foregroundColor(.inkFaint)
+    }
+}
+
+struct GhostButton: View {
+    let icon: String
+    let label: String?
+    let action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+                if let l = label { Text(l).font(.system(size: 10.5, weight: .medium)) }
+            }
+            .foregroundColor(hover ? .ink : .inkDim)
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 7).fill(hover ? Color.raised : Color.panel))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+}
+
+// ---------- app shell ----------
+@MainActor
+final class RelayController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
+    private var popover: NSPopover!
     private var timer: Timer?
-    private var running = false
-    private var working = false
     private var phase = 0
+    private let model = Model()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // menu-bar only, no Dock icon
+        NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, phase: 0)
-        let menu = NSMenu()
-        menu.delegate = self // rebuilt fresh on every open, so the data is never stale
-        statusItem.menu = menu
+        statusItem.button?.action = #selector(togglePopover)
+        statusItem.button?.target = self
+
+        popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: Panel(
+            model: model,
+            onToken: { [weak self] in self?.copyToken() },
+            onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
+            onRestart: { [weak self] in self?.startOrRestart() },
+            onQuit: { NSApp.terminate(nil) }
+        ))
+
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
     }
 
-    private func setState(running r: Bool, working w: Bool) {
-        running = r
-        working = w
-        phase += 1
-        statusItem.button?.image = glyphImage(running: r, working: w, phase: phase)
-        statusItem.button?.toolTip = !r ? "Switchboard — sidekick offline"
-            : w ? "Switchboard — your model is working…" : "Switchboard — connected, idle"
+    @objc private func togglePopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown { popover.performClose(nil); return }
+        model.refreshFiles()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
     }
 
     private func poll() {
         checkReachable { ok in
             self.checkWorking { busy in
-                Task { @MainActor in self.setState(running: ok, working: ok && busy) }
+                Task { @MainActor in
+                    self.model.running = ok
+                    self.model.working = ok && busy
+                    self.phase += 1
+                    self.statusItem.button?.image = glyphImage(running: ok, working: ok && busy, phase: self.phase)
+                    self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
+                        : (ok && busy) ? "Switchboard — your model is working…" : "Switchboard — connected"
+                    if self.popover.isShown { self.model.refreshFiles() }
+                }
             }
         }
     }
 
-    // Blocking connect to loopback is instant (connects or refuses immediately) — run off-main.
     private nonisolated func checkReachable(_ completion: @escaping @Sendable (Bool) -> Void) {
         DispatchQueue.global().async {
             let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -169,8 +367,6 @@ final class RelayController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // "Is the model working RIGHT NOW?" — a live `claude … stream-json` child means a stream is
-    // executing (the audit log can't tell you this; the process table can).
     private nonisolated func checkWorking(_ completion: @escaping @Sendable (Bool) -> Void) {
         DispatchQueue.global().async {
             let p = Process()
@@ -183,116 +379,35 @@ final class RelayController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // ---------- the menu: rebuilt fresh each open ----------
-    func menuWillOpen(_ menu: NSMenu) {
-        menu.removeAllItems()
-        header(menu, running ? (working ? "● Switchboard — model working…" : "● Switchboard — connected") : "○ Switchboard — sidekick offline")
-        menu.addItem(.separator())
-
-        if running {
-            let contexts = readContexts()
-            let def = readDefaultContext(contexts)
-
-            section(menu, "YOUR LIBRARY — \(contexts.count) context\(contexts.count == 1 ? "" : "s")")
-            if contexts.isEmpty {
-                dim(menu, "Nothing yet — build a brand in brandbrain")
-            } else {
-                for c in contexts.prefix(7) {
-                    let star = (def?.id == c.id) ? "  ★ default" : ""
-                    dim(menu, "\(c.name)  ·  \(c.kind)\(star)")
-                }
-                if contexts.count > 7 { dim(menu, "… and \(contexts.count - 7) more") }
-            }
-            menu.addItem(.separator())
-
-            let grants = readGrants()
-            section(menu, "APPS CONNECTED — \(grants.count)")
-            for g in grants.prefix(6) { dim(menu, "\(host(g.origin))  ·  \(g.mode)") }
-            if grants.isEmpty { dim(menu, "None yet — open one from the Wrapp Store") }
-            menu.addItem(.separator())
-
-            let audit = readAuditTail(4)
-            section(menu, "JUST HAPPENED")
-            if audit.isEmpty { dim(menu, "Quiet so far") }
-            for a in audit {
-                let note = a.note.isEmpty ? "" : " “\(String(a.note.prefix(28)))”"
-                dim(menu, "\(host(a.origin).prefix(28)) \(humanize(a.what))\(note)  ·  \(ago(a.ts))")
-            }
-            menu.addItem(.separator())
-        }
-
-        add(menu, "Copy pairing token", #selector(copyToken))
-        add(menu, "Open logs", #selector(openLogs))
-        menu.addItem(.separator())
-        add(menu, running ? "Restart sidekick" : "Start sidekick", #selector(startOrRestart))
-        if running { add(menu, "Stop sidekick", #selector(stopDaemon)) }
-        menu.addItem(.separator())
-        add(menu, "Quit Switchboard", #selector(quit), key: "q")
-    }
-
-    private func header(_ menu: NSMenu, _ title: String) {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        menu.addItem(item)
-    }
-    private func section(_ menu: NSMenu, _ title: String) {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: NSColor.secondaryLabelColor,
-            .kern: 0.8,
-        ])
-        menu.addItem(item)
-    }
-    private func dim(_ menu: NSMenu, _ title: String) {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 12.5),
-            .foregroundColor: NSColor.labelColor,
-        ])
-        menu.addItem(item)
-    }
-    private func add(_ menu: NSMenu, _ title: String, _ action: Selector, key: String = "") {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        item.target = self
-        menu.addItem(item)
-    }
-
-    @objc private func copyToken() {
+    private func copyToken() {
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8) else {
-            flash("No token yet — start the sidekick first")
+            toast("no token yet — start the sidekick")
             return
         }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(token.trimmingCharacters(in: .whitespacesAndNewlines), forType: .string)
-        flash("✓ Token copied — paste into the Switchboard side panel")
+        toast("token copied")
     }
 
-    @objc private func openLogs() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE))
-    }
-
-    @objc private func startOrRestart() {
+    private func startOrRestart() {
         let uid = getuid()
-        if running {
+        if model.running {
             launchctl(["kickstart", "-k", "gui/\(uid)/\(LABEL)"])
+            toast("restarting…")
         } else if FileManager.default.fileExists(atPath: PLIST) {
             launchctl(["bootstrap", "gui/\(uid)", PLIST])
+            toast("starting…")
         } else {
-            flash("Sidekick not installed — run: npm run daemon:install")
+            toast("not installed — npm run daemon:install")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.poll() }
     }
 
-    @objc private func stopDaemon() {
-        launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.poll() }
+    private func toast(_ t: String) {
+        model.toast = t
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.model.toast = nil }
     }
-
-    @objc private func quit() { NSApp.terminate(nil) }
 
     private func launchctl(_ args: [String]) {
         let p = Process()
@@ -301,16 +416,11 @@ final class RelayController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         try? p.run()
         p.waitUntilExit()
     }
-
-    // Briefly show a message in the status header (menu is closed on click, so also set the tooltip).
-    private func flash(_ message: String) {
-        statusItem.button?.toolTip = message
-    }
 }
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let controller = RelayController()
     app.delegate = controller
-    app.run() // blocks for the program's lifetime, so `controller` stays retained
+    app.run()
 }
