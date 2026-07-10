@@ -66,7 +66,30 @@ mountConnect($("chip-dock"), {
   reflect();
 })();
 
+// ---------- self-updating: re-read whenever reality may have moved ----------
+// Two signals cover the daily cases without a daemon file-watcher:
+//   1. tab becomes visible again — you edited notes in Obsidian (same files!) or banked from
+//      another window; a throttled re-read on focus picks it up.
+//   2. the daemon broadcasts permissionsChanged (context published/edited, folder re-bound) —
+//      brandbrain publishing a brand or the panel saving your personal card refreshes the shelf.
+// External edits made WHILE the tab stays focused still need a manual reload — a real
+// storage-changed push from the daemon (fs.watch on bound folders) is the future upgrade.
+let lastBoot = 0;
+async function bootThrottled() {
+  if (!relay || Date.now() - lastBoot < 2500) return;
+  await boot();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void bootThrottled(); });
+
+let subscribed = false;
+function subscribeLive() {
+  if (subscribed || !relay) return; subscribed = true;
+  try { relay.on("permissionsChanged", () => void bootThrottled()); } catch { /* older provider */ }
+}
+
 async function boot() {
+  lastBoot = Date.now();
+  subscribeLive();
   try {
     const [metas, keys, info] = await Promise.all([
       relay.context.list().catch(() => []),
