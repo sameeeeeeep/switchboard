@@ -289,6 +289,7 @@ struct GhostButton: View {
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .focusable(false) // click-driven popover — the OS focus ring is noise here
         .onHover { hover = $0 }
     }
 }
@@ -330,7 +331,6 @@ final class RelayController: NSObject, NSApplicationDelegate {
         if popover.isShown { popover.performClose(nil); return }
         model.refreshFiles()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
     }
 
     private func poll() {

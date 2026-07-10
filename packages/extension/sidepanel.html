@@ -28,6 +28,9 @@
       ::selection { background: rgba(200, 242, 80, 0.3); }
       * { scrollbar-width: thin; scrollbar-color: #262c38 transparent; }
       button { font-family: inherit; }
+      /* mouse-driven surface: the browser's blue focus ring is noise here — inputs signal focus
+         via the lime border instead (the house focus language) */
+      button:focus, button:focus-visible, input:focus, input:focus-visible { outline: none; }
       .eyebrow { font: 600 11px/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
       .wrap { max-width: 460px; margin: 0 auto; padding-bottom: 28px; }
 
