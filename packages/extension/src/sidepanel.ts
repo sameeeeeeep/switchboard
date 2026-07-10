@@ -237,7 +237,7 @@ function renderProject(data: PanelData) {
   row.append(el("div", "mark", (active?.name || "—")[0]?.toUpperCase() ?? "—"));
   const txt = el("div"); txt.style.minWidth = "0";
   txt.append(el("div", "name", active ? active.name : "No project yet"));
-  txt.append(el("div", "meta", active ? `${active.kind ?? "project"} · lent to every app you connect` : "Pick one to share it with your apps"));
+  txt.append(el("div", "meta", active ? `${active.kind ?? "project"} · lent to apps that ask for a context` : "Pick one to lend to apps that ask"));
   row.append(txt);
   const sw = el("button", "switch", data.contexts.length ? (active ? "Switch" : "Choose") : "None yet");
   if (data.contexts.length) sw.onclick = () => openPicker(data);

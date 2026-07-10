@@ -133,7 +133,9 @@ async function main() {
   const dock = document.createElement("div");
   dock.style.cssText = "position:fixed;right:14px;bottom:14px;z-index:2147483000";
   document.body.appendChild(dock);
-  mountConnect(dock, { scope, onConnect: (relay) => { void afterConnect(relay, true); } });
+  // context: "none" — brandbrain PRODUCES contexts (it publishes every brand it holds); a single
+  // "working on" project has no meaning inside the app that manages all of them.
+  mountConnect(dock, { scope, context: "none", onConnect: (relay) => { void afterConnect(relay, true); } });
 
   // Fast provider probe: set the provider the instant we confirm an existing grant — BEFORE brandbrain's
   // workspace load races in — so a returning user's brands appear on first paint without a reload. No

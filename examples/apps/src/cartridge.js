@@ -59,6 +59,7 @@ $("dice").addEventListener("click", () => {
 
 // ---------- the standard connect chip ----------
 mountConnect($("chip-dock"), {
+  context: "none", // no brand need — identity-only chip, no "working on" project
   scope: { models: ["sonnet"], reason: "Cartridge — generate playable mini-games on your own Claude." },
   installUrl: INSTALL_URL,
   onConnect: (r) => { relay = r; reflectConn(); },

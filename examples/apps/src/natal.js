@@ -79,6 +79,7 @@ SOULS.forEach((s) => {
 
 // ---------- the standard connect chip ----------
 mountConnect($("chip-dock"), {
+  context: "none", // no brand need — identity-only chip, no "working on" project
   scope: { reason: "read your birth chart", models: ["sonnet"] },
   installUrl: INSTALL_URL,
   onConnect: (r) => { relay = r; notInstalled = false; reflect(); },

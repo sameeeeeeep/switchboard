@@ -27,6 +27,12 @@ export interface ConnectChipOptions {
   onDisconnect?: () => void;
   /** Fired whenever the lent project changes (via the chip's switcher or the side panel). */
   onProjectChange?: (project: Context | null) => void;
+  /** How this app relates to the shared context library. NOT every app has "a selected project":
+   *  - "single" (default): the app CONSUMES one lent context — the chip names it and offers Switch.
+   *  - "none": a lent context has no meaning here (the app is a producer managing its own projects,
+   *    like brandbrain, or simply has no brand need, like a game or a toy) — the chip is identity
+   *    only: no project line, no switcher, no context fetch. */
+  context?: "single" | "none";
 }
 
 export interface ConnectChipHandle {
@@ -124,7 +130,11 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     const grant = sessionDisconnected ? null : await r.permissions().catch(() => null);
     if (destroyed || my !== seq) return;
     if (!grant) { state = { kind: "disconnected", relay: r }; emitTransition(false); return render(); }
-    const [user, project] = await Promise.all([r.identity(), r.context.active().catch(() => null)]);
+    const wantsContext = opts.context !== "none";
+    const [user, project] = await Promise.all([
+      r.identity(),
+      wantsContext ? r.context.active().catch(() => null) : Promise.resolve(null),
+    ]);
     if (destroyed || my !== seq) return;
     state = { kind: "connected", relay: r, user, project };
     emitTransition(true);
@@ -208,23 +218,28 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     const av = el("div", "av");
     if (user?.avatar) { const img = el("img") as HTMLImageElement; img.src = user.avatar; img.alt = name; av.append(img); }
     else av.textContent = name.charAt(0).toUpperCase();
+    const wantsContext = opts.context !== "none";
     const who = el("div", "who");
     who.append(el("div", "hi", `Hi ${name}`));
     // The lent context by name only — no brand colours in Switchboard's chrome; a context's palette
-    // is meaningful inside the app that uses it, not as decoration on the chip.
-    who.append(el("div", "proj", project ? project.name : "No context lent"));
+    // is meaningful inside the app that uses it, not as decoration on the chip. Apps with no use
+    // for a lent context (context: "none") get an identity-only second line instead — a "selected
+    // project" is not a universal concept, and pretending it is confuses producers and toys alike.
+    who.append(el("div", "proj", wantsContext ? (project ? project.name : "No context lent") : "Connected"));
     chip.append(av, who, el("span", "caret", "▾"));
     chip.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
     wrap.append(chip);
 
     if (menuOpen) {
       const menu = el("div", "menu");
-      menu.append(el("div", "lbl", "Working on"));
-      const row = el("button", "proj-row");
-      row.append(el("span", undefined, project ? project.name : "Choose a context"));
-      row.append(el("span", "go", project ? "Switch ▸" : "Choose ▸"));
-      row.onclick = doPick;
-      menu.append(row, el("div", "sep"));
+      if (wantsContext) {
+        menu.append(el("div", "lbl", "Working on"));
+        const row = el("button", "proj-row");
+        row.append(el("span", undefined, project ? project.name : "Choose a context"));
+        row.append(el("span", "go", project ? "Switch ▸" : "Choose ▸"));
+        row.onclick = doPick;
+        menu.append(row, el("div", "sep"));
+      }
       const dc = el("button", "item", "Disconnect this app"); dc.onclick = doDisconnect;
       menu.append(dc);
       menu.append(el("div", "foot", "Connectors, budgets & activity live in the Switchboard toolbar panel."));
