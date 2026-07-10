@@ -19,7 +19,7 @@ interface Grant {
 }
 interface AuditEntry { ts: number; origin: string; method?: string; toolName?: string; kind: string; decision?: string; outcome: string; }
 interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number }
-interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; }
+interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 
@@ -79,6 +79,7 @@ const MOCK: PanelData = {
     { id: "sheet1", name: "Vendor book (Sheet)", kind: "csv", updatedAt: Date.now() - 600_000, sourceKind: "gsheet", rowCount: 42 },
   ],
   activeProject: "aamras",
+  selections: [{ origin: "https://prism.app", contextId: "haazma" }],
   // (a Sheet-backed project shows up alongside brand projects — same picker, marked "live")
   grants: [
     { origin: "https://brandbrain.app", mode: "trust", models: ["sonnet"], tools: [{ name: "WebSearch", access: "read" }, { name: "WebFetch", access: "read" }, { name: "mcp__claude_ai_Higgsfield__*", access: "write" }, { name: "mcp__claude_ai_Shopify__*", access: "write" }],
@@ -119,8 +120,8 @@ function control(action: string, args?: unknown): Promise<any> {
 async function load(): Promise<PanelData> {
   if (!inExtension) return MOCK;
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
-  if (!status?.paired) return { paired: false, reachable: false, grants: [], audit: [], contexts: [], activeProject: null };
-  if (!status?.reachable) return { paired: true, reachable: false, grants: [], audit: [], contexts: [], activeProject: null };
+  if (!status?.paired) return { paired: false, reachable: false, grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
+  if (!status?.reachable) return { paired: true, reachable: false, grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
   const c = await control("listContexts");
@@ -130,6 +131,7 @@ async function load(): Promise<PanelData> {
     audit: a?.entries ?? [],
     contexts: c?.contexts ?? [],
     activeProject: c?.activeProject ?? null,
+    selections: c?.selections ?? [],
   };
 }
 
@@ -149,7 +151,7 @@ function render(data: PanelData) {
   if (!online) return;
 
   void renderCurrentSite(data);
-  renderProject(data);
+  void renderProject(data);
   renderConnectors(data);
   renderApps(data);
   renderWrapps(data);
@@ -226,21 +228,31 @@ function renderWrapps(data: PanelData) {
   }
 }
 
-// ---- Working on: the active project, in its own colours ----
-function renderProject(data: PanelData) {
+// ---- Working on: per-app first. When the current tab IS a connected app, this card shows and
+// edits what THAT app is lent (its own pick, else your default); anywhere else it edits the
+// default — the context new apps inherit until they pick their own. Selection was always
+// per-origin in the daemon; this gives the per-origin layer its missing UI.
+async function renderProject(data: PanelData) {
   const box = $("project"); box.textContent = "";
-  const active = data.contexts.find((c) => c.id === data.activeProject) || null;
-  const usedBy = active ? data.grants.filter((g) => g.tools.length || true).length : 0; // apps that could receive it
+  const h = await activeTabHost();
+  const tabGrant = h ? data.grants.find((g) => hostMatch(h, host(g.origin))) : null;
+  const origin = tabGrant?.origin ?? null;
+  const explicit = origin ? (data.selections.find((s) => s.origin === origin)?.contextId ?? null) : null;
+  const shownId = origin ? (explicit ?? data.activeProject) : data.activeProject;
+  const active = data.contexts.find((c) => c.id === shownId) || null;
   const card = el("div", "project" + (active ? "" : " empty"));
   card.append(el("i", "stripe"));
   const row = el("div", "row");
   row.append(el("div", "mark", (active?.name || "—")[0]?.toUpperCase() ?? "—"));
   const txt = el("div"); txt.style.minWidth = "0";
-  txt.append(el("div", "name", active ? active.name : "No project yet"));
-  txt.append(el("div", "meta", active ? `${active.kind ?? "project"} · lent to apps that ask for a context` : "Pick one to lend to apps that ask"));
+  txt.append(el("div", "name", active ? active.name : (origin ? "Nothing lent to this app" : "No default yet")));
+  const meta = origin
+    ? (active ? `lent to ${host(origin)}${explicit ? "" : " · your default"}` : `pick one to lend ${host(origin)}`)
+    : (active ? `${active.kind ?? "project"} · your default — apps that ask inherit it` : "Pick a default to lend apps that ask");
+  txt.append(el("div", "meta", meta));
   row.append(txt);
   const sw = el("button", "switch", data.contexts.length ? (active ? "Switch" : "Choose") : "None yet");
-  if (data.contexts.length) sw.onclick = () => openPicker(data);
+  if (data.contexts.length) sw.onclick = () => openPicker(data, origin);
   row.append(sw);
   card.append(row);
   // No brand swatches here: a context's colours belong INSIDE the app that uses them, in its own
@@ -352,9 +364,14 @@ function contextCategory(c: ContextMeta): string {
 }
 const CATEGORY_ORDER = ["Personal", "Projects", "Brands", "Data sources"]; // the rest fall in alphabetically after
 
-function openPicker(data: PanelData) {
+function openPicker(data: PanelData, forOrigin: string | null = null) {
   const picker = $("picker") as HTMLElement; picker.hidden = false;
   const list = $("plist"); list.textContent = "";
+  // Per-origin mode: ticks and clicks apply to ONE app's lend (the daemon's per-origin selection);
+  // clearing it falls back to the default. Default mode edits the GLOBAL default, as before.
+  const explicit = forOrigin ? (data.selections.find((s) => s.origin === forOrigin)?.contextId ?? null) : null;
+  const tickedId = forOrigin ? (explicit ?? data.activeProject) : data.activeProject;
+  if (forOrigin) list.append(el("div", "pgroup", `For this app · ${host(forOrigin)}`));
 
   const groups = new Map<string, ContextMeta[]>();
   for (const c of data.contexts) { const g = contextCategory(c); (groups.get(g) ?? groups.set(g, []).get(g)!).push(c); }
@@ -367,15 +384,22 @@ function openPicker(data: PanelData) {
   for (const gname of names) {
     if (groups.size > 1) list.append(el("div", "pgroup", gname)); // header only when there's more than one kind
     for (const c of groups.get(gname)!) {
-      const item = el("button", "pitem" + (c.id === data.activeProject ? " on" : ""));
+      const item = el("button", "pitem" + (c.id === tickedId ? " on" : ""));
       item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
       const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
       // No colour swatches in the picker — a context's palette is meaningful inside the app that
       // uses it, not as decoration here. A live data source keeps its row-count badge (that's status).
       if (c.sourceKind) txt.append(el("span", "badge", `live · ${c.rowCount ?? 0} rows`));
       item.append(txt);
-      if (c.id === data.activeProject) item.append(el("div", "tick", "✓"));
-      item.onclick = () => { if (inExtension) control("setActiveProject", { contextId: c.id === data.activeProject ? null : c.id }).then(() => { picker.hidden = true; refresh(); }); else { picker.hidden = true; } };
+      if (c.id === tickedId) item.append(el("div", "tick", "✓"));
+      item.onclick = () => {
+        if (!inExtension) { picker.hidden = true; return; }
+        const next = c.id === tickedId ? null : c.id;
+        const done = forOrigin
+          ? control("selectContext", { origin: forOrigin, contextId: next })
+          : control("setActiveProject", { contextId: next });
+        void done.then(() => { picker.hidden = true; refresh(); });
+      };
       list.append(item);
     }
   }
