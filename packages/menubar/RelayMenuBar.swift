@@ -217,6 +217,8 @@ struct Panel: View {
         }
         .frame(width: 324)
         .background(Color.page)
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
         .onAppear { breathe = true }
     }
 }
@@ -253,7 +255,9 @@ struct GhostButton: View {
 @MainActor
 final class RelayController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var panel: NSPanel!
+    private var hosting: NSHostingView<Panel>!
+    private var clickMonitor: Any?
     private var timer: Timer?
     private var phase = 0
     private let model = Model()
@@ -265,15 +269,22 @@ final class RelayController: NSObject, NSApplicationDelegate {
         statusItem.button?.action = #selector(togglePopover)
         statusItem.button?.target = self
 
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: Panel(
+        hosting = NSHostingView(rootView: Panel(
             model: model,
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
             onQuit: { NSApp.terminate(nil) }
         ))
+        // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
+        // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+        panel.contentView = hosting
 
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
@@ -282,10 +293,25 @@ final class RelayController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePopover() {
-        guard let button = statusItem.button else { return }
-        if popover.isShown { popover.performClose(nil); return }
+        if panel.isVisible { hidePanel(); return }
+        guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        let size = hosting.fittingSize
+        panel.setContentSize(size)
+        let icon = btnWindow.frame
+        // right-align the sheet to the icon, clamped inside the screen, 6pt below the menu bar
+        let x = min(max(icon.maxX - size.width, screen.visibleFrame.minX + 8), screen.visibleFrame.maxX - size.width - 8)
+        panel.setFrameTopLeftPoint(NSPoint(x: x, y: icon.minY - 6))
+        panel.orderFrontRegardless()
+        // transient: any click outside puts it away
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.hidePanel() }
+        }
+    }
+
+    private func hidePanel() {
+        panel.orderOut(nil)
+        if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
     }
 
     private func poll() {
@@ -298,7 +324,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
                     self.statusItem.button?.image = glyphImage(running: ok, working: ok && busy, phase: self.phase)
                     self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
                         : (ok && busy) ? "Switchboard — your model is working…" : "Switchboard — connected"
-                    if self.popover.isShown { self.model.refreshFiles() }
+                    if self.panel.isVisible { self.model.refreshFiles() }
                 }
             }
         }
