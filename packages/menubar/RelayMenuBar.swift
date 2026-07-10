@@ -136,8 +136,13 @@ struct Panel: View {
     let onQuit: () -> Void
     @State private var breathe = false
 
-    private var defaultCtx: Ctx? { model.contexts.first { $0.id == model.defaultId } }
-    private var others: [Ctx] { model.contexts.filter { $0.id != model.defaultId } }
+    // The hero's one supporting line: who it's working for, or what's on the bench.
+    private var momentMeta: String {
+        if model.working, let a = model.last { return "for \(hostOf(a.origin))" }
+        if model.working { return "on your Claude" }
+        if model.running { return "\(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s") banked · \(model.apps) app\(model.apps == 1 ? "" : "s") connected" }
+        return "start the sidekick below"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -161,82 +166,32 @@ struct Panel: View {
             .padding(.horizontal, 16).padding(.vertical, 13)
             Rectangle().fill(Color.edge).frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 18) {
-                // ---- the moment: only exists when something is happening ----
-                if model.running && model.working {
+            // ---- THE MOMENT — the only hero a menubar deserves: what is my AI doing right now? ----
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(model.working ? Color.lime : (model.running ? Color.inkFaint : Color.inkFaint.opacity(0.4)))
+                        .frame(width: 10, height: 10)
+                        .opacity(model.working ? (breathe ? 1.0 : 0.25) : 1.0)
+                        .shadow(color: model.working ? Color.lime.opacity(0.7) : .clear, radius: 6)
+                        .animation(model.working ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: breathe)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.working ? "Working" : (model.running ? "Idle" : "Offline"))
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundColor(model.working ? .lime : (model.running ? .ink : .inkDim))
+                        Text(momentMeta)
+                            .font(.system(size: 11))
+                            .foregroundColor(.inkDim)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                // supporting detail: the last thing that happened — one line, never a feed
+                if model.running, let a = model.last {
                     HStack(spacing: 8) {
-                        Circle().fill(Color.lime).frame(width: 6, height: 6)
-                            .opacity(breathe ? 1.0 : 0.3)
-                            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: breathe)
-                        Text("your model is working")
-                            .font(.system(size: 10, weight: .semibold)).kerning(1.2)
-                            .foregroundColor(.lime)
-                        if let a = model.last {
-                            Text("· for \(hostOf(a.origin).prefix(26))")
-                                .font(.system(size: 10)).foregroundColor(.inkFaint)
-                        }
-                        Spacer()
-                    }
-                }
-
-                // ---- working on: the hero card, straight from the panel ----
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("WORKING ON").kicker()
-                    HStack(spacing: 11) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color.lime).frame(width: 3, height: 34)
-                        Text(String((defaultCtx?.name ?? "—").prefix(1)).uppercased())
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(defaultCtx != nil ? .page : .inkFaint)
-                            .frame(width: 32, height: 32)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(defaultCtx != nil ? Color.lime : Color.raised))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(defaultCtx?.name ?? "No default yet")
-                                .font(.system(size: 15, weight: .bold)).foregroundColor(defaultCtx != nil ? .ink : .inkDim)
-                            Text(defaultCtx != nil ? "\(defaultCtx!.kind) · lent to apps that ask" : "pick one in the side panel")
-                                .font(.system(size: 10.5)).foregroundColor(.inkFaint)
-                        }
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 13).fill(LinearGradient(colors: [Color.raised, Color.panel], startPoint: .top, endPoint: .bottom)))
-                    .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
-                }
-
-                // ---- the rest of the library: a marks strip, hover for names ----
-                if !others.isEmpty || model.apps > 0 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("LIBRARY").kicker()
-                            Spacer()
-                            Text("\(model.contexts.count) contexts · \(model.apps) apps")
-                                .font(.system(size: 10, design: .monospaced)).foregroundColor(.inkFaint)
-                        }
-                        HStack(spacing: 6) {
-                            ForEach(others.prefix(9)) { c in
-                                Text(String(c.name.prefix(1)).uppercased())
-                                    .font(.system(size: 11, weight: .bold)).foregroundColor(.inkDim)
-                                    .frame(width: 24, height: 24)
-                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.raised))
-                                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1))
-                                    .help("\(c.name) · \(c.kind)")
-                            }
-                            if others.count > 9 {
-                                Text("+\(others.count - 9)")
-                                    .font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
-                                    .frame(width: 24, height: 24)
-                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel))
-                            }
-                            Spacer()
-                        }
-                    }
-                }
-
-                // ---- one line of life ----
-                if model.running, let a = model.last, !model.working {
-                    HStack(spacing: 8) {
-                        Circle().fill(Color.lime.opacity(0.7)).frame(width: 5, height: 5)
-                        (Text(hostOf(a.origin).prefix(24)).foregroundColor(.ink).fontWeight(.semibold)
-                            + Text("  \(a.verb)\(a.note.isEmpty ? "" : " \u{201C}\(a.note.prefix(20))\u{201D}")").foregroundColor(.inkDim))
+                        Rectangle().fill(Color.edge).frame(width: 2, height: 14)
+                        (Text(hostOf(a.origin).prefix(26)).foregroundColor(.inkDim).fontWeight(.semibold)
+                            + Text("  \(a.verb)\(a.note.isEmpty ? "" : " \u{201C}\(a.note.prefix(22))\u{201D}")").foregroundColor(.inkFaint))
                             .font(.system(size: 11)).lineLimit(1)
                         Spacer()
                         Text(agoText(a.ts)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkFaint)
