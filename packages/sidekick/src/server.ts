@@ -400,12 +400,18 @@ export class Broker implements ConsentPrompter {
       models: { available: await this.deps.backends.models(), requested: requested.models ?? [] },
       tools: requestedTools,
       budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
+      // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
+      contextKinds: (requested.contextKinds ?? []).map((k) => String(k).trim()).filter(Boolean),
     };
     const approved = await this.requestConnectConsent(origin, consentBody);
     if (!approved) throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user rejected connect");
     // Re-classify every approved tool out of band so the UI's labels can't downgrade danger.
     const tools = approved.tools.map((t) => ({ name: t.name, access: classifyTool(t.name) }));
-    const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, expiresAt: approved.expiresAt });
+    // contextKinds is FAIL-CLOSED: only what the consent UI explicitly echoes back survives — an
+    // older extension that doesn't know the field yields none, never an implicit grant.
+    const approvedKinds = (approved as unknown as { contextKinds?: unknown }).contextKinds;
+    const contextKinds = Array.isArray(approvedKinds) ? approvedKinds.map((k) => String(k)).filter(Boolean) : [];
+    const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, contextKinds, expiresAt: approved.expiresAt });
     this.deps.audit.record({ origin, kind: "connect", outcome: "ok" });
     this.broadcast({ type: "event", event: "connect", payload: grant });
     return grant;
@@ -497,8 +503,31 @@ export class Broker implements ConsentPrompter {
         this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
         return { ok: true, id: ctx.id };
       }
-      case "list":
-        return { ok: true, contexts: lib.listOwn(origin) };
+      case "list": {
+        // Own published contexts, always — plus library METADATA for any kinds the user granted
+        // at connect (ScopeRequest.contextKinds). Names travel; data never does on this op.
+        const own = lib.listOwn(origin);
+        const kinds = this.deps.grants.get(origin)?.contextKinds ?? [];
+        if (!kinds.length) return { ok: true, contexts: own };
+        const kindSet = new Set(kinds.map((k) => k.toLowerCase()));
+        const seen = new Set(own.map((c) => c.id));
+        const shared = lib.listAll().filter((c) => !seen.has(c.id) && kindSet.has((c.kind ?? "").toLowerCase()));
+        log("list", "ok", `${own.length} own + ${shared.length} library`);
+        return { ok: true, contexts: [...own, ...shared] };
+      }
+      case "use": {
+        // Read ONE listed context in full and make it this app's selection. Allowed only for the
+        // app's own contexts or kinds the user granted visibility to — and audited by name.
+        const id = String(req.id ?? "");
+        const ctx = id ? lib.get(id) : null;
+        if (!ctx) { log("use", "denied", "not found"); return { ok: false, error: "no such context" }; }
+        const kinds = this.deps.grants.get(origin)?.contextKinds ?? [];
+        const allowed = ctx.publishedBy === origin || kinds.map((k) => k.toLowerCase()).includes((ctx.kind ?? "").toLowerCase());
+        if (!allowed) { log("use", "denied", ctx.name); return { ok: false, error: "not granted for this kind" }; }
+        lib.select(origin, id);
+        log("use", "ok", ctx.name);
+        return { ok: true, context: lib.active(origin) };
+      }
       case "active":
         return { ok: true, context: await this.resolveContext(lib.active(origin)) };
       case "pick": {

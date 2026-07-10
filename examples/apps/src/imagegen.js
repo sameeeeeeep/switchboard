@@ -37,7 +37,7 @@ $("connect").addEventListener("click", async () => {
   const r = await whenRelayReady();
   if (!("connect" in r)) { becomeInstallButton(r.installUrl); return; }
   try {
-    const grant = await r.connect({ reason: "Prism — generate on-brand images with Higgsfield", tools: [CONNECTOR] });
+    const grant = await r.connect({ reason: "Prism — generate on-brand images with Higgsfield", tools: [CONNECTOR], contextKinds: ["brand"] });
     await onConnected(r, grant.models);
   } catch (err) {
     setStatus(`Connect rejected (${err?.code ?? "?"})`);
@@ -57,13 +57,54 @@ function setStatus(text, connected) {
   s.querySelector(".glyph").style.background = connected ? "#3DD68C" : "#9C9AA3";
 }
 
-// ---- brand context: read the one the user lent Prism, or open the panel picker ----
+// ---- brand context: the IN-APP dropdown. With library visibility granted at connect
+// (contextKinds: ["brand"]), list() returns every brand's name — so switching reference brands is
+// a plain <select> right here, no side-panel round trip. Choosing one calls use(id): the daemon
+// hands over that ONE context, makes it Prism's selection, and audits the read. The panel picker
+// stays as the fallback when the user unchecked library visibility.
+let brandOptions = []; // [{id, name}] — metas only; data arrives per-pick via use()
 async function loadBrandContext() {
   try {
-    const ctx = await relay.context.active();
+    const [ctx, metas] = await Promise.all([
+      relay.context.active(),
+      relay.context.list().catch(() => []),
+    ]);
+    brandOptions = (metas || []).filter((m) => (m.kind || "").toLowerCase() === "brand").map((m) => ({ id: m.id, name: m.name }));
+    if (brandOptions.length) renderBrandSelect(ctx);
     if (ctx) applyBrand(ctx);
-    else revealLoadButton("Load brand");
+    else if (!brandOptions.length) revealLoadButton("Load brand");
   } catch { revealLoadButton("Load brand"); }
+}
+
+// The dropdown lives in the brandbar next to the chip; re-rendered on every load/switch.
+function renderBrandSelect(active) {
+  $("brandbar").hidden = false;
+  let sel = document.getElementById("brandSel");
+  if (!sel) {
+    sel = document.createElement("select");
+    sel.id = "brandSel";
+    sel.className = "bchange";
+    $("loadBrand").before(sel);
+    sel.addEventListener("change", async () => {
+      if (!relay || !sel.value) return;
+      sel.disabled = true;
+      try {
+        const ctx = await relay.context.use(sel.value);
+        if (ctx) applyBrand(ctx);
+      } finally { sel.disabled = false; }
+    });
+  }
+  sel.textContent = "";
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = "brand reference…";
+  sel.append(none);
+  for (const b of brandOptions) {
+    const o = document.createElement("option");
+    o.value = b.id; o.textContent = b.name;
+    if (active && active.id === b.id) o.selected = true;
+    sel.append(o);
+  }
+  $("loadBrand").hidden = true; // the dropdown replaces the picker button when the library is visible
 }
 function revealLoadButton(label) {
   const b = $("loadBrand"); b.hidden = false; b.textContent = label; $("brandbar").hidden = false;
@@ -103,7 +144,9 @@ function applyBrand(ctx) {
   if (brand.palette.length) for (const c of brand.palette.slice(0, 4)) { const sw = el("span", "sw"); sw.style.background = c; chip.append(sw); }
   fillSelect($("product"), brand.products, brand.products.length ? null : "— brand has no products —");
   fillSelect($("style"), brand.styles);
-  $("loadBrand").textContent = "Change brand"; $("loadBrand").hidden = false;
+  // In dropdown mode the <select> IS the switcher; only the panel-picker fallback needs the button.
+  if (document.getElementById("brandSel")) $("loadBrand").hidden = true;
+  else { $("loadBrand").textContent = "Change brand"; $("loadBrand").hidden = false; }
   $("prompt").placeholder = "Add art direction (optional) — e.g. on a marble surface, morning light";
   $("note").textContent = `Generating on-brand for ${brand.name}. Pick a product + style; Prism folds in the brand's voice and palette.`;
 }

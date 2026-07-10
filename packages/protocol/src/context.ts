@@ -58,19 +58,22 @@ export interface ContextMeta {
   rowCount?: number;
 }
 
-export type ContextOp = "publish" | "active" | "list" | "pick";
+export type ContextOp = "publish" | "active" | "list" | "pick" | "use";
 
 export interface ContextRequest {
   op: ContextOp;
   /** For `publish`: the context to save. Omit `id` to create; pass it to update in place. */
   context?: { id?: string; name: string; kind?: string; data: unknown };
+  /** For `use`: the id of a listed context to read (and become this app's selection). */
+  id?: string;
 }
 
 export interface ContextResult {
   ok: boolean;
   /** For `active` / `pick`: the whole selected context, or null. */
   context?: Context | null;
-  /** For `list`: metadata for the caller's OWN published contexts (never the whole library). */
+  /** For `list`: the caller's OWN published contexts, plus library metadata for any kinds the
+   *  user granted at connect (ScopeRequest.contextKinds) — names, never data. */
   contexts?: ContextMeta[];
   /** For `publish`: the stored id. */
   id?: string;

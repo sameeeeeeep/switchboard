@@ -14,6 +14,8 @@ interface ConnectBody {
   models: { available: string[]; requested: string[] };
   tools: Array<{ name: string; access: Access; label: string }>;
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
+  /** Library kinds the app asks to SEE (names only; data reads stay per-item + audited). */
+  contextKinds?: string[];
 }
 interface WriteBody { origin: string; tool: { name: string; arguments: Record<string, unknown> }; }
 interface StorageBindBody { origin: string; path: string; }
@@ -68,7 +70,7 @@ function ensureStyles() {
   document.head.appendChild(s);
 }
 
-export type Decision = null | false | { models: string[]; tools: Array<{ name: string; access: Access }>; budgets?: { maxTokensPerDay: number; maxCallsPerMin: number } };
+export type Decision = null | false | { models: string[]; tools: Array<{ name: string; access: Access }>; budgets?: { maxTokensPerDay: number; maxCallsPerMin: number }; contextKinds?: string[] };
 
 /** Render a consent prompt into `root`; call `onDecision` with the result. */
 export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d: Decision) => void) {
@@ -119,6 +121,19 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     tSec.append(label);
   }
 
+  // Context library visibility — one row, uncheckable, read-tinted. Approving lets the app LIST
+  // names of these kinds from your library; each actual read is one context at a time, audited.
+  let kindsBox: HTMLInputElement | null = null;
+  const kinds = (body.contextKinds ?? []).filter(Boolean);
+  if (kinds.length) {
+    const cSec = section(rc, "Your library");
+    const cb = el("input") as HTMLInputElement; cb.type = "checkbox"; cb.checked = true;
+    kindsBox = cb;
+    const label = el("label", "item");
+    label.append(cb, el("span", "name", `See your ${kinds.join(" & ")} names (picks read one at a time)`), el("span", "badge read", "read"));
+    cSec.append(label);
+  }
+
   // Budget
   const bSec = section(rc, "Budget");
   const tok = numInput(body.budgets.maxTokensPerDay);
@@ -133,6 +148,7 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     models: modelBoxes.filter(([, c]) => c.checked).map(([m]) => m),
     tools: toolBoxes.filter(([, c]) => c.checked).map(([t]) => t),
     budgets: { maxTokensPerDay: Number(tok.value) || 0, maxCallsPerMin: Number(calls.value) || 0 },
+    contextKinds: kindsBox?.checked ? kinds : [],
   });
   actions.append(deny, approve);
   rc.append(actions);

@@ -169,6 +169,9 @@ export class Relay {
       list: (): Promise<ContextMeta[]> => req({ op: "list" }).then((r) => r.contexts ?? []),
       active: (): Promise<Context | null> => req({ op: "active" }).then((r) => r.context ?? null),
       pick: (): Promise<Context | null> => req({ op: "pick" }).then((r) => r.context ?? null),
+      /** Read ONE context listed via `list()` in full, and make it this app's selection. Needs the
+       *  kind granted at connect (ScopeRequest.contextKinds) — powers in-app brand dropdowns. */
+      use: (id: string): Promise<Context | null> => req({ op: "use", id }).then((r) => r.context ?? null),
     };
   }
 }

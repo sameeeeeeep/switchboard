@@ -66,7 +66,7 @@ export class GrantStore {
 
   /** Create/replace a grant from the scope the USER approved (already narrowed by the consent
    *  UI). `approvedTools` carries each tool with its daemon-assigned access class. */
-  upsert(origin: string, approved: { models: string[]; tools: ToolGrant[]; budgets: ScopeRequest["budgets"]; expiresAt?: number }): OriginGrant {
+  upsert(origin: string, approved: { models: string[]; tools: ToolGrant[]; budgets: ScopeRequest["budgets"]; contextKinds?: string[]; expiresAt?: number }): OriginGrant {
     const now = Date.now();
     const prev = this.grants.get(origin);
     const grant: OriginGrant = {
@@ -75,6 +75,7 @@ export class GrantStore {
       models: approved.models,
       tools: approved.tools,
       budgets: { ...DEFAULT_BUDGETS, ...(approved.budgets ?? {}) },
+      contextKinds: approved.contextKinds?.length ? approved.contextKinds : undefined,
       expiresAt: approved.expiresAt,
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,

@@ -60,6 +60,8 @@ export interface OriginGrant {
   /** Tools this origin may see/call, each with its assigned access class. */
   tools: ToolGrant[];
   budgets: Budgets;
+  /** Context kinds this origin may LIST from the library (metadata; data reads stay per-item). */
+  contextKinds?: string[];
   /** Epoch ms; the grant is invalid past this. undefined = no expiry. */
   expiresAt?: number;
   createdAt: number;
@@ -74,6 +76,10 @@ export interface ScopeRequest {
    *  approves per-tool. Omit to request "read-only tools only". */
   tools?: string[];
   budgets?: Partial<Budgets>;
+  /** Context kinds (e.g. ["brand"]) this app asks to SEE in the user's library — names/metadata
+   *  only, rendered as its own consent row. Reading a context's DATA stays one-at-a-time via
+   *  {op:"use"} and is audited; omitting this keeps the classic lent-only model. */
+  contextKinds?: string[];
   /** Human-readable reason shown in the consent UI. Untrusted; displayed, never executed. */
   reason?: string;
 }
