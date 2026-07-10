@@ -1,79 +1,44 @@
-// A-Plus — Amazon A+ content in one pass. Product in, a full module stack out, rendered like
-// the real thing. The app ships ONLY the interface: every word is written by the visitor's own
-// Claude through the Switchboard SDK (WebFetch is used only if they hand us a URL).
+// A-Plus — Amazon A+ content, context-first. Lend it a brand through Switchboard and it already
+// knows the products, the voice, the palette: zero typing from connect to a full module stack,
+// rendered like the real thing. The app ships ONLY the interface: every word is written by the
+// visitor's own Claude through the Switchboard SDK (WebFetch only when the line is a URL).
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
-const STORE_KEY = "aplus:v1";
+const STORE_KEY = "aplus:v2";
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
+// The one sample — exists ONLY pre-connect, visibly labeled, replaced the moment real context exists.
+const SAMPLE_LINE = "Copper tongue cleaner, 2-pack — pure copper, flexible handle, replaces the plastic junk";
+const CUSTOM = "__custom__";
 
 let relay = null;
 let notInstalled = false;
-let stack = null;   // the normalized A+ stack (see SHAPE)
+let brand = null;         // the normalized lent brand context, or null
+let productChoice = "";   // brand mode: one of brand.products, or CUSTOM
+let autoTone = "";        // the last tone we auto-filled from a brand voice (so we don't clobber edits)
+let directions = null;    // [{name, heroHeadline, angle, chartArgues, recommended}] — stage 1
+let chosenIdx = -1;       // which direction the user picked
+let stack = null;         // the normalized A+ stack (see SHAPE) — stage 2
 let busy = false;
-let runSeq = 0;     // bumping this abandons any in-flight stream
-let lastTask = null; // what "Try again" re-runs
-
-// ---------- tones & samples (never a blank box) ----------
-const TONES = ["Premium minimal", "Ayurvedic heritage", "Clinical + evidence", "Playful DTC"];
-const TONE_VOICE = {
-  "Premium minimal": "restrained and confident — short sentences, zero hype words, no exclamation points, let the material speak",
-  "Ayurvedic heritage": "warm and rooted — daily-ritual language, sensory detail, tradition treated with respect (never mystical woo)",
-  "Clinical + evidence": "precise and mechanism-first — every claim earns its keep, name the how (copper ions, thermal mass, decibels), no fluff",
-  "Playful DTC": "witty and conversational — first-person brand voice, one good joke per module max, still selling hard",
-};
-const SAMPLES = [
-  {
-    cat: "beauty", name: "Copper Tongue Cleaner — 2 pack", tone: "Ayurvedic heritage",
-    bullets: [
-      "pure copper, naturally antimicrobial — the ayurveda thing that actually works",
-      "flexible handle so you don't gag, comfy for everyone in the house (that's why the 2 pack)",
-      "replaces the plastic scraper junk — lasts forever, ships in a little cotton pouch",
-    ].join("\n"),
-  },
-  {
-    cat: "kitchen", name: "Cast Iron Tortilla Press — 8 inch", tone: "Premium minimal",
-    bullets: [
-      "restaurant-heavy cast iron — one squeeze, a perfect 8-inch tortilla, no rolling pin drama",
-      "comes pre-seasoned, wipes clean, lives on the counter looking great",
-      "not just tortillas — dumplings, empanadas, roti. we throw in 100 parchment rounds",
-    ].join("\n"),
-  },
-  {
-    cat: "gadget", name: "Pocket White Noise Machine — USB-C", tone: "Clinical + evidence",
-    bullets: [
-      "real fan inside, not a looped mp3 — actual non-repeating white noise",
-      "hockey-puck small, lives in a carry-on side pocket, finally charges over USB-C",
-      "remembers your last volume, 12 sounds, headphone jack for red-eyes",
-    ].join("\n"),
-  },
-];
-let sampleIdx = 0;
-let tone = SAMPLES[0].tone;
-
-// Soft product-gradient banner per tone.
-const GRADS = {
-  "Premium minimal": "linear-gradient(118deg, #22262C, #3E444D 48%, #7E8791)",
-  "Ayurvedic heritage": "linear-gradient(118deg, #6E3317, #A85C2E 48%, #DDA36C)",
-  "Clinical + evidence": "linear-gradient(118deg, #0E3A5C, #2C6E9E 48%, #8FC1E3)",
-  "Playful DTC": "linear-gradient(118deg, #B03A52, #E56E5B 48%, #F7B08C)",
-};
+let runSeq = 0;           // bumping this abandons any in-flight stream
+let lastTask = null;      // what "Try again" re-runs
 
 // ---------- small helpers ----------
 const str = (v, fb = "") => (typeof v === "string" && v.trim() ? v.trim() : fb);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const cellVal = (v) => {
   if (v === true || v === "true") return true;
   if (v === false || v === "false" || v == null) return false;
   const t = String(v).trim();
   return t ? t : false;
 };
-function event(t) { const d = document.createElement("div"); d.className = "event"; d.textContent = t; $("events").append(d); }
+function event(t) { $("events").append(el("div", "event", t)); }
 function toast(t) {
-  const el = $("toast");
-  el.textContent = t;
-  el.classList.add("show");
+  const box = $("toast");
+  box.textContent = t;
+  box.classList.add("show");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.remove("show"), 1500);
+  toast._t = setTimeout(() => box.classList.remove("show"), 1500);
 }
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); }
@@ -88,91 +53,188 @@ async function copyText(t) {
 
 // ---------- persistence ----------
 function save() {
-  const data = { name: $("f-name").value, bullets: $("f-bullets").value, url: $("f-url").value, tone, sampleIdx, stack };
+  const data = {
+    line: $("f-line").value, custom: $("f-custom").value, tone: $("f-tone").value,
+    autoTone, productChoice, directions, chosenIdx, stack,
+  };
   try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch { /* storage full/blocked */ }
 }
 function restore() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { /* corrupt */ }
   if (d) {
-    if (typeof d.name === "string") $("f-name").value = d.name;
-    if (typeof d.bullets === "string") $("f-bullets").value = d.bullets;
-    if (typeof d.url === "string") $("f-url").value = d.url;
-    if (TONES.includes(d.tone)) tone = d.tone;
-    if (Number.isInteger(d.sampleIdx) && SAMPLES[d.sampleIdx]) sampleIdx = d.sampleIdx;
+    if (typeof d.line === "string") $("f-line").value = d.line;
+    if (typeof d.custom === "string") $("f-custom").value = d.custom;
+    if (typeof d.tone === "string") $("f-tone").value = d.tone;
+    if (typeof d.autoTone === "string") autoTone = d.autoTone;
+    if (typeof d.productChoice === "string") productChoice = d.productChoice;
+    if (Array.isArray(d.directions)) {
+      try { directions = normalizeDirections({ directions: d.directions }); } catch { directions = null; }
+    }
+    if (directions && Number.isInteger(d.chosenIdx) && d.chosenIdx >= -1 && d.chosenIdx < directions.length) chosenIdx = d.chosenIdx;
     if (d.stack && typeof d.stack === "object") {
-      try { stack = normalizeStack(d.stack); renderStack(); $("preview").hidden = false; } catch { stack = null; }
+      try { stack = normalizeStack(d.stack); } catch { stack = null; }
     }
   }
-  renderTones();
-  sampleNote();
+  // The sample fills an empty box only; connect clears it (sample lives ONLY pre-connect).
+  if (!$("f-line").value.trim()) $("f-line").value = SAMPLE_LINE;
+  if (directions) { renderDirections(); $("directions").hidden = false; }
+  if (stack) { renderStack(); $("preview").hidden = false; }
 }
 
-// ---------- form ----------
-function renderTones() {
-  const mount = $("tones");
-  mount.textContent = "";
-  const rec = SAMPLES[sampleIdx].tone;
-  TONES.forEach((t) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "tone" + (t === tone ? " on" : "");
-    if (t === rec) {
-      const s = document.createElement("span");
-      s.className = "star"; s.textContent = "★";
-      b.append(s);
-      b.title = "recommended for this sample";
-    }
-    b.append(document.createTextNode(t));
-    b.addEventListener("click", () => { tone = t; renderTones(); save(); });
-    mount.append(b);
-  });
+// ---------- brand context (context-first: everything derives from the lent brand) ----------
+// Defensive normalization — data is opaque by convention, see docs/CONTEXT-KINDS.md kind "brand".
+function normalizeBrand(ctx) {
+  const d = (ctx && ctx.data) || {};
+  const arr = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : []);
+  const products = arr(d.products).length ? arr(d.products) : arr(d.range);
+  return {
+    name: str(ctx.name) || str(d.name) || "Brand",
+    voice: str(d.voice) || str(d.vibe) || str(d.positioning),
+    positioning: str(d.positioning),
+    audience: str(d.audience),
+    palette: arr(d.palette).map((c) => c.trim()).filter((c) => /^(#[0-9a-f]{3,8}|rgb|hsl|[a-z]+)/i.test(c)),
+    products,
+  };
 }
-function sampleNote() {
-  $("sample-note").textContent = "sample " + (sampleIdx + 1) + "/" + SAMPLES.length + " · " + SAMPLES[sampleIdx].cat;
-}
-function loadSample(i) {
-  sampleIdx = ((i % SAMPLES.length) + SAMPLES.length) % SAMPLES.length;
-  const smp = SAMPLES[sampleIdx];
-  $("f-name").value = smp.name;
-  $("f-bullets").value = smp.bullets;
-  $("f-url").value = "";
-  tone = smp.tone;
-  renderTones();
-  sampleNote();
+function applyBrand(ctx) {
+  brand = normalizeBrand(ctx);
+  if (!brand.products.includes(productChoice) && productChoice !== CUSTOM) {
+    productChoice = brand.products.length ? brand.products[0] : CUSTOM;
+  }
+  // Derive the tone line from the brand voice — but never clobber a line the user edited.
+  // Runs even when the new brand has no voice, so an auto-filled tone from the previous
+  // brand is cleared instead of lingering as if the user wrote it.
+  const t = $("f-tone");
+  if (!t.value.trim() || t.value.trim() === autoTone) t.value = brand.voice;
+  autoTone = brand.voice;
+  if (stack) renderStack(); // re-tint the hero banner with the brand palette
+  reflectEntry();
   save();
 }
+async function loadBrandContext() {
+  if (!relay) return;
+  try {
+    const ctx = await relay.context.active();
+    if (ctx) applyBrand(ctx);
+    else reflectEntry();
+  } catch { reflectEntry(); }
+}
+async function pickBrand() {
+  if (!relay || busy) return;
+  try {
+    const ctx = await relay.context.pick(); // opens the side-panel picker; selecting one lends it here
+    if (ctx) applyBrand(ctx);
+  } catch { /* user closed the picker */ }
+}
+$("use-brand").addEventListener("click", pickBrand);
+$("brand-switch").addEventListener("click", pickBrand);
 
 // ---------- the standard connect chip ----------
+async function onRelay() {
+  // Real context exists now — the labeled sample dies the moment it can be replaced.
+  if ($("f-line").value.trim() === SAMPLE_LINE) $("f-line").value = "";
+  reflectEntry();
+  await loadBrandContext(); // re-read the lent brand on connect AND on load with an existing grant
+}
 mountConnect($("chip-dock"), {
   scope: { reason: "write your Amazon A+ content", tools: ["WebFetch"], models: ["sonnet"] },
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; reflect(); },
-  onDisconnect: () => { relay = null; reflect(); },
+  onConnect: (r) => { relay = r; onRelay(); },
+  onDisconnect: () => { relay = null; brand = null; reflectEntry(); },
+  // The chip's "Switch" (and the side panel) can change the lent brand — follow it live.
+  onProjectChange: (ctx) => {
+    if (ctx) { applyBrand(ctx); return; }
+    // null can mean "picker dismissed" as well as "lend revoked" — re-read what's actually lent.
+    brand = null;
+    loadBrandContext();
+  },
 });
-// Fast probe so a returning user's grant enables the buttons without a click.
+// Fast probe so a returning user's grant enables everything without a click.
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
   if (r && "connect" in r) {
     const grant = await r.permissions().catch(() => null);
-    if (grant) relay = r;
+    if (grant) { relay = r; await onRelay(); }
   } else if (r && r.installed === false) {
     notInstalled = true;
   }
-  reflect();
+  reflectEntry();
 })();
 
-const REGEN_IDS = ["rg-hero", "rg-features", "rg-comparison", "rg-brandstory", "rg-faqs", "rg-terms", "regen-all"];
+// ---------- entry states ----------
+// brand lent → zero typing (chips from the brand's products, tone from its voice)
+// connected, no brand → one line + "use a brand" affordance
+// not connected → one line, prefilled with the labeled sample
+function reflectEntry() {
+  const withBrand = !!(relay && brand);
+  $("entry-brand").hidden = !withBrand;
+  $("entry-line").hidden = withBrand;
+  $("brandbar").hidden = !withBrand;
+  if (withBrand) {
+    $("brand-name").textContent = "A+ for " + brand.name;
+    const sw = $("brand-swatches");
+    sw.textContent = "";
+    for (const c of brand.palette.slice(0, 5)) { const s = el("span", "sw"); s.style.background = c; sw.append(s); }
+    renderProductChips();
+    $("f-custom").hidden = productChoice !== CUSTOM;
+    $("tone-note").hidden = false;
+    $("tone-note").textContent = "from " + brand.name + "’s voice — edit freely";
+  } else {
+    $("use-brand-row").hidden = !relay;
+    $("tone-note").hidden = true;
+  }
+  $("sample-chip").hidden = !(!relay && $("f-line").value.trim() === SAMPLE_LINE);
+  reflect();
+}
+function chipBtn(label, on, fn) {
+  const b = el("button", "pchip" + (on ? " on" : ""), label);
+  b.type = "button";
+  b.addEventListener("click", fn);
+  return b;
+}
+function renderProductChips() {
+  const m = $("product-chips");
+  m.textContent = "";
+  brand.products.slice(0, 8).forEach((p) => {
+    m.append(chipBtn(p, productChoice === p, () => { productChoice = p; reflectEntry(); save(); }));
+  });
+  m.append(chipBtn("something else…", productChoice === CUSTOM, () => {
+    productChoice = CUSTOM; reflectEntry(); save(); $("f-custom").focus();
+  }));
+}
+
+function currentProduct() {
+  if (relay && brand) {
+    if (productChoice === CUSTOM) return str($("f-custom").value);
+    return str(productChoice);
+  }
+  return str($("f-line").value);
+}
+// The single input takes a line OR a url — detect the url for the WebFetch step.
+function lineUrl() {
+  if (relay && brand && productChoice !== CUSTOM) return "";
+  const line = currentProduct();
+  const m = line.match(/https?:\/\/\S+/i);
+  if (m) return m[0];
+  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(line)) return "https://" + line;
+  return "";
+}
+
 function reflect() {
   const on = !!relay;
-  $("go").disabled = !on || busy;
-  REGEN_IDS.forEach((id) => { $(id).disabled = !on || busy || !stack; });
+  $("go").disabled = !on || busy || !currentProduct();
+  $("rg-directions").disabled = !on || busy || !currentProduct();
+  ["rg-hero", "rg-features", "rg-comparison", "rg-brandstory", "rg-faqs", "rg-terms", "regen-all"]
+    .forEach((id) => { $(id).disabled = !on || busy || !stack; });
   $("copy-all").disabled = !stack;
   $("copy-terms").disabled = !stack;
   const hint = $("conn-hint");
   hint.textContent = "";
   if (on) {
-    hint.textContent = "connected — writes on your Claude, the app never sees a key";
+    hint.textContent = brand
+      ? "writing as " + brand.name + " — on your Claude, the app never sees a key"
+      : "connected — writes on your Claude, the app never sees a key";
   } else if (notInstalled) {
     hint.append("needs the Switchboard sidekick — ");
     const a = document.createElement("a");
@@ -180,11 +242,85 @@ function reflect() {
     a.textContent = "get it here";
     hint.append(a);
   } else {
-    hint.textContent = "everything below works now — connect Switchboard (top right) to write the stack";
+    hint.textContent = "everything here is explorable — connect Switchboard (top right) to write the stack";
   }
 }
 
-// ---------- prompts ----------
+// ---------- prompts (the lent brand is woven into every one) ----------
+function brandBrief() {
+  if (!brand) return "";
+  return [
+    "BRAND (lent to this app via Switchboard — write as this brand):",
+    "name: " + brand.name,
+    brand.voice ? "voice: " + brand.voice : "",
+    brand.positioning ? "positioning: " + brand.positioning : "",
+    brand.audience ? "audience: " + brand.audience : "",
+  ].filter(Boolean).join("\n");
+}
+function productBrief() {
+  const tone = str($("f-tone").value);
+  return [
+    "PRODUCT: " + (currentProduct() || "an unnamed product"),
+    brandBrief(),
+    tone ? "TONE: " + tone : "",
+  ].filter(Boolean).join("\n\n");
+}
+function fetchStep() {
+  const url = lineUrl();
+  if (!url) return "";
+  return "FIRST: use the WebFetch tool to read " + url +
+    " and pull real details — materials, dimensions, claims, review language, brand voice. " +
+    "Fold what you learn into the copy; never invent specs the page does not support. Then write the JSON.";
+}
+function directionBrief() {
+  const d = directions && directions[chosenIdx];
+  if (!d) return "";
+  return [
+    "CHOSEN DIRECTION — the user picked this; the whole stack must commit to it:",
+    "name: " + d.name,
+    d.angle ? "angle: " + d.angle : "",
+    d.heroHeadline ? 'hero: build on "' + d.heroHeadline + '" (refine the wording, keep the idea)' : "",
+    d.chartArgues ? "the comparison chart must argue: " + d.chartArgues : "",
+  ].filter(Boolean).join("\n");
+}
+
+// stage 1 — three distinct directions, exactly one recommended (options, not answers)
+const DIR_SHAPE = [
+  "{",
+  '"directions": exactly 3 of {',
+  '  "name": 2-4 word name for the creative direction,',
+  '  "heroHeadline": the hero banner line this direction would run, <= 9 words, sentence case,',
+  '  "angle": one sentence — the buyer psychology this direction sells with,',
+  '  "chartArgues": one sentence — what the comparison chart argues under this direction,',
+  '  "recommended": true | false — exactly ONE true: the one most likely to convert',
+  "}}",
+].join("\n");
+function buildDirectionsPrompt() {
+  return [
+    "You are a senior Amazon listing copywriter planning an A+ (Enhanced Brand Content) module stack.",
+    fetchStep(),
+    productBrief(),
+    "Propose exactly 3 genuinely DISTINCT creative directions for the full stack — different buyer psychology each (e.g. ritual/sensory vs mechanism/evidence vs anti-generic value), not three wordings of one idea." +
+      (brand ? " Every direction must still sound unmistakably like the brand." : ""),
+    "Respond with ONLY one JSON object — no prose, no markdown fences — shaped exactly:\n" + DIR_SHAPE,
+  ].filter(Boolean).join("\n\n");
+}
+function normalizeDirections(d) {
+  if (!d || !Array.isArray(d.directions) || d.directions.length < 2) throw new Error("INCOMPLETE");
+  const list = d.directions.slice(0, 4).map((x) => ({
+    name: str(x?.name, "Direction"),
+    heroHeadline: str(x?.heroHeadline),
+    angle: str(x?.angle),
+    chartArgues: str(x?.chartArgues) || str(x?.comparisonArgues),
+    recommended: x?.recommended === true || x?.recommended === "true",
+  }));
+  let rec = list.findIndex((x) => x.recommended);
+  if (rec < 0) rec = 0;
+  list.forEach((x, i) => { x.recommended = i === rec; });
+  return list;
+}
+
+// stage 2 — the full stack, committed to the chosen direction
 const SHAPE = [
   "{",
   '"heroHeadline": string — the big banner line, <= 9 words, benefit-first, sentence case,',
@@ -196,29 +332,12 @@ const SHAPE = [
   '"searchTerms": 8 to 12 lowercase buyer search phrases, 2-4 words each, no punctuation, no duplicates, no brand names',
   "}",
 ].join("\n");
-
-function productBrief() {
-  const name = str($("f-name").value, "an unnamed product");
-  const bullets = str($("f-bullets").value, "(no bullets given — infer sensible, honest claims from the product name)");
-  return [
-    "PRODUCT: " + name,
-    "FOUNDER'S ROUGH BULLETS (raw notes — rewrite them properly, keep every real claim, invent nothing):\n" + bullets,
-    "TONE: " + tone + " — " + (TONE_VOICE[tone] || ""),
-  ].join("\n\n");
-}
-function fetchStep() {
-  let url = str($("f-url").value);
-  if (!url) return "";
-  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-  return "FIRST: use the WebFetch tool to read " + url +
-    " and pull real details — materials, dimensions, claims, review language, brand voice. " +
-    "Fold what you learn into the copy; never invent specs the page does not support. Then write the JSON.";
-}
 function buildStackPrompt() {
   return [
     "You are a senior Amazon listing copywriter writing a complete A+ (Enhanced Brand Content) module stack.",
     fetchStep(),
     productBrief(),
+    directionBrief(),
     'Write tight, concrete, conversion-focused retail copy. Ban the words "elevate", "game-changer", "unleash" and empty superlatives. ' +
       'In comparison cells use true for a clear win (renders as a green check), false for a miss (gray dash), or a short string when a value reads better (e.g. "Pure copper" vs "Plastic").',
     "Respond with ONLY one JSON object — no prose, no markdown fences — shaped exactly:\n" + SHAPE,
@@ -230,9 +349,10 @@ function buildModulePrompt(key) {
     "You are a senior Amazon listing copywriter. You already wrote this A+ stack (JSON):",
     JSON.stringify(stack),
     productBrief(),
+    directionBrief(),
     "Rewrite ONLY the " + m.label + ": take a genuinely different angle than the current version — same product, same tone, same honesty.",
     "Respond with ONLY one JSON object — no prose, no markdown fences — shaped exactly:\n" + m.shape,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 // ---------- normalization ----------
@@ -251,7 +371,7 @@ function normalizeStack(d) {
     heroSub: str(d.heroSub),
     features: d.features.slice(0, 4).map(normFeat),
     comparison: {
-      ourName: str(d.comparison.ourName, str($("f-name").value, "This one")),
+      ourName: str(d.comparison.ourName, "This one"),
       otherName: str(d.comparison.otherName, "The usual option"),
       rows: d.comparison.rows.slice(0, 6).map(normRow),
     },
@@ -327,6 +447,7 @@ const MODULES = {
 };
 
 // ---------- streaming ----------
+const DIR_LINES = ["Reading the brief…", "Sketching three directions…", "Arguing three different ways…"];
 const GEN_LINES = [
   "Reading the brief…", "Writing the hero…", "Filling the feature grid…",
   "Building the comparison chart…", "Drafting the brand story…",
@@ -368,7 +489,7 @@ async function streamJSON(prompt, my) {
       if (d.result?.ok) {
         if (d.call?.name === "WebFetch") event("✓ page read — folding it into the copy");
       } else {
-        event("⚠ " + (d.call?.name || "tool") + " failed: " + (d.result?.error?.message || "unknown") + " — continuing from your bullets");
+        event("⚠ " + (d.call?.name || "tool") + " failed: " + (d.result?.error?.message || "unknown") + " — continuing from your line");
       }
     } else if (d.type === "error") {
       throw Object.assign(new Error(d.error?.message || "stream error"), { code: d.error?.code });
@@ -381,8 +502,38 @@ async function streamJSON(prompt, my) {
 }
 
 // ---------- actions ----------
+async function generateDirections() {
+  if (!relay || busy || !currentProduct()) return;
+  lastTask = generateDirections;
+  const my = ++runSeq;
+  setBusy(true, DIR_LINES);
+  try {
+    const data = await streamJSON(buildDirectionsPrompt(), my);
+    if (!data || my !== runSeq) return;
+    directions = normalizeDirections(data);
+    chosenIdx = -1;
+    save();
+    renderDirections();
+    $("directions").hidden = false;
+    $("directions").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    if (my === runSeq) showError(err);
+  } finally {
+    if (my === runSeq) setBusy(false);
+  }
+}
+
+async function pickDirection(i) {
+  if (busy || !directions || !directions[i]) return;
+  if (!relay) { toast("connect Switchboard (top right) to write the stack"); return; }
+  chosenIdx = i;
+  renderDirections();
+  save();
+  await generateStack();
+}
+
 async function generateStack() {
-  if (!relay || busy) return;
+  if (!relay || busy || !currentProduct()) return;
   lastTask = generateStack;
   const my = ++runSeq;
   setBusy(true, GEN_LINES);
@@ -433,7 +584,7 @@ function showError(err) {
   else if (code === 4900) { head = "Your Claude is unreachable."; body = "Start the Switchboard daemon, then hit Try again."; }
   else if (code === 4100) { head = "Not connected yet."; body = "Click the chip (top right) and approve the connect."; }
   else if (msg === "PARSE") { head = "That reply wasn't clean JSON."; body = "It happens — models drift. Hit Try again; the second pass almost always lands."; }
-  else if (msg === "INCOMPLETE") { head = "The stack came back missing pieces."; body = "Hit Try again for a full pass."; }
+  else if (msg === "INCOMPLETE") { head = "The reply came back missing pieces."; body = "Hit Try again for a full pass."; }
   else { head = "Generation failed."; body = msg.slice(0, 240); }
   // Error text can echo model/daemon output — compose with textContent, never innerHTML.
   const p = $("err-text");
@@ -443,7 +594,37 @@ function showError(err) {
   p.append(b, " " + body);
 }
 
+// ---------- rendering: direction option cards ----------
+function renderDirections() {
+  const g = $("dir-grid");
+  g.textContent = "";
+  if (!directions) return;
+  const hot = chosenIdx >= 0 ? chosenIdx : directions.findIndex((d) => d.recommended);
+  directions.forEach((d, i) => {
+    const card = el("button", "dir" + (i === hot ? " hot" : ""));
+    card.type = "button";
+    const top = el("div", "dir-top");
+    top.append(el("span", "dir-name", d.name));
+    if (d.recommended) top.append(el("span", "dtag", "recommended"));
+    if (i === chosenIdx) top.append(el("span", "dtag sel", "picked"));
+    card.append(top);
+    if (d.heroHeadline) card.append(el("div", "dir-hero", "“" + d.heroHeadline + "”"));
+    if (d.angle) card.append(el("p", "dir-angle", d.angle));
+    if (d.chartArgues) card.append(el("p", "dir-chart", "chart argues — " + d.chartArgues));
+    card.addEventListener("click", () => pickDirection(i));
+    g.append(card);
+  });
+}
+
 // ---------- rendering the A+ stack ----------
+// The brand's palette tints the hero banner INSIDE the canvas — the deliverable, never the chrome.
+function heroGradient() {
+  const p = (brand?.palette || []).slice(0, 3);
+  if (p.length >= 3) return `linear-gradient(118deg, ${p[0]}, ${p[1]} 48%, ${p[2]})`;
+  if (p.length === 2) return `linear-gradient(118deg, ${p[0]}, ${p[1]})`;
+  if (p.length === 1) return `linear-gradient(118deg, ${p[0]}, color-mix(in srgb, ${p[0]} 55%, #FFFFFF))`;
+  return "linear-gradient(118deg, #22262C, #3E444D 48%, #7E8791)";
+}
 function cellNode(v) {
   const sp = document.createElement("span");
   if (v === true) { sp.className = "ck"; sp.textContent = "✓"; }
@@ -479,7 +660,7 @@ function renderComparison() {
 function renderStack() {
   if (!stack) return;
   // hero
-  $("hero-banner").style.background = GRADS[tone] || GRADS["Ayurvedic heritage"];
+  $("hero-banner").style.background = heroGradient();
   $("hero-headline").textContent = stack.heroHeadline;
   $("hero-sub").textContent = stack.heroSub;
   $("hero-sub").hidden = !stack.heroSub;
@@ -487,12 +668,9 @@ function renderStack() {
   const fg = $("feat-grid");
   fg.textContent = "";
   stack.features.forEach((f) => {
-    const el = document.createElement("div"); el.className = "feat";
-    const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = f.emoji;
-    const h = document.createElement("h4"); h.textContent = f.title;
-    const p = document.createElement("p"); p.textContent = f.body;
-    el.append(ic, h, p);
-    fg.append(el);
+    const box = el("div", "feat");
+    box.append(el("div", "ic", f.emoji), el("h4", null, f.title), el("p", null, f.body));
+    fg.append(box);
   });
   // comparison
   renderComparison();
@@ -503,21 +681,18 @@ function renderStack() {
   const fl = $("faq-list");
   fl.textContent = "";
   stack.faqs.forEach((f) => {
-    const row = document.createElement("div"); row.className = "faq-row";
-    const q = document.createElement("div"); q.className = "faq-q";
-    const qm = document.createElement("span"); qm.className = "qm"; qm.textContent = "Q";
-    const qt = document.createElement("span"); qt.textContent = f.q;
-    q.append(qm, qt);
-    const a = document.createElement("p"); a.className = "faq-a"; a.textContent = f.a;
-    row.append(q, a);
+    const row = el("div", "faq-row");
+    const q = el("div", "faq-q");
+    q.append(el("span", "qm", "Q"), el("span", null, f.q));
+    row.append(q, el("p", "faq-a", f.a));
     fl.append(row);
   });
   // search-term chips
   const tw = $("terms");
   tw.textContent = "";
   stack.searchTerms.forEach((t) => {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "term"; b.textContent = t;
+    const b = el("button", "term", t);
+    b.type = "button";
     b.addEventListener("click", async () => {
       await copyText(t);
       b.classList.add("copied");
@@ -532,9 +707,14 @@ function renderStack() {
 function stackText() {
   if (!stack) return "";
   const cellTxt = (v) => (v === true ? "✓" : v === false ? "—" : String(v));
+  const dir = directions && directions[chosenIdx];
+  const tone = str($("f-tone").value);
   const L = [];
-  L.push("A+ CONTENT — " + str($("f-name").value, "product"));
-  L.push("tone: " + tone, "");
+  L.push("A+ CONTENT — " + (currentProduct() || "product"));
+  if (brand) L.push("brand: " + brand.name);
+  if (dir) L.push("direction: " + dir.name);
+  if (tone) L.push("tone: " + tone);
+  L.push("");
   L.push("== HERO (standard image header with text) ==", stack.heroHeadline);
   if (stack.heroSub) L.push(stack.heroSub);
   L.push("", "== FOUR-FEATURE GRID (standard four image & text) ==");
@@ -551,9 +731,9 @@ function stackText() {
 }
 
 // ---------- wiring ----------
-$("go").addEventListener("click", generateStack);
+$("go").addEventListener("click", generateDirections);
+$("rg-directions").addEventListener("click", generateDirections);
 $("regen-all").addEventListener("click", generateStack);
-$("sample-btn").addEventListener("click", () => loadSample(sampleIdx + 1));
 $("cancel").addEventListener("click", () => { runSeq++; setBusy(false); });
 $("retry").addEventListener("click", () => { $("errbox").hidden = true; lastTask?.(); });
 $("copy-all").addEventListener("click", async () => {
@@ -569,8 +749,12 @@ $("copy-terms").addEventListener("click", async () => {
 for (const [key, m] of Object.entries(MODULES)) {
   $(m.btn).addEventListener("click", () => regenModule(key));
 }
-["f-name", "f-bullets", "f-url"].forEach((id) => $(id).addEventListener("input", save));
+["f-line", "f-custom", "f-tone"].forEach((id) => $(id).addEventListener("input", () => {
+  save();
+  $("sample-chip").hidden = !(!relay && $("f-line").value.trim() === SAMPLE_LINE);
+  reflect();
+}));
 
 // ---------- boot ----------
 restore();
-reflect();
+reflectEntry();

@@ -1,7 +1,8 @@
-// Studio — product shots without the studio. Drop one product photo, pick a scene, and the
-// visitor's OWN Claude drives the visitor's OWN Higgsfield to do the shoot. The product stays
-// exactly itself (same label, same shape) — nano_banana_pro takes the photo as an identity
-// reference. Studio ships zero keys and zero backend; one generation = one consent.
+// Studio — product shots without the studio, context-first. Connect Switchboard and Studio reads
+// the brand the user lent it: every product on that brand becomes a one-click shoot with NO photo
+// and NO typing — the prompt carries the product name, the brand's palette as set accents, and
+// voice-matched art direction. A photo is the demoted secondary path (it keeps the proven
+// media_upload → put_blob → media_confirm reference dance). Zero keys, zero backend; 1 frame = 1 consent.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
@@ -11,22 +12,44 @@ const PRODUCT_KEY = "studio:product";
 const SETUP_KEY = "studio:setup";
 
 let relay = null;
-let installed = null; // null = probing, false = extension missing, true = present
+let installed = null;    // null = probing, false = extension missing, true = present
 let shooting = false;
 let stopFlag = false;
-let product = null;   // { dataUrl, name, sample }
-let lastShot = null;  // { scene, aspect } — powers the Retry button
+let brand = null;        // the normalized lent brand context, or null
+let product = null;      // { kind: "brand"|"text"|"photo", name, dataUrl?, sample? }
+let lastShot = null;     // { scene, aspect } — powers the Retry button
+let photoZoneOpen = false; // brand mode: the demoted "shoot from a photo" drop is behind a toggle
+let sceneChosen = false;   // true once the user (now or in a past session) picked a scene themselves
 
-// ---------- scenes ----------
+// ---------- scenes: option chips; OUR PICK derives from the brand's voice/positioning ----------
 const SCENES = [
-  { prompt: "on a marble counter, soft morning window light", rec: true },
-  { prompt: "held in hand on a city street, shallow depth of field" },
-  { prompt: "floating on a seamless pastel gradient, hard shadow" },
-  { prompt: "on a picnic table, golden hour, linen + fruit" },
-  { prompt: "editorial flat-lay, magazine style, top-down" },
+  { prompt: "on a marble counter, soft morning window light",
+    cues: ["minimal", "clean", "premium", "luxur", "calm", "quiet", "serene", "spa", "refined"] },
+  { prompt: "held in hand on a city street, shallow depth of field",
+    cues: ["street", "urban", "everyday", "candid", "real", "gen z", "genz", "youth", "movement"] },
+  { prompt: "floating on a seamless pastel gradient, hard shadow",
+    cues: ["bold", "playful", "maximal", "vibrant", "pop", "fun", "loud", "color", "unapologetic"] },
+  { prompt: "on a picnic table, golden hour, linen + fruit",
+    cues: ["warm", "cozy", "home", "natural", "organic", "earth", "craft", "comfort", "desi"] },
+  { prompt: "editorial flat-lay, magazine style, top-down",
+    cues: ["editorial", "magazine", "fashion", "curated", "design", "sophisticat", "studio"] },
 ];
 const ASPECTS = ["1:1", "4:5", "9:16", "16:9"];
-const setup = { scene: 0, steer: "", aspect: "1:1" }; // scene: index into SCENES, -1 = free-text only
+// scene: index into SCENES, -1 = free-text only. chosen persists whether the USER picked the
+// scene — the brand auto-pick also saves the setup, so mere existence can't signal intent.
+const setup = { scene: 0, steer: "", aspect: "1:1", chosen: false };
+let recScene = 0; // brand-derived recommended index (0 until a brand says otherwise)
+
+function deriveRecScene() {
+  if (!brand) return 0;
+  const hay = `${brand.voice} ${brand.positioning} ${brand.audience}`.toLowerCase();
+  let best = 0, bestScore = 0;
+  SCENES.forEach((s, i) => {
+    const score = s.cues.reduce((n, c) => n + (hay.includes(c) ? 1 : 0), 0);
+    if (score > bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
 
 // ---------- persistence ----------
 const loadJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -35,8 +58,8 @@ const loadSheet = () => loadJson(SHEET_KEY, []);
 const saveSheet = (s) => saveJson(SHEET_KEY, s.slice(0, 48));
 const saveSetup = () => saveJson(SETUP_KEY, setup);
 
-// ---------- the embedded sample product (amber glass dropper bottle, "GLOW") ----------
-// An inline SVG data-URL so the whole flow is testable without uploading anything.
+// ---------- the embedded SAMPLE product (amber dropper bottle, "GLOW") ----------
+// Pre-context only, always labeled sample; real lent context replaces it the moment it exists.
 const SAMPLE_SVG =
   `<svg xmlns='http://www.w3.org/2000/svg' width='640' height='800' viewBox='0 0 640 800'>` +
   `<defs>` +
@@ -62,7 +85,7 @@ const SAMPLE_SVG =
   `</svg>`;
 const SAMPLE_DATA_URL = "data:image/svg+xml;utf8," + encodeURIComponent(SAMPLE_SVG);
 
-// ---------- utils (copied from the cast/gen.js idiom) ----------
+// ---------- utils ----------
 const resultText = (d) => (d.result?.content ?? []).map((c) => c.text ?? "").join("");
 const URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
 function extractUrl(t) { const m = (t || "").match(URL_RE); return m ? (m[1] || m[2] || m[0]) : null; }
@@ -87,66 +110,183 @@ mountConnect($("chip-dock"), {
     models: ["sonnet"],
   },
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; reflect(); },
-  onDisconnect: () => { relay = null; reflect(); },
+  onConnect: (r) => { relay = r; reflect(); loadBrand(); },
+  // The chip's own "Switch ▸" menu lends a different brand — re-derive everything from it,
+  // or the chip and the app silently desync (chip shows the new brand, brief keeps the old one).
+  onProjectChange: (p) => { if (p) applyBrand(p); },
+  onDisconnect: () => {
+    relay = null;
+    // The lent context left with the grant — a brand-kind product survives as a plain typed line.
+    brand = null; recScene = 0; photoZoneOpen = false;
+    if (product?.kind === "brand") { product = { kind: "text", name: product.name }; saveJson(PRODUCT_KEY, product); $("line").value = product.name; }
+    renderProductViews(); renderChips(); updateBrief(); reflect();
+  },
 });
-// Fast probe so a returning user's grant enables Shoot without a click.
+// Fast probe so a returning user's grant enables Shoot — and re-reads the lent brand — without a click.
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
   installed = !!(r && "connect" in r);
   if (installed) {
     const grant = await r.permissions().catch(() => null);
-    if (grant) relay = r;
+    if (grant) { relay = r; await loadBrand(); }
   }
   reflect();
 })();
 
-function reflect() {
-  $("shoot").disabled = !relay || !product || shooting;
-  const hint = $("conn-hint");
-  if (shooting) hint.textContent = "shooting…";
-  else if (installed === false) hint.innerHTML = `needs the Switchboard extension — <a href="${INSTALL_URL}" target="_blank" rel="noopener">get it here</a>, it's your key that does the work`;
-  else if (!relay) hint.innerHTML = "connect Switchboard (top right) to run the shoot on <b>your</b> Higgsfield";
-  else if (!product) hint.textContent = "add a product photo — or load the sample bottle";
-  else hint.innerHTML = "ready — shoots on <b>your</b> Higgsfield, the operator pays nothing";
+// ---------- the lent brand (LAW 1: read it, derive everything from it) ----------
+// Defensive normalization — the context contract is convention, not schema (docs/CONTEXT-KINDS.md).
+function normalizeBrand(ctx) {
+  const d = (ctx && ctx.data) || {};
+  const arr = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : []);
+  const products = arr(d.products).length ? arr(d.products) : arr(d.range);
+  return {
+    name: String(ctx.name || d.name || "Brand"),
+    voice: String(d.voice || d.vibe || d.positioning || "").trim(),
+    positioning: String(d.positioning || "").trim(),
+    audience: String(d.audience || "").trim(),
+    palette: arr(d.palette), // FLAT color strings by contract
+    products,
+  };
+}
+
+async function loadBrand() {
+  if (!relay?.context?.active) { renderBrand(); return; }
+  try {
+    const ctx = await relay.context.active();
+    if (ctx) applyBrand(ctx);
+    else renderBrand();
+  } catch { renderBrand(); }
+}
+
+async function pickBrand() {
+  if (!relay?.context?.pick) { logLine("this Switchboard build has no context picker.", "bad"); return; }
+  try {
+    const ctx = await relay.context.pick(); // opens the side-panel picker; selecting one lends it here
+    if (ctx) { applyBrand(ctx); logLine(`brand lent — shooting for ${brand.name} now.`, "good"); }
+  } catch { logLine("brand pick didn't complete.", "bad"); }
+}
+$("brand-switch").addEventListener("click", pickBrand);
+$("brand-pick").addEventListener("click", pickBrand);
+
+function applyBrand(ctx) {
+  brand = normalizeBrand(ctx);
+  recScene = deriveRecScene();
+  // Sample data dies the moment real context exists — in memory AND in localStorage,
+  // or the labeled sample resurrects on the next load before the context re-read kills it.
+  if (product?.sample) setProduct(null);
+  // If the user never chose a scene themselves, follow the brand's pick.
+  if (!sceneChosen) { setup.scene = recScene; saveSetup(); }
+  // Context-first: a lent brand makes the app instantly shootable — select one of its products
+  // (a real uploaded photo stays; a typed line or a stale brand pick is superseded by the context).
+  if (brand.products.length && (!product || product.kind !== "photo")) {
+    const saved = loadJson(PRODUCT_KEY, null);
+    const want = (product?.kind === "brand" && product.name) || (saved?.kind === "brand" && saved.name) || null;
+    const name = want && brand.products.includes(want) ? want : brand.products[0];
+    product = { kind: "brand", name };
+    saveJson(PRODUCT_KEY, product);
+  }
+  photoZoneOpen = false;
+  renderBrand(); renderProductViews(); renderChips(); updateBrief(); reflect();
+}
+
+function renderBrand() {
+  const bar = $("brandbar");
+  if (!relay) { bar.hidden = true; return; }
+  bar.hidden = false;
+  $("brand-on").hidden = !brand;
+  $("brand-off").hidden = !!brand;
+  if (!brand) return;
+  $("brand-name").textContent = brand.name;
+  const sw = $("brand-swatches"); sw.textContent = "";
+  for (const c of brand.palette.slice(0, 5)) { const s = document.createElement("span"); s.className = "sw"; s.style.background = c; sw.append(s); }
+  $("brand-voice").textContent = brand.voice ? `“${brand.voice}”` : "";
 }
 
 // ---------- 01 · the product ----------
 function setProduct(p, { persist = true } = {}) {
   product = p;
-  $("drop-empty").hidden = !!p;
-  $("prod-preview").hidden = !p;
-  if (p) { $("prod-img").src = p.dataUrl; $("prod-name").textContent = p.name; }
   if (persist) {
     if (p) saveJson(PRODUCT_KEY, p); // best-effort; big photos may not fit — saveJson swallows quota errors
     else { try { localStorage.removeItem(PRODUCT_KEY); } catch { /* ignore */ } }
   }
-  reflect();
+  if (p?.kind === "photo") photoZoneOpen = false;
+  renderProductViews(); updateBrief(); reflect();
+}
+
+const PROD_NOTE = "every chip shoots straight from the brand — no photo, no typing. voice + palette ride along in the prompt.";
+
+function renderProductViews() {
+  const isPhoto = product?.kind === "photo";
+  const brandHasProducts = !!(brand && brand.products.length);
+  $("brand-products").hidden = !brandHasProducts;
+  // The single free input owns the panel when no brand products exist (and no photo is set).
+  $("free-product").hidden = brandHasProducts || isPhoto;
+  $("photo-toggle").hidden = !brandHasProducts || isPhoto;
+  $("photo-toggle").textContent = photoZoneOpen ? "never mind — shoot from the brand" : "shoot from a photo instead";
+  $("drop").hidden = isPhoto || (brandHasProducts && !photoZoneOpen) || (!brandHasProducts); // free mode: the whole card is the drop target
+  $("prod-preview").hidden = !isPhoto;
+  if (isPhoto) {
+    $("prod-img").src = product.dataUrl;
+    $("prod-name").textContent = product.name;
+    $("sample-tag").hidden = !product.sample;
+  }
+  // Set in BOTH directions — a one-way wipe would leave the note blank after switching from a
+  // product-less brand to one with products.
+  $("prod-note").textContent = brand && !brand.products.length ? "" : PROD_NOTE;
+  renderProducts();
+}
+
+function renderProducts() {
+  const mount = $("products");
+  mount.textContent = "";
+  if (!brand) return;
+  brand.products.forEach((name) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pchip" + (product?.kind === "brand" && product.name === name ? " on" : "");
+    b.textContent = name;
+    b.title = `shoot ${name} straight from ${brand.name} — no photo needed`;
+    b.addEventListener("click", () => { photoZoneOpen = false; setProduct({ kind: "brand", name }); });
+    mount.append(b);
+  });
 }
 
 async function acceptFile(file) {
   if (!file || !/^image\//.test(file.type)) { logLine("that file isn't an image — PNG, JPG or WebP please.", "bad"); return; }
   const raw = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
   const dataUrl = await downscale(raw);
-  setProduct({ dataUrl, name: file.name.slice(0, 40) || "product.png", sample: false });
+  setProduct({ kind: "photo", dataUrl, name: file.name.slice(0, 40) || "product.png", sample: false });
 }
 
 $("file").addEventListener("change", (e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); e.target.value = ""; });
-$("drop").addEventListener("click", (e) => { if (e.target.closest("button")) return; $("file").click(); });
+$("drop").addEventListener("click", () => $("file").click());
 $("drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
-$("drop").addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("over"); });
-$("drop").addEventListener("dragleave", () => $("drop").classList.remove("over"));
-$("drop").addEventListener("drop", (e) => {
-  e.preventDefault(); $("drop").classList.remove("over");
+$("browse-btn").addEventListener("click", () => $("file").click());
+$("photo-toggle").addEventListener("click", () => { photoZoneOpen = !photoZoneOpen; renderProductViews(); });
+// The whole product panel is a drop target in every mode — photos are always accepted, just demoted.
+const panel = $("prod-panel");
+panel.addEventListener("dragover", (e) => { e.preventDefault(); panel.classList.add("over"); $("drop").classList.add("over"); });
+panel.addEventListener("dragleave", () => { panel.classList.remove("over"); $("drop").classList.remove("over"); });
+panel.addEventListener("drop", (e) => {
+  e.preventDefault(); panel.classList.remove("over"); $("drop").classList.remove("over");
   const f = e.dataTransfer?.files?.[0]; if (f) acceptFile(f);
 });
 $("prod-replace").addEventListener("click", () => $("file").click());
-$("prod-remove").addEventListener("click", () => setProduct(null));
-$("sample-btn").addEventListener("click", async (e) => {
-  e.stopPropagation();
-  const dataUrl = await downscale(SAMPLE_DATA_URL); // rasterize the SVG to a real PNG dataURL
-  setProduct({ dataUrl, name: "glow-sample.png", sample: true });
+$("prod-remove").addEventListener("click", () => {
+  // Back to the mode's primary input: brand chips when lent, the single line when not.
+  if (brand?.products.length) setProduct({ kind: "brand", name: brand.products[0] });
+  else { $("line").value = ""; setProduct(null); }
 });
+$("sample-btn").addEventListener("click", async () => {
+  const dataUrl = await downscale(SAMPLE_DATA_URL); // rasterize the SVG to a real PNG dataURL
+  setProduct({ kind: "photo", dataUrl, name: "glow — sample bottle", sample: true });
+});
+// The single line input (pre-context): one line IS the product, no upload required.
+$("line").addEventListener("input", () => {
+  const v = $("line").value.trim();
+  setProduct(v ? { kind: "text", name: v.slice(0, 120) } : null);
+});
+$("line").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("shoot").disabled) $("shoot").click(); });
 
 // ---------- 02 · the scene ----------
 function renderChips() {
@@ -157,13 +297,20 @@ function renderChips() {
     b.type = "button";
     b.className = "scn" + (i === setup.scene ? " on" : "");
     b.textContent = s.prompt;
-    if (s.rec) { const tag = document.createElement("span"); tag.className = "pick"; tag.textContent = "our pick"; b.append(tag); }
+    if (i === recScene) {
+      const tag = document.createElement("span"); tag.className = "pick"; tag.textContent = "our pick"; b.append(tag);
+      if (brand) b.title = `picked for ${brand.name}'s voice`;
+    }
     b.addEventListener("click", () => {
       setup.scene = setup.scene === i ? -1 : i; // click again to deselect and go pure free-text
+      sceneChosen = true; setup.chosen = true;  // the ONLY place user intent is recorded
       renderChips(); saveSetup(); updateBrief();
     });
     mount.append(b);
   });
+  $("scene-note").textContent = brand
+    ? `our pick reads ${brand.name}'s voice and positioning — the other scenes are one click away.`
+    : "our pick is the safe default — lend a brand and it re-derives from the brand's voice.";
 }
 function renderAspects() {
   const mount = $("aspects");
@@ -186,18 +333,37 @@ function currentScene() {
   if (setup.scene >= 0 && SCENES[setup.scene]) parts.push(SCENES[setup.scene].prompt);
   const steer = $("steer").value.trim();
   if (steer) parts.push(steer);
-  return parts.join(", ") || SCENES[0].prompt; // never a blank brief
+  return parts.join(", ") || SCENES[recScene].prompt; // never a blank brief
 }
 function updateBrief() {
   const b = $("brief");
   b.textContent = "";
-  b.append("the brief — keep this exact product, unchanged label and shape, place it in: ");
-  const strong = document.createElement("b");
-  strong.textContent = currentScene();
-  b.append(strong, ` · ${setup.aspect}`);
+  const scene = document.createElement("b");
+  scene.textContent = currentScene();
+  if (!product) {
+    b.append("the brief — pick a product above, then shoot it in: ", scene, ` · ${setup.aspect}`);
+  } else if (product.kind === "photo") {
+    b.append("the brief — keep this exact product, unchanged label and shape, place it in: ", scene, ` · ${setup.aspect}`);
+  } else {
+    const pn = document.createElement("b");
+    pn.textContent = product.name;
+    b.append("the brief — shoot ", pn, brand && product.kind === "brand" ? ` (${brand.name})` : "", " in: ", scene, ` · ${setup.aspect}`);
+  }
+  if (brand) b.append(` · ${brand.name}'s voice + palette ride along`);
 }
 $("steer").addEventListener("input", () => { setup.steer = $("steer").value; saveSetup(); updateBrief(); });
 $("steer").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("shoot").disabled) $("shoot").click(); });
+
+function reflect() {
+  renderBrand();
+  $("shoot").disabled = !relay || !product || shooting;
+  const hint = $("conn-hint");
+  if (shooting) hint.textContent = "shooting…";
+  else if (installed === false) hint.innerHTML = `needs the Switchboard extension — <a href="${INSTALL_URL}" target="_blank" rel="noopener">get it here</a>, it's your key that does the work`;
+  else if (!relay) hint.innerHTML = "connect Switchboard (top right) — your lent brand sets up the shoot for you";
+  else if (!product) hint.textContent = brand?.products.length ? "pick one of the brand's products above" : "type your product in one line, drop a photo, or load the sample";
+  else hint.innerHTML = "ready — shoots on <b>your</b> Higgsfield, the operator pays nothing";
+}
 
 // ---------- the darkroom log ----------
 let lastLogText = "";
@@ -216,17 +382,42 @@ function logLine(text, cls) {
 function setStatus(text) { $("shoot-line").textContent = text; logLine(text); }
 
 // ---------- 03 · the shoot ----------
-// The proven refInstruction dance: media_upload → put_blob(handle) → media_confirm ⇒ media_id,
-// then generate_image (nano_banana_pro) with the confirmed media as an "image" role reference.
-function shootInstruction(scene, aspect) {
+// The lent brand is woven INTO the generation prompt: voice, audience and palette sharpen the set.
+// Palette lands inside the frame (props/backdrop) — never on the product, never on the app chrome.
+function brandDirection() {
+  if (!brand) return "";
+  const bits = [];
+  if (brand.voice) bits.push(`brand voice: ${brand.voice}`);
+  if (brand.audience) bits.push(`shot to appeal to: ${brand.audience}`);
+  if (brand.palette.length) bits.push(`accent the set styling, props and backdrop with the brand palette (${brand.palette.join(", ")}) — never recolor the product itself`);
+  return bits.join(". ");
+}
+
+// Secondary path — the proven reference dance: media_upload → put_blob(handle) → media_confirm ⇒
+// media_id, then generate_image (nano_banana_pro) with the confirmed media as an identity reference.
+function photoShootInstruction(scene, aspect) {
+  const dir = brandDirection();
   return (
     `Shoot ONE professional product photograph using Higgsfield. ` +
     `A reference image of the product is attached with handle "product".\n` +
     `Steps, in order:\n` +
     `1) media_upload({filename:"product.png", content_type:"image/png"}) → relay put_blob({handle:"product", url:<uploadUrl>}) → media_confirm ⇒ media_id\n` +
     `2) Call the Higgsfield generate_image tool with model "nano_banana_pro", aspect_ratio "${aspect}", medias [{role:"image", value: media_id}], and this exact prompt:\n` +
-    `"keep this exact product, unchanged label and shape, place it in: ${scene}"\n` +
+    `"keep this exact product, unchanged label and shape, place it in: ${scene}${dir ? `. ${dir}` : ""}"\n` +
     `3) Poll until the generation is done, then reply with ONLY the final image URL on its own line.`
+  );
+}
+
+// Primary path when a brand is lent (and for a typed line): text-driven, no upload at all — the
+// brand product name + palette accents + voice-matched art direction carry the whole shoot.
+function textShootInstruction(name, scene, aspect) {
+  const dir = brandDirection();
+  const subject = brand && product?.kind === "brand" ? `"${name}" by ${brand.name}` : `"${name}"`;
+  return (
+    `Shoot ONE professional product photograph using the Higgsfield generate_image tool.\n` +
+    `The product: ${subject}. Place it in: ${scene}.\n` +
+    (dir ? `Art direction: ${dir}.\n` : "") +
+    `Use aspect_ratio "${aspect}". Poll until the generation is done, then reply with ONLY the final image URL on its own line.`
   );
 }
 
@@ -245,8 +436,12 @@ async function shoot(scene, aspect) {
   reflect();
   let url = null, acc = "";
   try {
-    const attachments = [{ handle: "product", filename: "product.png", contentType: "image/png", dataUrl: product.dataUrl }];
-    for await (const d of relay.stream({ prompt: shootInstruction(scene, aspect), agentic: true, attachments })) {
+    const isPhoto = product.kind === "photo";
+    const attachments = isPhoto
+      ? [{ handle: "product", filename: "product.png", contentType: "image/png", dataUrl: product.dataUrl }]
+      : undefined;
+    const prompt = isPhoto ? photoShootInstruction(scene, aspect) : textShootInstruction(product.name, scene, aspect);
+    for await (const d of relay.stream({ prompt, agentic: true, attachments })) {
       if (stopFlag || run !== shootRun) break;
       if (d.type === "tool_proposed") {
         const n = d.call?.name || "";
@@ -265,8 +460,8 @@ async function shoot(scene, aspect) {
     if (run !== shootRun) return; // superseded — a newer shoot owns the UI now
     if (stopFlag) return;         // the stop handler already finalized the UI
     url = url || extractUrl(acc);
-    if (!url) throw new Error("the shoot finished without an image URL — Retry usually lands it on the second frame");
-    addShot({ id: "s_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), url, caption: scene, aspect, at: Date.now() });
+    if (!url) throw new Error("the shoot finished without an image URL — Reshoot usually lands it on the second frame");
+    addShot({ id: "s_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), url, caption: scene, product: product.name, aspect, at: Date.now() });
     setStatus("frame developed ✓");
     logLine("added to the contact sheet.", "good");
   } catch (err) {
@@ -304,7 +499,7 @@ $("retry").addEventListener("click", () => {
   $("errbox").hidden = true;
   if (!lastShot) { logLine("nothing to retry yet — set up a shot and hit Shoot.", "bad"); return; }
   if (!relay) { logLine("connect Switchboard (top right) first.", "bad"); return; }
-  if (!product) { logLine("add a product photo (or the sample bottle) first.", "bad"); return; }
+  if (!product) { logLine("pick a product (a brand chip, a line, or a photo) first.", "bad"); return; }
   shoot(lastShot.scene, lastShot.aspect);
 });
 
@@ -328,7 +523,8 @@ function renderSheet() {
     card.className = "shot";
     const img = document.createElement("img");
     img.src = s.url; img.alt = s.caption; img.loading = "lazy";
-    const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = s.caption;
+    const cap = document.createElement("div"); cap.className = "cap";
+    cap.textContent = s.product ? `${s.product} — ${s.caption}` : s.caption;
     const meta = document.createElement("div"); meta.className = "meta";
     meta.textContent = `${s.aspect} · ${new Date(s.at).toLocaleDateString()}`;
     const btns = document.createElement("div"); btns.className = "btns";
@@ -336,7 +532,7 @@ function renderSheet() {
     re.type = "button"; re.className = "sbtn re"; re.textContent = "↺ reshoot";
     re.addEventListener("click", () => {
       if (!relay) { logLine("connect Switchboard (top right) to reshoot.", "bad"); return; }
-      if (!product) { logLine("add a product photo (or the sample bottle) to reshoot.", "bad"); return; }
+      if (!product) { logLine("pick a product (a brand chip, a line, or a photo) to reshoot.", "bad"); return; }
       if (shooting) { logLine("one frame at a time — the current shoot is still developing.", "bad"); return; }
       shoot(s.caption, s.aspect);
       $("shootbox").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -389,6 +585,9 @@ $("clear-sheet").addEventListener("click", () => {
 (function boot() {
   const savedSetup = loadJson(SETUP_KEY, null);
   if (savedSetup) {
+    // Only the explicit flag means the user picked a scene themselves — the brand auto-pick
+    // also persists the setup, so existence alone must not lock the scene forever.
+    sceneChosen = setup.chosen = !!savedSetup.chosen;
     if (Number.isInteger(savedSetup.scene) && savedSetup.scene >= -1 && savedSetup.scene < SCENES.length) setup.scene = savedSetup.scene;
     if (typeof savedSetup.steer === "string") setup.steer = savedSetup.steer.slice(0, 200);
     if (ASPECTS.includes(savedSetup.aspect)) setup.aspect = savedSetup.aspect;
@@ -396,11 +595,16 @@ $("clear-sheet").addEventListener("click", () => {
   $("steer").value = setup.steer;
   renderChips();
   renderAspects();
-  updateBrief();
-  const savedProduct = loadJson(PRODUCT_KEY, null);
-  if (savedProduct && typeof savedProduct.dataUrl === "string" && savedProduct.dataUrl.startsWith("data:image/")) {
-    setProduct({ dataUrl: savedProduct.dataUrl, name: savedProduct.name || "product.png", sample: !!savedProduct.sample }, { persist: false });
+  const saved = loadJson(PRODUCT_KEY, null);
+  if (saved?.kind === "photo" && typeof saved.dataUrl === "string" && saved.dataUrl.startsWith("data:image/")) {
+    setProduct({ kind: "photo", dataUrl: saved.dataUrl, name: saved.name || "product.png", sample: !!saved.sample }, { persist: false });
+  } else if (saved?.kind === "text" && typeof saved.name === "string" && saved.name.trim()) {
+    $("line").value = saved.name.slice(0, 120);
+    setProduct({ kind: "text", name: saved.name.slice(0, 120) }, { persist: false });
   }
+  // A saved kind:"brand" product is re-selected by applyBrand once the lent context re-reads on load.
+  renderProductViews();
+  updateBrief();
   renderSheet();
   reflect();
 })();

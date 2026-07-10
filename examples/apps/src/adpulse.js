@@ -1,7 +1,8 @@
-// AdPulse — "your Meta ads post-mortem in 30 seconds". The founder pastes a Meta Ads Manager CSV
-// export; it parses ENTIRELY in the tab (instant stat tape, zero AI), then their OWN Claude —
-// borrowed through the Switchboard chip — reads the numbers and returns a structured diagnosis:
-// health score, wins vs leaks, prioritized actions, per-campaign verdicts. No backend, no upload.
+// AdPulse — "your Meta ads post-mortem in 30 seconds", context-first. Connect Switchboard and the
+// app already knows two things: your lent BRAND (positioning/audience sharpen every verdict) and
+// how to fetch your DATA itself — the live Ads Manager pull is the front door; paste/browse are the
+// fallback below it. The CSV parses ENTIRELY in the tab (instant stat tape, zero AI), then your OWN
+// Claude reads the numbers and returns a structured diagnosis. No backend, no upload.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
@@ -10,18 +11,19 @@ const STORE_KEY = "adpulse:v1";
 
 let relay = null;
 let notInstalled = false;
+let brand = null;       // the lent brand context (normalized), or null
 let rows = null;        // parsed campaign rows
 let rawCsv = "";
 let srcLabel = "";
 let report = null;      // last diagnosis JSON
 let analysing = false;
-let cancelled = false;
+let runSeq = 0;         // per-run token: a cancelled diagnosis's late deltas can't touch the UI
 let pulling = false;
 let pullSeq = 0;        // per-run token: a stopped pull's late deltas can't touch the UI
 
 // ---------- embedded sample: Verra Skincare, one month of Meta spend (INR) ----------
-// The numbers tell a story: retargeting carries the account (2 clear winners), 3 campaigns bleed,
-// the founder-story video is fatigued at frequency 6.4, and blended ROAS hides all of it.
+// Pre-connect only, always labeled. The numbers tell a story: retargeting carries the account
+// (2 clear winners), 3 campaigns bleed, the founder-story video is fatigued at frequency 6.4.
 const SAMPLE = [
   "Campaign name,Ad set,Amount spent (INR),Impressions,Clicks,CTR,CPC,Purchases,Purchase value,ROAS,Frequency,Date range",
   'Retargeting | Cart + Checkout Abandoners 14d,Warm — ATC no purchase,84500,412800,9630,2.33%,8.77,396,714900,8.46,3.8,1 Jun 2026 - 30 Jun 2026',
@@ -87,6 +89,9 @@ function loadData(text, source) {
   };
   if (col.name === -1 || col.spend === -1)
     throw new Error("couldn't find “Campaign name” + “Amount spent” columns — is this a Meta Ads Manager export?");
+  // the live-pull contract puts the account's real currency code in the spend header — honour it
+  const cur = String(grid[0][col.spend] || "").match(/\(([A-Z]{3})\)/);
+  setCurrency(cur ? cur[1] : "INR");
   const pick = (r, i) => (i === -1 ? "" : (r[i] ?? "").trim());
   const parsed = grid.slice(1).map((r) => {
     const spend = num(pick(r, col.spend));
@@ -119,8 +124,21 @@ function loadData(text, source) {
 }
 let hasAdset = true;
 
+// ---------- currency: detected from the spend header, INR only as the fallback ----------
+let currency = "INR";
+let curSym = "₹";
+function setCurrency(code) {
+  currency = code || "INR";
+  if (currency === "INR") { curSym = "₹"; return; }
+  try {
+    const part = new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" })
+      .formatToParts(0).find((p) => p.type === "currency");
+    curSym = part ? part.value : currency + " ";
+  } catch { curSym = currency + " "; }
+}
+
 // ---------- the tape: instant reads before any AI ----------
-const fmtIN = (n, d = 0) => Number(n).toLocaleString("en-IN", { maximumFractionDigits: d });
+const fmtIN = (n, d = 0) => Number(n).toLocaleString(currency === "INR" ? "en-IN" : "en-US", { maximumFractionDigits: d });
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 function totals() {
@@ -152,10 +170,10 @@ function renderTape() {
   const stats = $("stats");
   stats.textContent = "";
   stats.append(
-    statCell("total spend", "₹" + fmtIN(t.spend), rows[0].range || rows.length + " campaigns", ""),
-    statCell("blended roas", t.blended.toFixed(2) + "×", "₹" + fmtIN(t.value) + " revenue", t.blended >= 3 ? "good" : t.blended >= 1 ? "hot" : "bad"),
-    statCell("purchases", fmtIN(t.purch), t.purch > 0 ? "₹" + fmtIN(t.spend / t.purch) + " blended CPA" : "no conversions", ""),
-    statCell("worst cpa", t.worst && t.worst.purch > 0 ? "₹" + fmtIN(t.worst.spend / t.worst.purch) : "∞", t.worst ? trunc(t.worst.name, 30) + (t.worst.purch === 0 ? " · 0 purchases" : "") : "—", "bad"),
+    statCell("total spend", curSym + fmtIN(t.spend), rows[0].range || rows.length + " campaigns", ""),
+    statCell("blended roas", t.blended.toFixed(2) + "×", curSym + fmtIN(t.value) + " revenue", t.blended >= 3 ? "good" : t.blended >= 1 ? "hot" : "bad"),
+    statCell("purchases", fmtIN(t.purch), t.purch > 0 ? curSym + fmtIN(t.spend / t.purch) + " blended CPA" : "no conversions", ""),
+    statCell("worst cpa", t.worst && t.worst.purch > 0 ? curSym + fmtIN(t.worst.spend / t.worst.purch) : "∞", t.worst ? trunc(t.worst.name, 30) + (t.worst.purch === 0 ? " · 0 purchases" : "") : "—", "bad"),
     statCell("best campaign", t.best ? t.best.roas.toFixed(1) + "×" : "—", t.best ? trunc(t.best.name, 30) : "—", "good"),
   );
 
@@ -163,13 +181,13 @@ function renderTape() {
   const cols = [
     { h: "Campaign", k: "name", cls: (r) => "name" },
     ...(hasAdset ? [{ h: "Ad set", k: "adset" }] : []),
-    { h: "Spend ₹", k: "spend", n: 1, f: (v) => fmtIN(v) },
+    { h: "Spend " + curSym.trim(), k: "spend", n: 1, f: (v) => fmtIN(v) },
     { h: "Impr", k: "impr", n: 1, f: (v) => fmtIN(v) },
     { h: "Clicks", k: "clicks", n: 1, f: (v) => fmtIN(v) },
     { h: "CTR", k: "ctr", n: 1, f: (v) => (v ? v.toFixed(2) + "%" : "—") },
-    { h: "CPC ₹", k: "cpc", n: 1, f: (v) => (v ? v.toFixed(2) : "—") },
+    { h: "CPC " + curSym.trim(), k: "cpc", n: 1, f: (v) => (v ? v.toFixed(2) : "—") },
     { h: "Purch", k: "purch", n: 1, f: (v) => fmtIN(v) },
-    { h: "Value ₹", k: "value", n: 1, f: (v) => fmtIN(v) },
+    { h: "Value " + curSym.trim(), k: "value", n: 1, f: (v) => fmtIN(v) },
     { h: "ROAS", k: "roas", n: 1, f: (v) => v.toFixed(2) + "×", cls: (r) => (r.roas >= 3 ? "up" : r.roas < 1 ? "down" : "") },
     { h: "Freq", k: "freq", n: 1, f: (v) => (v ? v.toFixed(1) : "—"), cls: (r) => (r.freq >= 5 ? "warm" : "") },
   ];
@@ -195,70 +213,187 @@ function renderTape() {
   box.textContent = "";
   box.append(table);
 
-  $("tape-cap").textContent = "";
-  const capB = document.createElement("b");
-  capB.textContent = srcLabel === "sample" ? "sample account · Verra Skincare (DTC)"
-    : srcLabel === "restored" ? "restored from your last session"
-    : srcLabel === "live" ? "pulled live from your Ads Manager — via your own Meta connector"
-    : "your export";
-  $("tape-cap").append(capB, ` — ${rows.length} campaigns parsed in this tab, all rows shown. ` + (srcLabel === "sample" ? "Paste your own export above to replace it." : ""));
+  renderTapeCaption();
   $("tape").hidden = false;
+}
+
+// The caption knows whether the tape is real: sample data is always badged, and once connected it
+// nags toward the live pull — hardcoded numbers only ever live in the not-connected state.
+function renderTapeCaption() {
+  const cap = $("tape-cap");
+  cap.textContent = "";
+  if (!rows) return;
+  if (srcLabel === "sample") {
+    const badge = document.createElement("span"); badge.className = "samplebadge"; badge.textContent = "sample";
+    const b = document.createElement("b"); b.textContent = "Verra Skincare (DTC) — not your data.";
+    cap.append(badge, b, relay
+      ? ` ${rows.length} campaigns parsed in this tab. You're connected — pull your live account above to replace it.`
+      : ` ${rows.length} campaigns parsed in this tab. Connect Switchboard to pull your live account, or paste an export.`);
+  } else {
+    const b = document.createElement("b");
+    b.textContent = srcLabel === "restored" ? "restored from your last session"
+      : srcLabel === "live" ? "pulled live from your Ads Manager — via your own Meta connector"
+      : "your export";
+    cap.append(b, ` — ${rows.length} campaigns parsed in this tab, all rows shown.`);
+  }
 }
 
 // ---------- the standard connect chip ----------
 mountConnect($("chip-dock"), {
   scope: { reason: "diagnose your Meta ads performance", models: ["sonnet"] },
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; reflect(); },
-  onDisconnect: () => { relay = null; reflect(); },
+  onConnect: (r) => { relay = r; reflect(); loadBrand(); },
+  onDisconnect: () => { relay = null; brand = null; renderBrandLine(); rebuildBrandChips(); reflect(); },
+  onProjectChange: () => loadBrand(), // chip-menu "Switch ▸" (or panel switch) re-reads the lent brand
 });
-// Fast probe so a returning user's grant enables the button without a click.
+// Fast probe so a returning user's grant enables everything without a click — and re-reads the
+// lent brand on load, not just on connect.
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
   if (r && "connect" in r) {
     const grant = await r.permissions().catch(() => null);
-    if (grant) relay = r;
+    if (grant) { relay = r; loadBrand(); }
   } else if (r && r.installed === false) {
     notInstalled = true;
   }
   reflect();
 })();
 
+// ---------- brand context: read what the user lent, derive the sharper diagnosis ----------
+// Normalize defensively — data is opaque, convention only (docs/CONTEXT-KINDS.md, kind "brand").
+function normalizeBrand(ctx) {
+  const d = (ctx && ctx.data) || {};
+  const arr = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : []);
+  // palette is FLAT strings by convention; drop stringified objects, fall back to paletteRich hexes
+  let palette = arr(d.palette).filter((c) => !/^\[object/i.test(c));
+  if (!palette.length && Array.isArray(d.paletteRich))
+    palette = d.paletteRich.map((s) => s && s.hex).filter(Boolean).map(String);
+  return {
+    name: ctx.name || d.name || "Brand",
+    voice: String(d.voice || d.vibe || d.positioning || "").trim(),
+    positioning: String(d.positioning || "").trim(),
+    audience: String(d.audience || "").trim(),
+    palette,
+    products: arr(d.products).length ? arr(d.products) : arr(d.range),
+  };
+}
+
+async function loadBrand() {
+  if (!relay) return;
+  try {
+    const ctx = await relay.context.active();
+    brand = ctx ? normalizeBrand(ctx) : null;
+  } catch { brand = null; }
+  renderBrandLine();
+  rebuildBrandChips();
+  reflect();
+}
+
+// "diagnosing for {brand}" under the wordmark — palette swatches live here (inside content,
+// never as chrome) plus the subtle switch affordance.
+function renderBrandLine() {
+  const line = $("brand-line");
+  const sw = $("brand-swatches"); sw.textContent = "";
+  if (!relay) { line.hidden = true; return; }
+  line.hidden = false;
+  const name = $("brand-name");
+  if (brand) {
+    $("brand-kicker").textContent = "diagnosing for";
+    name.textContent = brand.name;
+    name.classList.remove("dim");
+    for (const c of brand.palette.slice(0, 4)) {
+      const s = document.createElement("span"); s.className = "sw"; s.style.background = c; sw.append(s);
+    }
+    $("brand-switch").textContent = "switch";
+  } else {
+    $("brand-kicker").textContent = "brand context";
+    name.textContent = "none lent — verdicts stay generic";
+    name.classList.add("dim");
+    $("brand-switch").textContent = "load a brand";
+  }
+}
+
+$("brand-switch").addEventListener("click", async () => {
+  if (!relay) return;
+  const b = $("brand-switch");
+  const prev = b.textContent;
+  b.disabled = true; b.textContent = "choose in Switchboard…";
+  try {
+    const ctx = await relay.context.pick(); // opens the side-panel picker; selecting lends it here
+    if (ctx) {
+      brand = normalizeBrand(ctx);
+      renderBrandLine();
+      rebuildBrandChips();
+      reflect();
+    } else b.textContent = prev;
+  } catch { b.textContent = prev; }
+  finally { b.disabled = false; if (brand) b.textContent = "switch"; }
+});
+
+// ---------- steer chips (delegated so brand chips can join the row) ----------
+function syncChips() {
+  const v = $("focus-in").value;
+  document.querySelectorAll(".steer-chip").forEach((c) => c.classList.toggle("on", c.dataset.focus === v));
+}
+$("chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".steer-chip");
+  if (!chip) return;
+  $("focus-in").value = chip.dataset.focus;
+  syncChips();
+  persist();
+});
+$("focus-in").addEventListener("input", () => { syncChips(); persist(); });
+
+// 1-2 extra chips derived from the lent brand — questions only this brand would ask its numbers.
+function rebuildBrandChips() {
+  document.querySelectorAll(".steer-chip.bchip").forEach((c) => c.remove());
+  if (brand) {
+    const sug = [];
+    if (brand.audience) sug.push(`Is spend actually reaching ${brand.audience}?`);
+    if (brand.positioning) sug.push(`Which campaigns drift off ${brand.name}'s positioning?`);
+    else sug.push(`What should ${brand.name} scale tomorrow?`);
+    for (const s of sug.slice(0, 2)) {
+      const b = document.createElement("button");
+      b.className = "steer-chip bchip";
+      b.dataset.focus = s;
+      b.textContent = trunc(s, 58);
+      $("chips").append(b);
+    }
+  }
+  syncChips();
+}
+
+// ---------- gating + hierarchy: live pull is the front door once connected ----------
 function reflect() {
   const haveData = !!rows && rows.length > 0;
   $("analyse").disabled = !relay || !haveData || analysing || pulling;
   $("rerun").disabled = !relay || !haveData || analysing || pulling;
   $("pull-live").disabled = !relay || pulling || analysing;
-  $("pull-live").title = relay ? "reads your Ads Manager through your own Meta connector — nothing touches our servers (we have none)" : "connect Switchboard (top right) first";
+  $("load-sample").hidden = !!relay; // the sample is a pre-connect affordance only
+  $("pull-sub").textContent = relay
+    ? "reads your last 30 days through your own Meta connector — nothing leaves this tab"
+    : "connect Switchboard (top right) to pull your live account — everything below works without it";
+  $("pull-live").title = relay
+    ? "reads your Ads Manager through your own Meta connector — nothing touches our servers (we have none)"
+    : "connect Switchboard (top right) first";
   const hint = $("conn-hint");
   hint.textContent = "";
   if (relay) {
-    hint.append("connected — the diagnosis runs on ", strong("your"), " Claude. " + (haveData ? "" : "Load the sample, paste an export, or pull live."));
+    const brandBit = brand ? ` Verdicts are judged against ${brand.name}'s positioning.` : "";
+    hint.append("connected — the diagnosis runs on ", strong("your"), " Claude." + brandBit + (haveData ? "" : " Pull live or paste an export first."));
   } else if (notInstalled) {
     const a = document.createElement("a");
     a.href = INSTALL_URL; a.target = "_blank"; a.rel = "noreferrer";
     a.textContent = "get Switchboard →";
     hint.append("everything above works without AI. To run the diagnosis on your own Claude, ", a);
   } else {
-    hint.append("form's live, sample's loaded — ", strong("connect Switchboard"), " (top right) to run the diagnosis.");
+    hint.append("the sample is loaded and explorable — ", strong("connect Switchboard"), " (top right) to pull your live account and run the diagnosis.");
   }
+  if (rows) renderTapeCaption();
 }
 function strong(t) { const b = document.createElement("b"); b.textContent = t; return b; }
 
-// ---------- steer chips ----------
-document.querySelectorAll(".steer-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    $("focus-in").value = chip.dataset.focus;
-    document.querySelectorAll(".steer-chip").forEach((c) => c.classList.toggle("on", c === chip));
-    persist();
-  });
-});
-$("focus-in").addEventListener("input", () => {
-  document.querySelectorAll(".steer-chip").forEach((c) => c.classList.toggle("on", c.dataset.focus === $("focus-in").value));
-  persist();
-});
-
-// ---------- feed inputs ----------
+// ---------- feed inputs (the secondary path) ----------
 function ingest(text, source) {
   try {
     if (!text.trim()) { rows = null; $("tape").hidden = true; $("feed-err").hidden = true; reflect(); return; }
@@ -289,7 +424,7 @@ $("file-in").addEventListener("change", () => {
 });
 function readFile(file) {
   const reader = new FileReader();
-  reader.onload = () => { $("csv-in").value = String(reader.result); ingest(String(reader.result), "file"); };
+  reader.onload = () => { $("csv-in").value = String(reader.result); $("paste-alt").open = true; ingest(String(reader.result), "file"); };
   reader.onerror = () => { const fe = $("feed-err"); fe.hidden = false; fe.textContent = "⚠ couldn't read that file — try pasting the CSV instead."; };
   reader.readAsText(file);
 }
@@ -301,7 +436,7 @@ feed.addEventListener("drop", (e) => {
   if (f) readFile(f);
 });
 
-// ---------- pull live from Ads Manager (no export needed) ----------
+// ---------- pull live from Ads Manager (the context-first path — no export needed) ----------
 // Three steps, all on the visitor's own stack. (1) DISCOVER: ask their model which claude.ai
 // connector carries Meta ads tools — the model can see its inherited tool list, and since it only
 // answers (never calls), no tool grant is needed. (2) CONSENT: re-connect requesting exactly that
@@ -386,6 +521,10 @@ async function pullLive() {
     $("csv-in").value = csv;
     ingest(csv, "live");
     $("tape").scrollIntoView({ behavior: "smooth", block: "start" });
+    // One-go: the user asked for their account ONCE — pulling it and then waiting for a second
+    // click is a form in disguise. The diagnosis follows the pull automatically (steer stays live;
+    // re-run with a different focus any time).
+    if (rows && rows.length && !analysing) void analyse();
   } catch (err) {
     if (myRun !== pullSeq) return;
     // A stale cached prefix (connector renamed/removed) denies every call — clear it so a retry rediscovers.
@@ -406,14 +545,26 @@ function buildPrompt() {
   const t = totals();
   let csv = rawCsv.trim();
   if (csv.length > 28000) csv = csv.slice(0, 28000) + "\n[...truncated]";
+  // The lent brand sharpens every verdict: CAC judged against the price point the positioning
+  // implies, campaigns flagged when they read off-audience — context in, sharper answers out.
+  const brandBlock = brand ? [
+    "BRAND CONTEXT (the user lent this brand via Switchboard — judge the numbers against it):",
+    `Brand: ${brand.name}.`,
+    brand.positioning ? `Positioning: ${brand.positioning}.` : "",
+    brand.audience ? `Audience: ${brand.audience}.` : "",
+    brand.voice ? `Voice: ${brand.voice}.` : "",
+    brand.products.length ? `Products: ${brand.products.join(", ")}.` : "",
+    "Use it: judge CPA/CAC against the price point the positioning implies when one is stated; flag campaigns whose naming or targeting reads off-audience; wins, leaks and per-campaign verdicts should call out brand fit, not just ROAS.",
+  ].filter(Boolean).join(" ") : "";
   return [
-    "You are AdPulse, a blunt, numbers-first Meta Ads performance analyst. A founder exported the data below from Meta Ads Manager. Currency is INR (₹) unless the headers clearly say otherwise; treat the export window as roughly one month.",
-    `Pre-computed aggregates (trust these): total spend ₹${fmtIN(t.spend)}; blended ROAS ${t.blended.toFixed(2)}; total purchases ${fmtIN(t.purch)}; total purchase value ₹${fmtIN(t.value)}; ${rows.length} campaigns.`,
+    `You are AdPulse, a blunt, numbers-first Meta Ads performance analyst. A founder exported the data below from Meta Ads Manager. Currency is ${currency} (per the spend header); treat the export window as roughly one month.`,
+    `Pre-computed aggregates (trust these): total spend ${curSym}${fmtIN(t.spend)}; blended ROAS ${t.blended.toFixed(2)}; total purchases ${fmtIN(t.purch)}; total purchase value ${curSym}${fmtIN(t.value)}; ${rows.length} campaigns.`,
+    brandBlock,
     "CSV EXPORT:\n" + csv,
     "ANALYSIS FOCUS (weigh the whole diagnosis toward this): " + focus,
-    'Respond with ONLY one JSON object — no prose, no markdown fences — in exactly this shape:\n{"score": <integer 0-100, overall account health: 0 = burning cash, 100 = dialed in>, "headline": "<one blunt verdict sentence, max 120 chars>", "wins": [{"title": "...", "detail": "..."}], "leaks": [{"title": "...", "detail": "...", "monthlyBurn": <estimated INR wasted per month, plain number>}], "actions": [{"title": "...", "impact": "high"|"medium", "effort": "low"|"medium"|"high", "detail": "..."}], "campaigns": [{"name": "<campaign name copied EXACTLY from the data>", "verdict": "scale"|"keep"|"fix"|"kill", "note": "<max 90 chars>"}]}',
+    `Respond with ONLY one JSON object — no prose, no markdown fences — in exactly this shape:\n{"score": <integer 0-100, overall account health: 0 = burning cash, 100 = dialed in>, "headline": "<one blunt verdict sentence, max 120 chars>", "wins": [{"title": "...", "detail": "..."}], "leaks": [{"title": "...", "detail": "...", "monthlyBurn": <estimated ${currency} wasted per month, plain number>}], "actions": [{"title": "...", "impact": "high"|"medium", "effort": "low"|"medium"|"high", "detail": "..."}], "campaigns": [{"name": "<campaign name copied EXACTLY from the data>", "verdict": "scale"|"keep"|"fix"|"kill", "note": "<max 90 chars>"}]}`,
     "Rules: 2-4 wins, 2-4 leaks, 4-6 actions ordered most-urgent first, and one campaigns entry per campaign in the data. Cite real numbers from the data (ROAS, CPA, frequency, spend) in every detail. Each detail under 220 chars. Specific beats generic; a founder acts on this tomorrow morning.",
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 const STATUS_TAIL = [
@@ -432,8 +583,9 @@ function setLive(on) {
   if (on) {
     $("live-line").textContent = `reading ${rows.length} campaigns…`;
     $("live-meta").textContent = "0.0 kb";
+    const tail = brand ? [...STATUS_TAIL, `judging brand fit for ${brand.name}…`] : STATUS_TAIL;
     let i = 0;
-    liveTimer = setInterval(() => { $("live-line").textContent = STATUS_TAIL[i % STATUS_TAIL.length]; i++; }, 2400);
+    liveTimer = setInterval(() => { $("live-line").textContent = tail[i % tail.length]; i++; }, 2400);
   } else {
     clearInterval(liveTimer);
   }
@@ -442,14 +594,14 @@ function setLive(on) {
 
 async function analyse() {
   if (!relay || !rows || analysing) return;
-  cancelled = false;
+  const myRun = ++runSeq;
   setLive(true);
   $("errbox").hidden = true;
   $("livebox").scrollIntoView({ behavior: "smooth", block: "nearest" });
   let text = "";
   try {
     for await (const d of relay.stream({ prompt: buildPrompt() })) {
-      if (cancelled) break;
+      if (myRun !== runSeq) return;
       if (d.type === "text") {
         text += d.text;
         $("live-meta").textContent = (text.length / 1024).toFixed(1) + " kb";
@@ -457,7 +609,7 @@ async function analyse() {
         throw new Error(d.error?.message || "stream error");
       }
     }
-    if (cancelled) return;
+    if (myRun !== runSeq) return;
     const m = text.match(/\{[\s\S]*\}/);
     let data = null;
     if (m) { try { data = JSON.parse(m[0]); } catch { /* handled below */ } }
@@ -467,15 +619,16 @@ async function analyse() {
     renderReport();
     $("report").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
+    if (myRun !== runSeq) return;
     showError(err);
   } finally {
-    setLive(false);
+    if (myRun === runSeq) setLive(false);
   }
 }
 $("analyse").addEventListener("click", analyse);
 $("rerun").addEventListener("click", analyse);
 $("retry").addEventListener("click", analyse);
-$("cancel").addEventListener("click", () => { cancelled = true; setLive(false); });
+$("cancel").addEventListener("click", () => { runSeq++; setLive(false); });
 $("focus-in").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("analyse").disabled) analyse(); });
 
 function showError(err) {
@@ -522,12 +675,12 @@ function svgEl(tag, attrs, text) {
 }
 function renderDial(score) {
   const s = Math.max(0, Math.min(100, Math.round(Number(score) || 0)));
-  const color = s >= 70 ? "var(--green)" : s >= 40 ? "var(--amber)" : "var(--red)";
+  const color = s >= 70 ? "var(--ok)" : s >= 40 ? "var(--warn)" : "var(--danger)";
   const ARC = "M 24 106 A 76 76 0 0 1 176 106";
   const svg = svgEl("svg", { viewBox: "0 0 200 122", width: "206", height: "126", role: "img", "aria-label": `account health ${s} of 100` });
   svg.append(
-    svgEl("path", { d: ARC, fill: "none", style: "stroke:var(--hair-2)", "stroke-width": "10", "stroke-linecap": "round" }),
-    svgEl("path", { class: "arc-val", d: ARC, fill: "none", style: "stroke:" + color, "stroke-width": "10", "stroke-linecap": "round", pathLength: "100", "stroke-dasharray": s + " 100" }),
+    svgEl("path", { d: ARC, fill: "none", style: "stroke:var(--edge)", "stroke-width": "10", "stroke-linecap": "round" }),
+    svgEl("path", { d: ARC, fill: "none", style: "stroke:" + color, "stroke-width": "10", "stroke-linecap": "round", pathLength: "100", "stroke-dasharray": s + " 100" }),
     svgEl("text", { class: "big", x: "100", y: "95", "text-anchor": "middle" }, String(s)),
     svgEl("text", { class: "sub", x: "100", y: "115", "text-anchor": "middle" }, "/ 100 ACCOUNT HEALTH"),
   );
@@ -537,7 +690,7 @@ function renderDial(score) {
 }
 
 function burnLine(b) {
-  if (typeof b === "number" && isFinite(b) && b > 0) return "▼ ₹" + fmtIN(b) + " / mo burn";
+  if (typeof b === "number" && isFinite(b) && b > 0) return "▼ " + curSym + fmtIN(b) + " / mo burn";
   const s = String(b ?? "").trim();
   return s && s !== "undefined" && s !== "null" ? "▼ " + s.slice(0, 60) : null;
 }
@@ -570,6 +723,7 @@ function renderReport() {
   if (!report) return;
   renderDial(report.score);
   $("headline").textContent = report.headline;
+  $("verdict-sig").textContent = brand ? `account health · verdict for ${brand.name}` : "account health · verdict";
 
   const wins = $("wins"); wins.textContent = "";
   if (report.wins.length) report.wins.forEach((w) => wins.append(card("win", w.title, w.detail)));
@@ -633,16 +787,17 @@ function persist() {
   } catch { /* storage full or blocked — non-fatal */ }
 }
 
-// ---------- boot: restore last session, else load the sample (never a blank box) ----------
+// ---------- boot: restore last session, else load the labeled sample (never a blank box) ----------
 (function boot() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* fresh visit */ }
   if (saved?.report) report = saved.report ? normalize(saved.report) : null;
   $("focus-in").value = saved?.focus || "Find wasted spend";
-  document.querySelectorAll(".steer-chip").forEach((c) => c.classList.toggle("on", c.dataset.focus === $("focus-in").value));
+  syncChips();
   if (saved?.csv) {
     $("csv-in").value = saved.csv;
     ingest(saved.csv, saved.source === "sample" ? "sample" : "restored");
+    if (saved.source !== "sample" && saved.source !== "live") $("paste-alt").open = true;
   } else {
     $("csv-in").value = SAMPLE;
     ingest(SAMPLE, "sample");

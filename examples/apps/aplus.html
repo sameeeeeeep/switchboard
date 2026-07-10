@@ -6,141 +6,155 @@
     <title>A-Plus — Amazon A+ content in one pass</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
-      /* A-PLUS — clean commerce editorial. Deep navy-ink page, warm-white sheet, the A+ preview
-         itself on pure white like Amazon's page, gold-amber accent, Sora display + Plex Mono
-         kickers. The only Switchboard element is the untouched chip in #chip-dock. */
+      /* A-PLUS — the house system (brandbrain language), inlined because these deploy standalone.
+         Ink-black page, panel cards on hairline edges, lime as the one accent. The A+ preview
+         itself stays pure white — that render is Amazon's page, the deliverable, not chrome. */
       :root {
-        --navy: #0A1526; --navy-2: #0F1E36; --navy-3: #16294A;
-        --line: #1F3355; --line-hot: #31497A;
-        --paper: #F6EFE2; --white: #FFFFFF;
-        --ink: #EFF3FA; --ink-dim: #A6B3CC; --ink-faint: #67779A;
-        --gold: #F2A93B; --gold-deep: #C77E14; --gold-soft: rgba(242, 169, 59, 0.14);
-        --green: #067D62; --danger: #FF5D5D;
-        --a-ink: #0F1111; --a-sub: #565959; --a-line: #E7E7E7;
-        --display: "Sora", ui-sans-serif, system-ui, sans-serif;
-        --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --lime: #C8F250; --lime-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, Menlo, monospace;
+        /* inside the white canvas only — Amazon's page, not ours */
         --amazon: -apple-system, "Helvetica Neue", Arial, sans-serif;
+        --a-ink: #0F1111; --a-sub: #565959; --a-line: #E7E7E7;
       }
       * { box-sizing: border-box; }
       [hidden] { display: none !important; }
       html, body { margin: 0; }
-      body {
-        background:
-          radial-gradient(1100px 520px at 82% -12%, rgba(242, 169, 59, 0.10), transparent 62%),
-          radial-gradient(720px 440px at -5% 8%, rgba(47, 94, 168, 0.14), transparent 55%),
-          var(--navy);
-        color: var(--ink); font: 15px/1.6 var(--display); -webkit-font-smoothing: antialiased;
-      }
-      /* fine dot-grid texture, like graph paper for merchandisers */
-      body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1.4px);
-        background-size: 30px 30px; opacity: 0.5; }
-      .wrap { position: relative; z-index: 2; max-width: 1040px; margin: 0 auto; padding: 26px 22px 90px; }
+      body { background: var(--page); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      a { color: var(--lime); text-decoration: none; }
+      .wrap { max-width: 1040px; margin: 0 auto; padding: 26px 22px 90px; }
 
-      header { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
-      .mark { width: 42px; height: 42px; border-radius: 11px; flex: none;
-        background: linear-gradient(160deg, #F8BC5D, #E1901A); color: #231200;
-        display: flex; align-items: center; justify-content: center;
-        font: 800 17px/1 var(--display); letter-spacing: -0.02em;
-        box-shadow: 0 8px 22px -8px rgba(242, 169, 59, 0.6); }
-      .wordmark { font: 700 19px/1.1 var(--display); letter-spacing: -0.02em; }
-      .tag { font: 400 10.5px/1.4 var(--mono); color: var(--ink-faint); letter-spacing: 0.05em; }
+      header.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+      .mark { width: 40px; height: 40px; border-radius: 10px; flex: none; background: var(--lime); color: var(--page);
+        display: flex; align-items: center; justify-content: center; font: 700 15px/1 var(--display); letter-spacing: -0.02em;
+        box-shadow: 0 0 18px rgba(200, 242, 80, 0.22); }
+      .wordmark { font: 700 18px/1.1 var(--display); letter-spacing: -0.02em; }
+      .tag { font: 400 10px/1.5 var(--mono); color: var(--ink-faint); letter-spacing: 0.08em; }
       #chip-dock { margin-left: auto; }
 
-      .intro { margin-bottom: 30px; }
-      h1 { font: 700 clamp(26px, 4.4vw, 40px)/1.12 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
-      h1 .amp { font-style: normal; color: var(--gold); }
-      .lede { margin: 0; color: var(--ink-dim); max-width: 66ch; font-size: 15px; }
+      .intro { margin-bottom: 26px; }
+      h1 { font: 700 clamp(26px, 4.4vw, 38px)/1.12 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
+      em.you { color: var(--lime); font-style: normal; }
+      .sub { margin: 0; color: var(--ink-dim); max-width: 64ch; }
 
-      .kick { font: 500 10.5px/1.5 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: #D9A650; margin: 0 0 14px; }
+      .kicker { font: 500 10px/1.5 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
 
-      /* ---- the brief (inputs) ---- */
-      .brief { background: var(--navy-2); border: 1px solid var(--line); border-radius: 18px; padding: 24px; }
-      .brief-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
-      .field { margin-bottom: 16px; }
-      .field label { display: block; font: 600 11.5px/1 var(--display); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-dim); margin: 0 0 8px; }
-      .field label .opt { font: 400 10px/1 var(--mono); color: var(--ink-faint); text-transform: none; letter-spacing: 0.04em; margin-left: 6px; }
-      input[type="text"], input[type="url"], textarea {
-        width: 100%; background: #0B182C; border: 1px solid var(--line); border-radius: 10px;
-        color: var(--ink); padding: 12px 14px; font: 400 14px/1.55 var(--display); outline: none; resize: vertical;
-        transition: border-color 0.15s, box-shadow 0.15s;
-      }
-      input:focus, textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(242, 169, 59, 0.16); }
+      /* ---- the lent-brand strip ---- */
+      .brandbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px;
+        padding: 12px 16px; border: 1px solid var(--edge); background: var(--panel); border-radius: 14px; }
+      .brandbar .bname { font: 600 15px/1.2 var(--display); letter-spacing: -0.01em; }
+      .swatches { display: inline-flex; gap: 5px; }
+      .sw { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.14); display: inline-block; }
+      .linklike { background: none; border: 0; padding: 0; color: var(--lime); font: 500 12px/1 var(--mono); cursor: pointer; }
+      .linklike:hover { text-decoration: underline; }
+      .brandbar .linklike { margin-left: auto; }
 
-      .tones { display: flex; flex-wrap: wrap; gap: 8px; }
-      .tone { background: #0B182C; border: 1px solid var(--line); color: var(--ink-dim); border-radius: 999px;
-        padding: 9px 14px; font: 500 13px/1 var(--display); cursor: pointer; transition: all 0.13s;
-        display: inline-flex; align-items: center; gap: 6px; }
-      .tone:hover { border-color: var(--line-hot); color: var(--ink); }
-      .tone.on { background: var(--gold-soft); border-color: var(--gold); color: #FFDFA8; }
-      .tone .star { color: var(--gold); font-size: 11px; }
-      .tone-note { display: block; font: 400 11px/1.5 var(--mono); color: var(--ink-faint); margin-top: 9px; }
+      /* ---- the single entry ---- */
+      .entry { border: 1px solid var(--edge); background: var(--panel); border-radius: 16px; padding: 20px; }
+      input[type="text"] { width: 100%; font: 400 14px/1.55 var(--sans); color: var(--ink); background: var(--inset);
+        border: 1px solid var(--edge); border-radius: 10px; padding: 12px 14px; outline: none; transition: border-color 0.15s; }
+      input[type="text"]:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      .entry-label { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+      .sample-chip { font: 500 9.5px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+        color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--raised));
+        border-radius: 999px; padding: 4px 9px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .pchip { font: 500 13px/1 var(--sans); padding: 10px 14px; border-radius: 999px; background: var(--raised);
+        border: 1px solid transparent; color: var(--ink-dim); cursor: pointer; transition: border-color 0.13s, color 0.13s; }
+      .pchip:hover { color: var(--ink); border-color: var(--edge); }
+      .pchip.on { background: var(--lime-soft); border-color: var(--lime); color: var(--ink); }
+      #f-custom { margin-top: 10px; }
+      .use-brand { margin: 12px 0 0; font: 400 13px/1.5 var(--sans); color: var(--ink-dim); }
+      .knob { margin-top: 16px; }
+      .knob .entry-label { margin-bottom: 8px; }
+      .note { font: 400 11px/1.6 var(--mono); color: var(--ink-faint); }
 
-      .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
-      .btn-gold { font: 600 14px/1 var(--display); background: linear-gradient(180deg, #F8B851, #EC9C1F);
-        color: #241300; border: 0; border-radius: 12px; padding: 15px 24px; cursor: pointer;
-        box-shadow: 0 10px 30px -10px rgba(242, 169, 59, 0.55); transition: transform 0.1s, box-shadow 0.15s; }
-      .btn-gold:hover { transform: translateY(-1px); box-shadow: 0 14px 36px -10px rgba(242, 169, 59, 0.7); }
-      .btn-gold:disabled { background: var(--navy-3); color: var(--ink-faint); box-shadow: none; cursor: not-allowed; transform: none; }
-      .btn-ghost { background: transparent; border: 1px solid var(--line-hot); color: var(--ink-dim);
-        border-radius: 12px; padding: 13px 18px; font: 500 13.5px/1 var(--display); cursor: pointer; transition: all 0.13s; }
-      .btn-ghost:hover { color: var(--ink); border-color: var(--gold); }
-      .btn-ghost:disabled { color: var(--ink-faint); border-color: var(--line); cursor: not-allowed; }
+      .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+      .btn-primary { font: 600 14px/1 var(--sans); background: var(--lime); color: var(--page); border: 0;
+        border-radius: 11px; padding: 13px 20px; cursor: pointer; transition: opacity 0.13s; }
+      .btn-primary:hover { opacity: 0.9; }
+      .btn-primary:disabled { background: var(--raised); color: var(--ink-faint); cursor: not-allowed; opacity: 1; }
+      .btn { font: 500 13.5px/1 var(--sans); border: 1px solid var(--edge); background: var(--panel); color: var(--ink-sec);
+        border-radius: 10px; padding: 11px 16px; cursor: pointer; transition: border-color 0.13s, color 0.13s; }
+      .btn:hover { border-color: var(--edge-soft); color: var(--ink); }
+      .btn:disabled { color: var(--ink-faint); border-color: var(--edge-soft); cursor: not-allowed; }
       .mini { padding: 9px 13px; font-size: 12.5px; border-radius: 9px; }
-      #sample-note { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); }
-      .hint { font: 400 12.5px/1.5 var(--display); color: var(--ink-faint); }
-      .hint a { color: var(--gold); text-decoration: underline; }
+      .hint { font: 400 12.5px/1.5 var(--sans); color: var(--ink-faint); }
+      .hint a { text-decoration: underline; }
 
       /* ---- status / events ---- */
-      .statusbox { margin-top: 16px; background: var(--navy-2); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+      .statusbox { margin-top: 14px; background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 14px 16px; }
       .status-row { display: flex; align-items: center; gap: 10px; }
-      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex: none;
-        box-shadow: 0 0 12px rgba(242, 169, 59, 0.8); animation: blink 1.1s ease-in-out infinite; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lime); flex: none;
+        box-shadow: 0 0 12px rgba(200, 242, 80, 0.7); animation: blink 1.1s ease-in-out infinite; }
       @keyframes blink { 50% { opacity: 0.25; } }
-      #status-line { font: 500 12px/1.4 var(--mono); color: #F3C87E; }
-      #status-meta { margin-left: auto; font: 400 11.5px/1 var(--mono); color: var(--ink-faint); }
-      #cancel { background: none; border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px;
-        padding: 6px 11px; font: 500 12px/1 var(--display); cursor: pointer; }
+      #status-line { font: 500 12px/1.4 var(--mono); color: var(--ink-sec); }
+      #status-meta { margin-left: auto; font: 400 11px/1 var(--mono); color: var(--ink-faint); }
+      #cancel { background: none; border: 1px solid var(--edge); color: var(--ink-dim); border-radius: 8px;
+        padding: 6px 11px; font: 500 12px/1 var(--sans); cursor: pointer; }
       #cancel:hover { border-color: var(--danger); color: var(--danger); }
       #events { margin-top: 8px; }
       #events:empty { display: none; }
       .event { font: 400 11.5px/1.7 var(--mono); color: var(--ink-faint); }
 
-      .errbox { margin-top: 16px; background: var(--navy-2); border: 1px solid var(--line); border-left: 3px solid var(--danger);
+      .errbox { margin-top: 14px; background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--danger);
         border-radius: 0 14px 14px 0; padding: 15px 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-      #err-text { margin: 0; font: 400 13.5px/1.55 var(--display); color: var(--ink-dim); flex: 1; min-width: 220px; }
+      #err-text { margin: 0; font: 400 13.5px/1.55 var(--sans); color: var(--ink-dim); flex: 1; min-width: 220px; }
       #err-text b { color: var(--ink); }
 
-      /* ---- the A+ preview ---- */
-      .preview-head { display: flex; align-items: flex-end; gap: 12px; margin: 44px 0 14px; flex-wrap: wrap; }
-      .preview-head .kick { margin: 0; }
-      .preview-tools { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+      /* ---- stage heads ---- */
+      .stage-head { display: flex; align-items: center; gap: 12px; margin: 38px 0 14px; flex-wrap: wrap; }
+      .stage-head .kicker { margin: 0; }
+      .stage-head .tools { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
-      .sheet { background: var(--paper); border-radius: 20px; padding: clamp(12px, 3vw, 26px);
-        box-shadow: 0 48px 110px -48px rgba(0, 0, 0, 0.85); }
-      .canvas { background: var(--white); border-radius: 8px; overflow: hidden;
-        font-family: var(--amazon); color: var(--a-ink); box-shadow: 0 1px 4px rgba(15, 17, 17, 0.12); }
+      /* ---- direction option cards ---- */
+      .dir-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+      .dir { text-align: left; background: var(--panel); border: 1px solid var(--edge); border-radius: 15px; padding: 16px;
+        cursor: pointer; color: var(--ink); font: inherit; display: flex; flex-direction: column; gap: 9px;
+        transition: border-color 0.15s, background 0.15s; }
+      .dir:hover { border-color: var(--edge-soft); background: var(--raised); }
+      .dir.hot { border-color: var(--lime); background: var(--lime-soft); }
+      .dir-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .dir-name { font: 600 15px/1.25 var(--display); letter-spacing: -0.01em; }
+      .dtag { font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--lime);
+        border: 1px solid color-mix(in srgb, var(--lime) 45%, transparent); border-radius: 999px; padding: 4px 8px; }
+      .dtag.sel { color: var(--page); background: var(--lime); border-color: var(--lime); }
+      .dir-hero { font: 500 13.5px/1.45 var(--sans); color: var(--ink-sec); }
+      .dir-angle { margin: 0; font: 400 12.5px/1.55 var(--sans); color: var(--ink-dim); }
+      .dir-chart { margin: auto 0 0; font: 400 11px/1.6 var(--mono); color: var(--ink-faint); }
+      .dir-note { margin: 10px 0 0; font: 400 11px/1.6 var(--mono); color: var(--ink-faint); }
+
+      /* ---- the A+ preview: white canvas kept — it's Amazon's page, not chrome ---- */
+      .sheet { background: var(--inset); border: 1px solid var(--edge); border-radius: 18px; padding: clamp(10px, 2.5vw, 22px); }
+      .canvas { background: #FFFFFF; border-radius: 8px; overflow: hidden;
+        font-family: var(--amazon); color: var(--a-ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 
       .mod { position: relative; }
       .mod + .mod { border-top: 1px solid #F0F0F0; }
       .mod-pad { padding: 44px 48px; }
       .regen { position: absolute; top: 12px; right: 12px; z-index: 3; font: 500 10.5px/1 var(--mono);
-        letter-spacing: 0.05em; color: #FFDCA1; background: rgba(10, 21, 38, 0.9);
-        border: 1px solid rgba(242, 169, 59, 0.5); border-radius: 999px; padding: 7px 12px; cursor: pointer;
+        letter-spacing: 0.05em; color: var(--ink-sec); background: rgba(10, 12, 16, 0.92);
+        border: 1px solid var(--edge); border-radius: 999px; padding: 7px 12px; cursor: pointer;
         opacity: 0; transition: opacity 0.15s; }
       .mod:hover .regen, .regen:focus-visible { opacity: 1; }
-      .regen:hover { color: var(--gold); }
-      .regen:disabled { color: var(--ink-faint); border-color: var(--line); cursor: not-allowed; }
+      .regen:hover { color: var(--lime); border-color: color-mix(in srgb, var(--lime) 45%, var(--edge)); }
+      .regen:disabled { color: var(--ink-faint); border-color: var(--edge-soft); cursor: not-allowed; }
       @media (hover: none) { .regen { opacity: 1; } }
       .rewriting { pointer-events: none; animation: pulse 1.2s ease-in-out infinite; }
       @keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.3; } }
 
-      /* hero module — headline + sub over a soft product-gradient banner */
+      /* hero module — the lent brand's palette may tint this banner (canvas content, not chrome) */
       .hero-banner { min-height: 300px; display: flex; align-items: center; justify-content: center;
         text-align: center; padding: 56px 32px; position: relative;
-        background: linear-gradient(118deg, #6E3317, #A85C2E 48%, #DDA36C); }
+        background: linear-gradient(118deg, #22262C, #3E444D 48%, #7E8791); }
       .hero-banner::after { content: ""; position: absolute; inset: 0; pointer-events: none;
         background: radial-gradient(620px 260px at 50% 8%, rgba(255, 255, 255, 0.22), transparent 70%); }
       .hero-copy { position: relative; z-index: 2; max-width: 720px; }
@@ -165,13 +179,13 @@
       .cmp th.f, .cmp td.f { text-align: left; width: 34%; }
       .cmp td.f { font-weight: 600; color: var(--a-ink); }
       .cmp .ours { background: #FFF8E8; }
-      .cmp th.ours { border-top: 3px solid var(--gold); }
-      .cmp .ck { color: var(--green); font-weight: 700; font-size: 16px; }
+      .cmp th.ours { border-top: 3px solid #DE7921; }
+      .cmp .ck { color: #067D62; font-weight: 700; font-size: 16px; }
       .cmp .dash { color: #B7BCBF; font-weight: 700; font-size: 15px; }
 
       /* brand story band */
-      .bstory { background: linear-gradient(140deg, #0F2036, #1A3354); text-align: center; padding: 60px 48px; }
-      .bstory .rule { width: 44px; height: 3px; background: var(--gold); margin: 0 auto 20px; border-radius: 2px; }
+      .bstory { background: linear-gradient(140deg, #1A222E, #2C3A4E); text-align: center; padding: 60px 48px; }
+      .bstory .rule { width: 44px; height: 3px; background: #DE7921; margin: 0 auto 20px; border-radius: 2px; }
       .bstory h3 { margin: 0 0 14px; font: 700 clamp(20px, 2.6vw, 26px)/1.25 var(--amazon); color: #fff; }
       .bstory p { margin: 0 auto; max-width: 64ch; font: 400 14.5px/1.75 var(--amazon); color: rgba(255, 255, 255, 0.85); }
 
@@ -179,23 +193,19 @@
       .faq-row { border-top: 1px solid #EFEFEF; padding: 18px 0; }
       .faq-row:first-child { border-top: 0; padding-top: 0; }
       .faq-q { display: flex; gap: 10px; font: 700 14.5px/1.45 var(--amazon); color: var(--a-ink); }
-      .faq-q .qm { color: var(--gold-deep); font: 600 12px/1.7 var(--mono); flex: none; }
+      .faq-q .qm { color: #C77E14; font: 600 12px/1.7 var(--mono); flex: none; }
       .faq-a { margin: 7px 0 0 26px; font: 400 13.5px/1.6 var(--amazon); color: var(--a-sub); }
 
       /* ---- backend search terms ---- */
-      .terms-sec { margin-top: 36px; }
-      .terms-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-      .terms-head .kick { margin: 0; }
-      .terms-head .tools { margin-left: auto; display: flex; gap: 8px; }
-      .terms-note { margin: 0 0 14px; font: 400 12.5px/1.5 var(--display); color: var(--ink-faint); }
+      .terms-note { margin: 0 0 14px; font: 400 12.5px/1.5 var(--sans); color: var(--ink-faint); }
       .terms { display: flex; flex-wrap: wrap; gap: 8px; }
-      .term { font: 400 12.5px/1 var(--mono); background: var(--navy-2); border: 1px solid var(--line);
-        color: #E4CFA4; border-radius: 9px; padding: 9px 13px; cursor: pointer; transition: all 0.13s; }
-      .term:hover { border-color: var(--gold); color: var(--gold); }
-      .term.copied { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
+      .term { font: 400 12.5px/1 var(--mono); background: var(--raised); border: 1px solid var(--edge);
+        color: var(--ink-sec); border-radius: 999px; padding: 9px 13px; cursor: pointer; transition: border-color 0.13s, color 0.13s; }
+      .term:hover { border-color: var(--lime); color: var(--lime); }
+      .term.copied { background: var(--lime-soft); border-color: var(--lime); color: var(--lime); }
 
       #toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
-        background: var(--navy-3); border: 1px solid var(--gold); color: #FFDFA8;
+        background: var(--raised); border: 1px solid var(--lime); color: var(--ink);
         font: 500 12.5px/1 var(--mono); border-radius: 999px; padding: 11px 18px;
         opacity: 0; pointer-events: none; transition: all 0.2s; z-index: 50;
         max-width: 82vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -205,62 +215,68 @@
       footer b { color: var(--ink-dim); font-weight: 500; }
 
       @media (max-width: 880px) {
-        .brief-grid { grid-template-columns: 1fr; gap: 0; }
         .feat-grid { grid-template-columns: repeat(2, 1fr); }
         .mod-pad { padding: 30px 22px; }
         .bstory { padding: 44px 22px; }
         .hero-banner { min-height: 230px; padding: 40px 20px; }
-        .preview-tools { margin-left: 0; }
+        .stage-head .tools { margin-left: 0; }
+        .brandbar .linklike { margin-left: 0; }
       }
       @media (max-width: 520px) {
         .feat-grid { grid-template-columns: 1fr; gap: 22px; }
-        header { flex-wrap: wrap; }
+        header.topbar { flex-wrap: wrap; }
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <header>
+      <header class="topbar">
         <div class="mark">A+</div>
         <div>
           <div class="wordmark">A-Plus</div>
-          <div class="tag">amazon a+ content · one pass · on your own claude</div>
+          <div class="tag">amazon a+ content · on your own claude</div>
         </div>
         <div id="chip-dock"></div>
       </header>
 
       <section class="intro">
-        <h1>Product in. A full <em class="amp">A+ stack</em> out.</h1>
-        <p class="lede">Three rough bullets become a hero banner, four-feature grid, comparison chart, brand story and FAQ — rendered like the real Amazon page, written by your own Claude, ready to paste into Seller Central.</p>
+        <h1>Product in. A full <em class="you">A+ stack</em> out.</h1>
+        <p class="sub">Lend A-Plus your brand and it already knows the products, the voice, the palette — pick a direction, get the hero banner, feature grid, comparison chart, brand story and FAQ rendered like the real Amazon page, written by your own Claude.</p>
       </section>
 
-      <p class="kick">01 · The product</p>
-      <section class="brief">
-        <div class="brief-grid">
-          <div class="field">
-            <label for="f-name">Product name</label>
-            <input type="text" id="f-name" maxlength="120" value="Copper Tongue Cleaner — 2 pack" />
-          </div>
-          <div class="field">
-            <label for="f-url">Product or Amazon URL <span class="opt">optional — we&rsquo;ll read it</span></label>
-            <input type="url" id="f-url" maxlength="300" placeholder="https://…" />
-          </div>
+      <section class="brandbar" id="brandbar" hidden>
+        <span class="kicker">context</span>
+        <span class="bname" id="brand-name"></span>
+        <span class="swatches" id="brand-swatches"></span>
+        <button class="linklike" id="brand-switch" type="button">switch brand</button>
+      </section>
+
+      <section class="entry">
+        <!-- brand lent: zero typing — the product comes from the brand -->
+        <div id="entry-brand" hidden>
+          <div class="entry-label"><span class="kicker">the product — from your brand</span></div>
+          <div class="chips" id="product-chips"></div>
+          <input type="text" id="f-custom" maxlength="300" placeholder="one line about the product — or paste the product page url" hidden />
         </div>
-        <div class="field">
-          <label for="f-bullets">Three rough bullets — founder-speak is fine</label>
-          <textarea id="f-bullets" rows="4" spellcheck="false">pure copper, naturally antimicrobial — the ayurveda thing that actually works
-flexible handle so you don't gag, comfy for everyone in the house (that's why the 2 pack)
-replaces the plastic scraper junk — lasts forever, ships in a little cotton pouch</textarea>
+        <!-- no brand: one line is the whole brief -->
+        <div id="entry-line">
+          <div class="entry-label">
+            <label class="kicker" for="f-line">the product — one line or a url</label>
+            <span class="sample-chip" id="sample-chip" hidden>sample — replace with yours</span>
+          </div>
+          <input type="text" id="f-line" maxlength="300" placeholder="one line about your product — or paste the product page url" />
+          <p class="use-brand" id="use-brand-row" hidden>or skip typing entirely — <button class="linklike" id="use-brand" type="button">use a brand from your library</button></p>
         </div>
-        <div class="field">
-          <label>Tone</label>
-          <div class="tones" id="tones"></div>
-          <span class="tone-note">★ = recommended for the loaded sample</span>
+        <!-- secondary knob, below the single input -->
+        <div class="knob">
+          <div class="entry-label">
+            <label class="kicker" for="f-tone">tone</label>
+            <span class="note" id="tone-note" hidden></span>
+          </div>
+          <input type="text" id="f-tone" maxlength="200" placeholder="optional — how it should sound, e.g. precise and mechanism-first" />
         </div>
         <div class="actions">
-          <button class="btn-gold" id="go" type="button">Generate the stack</button>
-          <button class="btn-ghost" id="sample-btn" type="button">Load a different sample</button>
-          <span id="sample-note"></span>
+          <button class="btn-primary" id="go" type="button">Draft 3 directions</button>
           <span class="hint" id="conn-hint"></span>
         </div>
       </section>
@@ -268,7 +284,7 @@ replaces the plastic scraper junk — lasts forever, ships in a little cotton po
       <section class="statusbox" id="statusbox" hidden>
         <div class="status-row">
           <span class="dot"></span>
-          <span id="status-line">Writing your modules…</span>
+          <span id="status-line">Writing…</span>
           <span id="status-meta">0.0 kb written</span>
           <button id="cancel" type="button">stop</button>
         </div>
@@ -277,15 +293,26 @@ replaces the plastic scraper junk — lasts forever, ships in a little cotton po
 
       <div class="errbox" id="errbox" hidden>
         <p id="err-text"></p>
-        <button class="btn-ghost mini" id="retry" type="button">Try again</button>
+        <button class="btn mini" id="retry" type="button">Try again</button>
       </div>
 
+      <section id="directions" hidden>
+        <div class="stage-head">
+          <p class="kicker">01 · pick a direction</p>
+          <div class="tools">
+            <button class="btn mini" id="rg-directions" type="button">↻ different directions</button>
+          </div>
+        </div>
+        <div class="dir-grid" id="dir-grid"></div>
+        <p class="dir-note">pick one — the full stack is written to that direction. picking another rewrites it.</p>
+      </section>
+
       <section id="preview" hidden>
-        <div class="preview-head">
-          <p class="kick">02 · Your A+ stack — rendered like the real thing</p>
-          <div class="preview-tools">
-            <button class="btn-ghost mini" id="regen-all" type="button">↻ Regenerate everything</button>
-            <button class="btn-ghost mini" id="copy-all" type="button">⧉ Copy all text</button>
+        <div class="stage-head">
+          <p class="kicker">02 · the stack — rendered like the real thing</p>
+          <div class="tools">
+            <button class="btn mini" id="regen-all" type="button">↻ regenerate everything</button>
+            <button class="btn mini" id="copy-all" type="button">⧉ copy all text</button>
           </div>
         </div>
 
@@ -327,12 +354,12 @@ replaces the plastic scraper junk — lasts forever, ships in a little cotton po
           </div>
         </div>
 
-        <section class="terms-sec" id="terms-sec">
-          <div class="terms-head">
-            <p class="kick">03 · Backend search terms</p>
+        <section id="terms-sec">
+          <div class="stage-head">
+            <p class="kicker">03 · backend search terms</p>
             <div class="tools">
-              <button class="btn-ghost mini" id="copy-terms" type="button">⧉ copy all terms</button>
-              <button class="btn-ghost mini" id="rg-terms" type="button">↻ new set</button>
+              <button class="btn mini" id="copy-terms" type="button">⧉ copy all terms</button>
+              <button class="btn mini" id="rg-terms" type="button">↻ new set</button>
             </div>
           </div>
           <p class="terms-note">Click a chip to copy one keyword — or grab the whole space-separated line for Seller Central&rsquo;s backend field.</p>

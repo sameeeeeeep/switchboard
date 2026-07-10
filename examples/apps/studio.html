@@ -6,266 +6,295 @@
     <title>Studio — product shots without the studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
-      /* STUDIO — a photo studio cyclorama. The one LIGHT app in the store: warm off-white
-         seamless paper, charcoal ink, one blood-orange accent, Fraunces display + Archivo body.
-         The images are the heroes; everything else stays quiet. The only Switchboard element
-         is the untouched chip in #chip-dock. */
+      /* STUDIO — house system (the brandbrain language, inlined: these deploy standalone).
+         Ink-black page, panel cards on hairline edges, lime as the one accent. Bricolage display,
+         Hanken body, Spline mono for every number/hex/kicker. The frames pop on ink-black; the
+         brand's own palette appears only INSIDE the shots, never as chrome. */
       :root {
-        color-scheme: light;
-        --paper: #F7F1E6; --paper-deep: #EDE4D2;
-        --card: #FFFDF8; --line: #E4DAC6; --line-soft: #EEE6D5;
-        --ink: #26221B; --ink-dim: #6F675A; --ink-faint: #A29883;
-        --accent: #DE3D0A; --accent-deep: #B93007; --accent-wash: #FAE8DE;
-        --danger: #B3261E; --ok: #2E7D4F;
-        --display: "Fraunces", Georgia, serif;
-        --body: "Archivo", system-ui, -apple-system, sans-serif;
-        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+        color-scheme: dark;
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --lime: #C8F250; --lime-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
       }
       * { box-sizing: border-box; }
       [hidden] { display: none !important; }
       html, body { margin: 0; }
-      body {
-        background:
-          radial-gradient(1100px 460px at 50% -6%, #FFFEFA 0%, rgba(255,254,250,0) 62%),
-          linear-gradient(180deg, var(--paper) 0%, #F2EBDC 55%, var(--paper-deep) 100%);
-        color: var(--ink); font: 15px/1.6 var(--body); -webkit-font-smoothing: antialiased;
-        min-height: 100vh;
-      }
-      /* the faintest photographic grain over the seamless paper */
-      body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: .55;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      ::selection { background: rgba(222,61,10,.18); }
-      .wrap { position: relative; z-index: 2; max-width: 1020px; margin: 0 auto; padding: 30px 24px 90px; }
+      body { background: var(--page); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; min-height: 100vh; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      a { color: var(--lime); text-decoration: none; }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 34px 22px 90px; }
+
+      .kicker { font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-dim); }
+      .mini { font: 400 12px/1.6 var(--sans); color: var(--ink-faint); margin: 10px 0 0; }
+      .mini b { color: var(--ink-dim); font-weight: 600; }
+      em.you { color: var(--lime); font-style: normal; font-weight: 600; }
+      .panel { border: 1px solid var(--edge); background: var(--panel); border-radius: 16px; padding: 18px 20px; }
 
       /* ---- header ---- */
-      header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 40px; }
-      .wordmark { font: italic 600 34px/1 var(--display); letter-spacing: -0.01em; }
-      .wordmark .dot { color: var(--accent); font-style: normal; }
-      .tag { font: 500 13px/1.5 var(--body); color: var(--ink-dim); margin-top: 6px; max-width: 44ch; }
-      .tag b { color: var(--ink); }
+      .topbar { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 26px; }
+      .glyph { width: 16px; height: 16px; border-radius: 5px; background: var(--lime); box-shadow: 0 0 14px rgba(200,242,80,.35); margin-top: 5px; flex: none; }
+      .wordmark { font: 600 24px/1.1 var(--display); letter-spacing: -0.02em; }
+      .tag { font: 400 13px/1.5 var(--sans); color: var(--ink-dim); margin-top: 3px; max-width: 52ch; }
       #chip-dock { margin-left: auto; }
+      @media (max-width: 880px) { .topbar { flex-wrap: wrap; } .wordmark { font-size: 20px; } }
 
-      /* ---- steps ---- */
-      .step { display: flex; align-items: baseline; gap: 10px; margin: 0 0 16px; }
-      .stepno { font: 500 11px/1 var(--mono); color: var(--accent); letter-spacing: .14em; }
-      .step h2 { font: 600 21px/1.2 var(--display); letter-spacing: -0.01em; margin: 0; }
+      /* ---- the lent brand strip ---- */
+      .brandbar { margin-bottom: 18px; padding: 14px 20px; }
+      .brand-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 9px; }
+      .bname { font: 600 15px/1.2 var(--display); letter-spacing: -0.01em; }
+      .swatches { display: inline-flex; gap: 5px; }
+      .sw { width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--edge-soft); display: inline-block; }
+      .bvoice { font: italic 400 12.5px/1.5 var(--sans); color: var(--ink-dim); max-width: 46ch; }
+      .ghost {
+        margin-left: auto; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px;
+        color: var(--ink-dim); padding: 6px 13px; cursor: pointer; font: 400 11px/1 var(--mono);
+        text-transform: uppercase; letter-spacing: .1em; transition: border-color .15s, color .15s;
+      }
+      .ghost:hover { border-color: var(--edge-soft); color: var(--ink-sec); }
 
-      /* ---- cards ---- */
-      .card {
-        background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px;
-        box-shadow: 0 1px 0 rgba(38,34,27,.03), 0 30px 70px -55px rgba(38,34,27,.35);
-      }
-      .desk { display: grid; grid-template-columns: 400px 1fr; gap: 22px; align-items: start; }
-      @media (max-width: 880px) {
-        .desk { grid-template-columns: 1fr; }
-        .wordmark { font-size: 27px; }
-        header { flex-wrap: wrap; }
-      }
+      /* ---- step panels ---- */
+      .block { margin-bottom: 18px; }
+      .stephead { display: block; margin: 0 0 14px; }
+      .stephead .n { color: var(--lime); }
 
-      /* ---- 01 · the product ---- */
-      .drop {
-        border: 1.5px dashed var(--line); border-radius: 14px; background: #FCF8EF;
-        padding: 24px; text-align: center; cursor: pointer; outline: none;
-        transition: border-color .15s, background .15s;
+      /* product chips (from the lent brand) + scene chips */
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .pchip, .scn {
+        position: relative; background: var(--raised); border: 1px solid transparent; border-radius: 999px;
+        cursor: pointer; color: var(--ink-dim); padding: 9px 15px; font: 500 12.5px/1.35 var(--sans);
+        text-align: left; transition: border-color .12s, color .12s, background .12s;
       }
-      .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: #FDF4EC; }
-      .drop-art { color: var(--ink-faint); margin-bottom: 8px; }
-      .drop-title { font: 600 17px/1.3 var(--display); margin: 0 0 6px; }
-      .drop-sub { font: 400 12.5px/1.55 var(--body); color: var(--ink-dim); margin: 0 0 14px; }
-      .drop-sub b { color: var(--ink); }
-      .linkbtn {
-        background: none; border: none; padding: 0; cursor: pointer;
-        font: 600 13px/1 var(--body); color: var(--accent); border-bottom: 1px solid rgba(222,61,10,.35);
-        padding-bottom: 2px;
-      }
-      .linkbtn:hover { color: var(--accent-deep); border-bottom-color: var(--accent-deep); }
-      #prod-preview img {
-        max-width: 100%; max-height: 260px; display: block; margin: 0 auto;
-        border-radius: 10px; box-shadow: 0 14px 34px -20px rgba(38,34,27,.45);
-        background: #fff;
-      }
-      .prod-row { display: flex; align-items: center; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
-      #prod-name { font: 500 12px/1 var(--mono); color: var(--ink-dim); }
-      .prod-row button {
-        background: #fff; border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
-        color: var(--ink-dim); padding: 6px 13px; font: 500 12px/1 var(--body);
-      }
-      .prod-row button:hover { border-color: var(--ink-faint); color: var(--ink); }
-      .prod-note { font: 400 11.5px/1.5 var(--body); color: var(--ink-faint); margin: 12px 0 0; text-align: center; }
-
-      /* ---- 02 · the scene ---- */
-      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-      .scn {
-        position: relative; background: #fff; border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
-        color: var(--ink-dim); padding: 9px 15px; font: 500 12.5px/1.35 var(--body); text-align: left;
-        transition: border-color .12s, color .12s, background .12s;
-      }
-      .scn:hover { border-color: var(--ink-faint); color: var(--ink); }
-      .scn.on { background: var(--accent-wash); border-color: var(--accent); color: var(--accent-deep); }
+      .pchip:hover, .scn:hover { border-color: var(--edge-soft); color: var(--ink-sec); }
+      .pchip.on, .scn.on { background: var(--lime-soft); border-color: var(--lime); color: var(--ink); }
       .scn .pick {
-        display: inline-block; margin-left: 7px; font: 700 8.5px/1 var(--body); letter-spacing: .1em;
-        text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 999px; padding: 3px 7px;
-        vertical-align: 1px;
+        display: inline-block; margin-left: 8px; font: 500 9px/1 var(--mono); letter-spacing: .12em;
+        text-transform: uppercase; color: var(--page); background: var(--lime); border-radius: 999px;
+        padding: 3px 7px; vertical-align: 1px;
       }
-      .lbl { display: block; font: 600 11px/1 var(--body); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-dim); margin: 0 0 8px; }
-      #steer {
-        width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 10px;
-        color: var(--ink); padding: 11px 13px; font: 400 14px/1.4 var(--body); outline: none;
+
+      .linkbtn {
+        background: none; border: none; padding: 0 0 2px; cursor: pointer;
+        font: 600 12.5px/1 var(--sans); color: var(--lime); border-bottom: 1px solid rgba(200,242,80,.35);
       }
-      #steer:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(222,61,10,.12); }
+      .linkbtn:hover { border-bottom-color: var(--lime); }
+      .sample-tag {
+        font: 500 9px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+        color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--raised));
+        border-radius: 999px; padding: 3px 8px;
+      }
+
+      /* the single free input (pre-context) */
+      input[type=text] {
+        width: 100%; font: 400 14px/1.4 var(--sans); color: var(--ink); background: var(--inset);
+        border: 1px solid var(--edge); border-radius: 10px; padding: 12px 14px; outline: none;
+        transition: border-color .15s;
+      }
+      input[type=text]:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      input[type=text]::placeholder { color: var(--ink-faint); }
+
+      /* the demoted photo path */
+      .photo-path { margin-top: 14px; }
+      .drop {
+        margin-top: 12px; border: 1.5px dashed var(--edge); border-radius: 12px; background: var(--inset);
+        padding: 22px; text-align: center; cursor: pointer; outline: none; color: var(--ink-faint);
+        font: 400 12.5px/1.6 var(--sans); transition: border-color .15s;
+      }
+      .drop:hover, .drop:focus-visible { border-color: var(--edge-soft); color: var(--ink-dim); }
+      .drop.over { border-color: var(--lime); color: var(--ink-sec); }
+      #prod-panel.over { border-color: var(--lime); }
+      #prod-preview { margin-top: 14px; }
+      #prod-preview img {
+        max-width: 100%; max-height: 240px; display: block; margin: 0 auto;
+        border-radius: 10px; background: var(--inset); border: 1px solid var(--edge-soft);
+      }
+      .prod-row { display: flex; align-items: center; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+      #prod-name { font: 400 11px/1 var(--mono); color: var(--ink-dim); }
+      .prod-row button {
+        background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; cursor: pointer;
+        color: var(--ink-dim); padding: 6px 13px; font: 500 12px/1 var(--sans); transition: border-color .15s, color .15s;
+      }
+      .prod-row button:hover { border-color: var(--edge-soft); color: var(--ink-sec); }
+
+      /* the scene knobs */
+      .lbl { display: block; font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); margin: 16px 0 8px; }
       .row2 { display: flex; align-items: center; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
-      .asp { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
+      .asp { display: inline-flex; border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; background: var(--inset); }
       .asp button {
-        background: none; border: none; border-right: 1px solid var(--line-soft); cursor: pointer;
-        color: var(--ink-dim); padding: 9px 14px; font: 600 12.5px/1 var(--body);
+        background: none; border: none; border-right: 1px solid var(--edge-soft); cursor: pointer;
+        color: var(--ink-dim); padding: 9px 14px; font: 500 12px/1 var(--mono);
       }
       .asp button:last-child { border-right: none; }
-      .asp button.on { background: var(--ink); color: var(--paper); }
-      .brief {
-        margin: 18px 0 0; font: italic 500 13.5px/1.55 var(--display); color: var(--ink-dim);
-        border-left: 2px solid var(--line); padding-left: 12px;
-      }
+      .asp button.on { background: var(--lime-soft); color: var(--lime); }
+      .brief { margin: 18px 0 0; font: 400 13px/1.6 var(--sans); color: var(--ink-dim); border-left: 2px solid var(--edge); padding-left: 12px; }
       .brief b { color: var(--ink); font-weight: 600; }
+
       .shootrow { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
       .btn-shoot {
-        font: 700 14px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
-        background: var(--accent); color: #FFF7F0; border: none; border-radius: 999px; padding: 16px 28px;
-        box-shadow: 0 14px 30px -14px rgba(222,61,10,.55); transition: transform .1s, background .12s, box-shadow .15s;
+        font: 600 14px/1 var(--sans); cursor: pointer; background: var(--lime); color: var(--page);
+        border: none; border-radius: 12px; padding: 15px 28px; letter-spacing: .01em;
+        transition: opacity .12s, transform .1s;
       }
-      .btn-shoot:hover { background: var(--accent-deep); transform: translateY(-1px); }
-      .btn-shoot:disabled { background: #DCD3C0; color: #948B79; box-shadow: none; cursor: not-allowed; transform: none; }
-      .hint { font: 400 12.5px/1.5 var(--body); color: var(--ink-faint); max-width: 34ch; }
+      .btn-shoot:hover { opacity: .9; transform: translateY(-1px); }
+      .btn-shoot:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+      .hint { font: 400 12.5px/1.5 var(--sans); color: var(--ink-faint); max-width: 38ch; }
       .hint b { color: var(--ink-dim); }
-      .hint a { color: var(--accent); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(222,61,10,.35); }
-      .consent { margin: 14px 0 0; font: 400 11.5px/1.5 var(--body); color: var(--ink-faint); }
+      .hint a { font-weight: 600; border-bottom: 1px solid rgba(200,242,80,.35); }
+      .consent { margin: 14px 0 0; font: 400 11.5px/1.5 var(--sans); color: var(--ink-faint); }
       .consent b { color: var(--ink-dim); }
 
       /* ---- the darkroom log ---- */
-      .shootbox { margin-top: 22px; padding: 16px 20px; }
-      .shoot-status { display: flex; align-items: center; gap: 10px; font: 500 13px/1.5 var(--body); color: var(--ink); }
-      .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(222,61,10,.5); animation: pulse 1.3s ease-out infinite; flex: none; }
-      @keyframes pulse { 70% { box-shadow: 0 0 0 9px rgba(222,61,10,0); } 100% { box-shadow: 0 0 0 0 rgba(222,61,10,0); } }
+      .shootbox { margin-bottom: 18px; padding: 14px 20px; }
+      .shoot-status { display: flex; align-items: center; gap: 10px; font: 500 13px/1.5 var(--sans); color: var(--ink-sec); }
+      .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 0 rgba(200,242,80,.45); animation: pulse 1.3s ease-out infinite; flex: none; }
+      @keyframes pulse { 70% { box-shadow: 0 0 0 9px rgba(200,242,80,0); } 100% { box-shadow: 0 0 0 0 rgba(200,242,80,0); } }
       .shootbox.idle .pulse, .shootbox.idle #stop { display: none; }
-      .stopbtn { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--ink-dim); border-radius: 999px; padding: 6px 13px; cursor: pointer; font: 500 12px/1 var(--body); }
+      .stopbtn { margin-left: auto; background: none; border: 1px solid var(--edge); color: var(--ink-dim); border-radius: 999px; padding: 6px 13px; cursor: pointer; font: 500 12px/1 var(--sans); }
       .stopbtn:hover { border-color: var(--danger); color: var(--danger); }
       .events { margin-top: 10px; max-height: 132px; overflow-y: auto; }
       .event { font: 400 12px/1.7 var(--mono); color: var(--ink-faint); }
       .event.bad { color: var(--danger); }
       .event.good { color: var(--ok); }
 
-      /* ---- errors ---- */
+      /* ---- errors: visible lines + a retry that stands out just enough ---- */
       .errbox {
-        margin-top: 18px; background: #FDF3EF; border: 1px solid #EBC9BB; border-left: 3px solid var(--danger);
-        border-radius: 0 14px 14px 0; padding: 14px 18px; font: 400 13.5px/1.55 var(--body); color: #6B2A21;
+        margin-bottom: 18px; background: color-mix(in srgb, var(--danger) 7%, var(--panel));
+        border: 1px solid var(--edge); border-left: 3px solid var(--danger);
+        border-radius: 0 14px 14px 0; padding: 14px 18px; font: 400 13.5px/1.55 var(--sans); color: var(--ink-sec);
         display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
       }
       #retry {
-        background: var(--ink); color: var(--paper); border: none; border-radius: 999px; cursor: pointer;
-        padding: 9px 16px; font: 600 12.5px/1 var(--body);
+        background: var(--raised); color: var(--ink); border: 1px solid var(--edge); border-radius: 999px;
+        cursor: pointer; padding: 9px 16px; font: 600 12.5px/1 var(--sans);
       }
-      #retry:hover { background: #000; }
+      #retry:hover { border-color: var(--lime); }
 
-      /* ---- 03 · the contact sheet ---- */
-      .sheetsec { margin-top: 46px; }
-      .sheethead { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
-      .sheethead .step { margin: 0; }
-      .count { font: 500 11.5px/1 var(--mono); color: var(--ink-faint); }
-      #clear-sheet { margin-left: auto; color: var(--ink-dim); border-bottom-color: var(--line); }
-      #clear-sheet:hover { color: var(--danger); border-bottom-color: var(--danger); }
-      #clear-sheet.armed { color: var(--danger); border-bottom-color: var(--danger); }
-      .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(225px, 1fr)); gap: 16px; }
+      /* ---- the contact sheet ---- */
+      .sheetsec { margin-top: 34px; }
+      .sheethead { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+      .count { font: 400 11px/1 var(--mono); color: var(--ink-faint); }
+      #clear-sheet { margin-left: auto; color: var(--ink-dim); border-bottom-color: var(--edge); font-weight: 500; }
+      #clear-sheet:hover, #clear-sheet.armed { color: var(--danger); border-bottom-color: var(--danger); }
+      .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+      @media (max-width: 880px) { .sheet { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
       .shot {
-        position: relative; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px;
-        box-shadow: 0 20px 40px -34px rgba(38,34,27,.5); transition: transform .12s, box-shadow .15s;
+        position: relative; background: var(--panel); border: 1px solid var(--edge); border-radius: 14px;
+        padding: 10px; transition: border-color .12s, transform .12s;
       }
-      .shot:hover { transform: translateY(-2px); box-shadow: 0 26px 48px -32px rgba(38,34,27,.55); }
-      .shot img { width: 100%; display: block; border-radius: 7px; background: var(--paper-deep); min-height: 120px; }
-      .shot .cap { font: italic 500 13px/1.45 var(--display); color: var(--ink); margin: 10px 2px 2px;
+      .shot:hover { border-color: var(--edge-soft); transform: translateY(-2px); }
+      .shot img { width: 100%; display: block; border-radius: 8px; background: var(--inset); min-height: 120px; }
+      .shot .cap { font: 500 12.5px/1.45 var(--sans); color: var(--ink); margin: 10px 2px 2px;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
       .shot .meta { font: 400 10.5px/1 var(--mono); color: var(--ink-faint); margin: 6px 2px 10px; }
       .shot .btns { display: flex; gap: 7px; }
       .shot .btns .sbtn {
-        flex: 1; text-align: center; background: #FCF8EF; border: 1px solid var(--line); border-radius: 8px;
-        color: var(--ink-dim); padding: 7px 0; cursor: pointer; font: 600 12px/1 var(--body); text-decoration: none;
+        flex: 1; text-align: center; background: var(--raised); border: 1px solid var(--edge-soft); border-radius: 8px;
+        color: var(--ink-dim); padding: 7px 0; cursor: pointer; font: 600 12px/1 var(--sans); text-decoration: none;
+        transition: border-color .12s, color .12s;
       }
-      .shot .btns .sbtn:hover { border-color: var(--ink-faint); color: var(--ink); }
-      .shot .btns .sbtn.re:hover { border-color: var(--accent); color: var(--accent-deep); }
+      .shot .btns .sbtn:hover { border-color: var(--edge); color: var(--ink-sec); }
+      .shot .btns .sbtn.re:hover { border-color: var(--lime); color: var(--lime); }
       .shot .kill {
         position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%;
-        background: rgba(38,34,27,.55); color: #fff; border: none; cursor: pointer; font: 600 12px/1 var(--body);
-        opacity: 0; transition: opacity .12s;
+        background: rgba(10,12,16,.72); color: var(--ink-sec); border: 1px solid var(--edge); cursor: pointer;
+        font: 600 12px/1 var(--sans); opacity: 0; transition: opacity .12s;
       }
       .shot:hover .kill { opacity: 1; }
-      .shot .kill:hover { background: var(--danger); }
+      .shot .kill:hover { background: var(--danger); color: var(--page); border-color: var(--danger); }
       .empty {
-        border: 1.5px dashed var(--line); border-radius: 14px; padding: 34px 24px; text-align: center;
-        color: var(--ink-faint); font: 400 13.5px/1.6 var(--body);
+        border: 1.5px dashed var(--edge); border-radius: 14px; padding: 34px 24px; text-align: center;
+        color: var(--ink-faint); font: 400 13px/1.6 var(--sans);
       }
 
-      footer { margin-top: 56px; font: 400 12px/1.6 var(--body); color: var(--ink-faint); text-align: center; }
+      footer { margin-top: 52px; font: 400 12px/1.6 var(--sans); color: var(--ink-faint); text-align: center; }
       footer b { color: var(--ink-dim); }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <header>
+      <header class="topbar">
+        <span class="glyph"></span>
         <div>
-          <div class="wordmark">Studio<span class="dot">.</span></div>
-          <div class="tag">product shots without the studio — one photo in, finished frames out, shot on <b>your own</b> Higgsfield</div>
+          <div class="wordmark">Studio</div>
+          <div class="tag">product shots without the studio — the brand you lend does the briefing, shot on <em class="you">your own</em> Higgsfield</div>
         </div>
         <div id="chip-dock"></div>
       </header>
 
-      <section class="desk">
-        <div class="card">
-          <div class="step"><span class="stepno">01</span><h2>The product</h2></div>
-          <div class="drop" id="drop" tabindex="0" role="button" aria-label="add your product photo">
-            <div id="drop-empty">
-              <div class="drop-art">
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <rect x="6" y="12" width="28" height="21" rx="4" stroke="currentColor" stroke-width="2"/>
-                  <path d="M14 12l3-5h6l3 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                  <circle cx="20" cy="22" r="6" stroke="currentColor" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="drop-title">Drop your product photo</p>
-              <p class="drop-sub">PNG or JPG, straight-on and well lit works best. It goes to <b>your</b> Higgsfield and nowhere else.</p>
-              <button class="linkbtn" id="sample-btn" type="button">No photo? Load the sample bottle →</button>
-            </div>
-            <div id="prod-preview" hidden>
-              <img id="prod-img" alt="your product reference" />
-              <div class="prod-row">
-                <span id="prod-name">product.png</span>
-                <button id="prod-replace" type="button">replace</button>
-                <button id="prod-remove" type="button">remove</button>
-              </div>
-            </div>
-          </div>
-          <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden />
-          <p class="prod-note">Sent as a reference at ≤1024px — the shoot keeps the product <em>exactly</em> itself: same label, same shape.</p>
+      <!-- the lent brand: read on connect, everything below derives from it -->
+      <section class="panel brandbar" id="brandbar" hidden>
+        <span class="kicker">context · lent brand</span>
+        <div class="brand-row" id="brand-on" hidden>
+          <span class="bname" id="brand-name"></span>
+          <span class="swatches" id="brand-swatches"></span>
+          <span class="bvoice" id="brand-voice"></span>
+          <button class="ghost" id="brand-switch" type="button">switch</button>
         </div>
-
-        <div class="card">
-          <div class="step"><span class="stepno">02</span><h2>The scene</h2></div>
-          <div class="chips" id="chips"></div>
-          <label class="lbl" for="steer">Extra art direction (optional)</label>
-          <input id="steer" type="text" placeholder="e.g. add eucalyptus stems, cooler light, a hint of steam" maxlength="200" />
-          <div class="row2">
-            <span class="lbl" style="margin:0">Frame</span>
-            <div class="asp" id="aspects"></div>
-          </div>
-          <p class="brief" id="brief"></p>
-          <div class="shootrow">
-            <button class="btn-shoot" id="shoot" disabled>Shoot the frame</button>
-            <span class="hint" id="conn-hint"></span>
-          </div>
-          <p class="consent"><b>1 generation = 1 consent</b> — your Switchboard asks before every frame. Want four looks? Click four times.</p>
+        <div class="brand-row" id="brand-off" hidden>
+          <span class="bvoice">no brand lent yet — lend one and every product becomes a one-click shoot</span>
+          <button class="ghost" id="brand-pick" type="button">pick a brand</button>
         </div>
       </section>
 
-      <section class="card shootbox idle" id="shootbox" hidden>
+      <!-- 01 · the product: brand chips when a brand is lent; one line or one photo when not -->
+      <section class="panel block" id="prod-panel">
+        <span class="kicker stephead"><span class="n">01</span> · the product</span>
+
+        <div id="brand-products" hidden>
+          <div class="chips" id="products"></div>
+          <p class="mini" id="prod-note">every chip shoots straight from the brand — no photo, no typing. voice + palette ride along in the prompt.</p>
+        </div>
+
+        <div id="free-product" hidden>
+          <input id="line" type="text" placeholder="your product, one line — e.g. matte black insulated water bottle" maxlength="120" autocomplete="off" />
+          <p class="mini">…or drop a photo anywhere on this card (PNG/JPG — it goes to <b>your</b> Higgsfield and nowhere else) — <button class="linkbtn" id="browse-btn" type="button">browse</button> · <button class="linkbtn" id="sample-btn" type="button">load the sample bottle</button> <span class="sample-tag">sample</span></p>
+        </div>
+
+        <div class="photo-path">
+          <button class="linkbtn" id="photo-toggle" type="button" hidden>shoot from a photo instead</button>
+          <div class="drop" id="drop" tabindex="0" role="button" aria-label="add a product photo" hidden>
+            drop a product photo here, or click to browse — PNG/JPG, straight-on and well lit works best
+          </div>
+        </div>
+
+        <div id="prod-preview" hidden>
+          <img id="prod-img" alt="your product reference" />
+          <div class="prod-row">
+            <span class="sample-tag" id="sample-tag" hidden>sample — replaced by your brand the moment you lend one</span>
+            <span id="prod-name">product.png</span>
+            <button id="prod-replace" type="button">replace</button>
+            <button id="prod-remove" type="button">remove</button>
+          </div>
+        </div>
+        <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden />
+      </section>
+
+      <!-- 02 · the scene: option chips, one marked OUR PICK (derived from the brand's voice) -->
+      <section class="panel block">
+        <span class="kicker stephead"><span class="n">02</span> · the scene</span>
+        <div class="chips" id="chips"></div>
+        <p class="mini" id="scene-note"></p>
+        <label class="lbl" for="steer">Extra art direction (optional)</label>
+        <input id="steer" type="text" placeholder="e.g. add eucalyptus stems, cooler light, a hint of steam" maxlength="200" autocomplete="off" />
+        <div class="row2">
+          <span class="lbl" style="margin:0">Frame</span>
+          <div class="asp" id="aspects"></div>
+        </div>
+        <p class="brief" id="brief"></p>
+        <div class="shootrow">
+          <button class="btn-shoot" id="shoot" disabled>Shoot the frame</button>
+          <span class="hint" id="conn-hint"></span>
+        </div>
+        <p class="consent"><b>1 generation = 1 consent</b> — your Switchboard asks before every frame. Want four looks? Click four times.</p>
+      </section>
+
+      <section class="panel shootbox idle" id="shootbox" hidden>
         <div class="shoot-status">
           <span class="pulse"></span>
           <span id="shoot-line">—</span>
@@ -279,14 +308,15 @@
         <button id="retry" type="button">Retry the shot</button>
       </div>
 
+      <!-- 03 · the contact sheet -->
       <section class="sheetsec">
         <div class="sheethead">
-          <div class="step"><span class="stepno">03</span><h2>The contact sheet</h2></div>
+          <span class="kicker"><span class="n" style="color:var(--lime)">03</span> · the contact sheet</span>
           <span class="count" id="sheet-count"></span>
           <button class="linkbtn" id="clear-sheet" type="button">clear sheet</button>
         </div>
         <div class="sheet" id="sheet"></div>
-        <div class="empty" id="sheet-empty">Nothing developed yet. Load a product (or the sample bottle), pick a scene, and shoot your first frame — it lands here and survives reload.</div>
+        <div class="empty" id="sheet-empty">Nothing developed yet. Lend a brand (or add a product), pick a scene, and shoot your first frame — it lands here and survives reload.</div>
       </section>
 
       <footer>Studio ships no keys and no backend — every frame is generated by <b>your</b> Claude driving <b>your</b> Higgsfield connector through Switchboard.</footer>
