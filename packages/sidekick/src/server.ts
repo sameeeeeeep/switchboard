@@ -19,7 +19,7 @@ import type {
   ToolCallRequest,
   ToolDescriptor,
 } from "@relay/protocol";
-import { BYOP_VERSION, BYOPErrorCode, ProviderError } from "@relay/protocol";
+import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile } from "./config.js";
 import type { Gate } from "./security/gate.js";
@@ -154,6 +154,12 @@ export class Broker implements ConsentPrompter {
    *  and returns the chosen id, or null. Selecting IS the consent to share that whole context. */
   requestContextPick(origin: string, contexts: unknown): Promise<{ contextId: string } | null> {
     return this.ask<{ contextId: string } | null>("consent:context-pick", { origin, contexts }, 120_000, null);
+  }
+  /** First-use consent for TabSidekick ("Unconnected Mode") on a host that hasn't opted in. One
+   *  prompt per host: "Use TabSidekick on <host> — reads page content and images; nothing is sent to
+   *  the site." Durable like every other consent (re-pushed on reconnect). */
+  requestTabSidekickConsent(origin: string, host: string): Promise<boolean> {
+    return this.ask<boolean>("consent:tabsidekick", { origin, host }, 120_000, false);
   }
   async requestConnectConsent(_origin: string, body: unknown) {
     // `body` is already the full consent payload (origin, reason, models, tools, budgets) — send it
@@ -385,6 +391,10 @@ export class Broker implements ConsentPrompter {
 
   /** claude_connect: run the connect consent flow, then persist the (narrowed) grant. */
   private async connect(origin: string, requested: ScopeRequest): Promise<OriginGrant> {
+    // TabSidekick principal (`tabsidekick@<host>`): a distinct, extension-driven flow — the user's
+    // own Claude working on content extracted from a page that hasn't opted in. Separate consent,
+    // separate grant key, never the page's connectors.
+    if (isTabPrincipal(origin)) return this.connectTabSidekick(origin);
     // Show the user ONLY what the site asked for — its requested tools (each pre-classified out of
     // band so a site can't mislabel a write as a read), plus the models it may run on. We do NOT
     // dump the user's whole tool universe; a site gets what it requests, nothing more.
@@ -408,11 +418,34 @@ export class Broker implements ConsentPrompter {
     // Re-classify every approved tool out of band so the UI's labels can't downgrade danger.
     const tools = approved.tools.map((t) => ({ name: t.name, access: classifyTool(t.name) }));
     // contextKinds is FAIL-CLOSED: only what the consent UI explicitly echoes back survives — an
-    // older extension that doesn't know the field yields none, never an implicit grant.
+    // older extension that doesn't know the field yields none, never an implicit grant. The echo
+    // keeps its shape: [] = the user saw the library row and declined it (never re-ask), undefined
+    // = the UI never asked (a scope-upgrade re-consent may ask later).
     const approvedKinds = (approved as unknown as { contextKinds?: unknown }).contextKinds;
-    const contextKinds = Array.isArray(approvedKinds) ? approvedKinds.map((k) => String(k)).filter(Boolean) : [];
+    const contextKinds = Array.isArray(approvedKinds) ? approvedKinds.map((k) => String(k)).filter(Boolean) : undefined;
     const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, contextKinds, expiresAt: approved.expiresAt });
     this.deps.audit.record({ origin, kind: "connect", outcome: "ok" });
+    this.broadcast({ type: "event", event: "connect", payload: grant });
+    return grant;
+  }
+
+  /**
+   * TabSidekick connect: first use per host shows ONE consent, then a fixed, minimal grant keyed to
+   * the `tabsidekick@<host>` principal — the user's own models, COMPLETIONS ONLY (tools: []). It gets
+   * no site connectors: TabSidekick reads the page read-only in the browser and the user performs any
+   * delivery back, so nothing is ever sent to the site. Storage/context/speak all work off this grant
+   * exactly like a connected app, but under the separate principal key. Idempotent: once granted, the
+   * same host returns the existing grant without re-prompting.
+   */
+  private async connectTabSidekick(origin: string): Promise<OriginGrant> {
+    const existing = this.deps.grants.get(origin);
+    if (existing) return existing;
+    const host = hostOfTabPrincipal(origin);
+    const approved = await this.requestTabSidekickConsent(origin, host);
+    if (!approved) throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user rejected TabSidekick");
+    const models = await this.deps.backends.models();
+    const grant = this.deps.grants.upsert(origin, { models, tools: [], budgets: undefined });
+    this.deps.audit.record({ origin, kind: "connect", outcome: "ok", note: `tabsidekick ${host}` });
     this.broadcast({ type: "event", event: "connect", payload: grant });
     return grant;
   }

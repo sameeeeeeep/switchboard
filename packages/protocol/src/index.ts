@@ -6,6 +6,7 @@
  */
 export * from "./version.js";
 export * from "./permissions.js";
+export * from "./tabsidekick.js";
 export * from "./tools.js";
 export * from "./completion.js";
 export * from "./storage.js";

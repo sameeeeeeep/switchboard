@@ -83,6 +83,20 @@ does the same job on your own compute, context and data. And every wrapp carries
 chip** (`mountConnect`) — a standard, un-restylable lockup that greets you by name and shows the one
 project lent to that app.
 
+**TabSidekick — your Claude on any page.** From the *This tab* line you can run your own Claude on
+whatever page you're on (any tab, opted-in or not): extract its text, selection, images, or metadata
+(read-only; the page is never written to), act on it, and deliver the result by hand — copy, download,
+drag-and-drop, or **save to your vault**. The actions are **capability packs**: a **Base** pack everywhere
+(explain, summarize, translate, extract-and-steelman, a warm **conversation** about the page, speak it),
+plus **site-aware packs** that light up by domain — e.g. the **Cast** persona pack on Instagram/TikTok/X
+(caption in-voice, on-persona reply, content ideas). **Form Assist** reads a page's form fields and hands
+you ready-to-drop values from your own saved info (personal card, project, links) — you paste each one; it
+never types into the page and **hard-refuses** password / card / SSN fields. Everything runs under a
+separate `tabsidekick@<host>` principal (its own first-use consent, grant, budget, audit, and revoke —
+never the page's), and extracted page content is always fenced as **untrusted data** so nothing inside it
+can act as an instruction. New permissions: `activeTab`, `scripting`, `clipboardWrite` (no DOM automation,
+no injection into the page). Packs are a data registry — adding one is one entry, no view changes.
+
 ## Packages
 
 | Package | What it is |

@@ -21,7 +21,8 @@ interface WriteBody { origin: string; tool: { name: string; arguments: Record<st
 interface StorageBindBody { origin: string; path: string; }
 interface ContextMetaRow { id: string; name: string; kind?: string; source?: string }
 interface ContextPickBody { origin: string; contexts: ContextMetaRow[] }
-export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:context-pick"; body: unknown; }
+interface TabSidekickBody { origin: string; host: string; }
+export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:context-pick" | "consent:tabsidekick"; body: unknown; }
 
 const el = (tag: string, cls?: string, text?: string): HTMLElement => {
   const n = document.createElement(tag);
@@ -81,6 +82,7 @@ export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d:
   if (prompt.kind === "consent:connect") renderConnect(rc, prompt.body as ConnectBody, onDecision);
   else if (prompt.kind === "consent:storage-bind") renderStorageBind(rc, prompt.body as StorageBindBody, onDecision);
   else if (prompt.kind === "consent:context-pick") renderContextPick(rc, prompt.body as ContextPickBody, onDecision);
+  else if (prompt.kind === "consent:tabsidekick") renderTabSidekick(rc, prompt.body as TabSidekickBody, onDecision);
   else renderWrite(rc, prompt.body as WriteBody, onDecision);
 }
 
@@ -148,7 +150,9 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     models: modelBoxes.filter(([, c]) => c.checked).map(([m]) => m),
     tools: toolBoxes.filter(([, c]) => c.checked).map(([t]) => t),
     budgets: { maxTokensPerDay: Number(tok.value) || 0, maxCallsPerMin: Number(calls.value) || 0 },
-    contextKinds: kindsBox?.checked ? kinds : [],
+    // Shape carries meaning downstream: kinds = approved; [] = the row was SHOWN and unchecked
+    // (a decline — never re-ask); undefined = the app never asked (a scope upgrade may ask later).
+    contextKinds: kindsBox ? (kindsBox.checked ? kinds : []) : undefined,
   });
   actions.append(deny, approve);
   rc.append(actions);
@@ -204,6 +208,24 @@ function renderContextPick(rc: HTMLElement, body: ContextPickBody, onDecision: (
   const deny = el("button", "deny", "Cancel"); deny.onclick = () => onDecision(null);
   const approve = el("button", "approve", "Lend brand"); approve.onclick = () => onDecision((picked ? { contextId: picked } : null) as unknown as Decision);
   if (!contexts.length) approve.setAttribute("disabled", "true");
+  actions.append(deny, approve);
+  rc.append(actions);
+}
+
+function renderTabSidekick(rc: HTMLElement, body: TabSidekickBody, onDecision: (d: Decision) => void) {
+  rc.append(el("div", "kick", "Unconnected mode"));
+  const h = el("h2"); h.append(document.createTextNode("Use TabSidekick on "), Object.assign(el("span", "o"), { textContent: body.host }), document.createTextNode("?")); rc.append(h);
+  const p = el("div", "reason"); p.append(document.createTextNode("This site hasn’t added Switchboard. TabSidekick lets you work on its content with YOUR Claude — it reads page content and images only, and nothing is ever sent to the site.")); rc.append(p);
+  const sec = section(rc, "What it can do");
+  const ul = el("div");
+  for (const line of ["Read the page’s text, selection & images (read-only — no clicks or typing)", "Run tasks on that content with your own model", "Deliver results to you: copy, download, drag, or save to your vault"]) {
+    const row = el("label", "item"); row.append(el("span", "badge read", "read"), el("span", "name", line)); ul.append(row);
+  }
+  sec.append(ul);
+  rc.append(el("div", "reason", "Saving to your vault follows your usual write rules. Everything is audited under a separate identity, tabsidekick@" + body.host + "."));
+  const actions = el("div", "actions");
+  const deny = el("button", "deny", "Not now"); deny.onclick = () => onDecision(null);
+  const approve = el("button", "approve", "Use it here"); approve.onclick = () => onDecision(true as unknown as Decision);
   actions.append(deny, approve);
   rc.append(actions);
 }

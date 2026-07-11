@@ -88,3 +88,29 @@ export const DEFAULT_BUDGETS: Budgets = {
   maxTokensPerDay: 200_000,
   maxCallsPerMin: 30,
 };
+
+/**
+ * TABSIDEKICK ("Unconnected Mode") principal. When a site has NOT opted into Switchboard, the
+ * EXTENSION acts for the user on that page — reading its content and running tasks on the user's
+ * own Claude — without the page ever touching the daemon. Those requests carry a principal of the
+ * form `tabsidekick@<host>` in the SAME `origin` slot on the envelope, so grants, budgets, audit,
+ * storage, and revoke are all keyed to it and stay STRUCTURALLY SEPARATE from any page grant on the
+ * same host (`https://<host>`). The host still comes from the browser (the origin oracle derives it
+ * from the active tab), never from the page or from user-typed text.
+ */
+export const TAB_PRINCIPAL_PREFIX = "tabsidekick@";
+
+/** Build the TabSidekick principal for a browser-verified host (e.g. "canva.com"). */
+export function tabPrincipal(host: string): string {
+  return `${TAB_PRINCIPAL_PREFIX}${host}`;
+}
+
+/** Is this origin a TabSidekick principal (vs a real web origin)? */
+export function isTabPrincipal(origin: string): boolean {
+  return origin.startsWith(TAB_PRINCIPAL_PREFIX);
+}
+
+/** The host a TabSidekick principal is acting on, e.g. "canva.com" (empty if not a principal). */
+export function hostOfTabPrincipal(origin: string): string {
+  return isTabPrincipal(origin) ? origin.slice(TAB_PRINCIPAL_PREFIX.length) : "";
+}
