@@ -107,6 +107,45 @@ not the published context shape).
 
 ---
 
+## `kind: "project"`
+
+A unit of *work* — a repo, a product, an initiative — as portable context. Produced by the **Bank
+connector's extractor** (`packages/bank-mcp` → `bank_extract_project`, which reads a repo's README,
+`package.json`, `docs/`, `ROADMAP.md`, sub-packages and open `- [ ]` tasks and structures them
+deterministically), and by any wrapp that wants to describe itself. Consumed by **Bank** (renders each
+as a project card, §03 — the cross-project viewer) and by any wrapp that wants a project's context in
+one place. Its open tasks are synced separately onto the Bank board (see the `## <list>` task dialect
+in `packages/bank-mcp/tasks.mjs`), so `data.tasks` here is a snapshot, not the live board.
+
+> **Naming note:** the side panel already uses "project" for *the default context lent to apps this
+> session* (`sidepanel.ts`). That's the **scoping** sense; this `kind:"project"` is the **work-unit**
+> sense. Same word, two roles — don't conflate the panel's active-project selector with a project context.
+
+```jsonc
+{
+  "id": "switchboard",             // stable slug — re-extracting updates in place, never duplicates
+  "name": "Switchboard",           // display name; from the README H1 (before an em-dash tagline)
+  "kind": "project",
+  "data": {
+    "summary": "BYO-Claude broker — a local sidekick brokers your model + tools to any site.", // one line
+    "status": "v1.0.0 · MIT",      // flat string; version (omitted when 0.0.0) · license
+    "stack": ["TypeScript", "esbuild", "MCP"],           // flat strings; cheap honest markers
+    "links": [{ "label": "repo", "url": "https://…" }],  // {label,url}; repo/homepage + README links
+    "roadmap": ["Ship the board", "Extract projects"],   // flat strings — bullets from ROADMAP.md
+    "docs": ["Vision Spec — docs/VISION.md"],            // flat strings — docs/*.md H1s
+    "packages": ["sdk", "sidekick"],                     // monorepo package names (flat strings)
+    "wrapps": ["bank", "imagegen"],                      // example/app wrapp names (flat strings)
+    "tasks": ["Wire the connector into the daemon"]      // snapshot of open tasks (board is the source of truth)
+  }
+}
+```
+
+Same defensive-normalization rules as every kind: all fields optional, `String()`/array-guard on
+consume. A wrapp describing *itself* publishes the same shape (its own name/summary/links), which is
+how "every wrapp as a project" lands in one viewer.
+
+---
+
 ## Other kinds in the shared union
 
 `task`, `person`, `event`, `decision`, `note`, `asset` are named in the vision

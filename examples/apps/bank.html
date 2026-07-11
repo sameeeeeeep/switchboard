@@ -77,12 +77,53 @@
       .shelfchip i { font: 400 10px/1 var(--mono); color: var(--ink-faint); font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
       .shelf-empty { font: 400 12px/1.6 var(--mono); color: var(--ink-faint); background: var(--panel); border: 1px dashed var(--edge); border-radius: 12px; padding: 12px 14px; }
 
-      /* tasks */
-      .taskrow { display: flex; align-items: baseline; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--edge-soft); cursor: pointer; }
-      .taskrow:last-child { border-bottom: 0; }
-      .taskrow input { accent-color: var(--lime); }
-      .taskrow span { flex: 1; color: var(--ink-sec); }
-      .taskrow i { font: 400 10.5px/1 var(--mono); color: var(--ink-faint); font-style: normal; white-space: nowrap; }
+      /* projects — the cross-project viewer: one card per project, extracted into the Bank */
+      .projects { display: grid; gap: 12px; }
+      @media (min-width: 700px) { .projects { grid-template-columns: 1fr 1fr; align-items: start; } }
+      .projcard { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 15px 16px; }
+      .projhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+      .projhead b { font: 700 16px/1.2 var(--display); letter-spacing: -0.02em; color: var(--ink); }
+      .pstatus { font: 400 10px/1.4 var(--mono); font-style: normal; color: var(--lime); background: var(--lime-soft); border-radius: 6px; padding: 3px 7px; }
+      .psum { color: var(--ink-dim); font-size: 12.5px; line-height: 1.55; margin-top: 7px; }
+      .pmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 11px; }
+      .ptag { font: 400 10.5px/1 var(--mono); color: var(--ink-sec); background: var(--raised); border-radius: 6px; padding: 5px 8px; }
+      .plink { font: 500 10.5px/1 var(--mono); color: var(--lime); background: var(--lime-soft); border-radius: 6px; padding: 5px 8px; text-decoration: none; }
+      .plink:hover { text-decoration: underline; }
+      .ptasks { font: 400 10.5px/1 var(--mono); color: var(--warn); margin-left: 2px; }
+      .pstats { font: 400 11px/1.5 var(--mono); color: var(--ink-faint); margin-top: 10px; }
+      .proad { margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--edge-soft); }
+      .proadk { font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); }
+      .proaditem { font: 400 12px/1.5 var(--sans); color: var(--ink-sec); margin-top: 6px; padding-left: 12px; position: relative; }
+      .proaditem::before { content: "→"; position: absolute; left: 0; color: var(--ink-faint); }
+      .proadmore { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); margin-top: 6px; padding-left: 12px; }
+      .pfoot { margin-top: 12px; }
+
+      /* tasks — the board: quick-add bar + list cards, all backed by .md */
+      .boardbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -2px 0 12px; }
+      .quickadd { display: flex; gap: 8px; flex: 1; min-width: 260px; }
+      .quickadd input { flex: 1; min-width: 0; padding: 9px 12px; font: 400 13px/1.5 var(--mono); }
+      .quickadd select { background: var(--inset); color: var(--ink-sec); border: 1px solid var(--edge); border-radius: 10px; padding: 0 8px; font: 400 12px/1 var(--mono); cursor: pointer; max-width: 130px; }
+      .quickadd select:focus { outline: none; border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      .btn-add { font: 600 13px/1 var(--sans); background: var(--lime); color: var(--page); border: 1px solid transparent; border-radius: 10px; padding: 0 16px; cursor: pointer; transition: opacity .15s; }
+      .btn-add:hover:not(:disabled) { opacity: .9; }
+      .btn-add:disabled { opacity: .45; cursor: not-allowed; }
+      .boardtools { display: flex; align-items: center; gap: 16px; }
+      .linklike { background: none; border: 0; padding: 0; font: 500 11.5px/1 var(--mono); color: var(--ink-faint); cursor: pointer; transition: color .15s; }
+      .linklike:hover:not(:disabled) { color: var(--lime); }
+      .linklike:disabled { opacity: .5; cursor: not-allowed; }
+      .synced-line { color: var(--ink-sec); margin: 0 0 12px; }
+
+      .board { display: grid; gap: 12px; }
+      @media (min-width: 700px) { .board { grid-template-columns: 1fr 1fr; align-items: start; } }
+      .listcard { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 12px 15px 6px; }
+      .listhead { display: flex; align-items: baseline; gap: 9px; padding-bottom: 6px; }
+      .listhead b { font: 600 13.5px/1.2 var(--display); letter-spacing: -0.01em; color: var(--ink); }
+      .listhead i { font: 400 10px/1 var(--mono); color: var(--ink-faint); font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+      .trow { display: flex; align-items: baseline; gap: 10px; padding: 8px 2px; border-top: 1px solid var(--edge-soft); cursor: pointer; }
+      .trow input { accent-color: var(--lime); }
+      .trow span { flex: 1; color: var(--ink-sec); }
+      .trow.done span { color: var(--ink-faint); text-decoration: line-through; }
+      .trow .due { flex: 0 0 auto; font: 400 10px/1.4 var(--mono); color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; padding: 3px 6px; white-space: nowrap; }
 
       /* notes */
       .notes { display: grid; gap: 12px; }
@@ -136,17 +177,34 @@
       </section>
 
       <section class="sec">
-        <p class="kick"><b>03</b> tasks <i id="tasks-count"></i></p>
-        <div class="panel" id="tasks"></div>
+        <p class="kick"><b>03</b> projects <i id="projects-note"></i></p>
+        <div class="projects" id="projects"></div>
       </section>
 
       <section class="sec">
-        <p class="kick"><b>04</b> the brain <i id="brain-note"></i></p>
+        <p class="kick"><b>04</b> tasks <i id="tasks-count"></i></p>
+        <div class="boardbar">
+          <div class="quickadd">
+            <input type="text" id="task-in" placeholder="add a task…" disabled />
+            <select id="task-list" title="which list to file it under" disabled></select>
+            <button class="btn-add" id="task-add" disabled>Add</button>
+          </div>
+          <div class="boardtools">
+            <button class="linklike" id="show-done" type="button" hidden>show done</button>
+            <button class="linklike" id="sync-go" disabled>⟲ pull from channels</button>
+          </div>
+        </div>
+        <div class="microhint synced-line" id="sync-line" hidden></div>
+        <div class="board" id="board"></div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>05</b> the brain <i id="brain-note"></i></p>
         <div class="notes" id="notes"></div>
       </section>
 
       <section class="sec">
-        <p class="kick"><b>05</b> ask the bank <i>answers from your notes, on your Claude</i></p>
+        <p class="kick"><b>06</b> ask the bank <i>answers from your notes, on your Claude</i></p>
         <div class="panel">
           <input type="text" id="ask-in" placeholder="what am I forgetting about the launch?" />
           <div class="row">
