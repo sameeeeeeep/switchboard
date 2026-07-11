@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Editor — Life is a Game</title>
+    <style>
+      :root { --ink:#fff3e8; --dim:#a583a0; --edge:#3a1f5e; --pink:#ff5fa2; --teal:#2de1c2; --amber:#ffcf6b; --lime:#c8f250; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #0a0418; color: var(--ink); font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      header { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        padding: 10px 14px; background: #140a24; border-bottom: 1px solid var(--edge); }
+      header h1 { margin: 0 12px 0 0; font: 700 13px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--pink); }
+      button { font: 600 12px/1 ui-sans-serif; color: var(--ink); background: rgba(255,255,255,.05); border: 1px solid var(--edge);
+        border-radius: 8px; padding: 8px 11px; cursor: pointer; }
+      button:hover { border-color: var(--pink); }
+      button.on { background: rgba(255,95,162,.16); border-color: var(--pink); color: #fff; }
+      .sep { width: 1px; height: 22px; background: var(--edge); margin: 0 4px; }
+      .hint { color: var(--dim); }
+      #wrap { padding: 16px; overflow: auto; }
+      #cv { display: block; image-rendering: pixelated; border: 1px solid var(--edge); cursor: crosshair; }
+      #out { width: 100%; height: 150px; margin-top: 12px; background: #0d0722; color: var(--teal);
+        border: 1px solid var(--edge); border-radius: 8px; font: 12px/1.5 ui-monospace, monospace; padding: 10px; }
+      .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Map Editor</h1>
+      <button id="t-block" class="on"><span class="swatch" style="background:var(--pink)"></span>Blocked</button>
+      <button id="t-walk"><span class="swatch" style="background:#2de1c233;border:1px solid var(--teal)"></span>Walkable</button>
+      <button id="t-anchor"><span class="swatch" style="background:var(--amber)"></span>Anchor</button>
+      <button id="t-npc"><span class="swatch" style="background:var(--teal)"></span>NPC spawn</button>
+      <span class="sep"></span>
+      <button id="auto">✦ Auto-seed</button>
+      <button id="clear">Clear</button>
+      <span class="sep"></span>
+      <button id="export">⇩ Export manifest</button>
+      <span class="hint" id="status">paint over the buildings · drag to fill</span>
+    </header>
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <textarea id="out" spellcheck="false" placeholder="Export output appears here…"></textarea>
+    </div>
+
+    <script type="module">
+      // --- config (must match the engine) ---
+      const MW = 48, MH = 32, TILE = 16, SCALE = 2;      // 48×32 tiles, drawn at 2× so it's clickable
+      const BG = "assets/mumbai-768.png";
+      const MAP = { id: "mumbai", name: "Mumbai — Fort", theme: "vendor", affinityTags: ["vendor", "errand"] };
+
+      const cv = document.getElementById("cv");
+      cv.width = MW * TILE * SCALE; cv.height = MH * TILE * SCALE;
+      const ctx = cv.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+
+      // offscreen at true map resolution for pixel sampling
+      const off = document.createElement("canvas");
+      off.width = MW * TILE; off.height = MH * TILE;
+      const offctx = off.getContext("2d");
+      offctx.imageSmoothingEnabled = false;
+
+      const blocked = new Uint8Array(MW * MH);   // 0 walkable, 1 blocked
+      const anchors = [];                         // {name,x,y}
+      const spawns = [];                          // {id,x,y}
+      const K = (x, y) => y * MW + x;
+
+      let tool = "block";
+      const buttons = { block: "t-block", walk: "t-walk", anchor: "t-anchor", npc: "t-npc" };
+      const setTool = (t) => { tool = t; for (const [k, id] of Object.entries(buttons)) document.getElementById(id).classList.toggle("on", k === t); };
+      document.getElementById("t-block").onclick = () => setTool("block");
+      document.getElementById("t-walk").onclick = () => setTool("walk");
+      document.getElementById("t-anchor").onclick = () => setTool("anchor");
+      document.getElementById("t-npc").onclick = () => setTool("npc");
+
+      const img = new Image();
+      img.onload = () => { offctx.drawImage(img, 0, 0, off.width, off.height); draw(); };
+      img.src = BG;
+
+      function draw() {
+        ctx.drawImage(off, 0, 0, off.width, off.height, 0, 0, cv.width, cv.height);
+        const s = TILE * SCALE;
+        // blocked overlay
+        ctx.fillStyle = "rgba(255,95,162,0.42)";
+        for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (blocked[K(x, y)]) ctx.fillRect(x * s, y * s, s, s);
+        // grid
+        ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x <= MW; x++) { ctx.moveTo(x * s, 0); ctx.lineTo(x * s, cv.height); }
+        for (let y = 0; y <= MH; y++) { ctx.moveTo(0, y * s); ctx.lineTo(cv.width, y * s); }
+        ctx.stroke();
+        // anchors + spawns
+        for (const a of anchors) marker(a.x, a.y, "#ffcf6b", a.name);
+        for (const sp of spawns) marker(sp.x, sp.y, "#2de1c2", sp.id);
+      }
+      function marker(tx, ty, color, label) {
+        const s = TILE * SCALE, cx = tx * s + s / 2, cy = ty * s + s / 2;
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, 6, 0, 7); ctx.fill();
+        ctx.strokeStyle = "#0a0418"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = "#0a0418"; ctx.font = "700 11px ui-monospace, monospace"; ctx.textAlign = "center";
+        ctx.fillText(label, cx, cy - 10); ctx.fillStyle = color; ctx.fillText(label, cx, cy - 11);
+      }
+
+      // --- painting ---
+      let painting = false, paintVal = 1;
+      const cellFromEvent = (e) => {
+        const r = cv.getBoundingClientRect();
+        const x = Math.floor(((e.clientX - r.left) / r.width) * MW);
+        const y = Math.floor(((e.clientY - r.top) / r.height) * MH);
+        return [Math.max(0, Math.min(MW - 1, x)), Math.max(0, Math.min(MH - 1, y))];
+      };
+      cv.addEventListener("pointerdown", (e) => {
+        const [x, y] = cellFromEvent(e);
+        if (tool === "block" || tool === "walk") {
+          paintVal = tool === "block" ? 1 : 0; painting = true;
+          blocked[K(x, y)] = paintVal; draw();
+        } else if (tool === "anchor") {
+          const name = prompt("Anchor name (e.g. 'stall', 'studio-door'):", "stall");
+          if (name) { anchors.push({ name, x, y }); draw(); }
+        } else if (tool === "npc") {
+          const id = prompt("NPC id (e.g. 'ravi'):", "ravi");
+          if (id) { spawns.push({ id, x, y }); draw(); }
+        }
+      });
+      cv.addEventListener("pointermove", (e) => { if (!painting) return; const [x, y] = cellFromEvent(e); blocked[K(x, y)] = paintVal; draw(); });
+      addEventListener("pointerup", () => { painting = false; });
+
+      // --- auto-seed: classify each cell by its average colour ---
+      // The Higgs art has dark-purple roads/plaza (walkable), grey sidewalks (walkable), and
+      // charcoal building roofs + bright neon (blocked). Purple-ness separates road from roof.
+      document.getElementById("auto").onclick = () => {
+        const s = TILE;
+        for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+          const d = offctx.getImageData(x * s + 2, y * s + 2, s - 4, s - 4).data;
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+          r /= n; g /= n; b /= n;
+          const bright = (r + g + b) / 3;
+          const maxc = Math.max(r, g, b), minc = Math.min(r, g, b);
+          const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
+          const warm = r - b, green = g - Math.max(r, b);
+          // Calibrated from dense samples of the WARM daytime Mumbai art:
+          //   road asphalt = tight cluster r139/g113/b88 → sat~0.37, bright~113, warm~51
+          //   buildings / roofs / tarps / kerbs = warmer + brighter + more saturated (sat>=0.46, warm>=73)
+          //   trees = green-dominant
+          let block;
+          if (green > 6) block = true;                                    // tree / plant canopy = obstacle
+          else if (sat < 0.42 && bright < 120 && warm < 62) block = false; // warm-grey asphalt road = walkable
+          else block = true;                                              // buildings, roofs, stalls, kerbs
+          blocked[K(x, y)] = block ? 1 : 0;
+        }
+        document.getElementById("status").textContent = "auto-seeded — now fix the misses by hand";
+        draw();
+      };
+      document.getElementById("clear").onclick = () => { blocked.fill(0); anchors.length = 0; spawns.length = 0; draw(); };
+
+      // --- export the manifest ---
+      document.getElementById("export").onclick = () => {
+        const rows = [];
+        for (let y = 0; y < MH; y++) { let s = ""; for (let x = 0; x < MW; x++) s += blocked[K(x, y)] ? "#" : "."; rows.push(s); }
+        const manifest = { ...MAP, w: MW, h: MH, tile: TILE, bg: BG, collision: rows, anchors, npcSpawns: spawns };
+        const json = JSON.stringify(manifest, (k, v) => k === "collision" ? undefined : v, 2)
+          .replace(/}$/, ',\n  "collision": [\n' + rows.map((r) => '    "' + r + '"').join(',\n') + '\n  ]\n}');
+        document.getElementById("out").value = json;
+        window.__manifest = manifest;               // for programmatic pickup
+        const blob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "bazaar.json"; a.click();
+      };
+
+      window.__editor = { blocked, anchors, spawns, draw, autoSeed: () => document.getElementById("auto").onclick() };
+    </script>
+  </body>
+</html>
