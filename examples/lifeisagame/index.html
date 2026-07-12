@@ -1,0 +1,23 @@
+<meta charset="utf-8">
+<title>Life is a Game — Mumbai</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #0a0a14; overflow: hidden; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; }
+  .hud { position: fixed; color: #fff; pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+  #theme { top: 18px; right: 22px; text-align: right; }
+  #theme .name { font-size: 22px; font-weight: 700; letter-spacing: .12em; }
+  #theme .sub { font-size: 11px; opacity: .7; letter-spacing: .18em; }
+  #controls { left: 22px; bottom: 18px; font-size: 12px; letter-spacing: .06em; opacity: .8; line-height: 1.7; }
+  #controls b { color: #ffd23f; }
+  [hidden] { display: none !important; }
+</style>
+<div id="stage"></div>
+<div class="hud" id="theme"><div class="name">—</div><div class="sub">PRESS T TO SWITCH THEME</div></div>
+<div class="hud" id="controls">
+  <b>WASD</b> move · <b>SHIFT</b> run · <b>Q/E</b> turn camera (or mouse) · <b>F</b> enter / exit car<br>
+  drive: <b>WASD</b> · <b>SPACE</b> take off · <b>X</b> land · <b>T</b> theme
+</div>
+<script type="module">import(`./game.js?t=${Date.now()}`);</script>
