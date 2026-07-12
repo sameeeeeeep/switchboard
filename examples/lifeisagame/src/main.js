@@ -8,6 +8,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { initMissions } from "./missions.js";
 
 // ---------------------------------------------------------------- themes (the skins)
 // per-building-style arrays are indexed by style 0/1/2 (glass tower / mid-rise / low block)
@@ -32,8 +33,9 @@ const THEMES = {
 let themeName = "night", T = THEMES[themeName];  // default to Night for the facade-tile test
 
 // ---------------------------------------------------------------- Marine Drive district: the iconic curved coast boulevard
-const SIZE = 220;                                // scene span (world units)
+const SIZE = 600;                                // scene span (world units) — big enough that inland districts stream in as you move
 const MD = { z0: 14, z1: 206, midX: 140, bow: 52, roadW: 13, promW: 6 };
+const INLAND0 = 150;                             // x where the inland block districts begin (east of the drive)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const centerX = (z) => MD.midX - MD.bow * Math.sin(Math.PI * (clamp(z, MD.z0, MD.z1) - MD.z0) / (MD.z1 - MD.z0)); // the C-curve
 const coastX = (z) => centerX(z) - MD.roadW / 2 - MD.promW;   // shoreline (outer edge of the promenade)
@@ -71,8 +73,37 @@ const amb = new THREE.AmbientLight(T.amb.c, T.amb.i); scene.add(amb);
 const key = new THREE.DirectionalLight(T.key.c, T.key.i); key.position.set(-0.5, 1, 0.35).multiplyScalar(60); scene.add(key);
 const hemi = new THREE.HemisphereLight(T.hemi.sky, T.hemi.gnd, T.hemi.i); scene.add(hemi);
 
+// ---------------------------------------------------------------- inland block grid (deterministic + global, so streamed chunks always agree)
+// Blocks of VARYING size: column/row edges come from a hash sequence, streets between them. Each block later
+// gets a CLUSTER of buildings. This same data drives the ground paint, collision, and the streamed meshes.
+const bhash = (i, s = 0) => { let h = Math.imul(((i | 0) ^ Math.imul(s | 0, 2654435761)) >>> 0, 2246822519); h = Math.imul(h ^ (h >>> 15), 3266489917); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };
+const ROADW = 7;
+function blockAxis(start, end, minB, varB, salt) { const a = []; let p = start, i = 0; while (p + minB < end) { const w = Math.min(minB + bhash(i, salt) * varB, end - p); a.push({ p, w }); p += w + ROADW; i++; } return a; }
+const COLS = blockAxis(INLAND0, SIZE - 3, 18, 30, 11);   // block columns (x), varying widths
+const ROWS = blockAxis(3, SIZE - 3, 20, 34, 23);         // block rows (z), varying heights
+function eachBlock(fn) { for (let i = 0; i < COLS.length; i++) for (let j = 0; j < ROWS.length; j++) fn(COLS[i].p, ROWS[j].p, COLS[i].w, ROWS[j].w, i, j); }
+// a block's cluster of buildings — count/height/style vary per block: some a single tower, some a dense low huddle
+function clusterOf(bx, bz, bw, bh, i, j) {
+  const out = [], seed = i * 131 + j * 977, r = (k) => bhash(seed, k * 7 + 3);
+  const kind = r(0);                                      // 0..1 → tower / mid cluster / dense low
+  let lc = kind < 0.16 ? 1 : Math.max(1, Math.round(bw / (kind < 0.5 ? 16 : 11)));
+  let lr = kind < 0.16 ? 1 : Math.max(1, Math.round(bh / (kind < 0.5 ? 16 : 11)));
+  const lw = bw / lc, lh = bh / lr;
+  const dom = r(1) < 0.5 ? 1 : r(1) < 0.74 ? 2 : r(1) < 0.9 ? 0 : 3;   // block-dominant facade style
+  for (let a = 0; a < lc; a++) for (let b = 0; b < lr; b++) {
+    const rr = (k) => bhash(seed + a * 17 + b * 61, k * 13 + 5);
+    if (lc * lr > 1 && rr(0) < 0.14) continue;            // courtyard gap inside the cluster
+    const pad = 0.7 + rr(1) * 1.3, w = lw - pad * 2, d = lh - pad * 2;
+    if (w < 3 || d < 3) continue;
+    const style = rr(2) < 0.72 ? dom : (rr(3) * 4) | 0;   // mostly the block style, a little variety
+    const h = kind < 0.16 ? 22 + rr(3) * 18 : kind < 0.5 ? 12 + rr(2) * 12 : 7 + rr(1) * 7;
+    out.push({ x: bx + a * lw + lw / 2, z: bz + b * lh + lh / 2, w, d, h, style });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- ground (one canvas texture, repainted per theme)
-const GPX = 12, GW = SIZE * GPX;
+const GPX = 4, GW = SIZE * GPX;
 const gcv = document.createElement("canvas"); gcv.width = gcv.height = GW;
 const gctx = gcv.getContext("2d");
 const gtex = new THREE.CanvasTexture(gcv);
@@ -96,6 +127,15 @@ function paintGround() {
     c.fillStyle = "#c9c4b0"; c.fillRect(cx * GPX - GPX * 0.85, pz, GPX * 0.12, 1); c.fillRect(cx * GPX + GPX * 0.73, pz, GPX * 0.12, 1); // pale kerbs
     c.fillStyle = prom; c.fillRect(cX - 2, pz, 3, 1);                 // shoreline lip
   }
+  // inland districts: an asphalt carpet east of INLAND0, then each block stamped back as land + sidewalk (gaps = streets)
+  const gx0 = INLAND0 * GPX; c.fillStyle = road; c.fillRect(gx0, 0, GW - gx0, GW);
+  const sw = Math.max(1, Math.round(GPX * 0.6));
+  eachBlock((bx, bz, bw, bh) => {
+    c.fillStyle = prom; c.fillRect(bx * GPX - sw, bz * GPX - sw, bw * GPX + sw * 2, bh * GPX + sw * 2);
+    c.fillStyle = land; c.fillRect(bx * GPX, bz * GPX, bw * GPX, bh * GPX);
+  });
+  c.fillStyle = line;                                                 // dashed centre-lines down the avenues
+  for (const C of COLS) { const lx = Math.round((C.p + C.w + ROADW / 2) * GPX); for (let py = 0; py < GW; py += GPX * 2) c.fillRect(lx, py, 1, GPX); }
   gtex.needsUpdate = true;
 }
 paintGround();
@@ -112,27 +152,22 @@ const shimTex = new THREE.CanvasTexture(shimCv); shimTex.wrapS = shimTex.wrapT =
 const shimmer = new THREE.Mesh(new THREE.PlaneGeometry(680, 900), new THREE.MeshBasicMaterial({ map: shimTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
 shimmer.rotation.x = -Math.PI / 2; shimmer.position.set(-250, 0.03, SIZE / 2); scene.add(shimmer);
 
-// ---------------------------------------------------------------- buildings (instanced per style, themeable)
-const rand = (() => { let a = 7; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
-const inst = [[], [], [], []]; // per-style [cx, cy, cz, sx, sy, sz] — 0 glass · 1 apt · 2 colonial · 3 art-deco
-// collision: a solid-footprint grid (buildings) + the sea, checked on every move
+// ---------------------------------------------------------------- buildings (block-clusters — collision resident, meshes streamed)
+// A building spec is { x, z, w, d, h, style } (w=x-size, d=z-size). Collision is a cheap grid marked for the
+// WHOLE world at load; the actual meshes stream in per chunk (below), so the world can be big without cost.
 const SOLID = new Uint8Array(SIZE * SIZE);
 const markSolid = (cx, cz, sx, sz) => { for (let z = Math.max(0, (cz - sz / 2) | 0); z <= Math.min(SIZE - 1, (cz + sz / 2) | 0); z++) for (let x = Math.max(0, (cx - sx / 2) | 0); x <= Math.min(SIZE - 1, (cx + sx / 2) | 0); x++) SOLID[z * SIZE + x] = 1; };
 const blocked = (x, z) => x < 1 || z < 1 || x >= SIZE - 1 || z >= SIZE - 1 || x < coastX(z) + 1.5 || SOLID[(z | 0) * SIZE + (x | 0)] === 1;
-// Art-Deco frontage lines the drive; taller mixed towers stack behind, all following the curve
+// Art-Deco frontage lining the drive (resident — the hero row, always visible along the curve)
+const frontageSpecs = [];
 for (let z = MD.z0 + 3; z < MD.z1 - 3; z += 7) {
-  const east = centerX(z) + MD.roadW / 2 + 2.5;
-  const fd = 7 + rand() * 3, fw = 6 + rand() * 3, fh = 8 + rand() * 6, fx = east + fd / 2;   // front Art-Deco block (low-mid rise)
-  if (fx < SIZE - 4) { inst[3].push([fx, fh / 2, z, fd, fh, fw]); markSolid(fx, z, fd, fw); }
-  let cur = east + fd + 4;
-  for (let r = 0; r < 3; r++) {                                                              // mixed blocks behind
-    if (rand() < 0.82 && cur < SIZE - 9) {
-      const d = 8 + rand() * 4, w = 7 + rand() * 4, style = rand() < 0.5 ? 0 : 1, h = 9 + rand() * 14, bx = cur + d / 2;
-      inst[style].push([bx, h / 2, z + rand() * 2 - 1, d, h, w]); markSolid(bx, z, d, w);
-    }
-    cur += 13;
-  }
+  const east = centerX(z) + MD.roadW / 2 + 2.5, i = (z / 7) | 0;
+  const w = 6 + bhash(i, 41) * 3, d = 6 + bhash(i, 42) * 4, h = 9 + bhash(i, 43) * 7, x = east + w / 2;
+  if (x < INLAND0 - 3) frontageSpecs.push({ x, z, w, d, h, style: 3 });
 }
+// resident collision for EVERYTHING (marking a grid is cheap): frontage + every inland block's cluster
+frontageSpecs.forEach((s) => markSolid(s.x, s.z, s.w, s.d));
+eachBlock((bx, bz, bw, bh, i, j) => clusterOf(bx, bz, bw, bh, i, j).forEach((s) => markSolid(s.x, s.z, s.w, s.d)));
 const dummy = new THREE.Object3D();
 // GTA2/gbhx model: buildings are textured blocks. Detail lives in the tile art — real Mumbai
 // facade textures (image-generated) mapped onto the block sides; per-building UVs tile them so
@@ -155,16 +190,42 @@ function tileBoxUV(geo, rW, rD, rH, rTW, rTD) {
   for (let i = 20; i < 24; i++) mul(i, rW, rH);      // -z face
   uv.needsUpdate = true;
 }
-const occluders = [];                                                // buildings, for hiding the ones in front of the player
-const CULL_BUFFER = 14;                                               // keep things rendered this far past the frame edge, so nothing pops
-inst.forEach((list, s) => list.forEach(([cx, cy, cz, w, h, d]) => {
-  const geo = new THREE.BoxGeometry(w, h, d);
-  tileBoxUV(geo, Math.max(1, Math.round(w / TEXW)), Math.max(1, Math.round(d / TEXW)), Math.max(1, Math.round(h / TEXH)), Math.max(1, Math.round(w / ROOFSIZE)), Math.max(1, Math.round(d / ROOFSIZE)));
-  geo.computeBoundingSphere(); geo.boundingSphere.radius += CULL_BUFFER; // cull with a buffer → no pop at the edge
-  const mesh = new THREE.Mesh(geo, [facMats[s], facMats[s], roofMat, roofMat, facMats[s], facMats[s]]);
-  mesh.position.set(cx, cy, cz); scene.add(mesh);
-  occluders.push({ mesh, c: new THREE.Vector3(cx, cy, cz) });
-}));
+const CULL_BUFFER = 14;                                               // render this far past the frame edge, so frustum-culled buildings never pop
+// build one building mesh from a spec into `group`
+function buildOne(s, group) {
+  const geo = new THREE.BoxGeometry(s.w, s.h, s.d);
+  tileBoxUV(geo, Math.max(1, Math.round(s.w / TEXW)), Math.max(1, Math.round(s.d / TEXW)), Math.max(1, Math.round(s.h / TEXH)), Math.max(1, Math.round(s.w / ROOFSIZE)), Math.max(1, Math.round(s.d / ROOFSIZE)));
+  geo.computeBoundingSphere(); geo.boundingSphere.radius += CULL_BUFFER;
+  const m = new THREE.Mesh(geo, [facMats[s.style], facMats[s.style], roofMat, roofMat, facMats[s.style], facMats[s.style]]);
+  m.position.set(s.x, s.h / 2, s.z); group.add(m);
+}
+// frontage is resident (the hero drive); inland streams
+const frontageGroup = new THREE.Group(); scene.add(frontageGroup);
+frontageSpecs.forEach((s) => buildOne(s, frontageGroup));
+
+// ---------------------------------------------------------------- procedural streaming: inland block meshes load/unload around the player
+// Chunks build/dispose as you move. LOAD radius < UNLOAD radius → a 1-chunk hysteresis buffer, so nothing
+// pops in or out at the edge of view (holds on foot, driving, and flying). Collision + ground are already
+// resident, so streaming only ever touches GPU meshes.
+const CHUNK = 110, LOAD_R = 2, UNLOAD_R = 3;
+const loaded = new Map();                                            // "i,j" -> THREE.Group
+function buildChunk(ci, cj) {
+  const g = new THREE.Group(), x0 = ci * CHUNK, z0 = cj * CHUNK, x1 = x0 + CHUNK, z1 = z0 + CHUNK;
+  for (let i = 0; i < COLS.length; i++) { const C = COLS[i]; if (C.p + C.w < x0 || C.p > x1) continue;
+    for (let j = 0; j < ROWS.length; j++) { const Rr = ROWS[j]; if (Rr.p + Rr.w < z0 || Rr.p > z1) continue;
+      for (const s of clusterOf(C.p, Rr.p, C.w, Rr.w, i, j)) if (s.x >= x0 && s.x < x1 && s.z >= z0 && s.z < z1) buildOne(s, g);   // a building belongs to the chunk holding its centre
+    } }
+  scene.add(g); loaded.set(ci + "," + cj, g);
+}
+function disposeChunk(k) { const g = loaded.get(k); if (!g) return; g.traverse((o) => o.isMesh && o.geometry.dispose()); scene.remove(g); loaded.delete(k); }
+let lastCI = null, lastCJ = null;
+function streamUpdate(px, pz) {
+  const ci = Math.floor(px / CHUNK), cj = Math.floor(pz / CHUNK);
+  if (ci === lastCI && cj === lastCJ) return; lastCI = ci; lastCJ = cj;   // only re-evaluate when the player crosses into a new chunk
+  for (let i = ci - LOAD_R; i <= ci + LOAD_R; i++) for (let j = cj - LOAD_R; j <= cj + LOAD_R; j++) { if (i < 0 || j < 0) continue; const k = i + "," + j; if (!loaded.has(k)) buildChunk(i, j); }
+  for (const k of [...loaded.keys()]) { const [i, j] = k.split(",").map(Number); if (Math.abs(i - ci) > UNLOAD_R || Math.abs(j - cj) > UNLOAD_R) disposeChunk(k); }
+}
+window.__world = { COLS, ROWS, clusterOf, get loaded() { return [...loaded.keys()]; } };
 
 const treeGroup = new THREE.Group(); scene.add(treeGroup); // (promenade palms come later)
 // the "Queen's Necklace" — the string of warm lamps that traces Marine Drive's curve
@@ -241,7 +302,7 @@ function spriteFrom(draw, w, h, wU, hU) {
 }
 // player character — a rigged, walk-animated 3D model (image→3D→rig→animation)
 const PLAYER_H = 2.2;                                                 // world-unit height
-let playerModel = null, mixer = null, walkAction = null, charFootY = 0;
+let playerModel = null, mixer = null, walkAction = null, runAction = null, runW = 0, charFootY = 0;
 gltf.load("./assets/character.glb", (g) => {
   playerModel = g.scene;
   let box = new THREE.Box3().setFromObject(playerModel); const sz = new THREE.Vector3(); box.getSize(sz);
@@ -253,8 +314,15 @@ gltf.load("./assets/character.glb", (g) => {
     const clip = g.animations[0];
     clip.tracks = clip.tracks.filter((t) => !t.name.endsWith(".position")); // strip root motion → walk plays in place; our code drives world position
     mixer = new THREE.AnimationMixer(playerModel); walkAction = mixer.clipAction(clip); walkAction.play();
+    // separate RUN clip (generated via the rig-animation pipeline), bound to the same skeleton by bone name
+    gltf.load("./assets/character_run.glb", (rg) => {
+      const rc = rg.animations && rg.animations[0]; if (!rc || !mixer) return;
+      rc.tracks = rc.tracks.filter((t) => !t.name.endsWith(".position"));
+      runAction = mixer.clipAction(rc); runAction.play(); runAction.setEffectiveWeight(0);
+    }, undefined, (e) => console.warn("[run] load failed", e?.message || e));
   }
   window.__cg && (window.__cg.model = playerModel);
+  window.__anim = { count: g.animations.length, names: g.animations.map((a) => a.name), tracks: (g.animations[0]?.tracks || []).map((t) => t.name) };
 }, undefined, (e) => console.warn("[character] load failed", e?.message || e));
 
 // top-down car, laid flat — 2.2 wide × 4.2 long. body colour comes from the theme.
@@ -279,14 +347,19 @@ const startZ = 104, startX = centerX(startZ);                                   
 const player = { x: startX, y: startZ, moving: false, fx: 0, fz: -1 }; // fx,fz = facing/heading
 const car = { x: startX + 3, z: startZ, heading: 0, speed: 0, alt: 0, flyTo: 0 };
 let mode = "walk", camAlt = 0, camYaw = 0;                            // camera orbit (yaw); fixed elevation
+// chase-camera angle presets (toggle with C). d = distance behind, h = height above → elevation = atan(h/d).
+const CAM_PRESETS = [{ d: 26, h: 20, look: 2 }, { d: 18, h: 6.5, look: 3 }]; // ~38° high · ~20° low + closer to the player
+let camPreset = 0, camD = 26, camH = 20, camLook = 2;                 // smoothed toward the active preset
 let mX = 0.5;                                                         // normalised cursor X (for edge-continue turning)
 const keys = {};
 addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase(); keys[k] = true;
   if (k === "t") toggleTheme();
+  if (k === "e" && mode === "walk" && missions.tryInteract()) return; // talk to a nearby colleague/vendor (else E orbits)
   if (k === "f") interact();                                         // enter/exit car (Q/E now rotate the camera)
   if (k === " " && mode === "drive" && !car.flyTo) car.flyTo = 1;
   if (k === "x" && mode === "drive" && car.flyTo) car.flyTo = 0;
+  if (k === "c") camPreset = (camPreset + 1) % CAM_PRESETS.length;   // cycle chase-camera angle
 });
 addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 // mouse aims the camera (modern-GTA): the cursor's position steers the camera — off-centre = keep
@@ -315,15 +388,21 @@ function applyTheme() {
 }
 applyTheme();
 
+// ---------------------------------------------------------------- missions (the game layer: colleagues/vendors, GTA tasks, agent drafting)
+const missions = initMissions({ THREE, scene, camera, getPlayer: () => player, getMode: () => mode, blocked });
+
 // ---------------------------------------------------------------- loop
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const busy = missions.isBusy(); missions.update();                  // update NPC markers / waypoint; freeze the world when a mission panel is open
+  streamUpdate(mode === "drive" ? car.x : player.x, mode === "drive" ? car.z : player.y);   // load/unload inland districts around the player
+
   shimTex.offset.y += 0.02 * dt; shimTex.offset.x += 0.006 * dt;      // drift the sea shimmer
   const ax = (keys["d"] || keys["arrowright"] ? 1 : 0) - (keys["a"] || keys["arrowleft"] ? 1 : 0);
   const ay = (keys["s"] || keys["arrowdown"] ? 1 : 0) - (keys["w"] || keys["arrowup"] ? 1 : 0);
 
-  if (mode === "walk") {
+  if (mode === "walk" && !busy) {
     // move relative to the camera orbit (modern-GTA): W = away from camera, A/D = strafe
     const fX = -Math.sin(camYaw), fZ = -Math.cos(camYaw), rX = Math.cos(camYaw), rZ = -Math.sin(camYaw);
     const wv = (keys["w"] || keys["arrowup"] ? 1 : 0) - (keys["s"] || keys["arrowdown"] ? 1 : 0);
@@ -341,7 +420,14 @@ function frame(now) {
       playerModel.visible = true; playerModel.position.set(player.x, charFootY, player.y);
       playerModel.rotation.y = Math.atan2(player.fx, player.fz);     // face heading (flip by PI if model faces away)
     }
-    if (walkAction) { walkAction.paused = !player.moving; walkAction.timeScale = keys["shift"] ? 1.6 : 1; }
+    // blend walk ↔ run: crossfade to the real run clip when sprinting (fall back to a faster walk until it loads)
+    if (walkAction) {
+      const running = player.moving && keys["shift"];
+      runW += ((running && runAction ? 1 : 0) - runW) * (1 - Math.exp(-12 * dt));
+      walkAction.paused = !player.moving; walkAction.timeScale = runAction ? 1 : (keys["shift"] ? 1.7 : 1);
+      walkAction.setEffectiveWeight(1 - runW);
+      if (runAction) { runAction.paused = !player.moving; runAction.setEffectiveWeight(runW); }
+    }
   } else {
     car.alt += (car.flyTo - car.alt) * (1 - Math.exp(-2.6 * dt));
     const flying = car.flyTo === 1 || car.alt > 0.1;
@@ -360,7 +446,7 @@ function frame(now) {
   carGroup.position.set(car.x, 0.1 + car.alt * 14, car.z); carGroup.rotation.y = -car.heading;
   carShadow.position.set(car.x + car.alt * 4, 0.04, car.z); carShadow.scale.setScalar(1 - car.alt * 0.35); carShadow.material.opacity = 0.28 * (1 - car.alt * 0.5);
 
-  if (mode === "walk") {
+  if (mode === "walk" && !busy) {
     if (keys["q"]) camYaw += 2.0 * dt; if (keys["e"]) camYaw -= 2.0 * dt;   // keyboard orbit (full 360°)
     const edge = mX < 0.06 ? -(0.06 - mX) / 0.06 : mX > 0.94 ? (mX - 0.94) / 0.06 : 0; // keep turning at screen edges (no cap)
     camYaw -= edge * 3.5 * dt;
@@ -368,8 +454,10 @@ function frame(now) {
   const tx = mode === "drive" ? car.x : player.x, tz = mode === "drive" ? car.z : player.y;
   camAlt += ((mode === "drive" ? car.alt : 0) - camAlt) * (1 - Math.exp(-3 * dt));
   // third-person orbit: camera sits behind the player at camYaw (mouse-aimed on foot, auto-behind when driving)
-  const D = 26 * (1 + camAlt * 1.1), H = 20 * (1 + camAlt * 1.4);
-  camera.position.set(tx + Math.sin(camYaw) * D, H, tz + Math.cos(camYaw) * D); camera.lookAt(tx, 2, tz);
+  const cp = CAM_PRESETS[camPreset], sm = 1 - Math.exp(-7 * dt);      // ease toward the chosen angle preset
+  camD += (cp.d - camD) * sm; camH += (cp.h - camH) * sm; camLook += (cp.look - camLook) * sm;
+  const D = camD * (1 + camAlt * 1.1), H = camH * (1 + camAlt * 1.4);
+  camera.position.set(tx + Math.sin(camYaw) * D, H, tz + Math.cos(camYaw) * D); camera.lookAt(tx, camLook, tz);
   viewCur = VIEW + (VIEW_FLY - VIEW) * camAlt; applyView(viewCur);
 
   composer.render();
@@ -378,4 +466,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // debug
-window.__cg = { get theme() { return themeName; }, toggleTheme, player, car, THEMES, get mode() { return mode; }, get camYaw() { return camYaw; }, set camYaw(v) { camYaw = v; } };
+window.__cg = { get theme() { return themeName; }, toggleTheme, player, car, THEMES, get mode() { return mode; }, get camYaw() { return camYaw; }, set camYaw(v) { camYaw = v; }, keys };
