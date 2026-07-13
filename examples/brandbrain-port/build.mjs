@@ -74,6 +74,16 @@ if (SKIP_FRONTEND) {
   log(`✅ Stage A done — static export (${pages.length} top-level html: ${pages.join(", ")})`);
 }
 
+// ---- 4b. Front door: the ideabrain landing IS the root. The app's real entry lives at /build (root
+// previously just meta-refreshed there), so we overwrite dist/index.html with the static landing —
+// a self-contained marketing page whose CTAs point at /build. Runs on both fresh + SKIP_FRONTEND
+// builds so the landing always wins the root. Keep the app hub reachable at /build.html.
+const LANDING = join(HERE, "landing/index.html");
+if (existsSync(LANDING)) {
+  cpSync(LANDING, join(OUT, "index.html"));
+  log("✅ front door — ideabrain landing installed as dist/index.html (app entry stays at /build)");
+}
+
 // ---- 5. Stage B: bundle the 32 route handlers for the client fetch-router ----
 // Collect every app/api/**/route.ts from the REAL source and map it to its URL path.
 function collectRoutes(dir, base = "/api") {

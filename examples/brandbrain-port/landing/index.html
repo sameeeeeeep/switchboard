@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ideabrain — from a sentence to a thesis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#0A0C10; --panel:#12151C; --panel-2:#161A22; --edge:#262C38; --edge-soft:#1C212B;
+    --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+    --lime:#C8F250; --lime-soft:#232B0D; --blue:#1264FF; --magenta:#EE46BC;
+    --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+    --mono:"Spline Sans Mono",ui-monospace,monospace;
+    --maxw:1140px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--page); color:var(--ink); font-family:var(--sans);
+    font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  .kick{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-faint)}
+  .kick .dot{color:var(--lime)}
+  .lime{color:var(--lime)}
+
+  /* ---------- ambient grain / glow ---------- */
+  .glow{position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(900px 500px at 78% -8%, rgba(200,242,80,.10), transparent 60%),
+               radial-gradient(700px 600px at 8% 12%, rgba(18,100,255,.06), transparent 60%);}
+
+  /* ---------- nav ---------- */
+  nav{position:relative;z-index:3}
+  .navrow{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand b{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .brand .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
+  .navcta{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--ink-dim);border:1px solid var(--edge);padding:8px 14px;border-radius:9px;transition:.18s}
+  .navcta:hover{border-color:var(--lime);color:var(--ink)}
+
+  /* ---------- hero ---------- */
+  header{position:relative;z-index:2;padding:34px 0 30px}
+  .hero{display:grid;grid-template-columns:1.04fr .96fr;gap:52px;align-items:center}
+  .lede .eyebrow{margin-bottom:22px}
+  h1{font-family:var(--display);font-weight:700;letter-spacing:-.025em;line-height:.98;
+     font-size:clamp(42px,6.4vw,76px);color:var(--ink)}
+  h1 em{font-style:normal;color:var(--lime)}
+  .lede p.say{margin-top:22px;font-size:19px;line-height:1.5;color:var(--ink-sec);max-width:30ch}
+  .cta-row{margin-top:32px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .btn{font-family:var(--sans);font-weight:600;font-size:15px;background:var(--lime);color:#0A0C10;
+    padding:13px 22px;border-radius:11px;display:inline-flex;align-items:center;gap:9px;transition:.16s;border:1px solid var(--lime)}
+  .btn:hover{filter:brightness(1.06);transform:translateY(-1px)}
+  .btn .arw{transition:.2s}.btn:hover .arw{transform:translateX(3px)}
+  .btn-ghost{font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;color:var(--ink-dim)}
+  .btn-ghost:hover{color:var(--ink)}
+
+  /* ---------- the compiler (signature) ---------- */
+  .compiler{position:relative}
+  .cwin{background:linear-gradient(180deg,#12151C, #0E1117);border:1px solid var(--edge);border-radius:18px;
+    padding:18px;box-shadow:0 40px 80px -40px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.03)}
+  .cwin .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .cwin .dots{display:flex;gap:6px}
+  .cwin .dots i{width:9px;height:9px;border-radius:50%;background:var(--edge);display:block}
+  .cwin .dots i:first-child{background:#2b3342}
+  .stamp{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}
+
+  .idea-field{background:var(--page);border:1px solid var(--edge);border-radius:12px;padding:15px 16px;min-height:74px}
+  .idea-field .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px}
+  .idea-text{font-size:16.5px;line-height:1.45;color:var(--ink)}
+  .caret{display:inline-block;width:2px;height:1.05em;background:var(--lime);vertical-align:-3px;margin-left:1px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  .route{display:flex;align-items:center;gap:10px;margin:16px 2px 4px}
+  .route .arrow{font-family:var(--mono);color:var(--ink-faint);font-size:12px}
+  .route .detect{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--lime);
+    border:1px solid rgba(200,242,80,.35);background:var(--lime-soft);padding:5px 11px;border-radius:8px;
+    opacity:0;transform:translateY(4px);transition:.4s}
+  .chip.on{opacity:1;transform:none}
+
+  .plays{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:7px;min-height:131px;align-content:start}
+  .play{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--edge-soft);border-radius:9px;
+    padding:9px 11px;opacity:0;transform:translateY(6px);transition:.34s}
+  .play.on{opacity:1;transform:none}
+  .play .n{font-family:var(--mono);font-size:10px;color:var(--lime);min-width:15px}
+  .play .t{font-size:12.5px;color:var(--ink-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cnav{display:flex;gap:7px;margin-top:16px;padding-left:2px}
+  .cnav button{width:26px;height:4px;border-radius:3px;border:0;background:var(--edge);cursor:pointer;padding:0;transition:.2s}
+  .cnav button.on{background:var(--lime);width:34px}
+
+  /* ---------- section frame ---------- */
+  section{position:relative;z-index:2}
+  .band{border-top:1px solid var(--edge-soft);padding:82px 0}
+  .shead{max-width:60ch}
+  .shead .eyebrow{margin-bottom:16px}
+  .shead h2{font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:1.02;font-size:clamp(28px,3.8vw,42px)}
+  .shead p{margin-top:14px;color:var(--ink-dim);font-size:16.5px;max-width:52ch}
+
+  /* ---------- pipeline ---------- */
+  .pipe{margin-top:44px;display:grid;grid-template-columns:repeat(6,1fr);gap:0;border-top:1px solid var(--edge)}
+  .step{padding:22px 20px 24px;border-right:1px solid var(--edge-soft);position:relative}
+  .step:last-child{border-right:0}
+  .step .n{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--lime)}
+  .step h3{font-family:var(--display);font-weight:600;font-size:18px;margin-top:12px;letter-spacing:-.01em}
+  .step p{margin-top:7px;font-size:13.5px;color:var(--ink-dim);line-height:1.5}
+  .step::before{content:"";position:absolute;top:-1px;left:0;width:0;height:2px;background:var(--lime);transition:width .5s ease}
+  .step.lit::before{width:34px}
+
+  /* ---------- category spec sheets ---------- */
+  .cats{margin-top:44px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .cat{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:20px;transition:.2s;position:relative;overflow:hidden}
+  .cat:hover{border-color:#33405a;transform:translateY(-3px)}
+  .cat .ct{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cat h3{font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:-.01em}
+  .cat .cnum{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+  .cat ul{list-style:none;margin-top:14px;display:flex;flex-direction:column;gap:7px}
+  .cat li{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;color:var(--ink-sec);display:flex;gap:9px;align-items:center}
+  .cat li::before{content:"";width:4px;height:4px;border-radius:1px;background:var(--lime);flex:none}
+  .cat .more{margin-top:12px;font-size:12px;color:var(--ink-faint)}
+
+  /* ---------- grounded band ---------- */
+  .ground{display:grid;grid-template-columns:1.1fr 1fr;gap:44px;align-items:start}
+  .gpoints{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+  .gp{padding:20px 0;border-bottom:1px solid var(--edge-soft);display:grid;grid-template-columns:44px 1fr;gap:18px;align-items:start}
+  .gp:last-child{border-bottom:0}
+  .gp .gi{font-family:var(--mono);font-size:11px;color:var(--lime);letter-spacing:.08em;padding-top:3px}
+  .gp h4{font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:-.01em}
+  .gp p{margin-top:5px;font-size:14px;color:var(--ink-dim);line-height:1.55}
+  .quote{background:var(--panel);border:1px solid var(--edge);border-left:2px solid var(--lime);border-radius:12px;padding:22px 22px}
+  .quote .qk{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:12px}
+  .quote p{font-size:15.5px;color:var(--ink-sec);line-height:1.6}
+  .quote .real{font-family:var(--mono);font-size:12px;color:var(--lime);margin-top:14px}
+
+  /* ---------- final CTA ---------- */
+  .final{text-align:center;padding:96px 0 90px}
+  .final h2{font-family:var(--display);font-weight:700;letter-spacing:-.025em;line-height:1.0;font-size:clamp(34px,5.4vw,64px)}
+  .final h2 em{font-style:normal;color:var(--lime)}
+  .final p{margin:18px auto 0;color:var(--ink-dim);font-size:17px;max-width:44ch}
+  .final .cta-row{justify-content:center;margin-top:34px}
+
+  footer{border-top:1px solid var(--edge-soft);padding:26px 0 40px;position:relative;z-index:2}
+  .frow{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .frow .fk{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-faint)}
+
+  /* ---------- reveal ---------- */
+  .rv{opacity:0;transform:translateY(14px);transition:opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1)}
+  .rv.in{opacity:1;transform:none}
+  .rv.d1{transition-delay:.06s}.rv.d2{transition-delay:.12s}.rv.d3{transition-delay:.18s}.rv.d4{transition-delay:.24s}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:900px){
+    .hero{grid-template-columns:1fr;gap:38px}
+    .pipe{grid-template-columns:1fr 1fr}
+    .step{border-right:1px solid var(--edge-soft);border-bottom:1px solid var(--edge-soft)}
+    .cats{grid-template-columns:1fr 1fr}
+    .ground{grid-template-columns:1fr;gap:30px}
+  }
+  @media(max-width:600px){
+    .wrap{padding:0 20px}
+    .pipe{grid-template-columns:1fr}
+    .cats{grid-template-columns:1fr}
+    .plays{grid-template-columns:1fr}
+    .navcta{display:none}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .rv{opacity:1;transform:none}
+    .chip,.play{opacity:1;transform:none}
+  }
+  :focus-visible{outline:2px solid var(--lime);outline-offset:3px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<nav><div class="wrap navrow">
+  <div class="brand"><b>ideabrain</b><span class="sub">a mode of brandbrain</span></div>
+  <a class="navcta" href="/build">Open the app →</a>
+</div></nav>
+
+<header><div class="wrap hero">
+  <div class="lede">
+    <div class="kick eyebrow rv"><span class="dot">◆</span> IDEABRAIN · IDEA → THESIS</div>
+    <h1 class="rv d1">An idea is one<br>sentence. The <em>work</em><br>is everything after.</h1>
+    <p class="say rv d2">Drop the sentence. ideabrain researches the space, builds the playbook for <em style="font-style:normal;color:var(--ink)">your kind</em> of idea, writes the deck, and finds who to reach out to.</p>
+    <div class="cta-row rv d3">
+      <a class="btn" href="/build">Start with a sentence <span class="arw">→</span></a>
+      <a class="btn-ghost" href="#how">See how it works</a>
+    </div>
+  </div>
+
+  <div class="compiler rv d2">
+    <div class="cwin">
+      <div class="bar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="stamp" id="stamp">reading the idea…</div>
+      </div>
+      <div class="idea-field">
+        <div class="lbl">Your idea</div>
+        <div class="idea-text"><span id="idea"></span><span class="caret"></span></div>
+      </div>
+      <div class="route">
+        <span class="detect">detected</span><span class="arrow">→</span>
+        <span class="chip" id="chip">—</span>
+        <span class="detect" style="margin-left:auto" id="playbookLbl"></span>
+      </div>
+      <div class="plays" id="plays"></div>
+      <div class="cnav" id="cnav"></div>
+    </div>
+  </div>
+</div></header>
+
+<section id="how" class="band"><div class="wrap">
+  <div class="shead">
+    <div class="kick eyebrow rv"><span class="dot">◆</span> THE ARC</div>
+    <h2 class="rv d1">Six steps from a hunch to something you can send.</h2>
+    <p class="rv d2">Not a chatbot that answers once. A guided path — each step grounded in the last, each decision yours to re-open.</p>
+  </div>
+  <div class="pipe rv d1">
+    <div class="step"><div class="n">01</div><h3>Research</h3><p>The real market, mapped — competitors, prices and what's shifting, pulled from the live web.</p></div>
+    <div class="step"><div class="n">02</div><h3>Thesis</h3><p>Problem, beachhead, the non-obvious insight, and why this is possible now.</p></div>
+    <div class="step"><div class="n">03</div><h3>Plan</h3><p>The MVP, the model, the first hundred users, the moat — tailored to your kind of idea.</p></div>
+    <div class="step"><div class="n">04</div><h3>Prove</h3><p>The riskiest assumption and the cheapest experiment to kill or confirm it.</p></div>
+    <div class="step"><div class="n">05</div><h3>Deck</h3><p>A pitch deck, assembled from the thesis — problem, why-now, model, ask.</p></div>
+    <div class="step"><div class="n">06</div><h3>Reach-outs</h3><p>Real partners, early customers and investors — with a reason each one fits.</p></div>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="shead">
+    <div class="kick eyebrow rv"><span class="dot">◆</span> PLAYBOOKS BY CATEGORY</div>
+    <h2 class="rv d1">A marketplace isn't a mobile app.<br>So it shouldn't answer the same questions.</h2>
+    <p class="rv d2">ideabrain reads what kind of idea you have and walks the decisions that actually matter for it — the way a brand studio walks positioning and pricing.</p>
+  </div>
+  <div class="cats rv d1" id="cats"></div>
+</div></section>
+
+<section class="band"><div class="wrap ground">
+  <div>
+    <div class="shead">
+      <div class="kick eyebrow rv"><span class="dot">◆</span> GROUNDED, NOT GUESSED</div>
+      <h2 class="rv d1">Real data, or it doesn't say it.</h2>
+    </div>
+    <div class="gpoints rv d1">
+      <div class="gp"><div class="gi">WEB</div><div><h4>The facts come from the live web</h4><p>Competitors, prices, take-rates, component costs — the factual calls are checked against what's actually true today, with sources, not a model's memory.</p></div></div>
+      <div class="gp"><div class="gi">GEO</div><div><h4>Anchored to your market</h4><p>Set where you're launching and every price, competitor and channel is local — real players who operate there, in the right currency.</p></div></div>
+      <div class="gp"><div class="gi">WHO</div><div><h4>The reach-outs are real people</h4><p>Partners, first customers and investors that actually exist and fit — not a made-up list you'd be embarrassed to email.</p></div></div>
+    </div>
+  </div>
+  <div class="quote rv d2">
+    <div class="qk">Worked example</div>
+    <p>“A marketplace to buy digital billboard ad slots for as little as 10 minutes.”</p>
+    <p style="margin-top:12px;color:var(--ink-dim);font-size:14px">→ Routed to <span class="lime">Marketplace</span>. ideabrain researches programmatic DOOH, works the supply and demand sides, the cold-start, the take-rate — then hands you a deck and a list: screen networks, advertisers, ad-tech, and the funds who back this space.</p>
+    <div class="real">real players · real prices · real people</div>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap final">
+  <div class="kick eyebrow rv" style="justify-content:center"><span class="dot">◆</span> START</div>
+  <h2 class="rv d1">You have the idea.<br>Get <em>everything else.</em></h2>
+  <p class="rv d2">One sentence in. A researched thesis, a plan, a deck and your first outreach list out.</p>
+  <div class="cta-row rv d3"><a class="btn" href="/build">Start with a sentence <span class="arw">→</span></a></div>
+</div></section>
+
+<footer><div class="wrap frow">
+  <div class="brand"><b>ideabrain</b><span class="sub">a mode of brandbrain</span></div>
+  <div class="fk">brought to you by brandbrain · runs on your own Claude</div>
+</div></footer>
+
+<script>
+const EX = [
+  { idea:"a marketplace to buy digital billboard ad slots for as little as 10 minutes",
+    cat:"Marketplace", plays:["Demand side","Supply side","Cold start","Path to liquidity","Take rate","Trust & safety"] },
+  { idea:"an app that turns your camera roll into a weekly photo zine",
+    cat:"Consumer app", plays:["Core loop","Retention hook","Platform","Distribution","Monetization","Moat"] },
+  { idea:"AI meeting-notes built into our existing CRM",
+    cat:"Feature", plays:["Which users","Product fit","Adoption","Cannibalization","Build vs buy","Success metric"] },
+  { idea:"a standing desk that folds flat for small apartments",
+    cat:"Hardware", plays:["Unit cost (BOM)","Manufacturing","Margin & price","Channel","Capital & inventory","Why now"] },
+];
+const CATS = [
+  { n:"Marketplace / platform", plays:["Supply side","Cold start","Take rate","Trust & safety"] },
+  { n:"Consumer app", plays:["Core loop","Retention hook","Distribution","Monetization"] },
+  { n:"Feature of a product", plays:["Product fit","Adoption","Cannibalization","Build vs buy"] },
+  { n:"Retail / physical space", plays:["Location strategy","Unit economics","Ops & supply","Footfall"] },
+  { n:"B2B SaaS", plays:["ICP","Sales motion","Pricing","Integration moat"] },
+  { n:"Hardware / product", plays:["Unit cost","Manufacturing","Margin","Channel"] },
+];
+
+const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+// build category sheets
+const catWrap = document.getElementById("cats");
+CATS.forEach((c,i)=>{
+  const el = document.createElement("div"); el.className="cat";
+  el.innerHTML = `<div class="ct"><h3>${c.n}</h3><span class="cnum">0${i+1}</span></div>
+    <ul>${c.plays.map(p=>`<li>${p}</li>`).join("")}</ul>
+    <div class="more">+ the universal thesis · plan · prove</div>`;
+  catWrap.appendChild(el);
+});
+const GEN = document.createElement("div"); GEN.className="cat";
+GEN.innerHTML = `<div class="ct"><h3 style="color:var(--ink-dim)">…and general</h3><span class="cnum">07</span></div>
+  <ul style="opacity:.75"><li>Problem</li><li>Insight</li><li>Model</li><li>Milestones</li></ul>
+  <div class="more">the fallback when it's something new</div>`;
+catWrap.appendChild(GEN);
+
+// the compiler
+const ideaEl=document.getElementById("idea"), chip=document.getElementById("chip"),
+      plays=document.getElementById("plays"), stamp=document.getElementById("stamp"),
+      pbLbl=document.getElementById("playbookLbl"), cnav=document.getElementById("cnav");
+EX.forEach((_,i)=>{const b=document.createElement("button");b.setAttribute("aria-label","Example "+(i+1));
+  b.onclick=()=>{show(i,true)};cnav.appendChild(b);});
+
+let cur=-1, timer=null;
+function renderPlays(list,animate){
+  plays.innerHTML="";
+  list.forEach((t,j)=>{
+    const d=document.createElement("div");d.className="play"+(animate?"":" on");
+    d.innerHTML=`<span class="n">${String(j+1).padStart(2,"0")}</span><span class="t">${t}</span>`;
+    plays.appendChild(d);
+    if(animate) setTimeout(()=>d.classList.add("on"), 260 + j*90);
+  });
+}
+function setNav(i){[...cnav.children].forEach((b,k)=>b.classList.toggle("on",k===i));}
+
+function show(i,manual){
+  cur=i; const e=EX[i]; setNav(i);
+  clearTimeout(timer);
+  if(reduce){
+    ideaEl.textContent=e.idea; stamp.textContent="classified";
+    chip.textContent=e.cat; chip.classList.add("on"); pbLbl.textContent=e.plays.length+" decisions";
+    renderPlays(e.plays,false);
+    return;
+  }
+  // reset
+  chip.classList.remove("on"); pbLbl.textContent=""; plays.innerHTML=""; stamp.textContent="reading the idea…";
+  ideaEl.textContent="";
+  const full=e.idea; let k=0;
+  (function type(){
+    if(k<=full.length){ ideaEl.textContent=full.slice(0,k); k++; timer=setTimeout(type, 8+Math.random()*13); }
+    else{
+      stamp.textContent="classifying…";
+      setTimeout(()=>{ chip.textContent=e.cat; chip.classList.add("on"); stamp.textContent="playbook ready";
+        pbLbl.textContent=e.plays.length+" decisions"; renderPlays(e.plays,true);
+        if(!manual) timer=setTimeout(()=>show((i+1)%EX.length,false), 4600 + e.plays.length*90);
+      }, 380);
+    }
+  })();
+}
+
+// reveal on scroll
+const io=new IntersectionObserver((es)=>{es.forEach(x=>{if(x.isIntersecting){x.target.classList.add("in");
+  if(x.target.classList.contains("pipe")) [...x.target.children].forEach((s,j)=>setTimeout(()=>s.classList.add("lit"),200+j*110));
+  io.unobserve(x.target);}})},{threshold:.18});
+document.querySelectorAll(".rv").forEach(el=>io.observe(el));
+
+// kick off
+requestAnimationFrame(()=>{document.querySelectorAll("header .rv").forEach(e=>e.classList.add("in"));});
+show(0,false);
+</script>
+</body>
+</html>
