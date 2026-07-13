@@ -47711,6 +47711,9 @@ function dashRibbon(pts, hw, out, dash, gap) {
   mk(lane, laneMat, 0.08);
 }
 var SOLID = new Uint8Array(SIZE * SIZE);
+var markSolid = (cx, cz, sx, sz) => {
+  for (let z = Math.max(0, cz - sz / 2 | 0); z <= Math.min(SIZE - 1, cz + sz / 2 | 0); z++) for (let x = Math.max(0, cx - sx / 2 | 0); x <= Math.min(SIZE - 1, cx + sx / 2 | 0); x++) SOLID[z * SIZE + x] = 1;
+};
 var blocked = (x, z) => x < 1 || z < 1 || x >= WORLD.w - 1 || z >= WORLD.h - 1 || !isLand(x, z) || SOLID[(z | 0) * SIZE + (x | 0)] === 1;
 var dummy = new Object3D();
 var texLoader = new TextureLoader();
@@ -47724,13 +47727,91 @@ function facadeTex(url) {
   return t;
 }
 var FACADES = [facadeTex("./assets/facade_glass.png"), facadeTex("./assets/facade_apartment.png"), facadeTex("./assets/facade_colonial.png"), facadeTex("./assets/facade_artdeco.png")];
-var facMats = FACADES.map((tex) => new MeshStandardMaterial({ map: tex, emissive: 16777215, emissiveMap: tex, emissiveIntensity: T.glowI, roughness: 0.9, metalness: 0 }));
+var TEXW = 9;
+var TEXH = 15;
+var facMats = FACADES.map((tex) => new MeshStandardMaterial({ map: tex, emissive: 16777215, emissiveMap: tex, emissiveIntensity: T.glowI * 0.45, roughness: 0.9, metalness: 0 }));
+var ROOFSIZE = 15;
 var roofTex = facadeTex("./assets/roof_night.png");
-var roofMat = new MeshStandardMaterial({ map: roofTex, emissive: 16777215, emissiveMap: roofTex, emissiveIntensity: T.glowI * 0.7, roughness: 0.95, metalness: 0 });
+var roofMat = new MeshStandardMaterial({ map: roofTex, emissive: 16777215, emissiveMap: roofTex, emissiveIntensity: T.glowI * 0.3, roughness: 0.95, metalness: 0 });
+function tileBoxUV(geo, rW, rD, rH, rTW, rTD) {
+  const uv = geo.attributes.uv, mul = (i, ru, rv) => uv.setXY(i, uv.getX(i) * ru, uv.getY(i) * rv);
+  for (let i = 0; i < 4; i++) mul(i, rD, rH);
+  for (let i = 4; i < 8; i++) mul(i, rD, rH);
+  for (let i = 8; i < 12; i++) mul(i, rTW, rTD);
+  for (let i = 16; i < 20; i++) mul(i, rW, rH);
+  for (let i = 20; i < 24; i++) mul(i, rW, rH);
+  uv.needsUpdate = true;
+}
+var CULL_BUFFER = 14;
+function buildOne(s, group) {
+  const geo = new BoxGeometry(s.w, s.h, s.d);
+  tileBoxUV(geo, Math.max(1, Math.round(s.w / TEXW)), Math.max(1, Math.round(s.d / TEXW)), Math.max(1, Math.round(s.h / TEXH)), Math.max(1, Math.round(s.w / ROOFSIZE)), Math.max(1, Math.round(s.d / ROOFSIZE)));
+  geo.computeBoundingSphere();
+  geo.boundingSphere.radius += CULL_BUFFER;
+  const m = new Mesh(geo, [facMats[s.style], facMats[s.style], roofMat, roofMat, facMats[s.style], facMats[s.style]]);
+  m.position.set(s.x, s.h / 2, s.z);
+  if (s.rot) m.rotation.y = s.rot;
+  group.add(m);
+}
 var cityGroup = new Group();
 scene.add(cityGroup);
+var rnd = (x, z, s = 0) => {
+  let h = Math.imul(((x | 0) * 374761 ^ (z | 0) * 668265) >>> 0 ^ Math.imul(s | 0, 2246822519), 2654435761);
+  return ((h ^ h >>> 15) >>> 0) / 4294967296;
+};
+var STYLEMIX = [0, 1, 1, 1, 2, 3];
+var built = 0;
+for (const r of ROADS) {
+  if (r.cls === "expressway" || built >= 430) continue;
+  const hw = (ROAD_W[r.cls] || 4.4) / 2;
+  for (let i = 0; i < r.pts.length - 1 && built < 430; i++) {
+    const a = r.pts[i], b = r.pts[i + 1];
+    const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
+    if (!L) continue;
+    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux, rot = Math.atan2(-uz, ux);
+    for (let t = 6; t < L && built < 430; t += 20 + rnd(a[0] + t, a[1], 1) * 18) {
+      const cx = a[0] + ux * t, cz = a[1] + uz * t;
+      for (const side of [1, -1]) {
+        if (rnd(cx, cz, side + 5) < 0.5) continue;
+        const set = hw + 4.5 + rnd(cx, cz, side * 3) * 6, bx = cx + nx * side * set, bz = cz + nz * side * set;
+        if (blocked(bx, bz)) continue;
+        const w = 5 + rnd(bx, bz, 7) * 8, d = 5 + rnd(bx, bz, 9) * 7, st = STYLEMIX[rnd(bx, bz, 11) * STYLEMIX.length | 0], tall = rnd(bx, bz, 13);
+        const h = st === 0 ? 14 + tall * tall * 34 : st === 3 ? 8 + tall * 8 : 8 + tall * 16;
+        buildOne({ x: bx, z: bz, w, d, h, style: st, rot }, cityGroup);
+        markSolid(bx, bz, Math.max(w, d), Math.max(w, d));
+        built++;
+        if (built >= 430) break;
+      }
+    }
+  }
+}
 var treeGroup = new Group();
 scene.add(treeGroup);
+{
+  const trunkMat = new MeshLambertMaterial({ color: 5914408 }), leafMat = new MeshLambertMaterial({ color: 3108666 });
+  const pts = [];
+  for (let i = 0; i < 4e3 && pts.length < 320; i++) {
+    const x = rnd(i, 3, 1) * WORLD.w, z = rnd(i * 3 + 1, 7, 2) * WORLD.h;
+    if (blocked(x, z) || rnd(x | 0, z | 0, 4) < 0.5) continue;
+    pts.push([x, z]);
+  }
+  const trunk = new InstancedMesh(new CylinderGeometry(0.26, 0.34, 2.4, 6), trunkMat, pts.length);
+  const crown = new InstancedMesh(new IcosahedronGeometry(1.7, 0), leafMat, pts.length);
+  pts.forEach(([x, z], i) => {
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.position.set(x, 1.2, z);
+    dummy.updateMatrix();
+    trunk.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, 3.2, z);
+    dummy.scale.set(1, 0.85, 1);
+    dummy.updateMatrix();
+    crown.setMatrixAt(i, dummy.matrix);
+  });
+  trunk.instanceMatrix.needsUpdate = crown.instanceMatrix.needsUpdate = true;
+  trunk.frustumCulled = crown.frustumCulled = false;
+  scene.add(trunk, crown);
+}
 var gltf = new GLTFLoader();
 var PLAYER_H = 2.2;
 var playerModel = null;
@@ -47865,9 +47946,9 @@ function applyTheme() {
   kerbMat.color.setHex(T.curb);
   laneMat.color.setHex(T.line);
   facMats.forEach((m) => {
-    m.emissiveIntensity = T.glowI;
+    m.emissiveIntensity = T.glowI * 0.45;
   });
-  roofMat.emissiveIntensity = T.glowI * 0.7;
+  roofMat.emissiveIntensity = T.glowI * 0.3;
   if (bloom) bloom.strength = T.bloom;
   treeGroup.visible = T.trees;
   document.querySelector("#theme .name").textContent = T.label;

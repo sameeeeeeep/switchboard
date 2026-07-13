@@ -142,10 +142,10 @@ const texLoader = new THREE.TextureLoader();
 function facadeTex(url) { const t = texLoader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; return t; }
 const FACADES = [facadeTex("./assets/facade_glass.png"), facadeTex("./assets/facade_apartment.png"), facadeTex("./assets/facade_colonial.png"), facadeTex("./assets/facade_artdeco.png")]; // 0 glass · 1 apt · 2 colonial · 3 art-deco
 const TEXW = 9, TEXH = 15;                                            // world units one facade tile spans
-const facMats = FACADES.map((tex) => new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: T.glowI, roughness: 0.9, metalness: 0.0 }));
+const facMats = FACADES.map((tex) => new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: T.glowI * 0.45, roughness: 0.9, metalness: 0.0 }));
 const ROOFSIZE = 15;                                                 // world units one roof tile spans
 const roofTex = facadeTex("./assets/roof_night.png");
-const roofMat = new THREE.MeshStandardMaterial({ map: roofTex, emissive: 0xffffff, emissiveMap: roofTex, emissiveIntensity: T.glowI * 0.7, roughness: 0.95, metalness: 0.0 });
+const roofMat = new THREE.MeshStandardMaterial({ map: roofTex, emissive: 0xffffff, emissiveMap: roofTex, emissiveIntensity: T.glowI * 0.3, roughness: 0.95, metalness: 0.0 });
 // scale side-face UVs (facade) and top-face UVs (roof) so tiles stay the right size on any building
 function tileBoxUV(geo, rW, rD, rH, rTW, rTD) {
   const uv = geo.attributes.uv, mul = (i, ru, rv) => uv.setXY(i, uv.getX(i) * ru, uv.getY(i) * rv);
@@ -163,13 +163,52 @@ function buildOne(s, group) {
   tileBoxUV(geo, Math.max(1, Math.round(s.w / TEXW)), Math.max(1, Math.round(s.d / TEXW)), Math.max(1, Math.round(s.h / TEXH)), Math.max(1, Math.round(s.w / ROOFSIZE)), Math.max(1, Math.round(s.d / ROOFSIZE)));
   geo.computeBoundingSphere(); geo.boundingSphere.radius += CULL_BUFFER;
   const m = new THREE.Mesh(geo, [facMats[s.style], facMats[s.style], roofMat, roofMat, facMats[s.style], facMats[s.style]]);
-  m.position.set(s.x, s.h / 2, s.z); group.add(m);
+  m.position.set(s.x, s.h / 2, s.z); if (s.rot) m.rotation.y = s.rot; group.add(m);
 }
-// iconic buildings (few, hand-placed per area) get built here next — buildOne() is ready for them.
+// LANDMARKS (data only) are anchors for hand-placing iconic buildings later.
 const cityGroup = new THREE.Group(); scene.add(cityGroup);
-// LANDMARKS (data only) are the anchors for hand-placing iconic buildings per area — not rendered as pins.
 
-const treeGroup = new THREE.Group(); scene.add(treeGroup); // (promenade palms come later)
+// ---------------------------------------------------------------- populate (one pass): sparse buildings lining the roads + scattered trees
+const rnd = (x, z, s = 0) => { let h = Math.imul(((((x | 0) * 374761) ^ ((z | 0) * 668265)) >>> 0) ^ Math.imul(s | 0, 2246822519), 2654435761); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
+const STYLEMIX = [0, 1, 1, 1, 2, 3];                                  // glass · apt×3 · colonial · art-deco
+let built = 0;
+for (const r of ROADS) {
+  if (r.cls === "expressway" || built >= 430) continue;              // don't line the freeways
+  const hw = (ROAD_W[r.cls] || 4.4) / 2;
+  for (let i = 0; i < r.pts.length - 1 && built < 430; i++) {
+    const a = r.pts[i], b = r.pts[i + 1]; const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); if (!L) continue;
+    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux, rot = Math.atan2(-uz, ux);
+    for (let t = 6; t < L && built < 430; t += 20 + rnd(a[0] + t, a[1], 1) * 18) {
+      const cx = a[0] + ux * t, cz = a[1] + uz * t;
+      for (const side of [1, -1]) {
+        if (rnd(cx, cz, side + 5) < 0.5) continue;                    // sparse — skip half the slots
+        const set = hw + 4.5 + rnd(cx, cz, side * 3) * 6, bx = cx + nx * side * set, bz = cz + nz * side * set;
+        if (blocked(bx, bz)) continue;                                // on land, not sea, not overlapping another building
+        const w = 5 + rnd(bx, bz, 7) * 8, d = 5 + rnd(bx, bz, 9) * 7, st = STYLEMIX[(rnd(bx, bz, 11) * STYLEMIX.length) | 0], tall = rnd(bx, bz, 13);
+        const h = st === 0 ? 14 + tall * tall * 34 : st === 3 ? 8 + tall * 8 : 8 + tall * 16;   // glass towers climb; deco stays low; mixed mid-rise
+        buildOne({ x: bx, z: bz, w, d, h, style: st, rot }, cityGroup); markSolid(bx, bz, Math.max(w, d), Math.max(w, d)); built++;
+        if (built >= 430) break;
+      }
+    }
+  }
+}
+
+const treeGroup = new THREE.Group(); scene.add(treeGroup);
+// scattered trees on open land (sparse, away from buildings/roads) — instanced, always visible
+{
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x2f6f3a });
+  const pts = [];
+  for (let i = 0; i < 4000 && pts.length < 320; i++) {
+    const x = rnd(i, 3, 1) * WORLD.w, z = rnd(i * 3 + 1, 7, 2) * WORLD.h;
+    if (blocked(x, z) || rnd(x | 0, z | 0, 4) < 0.5) continue;
+    pts.push([x, z]);
+  }
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.26, 0.34, 2.4, 6), trunkMat, pts.length);
+  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.7, 0), leafMat, pts.length);
+  pts.forEach(([x, z], i) => { dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.position.set(x, 1.2, z); dummy.updateMatrix(); trunk.setMatrixAt(i, dummy.matrix); dummy.position.set(x, 3.2, z); dummy.scale.set(1, 0.85, 1); dummy.updateMatrix(); crown.setMatrixAt(i, dummy.matrix); });
+  trunk.instanceMatrix.needsUpdate = crown.instanceMatrix.needsUpdate = true; trunk.frustumCulled = crown.frustumCulled = false;
+  scene.add(trunk, crown);
+}
 
 // ---------------------------------------------------------------- landmarks: real 3D monuments (image→GLB, loaded at runtime)
 const gltf = new GLTFLoader();
@@ -275,8 +314,8 @@ function applyTheme() {
   paintGround();
   seaMat.color.setHex(T.sea);
   roadMat.color.setHex(T.label === "DAY" ? 0x565660 : 0x2a2a34); kerbMat.color.setHex(T.curb); laneMat.color.setHex(T.line);
-  facMats.forEach((m) => { m.emissiveIntensity = T.glowI; });        // facade tiles glow at night, plain in day
-  roofMat.emissiveIntensity = T.glowI * 0.7;
+  facMats.forEach((m) => { m.emissiveIntensity = T.glowI * 0.45; });        // facade tiles glow at night, plain in day
+  roofMat.emissiveIntensity = T.glowI * 0.3;
   if (bloom) bloom.strength = T.bloom;
   treeGroup.visible = T.trees;
   document.querySelector("#theme .name").textContent = T.label;
