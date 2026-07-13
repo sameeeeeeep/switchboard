@@ -9,6 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { initMissions } from "./missions.js";
+import { WORLD, COAST, WARDS, ROADS, project, isLand, wardAt, spawnIn, LANDMARKS, areaAt } from "./mumbai-map.js";
 
 // ---------------------------------------------------------------- themes (the skins)
 // per-building-style arrays are indexed by style 0/1/2 (glass tower / mid-rise / low block)
@@ -32,13 +33,9 @@ const THEMES = {
 };
 let themeName = "night", T = THEMES[themeName];  // default to Night for the facade-tile test
 
-// ---------------------------------------------------------------- Marine Drive district: the iconic curved coast boulevard
-const SIZE = 600;                                // scene span (world units) — big enough that inland districts stream in as you move
-const MD = { z0: 14, z1: 206, midX: 140, bow: 52, roadW: 13, promW: 6 };
-const INLAND0 = 150;                             // x where the inland block districts begin (east of the drive)
+// ---------------------------------------------------------------- Mumbai map: the real coastline + ward areas (mumbai-map.js)
+const SIZE = Math.ceil(Math.max(WORLD.w, WORLD.h)) + 2;   // collision-grid / bounds span
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const centerX = (z) => MD.midX - MD.bow * Math.sin(Math.PI * (clamp(z, MD.z0, MD.z1) - MD.z0) / (MD.z1 - MD.z0)); // the C-curve
-const coastX = (z) => centerX(z) - MD.roadW / 2 - MD.promW;   // shoreline (outer edge of the promenade)
 
 // ---------------------------------------------------------------- renderer / scene / iso camera
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -73,101 +70,70 @@ const amb = new THREE.AmbientLight(T.amb.c, T.amb.i); scene.add(amb);
 const key = new THREE.DirectionalLight(T.key.c, T.key.i); key.position.set(-0.5, 1, 0.35).multiplyScalar(60); scene.add(key);
 const hemi = new THREE.HemisphereLight(T.hemi.sky, T.hemi.gnd, T.hemi.i); scene.add(hemi);
 
-// ---------------------------------------------------------------- inland block grid (deterministic + global, so streamed chunks always agree)
-// Blocks of VARYING size: column/row edges come from a hash sequence, streets between them. Each block later
-// gets a CLUSTER of buildings. This same data drives the ground paint, collision, and the streamed meshes.
-const bhash = (i, s = 0) => { let h = Math.imul(((i | 0) ^ Math.imul(s | 0, 2654435761)) >>> 0, 2246822519); h = Math.imul(h ^ (h >>> 15), 3266489917); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };
-const ROADW = 7;
-function blockAxis(start, end, minB, varB, salt) { const a = []; let p = start, i = 0; while (p + minB < end) { const w = Math.min(minB + bhash(i, salt) * varB, end - p); a.push({ p, w }); p += w + ROADW; i++; } return a; }
-const COLS = blockAxis(INLAND0, SIZE - 3, 18, 30, 11);   // block columns (x), varying widths
-const ROWS = blockAxis(3, SIZE - 3, 20, 34, 23);         // block rows (z), varying heights
-function eachBlock(fn) { for (let i = 0; i < COLS.length; i++) for (let j = 0; j < ROWS.length; j++) fn(COLS[i].p, ROWS[j].p, COLS[i].w, ROWS[j].w, i, j); }
-// a block's cluster of buildings — count/height/style vary per block: some a single tower, some a dense low huddle
-function clusterOf(bx, bz, bw, bh, i, j) {
-  const out = [], seed = i * 131 + j * 977, r = (k) => bhash(seed, k * 7 + 3);
-  const kind = r(0);                                      // 0..1 → tower / mid cluster / dense low
-  let lc = kind < 0.16 ? 1 : Math.max(1, Math.round(bw / (kind < 0.5 ? 16 : 11)));
-  let lr = kind < 0.16 ? 1 : Math.max(1, Math.round(bh / (kind < 0.5 ? 16 : 11)));
-  const lw = bw / lc, lh = bh / lr;
-  const dom = r(1) < 0.5 ? 1 : r(1) < 0.74 ? 2 : r(1) < 0.9 ? 0 : 3;   // block-dominant facade style
-  for (let a = 0; a < lc; a++) for (let b = 0; b < lr; b++) {
-    const rr = (k) => bhash(seed + a * 17 + b * 61, k * 13 + 5);
-    if (lc * lr > 1 && rr(0) < 0.14) continue;            // courtyard gap inside the cluster
-    const pad = 0.7 + rr(1) * 1.3, w = lw - pad * 2, d = lh - pad * 2;
-    if (w < 3 || d < 3) continue;
-    const style = rr(2) < 0.72 ? dom : (rr(3) * 4) | 0;   // mostly the block style, a little variety
-    const h = kind < 0.16 ? 22 + rr(3) * 18 : kind < 0.5 ? 12 + rr(2) * 12 : 7 + rr(1) * 7;
-    out.push({ x: bx + a * lw + lw / 2, z: bz + b * lh + lh / 2, w, d, h, style });
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------- ground (one canvas texture, repainted per theme)
-const GPX = 4, GW = SIZE * GPX;
-const gcv = document.createElement("canvas"); gcv.width = gcv.height = GW;
+const GPX = 2, CW = Math.round(WORLD.w * GPX), CH = Math.round(WORLD.h * GPX);   // 2px/unit — the map is big now, keep the texture sane
+const gcv = document.createElement("canvas"); gcv.width = CW; gcv.height = CH;
 const gctx = gcv.getContext("2d");
 const gtex = new THREE.CanvasTexture(gcv);
 gtex.colorSpace = THREE.SRGBColorSpace; gtex.anisotropy = 4; gtex.magFilter = THREE.LinearFilter;
+function tracePoly(c, ring) { c.beginPath(); for (let i = 0; i < ring.length; i++) { const p = ring[i]; if (i === 0) c.moveTo(p[0] * GPX, p[1] * GPX); else c.lineTo(p[0] * GPX, p[1] * GPX); } c.closePath(); }
 function paintGround() {
   const c = gctx, hex = (n) => "#" + n.toString(16).padStart(6, "0");
-  const sea = hex(T.sea), land = hex(T.ground), road = hex(T.road), prom = hex(T.curb), line = hex(T.line);
-  // paint row by row so the coastline + boulevard follow the curve
-  for (let pz = 0; pz < GW; pz++) {
-    const z = pz / GPX, cx = centerX(z), rW0 = (cx - MD.roadW / 2) * GPX, rW1 = (cx + MD.roadW / 2) * GPX, cX = coastX(z) * GPX;
-    c.fillStyle = sea; c.fillRect(0, pz, cX, 1);                       // sea (west of the shore)
-    c.fillStyle = prom; c.fillRect(cX, pz, rW0 - cX, 1);              // promenade
-    c.fillStyle = road; c.fillRect(rW0, pz, rW1 - rW0, 1);           // boulevard
-    c.fillStyle = land; c.fillRect(rW1, pz, GW - rW1, 1);            // land / blocks (east)
-    if ((pz % (GPX * 2)) < GPX) {                                     // dashed lane dividers, one per carriageway
-      c.fillStyle = line;
-      c.fillRect((cx - MD.roadW / 3.2) * GPX - 1, pz, 2, 1);
-      c.fillRect((cx + MD.roadW / 3.2) * GPX - 1, pz, 2, 1);
-    }
-    c.fillStyle = "#33422f"; c.fillRect(cx * GPX - GPX * 0.75, pz, GPX * 1.5, 1);            // planted central median
-    c.fillStyle = "#c9c4b0"; c.fillRect(cx * GPX - GPX * 0.85, pz, GPX * 0.12, 1); c.fillRect(cx * GPX + GPX * 0.73, pz, GPX * 0.12, 1); // pale kerbs
-    c.fillStyle = prom; c.fillRect(cX - 2, pz, 3, 1);                 // shoreline lip
-  }
-  // inland districts: an asphalt carpet east of INLAND0, then each block stamped back as land + sidewalk (gaps = streets)
-  const gx0 = INLAND0 * GPX; c.fillStyle = road; c.fillRect(gx0, 0, GW - gx0, GW);
-  const sw = Math.max(1, Math.round(GPX * 0.6));
-  eachBlock((bx, bz, bw, bh) => {
-    c.fillStyle = prom; c.fillRect(bx * GPX - sw, bz * GPX - sw, bw * GPX + sw * 2, bh * GPX + sw * 2);
-    c.fillStyle = land; c.fillRect(bx * GPX, bz * GPX, bw * GPX, bh * GPX);
+  const sea = hex(T.sea), land = hex(T.ground), line = hex(T.line), day = T.label === "DAY";
+  c.fillStyle = sea; c.fillRect(0, 0, CW, CH);                          // sea everywhere
+  c.fillStyle = land; tracePoly(c, COAST[0]); c.fill();                 // the Mumbai landmass
+  WARDS.forEach((w, i) => {                                             // give each ward a faint distinct tint so the AREAS read
+    c.fillStyle = `hsla(${(i * 53) % 360}, 40%, ${day ? 62 : 32}%, 0.22)`;
+    for (const p of w.parts) { tracePoly(c, p.shell); c.fill(); }
   });
-  c.fillStyle = line;                                                 // dashed centre-lines down the avenues
-  for (const C of COLS) { const lx = Math.round((C.p + C.w + ROADW / 2) * GPX); for (let py = 0; py < GW; py += GPX * 2) c.fillRect(lx, py, 1, GPX); }
+  c.strokeStyle = line; c.globalAlpha = 0.55; c.lineWidth = Math.max(1, GPX * 0.5);  // ward boundaries
+  WARDS.forEach((w) => { for (const p of w.parts) { tracePoly(c, p.shell); c.stroke(); for (const h of p.holes) { tracePoly(c, h); c.stroke(); } } });
+  c.globalAlpha = 1;
+  c.strokeStyle = day ? "#3a6b8f" : "#8fd0ff"; c.lineWidth = Math.max(1.5, GPX * 0.7);  // coastline (roads are real 3D ribbons, built separately)
+  tracePoly(c, COAST[0]); c.stroke();
   gtex.needsUpdate = true;
 }
 paintGround();
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshBasicMaterial({ map: gtex })); // unlit so roads read at full brightness
-ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); scene.add(ground);
-// open sea to the horizon, west of the painted shoreline
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w, WORLD.h), new THREE.MeshBasicMaterial({ map: gtex }));
+ground.rotation.x = -Math.PI / 2; ground.position.set(WORLD.w / 2, 0, WORLD.h / 2); scene.add(ground);
+// open sea beyond the map edge
 const seaMat = new THREE.MeshBasicMaterial({ color: T.sea });
-const seaPlane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), seaMat);
-seaPlane.rotation.x = -Math.PI / 2; seaPlane.position.set(-350, -0.2, SIZE / 2); scene.add(seaPlane);
-// subtle sea shimmer — a slow-scrolling field of faint glints over the water
-const shimCv = document.createElement("canvas"); shimCv.width = shimCv.height = 128;
-{ const c = shimCv.getContext("2d"); for (let i = 0; i < 46; i++) { const gx = Math.random() * 128, gy = Math.random() * 128, r = 2 + Math.random() * 3, g = c.createRadialGradient(gx, gy, 0, gx, gy, r); g.addColorStop(0, "rgba(190,215,255,0.85)"); g.addColorStop(1, "rgba(190,215,255,0)"); c.fillStyle = g; c.beginPath(); c.arc(gx, gy, r, 0, 7); c.fill(); } }
-const shimTex = new THREE.CanvasTexture(shimCv); shimTex.wrapS = shimTex.wrapT = THREE.RepeatWrapping; shimTex.repeat.set(28, 28);
-const shimmer = new THREE.Mesh(new THREE.PlaneGeometry(680, 900), new THREE.MeshBasicMaterial({ map: shimTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-shimmer.rotation.x = -Math.PI / 2; shimmer.position.set(-250, 0.03, SIZE / 2); scene.add(shimmer);
+const seaPlane = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), seaMat);
+seaPlane.rotation.x = -Math.PI / 2; seaPlane.position.set(WORLD.w / 2, -0.05, WORLD.h / 2); scene.add(seaPlane);
 
-// ---------------------------------------------------------------- buildings (block-clusters — collision resident, meshes streamed)
-// A building spec is { x, z, w, d, h, style } (w=x-size, d=z-size). Collision is a cheap grid marked for the
-// WHOLE world at load; the actual meshes stream in per chunk (below), so the world can be big without cost.
+// ---------------------------------------------------------------- roads: real asphalt ribbons along the network centrelines
+// Each OSM polyline becomes a flat mesh strip (kerb + asphalt + dashed lane line), sized to the car — not a painted line.
+const ROAD_W = { expressway: 8, highway: 6, arterial: 4.4 };            // ribbon width (world units) by class
+const roadMat = new THREE.MeshBasicMaterial({ color: 0x2a2a34 }), kerbMat = new THREE.MeshBasicMaterial({ color: T.curb }), laneMat = new THREE.MeshBasicMaterial({ color: T.line, transparent: true, opacity: 0.75 });
+function ribbon(pts, hw, out) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1]; let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz); if (!L) continue; dx /= L; dz /= L;
+    const nx = -dz * hw, nz = dx * hw;
+    out.push(a[0] + nx, 0, a[1] + nz, a[0] - nx, 0, a[1] - nz, b[0] - nx, 0, b[1] - nz, a[0] + nx, 0, a[1] + nz, b[0] - nx, 0, b[1] - nz, b[0] + nx, 0, b[1] + nz);
+  }
+}
+function dashRibbon(pts, hw, out, dash, gap) {
+  let acc = 0, on = true;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1]; let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz); if (!L) continue; const ux = dx / L, uz = dz / L, nx = -uz * hw, nz = ux * hw;
+    let t = 0;
+    while (t < L) { const seg = Math.min((on ? dash : gap) - acc, L - t), sx = a[0] + ux * t, sz = a[1] + uz * t, ex = a[0] + ux * (t + seg), ez = a[1] + uz * (t + seg);
+      if (on) out.push(sx + nx, 0, sz + nz, sx - nx, 0, sz - nz, ex - nx, 0, ez - nz, sx + nx, 0, sz + nz, ex - nx, 0, ez - nz, ex + nx, 0, ez + nz);
+      t += seg; acc += seg; if (acc >= (on ? dash : gap) - 1e-6) { acc = 0; on = !on; } }
+  }
+}
+{
+  const surf = [], kerb = [], lane = [];
+  for (const r of ROADS) { const hw = (ROAD_W[r.cls] || 4.4) / 2; ribbon(r.pts, hw + 0.9, kerb); ribbon(r.pts, hw, surf); if (r.cls !== "arterial") dashRibbon(r.pts, 0.32, lane, 4.5, 6); }
+  const mk = (arr, mat, y) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3)); const m = new THREE.Mesh(g, mat); m.position.y = y; m.frustumCulled = false; scene.add(m); };
+  mk(kerb, kerbMat, 0.04); mk(surf, roadMat, 0.06); mk(lane, laneMat, 0.08);
+}
+
+// ---------------------------------------------------------------- collision (step 1: the sea is impassable, via the real coastline)
+// SOLID is the building-footprint grid (iconic buildings get marked into it next); the sea comes from isLand().
 const SOLID = new Uint8Array(SIZE * SIZE);
 const markSolid = (cx, cz, sx, sz) => { for (let z = Math.max(0, (cz - sz / 2) | 0); z <= Math.min(SIZE - 1, (cz + sz / 2) | 0); z++) for (let x = Math.max(0, (cx - sx / 2) | 0); x <= Math.min(SIZE - 1, (cx + sx / 2) | 0); x++) SOLID[z * SIZE + x] = 1; };
-const blocked = (x, z) => x < 1 || z < 1 || x >= SIZE - 1 || z >= SIZE - 1 || x < coastX(z) + 1.5 || SOLID[(z | 0) * SIZE + (x | 0)] === 1;
-// Art-Deco frontage lining the drive (resident — the hero row, always visible along the curve)
-const frontageSpecs = [];
-for (let z = MD.z0 + 3; z < MD.z1 - 3; z += 7) {
-  const east = centerX(z) + MD.roadW / 2 + 2.5, i = (z / 7) | 0;
-  const w = 6 + bhash(i, 41) * 3, d = 6 + bhash(i, 42) * 4, h = 9 + bhash(i, 43) * 7, x = east + w / 2;
-  if (x < INLAND0 - 3) frontageSpecs.push({ x, z, w, d, h, style: 3 });
-}
-// resident collision for EVERYTHING (marking a grid is cheap): frontage + every inland block's cluster
-frontageSpecs.forEach((s) => markSolid(s.x, s.z, s.w, s.d));
-eachBlock((bx, bz, bw, bh, i, j) => clusterOf(bx, bz, bw, bh, i, j).forEach((s) => markSolid(s.x, s.z, s.w, s.d)));
+const blocked = (x, z) => x < 1 || z < 1 || x >= WORLD.w - 1 || z >= WORLD.h - 1 || !isLand(x, z) || SOLID[(z | 0) * SIZE + (x | 0)] === 1;
 const dummy = new THREE.Object3D();
 // GTA2/gbhx model: buildings are textured blocks. Detail lives in the tile art — real Mumbai
 // facade textures (image-generated) mapped onto the block sides; per-building UVs tile them so
@@ -199,83 +165,11 @@ function buildOne(s, group) {
   const m = new THREE.Mesh(geo, [facMats[s.style], facMats[s.style], roofMat, roofMat, facMats[s.style], facMats[s.style]]);
   m.position.set(s.x, s.h / 2, s.z); group.add(m);
 }
-// frontage is resident (the hero drive); inland streams
-const frontageGroup = new THREE.Group(); scene.add(frontageGroup);
-frontageSpecs.forEach((s) => buildOne(s, frontageGroup));
-
-// ---------------------------------------------------------------- procedural streaming: inland block meshes load/unload around the player
-// Chunks build/dispose as you move. LOAD radius < UNLOAD radius → a 1-chunk hysteresis buffer, so nothing
-// pops in or out at the edge of view (holds on foot, driving, and flying). Collision + ground are already
-// resident, so streaming only ever touches GPU meshes.
-const CHUNK = 110, LOAD_R = 2, UNLOAD_R = 3;
-const loaded = new Map();                                            // "i,j" -> THREE.Group
-function buildChunk(ci, cj) {
-  const g = new THREE.Group(), x0 = ci * CHUNK, z0 = cj * CHUNK, x1 = x0 + CHUNK, z1 = z0 + CHUNK;
-  for (let i = 0; i < COLS.length; i++) { const C = COLS[i]; if (C.p + C.w < x0 || C.p > x1) continue;
-    for (let j = 0; j < ROWS.length; j++) { const Rr = ROWS[j]; if (Rr.p + Rr.w < z0 || Rr.p > z1) continue;
-      for (const s of clusterOf(C.p, Rr.p, C.w, Rr.w, i, j)) if (s.x >= x0 && s.x < x1 && s.z >= z0 && s.z < z1) buildOne(s, g);   // a building belongs to the chunk holding its centre
-    } }
-  scene.add(g); loaded.set(ci + "," + cj, g);
-}
-function disposeChunk(k) { const g = loaded.get(k); if (!g) return; g.traverse((o) => o.isMesh && o.geometry.dispose()); scene.remove(g); loaded.delete(k); }
-let lastCI = null, lastCJ = null;
-function streamUpdate(px, pz) {
-  const ci = Math.floor(px / CHUNK), cj = Math.floor(pz / CHUNK);
-  if (ci === lastCI && cj === lastCJ) return; lastCI = ci; lastCJ = cj;   // only re-evaluate when the player crosses into a new chunk
-  for (let i = ci - LOAD_R; i <= ci + LOAD_R; i++) for (let j = cj - LOAD_R; j <= cj + LOAD_R; j++) { if (i < 0 || j < 0) continue; const k = i + "," + j; if (!loaded.has(k)) buildChunk(i, j); }
-  for (const k of [...loaded.keys()]) { const [i, j] = k.split(",").map(Number); if (Math.abs(i - ci) > UNLOAD_R || Math.abs(j - cj) > UNLOAD_R) disposeChunk(k); }
-}
-window.__world = { COLS, ROWS, clusterOf, get loaded() { return [...loaded.keys()]; } };
+// iconic buildings (few, hand-placed per area) get built here next — buildOne() is ready for them.
+const cityGroup = new THREE.Group(); scene.add(cityGroup);
+// LANDMARKS (data only) are the anchors for hand-placing iconic buildings per area — not rendered as pins.
 
 const treeGroup = new THREE.Group(); scene.add(treeGroup); // (promenade palms come later)
-// the "Queen's Necklace" — the string of warm lamps that traces Marine Drive's curve
-{
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0 }), poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2440 });
-  const pts = [];
-  for (let z = MD.z0; z <= MD.z1; z += 2.4) pts.push([coastX(z) + 1.4, z]);
-  const lamps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.42, 8, 8), lampMat, pts.length);
-  const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.11, 3, 5), poleMat, pts.length);
-  pts.forEach(([x, z], i) => { dummy.scale.set(1, 1, 1); dummy.position.set(x, 3.2, z); dummy.updateMatrix(); lamps.setMatrixAt(i, dummy.matrix); dummy.position.set(x, 1.5, z); dummy.updateMatrix(); poles.setMatrixAt(i, dummy.matrix); });
-  lamps.instanceMatrix.needsUpdate = poles.instanceMatrix.needsUpdate = true; lamps.frustumCulled = false; poles.frustumCulled = false;
-  scene.add(lamps, poles);
-}
-// the promenade: a low sea wall along the shoreline + benches where people sit facing the sea
-{
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0x5a5570 }), benchMat = new THREE.MeshLambertMaterial({ color: 0x4a3a2a });
-  const wallPts = [], benchPts = [];
-  for (let z = MD.z0; z <= MD.z1; z += 2.6) wallPts.push([coastX(z) + 0.5, z]);
-  for (let z = MD.z0 + 4; z <= MD.z1 - 2; z += 7) benchPts.push([coastX(z) + 2.6, z]);
-  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 1.0, 2.7), wallMat, wallPts.length);
-  wallPts.forEach(([x, z], i) => { dummy.scale.set(1, 1, 1); dummy.position.set(x, 0.5, z); dummy.updateMatrix(); walls.setMatrixAt(i, dummy.matrix); });
-  walls.instanceMatrix.needsUpdate = true; walls.frustumCulled = false; scene.add(walls);
-  const benches = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.5, 1.7), benchMat, benchPts.length);
-  benchPts.forEach(([x, z], i) => { dummy.position.set(x, 0.28, z); dummy.updateMatrix(); benches.setMatrixAt(i, dummy.matrix); });
-  benches.instanceMatrix.needsUpdate = true; scene.add(benches);
-}
-// trees — real Marine Drive is lined with big leafy trees (half-hiding the buildings) + drooping palms; planted median too
-{
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x3f6f3a }), palmMat = new THREE.MeshLambertMaterial({ color: 0x4e8f45 });
-  const leafy = [], palms = [], med = [];
-  for (let z = MD.z0; z <= MD.z1; z += 5) leafy.push([centerX(z) + MD.roadW / 2 + 1.7, z]);   // sidewalk in front of the buildings
-  for (let z = MD.z0 + 3; z <= MD.z1; z += 8) palms.push([coastX(z) + 3.4, z]);                // promenade palms
-  for (let z = MD.z0 + 2; z <= MD.z1; z += 4) med.push([centerX(z), z]);                        // median shrubs
-  const reset = () => dummy.rotation.set(0, 0, 0);
-  const lt = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.42, 3.4, 6), trunkMat, leafy.length);
-  const lc = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.4, 0), leafMat, leafy.length);
-  leafy.forEach(([x, z], i) => { reset(); dummy.scale.set(1, 1, 1); dummy.position.set(x, 1.7, z); dummy.updateMatrix(); lt.setMatrixAt(i, dummy.matrix); dummy.position.set(x, 4.7, z); dummy.scale.set(1, 0.9, 1); dummy.updateMatrix(); lc.setMatrixAt(i, dummy.matrix); });
-  // palms: thin trunk + a crown of drooping fronds (cones splayed out and down)
-  const pt = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.3, 6.6, 6), trunkMat, palms.length);
-  const frondGeo = new THREE.ConeGeometry(0.42, 3.4, 4); frondGeo.translate(0, 1.7, 0); frondGeo.rotateX(Math.PI / 2); // base at crown, tip splays outward
-  const pf = new THREE.InstancedMesh(frondGeo, palmMat, palms.length * 7);
-  let fk = 0;
-  palms.forEach(([x, z], i) => {
-    reset(); dummy.scale.set(1, 1, 1); dummy.position.set(x, 3.3, z); dummy.updateMatrix(); pt.setMatrixAt(i, dummy.matrix);
-    for (let f = 0; f < 7; f++) { dummy.position.set(x, 6.5, z); dummy.rotation.set(0.55, (f / 7) * Math.PI * 2 + i, 0); dummy.updateMatrix(); pf.setMatrixAt(fk++, dummy.matrix); }
-  });
-  const mb = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.75, 0), leafMat, med.length);
-  med.forEach(([x, z], i) => { reset(); dummy.scale.set(1, 0.7, 1); dummy.position.set(x, 0.5, z); dummy.updateMatrix(); mb.setMatrixAt(i, dummy.matrix); });
-  [lt, lc, pt, pf, mb].forEach((m) => { m.instanceMatrix.needsUpdate = true; m.frustumCulled = false; scene.add(m); });
-}
 
 // ---------------------------------------------------------------- landmarks: real 3D monuments (image→GLB, loaded at runtime)
 const gltf = new GLTFLoader();
@@ -343,7 +237,7 @@ const carShadow = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), new THREE.Me
 carShadow.rotation.x = -Math.PI / 2; scene.add(carShadow);
 
 // ---------------------------------------------------------------- state + input
-const startZ = 104, startX = centerX(startZ);                                        // on the boulevard, mid-curve
+const [startX, startZ] = spawnIn("D");                                               // South Mumbai (Malabar/Marine Drive ward)
 const player = { x: startX, y: startZ, moving: false, fx: 0, fz: -1 }; // fx,fz = facing/heading
 const car = { x: startX + 3, z: startZ, heading: 0, speed: 0, alt: 0, flyTo: 0 };
 let mode = "walk", camAlt = 0, camYaw = 0;                            // camera orbit (yaw); fixed elevation
@@ -380,6 +274,7 @@ function applyTheme() {
   hemi.color.setHex(T.hemi.sky); hemi.groundColor.setHex(T.hemi.gnd); hemi.intensity = T.hemi.i;
   paintGround();
   seaMat.color.setHex(T.sea);
+  roadMat.color.setHex(T.label === "DAY" ? 0x565660 : 0x2a2a34); kerbMat.color.setHex(T.curb); laneMat.color.setHex(T.line);
   facMats.forEach((m) => { m.emissiveIntensity = T.glowI; });        // facade tiles glow at night, plain in day
   roofMat.emissiveIntensity = T.glowI * 0.7;
   if (bloom) bloom.strength = T.bloom;
@@ -396,9 +291,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const busy = missions.isBusy(); missions.update();                  // update NPC markers / waypoint; freeze the world when a mission panel is open
-  streamUpdate(mode === "drive" ? car.x : player.x, mode === "drive" ? car.z : player.y);   // load/unload inland districts around the player
 
-  shimTex.offset.y += 0.02 * dt; shimTex.offset.x += 0.006 * dt;      // drift the sea shimmer
   const ax = (keys["d"] || keys["arrowright"] ? 1 : 0) - (keys["a"] || keys["arrowleft"] ? 1 : 0);
   const ay = (keys["s"] || keys["arrowdown"] ? 1 : 0) - (keys["w"] || keys["arrowup"] ? 1 : 0);
 
