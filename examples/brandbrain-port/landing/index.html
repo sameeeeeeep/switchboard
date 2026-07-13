@@ -84,12 +84,28 @@
     opacity:0;transform:translateY(4px);transition:.4s}
   .chip.on{opacity:1;transform:none}
 
-  .plays{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:7px;min-height:131px;align-content:start}
-  .play{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--edge-soft);border-radius:9px;
-    padding:9px 11px;opacity:0;transform:translateY(6px);transition:.34s}
-  .play.on{opacity:1;transform:none}
-  .play .n{font-family:var(--mono);font-size:10px;color:var(--lime);min-width:15px}
-  .play .t{font-size:12.5px;color:var(--ink-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* the live build: research → options → one chosen → next, decided items stacking above */
+  .buildarea{margin-top:13px;min-height:206px}
+  .decided{display:flex;flex-direction:column;gap:6px}
+  .drow{display:flex;align-items:center;gap:10px;opacity:0;transform:translateY(4px);transition:.3s}
+  .drow.on{opacity:1;transform:none}
+  .drow .chk{color:var(--lime);font-size:12px;flex:none;width:12px;text-align:center}
+  .drow .dl{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);flex:none;min-width:82px}
+  .drow .dv{font-size:12.5px;color:var(--ink-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .drow.more .chk{color:var(--ink-faint)} .drow.more .dv{color:var(--ink-faint)}
+  .research{margin-top:9px}
+  .rhead{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+  .rhead .spin{width:10px;height:10px;border:1.5px solid var(--edge);border-top-color:var(--lime);border-radius:50%;animation:spin .7s linear infinite;flex:none}
+  .rhead .ok{color:var(--lime)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .opts{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+  .opt{border:1px solid var(--edge-soft);background:var(--panel-2);border-radius:8px;padding:8px 11px;font-size:12.5px;color:var(--ink-sec);
+    opacity:0;transform:translateY(5px);transition:.3s, border-color .25s, background .25s;display:flex;align-items:center;gap:10px}
+  .opt.on{opacity:1;transform:none}
+  .opt .rad{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--edge);flex:none;transition:.2s}
+  .opt.chosen{border-color:rgba(200,242,80,.55);background:var(--lime-soft);color:var(--ink)}
+  .opt.chosen .rad{border-color:var(--lime);background:radial-gradient(circle at center,var(--lime) 42%,transparent 46%)}
+  .opt.dim{opacity:.3}
   .cnav{display:flex;gap:7px;margin-top:16px;padding-left:2px}
   .cnav button{width:26px;height:4px;border-radius:3px;border:0;background:var(--edge);cursor:pointer;padding:0;transition:.2s}
   .cnav button.on{background:var(--lime);width:34px}
@@ -210,7 +226,10 @@
         <span class="chip" id="chip">—</span>
         <span class="detect" style="margin-left:auto" id="playbookLbl"></span>
       </div>
-      <div class="plays" id="plays"></div>
+      <div class="buildarea">
+        <div class="decided" id="decided"></div>
+        <div class="research" id="research"></div>
+      </div>
       <div class="cnav" id="cnav"></div>
     </div>
   </div>
@@ -275,14 +294,30 @@
 
 <script>
 const EX = [
-  { idea:"a marketplace to buy digital billboard ad slots for as little as 10 minutes",
-    cat:"Marketplace", plays:["Demand side","Supply side","Cold start","Path to liquidity","Take rate","Trust & safety"] },
-  { idea:"an app that turns your camera roll into a weekly photo zine",
-    cat:"Consumer app", plays:["Core loop","Retention hook","Platform","Distribution","Monetization","Moat"] },
-  { idea:"AI meeting-notes built into our existing CRM",
-    cat:"Feature", plays:["Which users","Product fit","Adoption","Cannibalization","Build vs buy","Success metric"] },
-  { idea:"a standing desk that folds flat for small apartments",
-    cat:"Hardware", plays:["Unit cost (BOM)","Manufacturing","Margin & price","Channel","Capital & inventory","Why now"] },
+  { idea:"a marketplace to buy digital billboard ad slots for as little as 10 minutes", cat:"Marketplace", total:15, steps:[
+    { d:"Problem", opts:["Billboards cost too much for SMBs","Screens sit empty off-peak","Buying DOOH takes weeks + big minimums"], pick:2 },
+    { d:"Demand side", opts:["National brands","Local SMBs & events","Political campaigns"], pick:1 },
+    { d:"Cold start", opts:["Seed advertisers first","Seed screen owners first","Concierge both sides"], pick:1 },
+    { d:"Take rate", opts:["Flat listing fee","15% commission","20% + surge pricing"], pick:2 },
+  ]},
+  { idea:"an app that turns your camera roll into a weekly photo zine", cat:"Consumer app", total:14, steps:[
+    { d:"Core loop", opts:["Manual photo picking","Auto-curated weekly drop","Prompted daily capture"], pick:1 },
+    { d:"Retention", opts:["Streaks","The Sunday zine drop","Friends' zines feed"], pick:1 },
+    { d:"Distribution", opts:["App Store ASO","Share-a-zine links","Creator seeding"], pick:1 },
+    { d:"Monetization", opts:["One-off prints","$4/mo subscription","Ads"], pick:1 },
+  ]},
+  { idea:"AI meeting-notes built into our existing CRM", cat:"Feature", total:12, steps:[
+    { d:"Which users", opts:["Every rep","AEs on live deals","CS teams"], pick:1 },
+    { d:"Product fit", opts:["A standalone tab","Auto-logged to the deal","An email digest"], pick:1 },
+    { d:"Adoption", opts:["Opt-in beta","On by default for AEs","Manager-enabled"], pick:1 },
+    { d:"Success metric", opts:["Notes created","% of deals with notes","Rep hours saved"], pick:2 },
+  ]},
+  { idea:"a standing desk that folds flat for small apartments", cat:"Hardware", total:14, steps:[
+    { d:"Unit cost", opts:["~$180 BOM","~$120 BOM","~$90 BOM"], pick:1 },
+    { d:"Manufacturing", opts:["Domestic maker","Vietnam contract","China OEM"], pick:1 },
+    { d:"Channel", opts:["D2C only","Amazon + D2C","Big-box retail"], pick:1 },
+    { d:"Margin", opts:["$249 · 28%","$299 · 42%","$349 · 52%"], pick:1 },
+  ]},
 ];
 const CATS = [
   { n:"Marketplace / platform", plays:["Supply side","Cold start","Take rate","Trust & safety"] },
@@ -309,48 +344,58 @@ GEN.innerHTML = `<div class="ct"><h3 style="color:var(--ink-dim)">…and general
   <div class="more">the fallback when it's something new</div>`;
 catWrap.appendChild(GEN);
 
-// the compiler
+// the compiler — walks the real build: research a decision → options → one chosen → the next.
 const ideaEl=document.getElementById("idea"), chip=document.getElementById("chip"),
-      plays=document.getElementById("plays"), stamp=document.getElementById("stamp"),
-      pbLbl=document.getElementById("playbookLbl"), cnav=document.getElementById("cnav");
+      decidedEl=document.getElementById("decided"), researchEl=document.getElementById("research"),
+      stamp=document.getElementById("stamp"), pbLbl=document.getElementById("playbookLbl"), cnav=document.getElementById("cnav");
 EX.forEach((_,i)=>{const b=document.createElement("button");b.setAttribute("aria-label","Example "+(i+1));
   b.onclick=()=>{show(i,true)};cnav.appendChild(b);});
 
-let cur=-1, timer=null;
-function renderPlays(list,animate){
-  plays.innerHTML="";
-  list.forEach((t,j)=>{
-    const d=document.createElement("div");d.className="play"+(animate?"":" on");
-    d.innerHTML=`<span class="n">${String(j+1).padStart(2,"0")}</span><span class="t">${t}</span>`;
-    plays.appendChild(d);
-    if(animate) setTimeout(()=>d.classList.add("on"), 260 + j*90);
-  });
-}
+let RUN=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function setNav(i){[...cnav.children].forEach((b,k)=>b.classList.toggle("on",k===i));}
+function decRow(d,v,more){
+  const row=document.createElement("div");row.className="drow"+(more?" more":"");
+  row.innerHTML=`<span class="chk">${more?"+":"✓"}</span>`+(more?"":`<span class="dl">${d}</span>`)+`<span class="dv">${v}</span>`;
+  decidedEl.appendChild(row); requestAnimationFrame(()=>row.classList.add("on"));
+}
 
-function show(i,manual){
-  cur=i; const e=EX[i]; setNav(i);
-  clearTimeout(timer);
+async function show(i,manual){
+  const my=++RUN; setNav(i); const e=EX[i];
+  decidedEl.innerHTML=""; researchEl.innerHTML=""; chip.classList.remove("on"); pbLbl.textContent=""; ideaEl.textContent="";
+  const caret=document.querySelector(".caret");
   if(reduce){
-    ideaEl.textContent=e.idea; stamp.textContent="classified";
-    chip.textContent=e.cat; chip.classList.add("on"); pbLbl.textContent=e.plays.length+" decisions";
-    renderPlays(e.plays,false);
+    ideaEl.textContent=e.idea; if(caret)caret.style.display="none";
+    chip.textContent=e.cat; chip.classList.add("on"); stamp.textContent="playbook ready"; pbLbl.textContent=e.total+" decisions";
+    e.steps.forEach(s=>decRow(s.d,s.opts[s.pick])); decRow("", (e.total-e.steps.length)+" more · deck · reach-outs", true);
     return;
   }
-  // reset
-  chip.classList.remove("on"); pbLbl.textContent=""; plays.innerHTML=""; stamp.textContent="reading the idea…";
-  ideaEl.textContent="";
-  const full=e.idea; let k=0;
-  (function type(){
-    if(k<=full.length){ ideaEl.textContent=full.slice(0,k); k++; timer=setTimeout(type, 8+Math.random()*13); }
-    else{
-      stamp.textContent="classifying…";
-      setTimeout(()=>{ chip.textContent=e.cat; chip.classList.add("on"); stamp.textContent="playbook ready";
-        pbLbl.textContent=e.plays.length+" decisions"; renderPlays(e.plays,true);
-        if(!manual) timer=setTimeout(()=>show((i+1)%EX.length,false), 4600 + e.plays.length*90);
-      }, 380);
-    }
-  })();
+  if(caret)caret.style.display="";
+  stamp.textContent="reading the idea…";
+  const full=e.idea;
+  for(let k=1;k<=full.length;k++){ if(my!==RUN)return; ideaEl.textContent=full.slice(0,k); await sleep(8+Math.random()*13); }
+  if(my!==RUN)return;
+  stamp.textContent="classifying…"; await sleep(360); if(my!==RUN)return;
+  chip.textContent=e.cat; chip.classList.add("on"); stamp.textContent="working the playbook…"; pbLbl.textContent=e.total+" decisions";
+  await sleep(260);
+  for(const st of e.steps){
+    if(my!==RUN)return;
+    researchEl.innerHTML=`<div class="rhead"><span class="spin"></span> Researching · ${st.d}</div><div class="opts"></div>`;
+    const wrap=researchEl.querySelector(".opts");
+    const els=st.opts.map(o=>{const d=document.createElement("div");d.className="opt";d.innerHTML=`<span class="rad"></span><span>${o}</span>`;wrap.appendChild(d);return d;});
+    await sleep(430); if(my!==RUN)return;
+    for(const el of els){ el.classList.add("on"); await sleep(170); if(my!==RUN)return; }
+    await sleep(560); if(my!==RUN)return;
+    researchEl.querySelector(".rhead").innerHTML=`<span class="ok">✓</span> Decided · ${st.d}`;
+    els.forEach((el,k)=>el.classList.add(k===st.pick?"chosen":"dim"));
+    await sleep(720); if(my!==RUN)return;
+    researchEl.innerHTML=""; decRow(st.d, st.opts[st.pick]);
+    await sleep(240);
+  }
+  if(my!==RUN)return;
+  decRow("", (e.total-e.steps.length)+" more · deck · people to reach out to", true);
+  stamp.textContent="playbook ready";
+  if(!manual){ await sleep(2900); if(my!==RUN)return; show((i+1)%EX.length,false); }
 }
 
 // reveal on scroll
