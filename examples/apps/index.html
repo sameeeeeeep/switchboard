@@ -96,6 +96,23 @@
       footer a{color:var(--phosphor-dim)} footer a:hover{color:var(--phosphor)}
 
       @media(max-width:820px){h1{font-size:2.1rem}.grid{grid-template-columns:1fr}.featured{flex-wrap:wrap}.search{width:130px}.search:focus{width:150px}}
+    
+      /* ---- per-wrapp cards: own icon + colour, tighter copy ---- */
+      .tile{display:none}
+      .mk{width:40px;height:40px;flex:none;border:1px solid var(--c,#7fa18d);color:var(--c,#7fa18d);display:grid;place-items:center;font-family:var(--dot);font-weight:900;font-size:14px;letter-spacing:.02em;background:rgba(255,255,255,.015)}
+      .card{display:flex;gap:13px;align-items:flex-start;padding:13px 15px}
+      .card::before{content:none}
+      .card .body{padding-top:1px}
+      .card:hover{border-color:var(--c,var(--line-bright));background:var(--panel-2)}
+      .card h4{color:var(--c,var(--paper))}
+      .card:hover h4{color:var(--c,var(--paper))}
+      .card p{color:var(--muted);font-size:10.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .featured{display:flex;gap:16px;align-items:center;padding:20px 24px}
+      .featured::before{content:none}
+      .featured:hover{border-color:var(--c,var(--phosphor-dim))}
+      .featured h2{color:var(--c,var(--phosphor))}
+      .featured p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .featured .mk{width:50px;height:50px;font-size:18px}
     </style>
   </head>
   <body>
@@ -120,8 +137,8 @@
         <div id="library"></div>
       </section>
 
-      <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning">
-        <span class="tile">🧠</span>
+      <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning" style="--c:#C8F250">
+        <span class="mk">BB</span>
         <span>
           <h2>brandbrain <span class="dot" title="live"></span></h2>
           <p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p>
@@ -129,8 +146,8 @@
         <span class="arrow">→</span>
       </a>
 
-      <a class="featured" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware">
-        <span class="tile">💡</span>
+      <a class="featured" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" style="--c:#7DE0FF">
+        <span class="mk">IB</span>
         <span>
           <h2>ideabrain <span class="dot" title="live"></span></h2>
           <p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p>
@@ -138,8 +155,8 @@
         <span class="arrow">→</span>
       </a>
 
-      <a class="featured" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy">
-        <span class="tile">🧠</span>
+      <a class="featured" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" style="--c:#8FA3C8">
+        <span class="mk">BK</span>
         <span>
           <h2>Bank <span class="dot" title="live"></span></h2>
           <p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p>
@@ -149,33 +166,33 @@
 
       <div class="sec-h"><h3>Validate an idea</h3><span>ideabrain, opened to your kind of idea</span></div>
       <div class="grid">
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=marketplace" data-tags="idea marketplace platform two-sided supply demand cold start liquidity take rate validate">
-          <span class="tile">🔁</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=marketplace" data-tags="idea marketplace platform two-sided supply demand cold start liquidity take rate validate" style="--c:#2CD4BC">
+          <span class="mk">MV</span>
           <span class="body"><h4>Marketplace Validator <span class="dot" title="live"></span></h4>
           <p>Two-sided idea? Work the supply, demand, cold-start, take-rate and path to liquidity — the decisions that actually make a marketplace.</p></span>
         </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=app" data-tags="idea consumer app mobile ios android loop retention distribution validate">
-          <span class="tile">📱</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=app" data-tags="idea consumer app mobile ios android loop retention distribution validate" style="--c:#A8E85A">
+          <span class="mk">CP</span>
           <span class="body"><h4>Consumer App Planner <span class="dot" title="live"></span></h4>
           <p>The core loop, retention hook, distribution and how it makes money — the playbook for a consumer app.</p></span>
         </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=saas" data-tags="idea b2b saas software teams icp pricing sales motion moat validate">
-          <span class="tile">🧩</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=saas" data-tags="idea b2b saas software teams icp pricing sales motion moat validate" style="--c:#9B8CFF">
+          <span class="mk">SA</span>
           <span class="body"><h4>SaaS Thesis <span class="dot" title="live"></span></h4>
           <p>ICP, wedge, sales motion, pricing and the integration moat — pressure-test a B2B SaaS.</p></span>
         </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=retail" data-tags="idea retail store physical space location unit economics footfall validate">
-          <span class="tile">🏬</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=retail" data-tags="idea retail store physical space location unit economics footfall validate" style="--c:#F0A35E">
+          <span class="mk">RC</span>
           <span class="body"><h4>Retail Concept <span class="dot" title="live"></span></h4>
           <p>Location, unit economics, ops and footfall — pressure-test a store or physical space before you sign a lease.</p></span>
         </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware" data-tags="idea hardware product device manufacturing bom margin channel capital validate">
-          <span class="tile">⚙️</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware" data-tags="idea hardware product device manufacturing bom margin channel capital validate" style="--c:#A8C07E">
+          <span class="mk">HW</span>
           <span class="body"><h4>Hardware Reality Check <span class="dot" title="live"></span></h4>
           <p>BOM, manufacturing, margin, channel and the capital it takes — the honest hardware maths.</p></span>
         </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=feature" data-tags="idea feature existing product adoption cannibalization build vs buy metric validate">
-          <span class="tile">➕</span>
+        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=feature" data-tags="idea feature existing product adoption cannibalization build vs buy metric validate" style="--c:#4FE0A0">
+          <span class="mk">FC</span>
           <span class="body"><h4>Feature Case <span class="dot" title="live"></span></h4>
           <p>Fit, adoption, cannibalization and the metric that proves it — make the case for a feature in a product you already have.</p></span>
         </a>
@@ -183,28 +200,28 @@
 
       <div class="sec-h"><h3>The founder stack</h3><span>run your brand on your own model</span></div>
       <div class="grid">
-        <a class="card" href="https://adpulse.thelastprompt.ai" data-tags="meta ads analyse performance facebook roas spend">
-          <span class="tile">📈</span>
+        <a class="card" href="https://adpulse.thelastprompt.ai" data-tags="meta ads analyse performance facebook roas spend" style="--c:#FFB224">
+          <span class="mk">AP</span>
           <span class="body"><h4>AdPulse <span class="dot" title="live"></span></h4>
           <p>Meta ads post-mortem — paste your Ads Manager export or pull it live through your own Meta connector; your Claude finds the wasted spend and what to scale.</p></span>
         </a>
-        <a class="card" href="https://adforge.thelastprompt.ai" data-tags="meta ads generate creative facebook copy">
-          <span class="tile">🧲</span>
+        <a class="card" href="https://adforge.thelastprompt.ai" data-tags="meta ads generate creative facebook copy" style="--c:#FF6A2B">
+          <span class="mk">AF</span>
           <span class="body"><h4>AdForge <span class="dot" title="live"></span></h4>
           <p>URL in, Meta ads out — three concepts, one recommended, rendered as a real feed ad with creative generated on your Higgsfield.</p></span>
         </a>
-        <a class="card" href="https://shelf.thelastprompt.ai" data-tags="inventory stock reorder sku warehouse">
-          <span class="tile">📦</span>
+        <a class="card" href="https://shelf.thelastprompt.ai" data-tags="inventory stock reorder sku warehouse" style="--c:#E8B34B">
+          <span class="mk">SH</span>
           <span class="body"><h4>Shelf <span class="dot" title="live"></span></h4>
           <p>Inventory triage — reorder-now, watch, dead weight, and the cash locked on your shelf.</p></span>
         </a>
-        <a class="card" href="https://studio.thelastprompt.ai" data-tags="product images photos shots photography">
-          <span class="tile">📸</span>
+        <a class="card" href="https://studio.thelastprompt.ai" data-tags="product images photos shots photography" style="--c:#E4572E">
+          <span class="mk">ST</span>
           <span class="body"><h4>Studio <span class="dot" title="live"></span></h4>
           <p>Product shots without the studio — one photo in, finished frames out, shot on your Higgsfield. The product stays exactly itself.</p></span>
         </a>
-        <a class="card" href="https://aplus.thelastprompt.ai" data-tags="amazon a+ content listing seller ecommerce">
-          <span class="tile">🛍️</span>
+        <a class="card" href="https://aplus.thelastprompt.ai" data-tags="amazon a+ content listing seller ecommerce" style="--c:#F0B429">
+          <span class="mk">A+</span>
           <span class="body"><h4>A-Plus <span class="dot" title="live"></span></h4>
           <p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story, rendered as the real module stack.</p></span>
         </a>
@@ -212,13 +229,13 @@
 
       <div class="sec-h"><h3>After hours</h3><span>the fun ones</span></div>
       <div class="grid">
-        <a class="card" href="https://natal.thelastprompt.ai" data-tags="astrology horoscope costar birth chart zodiac">
-          <span class="tile">🪐</span>
+        <a class="card" href="https://natal.thelastprompt.ai" data-tags="astrology horoscope costar birth chart zodiac" style="--c:#E6E6F0">
+          <span class="mk">NT</span>
           <span class="body"><h4>NATAL <span class="dot" title="live"></span></h4>
           <p>Your chart, read bluntly — birth data in, sun/moon/rising and an unsentimental daily brief.</p></span>
         </a>
-        <a class="card" href="https://arcana.thelastprompt.ai" data-tags="tarot cards reading spread fortune">
-          <span class="tile">🔮</span>
+        <a class="card" href="https://arcana.thelastprompt.ai" data-tags="tarot cards reading spread fortune" style="--c:#D4B24A">
+          <span class="mk">AR</span>
           <span class="body"><h4>Arcana <span class="dot" title="live"></span></h4>
           <p>Three cards, no mercy — draw a spread and your Claude reads the exact cards you pulled.</p></span>
         </a>
@@ -226,23 +243,23 @@
 
       <div class="sec-h"><h3>Play &amp; make</h3><span>studios and experiments</span></div>
       <div class="grid">
-        <a class="card" href="https://cartridge.thelastprompt.ai" data-tags="game arcade play build">
-          <span class="tile">🕹️</span>
+        <a class="card" href="https://cartridge.thelastprompt.ai" data-tags="game arcade play build" style="--c:#FF3D9A">
+          <span class="mk">CG</span>
           <span class="body"><h4>Cartridge <span class="dot" title="live"></span></h4>
           <p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact. Remix forever.</p></span>
         </a>
-        <a class="card" href="https://cast.thelastprompt.ai" data-tags="persona creator ugc influencer video">
-          <span class="tile">🎬</span>
+        <a class="card" href="https://cast.thelastprompt.ai" data-tags="persona creator ugc influencer video" style="--c:#FF5A3C">
+          <span class="mk">CS</span>
           <span class="body"><h4>Cast <span class="dot" title="live"></span></h4>
           <p>An AI persona studio — creators that stay on-model across faces, scenes, and reels.</p></span>
         </a>
-        <a class="card" href="https://prism.thelastprompt.ai" data-tags="image generate brand higgsfield">
-          <span class="tile">🖼️</span>
+        <a class="card" href="https://prism.thelastprompt.ai" data-tags="image generate brand higgsfield" style="--c:#8A8FFF">
+          <span class="mk">PR</span>
           <span class="body"><h4>Prism <span class="dot" title="live"></span></h4>
           <p>Prompt → image on your Higgsfield connector, on-brand when you lend it a brand context.</p></span>
         </a>
-        <a class="card" href="https://adgen.thelastprompt.ai" data-tags="ads website brand generate">
-          <span class="tile">🎨</span>
+        <a class="card" href="https://adgen.thelastprompt.ai" data-tags="ads website brand generate" style="--c:#EE6ACD">
+          <span class="mk">AG</span>
           <span class="body"><h4>Ad generator <span class="dot" title="live"></span></h4>
           <p>The original demo — reads a website's brand with your Claude, then generates ads with your Higgsfield.</p></span>
         </a>
