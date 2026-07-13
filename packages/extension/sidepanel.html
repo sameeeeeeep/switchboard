@@ -94,6 +94,7 @@
       .connectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
       .conn { display: flex; flex-direction: column; gap: 7px; padding: 11px; border: 1px solid var(--edge); background: var(--panel); border-radius: 12px; }
       .conn .ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font: 700 13px/1 var(--display); color: var(--page); }
+      .conn .ic svg { width: 16px; height: 16px; display: block; }
       .conn .nm { font: 600 12.5px/1.1 var(--sans); color: var(--ink); }
       .conn .use { font: 500 10.5px/1 var(--sans); color: var(--ink-faint); }
       .conn.off { opacity: .5; }
@@ -124,6 +125,7 @@
       .modeseg button:last-child { border-right: 0; }
       .modeseg button.on { background: var(--lime); color: var(--page); font-weight: 700; }
       .modeseg button.on.warn { background: var(--danger); color: #fff; }
+      .modelsel { font: 500 11.5px/1 var(--sans); color: var(--ink); background: var(--page); border: 1px solid var(--edge); border-radius: 9px; padding: 6px 8px; cursor: pointer; max-width: 55%; }
       .disconnect { font: 600 12px/1 var(--sans); color: var(--ink-faint); background: none; border: 0; cursor: pointer; padding: 4px 0; }
       .disconnect:hover { color: var(--danger); }
       .pend { border-top: 1px dashed var(--edge); padding-top: 12px; display: flex; align-items: center; gap: 10px; }
@@ -223,7 +225,6 @@
       </div>
 
       <div id="consent" hidden></div>
-      <div id="tabsidekick" hidden></div>
 
       <div class="pairing" id="pairing" hidden>
         <div class="eyebrow">Set up</div>

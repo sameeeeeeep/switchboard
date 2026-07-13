@@ -1,5 +1,4 @@
 import type { RequestEnvelope } from "@relay/protocol";
-import { tabPrincipal } from "@relay/protocol";
 
 /**
  * The MV3 service worker — the trusted core of the extension.
@@ -23,7 +22,6 @@ const inflight = new Map<string, chrome.runtime.Port>();     // page request id 
 const pagePorts = new Set<chrome.runtime.Port>();            // all page ports (for events)
 const pendingConsent = new Map<string, { resolve: (r: unknown) => void }>(); // daemon prompt id → resolver
 const pendingControl = new Map<string, { resolve: (r: unknown) => void }>(); // control call id → resolver
-const pendingTab = new Map<string, { resolve: (r: unknown) => void }>();     // TabSidekick request id → resolver
 const consentBodies = new Map<string, { kind: string; body: unknown }>();    // prompt id → data for the window
 
 async function getToken(): Promise<string | null> {
@@ -55,9 +53,6 @@ function ensureSocket(): Promise<boolean> {
         switch (msg.type) {
           case "auth_ok": authed = true; clearTimeout(timer); finish(true); break;
           case "response": {
-            // A TabSidekick request (panel-driven, principal-stamped) resolves here, not to a page port.
-            const t = pendingTab.get(msg.id);
-            if (t) { pendingTab.delete(msg.id); t.resolve({ result: msg.result, error: msg.error }); break; }
             const port = inflight.get(msg.id); inflight.delete(msg.id);
             port?.postMessage({ id: msg.id, result: msg.result, error: msg.error });
             break;
@@ -102,115 +97,6 @@ function control(action: string, args?: unknown): Promise<unknown> {
     setTimeout(() => { if (pendingControl.delete(id)) resolve({ ok: false, error: "timeout" }); }, 15_000);
     socket.send(JSON.stringify({ type: "control", id, action, args }));
   });
-}
-
-// ---- TabSidekick ("Unconnected Mode") ----
-// The panel drives TabSidekick, but the PRINCIPAL still comes from the browser: we derive the active
-// tab's host here (the origin oracle), never from anything the panel or page typed. Requests are
-// stamped `tabsidekick@<host>` so the daemon keys grants/budgets/audit/storage to that principal,
-// structurally separate from any page grant on the same host.
-async function activeTabInfo(): Promise<{ tabId: number; host: string } | null> {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (!tab?.id || !tab.url) return null;
-    const u = new URL(tab.url);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null; // never a chrome://, the panel, etc.
-    return { tabId: tab.id, host: u.host };
-  } catch { return null; }
-}
-
-/** Send a principal-stamped request to the daemon and await its response. `method`/`params` reuse
- *  the existing BYOP shapes (claude_connect/stream/cancel/storage/context/speak) — no new plumbing. */
-function tabRequest(host: string, method: string, params: unknown): Promise<{ result?: unknown; error?: unknown }> {
-  return new Promise(async (resolve) => {
-    const ok = await ensureSocket();
-    if (!ok || !socket) { resolve({ error: { code: 4900, message: "sidekick not reachable" } }); return; }
-    const id = crypto.randomUUID();
-    pendingTab.set(id, { resolve: (r) => resolve(r as { result?: unknown; error?: unknown }) });
-    setTimeout(() => { if (pendingTab.delete(id)) resolve({ error: { code: 4408, message: "timeout" } }); }, 180_000);
-    const envelope: RequestEnvelope = { id, origin: tabPrincipal(host), method: method as RequestEnvelope["method"], params: params as never, sentAt: Date.now() };
-    socket.send(JSON.stringify({ type: "request", ...envelope }));
-  });
-}
-
-/**
- * Read-only page extraction, injected into the active tab via chrome.scripting (activeTab). This is
- * the ONLY thing that touches the page and it NEVER writes: no clicks, typing, or form fills. It runs
- * in the isolated content world (DOM read access, no page-JS trust). Self-contained — it is serialized
- * and must not reference anything outside its own body.
- */
-function pageExtract(kind: string): unknown {
-  const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "\n…[truncated]" : s);
-  if (kind === "selection") {
-    return { kind, text: clip(String(window.getSelection?.() ?? "").trim(), 40_000), title: document.title, url: location.href };
-  }
-  if (kind === "metadata") {
-    const m: Record<string, string> = { title: document.title, url: location.href };
-    const grab = (sel: string, attr: string, key: string) => { const e = document.querySelector(sel); const v = e?.getAttribute(attr); if (v) m[key] = v; };
-    grab('meta[name="description"]', "content", "description");
-    grab('meta[property="og:title"]', "content", "ogTitle");
-    grab('meta[property="og:description"]', "content", "ogDescription");
-    grab('meta[property="og:image"]', "content", "ogImage");
-    grab('meta[name="author"]', "content", "author");
-    grab('link[rel="canonical"]', "href", "canonical");
-    const h1 = document.querySelector("h1")?.textContent?.trim(); if (h1) m.h1 = h1;
-    return { kind, meta: m };
-  }
-  if (kind === "images") {
-    const out: Array<{ src: string; w: number; h: number; type: string }> = [];
-    const seen = new Set<string>();
-    const add = (src: string, w: number, h: number, type: string) => { if (!src || seen.has(src)) return; seen.add(src); out.push({ src, w: Math.round(w), h: Math.round(h), type }); };
-    for (const img of Array.from(document.images)) if (img.currentSrc || img.src) add(img.currentSrc || img.src, img.naturalWidth || img.width, img.naturalHeight || img.height, "img");
-    for (const c of Array.from(document.querySelectorAll("canvas"))) {
-      const cv = c as HTMLCanvasElement;
-      try { add(cv.toDataURL("image/png"), cv.width, cv.height, "canvas"); } catch { /* cross-origin/tainted — skip honestly */ }
-    }
-    for (const e of Array.from(document.querySelectorAll<HTMLElement>("*")).slice(0, 4000)) {
-      const bg = getComputedStyle(e).backgroundImage;
-      const u = bg && bg !== "none" ? /url\(["']?(.*?)["']?\)/.exec(bg)?.[1] : null;
-      if (u && /^https?:|^data:/.test(u)) add(u, e.clientWidth, e.clientHeight, "bg");
-    }
-    return { kind, images: out.slice(0, 60), title: document.title, url: location.href };
-  }
-  if (kind === "form") {
-    // Read the fields of the page's forms so the user can fill them from their OWN info. READ-ONLY:
-    // we only describe fields (label/name/type), never touch their values or submit anything.
-    const fields: Array<{ label: string; name: string; type: string; required: boolean; options?: string[] }> = [];
-    const sensitiveHint = (t: string, s: string) => t === "password" || /(pass|pwd|cvv|cvc|card|credit|ssn|social.?security|iban|routing|account.?number|pin)\b/i.test(s);
-    for (const node of Array.from(document.querySelectorAll("input, select, textarea")).slice(0, 300)) {
-      const e = node as any;
-      const type = String(e.type || e.tagName || "").toLowerCase();
-      if (["hidden", "submit", "button", "image", "reset", "file"].includes(type)) continue;
-      if (e.offsetParent === null && type !== "select-one") continue; // skip hidden fields
-      let label = "";
-      if (e.id) { const l = document.querySelector(`label[for="${(window as any).CSS?.escape ? CSS.escape(e.id) : e.id}"]`); if (l) label = l.textContent?.trim() || ""; }
-      if (!label) { const wrap = e.closest("label"); if (wrap) label = (wrap.textContent || "").trim(); }
-      if (!label) label = e.getAttribute("aria-label") || e.getAttribute("placeholder") || e.getAttribute("name") || "";
-      const options = e.tagName === "SELECT" ? Array.from(e.options).map((o: any) => (o.value || o.textContent || "").trim()).filter(Boolean).slice(0, 40) : undefined;
-      const name = e.getAttribute("name") || e.id || "";
-      fields.push({ label: label.replace(/\s+/g, " ").slice(0, 120), name: String(name).slice(0, 80), type: sensitiveHint(type, `${name} ${label}`) ? `sensitive:${type}` : type, required: !!e.required, options });
-    }
-    return { kind: "form", fields: fields.slice(0, 60), title: document.title, url: location.href };
-  }
-  // pagetext: lightweight Readability-style extraction to markdown.
-  const root = document.querySelector("article") || document.querySelector("main") || document.body;
-  const drop = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "NAV", "FOOTER", "HEADER", "ASIDE", "FORM", "SVG"]);
-  const lines: string[] = [];
-  const walk = (node: Element) => {
-    for (const el of Array.from(node.children)) {
-      if (drop.has(el.tagName)) continue;
-      const tag = el.tagName;
-      const text = (el as HTMLElement).innerText?.trim() ?? "";
-      if (/^H[1-6]$/.test(tag)) { if (text) lines.push("#".repeat(Number(tag[1])) + " " + text); }
-      else if (tag === "LI") { if (text) lines.push("- " + text.split("\n")[0]); }
-      else if (tag === "P" || tag === "BLOCKQUOTE") { if (text) lines.push(text); }
-      else if (el.children.length) walk(el);
-      else if (text) lines.push(text);
-    }
-  };
-  if (root) walk(root);
-  const md = clip(lines.join("\n\n").replace(/\n{3,}/g, "\n\n").trim(), 60_000);
-  return { kind: "pagetext", text: md, title: document.title, url: location.href };
 }
 
 // The side panel, when open, holds a long-lived port so we can render consent INLINE there instead
@@ -275,25 +161,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
       case "control": sendResponse(await control(msg.action, msg.args)); break;
-      case "tsHost": { const info = await activeTabInfo(); sendResponse(info ? { host: info.host } : { host: null }); break; }
-      case "tsRequest": {
-        // Origin oracle: derive the host HERE from the active tab, ignore anything the panel sent.
-        const info = await activeTabInfo();
-        if (!info) { sendResponse({ error: { code: 4901, message: "no active web tab" } }); break; }
-        sendResponse(await tabRequest(info.host, msg.method, msg.params));
-        break;
-      }
-      case "tsExtract": {
-        const info = await activeTabInfo();
-        if (!info) { sendResponse({ ok: false, error: "no active web tab" }); break; }
-        try {
-          const [res] = await chrome.scripting.executeScript({ target: { tabId: info.tabId }, func: pageExtract, args: [String(msg.kind ?? "pagetext")] });
-          sendResponse({ ok: true, host: info.host, data: res?.result ?? null });
-        } catch (e) {
-          sendResponse({ ok: false, error: String((e as Error)?.message ?? e).slice(0, 160) });
-        }
-        break;
-      }
       case "killSwitch":
         await control("killSwitch");
         await chrome.storage.local.remove("pairingToken");
