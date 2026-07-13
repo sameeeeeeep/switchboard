@@ -44428,6 +44428,154 @@ UnrealBloomPass.BlurDirectionX = new Vector2(1, 0);
 UnrealBloomPass.BlurDirectionY = new Vector2(0, 1);
 
 // ../../node_modules/three/examples/jsm/utils/BufferGeometryUtils.js
+function mergeGeometries(geometries, useGroups = false) {
+  const isIndexed = geometries[0].index !== null;
+  const attributesUsed = new Set(Object.keys(geometries[0].attributes));
+  const morphAttributesUsed = new Set(Object.keys(geometries[0].morphAttributes));
+  const attributes = {};
+  const morphAttributes = {};
+  const morphTargetsRelative = geometries[0].morphTargetsRelative;
+  const mergedGeometry = new BufferGeometry();
+  let offset = 0;
+  for (let i = 0; i < geometries.length; ++i) {
+    const geometry = geometries[i];
+    let attributesCount = 0;
+    if (isIndexed !== (geometry.index !== null)) {
+      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + ". All geometries must have compatible attributes; make sure index attribute exists among all geometries, or in none of them.");
+      return null;
+    }
+    for (const name in geometry.attributes) {
+      if (!attributesUsed.has(name)) {
+        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + '. All geometries must have compatible attributes; make sure "' + name + '" attribute exists among all geometries, or in none of them.');
+        return null;
+      }
+      if (attributes[name] === void 0) attributes[name] = [];
+      attributes[name].push(geometry.attributes[name]);
+      attributesCount++;
+    }
+    if (attributesCount !== attributesUsed.size) {
+      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + ". Make sure all geometries have the same number of attributes.");
+      return null;
+    }
+    if (morphTargetsRelative !== geometry.morphTargetsRelative) {
+      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + ". .morphTargetsRelative must be consistent throughout all geometries.");
+      return null;
+    }
+    for (const name in geometry.morphAttributes) {
+      if (!morphAttributesUsed.has(name)) {
+        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + ".  .morphAttributes must be consistent throughout all geometries.");
+        return null;
+      }
+      if (morphAttributes[name] === void 0) morphAttributes[name] = [];
+      morphAttributes[name].push(geometry.morphAttributes[name]);
+    }
+    if (useGroups) {
+      let count;
+      if (isIndexed) {
+        count = geometry.index.count;
+      } else if (geometry.attributes.position !== void 0) {
+        count = geometry.attributes.position.count;
+      } else {
+        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i + ". The geometry must have either an index or a position attribute");
+        return null;
+      }
+      mergedGeometry.addGroup(offset, count, i);
+      offset += count;
+    }
+  }
+  if (isIndexed) {
+    let indexOffset = 0;
+    const mergedIndex = [];
+    for (let i = 0; i < geometries.length; ++i) {
+      const index = geometries[i].index;
+      for (let j = 0; j < index.count; ++j) {
+        mergedIndex.push(index.getX(j) + indexOffset);
+      }
+      indexOffset += geometries[i].attributes.position.count;
+    }
+    mergedGeometry.setIndex(mergedIndex);
+  }
+  for (const name in attributes) {
+    const mergedAttribute = mergeAttributes(attributes[name]);
+    if (!mergedAttribute) {
+      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed while trying to merge the " + name + " attribute.");
+      return null;
+    }
+    mergedGeometry.setAttribute(name, mergedAttribute);
+  }
+  for (const name in morphAttributes) {
+    const numMorphTargets = morphAttributes[name][0].length;
+    if (numMorphTargets === 0) continue;
+    mergedGeometry.morphAttributes = mergedGeometry.morphAttributes || {};
+    mergedGeometry.morphAttributes[name] = [];
+    for (let i = 0; i < numMorphTargets; ++i) {
+      const morphAttributesToMerge = [];
+      for (let j = 0; j < morphAttributes[name].length; ++j) {
+        morphAttributesToMerge.push(morphAttributes[name][j][i]);
+      }
+      const mergedMorphAttribute = mergeAttributes(morphAttributesToMerge);
+      if (!mergedMorphAttribute) {
+        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed while trying to merge the " + name + " morphAttribute.");
+        return null;
+      }
+      mergedGeometry.morphAttributes[name].push(mergedMorphAttribute);
+    }
+  }
+  return mergedGeometry;
+}
+function mergeAttributes(attributes) {
+  let TypedArray;
+  let itemSize;
+  let normalized;
+  let gpuType = -1;
+  let arrayLength = 0;
+  for (let i = 0; i < attributes.length; ++i) {
+    const attribute = attributes[i];
+    if (TypedArray === void 0) TypedArray = attribute.array.constructor;
+    if (TypedArray !== attribute.array.constructor) {
+      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.array must be of consistent array types across matching attributes.");
+      return null;
+    }
+    if (itemSize === void 0) itemSize = attribute.itemSize;
+    if (itemSize !== attribute.itemSize) {
+      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.itemSize must be consistent across matching attributes.");
+      return null;
+    }
+    if (normalized === void 0) normalized = attribute.normalized;
+    if (normalized !== attribute.normalized) {
+      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.normalized must be consistent across matching attributes.");
+      return null;
+    }
+    if (gpuType === -1) gpuType = attribute.gpuType;
+    if (gpuType !== attribute.gpuType) {
+      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.gpuType must be consistent across matching attributes.");
+      return null;
+    }
+    arrayLength += attribute.count * itemSize;
+  }
+  const array = new TypedArray(arrayLength);
+  const result = new BufferAttribute(array, itemSize, normalized);
+  let offset = 0;
+  for (let i = 0; i < attributes.length; ++i) {
+    const attribute = attributes[i];
+    if (attribute.isInterleavedBufferAttribute) {
+      const tupleOffset = offset / itemSize;
+      for (let j = 0, l = attribute.count; j < l; j++) {
+        for (let c = 0; c < itemSize; c++) {
+          const value = attribute.getComponent(j, c);
+          result.setComponent(j + tupleOffset, c, value);
+        }
+      }
+    } else {
+      array.set(attribute.array, offset);
+    }
+    offset += attribute.count * itemSize;
+  }
+  if (gpuType !== void 0) {
+    result.gpuType = gpuType;
+  }
+  return result;
+}
 function toTrianglesDrawMode(geometry, drawMode) {
   if (drawMode === TrianglesDrawMode) {
     console.warn("THREE.BufferGeometryUtils.toTrianglesDrawMode(): Geometry already defined as triangles.");
@@ -47628,13 +47776,18 @@ function paintGround() {
   c.fillStyle = land;
   tracePoly(c, COAST[0]);
   c.fill();
-  const ZC = day ? { green: "#6f9e57", water: hex(T.sea), beach: "#d9c48c", commercial: "#a7a29a", industrial: "#8e8a83" } : { green: "#22381f", water: hex(T.sea), beach: "#33304a", commercial: "#241f38", industrial: "#1e1c2a" };
+  const ZC = day ? { green: "#5f9a4c", water: "#3f86b4", beach: "#e8d49b", commercial: "#a7a29a", industrial: "#8e8a83" } : { green: "#2a4a25", water: "#1c496e", beach: "#b8a26a", commercial: "#2a2340", industrial: "#221f30" };
   for (const z of ZONES) {
     const col = ZC[z.cls];
     if (!col) continue;
     c.fillStyle = col;
     tracePoly(c, z.pts);
     c.fill();
+    if (z.cls === "water" || z.cls === "beach") {
+      c.strokeStyle = day ? "#2f6f9a" : "#3a6e94";
+      c.lineWidth = Math.max(1, GPX);
+      c.stroke();
+    }
   }
   c.strokeStyle = day ? "#3a6b8f" : "#8fd0ff";
   c.lineWidth = Math.max(1.5, GPX * 0.7);
@@ -47653,9 +47806,9 @@ seaPlane.rotation.x = -Math.PI / 2;
 seaPlane.position.set(WORLD.w / 2, -0.05, WORLD.h / 2);
 scene.add(seaPlane);
 var ROAD_W = { expressway: 8, highway: 6, arterial: 4.4 };
-var roadMat = new MeshBasicMaterial({ color: 2763316 });
-var kerbMat = new MeshBasicMaterial({ color: T.curb });
-var laneMat = new MeshBasicMaterial({ color: T.line, transparent: true, opacity: 0.75 });
+var roadMat = new MeshBasicMaterial({ color: 2763316, side: DoubleSide });
+var kerbMat = new MeshBasicMaterial({ color: T.curb, side: DoubleSide });
+var laneMat = new MeshBasicMaterial({ color: T.line, transparent: true, opacity: 0.85, side: DoubleSide });
 function ribbon(pts, hw, out) {
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
@@ -47742,16 +47895,6 @@ function tileBoxUV(geo, rW, rD, rH, rTW, rTD) {
   uv.needsUpdate = true;
 }
 var CULL_BUFFER = 14;
-function buildOne(s, group) {
-  const geo = new BoxGeometry(s.w, s.h, s.d);
-  tileBoxUV(geo, Math.max(1, Math.round(s.w / TEXW)), Math.max(1, Math.round(s.d / TEXW)), Math.max(1, Math.round(s.h / TEXH)), Math.max(1, Math.round(s.w / ROOFSIZE)), Math.max(1, Math.round(s.d / ROOFSIZE)));
-  geo.computeBoundingSphere();
-  geo.boundingSphere.radius += CULL_BUFFER;
-  const m = new Mesh(geo, [facMats[s.style], facMats[s.style], roofMat, roofMat, facMats[s.style], facMats[s.style]]);
-  m.position.set(s.x, s.h / 2, s.z);
-  if (s.rot) m.rotation.y = s.rot;
-  group.add(m);
-}
 var cityGroup = new Group();
 scene.add(cityGroup);
 var rnd = (x, z, s = 0) => {
@@ -47768,49 +47911,97 @@ var bbox = (pts) => {
   }
   return [x0, z0, x1, z1];
 };
-var RECIPE = {
-  commercial: { step: 15, wmin: 6, wvar: 6, hmin: 16, hvar: 32, styles: [0, 0, 2], skip: 0.34, tower: true },
-  industrial: { step: 18, wmin: 8, wvar: 9, hmin: 5, hvar: 6, styles: [1], skip: 0.42, tower: false },
-  residential: { step: 12, wmin: 5, wvar: 5, hmin: 8, hvar: 14, styles: [1, 1, 3, 2], skip: 0.44, tower: false }
-};
-var built = 0;
-var CAP = 820;
-function fillBlock(z, R) {
-  const [x0, z0, x1, z1] = bbox(z.pts);
-  for (let gx = x0 + R.step / 2; gx < x1 && built < CAP; gx += R.step) for (let gz = z0 + R.step / 2; gz < z1 && built < CAP; gz += R.step) {
-    const bx = gx + (rnd(gx, gz, 1) - 0.5) * R.step * 0.45, bz = gz + (rnd(gx, gz, 2) - 0.5) * R.step * 0.45;
-    if (rnd(bx, bz, 3) < R.skip || !pointInPoly(bx, bz, z.pts) || blocked(bx, bz)) continue;
-    const w = R.wmin + rnd(bx, bz, 5) * R.wvar, d = R.wmin + rnd(bx, bz, 6) * R.wvar;
-    const st = R.styles[rnd(bx, bz, 7) * R.styles.length | 0], tall = rnd(bx, bz, 8);
-    const h = R.hmin + (R.tower ? tall * tall : tall) * R.hvar;
-    buildOne({ x: bx, z: bz, w, d, h, style: st }, cityGroup);
-    markSolid(bx, bz, Math.max(w, d), Math.max(w, d));
-    built++;
-  }
-}
-for (const z of ZONES) if (z.cls === "commercial") fillBlock(z, RECIPE.commercial);
-for (const z of ZONES) if (z.cls === "industrial") fillBlock(z, RECIPE.industrial);
-for (const z of ZONES) if (z.cls === "residential") fillBlock(z, RECIPE.residential);
-var treePts = [];
-for (const z of ZONES) {
-  if (z.cls !== "green" || treePts.length > 3200) continue;
-  const [x0, z0, x1, z1] = bbox(z.pts);
-  for (let gx = x0; gx < x1 && treePts.length < 3200; gx += 8) for (let gz = z0; gz < z1; gz += 8) {
-    const tx = gx + (rnd(gx, gz, 9) - 0.5) * 5, tz = gz + (rnd(gx, gz, 10) - 0.5) * 5;
-    if (rnd(tx, tz, 11) < 0.32 && pointInPoly(tx, tz, z.pts)) treePts.push([tx, tz]);
-  }
+var RC = 3;
+var RGW = Math.ceil(WORLD.w / RC);
+var RGH = Math.ceil(WORLD.h / RC);
+var SEA = 0;
+var LAND = 1;
+var GREEN = 2;
+var WATER = 3;
+var BEACH = 4;
+var COMM = 5;
+var IND = 6;
+var ROAD = 7;
+var zg = new Uint8Array(RGW * RGH);
+for (let j = 0; j < RGH; j++) for (let i = 0; i < RGW; i++) zg[j * RGW + i] = isLand((i + 0.5) * RC, (j + 0.5) * RC) ? LAND : SEA;
+var ZTY = { green: GREEN, water: WATER, beach: BEACH, commercial: COMM, industrial: IND };
+for (const zn of ZONES) {
+  const ty = ZTY[zn.cls];
+  if (!ty) continue;
+  const [x0, z0, x1, z1] = bbox(zn.pts);
+  for (let j = Math.max(0, z0 / RC | 0); j <= Math.min(RGH - 1, z1 / RC | 0); j++) for (let i = Math.max(0, x0 / RC | 0); i <= Math.min(RGW - 1, x1 / RC | 0); i++)
+    if (zg[j * RGW + i] !== SEA && pointInPoly((i + 0.5) * RC, (j + 0.5) * RC, zn.pts)) zg[j * RGW + i] = ty;
 }
 for (const r of ROADS) {
-  if (r.cls === "expressway" || treePts.length > 4e3) continue;
-  const off = (ROAD_W[r.cls] || 4.4) / 2 + 2.2;
-  for (let i = 0; i < r.pts.length - 1; i++) {
-    const a = r.pts[i], b = r.pts[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
+  const m = (ROAD_W[r.cls] || 4.4) / 2 + 2.5;
+  for (let k = 0; k < r.pts.length - 1; k++) {
+    const a = r.pts[k], b = r.pts[k + 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
     if (!L) continue;
-    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
-    for (let t = 9; t < L; t += 15) {
-      const side = rnd(a[0] + t, a[1], 12) < 0.5 ? 1 : -1, tx = a[0] + ux * t + nx * side * off, tz = a[1] + uz * t + nz * side * off;
-      if (rnd(tx, tz, 13) > 0.72 && !blocked(tx, tz)) treePts.push([tx, tz]);
+    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux, steps = Math.ceil(L / RC);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps * L, cx = a[0] + ux * t, cz = a[1] + uz * t;
+      for (let o = -m; o <= m; o += RC) {
+        const i = (cx + nx * o) / RC | 0, j = (cz + nz * o) / RC | 0;
+        if (i >= 0 && j >= 0 && i < RGW && j < RGH) {
+          const c = zg[j * RGW + i];
+          if (c === LAND || c === COMM || c === IND) zg[j * RGW + i] = ROAD;
+        }
+      }
     }
+  }
+}
+var cellAt = (x, z) => {
+  const i = x / RC | 0, j = z / RC | 0;
+  return i < 0 || j < 0 || i >= RGW || j >= RGH ? SEA : zg[j * RGW + i];
+};
+var geoms = [[], [], [], []];
+var BSTEP = 9.5;
+for (let z = BSTEP / 2; z < WORLD.h; z += BSTEP) for (let x = BSTEP / 2; x < WORLD.w; x += BSTEP) {
+  const jx = x + (rnd(x, z, 1) - 0.5) * BSTEP * 0.5, jz = z + (rnd(x, z, 2) - 0.5) * BSTEP * 0.5, cell = cellAt(jx, jz);
+  if (cell === SEA || cell === GREEN || cell === WATER || cell === BEACH || cell === ROAD) continue;
+  if (rnd(jx, jz, 3) < 0.3) continue;
+  let style, w, d, h;
+  if (cell === COMM) {
+    style = rnd(jx, jz, 4) < 0.72 ? 0 : 2;
+    w = 6 + rnd(jx, jz, 6) * 5;
+    d = 6 + rnd(jx, jz, 7) * 5;
+    const tall = rnd(jx, jz, 5);
+    h = 18 + tall * tall * 36;
+  } else if (cell === IND) {
+    style = 1;
+    w = 8 + rnd(jx, jz, 6) * 8;
+    d = 8 + rnd(jx, jz, 7) * 7;
+    h = 5 + rnd(jx, jz, 5) * 6;
+  } else {
+    const r5 = rnd(jx, jz, 4);
+    style = r5 < 0.62 ? 1 : r5 < 0.82 ? 2 : r5 < 0.93 ? 3 : 0;
+    w = 5 + rnd(jx, jz, 6) * 4;
+    d = 5 + rnd(jx, jz, 7) * 4;
+    const tall = rnd(jx, jz, 5);
+    h = 8 + tall * 18;
+  }
+  const geo = new BoxGeometry(w, h, d);
+  tileBoxUV(geo, Math.max(1, Math.round(w / TEXW)), Math.max(1, Math.round(d / TEXW)), Math.max(1, Math.round(h / TEXH)), Math.max(1, Math.round(w / ROOFSIZE)), Math.max(1, Math.round(d / ROOFSIZE)));
+  geo.translate(jx, h / 2, jz);
+  geoms[style].push(geo);
+  markSolid(jx, jz, Math.max(w, d), Math.max(w, d));
+}
+geoms.forEach((arr, s) => {
+  if (!arr.length) return;
+  const merged = mergeGeometries(arr, false);
+  merged.computeBoundingSphere();
+  merged.boundingSphere.radius += CULL_BUFFER;
+  const mesh = new Mesh(merged, facMats[s]);
+  mesh.frustumCulled = false;
+  cityGroup.add(mesh);
+});
+var treePts = [];
+for (const zn of ZONES) {
+  if (zn.cls !== "green" || treePts.length > 2600) continue;
+  const [x0, z0, x1, z1] = bbox(zn.pts);
+  for (let gx = x0; gx < x1 && treePts.length < 2600; gx += 8) for (let gz = z0; gz < z1; gz += 8) {
+    const tx = gx + (rnd(gx, gz, 9) - 0.5) * 5, tz = gz + (rnd(gx, gz, 10) - 0.5) * 5;
+    if (rnd(tx, tz, 11) < 0.34 && pointInPoly(tx, tz, zn.pts)) treePts.push([tx, tz]);
   }
 }
 var treeGroup = new Group();
@@ -47874,7 +48065,6 @@ gltf.load("./assets/character.glb", (g) => {
     }, void 0, (e) => console.warn("[run] load failed", e?.message || e));
   }
   window.__cg && (window.__cg.model = playerModel);
-  window.__anim = { count: g.animations.length, names: g.animations.map((a) => a.name), tracks: (g.animations[0]?.tracks || []).map((t) => t.name) };
 }, void 0, (e) => console.warn("[character] load failed", e?.message || e));
 var carGroup = new Group();
 scene.add(carGroup);

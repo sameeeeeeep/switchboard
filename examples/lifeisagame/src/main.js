@@ -8,6 +8,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { initMissions } from "./missions.js";
 import { WORLD, COAST, WARDS, ROADS, ZONES, pointInPoly, project, isLand, wardAt, spawnIn, LANDMARKS, areaAt } from "./mumbai-map.js";
 
@@ -82,11 +83,15 @@ function paintGround() {
   const sea = hex(T.sea), land = hex(T.ground), line = hex(T.line), day = T.label === "DAY";
   c.fillStyle = sea; c.fillRect(0, 0, CW, CH);                          // sea everywhere
   c.fillStyle = land; tracePoly(c, COAST[0]); c.fill();                 // the Mumbai landmass (base = residential)
-  // land-use zones on top of the base land: parks/green, inland water, beaches, commercial + industrial districts
+  // land-use zones on top of the base land: parks/green, inland LAKES, beaches (sand), commercial + industrial
   const ZC = day
-    ? { green: "#6f9e57", water: hex(T.sea), beach: "#d9c48c", commercial: "#a7a29a", industrial: "#8e8a83" }
-    : { green: "#22381f", water: hex(T.sea), beach: "#33304a", commercial: "#241f38", industrial: "#1e1c2a" };
-  for (const z of ZONES) { const col = ZC[z.cls]; if (!col) continue; c.fillStyle = col; tracePoly(c, z.pts); c.fill(); }
+    ? { green: "#5f9a4c", water: "#3f86b4", beach: "#e8d49b", commercial: "#a7a29a", industrial: "#8e8a83" }
+    : { green: "#2a4a25", water: "#1c496e", beach: "#b8a26a", commercial: "#2a2340", industrial: "#221f30" };
+  for (const z of ZONES) {                                              // painted brightest→context so lakes/beaches clearly read
+    const col = ZC[z.cls]; if (!col) continue;
+    c.fillStyle = col; tracePoly(c, z.pts); c.fill();
+    if (z.cls === "water" || z.cls === "beach") { c.strokeStyle = day ? "#2f6f9a" : "#3a6e94"; c.lineWidth = Math.max(1, GPX); c.stroke(); }
+  }
   c.strokeStyle = day ? "#3a6b8f" : "#8fd0ff"; c.lineWidth = Math.max(1.5, GPX * 0.7);  // coastline (roads are real 3D ribbons, built separately)
   tracePoly(c, COAST[0]); c.stroke();
   gtex.needsUpdate = true;
@@ -102,7 +107,7 @@ seaPlane.rotation.x = -Math.PI / 2; seaPlane.position.set(WORLD.w / 2, -0.05, WO
 // ---------------------------------------------------------------- roads: real asphalt ribbons along the network centrelines
 // Each OSM polyline becomes a flat mesh strip (kerb + asphalt + dashed lane line), sized to the car — not a painted line.
 const ROAD_W = { expressway: 8, highway: 6, arterial: 4.4 };            // ribbon width (world units) by class
-const roadMat = new THREE.MeshBasicMaterial({ color: 0x2a2a34 }), kerbMat = new THREE.MeshBasicMaterial({ color: T.curb }), laneMat = new THREE.MeshBasicMaterial({ color: T.line, transparent: true, opacity: 0.75 });
+const roadMat = new THREE.MeshBasicMaterial({ color: 0x2a2a34, side: THREE.DoubleSide }), kerbMat = new THREE.MeshBasicMaterial({ color: T.curb, side: THREE.DoubleSide }), laneMat = new THREE.MeshBasicMaterial({ color: T.line, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
 function ribbon(pts, hw, out) {
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1]; let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz); if (!L) continue; dx /= L; dz /= L;
@@ -166,43 +171,50 @@ function buildOne(s, group) {
 // LANDMARKS (data only) are anchors for hand-placing iconic buildings later.
 const cityGroup = new THREE.Group(); scene.add(cityGroup);
 
-// ---------------------------------------------------------------- populate: fill each land-use BLOCK with the buildings that belong there
+// ---------------------------------------------------------------- populate: DENSE city — whole landmass is built up; roads/parks/water are the gaps
 const rnd = (x, z, s = 0) => { let h = Math.imul(((((x | 0) * 374761) ^ ((z | 0) * 668265)) >>> 0) ^ Math.imul(s | 0, 2246822519), 2654435761); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
 const bbox = (pts) => { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; } return [x0, z0, x1, z1]; };
-// building recipe per block type — commercial towers, industrial sheds, residential mid-rise
-const RECIPE = {
-  commercial:  { step: 15, wmin: 6, wvar: 6, hmin: 16, hvar: 32, styles: [0, 0, 2], skip: 0.34, tower: true },
-  industrial:  { step: 18, wmin: 8, wvar: 9, hmin: 5,  hvar: 6,  styles: [1],       skip: 0.42, tower: false },
-  residential: { step: 12, wmin: 5, wvar: 5, hmin: 8,  hvar: 14, styles: [1, 1, 3, 2], skip: 0.44, tower: false },
-};
-let built = 0; const CAP = 820;
-function fillBlock(z, R) {
-  const [x0, z0, x1, z1] = bbox(z.pts);
-  for (let gx = x0 + R.step / 2; gx < x1 && built < CAP; gx += R.step) for (let gz = z0 + R.step / 2; gz < z1 && built < CAP; gz += R.step) {
-    const bx = gx + (rnd(gx, gz, 1) - 0.5) * R.step * 0.45, bz = gz + (rnd(gx, gz, 2) - 0.5) * R.step * 0.45;
-    if (rnd(bx, bz, 3) < R.skip || !pointInPoly(bx, bz, z.pts) || blocked(bx, bz)) continue;
-    const w = R.wmin + rnd(bx, bz, 5) * R.wvar, d = R.wmin + rnd(bx, bz, 6) * R.wvar;
-    const st = R.styles[(rnd(bx, bz, 7) * R.styles.length) | 0], tall = rnd(bx, bz, 8);
-    const h = R.hmin + (R.tower ? tall * tall : tall) * R.hvar;
-    buildOne({ x: bx, z: bz, w, d, h, style: st }, cityGroup); markSolid(bx, bz, Math.max(w, d), Math.max(w, d)); built++;
-  }
+// (1) rasterise the ground into a coarse zone grid so we know what every patch is — and can carve road GAPS
+const RC = 3, RGW = Math.ceil(WORLD.w / RC), RGH = Math.ceil(WORLD.h / RC);
+const SEA = 0, LAND = 1, GREEN = 2, WATER = 3, BEACH = 4, COMM = 5, IND = 6, ROAD = 7;
+const zg = new Uint8Array(RGW * RGH);
+for (let j = 0; j < RGH; j++) for (let i = 0; i < RGW; i++) zg[j * RGW + i] = isLand((i + 0.5) * RC, (j + 0.5) * RC) ? LAND : SEA;
+const ZTY = { green: GREEN, water: WATER, beach: BEACH, commercial: COMM, industrial: IND };
+for (const zn of ZONES) { const ty = ZTY[zn.cls]; if (!ty) continue; const [x0, z0, x1, z1] = bbox(zn.pts);
+  for (let j = Math.max(0, z0 / RC | 0); j <= Math.min(RGH - 1, z1 / RC | 0); j++) for (let i = Math.max(0, x0 / RC | 0); i <= Math.min(RGW - 1, x1 / RC | 0); i++)
+    if (zg[j * RGW + i] !== SEA && pointInPoly((i + 0.5) * RC, (j + 0.5) * RC, zn.pts)) zg[j * RGW + i] = ty;
 }
-for (const z of ZONES) if (z.cls === "commercial") fillBlock(z, RECIPE.commercial);   // skyline first
-for (const z of ZONES) if (z.cls === "industrial") fillBlock(z, RECIPE.industrial);
-for (const z of ZONES) if (z.cls === "residential") fillBlock(z, RECIPE.residential);
+// stamp roads (+ a setback) as no-build gaps → buildings can never sit on a road; blocks form between them
+for (const r of ROADS) { const m = (ROAD_W[r.cls] || 4.4) / 2 + 2.5;
+  for (let k = 0; k < r.pts.length - 1; k++) { const a = r.pts[k], b = r.pts[k + 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); if (!L) continue; const ux = dx / L, uz = dz / L, nx = -uz, nz = ux, steps = Math.ceil(L / RC);
+    for (let s = 0; s <= steps; s++) { const t = (s / steps) * L, cx = a[0] + ux * t, cz = a[1] + uz * t;
+      for (let o = -m; o <= m; o += RC) { const i = (cx + nx * o) / RC | 0, j = (cz + nz * o) / RC | 0; if (i >= 0 && j >= 0 && i < RGW && j < RGH) { const c = zg[j * RGW + i]; if (c === LAND || c === COMM || c === IND) zg[j * RGW + i] = ROAD; } } } } }
+const cellAt = (x, z) => { const i = x / RC | 0, j = z / RC | 0; return (i < 0 || j < 0 || i >= RGW || j >= RGH) ? SEA : zg[j * RGW + i]; };
 
-// trees: fill the parks/green zones + a sparse sidewalk row along the roads
+// (2) dense fill: a building on nearly every buildable cell, typed by zone; merged per style → a few draw calls
+const geoms = [[], [], [], []], BSTEP = 9.5;
+for (let z = BSTEP / 2; z < WORLD.h; z += BSTEP) for (let x = BSTEP / 2; x < WORLD.w; x += BSTEP) {
+  const jx = x + (rnd(x, z, 1) - 0.5) * BSTEP * 0.5, jz = z + (rnd(x, z, 2) - 0.5) * BSTEP * 0.5, cell = cellAt(jx, jz);
+  if (cell === SEA || cell === GREEN || cell === WATER || cell === BEACH || cell === ROAD) continue;
+  if (rnd(jx, jz, 3) < 0.3) continue;                                  // courtyards / gaps — keeps it dense but breathing
+  let style, w, d, h;
+  if (cell === COMM) { style = rnd(jx, jz, 4) < 0.72 ? 0 : 2; w = 6 + rnd(jx, jz, 6) * 5; d = 6 + rnd(jx, jz, 7) * 5; const tall = rnd(jx, jz, 5); h = 18 + tall * tall * 36; }
+  else if (cell === IND) { style = 1; w = 8 + rnd(jx, jz, 6) * 8; d = 8 + rnd(jx, jz, 7) * 7; h = 5 + rnd(jx, jz, 5) * 6; }
+  else { const r5 = rnd(jx, jz, 4); style = r5 < 0.62 ? 1 : r5 < 0.82 ? 2 : r5 < 0.93 ? 3 : 0; w = 5 + rnd(jx, jz, 6) * 4; d = 5 + rnd(jx, jz, 7) * 4; const tall = rnd(jx, jz, 5); h = 8 + tall * 18; }
+  const geo = new THREE.BoxGeometry(w, h, d);
+  tileBoxUV(geo, Math.max(1, Math.round(w / TEXW)), Math.max(1, Math.round(d / TEXW)), Math.max(1, Math.round(h / TEXH)), Math.max(1, Math.round(w / ROOFSIZE)), Math.max(1, Math.round(d / ROOFSIZE)));
+  geo.translate(jx, h / 2, jz); geoms[style].push(geo); markSolid(jx, jz, Math.max(w, d), Math.max(w, d));
+}
+geoms.forEach((arr, s) => { if (!arr.length) return; const merged = mergeGeometries(arr, false); merged.computeBoundingSphere(); merged.boundingSphere.radius += CULL_BUFFER; const mesh = new THREE.Mesh(merged, facMats[s]); mesh.frustumCulled = false; cityGroup.add(mesh); });
+
+// trees: park zones + a sidewalk row along roads (roads are gaps now, so trees line them nicely)
 const treePts = [];
-for (const z of ZONES) { if (z.cls !== "green" || treePts.length > 3200) continue; const [x0, z0, x1, z1] = bbox(z.pts);
-  for (let gx = x0; gx < x1 && treePts.length < 3200; gx += 8) for (let gz = z0; gz < z1; gz += 8) {
+for (const zn of ZONES) { if (zn.cls !== "green" || treePts.length > 2600) continue; const [x0, z0, x1, z1] = bbox(zn.pts);
+  for (let gx = x0; gx < x1 && treePts.length < 2600; gx += 8) for (let gz = z0; gz < z1; gz += 8) {
     const tx = gx + (rnd(gx, gz, 9) - 0.5) * 5, tz = gz + (rnd(gx, gz, 10) - 0.5) * 5;
-    if (rnd(tx, tz, 11) < 0.32 && pointInPoly(tx, tz, z.pts)) treePts.push([tx, tz]);
+    if (rnd(tx, tz, 11) < 0.34 && pointInPoly(tx, tz, zn.pts)) treePts.push([tx, tz]);
   }
 }
-for (const r of ROADS) { if (r.cls === "expressway" || treePts.length > 4000) continue; const off = (ROAD_W[r.cls] || 4.4) / 2 + 2.2;
-  for (let i = 0; i < r.pts.length - 1; i++) { const a = r.pts[i], b = r.pts[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); if (!L) continue; const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
-    for (let t = 9; t < L; t += 15) { const side = rnd(a[0] + t, a[1], 12) < 0.5 ? 1 : -1, tx = a[0] + ux * t + nx * side * off, tz = a[1] + uz * t + nz * side * off;
-      if (rnd(tx, tz, 13) > 0.72 && !blocked(tx, tz)) treePts.push([tx, tz]); } } }
 
 const treeGroup = new THREE.Group(); scene.add(treeGroup);
 {
@@ -260,7 +272,6 @@ gltf.load("./assets/character.glb", (g) => {
     }, undefined, (e) => console.warn("[run] load failed", e?.message || e));
   }
   window.__cg && (window.__cg.model = playerModel);
-  window.__anim = { count: g.animations.length, names: g.animations.map((a) => a.name), tracks: (g.animations[0]?.tracks || []).map((t) => t.name) };
 }, undefined, (e) => console.warn("[character] load failed", e?.message || e));
 
 // top-down car, laid flat — 2.2 wide × 4.2 long. body colour comes from the theme.
