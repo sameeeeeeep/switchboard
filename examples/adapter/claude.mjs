@@ -33,13 +33,20 @@ export function abandonProvider() { if (_resolveReady) { _resolveReady(null); _r
 
 /** @typedef {{ system?: string, allowedTools?: string[], model?: string, mcp?: boolean, effort?: "low"|"medium"|"high", timeoutMs?: number }} RunOpts */
 
+/** The broker only grants tools inside the agentic loop (server enables the origin's granted read
+ *  tools iff `agentic`). brandbrain's routes signal "I need tools" two ways: `mcp: true` (connected
+ *  MCP servers) and `allowedTools` (built-in web reads — WebSearch/WebFetch). The original lib turned
+ *  BOTH into real tool access; here either must flip agentic, or web-reading routes (clone, research,
+ *  trends…) silently run with no web and can't read the site they were pointed at. */
+const wantsTools = (opts) => !!opts.mcp || !!(opts.allowedTools && opts.allowedTools.length);
+
 /** One-shot generation → the assistant's text, or null (callers fall back), matching brandbrain. */
 export async function runClaude(prompt, opts = {}) {
   if (!provider) return null;
   try {
     const r = await provider.request({
       method: "claude_complete",
-      params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: !!opts.mcp },
+      params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: wantsTools(opts) },
     });
     return typeof r?.text === "string" ? r.text : null;
   } catch {
@@ -65,7 +72,7 @@ export function runClaudeStream(prompt, opts = {}) {
       };
       provider.on("delta", onDelta);
       try {
-        const res = await provider.request({ method: "claude_stream", params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: !!opts.mcp } });
+        const res = await provider.request({ method: "claude_stream", params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: wantsTools(opts) } });
         streamId = res?.streamId;
       } catch { provider.removeListener?.("delta", onDelta); try { controller.close(); } catch {} }
     },
