@@ -49,15 +49,47 @@ function brandToContext(b) {
   };
 }
 
-// Publish every brand in the workspace to the shared context library, so the user can lend one to
-// another app from the panel. Idempotent (stable ids). Returns how many were published.
+// Map an ideabrain project (kind "idea") → a portable "idea" context: the thesis + its locked
+// playbook decisions, so a later thread/app gets the validated idea, not an empty brand. Distinct
+// `kind: "idea"` — an idea has no palette/positioning; it has a problem, insight, model, moat, etc.
+function ideaToContext(b) {
+  const L = b.locks || {};
+  const line = (c) => (c && (c.title || c.name)) || "";
+  const body = (c) => (c && c.body) || "";
+  // The full locked playbook, keyed by decision id (problem, insight, solution, model, moat, …).
+  const decisions = {};
+  for (const id of Object.keys(L)) {
+    const c = L[id];
+    if (c && (c.title || c.body)) decisions[id] = { title: line(c), body: body(c) };
+  }
+  return {
+    id: b.id,                         // stable → re-publish updates in place
+    name: b.name || "Idea",
+    kind: "idea",
+    data: {
+      idea: b.idea || "",
+      category: b.template || "general",
+      market: (b.brief && b.brief.market) || "",
+      problem: body(L.problem) || line(L.problem),
+      insight: body(L.insight) || line(L.insight),
+      solution: line(L.solution),
+      model: line(L.model),
+      moat: line(L.moat),
+      decisions,                      // the whole playbook, for a downstream tool to reason over
+    },
+  };
+}
+
+// Publish every workspace project to the shared context library, so the user can lend one to another
+// app from the panel. Brands → "brand" context, ideabrain projects → "idea" context. Idempotent
+// (stable ids). Returns how many were published.
 async function publishBrands(r) {
   try {
     const raw = await storageGet("workspace");
     const ws = raw ? JSON.parse(raw) : null;
     const brands = Array.isArray(ws && ws.brands) ? ws.brands : [];
     let n = 0;
-    for (const b of brands) if (b && b.name) { await r.context.publish(brandToContext(b)); n++; }
+    for (const b of brands) if (b && b.name) { await r.context.publish(b.kind === "idea" ? ideaToContext(b) : brandToContext(b)); n++; }
     return n;
   } catch { return 0; }
 }
