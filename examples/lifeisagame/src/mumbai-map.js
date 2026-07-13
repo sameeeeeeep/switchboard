@@ -4,6 +4,12 @@
 import GEO from "./mumbai-wards.json";
 import LM from "./mumbai-landmarks.json";
 import ROADDATA from "./mumbai-roads.json";
+import ZONEDATA from "./mumbai-zones.json";
+
+// land-use zones (OSM), already in world space, classified: water|beach|green|commercial|industrial|residential.
+// These define the map: green/water/beach are painted; commercial/industrial/residential blocks get typed buildings.
+export const ZONES = ZONEDATA.zones;
+export function pointInPoly(x, z, pts) { let s = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const xi = pts[i][0], zi = pts[i][1], xj = pts[j][0], zj = pts[j][1]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) s = !s; } return s; }
 
 // the 24 BMC ward codes → neighbourhood names. Split wards (E/W, N/S) are the SAME place, so the game
 // groups them into one named AREA — fewer, cleaner districts than 24 wards (e.g. M/E + M/W = Chembur).

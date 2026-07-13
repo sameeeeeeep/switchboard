@@ -9,7 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { initMissions } from "./missions.js";
-import { WORLD, COAST, WARDS, ROADS, project, isLand, wardAt, spawnIn, LANDMARKS, areaAt } from "./mumbai-map.js";
+import { WORLD, COAST, WARDS, ROADS, ZONES, pointInPoly, project, isLand, wardAt, spawnIn, LANDMARKS, areaAt } from "./mumbai-map.js";
 
 // ---------------------------------------------------------------- themes (the skins)
 // per-building-style arrays are indexed by style 0/1/2 (glass tower / mid-rise / low block)
@@ -81,14 +81,12 @@ function paintGround() {
   const c = gctx, hex = (n) => "#" + n.toString(16).padStart(6, "0");
   const sea = hex(T.sea), land = hex(T.ground), line = hex(T.line), day = T.label === "DAY";
   c.fillStyle = sea; c.fillRect(0, 0, CW, CH);                          // sea everywhere
-  c.fillStyle = land; tracePoly(c, COAST[0]); c.fill();                 // the Mumbai landmass
-  WARDS.forEach((w, i) => {                                             // give each ward a faint distinct tint so the AREAS read
-    c.fillStyle = `hsla(${(i * 53) % 360}, 40%, ${day ? 62 : 32}%, 0.22)`;
-    for (const p of w.parts) { tracePoly(c, p.shell); c.fill(); }
-  });
-  c.strokeStyle = line; c.globalAlpha = 0.55; c.lineWidth = Math.max(1, GPX * 0.5);  // ward boundaries
-  WARDS.forEach((w) => { for (const p of w.parts) { tracePoly(c, p.shell); c.stroke(); for (const h of p.holes) { tracePoly(c, h); c.stroke(); } } });
-  c.globalAlpha = 1;
+  c.fillStyle = land; tracePoly(c, COAST[0]); c.fill();                 // the Mumbai landmass (base = residential)
+  // land-use zones on top of the base land: parks/green, inland water, beaches, commercial + industrial districts
+  const ZC = day
+    ? { green: "#6f9e57", water: hex(T.sea), beach: "#d9c48c", commercial: "#a7a29a", industrial: "#8e8a83" }
+    : { green: "#22381f", water: hex(T.sea), beach: "#33304a", commercial: "#241f38", industrial: "#1e1c2a" };
+  for (const z of ZONES) { const col = ZC[z.cls]; if (!col) continue; c.fillStyle = col; tracePoly(c, z.pts); c.fill(); }
   c.strokeStyle = day ? "#3a6b8f" : "#8fd0ff"; c.lineWidth = Math.max(1.5, GPX * 0.7);  // coastline (roads are real 3D ribbons, built separately)
   tracePoly(c, COAST[0]); c.stroke();
   gtex.needsUpdate = true;
@@ -168,44 +166,51 @@ function buildOne(s, group) {
 // LANDMARKS (data only) are anchors for hand-placing iconic buildings later.
 const cityGroup = new THREE.Group(); scene.add(cityGroup);
 
-// ---------------------------------------------------------------- populate (one pass): sparse buildings lining the roads + scattered trees
+// ---------------------------------------------------------------- populate: fill each land-use BLOCK with the buildings that belong there
 const rnd = (x, z, s = 0) => { let h = Math.imul(((((x | 0) * 374761) ^ ((z | 0) * 668265)) >>> 0) ^ Math.imul(s | 0, 2246822519), 2654435761); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
-const STYLEMIX = [0, 1, 1, 1, 2, 3];                                  // glass · apt×3 · colonial · art-deco
-let built = 0;
-for (const r of ROADS) {
-  if (r.cls === "expressway" || built >= 430) continue;              // don't line the freeways
-  const hw = (ROAD_W[r.cls] || 4.4) / 2;
-  for (let i = 0; i < r.pts.length - 1 && built < 430; i++) {
-    const a = r.pts[i], b = r.pts[i + 1]; const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); if (!L) continue;
-    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux, rot = Math.atan2(-uz, ux);
-    for (let t = 6; t < L && built < 430; t += 20 + rnd(a[0] + t, a[1], 1) * 18) {
-      const cx = a[0] + ux * t, cz = a[1] + uz * t;
-      for (const side of [1, -1]) {
-        if (rnd(cx, cz, side + 5) < 0.5) continue;                    // sparse — skip half the slots
-        const set = hw + 4.5 + rnd(cx, cz, side * 3) * 6, bx = cx + nx * side * set, bz = cz + nz * side * set;
-        if (blocked(bx, bz)) continue;                                // on land, not sea, not overlapping another building
-        const w = 5 + rnd(bx, bz, 7) * 8, d = 5 + rnd(bx, bz, 9) * 7, st = STYLEMIX[(rnd(bx, bz, 11) * STYLEMIX.length) | 0], tall = rnd(bx, bz, 13);
-        const h = st === 0 ? 14 + tall * tall * 34 : st === 3 ? 8 + tall * 8 : 8 + tall * 16;   // glass towers climb; deco stays low; mixed mid-rise
-        buildOne({ x: bx, z: bz, w, d, h, style: st, rot }, cityGroup); markSolid(bx, bz, Math.max(w, d), Math.max(w, d)); built++;
-        if (built >= 430) break;
-      }
-    }
+const bbox = (pts) => { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; } return [x0, z0, x1, z1]; };
+// building recipe per block type — commercial towers, industrial sheds, residential mid-rise
+const RECIPE = {
+  commercial:  { step: 15, wmin: 6, wvar: 6, hmin: 16, hvar: 32, styles: [0, 0, 2], skip: 0.34, tower: true },
+  industrial:  { step: 18, wmin: 8, wvar: 9, hmin: 5,  hvar: 6,  styles: [1],       skip: 0.42, tower: false },
+  residential: { step: 12, wmin: 5, wvar: 5, hmin: 8,  hvar: 14, styles: [1, 1, 3, 2], skip: 0.44, tower: false },
+};
+let built = 0; const CAP = 820;
+function fillBlock(z, R) {
+  const [x0, z0, x1, z1] = bbox(z.pts);
+  for (let gx = x0 + R.step / 2; gx < x1 && built < CAP; gx += R.step) for (let gz = z0 + R.step / 2; gz < z1 && built < CAP; gz += R.step) {
+    const bx = gx + (rnd(gx, gz, 1) - 0.5) * R.step * 0.45, bz = gz + (rnd(gx, gz, 2) - 0.5) * R.step * 0.45;
+    if (rnd(bx, bz, 3) < R.skip || !pointInPoly(bx, bz, z.pts) || blocked(bx, bz)) continue;
+    const w = R.wmin + rnd(bx, bz, 5) * R.wvar, d = R.wmin + rnd(bx, bz, 6) * R.wvar;
+    const st = R.styles[(rnd(bx, bz, 7) * R.styles.length) | 0], tall = rnd(bx, bz, 8);
+    const h = R.hmin + (R.tower ? tall * tall : tall) * R.hvar;
+    buildOne({ x: bx, z: bz, w, d, h, style: st }, cityGroup); markSolid(bx, bz, Math.max(w, d), Math.max(w, d)); built++;
   }
 }
+for (const z of ZONES) if (z.cls === "commercial") fillBlock(z, RECIPE.commercial);   // skyline first
+for (const z of ZONES) if (z.cls === "industrial") fillBlock(z, RECIPE.industrial);
+for (const z of ZONES) if (z.cls === "residential") fillBlock(z, RECIPE.residential);
+
+// trees: fill the parks/green zones + a sparse sidewalk row along the roads
+const treePts = [];
+for (const z of ZONES) { if (z.cls !== "green" || treePts.length > 3200) continue; const [x0, z0, x1, z1] = bbox(z.pts);
+  for (let gx = x0; gx < x1 && treePts.length < 3200; gx += 8) for (let gz = z0; gz < z1; gz += 8) {
+    const tx = gx + (rnd(gx, gz, 9) - 0.5) * 5, tz = gz + (rnd(gx, gz, 10) - 0.5) * 5;
+    if (rnd(tx, tz, 11) < 0.32 && pointInPoly(tx, tz, z.pts)) treePts.push([tx, tz]);
+  }
+}
+for (const r of ROADS) { if (r.cls === "expressway" || treePts.length > 4000) continue; const off = (ROAD_W[r.cls] || 4.4) / 2 + 2.2;
+  for (let i = 0; i < r.pts.length - 1; i++) { const a = r.pts[i], b = r.pts[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); if (!L) continue; const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+    for (let t = 9; t < L; t += 15) { const side = rnd(a[0] + t, a[1], 12) < 0.5 ? 1 : -1, tx = a[0] + ux * t + nx * side * off, tz = a[1] + uz * t + nz * side * off;
+      if (rnd(tx, tz, 13) > 0.72 && !blocked(tx, tz)) treePts.push([tx, tz]); } } }
 
 const treeGroup = new THREE.Group(); scene.add(treeGroup);
-// scattered trees on open land (sparse, away from buildings/roads) — instanced, always visible
 {
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x2f6f3a });
-  const pts = [];
-  for (let i = 0; i < 4000 && pts.length < 320; i++) {
-    const x = rnd(i, 3, 1) * WORLD.w, z = rnd(i * 3 + 1, 7, 2) * WORLD.h;
-    if (blocked(x, z) || rnd(x | 0, z | 0, 4) < 0.5) continue;
-    pts.push([x, z]);
-  }
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.26, 0.34, 2.4, 6), trunkMat, pts.length);
-  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.7, 0), leafMat, pts.length);
-  pts.forEach(([x, z], i) => { dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.position.set(x, 1.2, z); dummy.updateMatrix(); trunk.setMatrixAt(i, dummy.matrix); dummy.position.set(x, 3.2, z); dummy.scale.set(1, 0.85, 1); dummy.updateMatrix(); crown.setMatrixAt(i, dummy.matrix); });
+  const n = treePts.length;
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.24, 0.3, 2.1, 6), trunkMat, n);
+  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 0), leafMat, n);
+  treePts.forEach(([x, z], i) => { dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.position.set(x, 1.05, z); dummy.updateMatrix(); trunk.setMatrixAt(i, dummy.matrix); dummy.position.set(x, 2.7, z); dummy.scale.set(1, 0.85, 1); dummy.updateMatrix(); crown.setMatrixAt(i, dummy.matrix); });
   trunk.instanceMatrix.needsUpdate = crown.instanceMatrix.needsUpdate = true; trunk.frustumCulled = crown.frustumCulled = false;
   scene.add(trunk, crown);
 }
