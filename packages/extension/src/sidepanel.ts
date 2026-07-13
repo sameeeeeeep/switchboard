@@ -11,6 +11,8 @@ interface Grant {
   origin: string;
   mode: Mode;
   models: string[];
+  /** USER's model choice — the daemon runs this instead of whatever model the app asks for. */
+  modelOverride?: string;
   tools: { name: string; access: "read" | "write" }[];
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
   usage: { tokensToday: number; callsThisMinute: number };
@@ -22,16 +24,10 @@ interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: s
 interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
-import { renderTabSidekick } from "./tabsidekick-view.js";
 
 const inExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
 let consentActive = false;
-let activeView: "home" | "tabsidekick" = "home"; // TabSidekick takes over the panel when open
 const openApps = new Set<string>(); // origins whose detail is expanded (preserved across refreshes)
-
-// Fan-out for daemon stream deltas the panel receives (used by the TabSidekick task stream).
-const deltaListeners = new Set<(d: any) => void>();
-function onDelta(cb: (d: any) => void): () => void { deltaListeners.add(cb); return () => deltaListeners.delete(cb); }
 
 // ---- friendly connector identities (framed as capabilities, not raw tool names) ----
 const CONNECTORS: Record<string, { label: string; color: string; hint: string }> = {
@@ -42,6 +38,17 @@ const CONNECTORS: Record<string, { label: string; color: string; hint: string }>
   sheets: { label: "Sheets", color: "#1FA463", hint: "data" },
   meta: { label: "Meta Ads", color: "#1264FF", hint: "ads" },
   web: { label: "Web", color: "#4F8CFF", hint: "search" },
+};
+// Recognisable brand marks for the connector tiles — simple line/solid glyphs drawn in white so they
+// read on each connector's colour. Keyed by connector key; unknown connectors fall back to a monogram.
+const LOGOS: Record<string, string> = {
+  web: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.7 2.6 2.7 15.4 0 18M12 3c-2.7 2.6-2.7 15.4 0 18"/></svg>`,
+  higgsfield: `<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 1.5c.7 5.6 3.2 8.3 9 9-5.8.7-8.3 3.4-9 9-.7-5.6-3.2-8.3-9-9 5.8-.7 8.3-3.4 9-9z"/></svg>`,
+  gmail: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7.5l9 6 9-6"/></svg>`,
+  shopify: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"><path d="M6 7.5h12L19 20H5L6 7.5z"/><path d="M9 7.5a3 3 0 0 1 6 0"/></svg>`,
+  meta: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M6.5 8C4.3 8 3 10 3 12s1.3 4 3.5 4c2.9 0 4.2-8 8-8C19.7 8 21 10 21 12s-1.3 4-3.5 4c-2.9 0-4.2-8-8-8"/></svg>`,
+  drive: `<svg viewBox="0 0 24 24" fill="#fff"><path d="M8.5 3h7l6.5 11.5-3.5 6h-6.9l3.4-6H4.5L8.5 3z" opacity=".92"/></svg>`,
+  sheets: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9.5h16M4 15h16M10 9.5V21"/></svg>`,
 };
 function connectorOf(tool: string): { key: string; label: string; color: string; hint: string } | null {
   if (/^web(search|fetch)$/i.test(tool)) return { key: "web", ...CONNECTORS.web! };
@@ -59,6 +66,7 @@ function connectorOf(tool: string): { key: string; label: string; color: string;
 interface Wrapp { name: string; desc: string; url: string; color: string; alternativeTo?: string[] }
 const WRAPPS: Wrapp[] = [
   { name: "brandbrain", desc: "Build & operate consumer brands", url: "https://brandbrain.thelastprompt.ai/build", color: "#C8F250" },
+  { name: "ideabrain", desc: "Validate an idea — research, playbook, deck, reach-outs", url: "https://brandbrain.thelastprompt.ai/build?studio=idea", color: "#C8F250" },
   { name: "AdPulse", desc: "Meta ads post-mortem in 30 seconds", url: "https://adpulse.thelastprompt.ai", color: "#FFB224", alternativeTo: ["adsmanager.facebook.com"] },
   { name: "AdForge", desc: "URL in, Meta ads out", url: "https://adforge.thelastprompt.ai", color: "#FF6A2B", alternativeTo: ["adcreative.ai"] },
   { name: "Shelf", desc: "Your inventory, triaged", url: "https://shelf.thelastprompt.ai", color: "#E8B34B" },
@@ -89,7 +97,7 @@ const MOCK: PanelData = {
   selections: [{ origin: "https://prism.app", contextId: "haazma" }],
   // (a Sheet-backed project shows up alongside brand projects — same picker, marked "live")
   grants: [
-    { origin: "https://brandbrain.app", mode: "trust", models: ["sonnet"], tools: [{ name: "WebSearch", access: "read" }, { name: "WebFetch", access: "read" }, { name: "mcp__claude_ai_Higgsfield__*", access: "write" }, { name: "mcp__claude_ai_Shopify__*", access: "write" }],
+    { origin: "https://brandbrain.app", mode: "trust", models: ["sonnet", "llama3.2:latest"], modelOverride: "llama3.2:latest", tools: [{ name: "WebSearch", access: "read" }, { name: "WebFetch", access: "read" }, { name: "mcp__claude_ai_Higgsfield__*", access: "write" }, { name: "mcp__claude_ai_Shopify__*", access: "write" }, { name: "mcp__claude_ai_Gmail__*", access: "read" }, { name: "mcp__claude_ai_Meta__*", access: "write" }],
       budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 148_200, callsThisMinute: 4 }, storage: { folder: "/Users/you/Projects/brandbrain/.data", autoAssigned: false, count: 6 }, pending: null },
     { origin: "https://prism.app", mode: "ask", models: ["sonnet"], tools: [{ name: "mcp__claude_ai_Higgsfield__*", access: "write" }],
       budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 12_400, callsThisMinute: 1 }, storage: { folder: "~/.relay/storage/prism", autoAssigned: true, count: 0 },
@@ -152,7 +160,6 @@ let lastData: PanelData | null = null; // so tab-change events can re-render the
 
 function render(data: PanelData) {
   if (consentActive) return;
-  if (activeView === "tabsidekick") { lastData = data; return; } // TabSidekick owns the panel; don't clobber it
   lastData = data;
   const online = data.paired && data.reachable;
   const st = $("status"); st.className = "status" + (online ? " on" : "");
@@ -221,118 +228,8 @@ async function renderCurrentSite(data: PanelData) {
     card.append(list);
   }
 
-  // TabSidekick entry: your Claude on THIS page, available on any tab (not just unconnected sites).
-  // Kept below any wrapp suggestion — a wrapp is the richer destination, the sidekick is the always-there
-  // fallback that works everywhere.
-  if (!ownWrapp) {
-    const use = el("button", "usebtn", connected ? "▶ run your Claude on this raw page →" : "this tab doesn’t support switchboard — use it anyway →");
-    use.onclick = () => openTabSidekick(h.replace(/^www\./, ""), data);
-    card.append(use);
-  }
-
   box.append(card);
   sec.hidden = false;
-}
-
-// ---- Unconnected mode: open the TabSidekick view for the active tab ----
-function setView(v: "home" | "tabsidekick") {
-  activeView = v;
-  ($("home") as HTMLElement).hidden = v !== "home";
-  ($("tabsidekick") as HTMLElement).hidden = v !== "tabsidekick";
-}
-function tsRequest(method: string, params?: any): Promise<{ result?: any; error?: any }> {
-  if (!inExtension) return previewRequest(method, params); // design preview: no daemon — simulate
-  return new Promise((res) => chrome.runtime.sendMessage({ type: "tsRequest", method, params }, res));
-}
-function tsExtract(kind: string): Promise<{ ok: boolean; host?: string; data?: any; error?: string }> {
-  if (!inExtension) return Promise.resolve({ ok: true, host: "canva.com", data: PREVIEW_EXTRACT[kind] ?? PREVIEW_EXTRACT.pagetext });
-  return new Promise((res) => chrome.runtime.sendMessage({ type: "tsExtract", kind }, res));
-}
-
-// Representative data so the TabSidekick screen is fully viewable/clickable OUTSIDE the extension
-// (same philosophy as the panel's MOCK) — never used when a real daemon is present.
-const PREVIEW_EXTRACT: Record<string, any> = {
-  selection: { text: "Bold flavors, honest sourcing. A cold-pressed juice built for people who read labels.", title: "Canva", url: "https://canva.com" },
-  pagetext: { text: "# Aamras summer campaign\n\nBold flavors, honest sourcing. A cold-pressed juice built for people who read labels.\n\n- Alphonso mango, nothing added\n- Glass bottles, returnable\n- Delivered cold, same day", title: "Canva", url: "https://canva.com" },
-  metadata: { meta: { title: "Canva — Aamras summer campaign", description: "Design draft for the summer push", ogTitle: "Aamras · Summer", author: "you" } },
-  images: { images: [ { src: previewSwatch("#8B1A1A"), w: 1080, h: 1080, type: "canvas" }, { src: previewSwatch("#F4A000"), w: 1200, h: 628, type: "img" }, { src: previewSwatch("#0D0D0D"), w: 800, h: 800, type: "bg" } ] },
-  form: { fields: [
-    { label: "Full name", name: "name", type: "text", required: true },
-    { label: "Work email", name: "email", type: "email", required: true },
-    { label: "Company", name: "company", type: "text", required: false },
-    { label: "Portfolio / website", name: "url", type: "url", required: false },
-    { label: "Password", name: "password", type: "sensitive:password", required: true },
-    { label: "Message", name: "message", type: "textarea", required: false },
-  ] },
-};
-function previewSwatch(hex: string): string {
-  return "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect width='120' height='120' fill='${hex}'/></svg>`);
-}
-function previewRequest(method: string, params?: any): Promise<{ result?: any; error?: any }> {
-  if (method === "claude_stream") {
-    const streamId = "preview-" + Math.random().toString(36).slice(2);
-    const emit = (d: any) => { for (const cb of deltaListeners) { try { cb({ streamId, ...d }); } catch { /* ignore */ } } };
-    setTimeout(() => emit({ type: "text", text: "Aamras isn’t just juice — it’s Alphonso mango, cold-pressed and bottled in glass, " }), 220);
-    setTimeout(() => emit({ type: "text", text: "delivered cold the day it’s made. For people who actually read the label." }), 560);
-    setTimeout(() => emit({ type: "done", result: { text: "" } }), 820);
-    return Promise.resolve({ result: { streamId } });
-  }
-  if (method === "claude_session") {
-    if (params?.op === "end") return Promise.resolve({ result: { ok: true } });
-    return Promise.resolve({ result: { ok: true, text: "This page is a draft for the Aamras summer campaign — cold-pressed Alphonso mango juice, glass bottles, same-day cold delivery. Ask me to rewrite it, pull the key points, or draft a caption." } });
-  }
-  if (method === "claude_complete") {
-    // Form Assist mapping (preview): echo the sample form's labels, refusing the password field.
-    const mapping = [
-      { field: "Full name", value: "Sameep Rehlan" },
-      { field: "Work email", value: "sameep@stayoften.com" },
-      { field: "Company", value: "Often" },
-      { field: "Portfolio / website", value: "https://drive.google.com/mydeck" },
-      { field: "Password", value: "", sensitive: true },
-      { field: "Message", value: "Hi — I'd love to connect about a collaboration." },
-    ];
-    return Promise.resolve({ result: { text: JSON.stringify(mapping) } });
-  }
-  if (method === "claude_storage") return Promise.resolve({ result: { ok: true } });
-  if (method === "claude_speak") return Promise.resolve({ error: { message: "no local TTS in preview" } });
-  return Promise.resolve({ result: { origin: "tabsidekick@canva.com" } }); // claude_connect / claude_cancel
-}
-
-async function openTabSidekick(host: string, data: PanelData) {
-  const box = $("tabsidekick");
-  const projectName = data.contexts.find((c) => c.id === data.activeProject)?.name ?? null;
-  setView("tabsidekick");
-  box.textContent = "";
-  box.append(el("div", "empty-note", "Asking to use TabSidekick here…"));
-  // First use per host runs the durable consent (it renders inline via the normal consent path); once
-  // granted, this resolves with the grant. Denied/unreachable → fall back home.
-  const r = await tsRequest("claude_connect", {});
-  if (activeView !== "tabsidekick") return; // user navigated away mid-consent
-  if (r.error) {
-    setView("home");
-    void refresh();
-    return;
-  }
-  renderTabSidekick(box, {
-    host, inExtension, tsRequest, tsExtract, onDelta, projectName, readFillContext,
-    onExit: () => { setView("home"); void refresh(); },
-  });
-}
-
-// Read the user's OWN saved info for Form Assist — the personal card + active project, via the
-// trusted control channel (the panel may read the library; an app never can). Values are shown to the
-// user to paste; they are never auto-typed into the page or sent anywhere.
-async function readFillContext(): Promise<string> {
-  if (!inExtension) return "Personal card: {\"fullName\":\"Sameep Rehlan\",\"email\":\"sameep@stayoften.com\",\"phone\":\"+1 555 0100\",\"company\":\"Often\",\"address\":\"1 Market St, SF\",\"notes\":\"portfolio https://drive.google.com/mydeck\"}";
-  try {
-    const c = await control("listContexts");
-    const out: string[] = [];
-    const personal = (c?.contexts ?? []).find((x: any) => (x.kind || "").toLowerCase() === "personal");
-    if (personal) { const g = await control("getContext", { contextId: personal.id }); if (g?.context?.data) out.push("Personal card: " + JSON.stringify(g.context.data)); }
-    const proj = (c?.contexts ?? []).find((x: any) => x.id === c?.activeProject);
-    if (proj) { const g = await control("getContext", { contextId: proj.id }); out.push(`Project "${proj.name}": ` + JSON.stringify(g?.context?.data ?? {}).slice(0, 2000)); }
-    return out.join("\n\n") || "(no saved info yet — add your details in the panel’s Working-on picker)";
-  } catch { return "(couldn’t read your saved info)"; }
 }
 
 // ---- Wrapp store: launch an app in a new tab (a green dot marks ones already connected) ----
@@ -393,9 +290,10 @@ function renderConnectors(data: PanelData) {
     for (const k of keys) { const c = connectorOf([...g.tools].find((t) => connectorOf(t.name)?.key === k)!.name)!; const e = seen.get(k) ?? { label: c.label, color: c.color, hint: c.hint, apps: 0 }; e.apps++; seen.set(k, e); }
   }
   if (!seen.size) { box.append(el("div", "empty-note", "No connectors in use yet. Apps you connect will ask for the ones they need.")); return; }
-  for (const [, c] of seen) {
+  for (const [k, c] of seen) {
     const tile = el("div", "conn");
-    const ic = el("div", "ic", c.label[0]!.toUpperCase()); ic.style.background = c.color;
+    const ic = el("div", "ic"); ic.style.background = c.color;
+    if (LOGOS[k]) ic.innerHTML = LOGOS[k]!; else ic.textContent = c.label[0]!.toUpperCase();
     tile.append(ic, el("div", "nm", c.label), el("div", "use", `${c.apps} app${c.apps === 1 ? "" : "s"}${c.hint ? " · " + c.hint : ""}`));
     box.append(tile);
   }
@@ -436,6 +334,24 @@ function renderApps(data: PanelData) {
     const use = el("div"); use.append(el("div", "k", "Compute today"));
     const bar = el("div", "usebar"); bar.style.marginTop = "7px"; const m = el("div", "m"); const fill = el("i"); Object.assign(fill.style, { width: `${Math.max(3, pct * 100)}%`, background: meterColor(pct) }); m.append(fill);
     bar.append(m, el("span", "v", `${kfmt(g.usage.tokensToday)} / ${kfmt(g.budgets.maxTokensPerDay)}`)); use.append(bar); detail.append(use);
+
+    // model choice — the USER decides which granted model this app runs on, regardless of what it
+    // asks for (BYO-compute). Only meaningful when there's a choice (2+ granted models).
+    if (g.models.length > 1) {
+      const mrow = el("div", "drow");
+      mrow.append(el("span", "k", "Runs on"));
+      const sel = el("select", "modelsel") as HTMLSelectElement;
+      const appOpt = el("option") as HTMLOptionElement; appOpt.value = ""; appOpt.textContent = "App's choice";
+      sel.append(appOpt);
+      for (const m of g.models) { const o = el("option") as HTMLOptionElement; o.value = m; o.textContent = m; sel.append(o); }
+      sel.value = g.modelOverride ?? "";
+      sel.onclick = (e) => e.stopPropagation();
+      sel.onchange = (e) => {
+        e.stopPropagation();
+        if (inExtension) control("setModelOverride", { origin: g.origin, model: sel.value || null }).then(refresh);
+      };
+      mrow.append(sel); detail.append(mrow);
+    }
 
     // trust + disconnect
     const foot = el("div", "drow");
@@ -609,7 +525,7 @@ function openTyped() {
 $("openUrlBtn").addEventListener("click", openTyped);
 $("openUrlInput").addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") openTyped(); });
 // The full Wrapp Store (use-case categories, stacks, search) opens as its own page.
-$("browseStore").addEventListener("click", () => openWrapp("http://localhost:5174/index.html"));
+$("browseStore").addEventListener("click", () => openWrapp("https://thelastprompt.ai/apps/"));
 
 // ---- header menu ----
 $("menuBtn").addEventListener("click", (e) => { e.stopPropagation(); const m = $("menu") as HTMLElement; m.hidden = !m.hidden; });
@@ -644,7 +560,6 @@ if (inExtension) {
     port.onMessage.addListener((m: { type: string; id: string; payload?: any }) => {
       if (m.type === "consent:new") void showConsent(m.id);
       else if (m.type === "state:changed") scheduleRefresh(); // a grant/pick/permission change landed
-      else if (m.type === "delta") { for (const cb of deltaListeners) { try { cb(m.payload); } catch { /* listener error */ } } }
     });
     port.onDisconnect.addListener(() => {
       // Worker went away. Reconnect (which wakes it), then refresh so we catch anything missed while
@@ -671,14 +586,11 @@ async function showConsent(id: string) {
   const box = $("consent");
   ($("home") as HTMLElement).hidden = true;
   ($("pairing") as HTMLElement).hidden = true;
-  ($("tabsidekick") as HTMLElement).hidden = true;
   box.hidden = false;
   renderConsent(box, prompt, (result) => {
     chrome.runtime.sendMessage({ type: "consentDecision", id, result }, () => {
       box.hidden = true; box.textContent = ""; consentActive = false;
-      // Restore whichever surface was underneath — TabSidekick stays put; home re-pulls.
-      if (activeView === "tabsidekick") { ($("tabsidekick") as HTMLElement).hidden = false; }
-      else refresh();
+      refresh();
     });
   });
 }
