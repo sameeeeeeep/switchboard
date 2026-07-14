@@ -16,8 +16,27 @@ var Relay = class {
   connect(scope) {
     return this.provider.request({ method: "claude_connect", params: scope });
   }
+  /** Drop this app's connection for the current page session. The grant persists (a later connect()
+   *  won't reprompt) — this is "disconnect from this tab", not "revoke". Full revoke lives in the panel. */
+  disconnect() {
+    return this.provider.request({ method: "claude_disconnect" });
+  }
   permissions() {
     return this.provider.request({ method: "claude_permissions" });
+  }
+  /** The paired user's public identity (name/avatar), or null if unavailable. Convenience over
+   *  capabilities().user — what the connect chip greets with ("Hi Sameep"). */
+  identity() {
+    return this.capabilities().then((c) => c.user ?? null).catch(() => null);
+  }
+  /** Synthesize speech ON-DEVICE via a local model/engine (no cloud, no connector, no credits).
+   *  Returns audio as a playable data: URL, or null if no local TTS is available.
+   *
+   *    const clip = await relay.speak("hey, it's Maya");
+   *    if (clip) new Audio(clip.audio).play();
+   */
+  speak(text, opts) {
+    return this.provider.request({ method: "claude_speak", params: { text, voice: opts?.voice } }).catch(() => null);
   }
   listTools() {
     return this.provider.request({ method: "claude_listTools" }).then((r) => r.tools);
@@ -98,11 +117,14 @@ var Relay = class {
       publish: (context) => req({ op: "publish", context }).then((r) => r.id),
       list: () => req({ op: "list" }).then((r) => r.contexts ?? []),
       active: () => req({ op: "active" }).then((r) => r.context ?? null),
-      pick: () => req({ op: "pick" }).then((r) => r.context ?? null)
+      pick: () => req({ op: "pick" }).then((r) => r.context ?? null),
+      /** Read ONE context listed via `list()` in full, and make it this app's selection. Needs the
+       *  kind granted at connect (ScopeRequest.contextKinds) — powers in-app brand dropdowns. */
+      use: (id) => req({ op: "use", id }).then((r) => r.context ?? null)
     };
   }
 };
-var DEFAULT_INSTALL_URL = "https://relay.dev/install";
+var DEFAULT_INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 function getRelay(opts) {
   const provider = globalThis[PROVIDER_GLOBAL];
   if (provider?.isRelay)
