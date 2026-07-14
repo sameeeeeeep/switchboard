@@ -127,5 +127,13 @@ const meta = (c: Context): ContextMeta => ({
   swatches: swatchesOf(c.data),
   sourceKind: c.source?.kind,
   rowCount: c.source ? (c.data as any)?.rowCount : undefined,
+  folder: folderOf(c.data),
 });
 const byRecent = (a: ContextMeta, b: ContextMeta) => b.updatedAt - a.updatedAt;
+
+/** A "project" context stores the folder it points at in `data.folder`. Pull it out for the panel
+ *  (so a project shows its path) and so the Broker can bind an app's storage when the project is lent. */
+export function folderOf(data: unknown): string | undefined {
+  const f = (data as any)?.folder;
+  return typeof f === "string" && f.trim() ? f.trim() : undefined;
+}

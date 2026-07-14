@@ -1,3 +1,4 @@
+import { PROVIDER_GLOBAL } from "@relay/protocol";
 import type { Context, ScopeRequest, UserIdentity } from "@relay/protocol";
 import { Relay, whenRelayReady } from "./index.js";
 
@@ -116,6 +117,23 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
   const onDocClick = (e: Event) => { if (menuOpen && !host.contains(e.target as Node)) { menuOpen = false; render(); } };
   document.addEventListener("click", onDocClick);
 
+  // Late-binding provider watch. A cold extension service worker can re-auth its daemon socket and
+  // inject window.claude several seconds AFTER our initial whenRelayReady() probe has already timed
+  // out to "not-installed" (~6s cold vs a 2.5s probe). Without this, the chip stays on "Get
+  // Switchboard" and — because the app wires its model transport off this chip's onConnect — the AI
+  // silently doesn't work until the user manually refreshes (by which point the worker is warm). We
+  // keep a one-shot listener for the provider's `initialized` event so a late arrival auto-upgrades
+  // the chip (and fires onConnect → the app wires up) with no refresh. Genuinely-not-installed
+  // visitors never fire it, so they still see "Get Switchboard" immediately — no spinner regression.
+  const initEvent = `${PROVIDER_GLOBAL}#initialized`;
+  let lateWatching = false;
+  const onLateInit = () => { lateWatching = false; window.removeEventListener(initEvent, onLateInit); if (!destroyed) void refresh(); };
+  function watchForLateProvider() {
+    if (lateWatching || destroyed) return;
+    lateWatching = true;
+    window.addEventListener(initEvent, onLateInit);
+  }
+
   function el(tag: string, cls?: string, text?: string) {
     const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n;
   }
@@ -124,7 +142,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     const my = ++seq;
     const r = await whenRelayReady(2500, { installUrl });
     if (destroyed || my !== seq) return;
-    if (!(r instanceof Relay)) { state = { kind: "not-installed", installUrl }; return render(); }
+    if (!(r instanceof Relay)) { watchForLateProvider(); state = { kind: "not-installed", installUrl }; return render(); }
     relay = r;
     subscribe(r);
     const grant = sessionDisconnected ? null : await r.permissions().catch(() => null);
@@ -256,6 +274,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     destroy: () => {
       destroyed = true;
       document.removeEventListener("click", onDocClick);
+      window.removeEventListener(initEvent, onLateInit);
       host.remove();
     },
   };

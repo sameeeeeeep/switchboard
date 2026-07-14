@@ -56,6 +56,9 @@ export interface ContextMeta {
    *  as live data and shows its row count. */
   sourceKind?: "csv" | "gsheet";
   rowCount?: number;
+  /** For a "project" context: the real folder it points at. Lending the project to an app binds that
+   *  app's storage to this folder (the wrapp reads/writes its actual project files). Metadata only. */
+  folder?: string;
 }
 
 export type ContextOp = "publish" | "active" | "list" | "pick" | "use";

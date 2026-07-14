@@ -20,10 +20,11 @@ interface Grant {
   pending?: { tool: string; args: Record<string, unknown> } | null;
 }
 interface AuditEntry { ts: number; origin: string; method?: string; toolName?: string; kind: string; decision?: string; outcome: string; }
-interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number }
+interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number; folder?: string }
 interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
+import { WRAPPS, host, hostMatch } from "./wrapps.js";
 
 const inExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
 let consentActive = false;
@@ -59,27 +60,7 @@ function connectorOf(tool: string): { key: string; label: string; color: string;
   return { key: raw, label: raw[0]!.toUpperCase() + raw.slice(1), color: "#C8F250", hint: "" };
 }
 
-// ---- wrapp store: a static registry of launchable apps (a real registry replaces this later) ----
-// `alternativeTo` lists sites this wrapp can stand in for — so when you're on a site that hasn't
-// opted into Switchboard (e.g. canva.com), the panel can offer a wrapp you CAN run on your own
-// compute, context and data.
-interface Wrapp { name: string; desc: string; url: string; color: string; alternativeTo?: string[] }
-const WRAPPS: Wrapp[] = [
-  { name: "brandbrain", desc: "Build & operate consumer brands", url: "https://brandbrain.thelastprompt.ai/build", color: "#C8F250" },
-  { name: "ideabrain", desc: "Validate an idea — research, playbook, deck, reach-outs", url: "https://brandbrain.thelastprompt.ai/build?studio=idea", color: "#C8F250" },
-  { name: "AdPulse", desc: "Meta ads post-mortem in 30 seconds", url: "https://adpulse.thelastprompt.ai", color: "#FFB224", alternativeTo: ["adsmanager.facebook.com"] },
-  { name: "AdForge", desc: "URL in, Meta ads out", url: "https://adforge.thelastprompt.ai", color: "#FF6A2B", alternativeTo: ["adcreative.ai"] },
-  { name: "Shelf", desc: "Your inventory, triaged", url: "https://shelf.thelastprompt.ai", color: "#E8B34B" },
-  { name: "Studio", desc: "Product shots without the studio", url: "https://studio.thelastprompt.ai", color: "#E4572E", alternativeTo: ["photoroom.com", "pebblely.com"] },
-  { name: "A-Plus", desc: "Amazon A+ content in one pass", url: "https://aplus.thelastprompt.ai", color: "#F0B429" },
-  { name: "NATAL", desc: "Your chart, read bluntly", url: "https://natal.thelastprompt.ai", color: "#EDEDF5", alternativeTo: ["costarastrology.com"] },
-  { name: "Arcana", desc: "Three cards, no mercy", url: "https://arcana.thelastprompt.ai", color: "#C9A227" },
-  { name: "Cartridge", desc: "Form → playable game", url: "https://cartridge.thelastprompt.ai", color: "#FF2E97" },
-  { name: "Bank", desc: "Notes, tasks & your library — one place that knows things", url: "https://bank.thelastprompt.ai", color: "#8FA3C8", alternativeTo: ["notion.so", "obsidian.md", "www.notion.so"] },
-  { name: "Cast", desc: "AI personas that stay on-model", url: "https://cast.thelastprompt.ai", color: "#FF5A3C", alternativeTo: ["spira.ai", "app.spira.ai", "arcads.ai", "captions.ai"] },
-  { name: "Prism", desc: "Generate on-brand images", url: "https://prism.thelastprompt.ai", color: "#4F46E5", alternativeTo: ["canva.com", "figma.com", "adobe.com", "leonardo.ai"] },
-  { name: "Ad generator", desc: "Ads from your brand", url: "https://adgen.thelastprompt.ai", color: "#EE46BC", alternativeTo: ["business.facebook.com", "ads.tiktok.com"] },
-];
+// The wrapp registry + host helpers live in ./wrapps (shared with the in-page widget).
 function openWrapp(url: string) {
   try { if (inExtension && chrome.tabs?.create) { chrome.tabs.create({ url }); return; } } catch { /* fall through */ }
   window.open(url, "_blank", "noopener");
@@ -92,6 +73,7 @@ const MOCK: PanelData = {
     { id: "haazma", name: "Haazma", kind: "brand", updatedAt: Date.now() - 86_400_000, swatches: ["#F5A623", "#6B2737", "#3D7D4E", "#F5F0E8"] },
     { id: "piqual", name: "Piqual", kind: "brand", updatedAt: Date.now() - 200_000_000, swatches: ["#7AB648", "#F4F1E8", "#1C1C1A", "#C8A84B"] },
     { id: "sheet1", name: "Vendor book (Sheet)", kind: "csv", updatedAt: Date.now() - 600_000, sourceKind: "gsheet", rowCount: 42 },
+    { id: "redline", name: "Redline", kind: "project", updatedAt: Date.now() - 120_000, folder: "~/Projects/redline" },
   ],
   activeProject: "aamras",
   selections: [{ origin: "https://prism.app", contextId: "haazma" }],
@@ -113,7 +95,6 @@ const MOCK: PanelData = {
 const $ = (id: string) => document.getElementById(id)!;
 const el = (tag: string, cls?: string, text?: string) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const kfmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k` : String(n));
-const host = (o: string) => { try { return new URL(o.includes("://") ? o : `https://${o}`).host; } catch { return o; } };
 const meterColor = (pct: number) => (pct < 0.5 ? "var(--lime)" : pct < 0.8 ? "var(--warn)" : "var(--danger)");
 const ago = (ts: number) => { const s = Math.round((Date.now() - ts) / 1000); if (s < 60) return `${s}s ago`; const m = Math.round(s / 60); if (m < 60) return `${m}m ago`; return `${Math.round(m / 60)}h ago`; };
 const short = (name: string) => name.includes("__") ? name.split("__").pop()!.replace(/[-_*]/g, " ").trim() : name;
@@ -191,7 +172,6 @@ async function activeTabHost(): Promise<string | null> {
     return u.host;
   } catch { return null; }
 }
-const hostMatch = (a: string, b: string) => a === b || a.endsWith("." + b) || b.endsWith("." + a);
 
 async function renderCurrentSite(data: PanelData) {
   const sec = $("siteSec") as HTMLElement; const box = $("site"); box.textContent = "";
@@ -427,8 +407,10 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
       item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
       const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
       // No colour swatches in the picker — a context's palette is meaningful inside the app that
-      // uses it, not as decoration here. A live data source keeps its row-count badge (that's status).
+      // uses it, not as decoration here. A live data source keeps its row-count badge (that's status);
+      // a project shows the folder it points at (lending it binds the app's storage there).
       if (c.sourceKind) txt.append(el("span", "badge", `live · ${c.rowCount ?? 0} rows`));
+      else if (c.folder) txt.append(el("div", "path", c.folder));
       item.append(txt);
       if (c.id === tickedId) item.append(el("div", "tick", "✓"));
       item.onclick = () => {
@@ -442,8 +424,43 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
       list.append(item);
     }
   }
+  renderAddProject(data, forOrigin);
   renderAddSheet();
   renderPersonalCard(data);
+}
+
+// "Add a project" — a named context that points at a real folder on disk. Lending it to an app
+// binds that app's storage to the folder (the wrapp reads/writes its actual project files instead
+// of a private sandbox). Panel-authored, like the personal card — the user is the trusted author,
+// so no per-action consent: pointing your own app at your own folder is your call. When the picker
+// is open FOR a specific app, adding a project also lends it to that app in one gesture.
+function renderAddProject(data: PanelData, forOrigin: string | null) {
+  const box = $("addProject"); box.className = "addsrc"; box.textContent = "";
+  const toggle = el("button", "toggle", "＋ Add a project (point an app at a folder)");
+  toggle.onclick = () => (box.className = "addsrc open");
+  const form = el("div", "form");
+  const name = el("input") as HTMLInputElement; name.placeholder = "Name (e.g. Redline)";
+  const folder = el("input") as HTMLInputElement; folder.placeholder = "Folder path (e.g. ~/Projects/redline)";
+  const hint = el("div", "hint", forOrigin
+    ? `The folder is created if it doesn't exist. Added here, it's lent to ${host(forOrigin)} right away — that app reads & writes these files.`
+    : "The folder is created if it doesn't exist. Lend the project to an app and that app reads & writes these files.");
+  const err = el("div", "err");
+  const go = el("button", "go", "Add project");
+  go.onclick = async () => {
+    const n = name.value.trim(), f = folder.value.trim();
+    if (!n || !f) { err.textContent = "Add a name and a folder path."; return; }
+    err.textContent = ""; go.setAttribute("disabled", "true");
+    const r = inExtension
+      ? ((await control("saveContext", { name: n, kind: "project", data: { folder: f } })) as { ok?: boolean; id?: string; error?: string })
+      : { ok: true, id: "mock" };
+    go.removeAttribute("disabled");
+    if (!r?.ok) { err.textContent = r?.error || "Couldn’t add that project."; return; }
+    // In per-app mode, lend the new project to that app immediately (this binds its folder).
+    if (forOrigin && r.id && inExtension) await control("selectContext", { origin: forOrigin, contextId: r.id });
+    (($("picker") as HTMLElement).hidden = true); refresh();
+  };
+  form.append(name, folder, hint, err, go);
+  box.append(toggle, form);
 }
 
 // "Your details" — the personal context card (kind "personal"): name, phone, email, address,

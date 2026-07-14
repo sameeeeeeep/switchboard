@@ -35,6 +35,33 @@
       ],
       "js": ["dist/content.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://thelastprompt.ai/*",
+        "https://*.thelastprompt.ai/*",
+        "https://sameeeeeeep.github.io/*",
+        "http://127.0.0.1/*",
+        "http://localhost/*",
+        "*://adsmanager.facebook.com/*",
+        "*://business.facebook.com/*",
+        "*://ads.tiktok.com/*",
+        "*://adcreative.ai/*", "*://*.adcreative.ai/*",
+        "*://photoroom.com/*", "*://*.photoroom.com/*",
+        "*://pebblely.com/*", "*://*.pebblely.com/*",
+        "*://costarastrology.com/*", "*://*.costarastrology.com/*",
+        "*://notion.so/*", "*://*.notion.so/*",
+        "*://obsidian.md/*", "*://*.obsidian.md/*",
+        "*://spira.ai/*", "*://*.spira.ai/*",
+        "*://arcads.ai/*", "*://*.arcads.ai/*",
+        "*://captions.ai/*", "*://*.captions.ai/*",
+        "*://canva.com/*", "*://*.canva.com/*",
+        "*://figma.com/*", "*://*.figma.com/*",
+        "*://adobe.com/*", "*://*.adobe.com/*",
+        "*://leonardo.ai/*", "*://*.leonardo.ai/*"
+      ],
+      "js": ["dist/widget.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
@@ -49,6 +76,6 @@
       ]
     }
   ],
-  "permissions": ["storage", "tabs", "sidePanel"],
+  "permissions": ["storage", "tabs", "sidePanel", "notifications"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]
 }

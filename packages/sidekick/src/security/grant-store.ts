@@ -73,6 +73,8 @@ export class GrantStore {
       origin,
       mode: prev?.mode ?? "ask", // preserve the user's chosen trust mode across re-consents; default ask
       models: approved.models,
+      // Preserve the user's model override across re-consents, but only if it's still granted.
+      modelOverride: prev?.modelOverride && approved.models.includes(prev.modelOverride) ? prev.modelOverride : undefined,
       tools: approved.tools,
       budgets: { ...DEFAULT_BUDGETS, ...(approved.budgets ?? {}) },
       contextKinds: approved.contextKinds?.length ? approved.contextKinds : undefined,
@@ -83,6 +85,18 @@ export class GrantStore {
     this.grants.set(origin, grant);
     this.persist();
     return grant;
+  }
+
+  /** Set (or clear, with null) the user's model override for an origin. Must be a granted model;
+   *  an ungranted or unknown model is rejected. User-driven from the panel, out of band. */
+  setModelOverride(origin: string, model: string | null): OriginGrant | null {
+    const g = this.grants.get(origin);
+    if (!g) return null;
+    if (model && !g.models.includes(model)) return null; // can only override to a granted model
+    g.modelOverride = model ?? undefined;
+    g.updatedAt = Date.now();
+    this.persist();
+    return g;
   }
 
   /** Set an origin's trust mode (ask/trust/readonly). User-driven, out of band. */

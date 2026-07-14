@@ -15,6 +15,7 @@ const options = {
     background: "src/background.ts", // MV3 service worker
     content: "src/content.ts",       // ISOLATED-world content script
     inject: "src/inject.ts",         // MAIN-world provider injection
+    widget: "src/widget.ts",         // in-page glanceable widget (competitor sites)
     sidepanel: "src/sidepanel.ts",   // the primary control surface
   },
   bundle: true,

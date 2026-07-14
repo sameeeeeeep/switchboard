@@ -43,6 +43,17 @@
       "port": 5178
     },
     {
+      "name": "brandbrain-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/sameeprehlan/Documents/Projects/brandbrain",
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
       "name": "tlp",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
