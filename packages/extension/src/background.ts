@@ -24,6 +24,20 @@ const pendingConsent = new Map<string, { resolve: (r: unknown) => void }>(); // 
 const pendingControl = new Map<string, { resolve: (r: unknown) => void }>(); // control call id → resolver
 const consentBodies = new Map<string, { kind: string; body: unknown }>();    // prompt id → data for the window
 
+/** Notification id = this prefix + the consent id, so a toast button click maps back to its prompt. */
+const NOTIF_PREFIX = "relay-consent:";
+
+/** Resolve an open consent (from the panel OR a toast button) with the daemon's expected result.
+ *  Returns whether a pending prompt was actually waiting. `openConsent`'s `await` does the rest
+ *  (drops the body, clears the badge/toast, replies to the daemon). */
+function resolveConsent(id: string, result: unknown): boolean {
+  const p = pendingConsent.get(id);
+  if (!p) return false;
+  pendingConsent.delete(id);
+  p.resolve(result);
+  return true;
+}
+
 async function getToken(): Promise<string | null> {
   const { pairingToken } = await chrome.storage.local.get("pairingToken");
   return pairingToken ?? null;
@@ -77,7 +91,12 @@ function ensureSocket(): Promise<boolean> {
           }
         }
       };
-      socket.onclose = () => { authed = false; socket = null; ready = null; clearTimeout(timer); finish(false); };
+      socket.onclose = () => {
+        authed = false; socket = null; ready = null; clearTimeout(timer); finish(false);
+        // Auto-reconnect while any page is attached (daemon restart, transient drop) so events
+        // (deltas, permissionsChanged) resume without waiting for the next page request.
+        if (pagePorts.size > 0) setTimeout(() => { void ensureSocket(); }, 1000);
+      };
       socket.onerror = () => { /* onclose follows */ };
     });
   })();
@@ -112,9 +131,12 @@ function updateBadge() {
   } catch { /* ignore */ }
 }
 
-/** A daemon consent prompt. It ALWAYS shows in the side panel — never a separate window. If the
- *  panel is open, we push it there; if closed, we best-effort open the panel and badge the icon so
- *  the user clicks it. Awaits the user's decision and replies to the daemon (fail-closed on timeout). */
+/** A daemon consent prompt. If the side panel is open, it renders there (the richest surface). If
+ *  closed, a simple yes/no prompt (a write, or a folder bind) becomes a desktop TOAST with
+ *  Approve/Deny — so the user never has to keep the panel docked or even open it. Prompts that need
+ *  choices (connect's tool checkboxes, context-pick's radios) can't collapse to two buttons, so they
+ *  fall back to opening the panel. The lime badge is always set as a backstop. Awaits the user's
+ *  decision and replies to the daemon (fail-closed on timeout). */
 async function openConsent(id: string, kind: string, body: unknown): Promise<void> {
   consentBodies.set(id, { kind, body });
   updateBadge();
@@ -122,12 +144,48 @@ async function openConsent(id: string, kind: string, body: unknown): Promise<voi
   if (panelPort) {
     try { panelPort.postMessage({ type: "consent:new", id }); } catch { /* panel gone; badge stands */ }
   } else {
-    void tryOpenPanel(); // may need a user gesture; if blocked, the lime badge guides the click
+    const toast = consentToast(kind, body);
+    if (toast) showConsentToast(id, toast);   // yes/no prompt → decide right from the notification
+    else void tryOpenPanel();                 // connect / context-pick need the full panel UI
   }
   const result = await decision;
   consentBodies.delete(id);
   updateBadge();
+  try { chrome.notifications?.clear(NOTIF_PREFIX + id); } catch { /* no-op if it was never shown */ }
   if (socket && authed) socket.send(JSON.stringify({ type: "reply", id, result }));
+}
+
+/** The two consent kinds that reduce to a single Approve/Deny — safe to show as a toast. `connect`
+ *  and `context-pick` carry choices (which tools, which brand) and are deliberately excluded. */
+function consentToast(kind: string, body: any): { title: string; message: string } | null {
+  const h = (o: string) => { try { return new URL(String(o).includes("://") ? o : `https://${o}`).host; } catch { return String(o); } };
+  if (kind === "consent:write") {
+    const name = String(body?.tool?.name ?? "an action");
+    const short = name.includes("__") ? name.split("__").pop()! : name;
+    return { title: "Switchboard — approve action", message: `${h(body?.origin ?? "")} wants to run ${short}` };
+  }
+  if (kind === "consent:storage-bind") {
+    return { title: "Switchboard — folder access", message: `${h(body?.origin ?? "")} wants to read & write ${body?.path ?? "a folder"}` };
+  }
+  return null;
+}
+
+/** Show a consent as a desktop notification with Approve/Deny buttons. If notifications are
+ *  unavailable (API absent, or the OS denied them), fall back to opening the panel — the badge
+ *  already marks the pending prompt either way. */
+function showConsentToast(id: string, toast: { title: string; message: string }): void {
+  if (!chrome.notifications) { void tryOpenPanel(); return; }
+  try {
+    chrome.notifications.create(NOTIF_PREFIX + id, {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+      title: toast.title,
+      message: toast.message,
+      buttons: [{ title: "Approve" }, { title: "Deny" }],
+      requireInteraction: true, // a consent shouldn't auto-dismiss out from under the user
+      priority: 2,
+    }, () => { if (chrome.runtime.lastError) void tryOpenPanel(); });
+  } catch { void tryOpenPanel(); }
 }
 
 /** Best-effort: open the side panel for the focused window. Chrome may require a user gesture; if
@@ -140,8 +198,39 @@ async function tryOpenPanel() {
   } catch { /* gesture required — the badge signals the pending request instead */ }
 }
 
+/** The minimal, origin-scoped status the in-page widget shows on a wrapp site: is Switchboard set
+ *  up, is THIS page connected, what's lent to it, and today's compute. Deliberately narrow — the
+ *  widget never receives the whole grant list or library; only this origin's own connection info
+ *  (which the page already earned by connecting). Sensitive controls stay in the panel/toast. */
+async function widgetState(sender: chrome.runtime.MessageSender): Promise<Record<string, unknown>> {
+  const origin = sender.origin ?? (sender.url ? new URL(sender.url).origin : "");
+  const token = await getToken();
+  const reachable = token ? await ensureSocket() : false;
+  if (!reachable) return { paired: !!token, reachable: false, connected: false };
+  const g = await control("listGrants") as { grants?: Array<{ origin: string; mode?: string; usage?: { tokensToday?: number } }> };
+  const grant = (g?.grants ?? []).find((x) => x.origin === origin) ?? null;
+  let lentName: string | null = null;
+  if (grant) {
+    const c = await control("listContexts") as { contexts?: Array<{ id: string; name: string }>; activeProject?: string | null; selections?: Array<{ origin: string; contextId: string | null }> };
+    const sel = (c?.selections ?? []).find((s) => s.origin === origin)?.contextId ?? c?.activeProject ?? null;
+    lentName = (c?.contexts ?? []).find((x) => x.id === sel)?.name ?? null;
+  }
+  return { paired: true, reachable: true, connected: !!grant, mode: grant?.mode ?? null, lentName, tokensToday: grant?.usage?.tokensToday ?? 0 };
+}
+
+/** The widget's "Manage" button → open the full control surface for the sensitive actions. Prefer the
+ *  docked side panel on the sender's window; if Chrome refuses (gesture didn't cross the message
+ *  boundary), fall back to the panel as its own tab so the button always does something. */
+async function openPanelFor(sender: chrome.runtime.MessageSender): Promise<void> {
+  const windowId = sender.tab?.windowId;
+  try {
+    if (windowId != null) { await chrome.sidePanel.open({ windowId }); return; }
+  } catch { /* gesture required — fall through */ }
+  try { await chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel.html") }); } catch { /* ignore */ }
+}
+
 // ---- messages from the popup + consent windows ----
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
       case "getStatus": {
@@ -152,11 +241,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ paired: !!token, reachable });
         break;
       }
+      case "widgetState": sendResponse(await widgetState(sender)); break;
+      case "openPanel": await openPanelFor(sender); sendResponse({ ok: true }); break;
       case "pair": await chrome.storage.local.set({ pairingToken: msg.token }); await ensureSocket(); sendResponse({ ok: true }); break;
+      case "openUrl": { const url = String(msg.url ?? ""); if (/^https?:\/\//i.test(url)) chrome.tabs.create({ url }); sendResponse({ ok: true }); break; }
       case "getConsentPrompt": sendResponse(consentBodies.get(msg.id) ?? null); break;
       case "consentDecision": {
-        const p = pendingConsent.get(msg.id); pendingConsent.delete(msg.id);
-        p?.resolve(msg.result);
+        resolveConsent(msg.id, msg.result);
         sendResponse({ ok: true });
         break;
       }
@@ -214,7 +305,20 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-// Clicking the toolbar icon opens the side panel (the primary control surface).
+// ---- consent toasts: decide a write/bind straight from the notification, panel closed ----
+// A button click IS the human gesture the consent model requires — the model can never reach here.
+chrome.notifications?.onButtonClicked.addListener((notifId, btnIdx) => {
+  if (!notifId.startsWith(NOTIF_PREFIX)) return;
+  resolveConsent(notifId.slice(NOTIF_PREFIX.length), btnIdx === 0); // 0 = Approve → true, 1 = Deny → false
+  try { chrome.notifications.clear(notifId); } catch { /* ignore */ }
+});
+// Clicking the toast body (not a button) opens the panel for the full detail, leaving it undecided.
+chrome.notifications?.onClicked.addListener((notifId) => {
+  if (notifId.startsWith(NOTIF_PREFIX)) void tryOpenPanel();
+});
+
+// The toolbar icon toggles the docked side panel. The glanceable surface is the in-page widget
+// (content script) — it rides IN the page so it can't be buried the way a detached window is.
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
 
 // Warm the socket on startup if already paired.

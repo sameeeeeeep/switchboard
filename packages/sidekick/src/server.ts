@@ -32,7 +32,7 @@ import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError } from "./storage/store.js";
-import { ContextLibrary } from "./context/library.js";
+import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
@@ -82,6 +82,9 @@ const BUILTIN_TOOLS: Array<{ name: string; server: string; description: string }
   { name: "WebSearch", server: "builtin", description: "Search the web" },
 ];
 
+/** App-level keepalive frame (Chrome resets the MV3 idle timer on received WS messages). */
+const PING_MSG = JSON.stringify({ type: "ping" });
+
 export class Broker implements ConsentPrompter {
   private wss: WebSocketServer | null = null;
   private extensions = new Set<WebSocket>();
@@ -93,6 +96,8 @@ export class Broker implements ConsentPrompter {
   private promptQueue = new Map<string, { kind: string; body: unknown }>();
   /** In-flight streams for cancellation. */
   private streams = new Map<string, AbortController>();
+  /** Keeps every connected extension's MV3 worker alive (see start()). */
+  private heartbeat: NodeJS.Timeout | null = null;
 
   constructor(private deps: BrokerDeps) {}
 
@@ -138,6 +143,18 @@ export class Broker implements ConsentPrompter {
       });
       ws.on("close", () => this.extensions.delete(ws));
     });
+    // HEARTBEAT — the fix for "attached but not flowing". The extension is an MV3 service worker
+    // that Chrome evicts after ~30s of silence; a long model "think" produces no deltas, the worker
+    // dies, its socket drops, and every later delta broadcasts into the void while the page waits
+    // forever. An app-level ping every 20s keeps message traffic flowing, which resets Chrome's SW
+    // idle timer (WS activity extends worker lifetime), so the pipe stays alive through long streams.
+    this.heartbeat = setInterval(() => {
+      for (const ws of this.extensions) {
+        if (ws.readyState === ws.OPEN) { try { ws.send(PING_MSG); } catch { this.extensions.delete(ws); } }
+        else this.extensions.delete(ws);
+      }
+    }, 20_000);
+    this.heartbeat.unref?.();
     console.error(`[relay] sidekick listening on ws://${host}:${port} (paired-only)`);
   }
 
@@ -302,6 +319,15 @@ export class Broker implements ConsentPrompter {
         if (g) { this.deps.audit.record({ origin: g.origin, kind: "request", method: `mode:${g.mode}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g }); }
         return { ok: !!g, grant: g };
       }
+      case "setModelOverride": {
+        // Per-site USER model choice: run this granted model regardless of what the app asks for
+        // (null clears it → honor the app's request). Rejected if the model isn't granted.
+        const origin = String(args?.origin ?? "");
+        const model = args?.model == null ? null : String(args.model);
+        const g = this.deps.grants.setModelOverride(origin, model);
+        if (g) { this.deps.audit.record({ origin, kind: "request", method: `model-override:${model ?? "(cleared)"}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g }); }
+        return { ok: !!g, grant: g };
+      }
       case "listContexts":
         // The WHOLE library — panel-only (an app never gets this). Powers the project switcher.
         return {
@@ -312,7 +338,24 @@ export class Broker implements ConsentPrompter {
       case "selectContext": {
         // The user lends a context to ONE app (or clears it with null). Selection = consent, out of band.
         const origin = String(args?.origin ?? "");
+        // A "project" context carries a folder. Lending it to an app points the app's storage AT that
+        // folder — the wrapp reads/writes its real project files, not the private sandbox. Do this
+        // BEFORE mutating the selection so we can tell what the app was lent previously.
+        const prevContextId = this.deps.contexts.selectionFor(origin) ?? null;
+        const prevFolder = folderOf(this.deps.contexts.get(prevContextId ?? "")?.data);
+        const nextFolder = folderOf(this.deps.contexts.get(String(args?.contextId ?? ""))?.data);
         this.deps.contexts.select(origin, args?.contextId ?? null);
+        if (nextFolder) {
+          // A malformed project folder must not crash the control channel — fail the lend cleanly and
+          // revert the selection so the app isn't left pointing at a folder we couldn't bind.
+          try {
+            this.deps.storage.bind(origin, nextFolder);
+          } catch (err) {
+            this.deps.contexts.select(origin, prevContextId);
+            this.deps.audit.record({ origin, kind: "request", method: "context:select", outcome: "error", note: String((err as Error)?.message || err).slice(0, 160) });
+            return { ok: false, error: `Couldn't point this app at that project's folder — ${String((err as Error)?.message || err).slice(0, 160)}` };
+          }
+        } else if (prevFolder) this.deps.storage.unbind(origin); // left a folder-project → back to sandbox
         this.deps.audit.record({ origin, kind: "request", method: `context:${args?.contextId ? "select" : "clear"}`, outcome: "ok" });
         const g = this.deps.grants.get(origin);
         if (g) this.broadcast({ type: "event", event: "permissionsChanged", payload: g });
@@ -508,7 +551,10 @@ export class Broker implements ConsentPrompter {
       }
     } catch (err) {
       if (err instanceof StorageKeyError) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, err.message);
-      throw err;
+      if (err instanceof ProviderError) throw err;
+      // Surface the REAL reason (e.g. a bad bound folder) instead of a generic "internal error".
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_storage__${req.op}`, outcome: "denied", note: String((err as Error)?.message || err).slice(0, 160) });
+      throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, `storage ${req.op} failed: ${String((err as Error)?.message || err).slice(0, 160)}`);
     }
   }
 
@@ -627,7 +673,16 @@ export class Broker implements ConsentPrompter {
       .map((t) => ({ ...t, access: classifyTool(t.name) }));
   }
 
+  /** Apply the user's per-origin model override: if set, run THAT model instead of the one the app
+   *  asked for (the app never learns; it just runs on the user's chosen backend). The override is
+   *  always a granted model (enforced at set-time), so assertCompletionAllowed still passes. */
+  private withModelOverride(origin: string, params: CompletionParams): CompletionParams {
+    const override = this.deps.grants.get(origin)?.modelOverride;
+    return override ? { ...params, model: override } : params;
+  }
+
   private async complete(origin: string, params: CompletionParams) {
+    params = this.withModelOverride(origin, params);
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
@@ -649,6 +704,7 @@ export class Broker implements ConsentPrompter {
   }
 
   private async startStream(origin: string, params: CompletionParams): Promise<{ streamId: string }> {
+    params = this.withModelOverride(origin, params);
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
@@ -665,14 +721,21 @@ export class Broker implements ConsentPrompter {
       emit,
       signal: controller.signal,
     };
-    // Fire and forget; deltas flow as events keyed by streamId.
+    // Fire and forget; deltas flow as events keyed by streamId. Lifecycle is LOGGED so a hung or
+    // failed backend shows up in sidekick.log instead of a silent, undiagnosable stall.
+    const t0 = Date.now();
+    console.error(`[stream] ${streamId.slice(0, 8)} start origin=${origin} model=${params.model ?? backend.id} agentic=${!!params.agentic} prompt=${(params.prompt ?? "").length}ch`);
     backend.run(params, ctx)
       .then((out) => {
         const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(out.text);
         this.deps.gate.recordCompletion(origin, tokens);
+        console.error(`[stream] ${streamId.slice(0, 8)} done in ${((Date.now() - t0) / 1000).toFixed(1)}s text=${out.text.length}ch`);
         emit({ type: "done", result: { text: out.text, model: params.model ?? backend.id, usage: out.usage, stopReason: "end" } });
       })
-      .catch((err) => emit({ type: "error", error: { code: String(BYOPErrorCode.BACKEND_ERROR), message: String(err).slice(0, 160) } }))
+      .catch((err) => {
+        console.error(`[stream] ${streamId.slice(0, 8)} ERROR after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${String(err).slice(0, 200)}`);
+        emit({ type: "error", error: { code: String(BYOPErrorCode.BACKEND_ERROR), message: String(err).slice(0, 160) } });
+      })
       .finally(() => this.streams.delete(streamId));
     return { streamId };
   }

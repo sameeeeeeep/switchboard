@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import type { StorageInfo } from "@relay/protocol";
 
 /**
@@ -28,6 +28,15 @@ export interface StorageBinding {
 /** Keys map 1:1 to `<key>.json` files, so they must be plain filenames — no separators, no dots
  *  leading a traversal. Allow a conservative filename alphabet only. */
 const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/** LITERAL dialects: a key ending in one of these extensions maps to that exact file on disk,
+ *  instead of the classic `<key>.json`. `.md` came first (a bound folder doubles as an Obsidian
+ *  vault); the web-text set lets a wrapp bind a real project folder and read/write its actual
+ *  source — e.g. Redline opens `index.html` and edits it in place (the "warm thread"). Every one
+ *  of these is a plain UTF-8 text file; no binary, no execution — the daemon only ever reads/writes
+ *  bytes, isolation is still structural (KEY_RE forbids separators; the path must sit in the folder). */
+const LITERAL_EXTS = [".md", ".html", ".htm", ".css", ".js", ".mjs", ".svg", ".txt", ".csv", ".xml", ".json5"];
+const isLiteralKey = (key: string) => LITERAL_EXTS.some((ext) => key.endsWith(ext));
 
 /** Turn an origin like "https://brandbrain.localhost:5174" into a safe, collision-resistant dirname. */
 export function slugOrigin(origin: string): string {
@@ -83,23 +92,44 @@ export class StorageStore {
    *  the user has authorized `folder`. Creates it if absent so first-write works. */
   bind(origin: string, folder: string): StorageBinding {
     const abs = resolve(expandTilde(folder));
-    mkdirSync(abs, { recursive: true });
+    // A folder must be an absolute path we can actually create. A malformed path (e.g. missing the
+    // home prefix, so it resolves under "/") throws EACCES/ENOENT from mkdir — catch it and surface a
+    // clean StorageBindError instead of letting a raw fs error bubble up and wedge the control channel.
+    if (!isAbsolute(abs)) throw new StorageBindError(folder, "path is not absolute");
+    try { mkdirSync(abs, { recursive: true }); }
+    catch (err) { throw new StorageBindError(abs, (err as NodeJS.ErrnoException)?.code || String((err as Error)?.message || err)); }
     const binding: StorageBinding = { folder: abs, boundAt: Date.now() };
     this.bindings.set(origin, binding);
     this.persist();
     return binding;
   }
 
+  /** Drop an origin's folder binding, reverting it to the auto-assigned private sandbox. Panel-driven
+   *  (the user stops pointing an app at a real folder). Returns whether a binding was actually removed. */
+  unbind(origin: string): boolean {
+    const had = this.bindings.delete(origin);
+    if (had) this.persist();
+    return had;
+  }
+
+  /** The explicit binding folder for an origin (resolved), or null if it's on the auto sandbox. Lets
+   *  the Broker tell whether a binding is the one it set before reverting it. */
+  boundFolder(origin: string): string | null {
+    const b = this.bindings.get(origin);
+    return b ? b.folder : null;
+  }
+
   /** Resolve a key to its file, refusing any key that would escape the folder.
-   *  Two record dialects share one namespace: a key ending in `.md` maps to that LITERAL markdown
-   *  file (so a bound folder doubles as a plain notes vault — Obsidian et al. read/write the same
-   *  files); every other key keeps the classic `<key>.json`. Isolation is unchanged: KEY_RE forbids
-   *  separators, and the resolved path must still sit directly inside the folder. */
+   *  Two record dialects share one namespace: a key ending in a LITERAL extension (`.md`, `.html`,
+   *  `.css`, … — see LITERAL_EXTS) maps to that exact file on disk (so a bound folder doubles as a
+   *  real vault / project source — Obsidian reads the .md, Redline edits the .html); every other key
+   *  keeps the classic `<key>.json`. Isolation is unchanged: KEY_RE forbids separators, and the
+   *  resolved path must still sit directly inside the folder. */
   private fileFor(origin: string, key: string): string {
     if (!KEY_RE.test(key)) throw new StorageKeyError(key);
     const { folder } = this.folderFor(origin);
     const root = resolve(folder);
-    const name = key.endsWith(".md") ? key : `${key}.json`;
+    const name = isLiteralKey(key) ? key : `${key}.json`;
     const abs = resolve(root, name);
     // Defense-in-depth beyond KEY_RE: the resolved file must sit directly inside the folder.
     if (abs !== join(root, name) || !abs.startsWith(root + sep)) throw new StorageKeyError(key);
@@ -115,8 +145,13 @@ export class StorageStore {
   set(origin: string, key: string, value: string): void {
     const file = this.fileFor(origin, key);
     const { folder } = this.folderFor(origin);
-    mkdirSync(resolve(folder), { recursive: true });
-    writeFileSync(file, value, { mode: 0o600 });
+    try {
+      mkdirSync(resolve(folder), { recursive: true });
+      writeFileSync(file, value, { mode: 0o600 });
+    } catch (err) {
+      // Almost always a broken bound folder (missing/relative path). Give a clear reason, not ENOENT.
+      throw new StorageBindError(folder, (err as NodeJS.ErrnoException)?.code || String((err as Error)?.message || err));
+    }
   }
 
   delete(origin: string, key: string): boolean {
@@ -130,8 +165,8 @@ export class StorageStore {
     const { folder } = this.folderFor(origin);
     if (!existsSync(folder)) return [];
     return readdirSync(folder)
-      .filter((f) => f.endsWith(".json") || f.endsWith(".md"))
-      .map((f) => (f.endsWith(".json") ? f.slice(0, -5) : f)) // .md keys keep their extension
+      .filter((f) => f.endsWith(".json") || isLiteralKey(f))
+      .map((f) => (f.endsWith(".json") ? f.slice(0, -5) : f)) // literal keys (.md/.html/…) keep their extension
       .filter((k) => KEY_RE.test(k))
       .sort();
   }
@@ -147,5 +182,14 @@ export class StorageKeyError extends Error {
   constructor(key: string) {
     super(`invalid storage key: ${JSON.stringify(key).slice(0, 40)}`);
     this.name = "StorageKeyError";
+  }
+}
+
+/** Thrown when a bind folder can't be created (malformed/relative path, permission denied). The Broker
+ *  turns it into a clean failure instead of letting a raw fs error wedge the control channel. */
+export class StorageBindError extends Error {
+  constructor(folder: string, reason: string) {
+    super(`can't bind folder ${JSON.stringify(folder).slice(0, 120)}: ${reason}`);
+    this.name = "StorageBindError";
   }
 }
