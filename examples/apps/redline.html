@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redline — review & finalize a page, on your own Claude</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* REDLINE — review a landing page the brandbrain way. The real page is the canvas; the wrapp
+         is a docked sidebar. You comment on an element; your Claude returns a DECISION — 2–3 option
+         cards, one recommended; you steer, then LOCK, and the warm-thread edit writes to the file.
+         House "Atlas cockpit" system: near-black surfaces, one lime accent, Bricolage + Hanken +
+         Spline mono, sentence case, no decoration for its own sake. */
+      :root {
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --accent: #C8F250; --accent-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E; --blue: #7DE0FF;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; height: 100%; }
+      body { background: var(--page); color: var(--ink); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      button { font-family: inherit; }
+      .kicker { font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
+
+      .app { display: flex; flex-direction: column; height: 100vh; }
+      header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 13px 20px; border-bottom: 1px solid var(--edge-soft); flex: none; }
+      .word { font: 700 20px/1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
+      .word em { font-style: normal; color: var(--accent); }
+      .word .mk { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); box-shadow: 0 0 14px rgba(200,242,80,.4); position: relative; }
+      .word .mk::after { content: ""; position: absolute; left: 5px; right: 5px; top: 10px; height: 2px; background: var(--page); }
+      .proj-bar { display: flex; align-items: center; gap: 8px; font: 400 12px/1 var(--mono); color: var(--ink-faint); flex-wrap: wrap; }
+      .proj-bar .path { color: var(--ink-sec); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      select, .mini { font: 500 11.5px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 8px; color: var(--ink-sec); padding: 7px 10px; cursor: pointer; outline: none; }
+      select:hover, .mini:hover { border-color: var(--accent); color: var(--ink); }
+      #chip-dock { margin-left: auto; }
+
+      .work { flex: 1; display: grid; grid-template-columns: 1fr 400px; min-height: 0; transition: grid-template-columns .18s ease; }
+      .work.collapsed { grid-template-columns: 1fr 0; }
+      @media (max-width: 860px) { .work { grid-template-columns: 1fr 340px; } }
+
+      /* canvas: the real page */
+      .canvas { position: relative; min-width: 0; background: var(--inset); display: flex; flex-direction: column; }
+      .canvas-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--edge-soft); flex: none; }
+      .toggle { font: 500 11px/1 var(--mono); background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; color: var(--ink-dim); padding: 7px 11px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .toggle:hover { color: var(--ink); }
+      .toggle.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+      .grow { flex: 1; }
+      .frame-wrap { flex: 1; position: relative; overflow: hidden; }
+      iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+      iframe.mobile { width: 400px; margin: 0 auto; display: block; box-shadow: 0 0 0 1px var(--edge); }
+      .pick-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--accent); color: var(--page); font: 600 12px/1 var(--sans); padding: 9px 15px; border-radius: 999px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.6); pointer-events: none; z-index: 20; }
+
+      /* connect / open stage over the canvas */
+      .stage { position: absolute; inset: 0; display: grid; place-items: center; padding: 30px; z-index: 30; background: var(--inset); }
+      .stage .card { max-width: 470px; text-align: center; }
+      .stage h1 { font: 700 clamp(1.6rem, 3vw, 2.3rem)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
+      .stage h1 em { font-style: normal; color: var(--accent); }
+      .stage p { color: var(--ink-sec); margin: 0 0 22px; font-size: 14.5px; }
+      .primary { font: 600 13.5px/1 var(--sans); border-radius: 10px; padding: 12px 18px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--page); transition: filter .15s, opacity .15s; }
+      .primary:hover { filter: brightness(1.08); }
+      .primary:disabled { opacity: .5; cursor: default; }
+      .steps { margin: 22px 0 0; text-align: left; font: 400 12.5px/1.9 var(--mono); color: var(--ink-faint); }
+      .steps b { color: var(--accent); font-weight: 500; }
+
+      /* the wrapp: docked sidebar */
+      .side { background: var(--page); border-left: 1px solid var(--edge-soft); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+      .side-head { display: flex; align-items: center; gap: 10px; padding: 13px 16px 12px; border-bottom: 1px solid var(--edge-soft); flex: none; }
+      .side-head .t { font: 600 14px/1 var(--display); letter-spacing: -0.01em; }
+      .side-head .count { font: 500 10.5px/1 var(--mono); color: var(--ink-faint); }
+      .head-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+      .act.send-all { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); color: var(--accent); }
+      .act.send-all:hover { background: var(--accent-soft); }
+      .act { font: 500 11.5px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 7px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: border-color .15s, color .15s; }
+      .act:hover { border-color: var(--accent); color: var(--ink); }
+      .act:disabled { opacity: .45; cursor: default; }
+      .side-body { flex: 1; overflow-y: auto; padding: 14px 14px 70px; }
+      .side-body::-webkit-scrollbar { width: 9px; } .side-body::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 9px; }
+
+      .empty { color: var(--ink-faint); font: 400 12.5px/1.8 var(--mono); text-align: center; padding: 44px 12px; }
+      .empty b { color: var(--ink-dim); font-weight: 500; }
+
+      /* a comment = a decision block */
+      .dec { border: 1px solid var(--edge); border-radius: 16px; background: var(--panel); margin-bottom: 12px; overflow: hidden; }
+      .dec.active { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
+      .dec.locked { border-color: color-mix(in srgb, var(--accent) 40%, var(--edge)); background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+      .dec-head { display: flex; gap: 9px; padding: 12px 13px 10px; cursor: pointer; }
+      .dec-num { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--page); font: 700 11px/1 var(--sans); display: grid; place-items: center; flex: none; margin-top: 1px; }
+      .dec-num.done { background: var(--ok); }
+      .dec-main { min-width: 0; flex: 1; }
+      .dec-target { font: 500 10px/1.4 var(--mono); letter-spacing: .04em; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .dec-snip { font: 400 12.5px/1.45 var(--sans); color: var(--ink-sec); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .dec-x { background: none; border: 0; color: var(--ink-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; flex: none; }
+      .dec-x:hover { color: var(--danger); }
+      .dec-body { padding: 0 13px 13px; }
+
+      textarea { width: 100%; background: var(--inset); color: var(--ink); border: 1px solid var(--edge); border-radius: 10px; padding: 10px 12px; outline: none; font: 400 13px/1.55 var(--sans); resize: vertical; min-height: 54px; }
+      textarea:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+
+      .gen-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+      .sendhint { font: 500 10.5px/1 var(--mono); color: var(--ink-faint); }
+
+      /* status / grounding line while researching */
+      .researching { display: flex; align-items: center; gap: 8px; margin-top: 12px; font: 500 11.5px/1.4 var(--mono); color: var(--ink-dim); }
+      .scan { position: relative; width: 26px; height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; }
+      .scan::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scan 1.1s linear infinite; }
+      @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+      .err { color: var(--danger); font: 400 12px/1.6 var(--mono); margin-top: 10px; }
+
+      /* option cards (the brandbrain atom) */
+      .opts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+      .opt { position: relative; border: 1px solid var(--edge); background: var(--inset); border-radius: 14px; padding: 13px 14px 13px; cursor: pointer; transition: border-color .15s, background .15s; }
+      .opt:hover { border-color: var(--edge-soft); }
+      .opt.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, var(--inset)); }
+      .opt .check { position: absolute; right: 11px; top: 11px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--edge); display: grid; place-items: center; color: transparent; font: 700 11px/1 var(--sans); }
+      .opt.sel .check { border-color: var(--accent); background: var(--accent); color: var(--page); }
+      .opt .rec { display: inline-block; font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 999px; padding: 3px 7px; margin-bottom: 7px; }
+      .opt .o-label { font: 600 13.5px/1.3 var(--display); color: var(--ink); padding-right: 22px; }
+      .opt .o-text { font: 400 13px/1.5 var(--sans); color: var(--ink-sec); margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
+      .opt .o-svg { background: #fff; border-radius: 8px; padding: 8px; margin-top: 8px; overflow: auto; }
+      .opt .o-svg svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+      .opt .o-img { width: 100%; border-radius: 8px; border: 1px solid var(--edge); display: block; margin-top: 8px; }
+
+      /* steer input */
+      .steer { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+      .steer .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .steer .chip { font: 500 11px/1 var(--sans); border: 1px solid var(--edge); background: var(--panel); color: var(--ink-sec); border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+      .steer .chip:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); color: var(--ink); }
+      .steer .row { display: flex; gap: 8px; align-items: center; }
+      .steer .box { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--edge); background: var(--panel); border-radius: 10px; padding: 8px 11px; }
+      .steer .box:focus-within { border-color: var(--edge-soft); }
+      .steer .box svg { flex: none; }
+      .steer input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--ink); font: 400 12.5px/1.4 var(--sans); }
+      .steer input::placeholder { color: var(--ink-dim); }
+      .steer .send { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 600 12px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 9px; padding: 9px 12px; cursor: pointer; }
+      .steer .send:disabled { opacity: .4; cursor: default; }
+
+      /* footer of a ready decision: lock */
+      .dec-foot { display: flex; gap: 8px; align-items: center; margin-top: 13px; }
+      .lock { display: inline-flex; align-items: center; gap: 6px; font: 600 12.5px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 10px; padding: 10px 15px; cursor: pointer; }
+      .lock:hover { filter: brightness(1.08); }
+      .lock:disabled { opacity: .4; cursor: default; }
+      .discard { font: 500 12px/1 var(--sans); background: transparent; color: var(--ink-dim); border: 1px solid var(--edge); border-radius: 10px; padding: 10px 12px; cursor: pointer; margin-left: auto; }
+      .discard:hover { border-color: var(--danger); color: var(--danger); }
+
+      /* locked tile */
+      .locked-tile { display: flex; gap: 9px; align-items: flex-start; }
+      .locked-tile .tick { width: 18px; height: 18px; border-radius: 50%; background: var(--ok); color: var(--page); font: 700 10px/18px var(--sans); text-align: center; flex: none; }
+      .locked-tile .lt-main { min-width: 0; }
+      .locked-tile .lt-k { font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ok); }
+      .locked-tile .lt-note { font: 400 11.5px/1.5 var(--sans); color: var(--ink-faint); font-style: italic; margin-top: 4px; }
+      .locked-tile .lt-text { font: 400 12.5px/1.5 var(--sans); color: var(--ink-sec); margin-top: 4px; }
+      .locked-tile .lt-svg { background:#fff; border-radius:6px; padding:6px; margin-top:6px; max-width:100%; overflow:auto; }
+      .locked-tile img { width: 100%; border-radius: 6px; margin-top: 6px; }
+      .relock { font: 500 11px/1 var(--mono); background: none; border: 0; color: var(--ink-faint); cursor: pointer; padding: 6px 0 0; }
+      .relock:hover { color: var(--accent); }
+
+      .md { font: 400 13px/1.65 var(--sans); color: var(--ink-sec); white-space: pre-wrap; word-break: break-word; margin-top: 10px; }
+      .md a { color: var(--blue); }
+
+      /* collapsed sidebar tab */
+      .reopen-tab { position: fixed; right: 0; top: 50%; transform: translateY(-50%); background: var(--accent); color: var(--page); font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; writing-mode: vertical-rl; padding: 14px 8px; border-radius: 8px 0 0 8px; cursor: pointer; z-index: 40; }
+
+      .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--edge); color: var(--ink); font: 500 12.5px/1.4 var(--sans); padding: 11px 16px; border-radius: 10px; box-shadow: 0 14px 40px -14px rgba(0,0,0,.7); z-index: 200; max-width: 80vw; }
+      .toast.err { border-color: var(--danger); color: #ffd6e2; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <span class="word"><span class="mk"></span>Red<em>line</em></span>
+        <div class="proj-bar" id="proj-bar" hidden>
+          <span>▸</span>
+          <span class="path" id="proj-path">—</span>
+          <select id="page-sel" title="page in this project"></select>
+          <button class="mini" id="reopen" title="open a different folder">change</button>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <div class="work" id="work">
+        <div class="canvas">
+          <div class="canvas-bar" id="canvas-bar" hidden>
+            <button class="toggle" id="pick-toggle">✎ comment mode</button>
+            <span class="grow"></span>
+            <button class="toggle on" id="view-desktop">desktop</button>
+            <button class="toggle" id="view-mobile">mobile</button>
+            <button class="mini" id="reload" title="re-read the file from disk">↻</button>
+            <button class="mini" id="collapse" title="hide the review panel">▸</button>
+          </div>
+          <div class="frame-wrap">
+            <iframe id="frame" title="page preview"></iframe>
+            <div class="pick-hint" id="pick-hint" hidden>Click any element to review it · Esc to cancel</div>
+          </div>
+
+          <div class="stage" id="stage">
+            <div class="card">
+              <h1>Finalize a page, <em>decision by decision</em>.</h1>
+              <p>Open your landing-page project. Redline renders the real page; comment on anything and your own Claude returns options — pick one, steer it, lock it, and it writes to the file.</p>
+              <button class="primary" id="open-project" disabled>Open a project folder</button>
+              <div class="steps" id="stage-steps">
+                <div><b>1</b> · Connect Switchboard (top-right) — lends this page your Claude</div>
+                <div><b>2</b> · Bind the folder that holds your <b>index.html</b></div>
+                <div><b>3</b> · Comment → choose an option → lock → it’s written</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side" id="side">
+          <div class="side-head">
+            <span class="t">Review</span>
+            <span class="count" id="dec-count"></span>
+            <span class="head-actions">
+              <button class="act send-all" id="send-all" hidden>Send all</button>
+              <button class="act" id="add-comment" disabled>＋ comment</button>
+            </span>
+          </div>
+          <div class="side-body" id="side-body">
+            <div class="empty" id="side-empty">No comments yet.<br /><b>Turn on comment mode</b> and click anything on the page — Redline proposes options you can lock in.</div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <div class="reopen-tab" id="reopen-tab" hidden>Review</div>
+    <script type="module" src="./dist/redline.js"></script>
+  </body>
+</html>
