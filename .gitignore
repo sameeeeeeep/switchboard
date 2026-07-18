@@ -15,3 +15,6 @@ packages/menubar/Relay.app/
 # brandbrain port build artifacts
 examples/brandbrain-port/.build/
 examples/brandbrain-port/dist/
+
+# extension release zips — ship via GitHub Releases, not the tree
+switchboard-*.zip
