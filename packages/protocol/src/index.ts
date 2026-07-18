@@ -12,6 +12,7 @@ export * from "./completion.js";
 export * from "./storage.js";
 export * from "./context.js";
 export * from "./session.js";
+export * from "./health.js";
 export * from "./rpc.js";
 export * from "./events.js";
 export * from "./errors.js";

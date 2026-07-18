@@ -6,7 +6,7 @@
  * MINOR when adding backward-compatible methods/events; bump MAJOR on a breaking
  * change to an existing method's params/results or an event's payload.
  */
-export const BYOP_VERSION = "1.0.0" as const;
+export const BYOP_VERSION = "1.1.0" as const;
 
 /** The property the extension injects the provider onto. Kept as `claude` for the
  *  adoption wedge even though the daemon can route to non-Claude backends; a neutral
