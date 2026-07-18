@@ -21,7 +21,8 @@ export interface PageResponse {
   dir: "cs->page";
   id: string;
   result?: unknown;
-  error?: { code: number; message: string };
+  /** `data` carries machine-readable context (e.g. the 4900 fast-fail's { reason }) verbatim. */
+  error?: { code: number; message: string; data?: unknown };
 }
 
 export interface PageEvent {

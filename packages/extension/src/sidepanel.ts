@@ -21,44 +21,20 @@ interface Grant {
 }
 interface AuditEntry { ts: number; origin: string; method?: string; toolName?: string; kind: string; decision?: string; outcome: string; }
 interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number; folder?: string }
-interface PanelData { paired: boolean; reachable: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
+interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
+import { connectorOf, connectorGlyph, brandIcon, KIND_MARKS, type ConnectorInfo } from "./icons.js";
 
 const inExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
 let consentActive = false;
 const openApps = new Set<string>(); // origins whose detail is expanded (preserved across refreshes)
 
-// ---- friendly connector identities (framed as capabilities, not raw tool names) ----
-const CONNECTORS: Record<string, { label: string; color: string; hint: string }> = {
-  higgsfield: { label: "Higgsfield", color: "#EE46BC", hint: "images" },
-  shopify: { label: "Shopify", color: "#95BF47", hint: "store" },
-  gmail: { label: "Gmail", color: "#EA4335", hint: "email" },
-  drive: { label: "Drive", color: "#1FA463", hint: "files" },
-  sheets: { label: "Sheets", color: "#1FA463", hint: "data" },
-  meta: { label: "Meta Ads", color: "#1264FF", hint: "ads" },
-  web: { label: "Web", color: "#4F8CFF", hint: "search" },
-};
-// Recognisable brand marks for the connector tiles — simple line/solid glyphs drawn in white so they
-// read on each connector's colour. Keyed by connector key; unknown connectors fall back to a monogram.
-const LOGOS: Record<string, string> = {
-  web: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.7 2.6 2.7 15.4 0 18M12 3c-2.7 2.6-2.7 15.4 0 18"/></svg>`,
-  higgsfield: `<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 1.5c.7 5.6 3.2 8.3 9 9-5.8.7-8.3 3.4-9 9-.7-5.6-3.2-8.3-9-9 5.8-.7 8.3-3.4 9-9z"/></svg>`,
-  gmail: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7.5l9 6 9-6"/></svg>`,
-  shopify: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"><path d="M6 7.5h12L19 20H5L6 7.5z"/><path d="M9 7.5a3 3 0 0 1 6 0"/></svg>`,
-  meta: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M6.5 8C4.3 8 3 10 3 12s1.3 4 3.5 4c2.9 0 4.2-8 8-8C19.7 8 21 10 21 12s-1.3 4-3.5 4c-2.9 0-4.2-8-8-8"/></svg>`,
-  drive: `<svg viewBox="0 0 24 24" fill="#fff"><path d="M8.5 3h7l6.5 11.5-3.5 6h-6.9l3.4-6H4.5L8.5 3z" opacity=".92"/></svg>`,
-  sheets: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9.5h16M4 15h16M10 9.5V21"/></svg>`,
-};
-function connectorOf(tool: string): { key: string; label: string; color: string; hint: string } | null {
-  if (/^web(search|fetch)$/i.test(tool)) return { key: "web", ...CONNECTORS.web! };
-  const m = tool.match(/mcp__claude_ai_([A-Za-z0-9]+)/i) || tool.match(/^([a-z]+)__/i);
-  const raw = (m?.[1] || "").toLowerCase();
-  if (!raw) return null;
-  for (const key of Object.keys(CONNECTORS)) if (raw.includes(key)) return { key, ...CONNECTORS[key]! };
-  return { key: raw, label: raw[0]!.toUpperCase() + raw.slice(1), color: "#C8F250", hint: "" };
-}
+// Which lists the user opened up ("see all"). Module scope IS session memory — the panel document
+// survives tab switches and daemon-push refreshes, exactly like `openApps` above.
+// Keys: 'connectors' | 'apps' | 'wrapps' | 'feed' | 'pickerAdd' | 'pgroup:<name>'.
+const expandedSections = new Set<string>();
 
 // The wrapp registry + host helpers live in ./wrapps (shared with the in-page widget).
 function openWrapp(url: string) {
@@ -84,11 +60,24 @@ const MOCK: PanelData = {
     { origin: "https://prism.app", mode: "ask", models: ["sonnet"], tools: [{ name: "mcp__claude_ai_Higgsfield__*", access: "write" }],
       budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 12_400, callsThisMinute: 1 }, storage: { folder: "~/.relay/storage/prism", autoAssigned: true, count: 0 },
       pending: { tool: "mcp__claude_ai_Higgsfield__generate_image", args: {} } },
+    { origin: "https://bank.thelastprompt.ai", mode: "ask", models: ["sonnet"], tools: [{ name: "mcp__claude_ai_ClickUp__create_task", access: "write" }, { name: "mcp__claude_ai_Notion__search", access: "read" }, { name: "WebSearch", access: "read" }],
+      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 4_100, callsThisMinute: 0 }, storage: null, pending: null },
+    { origin: "https://redline.thelastprompt.ai", mode: "ask", models: ["sonnet"], tools: [{ name: "mcp__claude_ai_GitHub__get_file_contents", access: "read" }, { name: "mcp__claude_ai_Slack__post_message", access: "write" }, { name: "mcp__claude_ai_Figma__get_design_context", access: "read" }],
+      budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 }, usage: { tokensToday: 900, callsThisMinute: 0 }, storage: null, pending: null },
   ],
   audit: [
     { ts: Date.now() - 9_000, origin: "https://brandbrain.app", toolName: "claude_session", kind: "request", outcome: "ok" },
     { ts: Date.now() - 44_000, origin: "https://prism.app", toolName: "mcp__claude_ai_Higgsfield__generate_image", kind: "consent", decision: "user-approved", outcome: "ok" },
     { ts: Date.now() - 240_000, origin: "https://brandbrain.app", toolName: "claude_context__publish", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
+    { ts: Date.now() - 400_000, origin: "https://brandbrain.app", toolName: "mcp__claude_ai_Shopify__update_product", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
+    { ts: Date.now() - 520_000, origin: "https://prism.app", toolName: "mcp__claude_ai_Higgsfield__remove_background", kind: "consent", outcome: "denied" },
+    { ts: Date.now() - 700_000, origin: "https://bank.thelastprompt.ai", toolName: "claude_session", kind: "request", outcome: "ok" },
+    { ts: Date.now() - 1_000_000, origin: "https://brandbrain.app", toolName: "mcp__claude_ai_Gmail__create_draft", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
+    { ts: Date.now() - 1_400_000, origin: "https://redline.thelastprompt.ai", toolName: "claude_session", kind: "request", outcome: "ok" },
+    { ts: Date.now() - 1_900_000, origin: "https://brandbrain.app", toolName: "WebSearch", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
+    { ts: Date.now() - 2_400_000, origin: "https://prism.app", toolName: "mcp__claude_ai_Higgsfield__generate_video", kind: "consent", decision: "user-approved", outcome: "ok" },
+    { ts: Date.now() - 3_000_000, origin: "https://bank.thelastprompt.ai", toolName: "mcp__claude_ai_ClickUp__create_task", kind: "tool_call", decision: "auto-approved", outcome: "ok" },
+    { ts: Date.now() - 3_600_000, origin: "https://brandbrain.app", toolName: "claude_session", kind: "request", outcome: "ok" },
   ],
 };
 
@@ -98,6 +87,18 @@ const kfmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 
 const meterColor = (pct: number) => (pct < 0.5 ? "var(--lime)" : pct < 0.8 ? "var(--warn)" : "var(--danger)");
 const ago = (ts: number) => { const s = Math.round((Date.now() - ts) / 1000); if (s < 60) return `${s}s ago`; const m = Math.round(s / 60); if (m < 60) return `${m}m ago`; return `${Math.round(m / 60)}h ago`; };
 const short = (name: string) => name.includes("__") ? name.split("__").pop()!.replace(/[-_*]/g, " ").trim() : name;
+
+/** The shared "See all N ▾ / Show fewer ▴" row. Toggles a key in `expandedSections` and re-renders
+ *  from the data already in hand — expansion survives daemon-push refreshes because the key does. */
+function moreBtn(key: string, more: string, fewer = "Show fewer ▴"): HTMLElement {
+  const open = expandedSections.has(key);
+  const b = el("button", "morebtn", open ? fewer : more);
+  b.onclick = () => {
+    if (open) expandedSections.delete(key); else expandedSections.add(key);
+    if (lastData) render(lastData);
+  };
+  return b;
+}
 
 /** A human name for an app from its origin. Wrapp-store entries → their real names; other real
  *  domains → the subdomain (each wrapp lives on its own), falling back to the site name; local
@@ -117,11 +118,23 @@ function control(action: string, args?: unknown): Promise<any> {
   return new Promise((res) => chrome.runtime.sendMessage({ type: "control", action, args }, res));
 }
 
+/** The empty shell every degraded state shares — only the ladder flags differ. */
+const EMPTY = { grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
+
 async function load(): Promise<PanelData> {
-  if (!inExtension) return MOCK;
+  if (!inExtension) {
+    // Design preview: ?state=unreachable | unpaired | asleep | rejected mocks each setup state
+    // (serve.mjs, outside the extension); default renders the connected home with MOCK data.
+    const s = new URLSearchParams(location.search).get("state");
+    if (s === "unreachable") return { paired: false, reachable: false, ...EMPTY };
+    if (s === "unpaired") return { paired: false, reachable: true, ...EMPTY };
+    if (s === "asleep") return { paired: true, reachable: false, ...EMPTY };
+    if (s === "rejected") return { paired: true, reachable: false, tokenRejected: true, ...EMPTY };
+    return MOCK;
+  }
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
-  if (!status?.paired) return { paired: false, reachable: false, grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
-  if (!status?.reachable) return { paired: true, reachable: false, grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
+  if (!status?.paired || !status?.reachable)
+    return { paired: !!status?.paired, reachable: !!status?.reachable, tokenRejected: !!status?.tokenRejected, ...EMPTY };
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
   const c = await control("listContexts");
@@ -143,11 +156,45 @@ function render(data: PanelData) {
   if (consentActive) return;
   lastData = data;
   const online = data.paired && data.reachable;
+  const rejected = !!data.tokenRejected;
   const st = $("status"); st.className = "status" + (online ? " on" : "");
-  $("statusText").textContent = online ? "on" : data.paired ? "sidekick offline" : "not paired";
+  // Status strip: calm, each string names where you are on the ladder — never "offline"/"error".
+  $("statusText").textContent = online ? "on"
+    : rejected || (!data.paired && data.reachable) ? "pair to finish setup"
+    : data.paired ? "sidekick asleep"
+    : "not set up";
   ($("home") as HTMLElement).hidden = !online;
-  ($("pairing") as HTMLElement).hidden = online;
-  if (data.paired && !data.reachable) { $("pairErr").textContent = "Paired, but the sidekick isn’t running. Start it: npm run sidekick."; $("pairBtn").textContent = "Retry"; }
+
+  // Three setup states, never shown together:
+  //   • fresh install (nothing answers the daemon port, nothing paired) → the get-the-sidekick
+  //     card. No token input — pairing against a dead daemon is a dead end.
+  //   • daemon up, no accepted pairing (none stored, or the stored one was rejected) → the
+  //     pairing card (token input + Pair).
+  //   • paired but the sidekick isn't running → the pairing card as a calm amber "asleep" note
+  //     with Retry; the auth_ok health push flips the panel home on its own once it wakes.
+  const freshInstall = !online && !data.paired && !data.reachable;
+  ($("setup") as HTMLElement).hidden = online || !freshInstall;
+  ($("pairing") as HTMLElement).hidden = online || freshInstall;
+  if (!online && !freshInstall) {
+    const tokenEl = $("token") as HTMLInputElement;
+    const err = $("pairErr");
+    if (!data.paired) {           // reachable + unpaired: the normal first pairing
+      $("pairH2").textContent = "Connect this browser to your Claude";
+      tokenEl.hidden = false; ($("pairHint") as HTMLElement).hidden = false;
+      err.className = "err"; err.textContent = "";
+      $("pairBtn").textContent = "Pair";
+    } else if (rejected) {        // daemon up but it refused our token — never say "isn't running"
+      $("pairH2").textContent = "Connect this browser to your Claude";
+      tokenEl.hidden = false; ($("pairHint") as HTMLElement).hidden = false;
+      err.className = "err"; err.textContent = "That pairing token didn’t match. Copy a fresh one from the Relay app and pair again.";
+      $("pairBtn").textContent = "Pair";
+    } else {                      // paired, sidekick asleep — retry is a courtesy; health auto-recovers
+      $("pairH2").textContent = "Your sidekick is asleep";
+      tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
+      err.className = "err calm"; err.textContent = "Your sidekick isn’t running. Open the Relay app in your menu bar to wake it — or run npm run sidekick.";
+      $("pairBtn").textContent = "Retry";
+    }
+  }
   if (!online) return;
 
   void renderCurrentSite(data);
@@ -191,7 +238,8 @@ async function renderCurrentSite(data: PanelData) {
   else if (ownWrapp) { dot.style.background = "var(--lime)"; stt.style.color = "var(--ink-dim)"; stt.append(dot, document.createTextNode("Works with Switchboard — connect it on the page")); }
   else { dot.style.background = "var(--ink-faint)"; stt.style.color = "var(--ink-faint)"; stt.append(dot, document.createTextNode("Hasn’t opted into Switchboard")); }
   txt.append(stt);
-  row.append(el("div", "fav", h.replace(/^www\./, "")[0]?.toUpperCase() ?? "•"), txt);
+  // the row users glance at most: the real tab favicon (from Chrome's local cache), glyph fallback
+  row.append(brandIcon({ className: "fav", pageUrl: `https://${h}`, letter: h.replace(/^www\./, "")[0] ?? "•" }), txt);
   card.append(row);
 
   if (alts.length) {
@@ -199,7 +247,7 @@ async function renderCurrentSite(data: PanelData) {
     const list = el("div", "alts");
     for (const w of alts.slice(0, 3)) {
       const a = el("button", "alt");
-      const ic = el("div", "ic", w.name[0]!.toUpperCase()); ic.style.background = w.color;
+      const ic = brandIcon({ className: "ic", pageUrl: w.url, letter: w.name[0]!, color: w.color });
       const t = el("div"); t.style.minWidth = "0"; t.append(el("div", "nm", w.name), el("div", "ds", w.desc));
       a.append(ic, t, el("div", "go", "Open →"));
       a.onclick = () => openWrapp(w.url);
@@ -213,19 +261,25 @@ async function renderCurrentSite(data: PanelData) {
 }
 
 // ---- Wrapp store: launch an app in a new tab (a green dot marks ones already connected) ----
+// Density rule: connected wrapps first, 4 visible (two rows of 2), the rest behind "See all".
 function renderWrapps(data: PanelData) {
   const box = $("wrapps"); box.textContent = "";
   const connected = new Set(data.grants.map((g) => host(g.origin)));
-  for (const w of WRAPPS) {
+  const sorted = [...WRAPPS].sort((a, b) => Number(connected.has(host(b.url))) - Number(connected.has(host(a.url))));
+  const expanded = expandedSections.has("wrapps");
+  const shown = expanded ? sorted : sorted.slice(0, 4);
+  for (const w of shown) {
     const card = el("button", "wrapp");
     const t2 = el("div", "t2");
-    const ic = el("div", "ic", w.name[0]!.toUpperCase()); ic.style.background = w.color;
+    const ic = brandIcon({ className: "ic", pageUrl: w.url, letter: w.name[0]!, color: w.color });
     t2.append(ic, el("div", "nm", w.name));
     if (connected.has(host(w.url))) { const d = el("div", "live"); d.title = "connected"; t2.append(d); }
     card.append(t2, el("div", "ds", w.desc), el("div", "go", "Open →"));
     card.onclick = () => openWrapp(w.url);
     box.append(card);
   }
+  const after = $("wrappsMore"); after.textContent = "";
+  if (sorted.length > 4) after.append(moreBtn("wrapps", `See all ${sorted.length} ▾`));
 }
 
 // ---- Working on: per-app first. When the current tab IS a connected app, this card shows and
@@ -261,38 +315,53 @@ async function renderProject(data: PanelData) {
 }
 
 // ---- Connectors: friendly capability tiles derived from what apps are granted ----
+// Density rule: two full rows (6 tiles) at panel width; beyond that the 6th cell is a ghost tile
+// ("+N more" / "Show less") so the grid never pushes Apps below the fold.
 function renderConnectors(data: PanelData) {
   const box = $("connectors"); box.textContent = "";
-  const seen = new Map<string, { label: string; color: string; hint: string; apps: number }>();
+  const seen = new Map<string, ConnectorInfo & { apps: number }>();
   for (const g of data.grants) {
-    const keys = new Set<string>();
-    for (const t of g.tools) { const c = connectorOf(t.name); if (c) keys.add(c.key); }
-    for (const k of keys) { const c = connectorOf([...g.tools].find((t) => connectorOf(t.name)?.key === k)!.name)!; const e = seen.get(k) ?? { label: c.label, color: c.color, hint: c.hint, apps: 0 }; e.apps++; seen.set(k, e); }
+    const keys = new Map<string, ConnectorInfo>();
+    for (const t of g.tools) { const c = connectorOf(t.name); if (c) keys.set(c.key, c); }
+    for (const [k, c] of keys) { const e = seen.get(k) ?? { ...c, apps: 0 }; e.apps++; seen.set(k, e); }
   }
   if (!seen.size) { box.append(el("div", "empty-note", "No connectors in use yet. Apps you connect will ask for the ones they need.")); return; }
-  for (const [k, c] of seen) {
+  const all = [...seen.values()].sort((a, b) => b.apps - a.apps || a.label.localeCompare(b.label));
+  const expanded = expandedSections.has("connectors");
+  const overflow = all.length > 6;
+  const shown = overflow && !expanded ? all.slice(0, 5) : all;
+  for (const c of shown) {
     const tile = el("div", "conn");
-    const ic = el("div", "ic"); ic.style.background = c.color;
-    if (LOGOS[k]) ic.innerHTML = LOGOS[k]!; else ic.textContent = c.label[0]!.toUpperCase();
-    tile.append(ic, el("div", "nm", c.label), el("div", "use", `${c.apps} app${c.apps === 1 ? "" : "s"}${c.hint ? " · " + c.hint : ""}`));
+    tile.append(connectorGlyph(c, "ic"), el("div", "nm", c.label), el("div", "use", `${c.apps} app${c.apps === 1 ? "" : "s"}${c.hint ? " · " + c.hint : ""}`));
     box.append(tile);
+  }
+  if (overflow) {
+    const ghost = el("button", "conn more", expanded ? "Show less" : `+${all.length - 5} more`);
+    ghost.onclick = () => { if (expanded) expandedSections.delete("connectors"); else expandedSections.add("connectors"); if (lastData) render(lastData); };
+    box.append(ghost);
   }
 }
 
 // ---- Apps: connected wrapps; the technical detail lives in the expander ----
+// Density rule: 3 visible, pending-first (a waiting consent is never hidden behind the fold),
+// then active-now, then most recently seen. The rest live behind "See all".
 function renderApps(data: PanelData) {
   $("appCount").textContent = data.grants.length ? `${data.grants.length}` : "";
   const box = $("apps"); box.textContent = "";
   if (!data.grants.length) { box.append(el("div", "empty-note", "No apps connected yet. When one asks to use your Claude, you’ll approve it here.")); return; }
 
-  for (const g of data.grants) {
+  const ranked = [...data.grants]
+    .map((g) => { const seen = lastSeen(g.origin, data.audit); return { g, seen, active: seen ? Date.now() - seen < 120_000 : false }; })
+    .sort((a, b) => Number(!!b.g.pending) - Number(!!a.g.pending) || Number(b.active) - Number(a.active) || b.seen - a.seen);
+  const expanded = expandedSections.has("apps");
+  const shown = !expanded && ranked.length > 3 ? ranked.slice(0, 3) : ranked;
+
+  for (const { g, seen, active: activeNow } of shown) {
     const isOpen = openApps.has(g.origin);
     const card = el("div", "app" + (isOpen ? " open" : "") + (g.pending ? " pending" : ""));
-    const seen = lastSeen(g.origin, data.audit);
-    const activeNow = seen && Date.now() - seen < 120_000;
 
     const row = el("div", "row");
-    row.append(el("div", "av", appName(g.origin)[0]?.toUpperCase() ?? "•"));
+    row.append(brandIcon({ className: "av", pageUrl: g.origin, letter: appName(g.origin)[0] ?? "•" }));
     const txt = el("div"); txt.style.minWidth = "0";
     txt.append(el("div", "nm", appName(g.origin)));
     const sub = el("div", "sub");
@@ -304,15 +373,28 @@ function renderApps(data: PanelData) {
 
     // ---- detail ----
     const detail = el("div", "detail");
-    const conns = new Map<string, string>();
-    for (const t of g.tools) { const c = connectorOf(t.name); if (c) conns.set(c.key, c.label); }
-    if (conns.size) { const d = el("div"); d.append(el("div", "k", "Can use")); const pills = el("div", "pills"); pills.style.marginTop = "7px"; for (const [, label] of conns) pills.append(el("span", "pill", label)); d.append(pills); detail.append(d); }
+    const conns = new Map<string, ConnectorInfo>();
+    for (const t of g.tools) { const c = connectorOf(t.name); if (c) conns.set(c.key, c); }
+    if (conns.size) {
+      const d = el("div"); d.append(el("div", "k", "Can use"));
+      const pills = el("div", "pills"); pills.style.marginTop = "7px";
+      const entries = [...conns.values()];
+      for (const c of entries.slice(0, 6)) {
+        const p = el("span", "pill");
+        p.append(connectorGlyph(c, "pili"), document.createTextNode(c.label));
+        pills.append(p);
+      }
+      if (entries.length > 6) pills.append(el("span", "pill bare", `+${entries.length - 6}`));
+      d.append(pills); detail.append(d);
+    }
     if (g.storage) { const d = el("div", "drow"); d.append(el("span", "k", g.storage.autoAssigned ? "Private data" : "Project folder")); d.append(el("span", "pill", `${g.storage.count} record${g.storage.count === 1 ? "" : "s"}`)); detail.append(d); }
 
     // usage (moved out of the surface)
     const pct = Math.min(1, g.usage.tokensToday / (g.budgets.maxTokensPerDay || 1));
     const use = el("div"); use.append(el("div", "k", "Compute today"));
-    const bar = el("div", "usebar"); bar.style.marginTop = "7px"; const m = el("div", "m"); const fill = el("i"); Object.assign(fill.style, { width: `${Math.max(3, pct * 100)}%`, background: meterColor(pct) }); m.append(fill);
+    const bar = el("div", "usebar"); bar.style.marginTop = "7px";
+    bar.title = `${g.usage.tokensToday.toLocaleString("en-US")} of ${g.budgets.maxTokensPerDay.toLocaleString("en-US")} tokens`;
+    const m = el("div", "m"); const fill = el("i"); Object.assign(fill.style, { width: `${Math.max(3, pct * 100)}%`, background: meterColor(pct) }); m.append(fill);
     bar.append(m, el("span", "v", `${kfmt(g.usage.tokensToday)} / ${kfmt(g.budgets.maxTokensPerDay)}`)); use.append(bar); detail.append(use);
 
     // model choice — the USER decides which granted model this app runs on, regardless of what it
@@ -346,28 +428,55 @@ function renderApps(data: PanelData) {
     dc.onclick = (e) => { e.stopPropagation(); if (inExtension) control("revoke", { origin: g.origin }).then(() => { openApps.delete(g.origin); refresh(); }); };
     foot.append(seg, dc); detail.append(foot);
 
-    // pending consent (rare on the surface — usually the inline consent view takes over)
+    // pending consent (rare on the surface — usually the inline consent view takes over). One
+    // "Review request" that opens the real consent view: the decision stays in ONE place, and a
+    // broker UI never shows an Approve that does nothing.
     if (g.pending) {
       const pend = el("div", "pend");
       const t = el("div", "txt"); t.append(document.createTextNode("Wants to "), Object.assign(el("b"), { textContent: short(g.pending.tool) }));
-      const btns = el("div", "btns"); btns.append(el("button", "approve", "Approve"), el("button", "deny", "Deny"));
+      const review = el("button", "approve", "Review request →");
+      review.onclick = async (e) => {
+        e.stopPropagation();
+        if (!inExtension) return;
+        const r = await new Promise<{ pending?: Array<{ id: string; origin: string | null }> } | null>(
+          (res) => chrome.runtime.sendMessage({ type: "getPendingConsents" }, res));
+        const match = r?.pending?.find((p) => p.origin === g.origin) ?? r?.pending?.[0];
+        if (match) void showConsent(match.id);
+      };
+      const btns = el("div", "btns"); btns.append(review);
       pend.append(t, btns); detail.append(pend);
     }
     card.append(detail);
     box.append(card);
   }
+  if (ranked.length > 3) box.append(moreBtn("apps", `See all ${ranked.length} ▾`));
 }
 
 function renderActivity(data: PanelData) {
   const feed = $("feed"); feed.textContent = "";
   if (!data.audit.length) { feed.append(el("div", "empty-note", "Nothing yet.")); return; }
-  for (const e of data.audit.slice(0, 24)) {
-    const cls = e.outcome === "denied" ? "deny" : e.decision === "auto-approved" ? "ok" : e.toolName ? "write" : "ok";
-    const row = el("div", `ev ${cls}`);
-    const what = e.toolName ? short(e.toolName) : (e.method ?? e.kind);
+  const entries = data.audit.slice(0, 24);
+  const expanded = expandedSections.has("feed");
+  const shown = expanded ? entries : entries.slice(0, 8);
+  for (const e of shown) {
+    // dot semantics, explicit: denied → danger; a consent the user approved → ok; an actual tool
+    // call → amber write; plain requests/sessions → neutral (a session is NOT a write).
+    const denied = e.outcome === "denied";
+    const cls = denied ? " deny" : e.kind === "consent" && e.decision === "user-approved" ? " ok" : e.kind === "tool_call" ? " write" : "";
+    const row = el("div", `ev${cls}`);
+    // humanised: 'claude_session' → 'session'; tool names stay short()
+    const what = (e.toolName ? short(e.toolName) : (e.method ?? e.kind)).replace(/^claude[_ ]/, "").replace(/_/g, " ");
     row.append(el("div", "t", ago(e.ts)));
-    const d = el("div", "d"); d.append(Object.assign(el("b"), { textContent: appName(e.origin) }), document.createTextNode(` · ${what}`));
+    const d = el("div", "d");
+    d.append(Object.assign(el("b"), { textContent: appName(e.origin) }));
+    if (denied) d.append(document.createTextNode(" · "), el("span", "dn", "denied"));
+    d.append(document.createTextNode(` · ${what}`));
     row.append(d); feed.append(row);
+  }
+  if (!expanded && entries.length > 8) {
+    const b = el("button", "more", `Show ${entries.length - 8} more ▾`);
+    b.onclick = () => { expandedSections.add("feed"); if (lastData) render(lastData); };
+    feed.append(b);
   }
 }
 
@@ -400,11 +509,22 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
     return a.localeCompare(b);
   });
 
+  if (!data.contexts.length) list.append(el("div", "empty-note", "Nothing to lend yet — add a project or connect a sheet below."));
+
   for (const gname of names) {
     if (groups.size > 1) list.append(el("div", "pgroup", gname)); // header only when there's more than one kind
-    for (const c of groups.get(gname)!) {
+    const items = groups.get(gname)!;
+    const gkey = `pgroup:${gname}`;
+    const shownItems = items.length > 8 && !expandedSections.has(gkey) ? items.slice(0, 8) : items;
+    for (const c of shownItems) {
       const item = el("button", "pitem" + (c.id === tickedId ? " on" : ""));
-      item.append(el("div", "mk", c.name[0]?.toUpperCase() ?? "•"));
+      // kind marks: brands keep the lime monogram; projects, data sources and the personal card get
+      // quiet glyphs — the taxonomy reads without the group headers.
+      const kindKey = c.sourceKind ? "data" : (c.kind || "").toLowerCase() === "project" ? "project" : (c.kind || "").toLowerCase() === "personal" ? "personal" : null;
+      const mk = el("div", "mk" + (kindKey ? " kind" : ""));
+      if (kindKey) mk.innerHTML = KIND_MARKS[kindKey]!;
+      else mk.textContent = c.name[0]?.toUpperCase() ?? "•";
+      item.append(mk);
       const txt = el("div"); txt.style.minWidth = "0"; txt.append(el("div", "nm", c.name));
       // No colour swatches in the picker — a context's palette is meaningful inside the app that
       // uses it, not as decoration here. A live data source keeps its row-count badge (that's status);
@@ -423,10 +543,29 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
       };
       list.append(item);
     }
+    if (items.length > 8 && !expandedSections.has(gkey)) {
+      const b = el("button", "morebtn", `all ${items.length} ▾`);
+      b.onclick = () => { expandedSections.add(gkey); openPicker(data, forOrigin); };
+      list.append(b);
+    }
   }
   renderAddProject(data, forOrigin);
   renderAddSheet();
   renderPersonalCard(data);
+  renderAddRow(data, forOrigin);
+}
+
+// One quiet "Add" row instead of three stacked dashed affordances — expanding reveals the three
+// real forms (project / sheet / your details), shrinking the sheet's fixed tail.
+function renderAddRow(data: PanelData, forOrigin: string | null) {
+  const row = $("addRow") as HTMLElement; row.className = "addsrc"; row.textContent = "";
+  const open = expandedSections.has("pickerAdd");
+  const t = el("button", "toggle", open ? "− Hide add forms" : "＋ Add — project · sheet · your details");
+  t.onclick = () => { expandedSections[open ? "delete" : "add"]("pickerAdd"); openPicker(data, forOrigin); };
+  row.append(t);
+  ($("addProject") as HTMLElement).hidden = !open;
+  ($("addSheet") as HTMLElement).hidden = !open;
+  ($("addPersonal") as HTMLElement).hidden = !open;
 }
 
 // "Add a project" — a named context that points at a real folder on disk. Lending it to an app
@@ -603,7 +742,11 @@ async function showConsent(id: string) {
   const box = $("consent");
   ($("home") as HTMLElement).hidden = true;
   ($("pairing") as HTMLElement).hidden = true;
+  ($("setup") as HTMLElement).hidden = true;
   box.hidden = false;
+  // A consent prompt only exists because the daemon reached us — so the status is "on", never the
+  // stale "connecting…" (render() early-returns while consentActive, so set it here directly).
+  $("status").className = "status on"; ($("statusText") as HTMLElement).textContent = "on";
   renderConsent(box, prompt, (result) => {
     chrome.runtime.sendMessage({ type: "consentDecision", id, result }, () => {
       box.hidden = true; box.textContent = ""; consentActive = false;
@@ -617,10 +760,51 @@ async function pair() {
   if (!inExtension) return;
   const token = ($("token") as HTMLInputElement).value.trim();
   if (token) await new Promise((r) => chrome.runtime.sendMessage({ type: "pair", token }, r));
-  $("pairErr").textContent = "Connecting…";
-  setTimeout(refresh, 600);
+  const err = $("pairErr"); err.className = "err calm"; err.textContent = "Connecting…";
+  setTimeout(refresh, 600); // the auth_ok health push also flips the panel live — this is a backstop
 }
 $("pairBtn")?.addEventListener("click", pair);
 $("token")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") pair(); });
 
-refresh();
+// ---- first-run setup card (daemon unreachable, nothing paired) ----
+// The landing page explains extension + sidekick together — it stays the one "full setup" link.
+$("getSidekick")?.addEventListener("click", () => {
+  if (inExtension) chrome.runtime.sendMessage({ type: "openUrl", url: "https://thelastprompt.ai/switchboard/" });
+  else window.open("https://thelastprompt.ai/switchboard/", "_blank", "noopener");
+});
+// Retry is a courtesy — the auth_ok health push flips the panel on its own once the daemon wakes.
+$("setupRetry")?.addEventListener("click", () => void refresh());
+
+// Design preview (serve.mjs, outside the extension): ?state=consent | consent-fat renders a
+// representative connect prompt in the real panel chrome, so the consent layout can be iterated
+// at true side-panel width without a live daemon. No effect inside the extension.
+function previewConsent(fat: boolean) {
+  const base = ["WebSearch", "WebFetch"].map((n) => ({ name: n, access: "read" as const, label: n }));
+  const w = (server: string, tool: string) => ({ name: `mcp__claude_ai_${server}__${tool}`, access: "write" as const, label: tool });
+  const tools = fat
+    ? [...base,
+        w("Higgsfield", "generate_image"), w("Higgsfield", "generate_video"), w("Higgsfield", "generate_audio"),
+        w("Shopify", "update_product"), w("Shopify", "create_discount"), w("Shopify", "set_inventory"),
+        { name: "mcp__claude_ai_Gmail__search", access: "read" as const, label: "search" }, w("Gmail", "create_draft"),
+        { name: "mcp__claude_ai_ClickUp__get_task", access: "read" as const, label: "get_task" }, w("ClickUp", "create_task"),
+        w("Notion", "update_page"), { name: "mcp__claude_ai_Notion__search", access: "read" as const, label: "search" },
+        w("Meta", "create_ad"), w("Meta", "update_campaign")]
+    : [...base, w("Higgsfield", "generate_image"), w("Shopify", "update_product"), w("Gmail", "create_draft")];
+  const mockPrompt: Prompt = { kind: "consent:connect", body: {
+    origin: "https://brandbrain.thelastprompt.ai",
+    reason: "brandbrain — launch & growth hub for consumer brands",
+    models: { available: ["sonnet", "opus", "haiku", "gpt-4o", "llama3.2:latest", "qwen2.5"], requested: ["sonnet"] },
+    tools,
+    budgets: { maxTokensPerDay: 200_000, maxCallsPerMin: 30 },
+    contextKinds: ["brands", "projects"],
+  } };
+  consentActive = true;
+  const box = $("consent");
+  ($("home") as HTMLElement).hidden = true;
+  box.hidden = false;
+  $("status").className = "status on"; ($("statusText") as HTMLElement).textContent = "on";
+  renderConsent(box, mockPrompt, () => { box.hidden = true; box.textContent = ""; consentActive = false; void refresh(); });
+}
+const previewState = !inExtension ? new URLSearchParams(location.search).get("state") : null;
+if (previewState === "consent" || previewState === "consent-fat") previewConsent(previewState === "consent-fat");
+else refresh();

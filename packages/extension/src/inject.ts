@@ -20,7 +20,7 @@ import { RELAY_NS, type PageResponse, type PageEvent } from "./messaging.js";
     if (!d || (d as any).ns !== RELAY_NS || (d as any).dir !== "cs->page") return;
     if ("id" in d && pending.has(d.id)) {
       const p = pending.get(d.id)!; pending.delete(d.id);
-      if (d.error) p.reject(Object.assign(new Error(d.error.message), { code: d.error.code }));
+      if (d.error) p.reject(Object.assign(new Error(d.error.message), { code: d.error.code, data: d.error.data }));
       else p.resolve(d.result);
     } else if ("event" in d) {
       listeners.get(d.event)?.forEach((fn) => { try { fn(d.payload); } catch { /* listener threw */ } });

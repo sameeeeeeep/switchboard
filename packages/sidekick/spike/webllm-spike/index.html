@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>webllm spike — browser-local model behind the relay contract</title>
+<style>
+  :root {
+    --void: #0a0a0b;
+    --panel: #111114;
+    --line: #26262c;
+    --ink: #e8e8ea;
+    --dim: #8a8a92;
+    --phosphor: #53f0a1;
+    --amber: #f0c053;
+    --red: #f06553;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--void); color: var(--ink);
+    font: 13px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
+  .kicker { color: var(--dim); text-transform: uppercase; font-size: 10px; letter-spacing: .14em; margin-bottom: 20px; }
+  .panel { border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; margin-bottom: 14px; }
+  .panel h2 { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); margin: 0 0 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  button {
+    background: transparent; border: 1px solid var(--line); color: var(--ink);
+    font: inherit; padding: 5px 12px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--phosphor); color: var(--phosphor); }
+  button:disabled { opacity: .35; cursor: default; }
+  button.primary { border-color: var(--phosphor); color: var(--phosphor); }
+  button.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+  textarea, input[type=text] {
+    width: 100%; background: var(--void); border: 1px solid var(--line); color: var(--ink);
+    font: inherit; padding: 8px;
+  }
+  textarea { min-height: 56px; resize: vertical; }
+  .status { color: var(--dim); }
+  .status b { color: var(--ink); font-weight: 600; }
+  .ok { color: var(--phosphor); }
+  .warn { color: var(--amber); }
+  .err { color: var(--red); }
+  .bar { height: 6px; background: var(--void); border: 1px solid var(--line); width: 260px; }
+  .bar > div { height: 100%; background: var(--phosphor); width: 0%; transition: width .15s; }
+  #out {
+    white-space: pre-wrap; min-height: 90px; border: 1px solid var(--line);
+    background: var(--void); padding: 10px; font-size: 13px;
+  }
+  #out .cursor { color: var(--phosphor); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
+  #stats .stat b { display: block; font-size: 17px; color: var(--phosphor); font-weight: 600; }
+  #stats .stat span { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+  #log {
+    max-height: 260px; overflow-y: auto; font-size: 11px; color: var(--dim);
+    white-space: pre-wrap; border: 1px solid var(--line); background: var(--void); padding: 8px;
+  }
+  #log .ok { color: var(--phosphor); }
+  #log .err { color: var(--red); }
+  label { color: var(--dim); font-size: 11px; display: block; margin: 8px 0 3px; }
+  .model-row { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; }
+  .model-row:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  code { color: var(--amber); }
+</style>
+</head>
+<body>
+  <h1>webllm spike</h1>
+  <div class="kicker">browser-local model &middot; completeLocal(params) &rarr; {type:'text'|'done'|'error'} &middot; phase 0, no relay changes</div>
+
+  <div class="panel">
+    <h2>environment</h2>
+    <div class="row"><span class="status">webgpu: <b id="gpu-status">checking…</b></span></div>
+    <div class="row"><span class="status" id="gpu-adapter"></span></div>
+    <div class="row"><span class="status">storage: <b id="storage-est">—</b></span></div>
+  </div>
+
+  <div class="panel">
+    <h2>models</h2>
+    <div id="models"></div>
+    <div class="row" style="margin-top:10px">
+      <span class="status">engine: <b id="engine-status">none</b></span>
+      <button id="unload" class="danger" disabled>unload (free VRAM)</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>completion — via completeLocal(CompletionParams)</h2>
+    <label>system</label>
+    <input type="text" id="system" value="You are terse." />
+    <label>prompt (the ONE free-text input)</label>
+    <textarea id="prompt">In one sentence, what is a consent broker?</textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="run" class="primary" disabled>run</button>
+      <button id="cancel" class="danger" disabled>cancel (interruptGenerate)</button>
+      <span class="status" id="run-status"></span>
+    </div>
+    <div id="out"></div>
+    <div id="stats"></div>
+  </div>
+
+  <div class="panel">
+    <h2>log</h2>
+    <div id="log"></div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

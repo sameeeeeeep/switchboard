@@ -19,6 +19,63 @@ let GRANTS_FILE = (RELAY_DIR as NSString).appendingPathComponent("grants.json")
 let AUDIT_FILE = (RELAY_DIR as NSString).appendingPathComponent("audit.log")
 let PLIST = (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents/\(LABEL).plist")
 
+// ---------- the bundled daemon + its LaunchAgent ----------
+// A packaged Relay.app carries the whole runtime in Resources: a copied node binary plus a
+// single-file daemon bundle (and the agent SDK's native claude CLI beside it). The app is then
+// the plist's AUTHOR — it writes a LaunchAgent pointing INTO ITS OWN BUNDLE. Three rules keep
+// that honest: only on an explicit click (never silently), never over someone else's plist
+// (a dev checkout's plist gets a separate confirmed "take over"), and never while Gatekeeper
+// has translocated us (the randomized /AppTranslocation path dies on next login).
+let BUNDLED_NODE = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("node")
+let BUNDLED_ENTRY = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("daemon/sidekick.mjs")
+func hasBundledDaemon() -> Bool {
+    FileManager.default.fileExists(atPath: BUNDLED_NODE) && FileManager.default.fileExists(atPath: BUNDLED_ENTRY)
+}
+func isTranslocated() -> Bool { Bundle.main.bundlePath.contains("/AppTranslocation/") }
+
+enum PlistState { case missing, ours, staleOurs, foreign }
+
+/// Who owns ~/Library/LaunchAgents/com.relay.sidekick.plist right now?
+///   missing   — no plist; a packaged app may create one on the start click
+///   ours      — points into THIS bundle and the entry file exists (healthy)
+///   staleOurs — points into this bundle but the file is gone (app updated/relaid-out) → repair
+///   foreign   — anything else, e.g. a dev checkout's plist (node from nvm + repo dist) → leave it
+func plistState(at path: String = PLIST, bundlePath: String = Bundle.main.bundlePath) -> PlistState {
+    guard let data = FileManager.default.contents(atPath: path) else { return .missing }
+    guard let obj = try? PropertyListSerialization.propertyList(from: data, format: nil),
+          let dict = obj as? [String: Any],
+          let args = dict["ProgramArguments"] as? [String], args.count >= 2,
+          args[1].hasPrefix(bundlePath) else { return .foreign }
+    return FileManager.default.fileExists(atPath: args[1]) ? .ours : .staleOurs
+}
+
+/// The plist the packaged app installs — same shape the dev installer proved out, but pointing at
+/// the bundle's own runtime. PATH is load-bearing: launchd's default PATH is bare, and both the
+/// daemon's system-claude fallback (warm sessions) and npx-based stdio MCP servers need real bins.
+func writeDaemonPlist(to path: String = PLIST) throws {
+    let home = NSHomeDirectory()
+    let spec: [String: Any] = [
+        "Label": LABEL,
+        "ProgramArguments": [BUNDLED_NODE, BUNDLED_ENTRY],
+        "RunAtLoad": true,
+        "KeepAlive": true,
+        "StandardOutPath": LOG_FILE,
+        "StandardErrorPath": LOG_FILE,
+        "WorkingDirectory": home,
+        "EnvironmentVariables": [
+            "HOME": home,
+            "PATH": "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        ],
+    ]
+    // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
+    try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true,
+                                             attributes: [.posixPermissions: 0o700])
+    try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                            withIntermediateDirectories: true)
+    let data = try PropertyListSerialization.data(fromPropertyList: spec, format: .xml, options: 0)
+    try data.write(to: URL(fileURLWithPath: path))
+}
+
 // ---------- house palette ----------
 let LIME_NS = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1)
 let PAGE_NS = NSColor(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0, alpha: 1)
@@ -114,6 +171,9 @@ final class Model: ObservableObject {
     @Published var defaultId: String? = nil
     @Published var apps = 0
     @Published var last: LastAct? = nil
+    @Published var plist: PlistState = plistState()
+    let bundled = hasBundledDaemon()
+    let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
 
     func refreshFiles() {
@@ -121,6 +181,7 @@ final class Model: ObservableObject {
         defaultId = readDefaultId()
         apps = readGrantCount()
         last = readLastAct()
+        plist = plistState()
     }
 }
 
@@ -133,6 +194,8 @@ struct Panel: View {
     let onToken: () -> Void
     let onLogs: () -> Void
     let onRestart: () -> Void
+    let onTakeOver: () -> Void
+    let onRepair: () -> Void
     let onQuit: () -> Void
     @State private var breathe = false
 
@@ -141,6 +204,7 @@ struct Panel: View {
         if model.working, let a = model.last { return "for \(hostOf(a.origin))" }
         if model.working { return "on your Claude" }
         if model.running { return "\(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s") banked · \(model.apps) app\(model.apps == 1 ? "" : "s") connected" }
+        if model.bundled && model.translocated { return "move Relay to /Applications, then reopen it" }
         return "start the sidekick below"
     }
 
@@ -199,6 +263,25 @@ struct Panel: View {
                 }
             }
             .padding(16)
+
+            // ---- daemon custody notice (packaged app only) — never acts silently, always says why ----
+            if model.bundled && !model.translocated && (model.plist == .foreign || model.plist == .staleOurs) {
+                Rectangle().fill(Color.edge).frame(height: 1)
+                HStack(spacing: 8) {
+                    if model.plist == .foreign {
+                        Text("daemon managed by a dev install")
+                            .font(.system(size: 11)).foregroundColor(.inkDim).lineLimit(1)
+                        Spacer()
+                        GhostButton(icon: "arrow.triangle.2.circlepath", label: "take over", action: onTakeOver)
+                    } else {
+                        Text("daemon points at a missing install")
+                            .font(.system(size: 11)).foregroundColor(.inkDim).lineLimit(1)
+                        Spacer()
+                        GhostButton(icon: "wrench.adjustable", label: "repair", action: onRepair)
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+            }
 
             Rectangle().fill(Color.edge).frame(height: 1)
 
@@ -274,6 +357,8 @@ final class RelayController: NSObject, NSApplicationDelegate {
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
+            onTakeOver: { [weak self] in self?.takeOverDaemon() },
+            onRepair: { [weak self] in self?.repairDaemon() },
             onQuit: { NSApp.terminate(nil) }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
@@ -376,13 +461,74 @@ final class RelayController: NSObject, NSApplicationDelegate {
         if model.running {
             launchctl(["kickstart", "-k", "gui/\(uid)/\(LABEL)"])
             toast("restarting…")
-        } else if FileManager.default.fileExists(atPath: PLIST) {
-            launchctl(["bootstrap", "gui/\(uid)", PLIST])
-            toast("starting…")
         } else {
-            toast("not installed — npm run daemon:install")
+            switch plistState() {
+            case .ours, .foreign:
+                // A plist exists — start it as-is. Foreign (dev checkout) plists are never
+                // rewritten here; taking over is its own explicit, confirmed button.
+                launchctl(["bootstrap", "gui/\(uid)", PLIST])
+                toast("starting…")
+            case .staleOurs:
+                repairDaemon()
+            case .missing where hasBundledDaemon():
+                if isTranslocated() {
+                    // Gatekeeper ran us from a randomized path; a plist would die on next login.
+                    toast("move Relay to /Applications, then reopen it")
+                } else {
+                    installAndStart(verb: "installed")
+                }
+            case .missing:
+                toast("not installed — npm run daemon:install")
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.poll() }
+        model.plist = plistState()
+    }
+
+    /// Write the bundle-pointing plist and bootstrap it. The one path that creates the LaunchAgent.
+    private func installAndStart(verb: String) {
+        do {
+            try writeDaemonPlist()
+            launchctl(["bootstrap", "gui/\(getuid())", PLIST])
+            toast("daemon \(verb) — starting…")
+        } catch {
+            toast("could not write LaunchAgent")
+        }
+    }
+
+    /// Explicit, confirmed migration off a dev-checkout plist. ~/.relay is untouched: the token,
+    /// grants, contexts and audit log all survive byte-for-byte — only the plist changes hands.
+    private func takeOverDaemon() {
+        guard hasBundledDaemon(), !isTranslocated() else {
+            toast(isTranslocated() ? "move Relay to /Applications first" : "no bundled daemon in this build")
+            return
+        }
+        hidePanel()
+        let alert = NSAlert()
+        alert.messageText = "Take over the Switchboard daemon?"
+        alert.informativeText = "A Switchboard daemon is already installed from a dev checkout. Take over to run the daemon bundled with this app instead. Your contexts, apps and pairing token in ~/.relay are kept."
+        alert.addButton(withTitle: "Take Over")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
+        installAndStart(verb: "taken over")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.poll() }
+        model.plist = plistState()
+    }
+
+    /// Our plist, but its entry file is gone (app updated or re-laid-out): rewrite + reload.
+    /// bootout+bootstrap, not kickstart — launchd caches ProgramArguments at bootstrap time,
+    /// so a kickstart would just respawn the dead paths.
+    private func repairDaemon() {
+        guard hasBundledDaemon(), !isTranslocated() else {
+            toast(isTranslocated() ? "move Relay to /Applications first" : "no bundled daemon in this build")
+            return
+        }
+        launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
+        installAndStart(verb: "repaired")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.poll() }
+        model.plist = plistState()
     }
 
     private func toast(_ t: String) {

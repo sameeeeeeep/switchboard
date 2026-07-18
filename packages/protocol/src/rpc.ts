@@ -13,6 +13,7 @@ import type { CompletionParams, CompletionResult } from "./completion.js";
 import type { StorageRequest, StorageResult } from "./storage.js";
 import type { ContextRequest, ContextResult } from "./context.js";
 import type { SessionRequest, SessionResult } from "./session.js";
+import type { HealthStatus } from "./health.js";
 
 /** Who the paired human is — enough for a connected app to greet them ("Hi Sameep") and show whose
  *  Claude it's running on. Public, non-sensitive: a display name the user chose (or their OS name),
@@ -102,6 +103,11 @@ export interface BYOPMethods {
   claude_session: { params: SessionRequest; result: SessionResult };
   /** Local text-to-speech — synthesized on-device, no cloud/connector/credits. Requires a grant. */
   claude_speak: { params: SpeakParams; result: SpeakResult };
+  /** The setup ladder, answered by the EXTENSION locally — never forwarded to the daemon, no
+   *  grant required, resolves fast (<1s) even when the daemon is unreachable or unpaired. The
+   *  chip/widget render install → unreachable → unpaired → disconnected → connected from this;
+   *  live transitions arrive as the `health` event. */
+  claude_health: { params: void; result: HealthStatus };
 }
 
 export type BYOPMethod = keyof BYOPMethods;

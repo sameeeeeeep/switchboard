@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — YC Application Composer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<style>
+  :root{
+    --page:#0A0C10; --inset:#070809; --panel:#12151C; --raised:#1A1F29;
+    --edge:#262C38; --edge-soft:#1C212B;
+    --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+    --lime:#C8F250; --lime-soft:#232B0D;
+    --ok:#3DD68C; --warn:#F59E0B; --warn-soft:#2A1F06; --danger:#FF2D6E;
+    --font-display:"Bricolage Grotesque","Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-body:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --font-mono:"Spline Sans Mono",ui-monospace,"SF Mono","Cascadia Code",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--page); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1100px 620px at 78% -8%, rgba(200,242,80,.05), transparent 60%);
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:40px 22px 96px}
+  a{color:var(--lime)}
+
+  /* ---- masthead ---- */
+  .kick{font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim)}
+  .mast{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:6px}
+  .brand{font-family:var(--font-display); font-weight:700; letter-spacing:-.02em; font-size:20px}
+  .brand .dot{color:var(--lime)}
+  .mast .kick{white-space:nowrap}
+  .lede{color:var(--ink-sec); max-width:62ch; margin:14px 0 0}
+  .lede b{color:var(--ink)}
+
+  /* ---- status / control bar ---- */
+  .bar{
+    position:sticky; top:0; z-index:20; margin:26px 0 30px;
+    background:linear-gradient(var(--page),var(--page) 78%,transparent);
+    padding-top:8px;
+  }
+  .bar-in{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:12px 14px;
+  }
+  .state-dot{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 4px var(--lime-soft)}
+  .state-dot.edited{background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
+  #stateLabel{font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;color:var(--ink-sec)}
+  #stateLabel b{color:var(--ink)}
+  .bar-spacer{flex:1 1 auto}
+  .btn{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.03em;
+    border:1px solid var(--edge); background:var(--raised); color:var(--ink-sec);
+    padding:8px 12px; border-radius:9px; cursor:pointer; transition:border-color .15s,color .15s,background .15s;
+  }
+  .btn:hover{border-color:var(--ink-faint); color:var(--ink)}
+  .btn.primary{background:var(--lime); color:var(--page); border-color:var(--lime); font-weight:600}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn:disabled{opacity:.4; cursor:default}
+  .btn:focus-visible,.pill:focus-visible{outline:2px solid var(--lime); outline-offset:2px}
+
+  /* ---- hero (Q1) ---- */
+  .hero{
+    border:1px solid var(--edge); border-radius:18px; background:
+      linear-gradient(180deg, rgba(200,242,80,.05), transparent 42%), var(--panel);
+    padding:26px 26px 22px; margin-bottom:34px; position:relative; overflow:hidden;
+  }
+  .hero .row1{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px}
+  .charcount{font-family:var(--font-mono); font-size:12px; color:var(--ink-dim)}
+  .charcount b{color:var(--ok)}
+  .charcount.over b{color:var(--danger)}
+  .oneliner{
+    font-family:var(--font-display); font-weight:700; letter-spacing:-.03em; line-height:1.04;
+    font-size:clamp(30px,6vw,50px); text-wrap:balance; margin:2px 0 6px;
+  }
+  .oneliner .accent{color:var(--lime)}
+  .plainline{color:var(--ink-dim); font-size:14px; margin-top:10px}
+  .plainline span{color:var(--ink-sec)}
+  .framing-note{font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; color:var(--ink-faint); margin:20px 0 9px}
+
+  /* ---- pills ---- */
+  .pills{display:flex; gap:8px; flex-wrap:wrap}
+  .pill{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.02em;
+    border:1px solid var(--edge); background:var(--raised); color:var(--ink-dim);
+    padding:7px 13px; border-radius:999px; cursor:pointer; display:inline-flex; align-items:center; gap:7px;
+    transition:border-color .15s,color .15s,background .15s,transform .05s;
+  }
+  .pill:hover{border-color:var(--ink-faint); color:var(--ink-sec)}
+  .pill[aria-pressed="true"]{background:var(--lime-soft); border-color:var(--lime); color:var(--lime)}
+  .pill .tag{font-size:9.5px; letter-spacing:.1em; color:var(--ink-dim)}
+  .pill[aria-pressed="true"] .tag{color:var(--lime)}
+  .pill .final-tag{color:var(--page); background:var(--lime); padding:1px 5px; border-radius:5px; font-size:9px; letter-spacing:.08em}
+
+  /* ---- question cards ---- */
+  .cards{display:flex; flex-direction:column; gap:18px}
+  .card{
+    border:1px solid var(--edge); border-radius:16px; background:var(--panel);
+    padding:20px 22px 22px; position:relative; scroll-margin-top:90px;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .card:hover{border-color:var(--edge-soft)}
+  .card.pulse{border-color:var(--lime); box-shadow:0 0 0 1px var(--lime), 0 0 34px -6px rgba(200,242,80,.35)}
+  .card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:12px}
+  .qnum{font-family:var(--font-mono); font-size:12px; color:var(--lime); letter-spacing:.08em}
+  .qtitle{font-family:var(--font-display); font-weight:600; letter-spacing:-.01em; font-size:17px; margin:3px 0 0; color:var(--ink)}
+  .qprompt{color:var(--ink-dim); font-size:12.5px; margin:5px 0 0; max-width:60ch; line-height:1.5}
+  .card-meta{display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:0 0 auto; text-align:right}
+  .follows{font-family:var(--font-mono); font-size:9.5px; letter-spacing:.11em; color:var(--ink-dim); border:1px solid var(--edge); padding:3px 7px; border-radius:6px; white-space:nowrap}
+  .chip{font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; padding:3px 8px; border-radius:999px; white-space:nowrap}
+  .chip.picked{background:var(--lime-soft); color:var(--lime)}
+  .chip.updated{background:var(--warn-soft); color:var(--warn)}
+  .wordcount{font-family:var(--font-mono); font-size:11px; color:var(--ink-faint)}
+
+  .card .pills{margin-bottom:15px}
+  .answer{color:var(--ink-sec); font-size:15px; line-height:1.62}
+  .answer p{margin:0 0 12px}
+  .answer p:last-child{margin-bottom:0}
+  .answer strong{color:var(--ink); font-weight:600}
+  .answer .fade{animation:fade .35s ease}
+  .note{
+    margin-top:12px; font-size:12.5px; color:var(--warn); background:var(--warn-soft);
+    border-left:2px solid var(--warn); padding:8px 11px; border-radius:0 8px 8px 0; line-height:1.5;
+  }
+  @keyframes fade{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
+
+  /* ---- appendix ---- */
+  .appendix{margin-top:34px; border:1px solid var(--edge); border-radius:16px; background:var(--inset); overflow:hidden}
+  .appendix summary{
+    cursor:pointer; list-style:none; padding:18px 22px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    font-family:var(--font-display); font-weight:600; font-size:15px; color:var(--ink);
+  }
+  .appendix summary::-webkit-details-marker{display:none}
+  .appendix summary:focus-visible{outline:2px solid var(--lime); outline-offset:2px}
+  .appendix summary .kick{color:var(--ink-faint)}
+  .appendix summary .car{font-family:var(--font-mono); color:var(--ink-dim); transition:transform .2s}
+  .appendix[open] summary .car{transform:rotate(90deg)}
+  .appendix .body{padding:2px 22px 22px}
+  .killer{border-top:1px solid var(--edge-soft); padding:16px 0}
+  .killer:first-child{border-top:none}
+  .killer .q{color:var(--ink); font-weight:600; font-size:14px; margin:0 0 6px}
+  .killer .q::before{content:"“"} .killer .q::after{content:"”"}
+  .killer .a{color:var(--ink-dim); font-size:13.5px; line-height:1.6; margin:0}
+
+  .foot{margin-top:30px; color:var(--ink-faint); font-size:12px; font-family:var(--font-mono); letter-spacing:.03em; line-height:1.7}
+  .foot a{color:var(--ink-dim)}
+
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translate(-50%,20px); opacity:0; pointer-events:none;
+    background:var(--raised); border:1px solid var(--lime); color:var(--ink);
+    font-family:var(--font-mono); font-size:12.5px; padding:11px 18px; border-radius:11px; z-index:40;
+    transition:opacity .22s, transform .22s; box-shadow:0 10px 40px -10px rgba(0,0,0,.7);
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important; transition:none !important}
+  }
+  @media (max-width:560px){
+    .card-head{flex-direction:column}
+    .card-meta{align-items:flex-start; text-align:left}
+  }
+</style>
+
+<div class="wrap">
+  <div class="mast">
+    <div class="brand">Switchboard<span class="dot">.</span></div>
+    <div class="kick">Y Combinator · Application · Final</div>
+  </div>
+  <div class="kick" style="color:var(--lime)">The composer</div>
+  <p class="lede">The application, the Brandbrain way: <b>every answer is a decision.</b> The one-liner up top sets your <b>framing</b> — flip it and the answers that depend on it re-derive to stay consistent (watch them flash <b style="color:var(--warn)">updated</b>). Each card also carries the real alternate <b>angles</b> we weighed. The default is what we submitted.</p>
+
+  <div class="bar">
+    <div class="bar-in">
+      <span class="state-dot" id="stateDot"></span>
+      <span id="stateLabel"></span>
+      <span class="bar-spacer"></span>
+      <button class="btn" id="resetBtn" disabled>Reset to final</button>
+      <button class="btn" id="copyBtn">Copy .md</button>
+      <button class="btn primary" id="dlBtn">Download</button>
+    </div>
+  </div>
+
+  <div class="hero" id="hero"></div>
+
+  <div class="framing-note">↑ pick a framing — cards tagged <b style="color:var(--ink-dim)">FOLLOWS FRAMING</b> rewrite below</div>
+
+  <div class="cards" id="cards"></div>
+
+  <details class="appendix">
+    <summary><span>Interview prep <span class="kick">— the 5 kill-shots, answered</span></span><span class="car">▸</span></summary>
+    <div class="body" id="killers"></div>
+  </details>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- framing (the cascade axis) ----------
+  const FRAMINGS = {
+    spotify: { label:"Spotify",  tag:"HOOK",   isFinal:true },
+    wallet:  { label:"Wallet",   tag:"DEMO" },
+    plaid:   { label:"Plaid",    tag:"AUDIENCE" },
+  };
+  const FRAMING_ORDER = ["spotify","wallet","plaid"];
+
+  const ONELINER = {
+    spotify: [["Spotify for AI tools",true],[" — run on your own AI",false]],
+    wallet:  [["MetaMask for intelligence",true],[" — bring your own AI",false]],
+    plaid:   [["Plaid for AI",true],[" — any site runs on your Claude",false]],
+  };
+  const PLAIN = "A BYO-AI setup to run wrapps as your own.";
+
+  // ---------- questions ----------
+  // followsFraming: options are keyed by framing id (spotify/wallet/plaid)
+  // local: options are a fixed list; default is first
+  const Q = [
+    {
+      id:"q2", num:"02", title:"The product", kind:"local",
+      prompt:"What is your company going to make? Describe your product and what it does or will do.",
+      options:[
+        { id:"broker", label:"Broker-first", final:true, body:[
+          "Switchboard is a browser extension plus a local daemon. The daemon holds your Claude subscription — or a local model — and your authorized tools and connectors; the extension injects a <strong>window.claude</strong> provider into every page. Any website runs on the visitor's own model, tools, and data — the operator holds no API key, pays no inference bill. We call these apps <strong>wrapps</strong> — they ship only the interface.",
+          "A consent broker is the sole enforcement point: per-origin grants, read/write classification, budgets, audit log, kill switch. Writes need an out-of-band human click no page or model output can forge, and every request carries the browser-verified origin, so no site can spoof another.",
+          "The whole surface is a wallet — MetaMask for intelligence. Inference is the gas; your context is the asset, the balance that compounds and makes the wallet yours. Developers earn inference back when their wrapps run.",
+          "Two layers. <strong>Switchboard</strong>, the wallet, is open source (MIT, on GitHub) — a consent broker must be auditable to be trusted. <strong>Wrapps</strong>, the marketplace, is the business: store, Pro subscription, usage payout."
+        ]},
+        { id:"dev", label:"Developer-first", body:[
+          "Start from the developer's bill. Today, shipping an AI app means paying for every visitor's inference — so builders bolt on their own API key and rate-limit to survive, or never launch. Switchboard inverts it: a browser extension plus a local daemon hold the <strong>visitor's</strong> Claude subscription (or a local model) and their authorized tools, and inject a <strong>window.claude</strong> provider into every page. The app — a <strong>wrapp</strong> — ships only the interface and pays nothing to run.",
+          "A consent broker is the sole enforcement point: per-origin grants, read/write classification, an out-of-band human click for writes, audit log, kill switch — so an untrusted page can touch real tools without ever holding the key.",
+          "Two layers: <strong>Switchboard</strong> (the wallet — extension, daemon, protocol) is open source MIT; <strong>Wrapps</strong> (the marketplace — store, Pro, usage payout) is the business."
+        ]},
+      ]
+    },
+    {
+      id:"q3", num:"03", title:"Why this idea — and why you", kind:"local",
+      prompt:"Why did you pick this idea? Do you have domain expertise? How do you know people need it?",
+      options:[
+        { id:"gap", label:"The gap is economic", final:true, body:[
+          "There have never been more people building AI apps, and never a wider gap between how many build and how many use. I think that gap is economic, not a quality problem. Every new app carries a <strong>context cost</strong> — it starts cold, and you re-teach it your brand, your data, your preferences. A <strong>switching cost</strong> — your work stays siloed inside it. A <strong>subscription it can't justify</strong> — nobody holds 20–30 AI subscriptions, so app #31 never gets a chance. And in the vibe-coding era, a new attitude: <strong>“I could build this myself.”</strong> So creators multiply faster than paying users.",
+          "I've lived both sides. I built brandbrain, an AI brand studio with 32 API routes, and watched users hesitate at yet another signup asking for yet another API key. Then, solo, I ported that same 32-route app to run client-side on the visitor's own Claude — no server, no keys, no signup."
+        ]},
+        { id:"founder", label:"Founder proof", body:[
+          "I've lived both sides of the gap. I built brandbrain, an AI brand studio with 32 API routes, and watched users hesitate at yet another signup asking for yet another API key. Then, solo, I ported that same 32-route app to run client-side on the visitor's own Claude — no server, no keys, no signup.",
+          "The port is the thesis in miniature: the backend didn't need to exist. The reason so few AI apps get used isn't quality — it's economics. Every app starts cold (context cost), silos your work (switching cost), and asks for a subscription nobody can justify (app #31 never gets a chance). If one person can invert a production app in a week, the pattern generalizes — that's the marketplace I'm building."
+        ]},
+      ]
+    },
+    {
+      id:"q4", num:"04", title:"What's new — and the substitutes", kind:"framing",
+      prompt:"What's new about what you're making? What substitutes do people resort to because it doesn't exist yet?",
+      follows:true,
+      options:{
+        spotify:{ label:"Spotify", final:true, body:[
+          "This is the next step in how software has moved: static sites needed no backend; then apps grew servers, databases, and auth; the store era solved distribution but left operators carrying the backend and users paying per-app subscriptions. AI made that backend unaffordable for both. The inversion is next — apps become interfaces again (wrapps are literally static files) and the user brings the backend. We're the dev↔user marketplace for that step.",
+          "The substitutes are the tell — piracy behaviors of the pre-streaming era. People copy-paste between their subscription and the tool they work in; they vibe-code a clone instead of subscribing; developers ship their own key and rate-limit to survive. Most often, they never adopt.",
+          "What's new: an EIP-1193-style provider for AI — any origin borrows the visitor's model, tools, and data through the broker, so a wrapp costs the visitor nothing new, the developer nothing to serve. The store answers “I could build this myself” with a receipt: every wrapp shows its broker-measured build cost — millions of tokens and updates — beside what a session costs on your subscription. Nobody else can print that receipt, because nobody else holds the meter."
+        ]},
+        wallet:{ label:"Wallet", body:[
+          "What's new is a provider standard for AI. Crypto solved “let an untrusted site touch my assets” with EIP-1193: the page calls <strong>window.ethereum</strong>, the wallet holds the keys and gates every action. Switchboard is that for intelligence — <strong>window.claude</strong>. Any origin borrows the visitor's model, tools, and data through the broker, so a wrapp costs the visitor nothing new and the developer nothing to serve.",
+          "The substitutes are the tell: people copy-paste between their subscription and the tool they work in; they vibe-code a clone instead of subscribing; developers ship their own key and rate-limit to survive. Most often, they never adopt.",
+          "And the store prints a receipt only we can — every wrapp's broker-measured build cost beside what a session costs on your own subscription, because we hold the meter."
+        ]},
+        plaid:{ label:"Plaid", body:[
+          "The closest thing people already trust is “Sign in with Google” or Plaid: one broker lets a site use something sensitive — your identity, your bank — without the site ever holding it. Nothing like that exists for your AI. Switchboard is it: a <strong>window.claude</strong> provider lets any origin borrow the visitor's model, tools, and data through a consent broker, so a wrapp costs the visitor nothing new and the developer nothing to serve.",
+          "The substitutes are the tell: copy-paste between your subscription and your tool; vibe-code a clone instead of subscribing; ship your own key and rate-limit to survive; or, most often, never adopt.",
+          "And the store prints a receipt nobody else can — each wrapp's broker-measured build cost beside what a session costs on your plan, because we hold the meter."
+        ]},
+      }
+    },
+    {
+      id:"q5", num:"05", title:"Competitors & the edge", kind:"local",
+      prompt:"Who are your competitors? What do you understand about your business that they don't?",
+      options:[
+        { id:"broker", label:"Lead: the broker", final:true, body:[
+          "Three buckets: AI-wrapper SaaS that funds its own inference (Jasper, Copy.ai); agent platforms and MCP hosts (GPTs, Poe) where the operator holds the key and your data; and bring-your-own-key bolt-ons. What we understand: <strong>the consent broker is the product; the plumbing is commodity.</strong> Everyone races to make agents do things — but the only thing that lets an untrusted site touch your real Gmail, store, or files is an enforcement chokepoint the model can't talk its way past.",
+          "It's architectural, slow to copy, and we open-sourced it on purpose: an auditable wallet is how a security primitive becomes a standard. It's also model-agnostic by design — the same provider fronts a Claude subscription (the official Agent SDK, the user's own plan on their own machine) or a local model, so no single vendor's decision can kill it. The business moat sits one layer up — metering ledger, payout trust, the user's vault — and it compounds: context built in one wrapp and lent to the next becomes switching cost no operator can clone, because it lives on the user's side."
+        ]},
+        { id:"vault", label:"Lead: the vault", body:[
+          "What we understand: the moat isn't the plumbing, it's the user's <strong>compounding context</strong>. Every wrapp a visitor runs leaves brand, data and preferences in a vault that lives on the user's side — so context built in one wrapp and lent to the next becomes a switching cost no operator can clone, because they never hold it.",
+          "Competitors — AI-wrapper SaaS (Jasper, Copy.ai), agent/MCP hosts (GPTs, Poe), BYO-key bolt-ons — all keep the data on their side, so their retention is rented; ours accrues to the user and compounds. The consent broker underneath is open-sourced on purpose: an auditable wallet is how a security primitive becomes a standard."
+        ]},
+        { id:"tax", label:"Lead: model-agnostic", body:[
+          "What we understand: this is a <strong>neutral layer, not a bet on one model</strong>. The same window.claude provider fronts a Claude subscription (official Agent SDK, the user's own plan on their own machine) or a local model — so no single vendor's decision can kill it, and every wrapp inherits every connector the user already authorized.",
+          "Competitors — AI-wrapper SaaS (Jasper, Copy.ai), agent/MCP hosts (GPTs, Poe) where the operator holds the key, BYO-key bolt-ons — each re-pay the integration tax per app and lock to one backend. We pay it once, at the broker, for everyone. The broker is open-sourced deliberately: an auditable wallet is how a security primitive becomes a standard."
+        ]},
+      ]
+    },
+    {
+      id:"q6", num:"06", title:"How you make money", kind:"framing",
+      prompt:"How do or will you make money? How much could you make?",
+      follows:true,
+      options:{
+        spotify:{ label:"Spotify", final:true, body:[
+          "Music had this problem before Spotify: per-song pricing made no sense; people pirated, artists earned nothing. Streaming made consumption rational — one subscription, play anything, artists paid by plays. We're that model for AI apps.",
+          "Wrapps are ~90% free (the visitor's own subscription covers inference); one Switchboard Pro unlocks the premium tier across every wrapp. Pro is the Spotify move: <strong>one price replacing the twenty subscriptions people refuse to hold.</strong> We keep ~25% and pay ~75% to developers by metered usage — plays, not downloads. The split is honest because we're in the data path: the broker meters real per-wrapp spend, and a page can't fake its usage.",
+          "Payouts are denominated in inference — a developer's share arrives as compute credit to spend or cash out, so the first thing a wrapp earns its builder is a zero AI bill.",
+          "How big? Arithmetic, not forecast: <strong>1M Pro × $20/mo = $240M ARR; ~25% — $60M — is ours</strong>, the rest flows to developers as inference. Our inference cost is ~zero — structural margin. The cash line is enterprise: BYO-AI governance (audit log, scopes, budgets, kill switch), custom wrapps, implementation — sold on the same broker to a buyer that doesn't need the catalog big first."
+        ]},
+        wallet:{ label:"Wallet", body:[
+          "Think of it as a wallet, not a store. Wrapps are ~90% free — the visitor's own subscription is the gas. One Switchboard Pro unlocks the premium tier across every wrapp: <strong>one price replacing the twenty subscriptions people refuse to hold.</strong> We keep ~25% and pay ~75% to developers by metered usage — and because we're in the data path, the meter can't be faked.",
+          "Here's the wallet part: payouts are denominated in inference. A developer's share arrives as compute credit to spend or cash out — so the first thing a wrapp earns its builder is a <strong>zero AI bill</strong>.",
+          "How big? Labeled arithmetic, not forecast: <strong>1M Pro × $20/mo = $240M ARR; ~$60M is ours</strong> — structural margin, because our inference cost is ~zero. The cash line is enterprise: BYO-AI governance sold on the same broker."
+        ]},
+        plaid:{ label:"Plaid", fallback:"spotify",
+          note:"The Plaid framing is an <b>auth</b> story, not a payments one — so Q6 keeps the streaming analogy that carries the payout mechanic. (This is why the final leads with Spotify, not Plaid.)" },
+      }
+    },
+    {
+      id:"q7", num:"07", title:"How far along", kind:"local",
+      prompt:"How far along are you?",
+      options:[
+        { id:"final", label:"Narrative", final:true, body:[
+          "One week, solo, started 2026-07-07; public MIT repo. Proven end-to-end with runnable pass/fail spikes: the gated agentic loop — a destructive write never executes even when the model proposes it; the full pairing → consent → grant → read-auto/write-denied path over a real WebSocket; the user's claude.ai connectors inherited with zero config (a real image generated through their own Higgsfield connector); consent surviving Chrome service-worker eviction; an airgapped runner whose exfiltration attempts are provably blocked; local models via Ollama, with the user's model choice overriding the app's.",
+          "Live: a wrapp store at thelastprompt.ai/apps, seven wrapps on their own subdomains — including my 32-route brand studio ported to run fully client-side — and the extension packaged for Chrome Web Store review. I built all of it — broker, extension, daemon, store, seven apps — in that week.",
+          "Honest gaps: local-model tool use fails closed (completion only), distribution is macOS-first, and the consent UX is early."
+        ]},
+        { id:"proof", label:"Proof-first", body:[
+          "Everything below is proven with runnable pass/fail spikes, not slideware. The gated agentic loop: a destructive write never executes even when the model proposes it. The full pairing → consent → grant → read-auto / write-denied path over a real WebSocket. The user's claude.ai connectors inherited with zero config (a real image generated through their own Higgsfield connector). Consent surviving Chrome service-worker eviction. An airgapped runner whose exfiltration attempts are provably blocked. Local models via Ollama, the user's choice overriding the app's.",
+          "Live on top: a wrapp store at thelastprompt.ai/apps, seven wrapps on their own subdomains — including my 32-route brand studio ported fully client-side — and the extension packaged for Chrome Web Store review. One week, solo.",
+          "Honest gaps: local-model tool use fails closed, distribution is macOS-first, consent UX is early."
+        ]},
+      ]
+    },
+    {
+      id:"q8", num:"08", title:"Getting users / the cold start", kind:"local",
+      prompt:"How will you get users? If your idea faces a chicken-and-egg problem, how will you crack it?",
+      options:[
+        { id:"final", label:"Supply-first", final:true, body:[
+          "Supply-first, like any marketplace. I ship the first-party wrapps myself (seven live) so the install is worth it before third-party developers arrive, and I split my own monolith into small entry tools — a user enters through one free tool, and the same portable brand object later graduates them into the full studio, so the small door and the retention product share data.",
+          "Demand capture at the point of pain: the extension's widget appears on the exact paid tools people already use (Canva, Notion, Meta Ads Manager) and offers <strong>“do this on your own Claude, free.”</strong> The pitch: use what you already pay for, everywhere, safely. For developers: your users bring the compute, you pay $0 to run AI. Enterprise governance runs as a parallel motion that doesn't need the network effect, funding it."
+        ]},
+        { id:"dev", label:"Developer-supply", body:[
+          "Crack it from the supply side. The offer to developers is unmatched: your users bring the compute, so you pay <strong>$0 to run AI</strong> — no key, no inference bill, no rate limits. That flips the usual cold-start: builders have a reason to ship before there's an audience, and I seed the shelf myself (seven live wrapps, my own 32-route app ported) so day-one installs are worth it.",
+          "Demand then captures at the point of pain: the extension's widget appears on the paid tools people already use — Canva, Notion, Meta Ads Manager — offering “do this on your own Claude, free.” Enterprise governance runs as a parallel motion that funds the network effect instead of needing it."
+        ]},
+      ]
+    },
+  ];
+
+  const KILLERS = [
+    { q:"Anthropic could block subscription use — or ship this themselves.",
+      a:"The daemon uses the official Claude Code / Agent SDK, running the user's own plan on their own machine — demand-gen for subscriptions, not key-resale. The provider is model-agnostic (window.claude fronts a local Ollama model today), so a single-vendor block degrades us, it doesn't kill us. And a model vendor is structurally disinclined to build the neutral broker that commoditizes its own model." },
+    { q:"You're solo, on a trust product plus a marketplace. Why win alone?",
+      a:"The evidence is velocity: in one week, solo, I shipped the extension, daemon, seven live wrapps, ported a 32-route production app fully client-side, and stood up a gated agentic loop with runnable spikes. The gap I can't cover alone is named — a security/distribution partner — and open-sourcing the broker is partly a cofounder funnel." },
+    { q:"Zero users. Why believe anyone wants this?",
+      a:"True — one week old, external users zero, and I won't dress that up. Instead I removed the two reasons marketplaces stall: supply exists day one (seven wrapps, my own real app ported), and the whole loop is dogfooded. The demand test is concrete and next: the widget on tools people already pay for, offering “do this on your own Claude, free.”" },
+    { q:"If 90% is free, why does anyone pay?",
+      a:"Pro isn't an upsell on a free product — it's the consolidation product: one price replacing the twenty subscriptions people refuse to hold, unlocked across the entire catalog at once." },
+    { q:"A malicious wrapp or prompt injection drains someone's Gmail. What stops it?",
+      a:"Enforcement is out-of-band and default-deny: tool danger classified in the daemon — never by the page or model — writes need a human click no output can satisfy, every request carries the browser-verified origin, audit log and kill switch on top. Open-sourced so it's auditable. Honest limit: no external security audit yet — that audit is the roadmap." },
+  ];
+
+  const YC_PROMPT = {
+    q1:"Describe what your company does in 50 characters or less.",
+    q2:"What is your company going to make? Describe your product and what it does or will do.",
+    q3:"Why did you pick this idea to work on? Do you have domain expertise? How do you know people need what you're making?",
+    q4:"What's new about what you're making? What substitutes do people resort to because it doesn't exist yet (or they don't know about it)?",
+    q5:"Who are your competitors? What do you understand about your business that they don't?",
+    q6:"How do or will you make money? How much could you make?",
+    q7:"How far along are you?",
+    q8:"How will you get users? If your idea faces a chicken-and-egg problem, how will you crack it?",
+  };
+
+  // ---------- state ----------
+  const state = {
+    framing:"spotify",
+    picks:{ q2:"broker", q3:"gap", q5:"broker", q7:"final", q8:"final" },
+  };
+  const DEFAULTS = JSON.parse(JSON.stringify(state));
+
+  // ---------- helpers ----------
+  const $ = s => document.querySelector(s);
+  const el = (tag, cls, html) => { const n=document.createElement(tag); if(cls)n.className=cls; if(html!=null)n.innerHTML=html; return n; };
+  const strip = h => h.replace(/<[^>]+>/g,"");
+  const words = arr => strip(arr.join(" ")).trim().split(/\s+/).length;
+  const oneLinerText = f => ONELINER[f].map(s=>s[0]).join("");
+
+  // resolve the currently-selected option object for a question
+  function currentOpt(q){
+    if(q.kind==="framing"){
+      let o = q.options[state.framing];
+      if(o && o.fallback) return { ...q.options[o.fallback], note:o.note, _fellBack:true, label:o.label };
+      return o;
+    }
+    return q.options.find(o=>o.id===state.picks[q.id]);
+  }
+
+  // ---------- render hero ----------
+  function renderHero(){
+    const hero = $("#hero"); hero.innerHTML="";
+    const txt = oneLinerText(state.framing);
+    const count = txt.length;
+    const row1 = el("div","row1");
+    row1.appendChild(el("div","qnum","QUESTION 01 · ONE-LINER"));
+    const cc = el("div","charcount"+(count>50?" over":""), `<b>${count}</b> / 50 chars`);
+    row1.appendChild(cc);
+    hero.appendChild(row1);
+
+    const ol = el("h1","oneliner");
+    ONELINER[state.framing].forEach(([t,acc])=> ol.appendChild(el("span",acc?"accent":null,t)) );
+    hero.appendChild(ol);
+
+    hero.appendChild(el("div","plainline",`Plain-English alt · <span>${PLAIN}</span>`));
+
+    hero.appendChild(el("div","framing-note","THE FRAMING — sets the pitch, cascades to Q4 & Q6"));
+    const pills = el("div","pills");
+    FRAMING_ORDER.forEach(f=>{
+      const meta = FRAMINGS[f];
+      const p = el("button","pill");
+      p.type="button"; p.setAttribute("aria-pressed", state.framing===f);
+      p.dataset.framing=f;
+      p.innerHTML = `${meta.label} <span class="tag">${meta.tag}</span>` + (meta.isFinal?` <span class="final-tag">FINAL</span>`:"");
+      pills.appendChild(p);
+    });
+    hero.appendChild(pills);
+  }
+
+  // ---------- render one card ----------
+  function renderCard(q){
+    const card = el("div","card"); card.id="card-"+q.id; card.dataset.q=q.id;
+    const head = el("div","card-head");
+    const left = el("div");
+    left.appendChild(el("div","qnum","QUESTION "+q.num));
+    left.appendChild(el("h3","qtitle",q.title));
+    left.appendChild(el("p","qprompt",q.prompt));
+    head.appendChild(left);
+
+    const meta = el("div","card-meta");
+    if(q.follows) meta.appendChild(el("span","follows","FOLLOWS FRAMING"));
+    const chip = el("span","chip picked","● PICKED"); chip.dataset.role="chip";
+    meta.appendChild(chip);
+    const wc = el("div","wordcount"); wc.dataset.role="wc";
+    meta.appendChild(wc);
+    head.appendChild(meta);
+    card.appendChild(head);
+
+    // option pills
+    const pills = el("div","pills");
+    if(q.kind==="framing"){
+      FRAMING_ORDER.forEach(f=>{
+        const o=q.options[f]; if(!o) return;
+        const p=el("button","pill"); p.type="button"; p.dataset.framing=f;
+        p.setAttribute("aria-pressed", state.framing===f);
+        p.innerHTML = `${o.label}` + (o.final?` <span class="final-tag">FINAL</span>`:"") + (o.fallback?` <span class="tag">↩ FALLS BACK</span>`:"");
+        pills.appendChild(p);
+      });
+    } else {
+      q.options.forEach(o=>{
+        const p=el("button","pill"); p.type="button"; p.dataset.pick=o.id; p.dataset.q=q.id;
+        p.setAttribute("aria-pressed", state.picks[q.id]===o.id);
+        p.innerHTML = `${o.label}` + (o.final?` <span class="final-tag">FINAL</span>`:"");
+        pills.appendChild(p);
+      });
+    }
+    card.appendChild(pills);
+
+    const ans = el("div","answer"); ans.dataset.role="answer";
+    card.appendChild(ans);
+    paintAnswer(card,q,false);
+    return card;
+  }
+
+  // paint just the answer body + chip + wordcount for a card
+  function paintAnswer(card,q,animate){
+    const o = currentOpt(q);
+    const ans = card.querySelector('[data-role="answer"]');
+    ans.innerHTML="";
+    const inner = el("div",animate?"fade":null);
+    o.body.forEach(p=> inner.appendChild(el("p",null,p)) );
+    if(o.note) inner.appendChild(el("div","note",o.note));
+    ans.appendChild(inner);
+
+    card.querySelector('[data-role="wc"]').textContent = "~"+words(o.body)+" words";
+
+    // chip: default option => picked; otherwise edited/updated handled by caller
+    const chip = card.querySelector('[data-role="chip"]');
+    if(!chip.dataset.override){
+      const finalPick = (q.kind==="framing") ? (state.framing==="spotify") : (currentOpt(q).final===true);
+      chip.className = "chip picked";
+      chip.textContent = finalPick ? "● FINAL" : "● PICKED";
+    }
+  }
+
+  // ---------- diff / status ----------
+  function isDefault(){
+    if(state.framing!==DEFAULTS.framing) return false;
+    return Object.keys(DEFAULTS.picks).every(k=>state.picks[k]===DEFAULTS.picks[k]);
+  }
+  function changeCount(){
+    let n = state.framing!==DEFAULTS.framing ? 1 : 0;
+    Object.keys(DEFAULTS.picks).forEach(k=>{ if(state.picks[k]!==DEFAULTS.picks[k]) n++; });
+    return n;
+  }
+  function renderStatus(){
+    const def = isDefault();
+    $("#stateDot").className = "state-dot"+(def?"":" edited");
+    $("#stateLabel").innerHTML = def
+      ? "Showing <b>FINAL</b> — the version as submitted"
+      : `Showing <b>edited</b> — ${changeCount()} decision${changeCount()>1?"s":""} changed from final`;
+    $("#resetBtn").disabled = def;
+  }
+
+  // ---------- cascade / updates ----------
+  function flashUpdated(qid){
+    const card = $("#card-"+qid); if(!card) return;
+    card.classList.remove("pulse"); void card.offsetWidth; card.classList.add("pulse");
+    const chip = card.querySelector('[data-role="chip"]');
+    chip.className="chip updated"; chip.textContent="↻ UPDATED"; chip.dataset.override="1";
+    clearTimeout(card._t);
+    card._t = setTimeout(()=>{
+      card.classList.remove("pulse");
+      delete chip.dataset.override;
+      const q = Q.find(x=>x.id===qid);
+      paintAnswer(card,q,false);
+    }, 2600);
+  }
+
+  function setFraming(f){
+    if(state.framing===f) return;
+    state.framing=f;
+    renderHero();
+    // repaint + flash the framing-dependent cards
+    Q.filter(q=>q.kind==="framing").forEach(q=>{
+      const card=$("#card-"+q.id);
+      // sync pills
+      card.querySelectorAll(".pill[data-framing]").forEach(p=>p.setAttribute("aria-pressed", p.dataset.framing===f));
+      paintAnswer(card,q,true);
+      flashUpdated(q.id);
+    });
+    renderStatus();
+    toast("Framing → "+FRAMINGS[f].label+" · dependent answers rewritten");
+  }
+
+  function setPick(qid,oid){
+    if(state.picks[qid]===oid) return;
+    state.picks[qid]=oid;
+    const q=Q.find(x=>x.id===qid); const card=$("#card-"+qid);
+    card.querySelectorAll(".pill[data-pick]").forEach(p=>p.setAttribute("aria-pressed", p.dataset.pick===oid));
+    paintAnswer(card,q,true);
+    // brief self-flash
+    const chip=card.querySelector('[data-role="chip"]');
+    const isFinal = q.options.find(o=>o.id===oid).final===true;
+    chip.className="chip "+(isFinal?"picked":"updated");
+    chip.textContent= isFinal ? "● FINAL" : "↻ ANGLE SWAPPED";
+    chip.dataset.override="1";
+    clearTimeout(card._t);
+    card._t=setTimeout(()=>{ delete chip.dataset.override; paintAnswer(card,q,false); },2200);
+    renderStatus();
+  }
+
+  // ---------- markdown export ----------
+  function buildMarkdown(){
+    const L=[];
+    L.push("# Switchboard — YC application");
+    L.push("");
+    L.push("## 1. "+YC_PROMPT.q1);
+    L.push("");
+    L.push(oneLinerText(state.framing));
+    L.push("");
+    Q.forEach(q=>{
+      L.push("## "+ (parseInt(q.num,10)) +". "+YC_PROMPT[q.id]);
+      L.push("");
+      currentOpt(q).body.forEach(p=>{ L.push(strip(p)); L.push(""); });
+    });
+    L.push("---");
+    L.push("");
+    L.push("# Interview prep");
+    L.push("");
+    KILLERS.forEach(k=>{ L.push("**“"+k.q+"”**"); L.push(k.a); L.push(""); });
+    return L.join("\n");
+  }
+
+  // ---------- toast ----------
+  let toastT;
+  function toast(msg){
+    const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2200);
+  }
+
+  // ---------- boot ----------
+  function boot(){
+    renderHero();
+    const cards=$("#cards");
+    Q.forEach(q=>cards.appendChild(renderCard(q)));
+
+    const kb=$("#killers");
+    KILLERS.forEach(k=>{
+      const d=el("div","killer");
+      d.appendChild(el("p","q",k.q));
+      d.appendChild(el("p","a",k.a));
+      kb.appendChild(d);
+    });
+
+    $("#foot").innerHTML =
+      "SWITCHBOARD · SPOTIFY FOR AI TOOLS · MIT / thelastprompt.ai/apps<br>"+
+      "Default state = the application as submitted. Pills expose the real angles we weighed.";
+
+    // event delegation
+    document.addEventListener("click",e=>{
+      const fp=e.target.closest(".pill[data-framing]");
+      if(fp){ setFraming(fp.dataset.framing); return; }
+      const pp=e.target.closest(".pill[data-pick]");
+      if(pp){ setPick(pp.dataset.q, pp.dataset.pick); return; }
+    });
+
+    $("#resetBtn").addEventListener("click",()=>{
+      state.framing=DEFAULTS.framing;
+      state.picks=JSON.parse(JSON.stringify(DEFAULTS.picks));
+      renderHero();
+      Q.forEach(q=>{
+        const card=$("#card-"+q.id);
+        card.querySelectorAll(".pill[data-framing]").forEach(p=>p.setAttribute("aria-pressed",p.dataset.framing===state.framing));
+        card.querySelectorAll(".pill[data-pick]").forEach(p=>p.setAttribute("aria-pressed",p.dataset.pick===state.picks[q.id]));
+        const chip=card.querySelector('[data-role="chip"]'); delete chip.dataset.override;
+        paintAnswer(card,q,false);
+      });
+      renderStatus();
+      toast("Reset to the submitted version");
+    });
+
+    $("#copyBtn").addEventListener("click",async()=>{
+      try{ await navigator.clipboard.writeText(buildMarkdown()); toast("Copied application markdown"); }
+      catch(_){ toast("Copy blocked — use Download"); }
+    });
+
+    $("#dlBtn").addEventListener("click",()=>{
+      const blob=new Blob([buildMarkdown()],{type:"text/markdown"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download="switchboard-yc-application.md";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast("Downloaded switchboard-yc-application.md");
+    });
+
+    renderStatus();
+  }
+  boot();
+})();
+</script>
+
+</body>
+</html>
