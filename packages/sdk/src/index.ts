@@ -20,6 +20,8 @@ import {
   type ToolDescriptor,
   type UserIdentity,
   type SpeakResult,
+  type HealthStatus,
+  type HealthReason,
 } from "@relay/protocol";
 
 /**
@@ -68,6 +70,19 @@ export class Relay {
 
   permissions(): Promise<OriginGrant | null> {
     return this.provider.request({ method: "claude_permissions" });
+  }
+
+  /** The setup-ladder snapshot (reachable/paired/connected), answered by the EXTENSION from its
+   *  own state — never the daemon — so it resolves fast (<1s) in every degraded state, including
+   *  the ones where every other method would hang. Resolves null when the extension is too old to
+   *  know `claude_health` (or its worker is unreachable): callers MUST treat null as "unknown"
+   *  and fall back to probing permissions() exactly as before — that skew guard is load-bearing
+   *  while store users run an older extension against newer app bundles. */
+  health(): Promise<HealthStatus | null> {
+    const answer: Promise<HealthStatus | null> =
+      this.provider.request({ method: "claude_health" }).catch(() => null);
+    const timer = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    return Promise.race([answer, timer]);
   }
 
   /** The paired user's public identity (name/avatar), or null if unavailable. Convenience over
@@ -128,7 +143,7 @@ export class Relay {
     }
   }
 
-  on(event: "connect" | "disconnect" | "permissionsChanged", handler: (payload: unknown) => void) {
+  on(event: "connect" | "disconnect" | "permissionsChanged" | "health", handler: (payload: unknown) => void) {
     this.provider.on(event, handler);
   }
 
@@ -199,5 +214,5 @@ export function whenRelayReady(timeoutMs = 3000, opts?: { installUrl?: string })
 }
 
 export { BYOPErrorCode };
-export type { CompletionParams, CompletionResult, OriginGrant, ScopeRequest, StreamDelta, ToolDescriptor, ToolCallResult, UserIdentity, SpeakResult };
+export type { CompletionParams, CompletionResult, OriginGrant, ScopeRequest, StreamDelta, ToolDescriptor, ToolCallResult, UserIdentity, SpeakResult, HealthStatus, HealthReason };
 export { mountConnect, type ConnectChipOptions, type ConnectChipHandle } from "./connect-chip.js";

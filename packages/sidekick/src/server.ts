@@ -29,7 +29,7 @@ import type { AuditLog } from "./security/audit-log.js";
 import type { ConsentPrompter, PerActionConsentRequest } from "./security/consent.js";
 import type { McpRegistry } from "./mcp/registry.js";
 import type { BackendRegistry } from "./backends/registry.js";
-import { relayNativeServer } from "./backends/relay-native.js";
+import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError } from "./storage/store.js";
 import { ContextLibrary, folderOf } from "./context/library.js";
@@ -38,11 +38,13 @@ import { SessionManager } from "./session/manager.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
- *  attachments (so the agentic loop can upload them via relay__put_blob). Empty attachments → no
- *  relay server, so the SDK still inherits the user's claude.ai connectors. */
-function buildMcpServers(local: Record<string, unknown>, attachments?: { handle: string; filename: string; contentType: string; dataUrl: string }[]) {
-  if (!attachments?.length) return local;
-  return { ...local, relay: relayNativeServer(new Map(attachments.map((a) => [a.handle, a]))) };
+ *  attachments (relay__put_blob) and, when the origin has a BOUND folder, the publish verb
+ *  (relay__git_commit_push). Neither → no relay server at all, so the SDK still inherits the
+ *  user's claude.ai connectors unchanged. */
+function buildMcpServers(local: Record<string, unknown>, attachments?: { handle: string; filename: string; contentType: string; dataUrl: string }[], gitCtx?: GitPublishContext) {
+  const wantGit = !!gitCtx?.folder;
+  if (!attachments?.length && !wantGit) return local;
+  return { ...local, relay: relayNativeServer(new Map((attachments ?? []).map((a) => [a.handle, a])), wantGit ? gitCtx : undefined) };
 }
 
 /**
@@ -692,7 +694,7 @@ export class Broker implements ConsentPrompter {
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
       authorizeToolCall: (call: ToolCallRequest) => this.deps.gate.authorize(origin, call).then((d) => (d.allow ? { allow: true, message: undefined } : { allow: false, message: d.message })),
       gateToolCall: (call: ToolCallRequest) => this.deps.gate.gateToolCall(origin, call),
-      mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments),
+      mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments, this.gitCtxFor(origin)),
       emit: (_d: StreamDelta) => { /* one-shot: deltas discarded */ },
       signal: controller.signal,
     };
@@ -701,6 +703,19 @@ export class Broker implements ConsentPrompter {
     const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(text);
     this.deps.gate.recordCompletion(origin, tokens);
     return { text, model: params.model ?? backend.id, usage: out.usage, stopReason: "end" as const };
+  }
+
+  /** Per-request context for relay__git_commit_push: the origin's EXPLICIT binding (never the
+   *  sandbox), its readonly posture, the standard write-consent card, and audit. */
+  private gitCtxFor(origin: string): GitPublishContext {
+    const grant = this.deps.grants.get(origin);
+    return {
+      origin,
+      folder: this.deps.storage.boundFolder(origin),
+      readonly: (grant?.mode ?? "ask") === "readonly",
+      requestConsent: (args) => this.requestWriteConsent({ id: randomUUID(), origin, tool: { name: "relay__git_commit_push", arguments: args }, reason: "write-action" }),
+      audit: (outcome, note) => this.deps.audit.record({ origin, kind: "tool_call", toolName: "relay__git_commit_push", outcome, note }),
+    };
   }
 
   private async startStream(origin: string, params: CompletionParams): Promise<{ streamId: string }> {
@@ -717,7 +732,7 @@ export class Broker implements ConsentPrompter {
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
       authorizeToolCall: (call: ToolCallRequest) => this.deps.gate.authorize(origin, call).then((d) => (d.allow ? { allow: true, message: undefined } : { allow: false, message: d.message })),
       gateToolCall: (call: ToolCallRequest) => this.deps.gate.gateToolCall(origin, call),
-      mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments),
+      mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments, this.gitCtxFor(origin)),
       emit,
       signal: controller.signal,
     };

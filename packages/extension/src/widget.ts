@@ -87,7 +87,9 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
   root.innerHTML = `<style>${css()}</style>`;
   const rerender = (c: boolean) => { setCollapsed(c); render(root, view, host, c); };
   const connected = view.kind === "status" && !!view.state.connected;
-  const dotColor = view.kind === "alts" ? "#6E7C90" : connected ? "#3DD68C" : "#C8F250";
+  // Mini ladder colours: asleep is AMBER (nothing is broken), everything else keeps its meaning.
+  const asleep = view.kind === "status" && view.state.paired && !view.state.reachable;
+  const dotColor = view.kind === "alts" ? "#6E7C90" : asleep ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
 
   if (collapsed) {
     const pill = document.createElement("div");
@@ -128,11 +130,17 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
     bd.appendChild(foot);
   } else {
     const s = view.state;
+    // The status face's mini ladder. "Switchboard ready" is only ever said where it's TRUE
+    // (paired + reachable); the degraded rungs each name their one next action, and every
+    // button below is openPanel — no dead CTAs.
+    const unpaired = s.reachable && !s.paired;
     const stat = document.createElement("div");
     stat.className = "stat";
     stat.innerHTML = `<span class="dot" style="background:${dotColor}"></span><span></span>`;
     (stat.querySelector("span:last-child") as HTMLElement).textContent =
-      connected ? "Connected — running on your Claude" : "Switchboard ready — connect on this page";
+      asleep ? "Sidekick asleep — open the Relay app"
+      : unpaired ? "Almost there — pair Switchboard"
+      : connected ? "Connected — running on your Claude" : "Switchboard ready — connect on this page";
     bd.appendChild(stat);
 
     if (connected) {
@@ -178,9 +186,12 @@ async function main() {
   if (alts.length) {
     view = { kind: "alts", alts };              // a competitor site → the "use a wrapp instead" pitch
   } else {
-    // A wrapp / work site → the live status card, but only once Switchboard is set up (else stay quiet).
+    // A wrapp / work site → the live status card, but the widget never nags on a fresh install:
+    // not paired AND not reachable (nothing set up at all) stays absent — the chip owns first-run.
+    // Paired-but-asleep and reachable-but-unpaired DO show: the user has started setup, so the
+    // widget's one next action helps rather than nags.
     const state = (await send({ type: "widgetState" })) as WidgetState | undefined;
-    if (!state?.paired) return;
+    if (!state || (!state.paired && !state.reachable)) return;
     view = { kind: "status", state };
   }
 

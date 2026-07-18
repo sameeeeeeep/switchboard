@@ -1,4 +1,4 @@
-import { PROVIDER_GLOBAL } from "@relay/protocol";
+import { PROVIDER_GLOBAL, BYOPErrorCode } from "@relay/protocol";
 import type { Context, ScopeRequest, UserIdentity } from "@relay/protocol";
 import { Relay, whenRelayReady } from "./index.js";
 
@@ -7,7 +7,9 @@ import { Relay, whenRelayReady } from "./index.js";
  * same everywhere and the app becomes "yours" the moment you connect. It is the MetaMask account
  * button for Switchboard:
  *
- *   • not installed        → "Get Switchboard"     (opens the install page)
+ *   • not installed        → "Get Switchboard"     (menu: Add to Chrome / full setup guide)
+ *   • sidekick asleep      → "Your sidekick is asleep" (amber, auto-recovers on the health push)
+ *   • daemon unpaired      → "Almost there — pair in the side panel"
  *   • installed, no grant  → "Connect Switchboard" (runs the consent flow)
  *   • connected            → "Hi {name} · {project}" pill + a small menu
  *
@@ -46,8 +48,13 @@ export interface ConnectChipHandle {
 type State =
   | { kind: "booting" }
   | { kind: "not-installed"; installUrl: string }
+  | { kind: "unreachable" }
+  | { kind: "unpaired" }
   | { kind: "disconnected"; relay: Relay }
   | { kind: "connected"; relay: Relay; user: UserIdentity | null; project: Context | null };
+
+/** One-click extension install (the landing page stays the "full setup" story: extension + sidekick). */
+const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb";
 
 const STYLE = `
 :host { all: initial; }
@@ -93,6 +100,11 @@ const STYLE = `
   background: transparent; color: #B4BECE; font-size: 13px; font-weight: 500; cursor: pointer; }
 .menu .item:hover { background: #20262F; color: #E8EDF4; }
 .menu .foot { padding: 8px 10px 4px; font-size: 11px; font-weight: 500; color: #6E7C90; line-height: 1.4; }
+/* Setup-ladder pills (sidekick asleep / unpaired): quiet and informative, never red — nothing is
+   broken. Amber only while the daemon is unreachable; the glyph stays muted until it's reachable. */
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #E8B84B; flex: none;
+  box-shadow: 0 0 8px rgba(232,184,75,.45); }
+.menu .body { padding: 8px 10px 2px; font-size: 12px; font-weight: 500; color: #B4BECE; line-height: 1.45; }
 `;
 
 export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {}): ConnectChipHandle {
@@ -110,6 +122,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
   let relay: Relay | null = null;
   let seq = 0; // guards against out-of-order async renders
   let wasConnected = false; // so onConnect/onDisconnect fire on real transitions, incl. auto-reconnect on load
+  let lastProjectKey: string | null | undefined; // undefined = never observed; detects panel-side switches
   // "Disconnect this app" is a SOFT, per-session disconnect (like MetaMask disconnecting a site): the
   // grant persists (full revoke is panel-only), so we forget locally and reconnect silently on demand.
   let sessionDisconnected = false;
@@ -145,6 +158,15 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     if (!(r instanceof Relay)) { watchForLateProvider(); state = { kind: "not-installed", installUrl }; return render(); }
     relay = r;
     subscribe(r);
+    // The setup ladder first — answered by the EXTENSION from its own state (<1s, daemon-free), so
+    // a sleeping daemon renders as a calm pill instead of a hung permissions() probe. h === null
+    // means the extension is too old to know claude_health (or its worker didn't answer): fall
+    // through to the permissions() path exactly as today — that skew guard is load-bearing while
+    // store users run an older extension against newer wrapp bundles.
+    const h = await r.health();
+    if (destroyed || my !== seq) return;
+    if (h && !h.reachable) { state = { kind: "unreachable" }; emitTransition(false); return render(); }
+    if (h && !h.paired) { state = { kind: "unpaired" }; emitTransition(false); return render(); }
     const grant = sessionDisconnected ? null : await r.permissions().catch(() => null);
     if (destroyed || my !== seq) return;
     if (!grant) { state = { kind: "disconnected", relay: r }; emitTransition(false); return render(); }
@@ -154,8 +176,15 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       wantsContext ? r.context.active().catch(() => null) : Promise.resolve(null),
     ]);
     if (destroyed || my !== seq) return;
+    const wasAlreadyConnected = wasConnected;
     state = { kind: "connected", relay: r, user, project };
     emitTransition(true);
+    // Honor the documented contract: onProjectChange fires however the lent project changed — the
+    // chip's own switcher, the side panel, or another tab (all funnel through permissionsChanged →
+    // refresh). Skipped on the connect transition itself: apps load their project in onConnect.
+    const projKey = project ? (project.id ?? project.name) : null;
+    if (wasAlreadyConnected && lastProjectKey !== undefined && projKey !== lastProjectKey) opts.onProjectChange?.(project);
+    lastProjectKey = projKey;
     render();
   }
 
@@ -174,6 +203,10 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     // The panel (or another tab) can change the lent project or revoke — reflect it live.
     r.on("permissionsChanged", () => { void refresh(); });
     r.on("disconnect", () => { void refresh(); });
+    // The setup ladder moved (daemon woke or slept, pairing landed) — upgrade AND downgrade live,
+    // the same late-binding pattern as the provider watch, now for the whole ladder. This is the
+    // real recovery mechanism; the pills' Retry button is a courtesy.
+    r.on("health", () => { void refresh(); });
   }
 
   async function doConnect() {
@@ -182,14 +215,20 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       sessionDisconnected = false; // clear a prior soft disconnect so the grant is honored again
       await relay.connect(opts.scope);
       await refresh(); // emitTransition() fires onConnect once we confirm the grant
-    } catch { /* user rejected or unreachable — leave the Connect button in place */ }
+    } catch (e) {
+      // A fast 4900 means the ladder moved beneath us (sidekick asleep / unpaired): re-read it so
+      // the chip lands on the right rung instead of a silently dead Connect click. A user
+      // rejection (4001) leaves the Connect button in place, as today.
+      if ((e as { code?: number } | null)?.code === BYOPErrorCode.PROVIDER_UNAVAILABLE) void refresh();
+    }
   }
 
   async function doPick() {
     if (!relay) return;
     menuOpen = false; render();
-    const project = await relay.context.pick().catch(() => null);
-    opts.onProjectChange?.(project);
+    // No explicit onProjectChange here: refresh() observes the new active() selection and fires it
+    // once — which also stops a cancelled picker from firing a spurious onProjectChange(null).
+    await relay.context.pick().catch(() => null);
     await refresh();
   }
 
@@ -208,10 +247,66 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     if (state.kind === "booting") return; // nothing until we know — avoids a flash of the wrong state
 
     if (state.kind === "not-installed") {
+      const url = state.installUrl;
+      const wrap = el("div", "wrap");
       const b = el("button", "btn get");
       b.append(el("span", "glyph"), el("span", undefined, "Get Switchboard"), el("span", "arr", "↗"));
-      b.onclick = () => window.open(state.kind === "not-installed" ? state.installUrl : installUrl, "_blank", "noopener");
-      mount.append(b);
+      b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
+      wrap.append(b);
+      if (menuOpen) {
+        const menu = el("div", "menu");
+        const store = el("button", "item", "Add to Chrome ↗");
+        store.onclick = () => { menuOpen = false; render(); window.open(CHROME_STORE_URL, "_blank", "noopener"); };
+        const guide = el("button", "item", "Full setup guide ↗");
+        guide.onclick = () => { menuOpen = false; render(); window.open(url, "_blank", "noopener"); };
+        menu.append(store, guide);
+        wrap.append(menu);
+      }
+      mount.append(wrap);
+      return;
+    }
+
+    // Sidekick asleep: the daemon's socket can't be opened (never installed, or not running — the
+    // browser can't tell them apart). Amber, not red: nothing is broken, one action wakes it, and
+    // the health push auto-upgrades the chip the moment the daemon answers.
+    if (state.kind === "unreachable") {
+      const wrap = el("div", "wrap");
+      const b = el("button", "btn get");
+      b.append(el("span", "glyph"), el("span", undefined, "Your sidekick is asleep"), el("span", "dot"), el("span", "caret", "▾"));
+      b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
+      wrap.append(b);
+      if (menuOpen) {
+        const menu = el("div", "menu");
+        menu.append(el("div", "body", "Open the Relay menubar app to wake it."));
+        const retry = el("button", "item", "Retry");
+        retry.onclick = () => { menuOpen = false; render(); void refresh(); };
+        menu.append(retry, el("div", "sep"));
+        const setup = el("button", "item", "New here? Full setup ↗");
+        setup.onclick = () => { menuOpen = false; render(); window.open(installUrl, "_blank", "noopener"); };
+        menu.append(setup);
+        wrap.append(menu);
+      }
+      mount.append(wrap);
+      return;
+    }
+
+    // Daemon reachable but no accepted pairing: the glyph lights up (something IS listening), and
+    // the one next action is pairing in the toolbar panel. Auto-upgrades on the pair-success push.
+    if (state.kind === "unpaired") {
+      const wrap = el("div", "wrap");
+      const b = el("button", "btn connect");
+      b.append(el("span", "glyph"), el("span", undefined, "Almost there — pair in the side panel"), el("span", "caret", "▾"));
+      b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
+      wrap.append(b);
+      if (menuOpen) {
+        const menu = el("div", "menu");
+        menu.append(el("div", "body", "Click the Switchboard icon in your Chrome toolbar and paste your pairing token."));
+        const retry = el("button", "item", "Retry");
+        retry.onclick = () => { menuOpen = false; render(); void refresh(); };
+        menu.append(retry);
+        wrap.append(menu);
+      }
+      mount.append(wrap);
       return;
     }
 

@@ -1,4 +1,4 @@
-import type { RequestEnvelope } from "@relay/protocol";
+import type { RequestEnvelope, HealthStatus, HealthReason } from "@relay/protocol";
 
 /**
  * The MV3 service worker — the trusted core of the extension.
@@ -17,6 +17,12 @@ import type { RequestEnvelope } from "@relay/protocol";
 const DAEMON_URL = "ws://127.0.0.1:8787";
 let socket: WebSocket | null = null;
 let authed = false;
+
+/** Classification of the most recent FAILED dial: did the daemon accept the socket open and then
+ *  close it before auth_ok (its 1008 "unauthorized" — the token was rejected → "unpaired"), or did
+ *  the dial never open at all ("unreachable")? Worker-memory only — never persisted; MV3 eviction
+ *  just recomputes on the next dial. Reset on auth_ok so a long-ago rejection can't go stale. */
+let lastDial = { openedButUnauthed: false, at: 0 };
 
 const inflight = new Map<string, chrome.runtime.Port>();     // page request id → page port
 const pagePorts = new Set<chrome.runtime.Port>();            // all page ports (for events)
@@ -56,16 +62,29 @@ function ensureSocket(): Promise<boolean> {
     if (!token) return false;
     return await new Promise<boolean>((resolve) => {
       let done = false;
-      const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+      let sawOpen = false; // per-attempt: the daemon accepted the socket (reachable), even if auth then failed
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        // Every failed attempt records WHY for the health ladder: opened-then-closed-pre-auth means
+        // the daemon is up but the token was rejected ("unpaired"); never-opened means "unreachable".
+        if (!ok) lastDial = { openedButUnauthed: sawOpen && !authed, at: Date.now() };
+        resolve(ok);
+      };
       try { socket = new WebSocket(DAEMON_URL); } catch { finish(false); return; }
       authed = false;
       const timer = setTimeout(() => finish(false), 6000); // daemon down / never auths
-      socket.onopen = () => socket!.send(JSON.stringify({ type: "auth", token }));
+      socket.onopen = () => { sawOpen = true; socket!.send(JSON.stringify({ type: "auth", token })); };
       socket.onmessage = (ev) => {
         let msg: any;
         try { msg = JSON.parse(ev.data); } catch { return; }
         switch (msg.type) {
-          case "auth_ok": authed = true; clearTimeout(timer); finish(true); break;
+          case "auth_ok":
+            authed = true;
+            lastDial = { openedButUnauthed: false, at: Date.now() }; // accepted pairing — clear any stale rejection
+            clearTimeout(timer); finish(true);
+            void broadcastHealth(); // the ladder moved up — pages/panel upgrade live
+            break;
           case "response": {
             const port = inflight.get(msg.id); inflight.delete(msg.id);
             port?.postMessage({ id: msg.id, result: msg.result, error: msg.error });
@@ -93,6 +112,9 @@ function ensureSocket(): Promise<boolean> {
       };
       socket.onclose = () => {
         authed = false; socket = null; ready = null; clearTimeout(timer); finish(false);
+        // The ladder moved down (daemon stopped, or an auth-rejected close). Deduped inside, so the
+        // ~1s reconnect loop below never spams identical pushes.
+        void broadcastHealth();
         // Auto-reconnect while any page is attached (daemon restart, transient drop) so events
         // (deltas, permissionsChanged) resume without waiting for the next page request.
         if (pagePorts.size > 0) setTimeout(() => { void ensureSocket(); }, 1000);
@@ -104,6 +126,94 @@ function ensureSocket(): Promise<boolean> {
   // Allow a fresh attempt next time if this one failed.
   p.then((ok) => { if (!ok) ready = null; });
   return p;
+}
+
+/** A bounded, daemon-free reachability probe: bare-dial the daemon and see whether ANYTHING answers
+ *  the socket open. Connection-refused on 127.0.0.1 returns in milliseconds; the timer only bites
+ *  when the port is filtered/hung. Used when NO token is stored (ensureSocket won't even dial then),
+ *  so the ladder can still tell "unpaired" from "unreachable". Single shared in-flight dial + a 5s
+ *  result cache keep the request path <1s; worker memory only — MV3 eviction just recomputes. */
+let probeInflight: Promise<boolean> | null = null;
+let probeCache: { ok: boolean; at: number } | null = null;
+function probeReachable(timeoutMs = 800): Promise<boolean> {
+  if (probeCache && Date.now() - probeCache.at < 5000) return Promise.resolve(probeCache.ok);
+  if (probeInflight) return probeInflight;
+  probeInflight = new Promise<boolean>((resolve) => {
+    let settled = false;
+    const settle = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      probeCache = { ok, at: Date.now() };
+      probeInflight = null;
+      resolve(ok);
+    };
+    let ws: WebSocket | null = null;
+    try { ws = new WebSocket(DAEMON_URL); } catch { settle(false); return; }
+    const timer = setTimeout(() => { try { ws!.close(); } catch { /* ignore */ } settle(false); }, timeoutMs);
+    ws.onopen = () => { clearTimeout(timer); try { ws!.close(); } catch { /* ignore */ } settle(true); };
+    ws.onerror = () => { /* onclose follows */ };
+    ws.onclose = () => { clearTimeout(timer); settle(false); };
+  });
+  return probeInflight;
+}
+
+/** This origin's grant, if any (the widgetState lookup, extracted so health shares it). */
+async function grantFor(origin: string): Promise<{ origin: string; mode?: string; usage?: { tokensToday?: number } } | null> {
+  const g = await control("listGrants") as { grants?: Array<{ origin: string; mode?: string; usage?: { tokensToday?: number } }> };
+  return (g?.grants ?? []).find((x) => x.origin === origin) ?? null;
+}
+
+/** The setup ladder WITHOUT the per-origin bit: reachable/paired/reason from the worker's own state.
+ *  Never redials when a token is stored — it classifies from the last dial (fresh at every
+ *  transition call site), so a broadcast from socket.onclose can't recurse into a reconnect. */
+async function baseHealth(): Promise<{ installed: true; reachable: boolean; paired: boolean; reason?: HealthReason }> {
+  if (socket && socket.readyState === WebSocket.OPEN && authed) return { installed: true, reachable: true, paired: true };
+  const token = await getToken();
+  if (token) {
+    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, reason: "unpaired" };
+    return { installed: true, reachable: false, paired: false, reason: "unreachable" };
+  }
+  const reachable = await probeReachable();
+  return { installed: true, reachable, paired: false, reason: reachable ? "unpaired" : "unreachable" };
+}
+
+/** claude_health's answer — the one method that never NEEDS the daemon. Degraded states resolve
+ *  entirely from worker state (<1s via the probe cache); only the healthy state consults the daemon,
+ *  and only for this origin's `connected` bit. */
+async function healthSnapshot(origin: string): Promise<HealthStatus> {
+  if (socket && socket.readyState === WebSocket.OPEN && authed) {
+    return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)) };
+  }
+  const token = await getToken();
+  if (token) {
+    if (await ensureSocket()) return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)) };
+    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, connected: false, reason: "unpaired" };
+    return { installed: true, reachable: false, paired: false, connected: false, reason: "unreachable" };
+  }
+  const reachable = await probeReachable();
+  return { installed: true, reachable, paired: false, connected: false, reason: reachable ? "unpaired" : "unreachable" };
+}
+
+/** Fan the `health` event out to every page (per-origin `connected`) and nudge the open panel to
+ *  re-pull — mirroring the daemon-event fan-out in ensureSocket. DEDUPED on the base ladder state:
+ *  the onclose reconnect loop and repeated failed dials produce ONE push per actual transition. */
+let lastHealthKey = "";
+async function broadcastHealth(): Promise<void> {
+  const base = await baseHealth();
+  const key = `${base.reachable}|${base.paired}|${base.reason ?? ""}`;
+  if (key === lastHealthKey) return;
+  lastHealthKey = key;
+  // One grant list when reachable+paired; per-origin `connected` derives from it. False otherwise.
+  let grants: Array<{ origin: string }> = [];
+  if (base.reachable && base.paired) {
+    try { const g = await control("listGrants") as { grants?: Array<{ origin: string }> }; grants = g?.grants ?? []; } catch { /* stays [] */ }
+  }
+  for (const p of pagePorts) {
+    const origin = p.sender?.origin ?? (p.sender?.url ? new URL(p.sender.url).origin : "null");
+    const payload: HealthStatus = { ...base, connected: grants.some((x) => x.origin === origin) };
+    try { p.postMessage({ event: "health", payload }); } catch { /* gone */ }
+  }
+  try { panelPort?.postMessage({ type: "state:changed", event: "health" }); } catch { /* panel gone */ }
 }
 
 /** Push a control call to the daemon and await its result (popup grant list / audit / revoke). */
@@ -205,10 +315,18 @@ async function tryOpenPanel() {
 async function widgetState(sender: chrome.runtime.MessageSender): Promise<Record<string, unknown>> {
   const origin = sender.origin ?? (sender.url ? new URL(sender.url).origin : "");
   const token = await getToken();
-  const reachable = token ? await ensureSocket() : false;
-  if (!reachable) return { paired: !!token, reachable: false, connected: false };
-  const g = await control("listGrants") as { grants?: Array<{ origin: string; mode?: string; usage?: { tokensToday?: number } }> };
-  const grant = (g?.grants ?? []).find((x) => x.origin === origin) ?? null;
+  let paired = !!token;
+  let reachable: boolean;
+  if (token) {
+    reachable = await ensureSocket();
+    // Daemon up but it rejected the token → the daemon IS reachable and pairing is what's missing.
+    if (!reachable && lastDial.openedButUnauthed) { reachable = true; paired = false; }
+  } else {
+    // No token: probe anyway, so the widget can tell "sidekick asleep" from "pair now".
+    reachable = await probeReachable();
+  }
+  if (!reachable || !paired) return { paired, reachable, connected: false };
+  const grant = await grantFor(origin);
   let lentName: string | null = null;
   if (grant) {
     const c = await control("listContexts") as { contexts?: Array<{ id: string; name: string }>; activeProject?: string | null; selections?: Array<{ origin: string; contextId: string | null }> };
@@ -235,17 +353,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg?.type) {
       case "getStatus": {
         const token = await getToken();
-        // `reachable` = the daemon is actually up + authenticates. Distinguishes "token stored"
-        // from "sidekick running", so the panel can tell you to start it instead of a blind 4900.
-        const reachable = token ? await ensureSocket() : false;
-        sendResponse({ paired: !!token, reachable });
+        // `reachable` = something answers the daemon port. With a token that means "up + authenticates";
+        // without one we bare-probe, so the panel can tell "unpaired" (show pairing) from "unreachable"
+        // (show the get-the-sidekick card). `tokenRejected` = the daemon answered but refused OUR token —
+        // the panel must say "token didn't match", never "isn't running", when it is running.
+        const reachable = token ? await ensureSocket() : await probeReachable();
+        sendResponse({ paired: !!token, reachable, tokenRejected: !!token && !reachable && lastDial.openedButUnauthed });
         break;
       }
       case "widgetState": sendResponse(await widgetState(sender)); break;
       case "openPanel": await openPanelFor(sender); sendResponse({ ok: true }); break;
-      case "pair": await chrome.storage.local.set({ pairingToken: msg.token }); await ensureSocket(); sendResponse({ ok: true }); break;
+      case "pair": await chrome.storage.local.set({ pairingToken: msg.token }); await ensureSocket(); void broadcastHealth(); sendResponse({ ok: true }); break;
       case "openUrl": { const url = String(msg.url ?? ""); if (/^https?:\/\//i.test(url)) chrome.tabs.create({ url }); sendResponse({ ok: true }); break; }
       case "getConsentPrompt": sendResponse(consentBodies.get(msg.id) ?? null); break;
+      // The panel's per-app "Review request" button: which consents are waiting, and for whom —
+      // so the decision itself always happens in the one consent view.
+      case "getPendingConsents":
+        sendResponse({ pending: [...consentBodies.entries()].map(([id, v]) => ({ id, kind: v.kind, origin: (v.body as { origin?: string } | null)?.origin ?? null })) });
+        break;
       case "consentDecision": {
         resolveConsent(msg.id, msg.result);
         sendResponse({ ok: true });
@@ -257,6 +382,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await chrome.storage.local.remove("pairingToken");
         try { socket?.close(); } catch { /* ignore */ }
         socket = null; authed = false;
+        lastDial = { openedButUnauthed: false, at: Date.now() };
+        void broadcastHealth(); // pages downgrade live — the ladder just fell to unpaired/unreachable
         sendResponse({ ok: true });
         break;
       default: sendResponse({ ok: false });
@@ -286,8 +413,33 @@ chrome.runtime.onConnect.addListener((port) => {
   const origin = port.sender?.origin ?? (port.sender?.url ? new URL(port.sender.url).origin : "null");
 
   port.onMessage.addListener(async (m: { id: string; method: string; params?: unknown }) => {
+    // claude_health — the one method the background answers from its OWN state, before any daemon
+    // dial: it must resolve fast in exactly the states where everything else would fail.
+    if (m.method === "claude_health") {
+      try { port.postMessage({ id: m.id, result: await healthSnapshot(origin) }); } catch { /* port gone */ }
+      return;
+    }
     const ok = await ensureSocket();
-    if (!ok || !socket) { port.postMessage({ id: m.id, error: { code: 4900, message: "sidekick not reachable" } }); return; }
+    if (!ok || !socket) {
+      // FAST-FAIL with the classified reason instead of letting the page hang into inject.ts's 130s
+      // backstop. Only this initial request/ack path fails here — an already-open stream is never
+      // touched (its deltas simply stop if the socket died; the `health` push tells the page why).
+      const token = await getToken();
+      const reason: HealthReason = token
+        ? (lastDial.openedButUnauthed ? "unpaired" : "unreachable")
+        : ((await probeReachable()) ? "unpaired" : "unreachable");
+      port.postMessage({
+        id: m.id,
+        error: {
+          code: 4900,
+          message: reason === "unpaired"
+            ? "Switchboard isn't paired yet — open the side panel to pair"
+            : "your sidekick isn't reachable — open the Relay app",
+          data: { reason },
+        },
+      });
+      return;
+    }
     const envelope: RequestEnvelope = {
       id: m.id,
       origin, // <-- stamped here; the page's claim (if any) is ignored
