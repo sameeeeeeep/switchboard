@@ -3,282 +3,954 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Wrapp Store — Switchboard</title>
+    <title>Switchboard — Wrapp store</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236AAF3A'/%3E%3Cpath d='M16 9v14M9 16h14' stroke='%230A0A0B' stroke-width='3.6' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <meta name="theme-color" content="#0A0A0B" />
+    <script>/*CAPHELPER*/(function(){try{var id=new URLSearchParams(location.search).get('cap');if(!id)return;var st=document.createElement('style');st.textContent='.content>section:not(#'+id+'){display:none!important}';document.head.appendChild(st);}catch(e){}})();</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       :root{
-        --void:#050807; --panel:#0a0f0c; --panel-2:#0c130e;
-        --line:#16221b; --line-bright:#234433;
-        --phosphor:#3dff88; --phosphor-dim:#1d7a45; --paper:#cfe3d6; --muted:#7fa18d; --faint:#48604f;
-        --mono:'JetBrains Mono',ui-monospace,monospace; --sans:'Instrument Sans',system-ui,sans-serif; --dot:'Doto',ui-monospace,monospace;
+        /* surfaces — near-black page, sidebar a hair darker, cards a hair lighter */
+        --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D; --thumb-bg:#0E0E10;
+        /* hairlines */
+        --line:#232327; --line-2:#2C2C31;
+        /* ink */
+        --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+        /* the one near-white accent — primary pill + focus */
+        --accent:#EDEDEA; --accent-ink:#0A0A0B; --pill:#EDEDEA; --pill-ink:#0A0A0B; --accent-hover:#FFFFFF;
+        /* semantics — used SPARINGLY (a tick, a live dot, a sim badge) */
+        --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
+        /* type */
+        --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+        /* radii */
+        --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
+        --shadow:0 0 0 1px var(--line), 0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -20px rgba(0,0,0,.8);
+        --shadow-pop:0 0 0 1px var(--line-2), 0 16px 40px -22px rgba(0,0,0,.9);
       }
-      *{box-sizing:border-box} [hidden]{display:none!important} html,body{margin:0}
-      body{background:var(--void);color:var(--paper);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
-      ::selection{background:rgba(61,255,136,.25)}
+      *{box-sizing:border-box}
+      [hidden]{display:none!important}
+      html,body{margin:0}
+      body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;
+        display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+      svg{display:block}
       a{text-decoration:none;color:inherit}
-      .wrap{max-width:1080px;margin:0 auto;padding:26px 24px 90px}
+      button{font-family:inherit}
+      ::selection{background:rgba(76,141,246,.28)}
+      .display{font-family:var(--font-display);letter-spacing:-.03em;font-weight:700}
+      .kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+      .verify{width:13px;height:13px;flex:none;color:var(--verify)}
+      .verify svg{width:100%;height:100%}
+      .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
-      /* header */
-      header{display:flex;align-items:center;gap:14px;margin-bottom:8px;padding-bottom:18px;border-bottom:1px solid var(--line)}
-      .brand{font-family:var(--dot);font-weight:900;font-size:19px;letter-spacing:.09em;color:var(--phosphor);text-transform:uppercase;display:flex;align-items:center;gap:11px}
-      .brand .g{width:28px;height:28px;border:1px solid var(--line-bright);background:none;color:var(--phosphor);display:grid;place-items:center;font-family:var(--dot);font-weight:900;font-size:14px;box-shadow:none}
-      .brand .sub{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;font-weight:400}
-      .search{margin-left:auto;width:200px;background:var(--panel);border:1px solid var(--line);color:var(--paper);font:400 12px/1 var(--mono);padding:10px 14px;outline:none;transition:border-color .15s,width .2s}
-      .search:focus{border-color:var(--phosphor-dim);width:240px}
-      .search::placeholder{color:var(--faint)}
+      /* ============================ SIDEBAR ============================ */
+      #sidebar{position:fixed;inset:0 auto 0 0;width:230px;background:var(--panel);border-right:1px solid var(--line);
+        display:flex;flex-direction:column;padding:16px 12px 14px;overflow-y:auto;z-index:40}
+      #sidebar::-webkit-scrollbar{width:0}
+      .bm{display:flex;align-items:center;gap:9px;padding:6px 8px 2px;font-family:var(--font-display);font-weight:700;font-size:17px;letter-spacing:-.03em}
+      .bm .g{width:24px;height:24px;border-radius:7px;background:linear-gradient(140deg,#7CC142,#4E7A1C);display:grid;place-items:center;flex:none}
+      .bm .g svg{width:13px;height:13px;stroke:#0A0A0B;stroke-width:2.6}
+      #side-search{margin:14px 4px 4px;display:flex;align-items:center;gap:8px;width:calc(100% - 8px);
+        background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--faint);
+        font:500 12.5px/1 var(--font-sans);cursor:text;transition:border-color .14s}
+      #side-search:hover{border-color:var(--line-2)}
+      #side-search svg{width:14px;height:14px;stroke:currentColor;flex:none}
+      #side-search .kb{margin-left:auto;font:600 10px/1 var(--font-mono);border:1px solid var(--line-2);border-radius:5px;padding:3px 5px;color:var(--faint)}
+      .side-group{margin-top:16px}
+      .side-group .sg-k{padding:0 8px 8px;display:block}
+      .nav-row{display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:var(--r-sm);color:var(--ink-2);
+        font:500 13.5px/1 var(--font-sans);cursor:pointer;transition:background .12s,color .12s}
+      .nav-row svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none}
+      .nav-row:hover{color:var(--ink);background:var(--card)}
+      .nav-row.active{background:var(--card-2);color:var(--ink)}
+      .nav-row .rc{margin-left:auto;font:500 11px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums}
+      .cat-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--r-sm);color:var(--ink-2);
+        font:500 13px/1 var(--font-sans);cursor:pointer;transition:background .12s,color .12s;width:100%;text-align:left;background:none;border:0}
+      .cat-row:hover{color:var(--ink);background:var(--card)}
+      .cat-ic{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;flex:none}
+      .cat-ic svg{width:11px;height:11px}
+      .cat-lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .cat-count{margin-left:auto;font:500 11px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums}
+      .brand-row{display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:var(--r-sm);cursor:pointer;transition:background .12s}
+      .brand-row:hover{background:var(--card)}
+      .brand-mk{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center;font:700 10px/1 var(--font-sans)}
+      .brand-nm{font:500 13px/1 var(--font-sans);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .side-spacer{flex:1;min-height:14px}
+      #submit-wrapp{display:flex;align-items:center;gap:10px;margin:8px 4px 0;padding:11px 10px;border-top:1px solid var(--line);
+        color:var(--ink-2);font:600 12.5px/1 var(--font-sans);cursor:pointer}
+      #submit-wrapp svg{width:15px;height:15px;stroke:currentColor;flex:none}
+      #submit-wrapp:hover{color:var(--ink)}
+      #side-scrim{display:none}
+
+      /* ============================ MAIN ============================ */
+      .main{grid-column:2;min-width:0;display:flex;flex-direction:column}
+      #topbar{position:sticky;top:0;z-index:30;height:56px;display:flex;align-items:center;gap:9px;padding:0 16px;min-width:0;
+        background:color-mix(in srgb,var(--panel) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+      #side-toggle{display:none;background:none;border:1px solid var(--line-2);border-radius:9px;padding:7px;cursor:pointer;color:var(--ink-2)}
+      #side-toggle svg{width:16px;height:16px;stroke:currentColor}
+      #view-tabs{display:flex;gap:2px;flex:none}
+      .vt{background:none;border:0;color:var(--faint);font:600 13px/1 var(--font-sans);padding:8px 11px;border-radius:8px;cursor:pointer;transition:color .12s,background .12s}
+      .vt:hover{color:var(--ink-2)}
+      .vt.on{color:var(--ink);background:var(--card-2)}
+      .cmd{flex:1;max-width:270px;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--r-sm);padding:0 11px;height:36px;color:var(--faint);cursor:text;transition:border-color .14s}
+      .cmd:focus-within{border-color:var(--line-2)}
+      .cmd svg{width:14px;height:14px;stroke:currentColor;flex:none}
+      .cmd input{flex:1;min-width:0;border:0;outline:0;background:none;font:400 13px/1 var(--font-sans);color:var(--ink)}
+      .cmd input::placeholder{color:var(--faint)}
+      .cmd .kb{margin-left:auto;font:600 10px/1 var(--font-mono);border:1px solid var(--line-2);border-radius:5px;padding:3px 5px;color:var(--faint);flex:none}
+      .tier-bar{display:flex;gap:6px;align-items:center;flex:none}
+      .tf{border:1px solid var(--line);background:var(--card);color:var(--ink-2);font:600 12px/1 var(--font-sans);
+        border-radius:var(--r-pill);padding:7px 12px;cursor:pointer;transition:border-color .12s,color .12s}
+      .tf:hover{border-color:var(--line-2);color:var(--ink)}
+      .tf.on{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+      .works{border:1px solid var(--line);background:var(--card);color:var(--ink-2);font:600 12px/1 var(--font-sans);
+        border-radius:var(--r-pill);padding:7px 12px;display:inline-flex;align-items:center;gap:7px;cursor:default}
+      .works .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+      .tb-sp{flex:1;min-width:8px}
+      #showing-count{font:500 12px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums;flex:none;white-space:nowrap}
+      .sortwrap{position:relative;flex:none}
+      #sort{appearance:none;-webkit-appearance:none;background:var(--card);border:1px solid var(--line);color:var(--ink-2);
+        font:600 12px/1 var(--font-sans);border-radius:var(--r-sm);padding:7px 26px 7px 11px;cursor:pointer}
+      #sort:hover{border-color:var(--line-2)}
+      .sortwrap::after{content:"";position:absolute;right:10px;top:50%;width:7px;height:7px;border-right:1.6px solid var(--faint);
+        border-bottom:1.6px solid var(--faint);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+      .icon-btn{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);width:34px;height:34px;
+        display:grid;place-items:center;cursor:pointer;color:var(--ink-2);flex:none}
+      .icon-btn:hover{border-color:var(--line-2);color:var(--ink)}
+      .icon-btn svg{width:15px;height:15px;stroke:currentColor;fill:none}
+      .ws{display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);
+        padding:5px 9px 5px 6px;font:600 12.5px/1 var(--font-sans);cursor:default;flex:none;color:var(--ink)}
+      .ws .m{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:#fff;font:700 10px/1 var(--font-sans)}
+      .wallet-chip{border:1px solid var(--line);background:var(--card);color:var(--ink);font:600 12px/1 var(--font-sans);
+        border-radius:var(--r-sm);padding:8px 11px;cursor:pointer;font-variant-numeric:tabular-nums;flex:none}
+      .wallet-chip:hover{border-color:var(--line-2)}
+      .wallet-chip .u{color:var(--faint);font-weight:500}
       #chip-dock{flex:none}
-      .get{margin-left:auto;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-bright);color:var(--phosphor);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:9px 15px;transition:background .15s}
-      .get:hover{background:rgba(61,255,136,.08)}
 
-      /* hero */
-      .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--phosphor-dim);margin-top:44px}
-      h1{font-family:var(--dot);font-weight:900;text-transform:uppercase;font-size:clamp(2.3rem,5.8vw,4.4rem);line-height:1.03;letter-spacing:.02em;margin:14px 0 0}
-      h1 .hl{color:var(--phosphor);text-shadow:0 0 40px rgba(61,255,136,.35);background:none;-webkit-text-fill-color:var(--phosphor)}
-      .sub-copy{color:var(--muted);max-width:56ch;margin:18px 0 0;font-size:15px}
-      .sub-copy b{color:var(--paper);font-weight:600}
+      .content{width:100%;max-width:1180px;margin:0 auto;padding:0 28px 72px}
 
-      /* the way (steps) */
-      .way{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:40px 0}
-      .step{position:relative;border:1px solid var(--line);background:var(--panel);padding:15px 16px;cursor:pointer;transition:border-color .15s}
-      .step:hover{border-color:var(--line-bright)}
-      .step .n{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
-      .step h5{font-family:var(--dot);font-weight:900;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--paper);margin:10px 0 5px}
-      .step p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.6;font-family:var(--mono)}
-      .step .state{position:absolute;top:13px;right:14px;font-family:var(--mono);font-size:10px;color:var(--faint)}
-      .step.done{border-color:var(--phosphor-dim)} .step.done h5{color:var(--phosphor)} .step.done .state{color:var(--phosphor)}
-      .step.current{border-color:var(--phosphor)} .step.current h5{color:var(--phosphor)} .step.current .state{color:var(--phosphor)}
+      /* shared zone header */
+      .zone{display:flex;align-items:baseline;gap:11px;margin:34px 0 15px;flex-wrap:wrap}
+      .zone .z{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+      .zone h2{margin:0;font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.02em}
+      .zone .s{font-size:13px;color:var(--ink-2)}
+      .zone .all{margin-left:auto;font-size:13px;color:var(--ink);font-weight:600;border-bottom:1px solid var(--line-2);padding-bottom:1px}
+      .zone .all:hover{color:var(--accent-hover)}
+
+      /* ============================ DASHBOARD ============================ */
+      /* The connected hero is the SAME editorial instrument as the disconnected one: kicker → one
+         display statement composed from real state → a real sub-paragraph → ONE primary pill. No
+         greeting-that-says-nothing, no chip rows, no metric boxes. */
+      #dash{padding-top:0}
+      .dhero{padding:52px 0 0}
+      .dhero-k{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0;
+        font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+      .dhero-body{opacity:0;transition:opacity .18s ease}
+      .dhero-body.on{opacity:1}
+      .dhero-h{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;
+        line-height:1.06;margin:18px 0 0;max-width:23ch}
+      .dhero-h .q{color:var(--ink-2)}
+      .dhero-sub{color:var(--ink-2);max-width:56ch;margin:16px 0 0;font-size:16px;line-height:1.55}
+      .dhero-sub b{color:var(--ink);font-weight:600}
+      .dhero-act{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:22px 0 0}
+      .dhero-cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);
+        border:0;border-radius:var(--r-pill);padding:13px 20px;font:600 14px/1 var(--font-sans);cursor:pointer;text-align:left}
+      .dhero-cta:hover{background:var(--accent-hover)}
+      .dhero-cta svg{width:15px;height:15px;stroke:var(--accent-ink);fill:none;flex:none}
+      .dhero-in{font:500 12px/1 var(--font-mono);color:var(--faint);letter-spacing:.02em}
+      /* the demo's remaining facts — one typographic line, never boxes */
+      .facts{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin:20px 0 0;
+        font:500 12px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+      .facts b{color:var(--ink-2);font-weight:600}
+      .facts .sep{width:1px;height:11px;background:var(--line-2);display:inline-block}
+      /* the ONE standing line — the law, stated quietly, once */
+      .standing{display:flex;align-items:center;gap:8px;margin:22px 0 0;font:500 12.5px/1 var(--font-sans);color:var(--ok)}
+      .standing .d{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+      .demo-ribbon{display:inline-flex;align-items:center;font:600 10px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;
+        color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:6px;padding:5px 9px}
+
+      /* section rhythm inside the dashboard — more air than the catalog below it */
+      #dash .zone{margin:58px 0 16px}
+
+      .review{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+      .rv{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+      .rv .pv{height:74px;border-bottom:1px solid var(--line)} .rv .pv svg{width:100%;height:100%}
+      .rv .b{padding:11px 13px}
+      .rv .top{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+      .bav{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:#fff;font:700 9px/1 var(--font-sans);flex:none}
+      .bname{font-size:11px;color:var(--ink-2);font-weight:500}
+      .rv .sic{margin-left:auto;color:var(--ok)} .rv .sic svg{width:15px;height:15px}
+      .rv .nm{font-size:13.5px;font-weight:600}
+      .rv .foot{display:flex;align-items:center;gap:8px;margin-top:9px}
+      .wtag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);font-weight:500}
+      .wi{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center} .wi svg{width:12px;height:12px}
+      .rvbtn{margin-left:auto;background:var(--card-2);color:var(--ink);border:1px solid var(--line-2);border-radius:8px;padding:7px 12px;font:600 11.5px/1 var(--font-sans);cursor:pointer}
+      .rvbtn:hover{border-color:var(--faint)}
+      .coming{grid-column:1/-1;background:var(--card);border:1px dashed var(--line-2);border-radius:var(--r);padding:20px 22px;display:flex;align-items:flex-start;gap:14px}
+      .coming .ci{width:40px;height:40px;border-radius:12px;background:rgba(76,141,246,.12);color:var(--verify);display:grid;place-items:center;flex:none}
+      .coming .ci svg{width:20px;height:20px}
+      .coming h4{margin:0 0 5px;font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.02em}
+      .coming p{margin:0;color:var(--ink-2);font-size:13px;line-height:1.6;max-width:64ch}
+      .coming .tag{display:inline-block;margin-top:9px;font:600 10px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--verify);background:rgba(76,141,246,.1);border-radius:6px;padding:5px 8px}
+
+      .projs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+      .proj{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;transition:transform .14s,border-color .14s;display:block;box-shadow:var(--shadow)}
+      .proj:hover{transform:translateY(-3px);border-color:var(--line-2)}
+      .proj .ph{height:64px;display:flex;align-items:flex-end;padding:12px 14px}
+      .proj .ph .pav{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font:700 15px/1 var(--font-display);box-shadow:0 4px 14px -4px rgba(0,0,0,.55)}
+      .proj .pb{padding:13px 15px}
+      .proj .nm{font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:-.02em;display:flex;align-items:center;gap:7px}
+      .proj .ty{font:500 11px/1 var(--font-mono);color:var(--faint);margin-top:5px;letter-spacing:.04em;text-transform:uppercase}
+      .proj .dots{display:flex;gap:5px;margin-top:11px}
+      .proj .dots i{width:13px;height:13px;border-radius:4px;display:block}
+      .proj .det{font-size:12px;color:var(--ink-2);margin-top:11px;display:inline-flex;align-items:center;gap:7px}
+      .proj .det .live{display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-weight:600}
+      .proj .det .live .d{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+      .proj .stats{display:flex;gap:16px;margin:12px 0 10px}
+      .proj .stats .st{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+      .proj .stats .st .d{width:8px;height:8px;border-radius:50%}
+      .proj .bar{height:5px;border-radius:3px;background:var(--card-2);overflow:hidden} .proj .bar i{display:block;height:100%}
+      .proj .barl{font:500 11px/1 var(--font-mono);color:var(--faint);margin-top:7px}
+      .proj.new{border-style:dashed;display:flex;align-items:center;justify-content:center;min-height:150px;text-align:center;box-shadow:none}
+      .proj.new .npb{padding:20px}
+      .proj.new .plus{width:38px;height:38px;border-radius:11px;background:var(--card-2);color:var(--ink);display:grid;place-items:center;margin:0 auto 10px;font-size:22px;font-weight:400}
+      .proj.new .nt{font-family:var(--font-display);font-size:14px;font-weight:600} .proj.new .ns{font-size:12px;color:var(--faint);margin-top:5px}
+
+      .actions{display:grid;gap:9px}
+      .act{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;transition:transform .12s,border-color .12s}
+      .act:hover{transform:translateY(-2px);border-color:var(--line-2)}
+      .act .o{font-size:14px;color:var(--ink);font-weight:500;min-width:0}
+      .act .in{font:600 10px/1 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:4px 8px;flex:none;margin-left:auto}
+      .act .go{color:var(--ink-2);font-size:12.5px;font-weight:600;flex:none}
+      .recs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      .rec{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:block;transition:transform .12s,border-color .12s}
+      .rec:hover{transform:translateY(-2px);border-color:var(--line-2)}
+      .rec h5{margin:0 0 6px;font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+      .rec .new{font:600 9.5px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ok);background:rgba(84,180,135,.1);border-radius:5px;padding:3px 6px}
+      .rec .why{font-size:12.5px;color:var(--ink-2);line-height:1.55;display:block}
+
+      #library-sec .lib-kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:16px 0 9px}
+      .lib-row{display:flex;flex-wrap:wrap;gap:9px}
+      .lib-card{display:inline-flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 12px 7px 8px}
+      .lib-card:hover{border-color:var(--line-2)}
+      .lib-mk{width:24px;height:24px;border-radius:7px;background:var(--card-2);color:var(--ink-2);display:grid;place-items:center;font:700 11px/1 var(--font-sans)}
+      .lib-nm{font-size:13px;color:var(--ink);font-weight:500}
+      .lib-badge{font:600 9.5px/1 var(--font-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--ok);background:rgba(84,180,135,.1);border-radius:5px;padding:3px 7px}
+      .lib-foot{color:var(--faint);font-size:12px;margin-top:14px;line-height:1.6;max-width:70ch}
+      .lib-empty{color:var(--ink-2);font-size:13px;background:var(--card);border:1px dashed var(--line-2);border-radius:var(--r);padding:16px 18px;line-height:1.6}
+
+      .account-rail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+      .side-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 18px 16px}
+      .sc-k{font:600 9.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);display:flex;gap:8px;align-items:center}
+      .sc-big{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em;margin:11px 0 3px}
+      .sc-big.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px}
+      .sc-copy{font-size:12.5px;color:var(--ink-2);line-height:1.6;margin:8px 0 11px}
+      .sc-copy.dim{color:var(--faint)}
+      .sc-foot{font-size:11px;color:var(--faint);line-height:1.6;margin:10px 0 0}
+      .sc-btn{width:100%;display:block;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);font:600 12.5px/1 var(--font-sans);border-radius:var(--r-sm);padding:11px 12px;cursor:pointer;transition:border-color .12s}
+      .sc-btn:hover{border-color:var(--faint)}
+      .sim{font:600 8.5px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:5px;padding:3px 6px}
+      .ledger{margin-top:13px;border-top:1px solid var(--line);padding-top:11px}
+      .led-k{font:600 9px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+      .led-row{display:flex;justify-content:space-between;gap:10px;font:500 11.5px/1.5 var(--font-mono);color:var(--ink-2);padding:3px 0;font-variant-numeric:tabular-nums}
+      .led-row .amt{color:var(--ok);font-weight:600}
+      .led-empty{font-size:11.5px;color:var(--faint);line-height:1.6}
+      .byo{background:rgba(84,180,135,.06);border:1px solid rgba(84,180,135,.22);border-radius:var(--r);padding:13px 15px;font-size:12.5px;color:var(--ink-2);line-height:1.6;margin-top:14px}
+      .byo b{color:var(--ok);font-weight:600}
+      body.plan-pro .sc-big{color:var(--ok)}
+
+      /* ============================ HERO (disconnected) ============================ */
+      #hero{padding:52px 0 4px}
+      .eyebrow{display:inline-flex;align-items:center;gap:8px;font:600 11px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px}
+      .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+      .hero-h{font-family:var(--font-display);font-size:clamp(38px,6vw,64px);font-weight:700;letter-spacing:-.035em;line-height:1.02;margin:20px 0 0;max-width:16ch}
+      .hero-h .hl{color:var(--ink-2)}
+      .hero-sub{color:var(--ink-2);max-width:56ch;margin:18px 0 24px;font-size:16px;line-height:1.55}
+      .hero-sub b{color:var(--ink);font-weight:600}
+      .hero-cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--r-pill);padding:13px 20px;font:600 14px/1 var(--font-sans);cursor:pointer}
+      .hero-cta:hover{background:var(--accent-hover)}
+
+      .way{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0 4px}
+      .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 16px;cursor:pointer;transition:transform .12s,border-color .12s}
+      .step:hover{transform:translateY(-2px);border-color:var(--line-2)}
+      .step .n{font:600 10px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+      .step h5{font-family:var(--font-display);font-size:14px;font-weight:600;letter-spacing:-.01em;margin:12px 0 6px}
+      .step p{margin:0;color:var(--ink-2);font-size:12px;line-height:1.55}
+      .step .state{position:absolute;top:15px;right:16px;font-size:13px;font-weight:700;color:var(--faint)}
+      .step.done{border-color:rgba(84,180,135,.4)} .step.done .state{color:var(--ok)} .step.done .n{color:var(--ok)}
+      .step.current{border-color:var(--line-2)} .step.current .state{color:var(--ink)}
       .step.todo{opacity:.55}
-      @media(max-width:820px){.way{grid-template-columns:1fr 1fr}}
 
-      /* sections */
-      .sec-h{display:flex;align-items:baseline;gap:12px;margin:38px 0 12px;border-top:1px dashed var(--line);padding-top:18px}
-      .sec-h h3{margin:0;font-family:var(--dot);font-weight:900;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--phosphor)}
-      .sec-h span{color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.05em}
+      /* ============================ FEATURED CAROUSEL ============================ */
+      #featured-sec{margin-top:6px}
+      #featured{position:relative}
+      .featured{display:none;gap:28px;align-items:stretch;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;box-shadow:var(--shadow)}
+      .featured.on{display:flex}
+      .feat-l{flex:1;min-width:0;display:flex;flex-direction:column}
+      .feat-l .fk{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+      .feat-head{display:flex;align-items:center;gap:14px;margin:16px 0 0}
+      .featured .ic{width:56px;height:56px;border-radius:16px;flex:none}
+      .featured .ic svg{width:52%;height:52%}
+      .featured h2{margin:0;font-family:var(--font-display);font-size:27px;font-weight:700;letter-spacing:-.03em;display:flex;align-items:center;gap:9px}
+      .featured p{margin:16px 0 0;color:var(--ink-2);font-size:15px;line-height:1.55;max-width:46ch}
+      .feat-tag{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;margin-top:16px;font:600 11px/1 var(--font-sans);color:var(--ink-2);background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:6px 12px}
+      .feat-tag .cat-ic{width:15px;height:15px}
+      .feat-actions{display:flex;align-items:center;gap:12px;margin-top:auto;padding-top:22px}
+      .feat-open{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:11px 18px;font:600 13.5px/1 var(--font-sans)}
+      .feat-open:hover{background:var(--accent-hover)}
+      .feat-cost{font:500 11.5px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums}
+      .feat-r{width:min(560px,48%);flex:none;display:flex;align-items:center}
+      .feat-r .thumb{aspect-ratio:16/10;border:1px solid var(--line);border-radius:var(--r-thumb);width:100%}
+      #featured-dots{display:flex;justify-content:center;gap:8px;margin-top:16px}
+      .fdot{width:7px;height:7px;border-radius:50%;background:var(--line-2);border:0;padding:0;cursor:pointer;transition:background .14s,width .14s}
+      .fdot.on{background:var(--ink-2);width:20px;border-radius:4px}
 
-      /* app rows — terminal ▸ nodes, no icons */
-      .tile{display:none}
-      .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:9px}
-      .card{display:block;border:1px solid var(--line);background:var(--panel);padding:14px 16px 14px 32px;position:relative;transition:border-color .15s,background .15s}
-      .card::before{content:"▸";position:absolute;left:13px;top:14px;color:var(--phosphor-dim);font-family:var(--mono);font-size:12px}
-      .card:hover{border-color:var(--line-bright);background:var(--panel-2)} .card:hover::before{color:var(--phosphor)}
-      .card .body{min-width:0}
-      .card h4{margin:0 0 4px;font-family:var(--dot);font-weight:900;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--paper);display:flex;align-items:center;gap:8px}
-      .card:hover h4{color:var(--phosphor)}
-      .card p{margin:0;color:var(--muted);font-family:var(--mono);font-size:11px;line-height:1.55}
-      .dot{width:6px;height:6px;border-radius:50%;background:var(--phosphor);flex:none;animation:pulse 2s ease infinite}
-      @keyframes pulse{50%{opacity:.3}}
-      .tag{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);padding:2px 7px;flex:none}
-      [data-soon]{opacity:.4;pointer-events:none}
+      /* ============================ THUMB (scaled live preview) ============================ */
+      .thumb{position:relative;display:block;width:100%;aspect-ratio:16/10;overflow:hidden;background:var(--thumb-bg);
+        border-bottom:1px solid var(--line);border-radius:var(--r-thumb) var(--r-thumb) 0 0}
+      .thumb iframe{position:absolute;top:0;left:0;border:0;pointer-events:none;background:var(--bg);opacity:0;transition:opacity .35s ease}
+      .thumb iframe.ready{opacity:1}
+      /* dark, family-tinted placeholder shown until the live preview mounts (no white flash) */
+      .thumb-ph{position:absolute;inset:0;overflow:hidden;background:var(--thumb-bg)}
+      .thumb-ph svg{position:absolute;inset:0;width:100%;height:100%;opacity:.15}
+      .thumb-ph::after{content:"";position:absolute;inset:0;
+        background:radial-gradient(130% 120% at 50% -10%, color-mix(in srgb, var(--fam,#2E8B6A) 26%, transparent), transparent 60%)}
+      .thumb::after{content:"";position:absolute;inset:0;box-shadow:0 1px 0 rgba(255,255,255,.03) inset;pointer-events:none;border-radius:inherit;z-index:2}
 
-      /* featured — larger node */
-      .featured{display:block;border:1px solid var(--line-bright);background:var(--panel);padding:20px 24px 20px 42px;margin-bottom:10px;position:relative;transition:border-color .15s}
-      .featured::before{content:"▸";position:absolute;left:19px;top:22px;color:var(--phosphor);font-family:var(--mono);font-size:14px}
-      .featured:hover{border-color:var(--phosphor-dim)}
-      .featured h2{margin:0 0 6px;font-family:var(--dot);font-weight:900;font-size:17px;letter-spacing:.06em;text-transform:uppercase;color:var(--phosphor);display:flex;align-items:center;gap:10px}
-      .featured p{margin:0;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:1.6;max-width:74ch}
-      .arrow{display:none}
+      /* ============================ RECENTLY ADDED (icons list) ============================ */
+      #recent-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 28px}
+      .recent-row{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--line);min-width:0}
+      .recent-row:hover{background:var(--card)}
+      .recent-row .ic{width:34px;height:34px;border-radius:var(--r-sm);flex:none}
+      .recent-row .ic svg{width:56%;height:56%}
+      .recent-row .rr-t{flex:1;min-width:0}
+      .recent-row .rr-n{font-family:var(--font-display);font-size:14px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:7px}
+      .recent-row .rr-c{display:block;font-size:12px;color:var(--ink-2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .recent-row .rr-cat{margin-left:auto;flex:none;font:500 11px/1 var(--font-mono);color:var(--faint);letter-spacing:.02em}
 
-      /* library */
-      #library-sec{margin:32px 0}
-      .lib-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:14px 0 8px}
-      .lib-row{display:flex;flex-wrap:wrap;gap:8px}
-      .lib-card{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);padding:7px 12px 7px 8px}
-      .lib-card:hover{border-color:var(--line-bright)}
-      .lib-mk{width:24px;height:24px;border:1px solid var(--line-bright);color:var(--phosphor);display:grid;place-items:center;font-family:var(--dot);font-weight:900;font-size:11px}
-      .lib-nm{font-family:var(--mono);font-size:12px;color:var(--paper)}
-      .lib-badge{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--phosphor-dim);border:1px solid var(--line);padding:2px 7px}
-      .lib-foot,.lib-empty{color:var(--faint);font-family:var(--mono);font-size:11px;margin-top:12px;line-height:1.6}
-      .lib-empty{border:1px dashed var(--line);padding:14px 16px}
+      /* ============================ STORE GRID ============================ */
+      .sec-h{display:flex;align-items:baseline;gap:11px;margin:38px 0 15px;flex-wrap:wrap;scroll-margin-top:76px}
+      .sec-h h3{margin:0;font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.02em}
+      .sec-h span{font-size:13px;color:var(--ink-2)}
+      .sec-h .sh-c{margin-left:auto;font:500 11px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums}
+      .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+      .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);transition:transform .14s,box-shadow .14s,border-color .14s;display:block}
+      .card:hover{transform:translateY(-3px);border-color:var(--line-2);box-shadow:var(--shadow-pop)}
+      .card .body{padding:12px 14px 14px;display:flex;align-items:flex-start;gap:10px}
+      .card .ic{width:34px;height:34px;border-radius:var(--r-sm);flex:none;margin-top:1px}
+      .card .ic svg{width:56%;height:56%}
+      .card .txt{min-width:0;flex:1}
+      .card h4{margin:0;font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
+      .card p{margin:3px 0 0;font-size:11.5px;color:var(--ink-2);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .cat-line{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
+      .cat-tag{display:inline-block;font:600 9px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:4px 7px}
+      .pro-pill{font:600 8.5px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:5px;padding:4px 7px}
+      .ic{display:grid;place-items:center}
 
-      footer{margin-top:52px;border-top:1px dashed var(--line);padding:22px 0 40px;color:var(--faint);font-family:var(--mono);font-size:11px;line-height:1.7;max-width:76ch}
-      footer a{color:var(--phosphor-dim)} footer a:hover{color:var(--phosphor)}
+      .cost{display:block;margin-top:8px;font:500 9.5px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .cost b{color:var(--ink-2);font-weight:600}
+      .pl{display:flex;align-items:center;gap:5px;font:500 10px/1 var(--font-mono);color:var(--faintest);margin-top:7px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .pl svg{width:11px;height:11px;flex:none}
 
-      @media(max-width:820px){h1{font-size:2.1rem}.grid{grid-template-columns:1fr}.featured{flex-wrap:wrap}.search{width:130px}.search:focus{width:150px}}
-    
-      /* ---- per-wrapp cards: own icon + colour, tighter copy ---- */
-      .tile{display:none}
-      .mk{width:40px;height:40px;flex:none;border:1px solid var(--c,#7fa18d);color:var(--c,#7fa18d);display:grid;place-items:center;font-family:var(--dot);font-weight:900;font-size:14px;letter-spacing:.02em;background:rgba(255,255,255,.015)}
-      .card{display:flex;gap:13px;align-items:flex-start;padding:13px 15px}
-      .card::before{content:none}
-      .card .body{padding-top:1px}
-      .card:hover{border-color:var(--c,var(--line-bright));background:var(--panel-2)}
-      .card h4{color:var(--c,var(--paper))}
-      .card:hover h4{color:var(--c,var(--paper))}
-      .card p{color:var(--muted);font-size:10.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-      .featured{display:flex;gap:16px;align-items:center;padding:20px 24px}
-      .featured::before{content:none}
-      .featured:hover{border-color:var(--c,var(--phosphor-dim))}
-      .featured h2{color:var(--c,var(--phosphor))}
-      .featured p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-      .featured .mk{width:50px;height:50px;font-size:18px}
+      #no-hits{margin-top:20px}
+
+      footer{margin-top:44px;border-top:1px solid var(--line);padding:24px 0 10px;color:var(--faint);font-size:12.5px;line-height:1.7;max-width:78ch}
+      footer a{color:var(--ink-2);font-weight:600;border-bottom:1px solid var(--line-2)} footer a:hover{color:var(--ink)}
+
+      /* ============================ DOCK ============================ */
+      .dock{position:fixed;left:calc(50% + 115px);transform:translateX(-50%);bottom:18px;background:rgba(19,19,21,.92);
+        backdrop-filter:blur(14px);border:1px solid var(--line-2);border-radius:18px;box-shadow:0 16px 44px -14px rgba(0,0,0,.7);
+        padding:8px 10px;display:flex;align-items:center;gap:6px;z-index:35}
+      .dock .di{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;transition:transform .12s}
+      .dock .di:hover{transform:translateY(-4px)} .dock .di svg{width:21px;height:21px}
+      .dock .sep{width:1px;height:26px;background:var(--line-2);margin:0 2px}
+      .dock .add{width:40px;height:40px;border-radius:12px;border:1px dashed var(--line-2);display:grid;place-items:center;background:none;cursor:pointer}
+      .dock .add svg{width:18px;height:18px;stroke:var(--faint)}
+
+      /* ============================ TOKEN PACK SHEET ============================ */
+      .overlay{position:fixed;inset:0;background:rgba(5,5,6,.6);z-index:1000;display:grid;place-items:center;padding:20px;backdrop-filter:blur(4px)}
+      .sheet{width:min(540px,100%);max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-lg);box-shadow:0 24px 70px -24px rgba(0,0,0,.85);padding:22px 24px}
+      .sheet-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+      .sheet-t{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.02em}
+      .x{margin-left:auto;background:var(--card-2);border:1px solid var(--line);color:var(--ink-2);font:600 12px/1 var(--font-sans);cursor:pointer;padding:7px 11px;border-radius:8px}
+      .x:hover{border-color:var(--faint)}
+      .sheet-k{font:600 10px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:18px 0 9px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+      .sheet-k span{letter-spacing:.02em;text-transform:none;font-weight:500}
+      .rate{width:100%;border-collapse:collapse;font:500 12.5px/1.5 var(--font-mono);color:var(--ink-2)}
+      .rate td{border:1px solid var(--line);padding:8px 11px;font-variant-numeric:tabular-nums}
+      .rate td:last-child{text-align:right;color:var(--ink);font-weight:600}
+      .packs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:2px}
+      .pack{background:var(--card-2);border:1px solid var(--line);border-radius:12px;color:var(--ink);cursor:pointer;text-align:center;padding:14px 10px;transition:border-color .12s}
+      .pack:hover{border-color:var(--line-2)}
+      .pack .amt{display:block;font-family:var(--font-display);font-size:18px;font-weight:700}
+      .pack .pr{display:block;font:500 11px/1 var(--font-mono);color:var(--ink-2);margin-top:6px}
+      .pack-note{margin-top:13px;font-size:12px;color:var(--ink-2);line-height:1.6;min-height:16px}
+
+      /* ============================ POINT AT IT (first-project setup) ============================ */
+      /* The front door for a new user. Lives inside #hero when disconnected and moves to the top of
+         #dash once connected, so the one thing that makes every proactive wrapp work is never more
+         than a scroll away. Same near-black chrome as the rest of the store. */
+      #point-sec{margin-top:6px;scroll-margin-top:76px}
+      #dash #point-sec{margin-top:0}
+      .pt-bar{width:100%;text-align:left;background:var(--card);border:1px dashed var(--line-2);border-radius:var(--r);
+        color:var(--ink-2);font:600 13px/1 var(--font-sans);padding:14px 16px;cursor:pointer;margin-top:34px;transition:border-color .12s,color .12s}
+      .pt-bar:hover{border-color:var(--faint);color:var(--ink)}
+      .pt-body{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px 24px 20px;box-shadow:var(--shadow)}
+      .pt-screen{display:block}
+      .pt-h h3{margin:0;font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.02em}
+      .pt-h .pt-hs{display:block;margin-top:6px;font-size:12.5px;color:var(--ink-2);line-height:1.6;max-width:72ch}
+      .pt-h{margin-bottom:16px}
+
+      .pt-pointers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      .pt-tile{display:flex;align-items:flex-start;gap:11px;text-align:left;background:var(--card-2);border:1px solid var(--line);
+        border-radius:var(--r);padding:13px 14px;cursor:pointer;color:var(--ink);transition:border-color .12s,transform .12s}
+      .pt-tile:hover{border-color:var(--line-2);transform:translateY(-2px)}
+      .pt-tile.on{border-color:var(--faint);background:var(--card)}
+      .pt-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+      .pt-ic svg{width:17px;height:17px}
+      .pt-ic.sm{width:26px;height:26px} .pt-ic.sm svg{width:14px;height:14px}
+      .pt-tt{min-width:0;display:block}
+      .pt-tn{display:block;font-family:var(--font-display);font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+      .pt-ts{display:block;font-size:11.5px;color:var(--ink-2);margin-top:3px;line-height:1.45}
+
+      .pt-inrow{display:flex;gap:9px;margin-top:14px}
+      .pt-inrow.small{margin-top:9px}
+      .pt-input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-sm);
+        padding:12px 14px;color:var(--ink);font:500 14px/1.2 var(--font-sans);outline:0}
+      .pt-input::placeholder{color:var(--faint)}
+      .pt-input:focus{border-color:var(--faint)}
+      .pt-input:disabled{opacity:.5;cursor:not-allowed}
+      .pt-go{flex:none;background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--r-sm);
+        padding:12px 18px;font:600 13.5px/1.2 var(--font-sans);cursor:pointer;display:inline-block}
+      .pt-go:hover{background:var(--accent-hover)}
+      .pt-go:disabled{opacity:.42;cursor:not-allowed}
+      a.pt-go{border-radius:var(--r-pill);padding:12px 20px}
+      .pt-primary{margin-top:16px}
+      .pt-ghost{background:var(--card-2);border:1px solid var(--line-2);color:var(--ink-2);border-radius:var(--r-sm);
+        padding:11px 14px;font:600 12.5px/1.2 var(--font-sans);cursor:pointer}
+      .pt-ghost:hover{border-color:var(--faint);color:var(--ink)}
+      .pt-hint{margin-top:10px;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+      .pt-hint.warn{color:var(--sim)}
+      .pt-privacy{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint);line-height:1.65;max-width:82ch}
+      .pt-quiet{margin-top:12px;font-size:11.5px;color:var(--faint);line-height:1.6}
+      .pt-reconnect{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:rgba(200,162,75,.08);
+        border:1px solid rgba(200,162,75,.28);border-radius:var(--r);padding:13px 15px;margin-bottom:14px}
+      .pt-reconnect p{margin:0;flex:1;min-width:220px;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+
+      /* reading — an append-only honest log, one line per real event; never a fake progress bar */
+      .pt-reading{padding:2px 0}
+      .pt-scanrow{display:flex;align-items:center;gap:11px}
+      .pt-scan{width:34px;height:3px;border-radius:2px;background:var(--line-2);position:relative;overflow:hidden;flex:none}
+      .pt-scan::after{content:"";position:absolute;inset:0;width:40%;background:var(--ink-2);border-radius:2px;animation:pt-sweep 1.15s ease-in-out infinite}
+      @keyframes pt-sweep{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
+      .pt-live{font:500 13px/1 var(--font-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+      .pt-steps{margin:14px 0 0;max-height:190px;overflow:auto;display:grid;gap:5px}
+      .pt-step{font:500 11.5px/1.5 var(--font-mono);color:var(--faint)}
+      .pt-step.good{color:var(--ok)} .pt-step.bad{color:var(--sim)} .pt-step.dim{color:var(--faintest)}
+      .pt-reading .pt-ghost{margin-top:16px}
+
+      /* found — three WHOLE readings; the shared facts sit once, below, visibly out of the choice */
+      .pt-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+      .pt-card{position:relative;background:var(--card-2);border:1px solid var(--line);border-radius:var(--r);
+        padding:15px 15px 13px;cursor:pointer;transition:border-color .12s,transform .12s}
+      .pt-card:hover{border-color:var(--line-2);transform:translateY(-2px)}
+      .pt-card.sel{border-color:var(--faint);box-shadow:0 0 0 1px var(--faint) inset}
+      .pt-rec{position:absolute;top:-8px;left:13px;font:600 9px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;
+        color:var(--ok);background:#141A17;border:1px solid rgba(84,180,135,.4);border-radius:5px;padding:4px 7px}
+      .pt-lens{display:block;font-family:var(--font-display);font-size:13px;font-weight:600;letter-spacing:-.01em;margin-bottom:11px}
+      .pt-frow{margin-top:10px}
+      .pt-fk{display:block;font:600 9px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+      .pt-fv{font-size:12.5px;color:var(--ink-2);line-height:1.55}
+      .pt-fv.muted{color:var(--faintest);font-style:italic}
+      .pt-flist{font-size:12.5px;color:var(--ink-2);line-height:1.6;display:grid;gap:2px}
+
+      .pt-facts{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+      .pt-fk-top{margin-bottom:10px}
+      .pt-fbody{display:grid;gap:9px}
+      .pt-fline{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+      .pt-flk{flex:none;width:74px;font:500 11px/1.5 var(--font-mono);color:var(--faint);letter-spacing:.02em}
+      .pt-fchips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+      .pt-fchip,.pt-swatch{display:inline-flex;align-items:center;gap:6px;background:var(--card-2);border:1px solid var(--line);
+        border-radius:var(--r-xs);padding:5px 8px;font-size:11.5px;color:var(--ink-2)}
+      .pt-swatch i{width:12px;height:12px;border-radius:3px;display:block;flex:none;box-shadow:0 0 0 1px rgba(255,255,255,.12) inset}
+      .pt-swatch span{font:500 11px/1 var(--font-mono)}
+      .pt-x{background:none;border:0;color:var(--faint);cursor:pointer;font-size:13px;line-height:1;padding:0 0 0 2px}
+      .pt-x:hover{color:var(--ink)}
+      .pt-fnote{font-size:11px;color:var(--faint);line-height:1.6}
+      .pt-fnote.wide{flex:1;min-width:240px;margin-top:2px}
+      .pt-fnote a{color:var(--ink-2);border-bottom:1px solid var(--line-2)}
+      .pt-flink{font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--line-2)}
+      .pt-fmono{font:500 11.5px/1.5 var(--font-mono);color:var(--ink-2);word-break:break-all}
+
+      .pt-steer{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+      .pt-chips{display:flex;flex-wrap:wrap;gap:7px}
+      .pt-chip{background:var(--card-2);border:1px solid var(--line);color:var(--ink-2);border-radius:var(--r-pill);
+        padding:7px 12px;font:500 12px/1 var(--font-sans);cursor:pointer}
+      .pt-chip:hover{border-color:var(--line-2);color:var(--ink)}
+      .pt-acts{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-top:16px}
+
+      /* confirm — every line click-to-edit inline, each with its own ↻ */
+      .pt-confirm{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r);padding:16px 17px}
+      .pt-crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+      .pt-name{flex:1;min-width:180px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-sm);
+        padding:10px 12px;color:var(--ink);font:600 15px/1.2 var(--font-display);letter-spacing:-.02em;outline:0}
+      .pt-name:focus{border-color:var(--faint)}
+      .pt-kind{flex:none;font:600 9.5px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);
+        background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-xs);padding:6px 9px;cursor:help}
+      .pt-erow{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+      .pt-ek{display:flex;align-items:center;gap:8px;font:600 9px/1 var(--font-sans);letter-spacing:.12em;
+        text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+      .pt-re{background:none;border:0;color:var(--faint);cursor:pointer;font-size:12px;line-height:1;padding:0}
+      .pt-re:hover{color:var(--ink)} .pt-re:disabled{opacity:.5;cursor:default}
+      .pt-ev{cursor:text;border-radius:var(--r-xs);padding:2px 0}
+      .pt-ev:hover{background:rgba(255,255,255,.02)}
+      .pt-edit{width:100%;background:var(--bg);border:1px solid var(--faint);border-radius:var(--r-sm);color:var(--ink);
+        font:400 12.5px/1.6 var(--font-sans);padding:9px 11px;outline:0;resize:vertical}
+
+      /* ready */
+      .pt-ready-apps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+      .pt-app{display:flex;align-items:flex-start;gap:10px;background:var(--card-2);border:1px solid var(--line);
+        border-radius:var(--r);padding:11px 12px;transition:border-color .12s,transform .12s}
+      .pt-app:hover{border-color:var(--line-2);transform:translateY(-2px)}
+      .pt-folder-note{margin-top:14px;background:rgba(84,180,135,.06);border:1px solid rgba(84,180,135,.22);
+        border-radius:var(--r);padding:12px 14px;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+
+      /* blocked — the same design attention as the success path; a dead end here is the whole
+         product failing at step one */
+      .pt-blocked{background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r);padding:16px 17px}
+      .pt-blk{display:inline-block;font:600 9px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;
+        color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:5px;padding:5px 8px}
+      .pt-blocked-why{margin-top:11px;font-size:14px;color:var(--ink);line-height:1.6;max-width:70ch}
+
+      @media(max-width:900px){
+        .pt-pointers,.pt-cards,.pt-ready-apps{grid-template-columns:minmax(0,1fr)}
+        .pt-body{padding:18px 16px 16px}
+      }
+      @media(prefers-reduced-motion:reduce){.pt-scan::after{animation:none;width:100%}.pt-tile:hover,.pt-card:hover,.pt-app:hover{transform:none}}
+
+      /* ============================ RESPONSIVE ============================ */
+      /* The fixed 230px sidebar shrinks the main column, so topbar breakpoints are keyed to the
+         EFFECTIVE width (viewport − sidebar). Non-essential chrome sheds first, then the redundant
+         view tabs (the sort menu already covers Latest/Trending), so the bar never outgrows its row. */
+      @media(max-width:1560px){.works{display:none}}
+      @media(max-width:1500px){#ws{display:none}}
+      @media(max-width:1360px){#showing-count{display:none}}
+      @media(max-width:1180px){#view-tabs{display:none}}
+      @media(max-width:1100px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      @media(max-width:900px){
+        body{grid-template-columns:1fr}
+        #sidebar{transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.6)}
+        body.side-open #sidebar{transform:none}
+        body.side-open #side-scrim{display:block;position:fixed;inset:0;background:rgba(5,5,6,.5);z-index:39}
+        .main{grid-column:1}
+        #side-toggle{display:grid;place-items:center}
+        .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .projs,.review,.recs,.account-rail{grid-template-columns:minmax(0,1fr)}
+        #recent-list{grid-template-columns:minmax(0,1fr)}
+        .featured{flex-direction:column} .feat-r{width:100%}
+        .dock{left:50%}
+      }
+      @media(max-width:760px){.wallet-chip,.icon-btn[title="Bookmarks"]{display:none}}
+      @media(max-width:640px){
+        .grid{grid-template-columns:minmax(0,1fr)}
+        .recent-row .rr-cat{display:none}
+        /* mobile topbar: strip it to the essentials so it never overflows — [menu] [search] [connect].
+           Nav lives in the drawer; filters/sort/bookmark/workspace/wallet are recovered on wider screens. */
+        #view-tabs,.tier-bar,.sortwrap,.icon-btn,.ws,.wallet-chip{display:none}
+        #topbar{gap:10px;padding:0 14px}
+        .cmd{max-width:none;min-width:0}
+        .content{padding-left:16px;padding-right:16px}
+        /* the hero CTA goes full-bleed rather than shrinking to a stub */
+        .dhero{padding-top:34px}
+        .dhero-cta{width:100%;justify-content:center}
+        #dash .zone{margin-top:44px}
+      }
+      @media(prefers-reduced-motion:reduce){*{transition:none!important}.proj:hover,.card:hover,.act:hover,.rec:hover,.step:hover,.dock .di:hover{transform:none}}
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <header>
-        <span class="brand"><span class="g">S</span>Wrapp Store <span class="sub">· Switchboard</span></span>
-        <input id="search" class="search" type="search" placeholder="Search apps…   ⌘K" autocomplete="off" />
+    <!-- ============================ SIDEBAR ============================ -->
+    <aside id="sidebar">
+      <div class="bm"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</div>
+
+      <button id="side-search" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span>Search wrapps</span><span class="kb">⌘K</span>
+      </button>
+
+      <nav class="side-group" id="nav-primary"></nav>
+
+      <div class="side-group" id="brands-group" hidden>
+        <span class="kicker sg-k">Your brands</span>
+        <div id="brands-list"></div>
+      </div>
+
+      <div class="side-group" id="cats-group">
+        <span class="kicker sg-k">Categories</span>
+        <div id="cats-list"></div>
+      </div>
+
+      <div class="side-spacer"></div>
+      <a id="submit-wrapp" href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Submit a wrapp
+      </a>
+    </aside>
+    <div id="side-scrim"></div>
+
+    <!-- ============================ MAIN ============================ -->
+    <div class="main">
+      <div id="topbar">
+        <button id="side-toggle" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div id="view-tabs">
+          <button class="vt on" type="button" data-view="explore">Explore</button>
+          <button class="vt" type="button" data-view="latest">Latest</button>
+          <button class="vt" type="button" data-view="collections">Collections</button>
+        </div>
+        <label class="cmd" id="cmd">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="Search wrapps…" autocomplete="off" />
+          <span class="kb">⌘K</span>
+        </label>
+        <div class="tier-bar" id="tier-bar">
+          <button class="tf on" type="button" data-tier="all">All</button>
+          <button class="tf" type="button" data-tier="pro">Pro</button>
+          <button class="tf" type="button" data-tier="free">Free</button>
+        </div>
+        <span class="works"><span class="dot"></span>Works with Claude</span>
+        <div class="tb-sp"></div>
+        <span id="showing-count"></span>
+        <div class="sortwrap">
+          <select id="sort" aria-label="Sort">
+            <option value="trending">Trending</option>
+            <option value="newest">Newest</option>
+            <option value="cost">Build cost</option>
+          </select>
+        </div>
+        <button class="icon-btn" type="button" title="Bookmarks" aria-label="Bookmarks"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4z"/></svg></button>
+        <div class="ws" id="ws" hidden></div>
+        <button id="wallet-chip" class="wallet-chip" type="button" hidden title="Token wallet — simulated preview. Your own Claude never needs tokens.">◈ <span id="wallet-bal">0</span> SB <span class="u">· sim</span></button>
         <div id="chip-dock"></div>
-      </header>
-
-      <p class="eyebrow">Wrapp Store · Runs on your own AI</p>
-      <h1>Apps that bring nothing<br />but <span class="hl">the interface.</span></h1>
-      <p class="sub-copy">Every app runs on <b>your</b> Claude and <b>your</b> tools — the operator never holds a key or sees your data.</p>
-
-      <section id="way-sec">
-        <div class="sec-h"><h3>The way</h3><span>four steps — the page knows where you are</span></div>
-        <div class="way" id="way"></div>
-      </section>
-
-      <section id="library-sec" hidden>
-        <div class="sec-h"><h3>Your library</h3><span>what your apps can borrow — names only, lending is per app</span></div>
-        <div id="library"></div>
-      </section>
-
-      <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning" style="--c:#C8F250">
-        <span class="mk">BB</span>
-        <span>
-          <h2>brandbrain <span class="dot" title="live"></span></h2>
-          <p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p>
-        </span>
-        <span class="arrow">→</span>
-      </a>
-
-      <a class="featured" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" style="--c:#7DE0FF">
-        <span class="mk">IB</span>
-        <span>
-          <h2>ideabrain <span class="dot" title="live"></span></h2>
-          <p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p>
-        </span>
-        <span class="arrow">→</span>
-      </a>
-
-      <a class="featured" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" style="--c:#8FA3C8">
-        <span class="mk">BK</span>
-        <span>
-          <h2>Bank <span class="dot" title="live"></span></h2>
-          <p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p>
-        </span>
-        <span class="arrow">→</span>
-      </a>
-
-      <div class="sec-h"><h3>Validate an idea</h3><span>ideabrain, opened to your kind of idea</span></div>
-      <div class="grid">
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=marketplace" data-tags="idea marketplace platform two-sided supply demand cold start liquidity take rate validate" style="--c:#2CD4BC">
-          <span class="mk">MV</span>
-          <span class="body"><h4>Marketplace Validator <span class="dot" title="live"></span></h4>
-          <p>Two-sided idea? Work the supply, demand, cold-start, take-rate and path to liquidity — the decisions that actually make a marketplace.</p></span>
-        </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=app" data-tags="idea consumer app mobile ios android loop retention distribution validate" style="--c:#A8E85A">
-          <span class="mk">CP</span>
-          <span class="body"><h4>Consumer App Planner <span class="dot" title="live"></span></h4>
-          <p>The core loop, retention hook, distribution and how it makes money — the playbook for a consumer app.</p></span>
-        </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=saas" data-tags="idea b2b saas software teams icp pricing sales motion moat validate" style="--c:#9B8CFF">
-          <span class="mk">SA</span>
-          <span class="body"><h4>SaaS Thesis <span class="dot" title="live"></span></h4>
-          <p>ICP, wedge, sales motion, pricing and the integration moat — pressure-test a B2B SaaS.</p></span>
-        </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=retail" data-tags="idea retail store physical space location unit economics footfall validate" style="--c:#F0A35E">
-          <span class="mk">RC</span>
-          <span class="body"><h4>Retail Concept <span class="dot" title="live"></span></h4>
-          <p>Location, unit economics, ops and footfall — pressure-test a store or physical space before you sign a lease.</p></span>
-        </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware" data-tags="idea hardware product device manufacturing bom margin channel capital validate" style="--c:#A8C07E">
-          <span class="mk">HW</span>
-          <span class="body"><h4>Hardware Reality Check <span class="dot" title="live"></span></h4>
-          <p>BOM, manufacturing, margin, channel and the capital it takes — the honest hardware maths.</p></span>
-        </a>
-        <a class="card" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=feature" data-tags="idea feature existing product adoption cannibalization build vs buy metric validate" style="--c:#4FE0A0">
-          <span class="mk">FC</span>
-          <span class="body"><h4>Feature Case <span class="dot" title="live"></span></h4>
-          <p>Fit, adoption, cannibalization and the metric that proves it — make the case for a feature in a product you already have.</p></span>
-        </a>
       </div>
 
-      <div class="sec-h"><h3>The founder stack</h3><span>run your brand on your own model</span></div>
-      <div class="grid">
-        <a class="card" href="https://adpulse.thelastprompt.ai" data-tags="meta ads analyse performance facebook roas spend" style="--c:#FFB224">
-          <span class="mk">AP</span>
-          <span class="body"><h4>AdPulse <span class="dot" title="live"></span></h4>
-          <p>Meta ads post-mortem — paste your Ads Manager export or pull it live through your own Meta connector; your Claude finds the wasted spend and what to scale.</p></span>
-        </a>
-        <a class="card" href="https://adforge.thelastprompt.ai" data-tags="meta ads generate creative facebook copy" style="--c:#FF6A2B">
-          <span class="mk">AF</span>
-          <span class="body"><h4>AdForge <span class="dot" title="live"></span></h4>
-          <p>URL in, Meta ads out — three concepts, one recommended, rendered as a real feed ad with creative generated on your Higgsfield.</p></span>
-        </a>
-        <a class="card" href="https://shelf.thelastprompt.ai" data-tags="inventory stock reorder sku warehouse" style="--c:#E8B34B">
-          <span class="mk">SH</span>
-          <span class="body"><h4>Shelf <span class="dot" title="live"></span></h4>
-          <p>Inventory triage — reorder-now, watch, dead weight, and the cash locked on your shelf.</p></span>
-        </a>
-        <a class="card" href="https://studio.thelastprompt.ai" data-tags="product images photos shots photography" style="--c:#E4572E">
-          <span class="mk">ST</span>
-          <span class="body"><h4>Studio <span class="dot" title="live"></span></h4>
-          <p>Product shots without the studio — one photo in, finished frames out, shot on your Higgsfield. The product stays exactly itself.</p></span>
-        </a>
-        <a class="card" href="https://aplus.thelastprompt.ai" data-tags="amazon a+ content listing seller ecommerce" style="--c:#F0B429">
-          <span class="mk">A+</span>
-          <span class="body"><h4>A-Plus <span class="dot" title="live"></span></h4>
-          <p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story, rendered as the real module stack.</p></span>
-        </a>
+      <div class="content">
+        <!-- ===================== PERSONALIZED DASHBOARD (connected only) ===================== -->
+        <section id="dash" hidden>
+          <div class="dhero">
+            <p class="dhero-k"><span id="dash-date"></span><span class="demo-ribbon" id="demo-ribbon" hidden>demo preview · representative data</span></p>
+            <div class="dhero-body" id="dash-body">
+              <h1 class="dhero-h display" id="dash-greeting"></h1>
+              <p class="dhero-sub" id="dash-line"></p>
+              <div class="dhero-act">
+                <button class="dhero-cta" id="autorun" type="button" hidden><svg viewBox="0 0 24 24" stroke-width="2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Auto-run routine tasks</button>
+                <a class="dhero-cta" id="dash-cta" hidden></a>
+                <span class="dhero-in" id="dash-in"></span>
+              </div>
+              <div class="facts" id="stat-tiles" hidden></div>
+              <p class="standing"><span class="d"></span>running on your own Claude — free, forever</p>
+            </div>
+          </div>
+
+          <section id="review-sec">
+            <div class="zone"><span class="z">Needs you now</span><h2>Ready to review</h2><span class="s" id="review-sub"></span></div>
+            <div class="review" id="review"></div>
+          </section>
+
+          <div class="zone"><span class="z">Your work</span><h2>Projects</h2><span class="s" id="projects-sub"></span><button class="all" id="projects-new" type="button" style="background:none;border:0;cursor:pointer;font:inherit;font-weight:600">+ New project</button></div>
+          <div class="projs" id="projects"></div>
+
+          <div class="zone"><span class="z">Do this now</span><h2>Quick actions</h2><span class="s">one click, straight into the work</span></div>
+          <div class="actions" id="actions"></div>
+
+          <div class="zone"><span class="z">For you</span><h2>Recommended</h2><span class="s">from what your library holds — names only, never the data</span></div>
+          <div class="recs" id="recs"></div>
+
+          <section id="library-sec" hidden>
+            <div class="zone"><span class="z">On the shelf</span><h2>Your library</h2><span class="s">what your apps can borrow — names only, lending is per app</span></div>
+            <div id="library"></div>
+          </section>
+
+          <div class="zone"><span class="z">Your plan &amp; tokens · simulated</span><h2>Account</h2><span class="s">tokens and Pro are conveniences — never walls</span></div>
+          <div class="account-rail" id="account-rail">
+            <div class="side-card" id="plan-card"></div>
+            <div class="side-card" id="wallet-card"></div>
+          </div>
+        </section>
+
+        <!-- ===================== HERO + ONBOARDING (disconnected only) ===================== -->
+        <section id="hero">
+          <p class="eyebrow"><span class="dot"></span>Wrapp store · runs on your own AI</p>
+          <h1 class="hero-h">A home for your work, and the apps that <span class="hl">move it forward.</span></h1>
+          <p class="hero-sub">Connect Switchboard and this page becomes <b>your</b> dashboard — your projects, what's next, and the wrapp for each job. Every app runs on <b>your</b> Claude and <b>your</b> tools; the operator never holds a key or sees your data.</p>
+          <button class="hero-cta" id="hero-connect" type="button"><span>Connect Switchboard</span><span>→</span></button>
+
+          <!-- FIRST-PROJECT SETUP. Two homes for one section: here inside #hero while disconnected,
+               and moved to the top of #dash (before #review-sec) once connected. home.js does the
+               move; point.js owns everything inside #pt-stage. -->
+          <section id="point-sec" hidden>
+            <div class="zone" id="pt-zone">
+              <span class="z">Set up</span>
+              <h2>Point at it and it's yours</h2>
+              <span class="s">One link or one folder. Your Claude reads it, you confirm what it found, and every app below can borrow it.</span>
+              <button class="all" id="pt-collapse" type="button" style="background:none;border:0;cursor:pointer;font:inherit">hide</button>
+            </div>
+            <button class="pt-bar" id="pt-bar" type="button" hidden>+ Point at a site, repo, or folder</button>
+            <div class="pt-body" id="pt-body">
+              <div class="pt-reconnect" id="pt-reconnect" hidden>
+                <p>This page was connected before it could read for you. Re-approve once to let your Claude read what you point at.</p>
+                <button class="pt-go" id="pt-reconnect-go" type="button">Re-approve ▸</button>
+              </div>
+              <div id="pt-stage"></div>
+            </div>
+          </section>
+
+          <section id="way-sec">
+            <div class="zone" style="margin-top:40px"><span class="z">Getting set up</span><h2>The way</h2><span class="s">four steps — the page knows where you are</span></div>
+            <div class="way" id="way"></div>
+          </section>
+        </section>
+
+        <!-- ===================== FEATURED CAROUSEL (always visible) ===================== -->
+        <section id="featured-sec">
+          <div class="zone"><span class="z">Featured</span><h2>Editor's picks</h2><span class="s">the flagships — each runs on your own Claude</span></div>
+          <div id="featured">
+            <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-app="brandbrain" data-tags="brand builder consumer launch positioning" target="_blank" rel="noreferrer">
+              <span class="feat-l"><span class="fk">Featured wrapp</span>
+                <span class="txt"><h2>brandbrain</h2>
+                <p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p></span>
+              </span>
+            </a>
+            <a class="featured" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-app="ideabrain" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" target="_blank" rel="noreferrer">
+              <span class="feat-l"><span class="fk">Featured wrapp</span>
+                <span class="txt"><h2>ideabrain</h2>
+                <p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p></span>
+              </span>
+            </a>
+            <a class="featured" href="https://bank.thelastprompt.ai" data-app="bank" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" target="_blank" rel="noreferrer">
+              <span class="feat-l"><span class="fk">Featured wrapp</span>
+                <span class="txt"><h2>Bank</h2>
+                <p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p></span>
+              </span>
+            </a>
+          </div>
+          <div id="featured-dots"></div>
+        </section>
+
+        <!-- ===================== RECENTLY ADDED (icons list) ===================== -->
+        <section id="recent-sec">
+          <div class="zone"><span class="z">Fresh</span><h2>Recently added</h2><span class="s">the newest wrapps on the shelf</span></div>
+          <div id="recent-list"></div>
+        </section>
+
+        <!-- ===================== ALL WRAPPS GRID ===================== -->
+        <section id="store">
+          <div class="zone" style="margin-top:36px"><span class="z">The catalog</span><h2>All wrapps</h2><span class="s">tools that run on your own AI — free</span></div>
+
+          <div class="sec-h" data-cat="Brand &amp; content"><h3>Brand &amp; content</h3><span>brand systems, the knowledge bank, copy review</span></div>
+          <div class="grid">
+            <a class="card" data-app="brandbrain" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning receipts" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>brandbrain</h4><p>Consumer brands, built on receipts — white space, every decision locked, launch.</p></span></span>
+            </a>
+            <a class="card" data-app="bank" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Bank</h4><p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p></span></span>
+            </a>
+            <a class="card" data-app="redline" href="./redline.html" data-tags="landing page review feedback copy comments edit finalize grammarly proof warm thread">
+              <span class="body"><span class="txt"><h4>Redline</h4><p>Review a landing page like a document — drop comments, your Claude proposes copy &amp; edits the real file.</p></span></span>
+            </a>
+            <a class="card" data-app="marquee" href="./marquee.html" data-tags="landing page website scroll cinematic builder html generate hero higgsfield edit">
+              <span class="body"><span class="txt"><h4>Marquee</h4><p>A cinematic scrolling landing page from one line — generated, hero-painted, edited in place.</p></span></span>
+            </a>
+            <a class="card" data-app="chat" href="./chat.html" data-tags="chat assistant threads library claude">
+              <span class="body"><span class="txt"><h4>betterchat</h4><p>Chat on your own Claude, grounded in your library — threads persist, starters from what you've banked.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Validate an idea"><h3>Validate an idea</h3><span>ideabrain, opened to your kind of idea</span></div>
+          <div class="grid">
+            <a class="card" data-app="ideabrain" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>ideabrain</h4><p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p></span></span>
+            </a>
+            <a class="card" data-app="mkt" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=marketplace" data-tags="idea marketplace platform two-sided supply demand cold start liquidity take rate validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Marketplace Validator</h4><p>Two-sided idea? Work the supply, demand, cold-start, take-rate and path to liquidity.</p></span></span>
+            </a>
+            <a class="card" data-app="capp" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=app" data-tags="idea consumer app mobile ios android loop retention distribution validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Consumer App Planner</h4><p>The core loop, retention hook, distribution and how it makes money.</p></span></span>
+            </a>
+            <a class="card" data-app="saas" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=saas" data-tags="idea b2b saas software teams icp pricing sales motion moat validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>SaaS Thesis</h4><p>ICP, wedge, sales motion, pricing and the integration moat — pressure-test a B2B SaaS.</p></span></span>
+            </a>
+            <a class="card" data-app="retail" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=retail" data-tags="idea retail store physical space location unit economics footfall validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Retail Concept</h4><p>Location, unit economics, ops and footfall — before you sign a lease.</p></span></span>
+            </a>
+            <a class="card" data-app="hardware" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware" data-tags="idea hardware product device manufacturing bom margin channel capital validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Hardware Reality Check</h4><p>BOM, manufacturing, margin, channel and the capital it takes — the honest maths.</p></span></span>
+            </a>
+            <a class="card" data-app="feature" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=feature" data-tags="idea feature existing product adoption cannibalization build vs buy metric validate" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Feature Case</h4><p>Fit, adoption, cannibalization and the metric that proves it.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Ads &amp; growth"><h3>Ads &amp; growth</h3><span>analyse, generate, and post the growth work</span></div>
+          <div class="grid">
+            <a class="card" data-app="adpulse" href="https://adpulse.thelastprompt.ai" data-tags="meta ads analyse performance facebook roas spend" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>AdPulse</h4><p>Meta ads post-mortem — paste your export or pull it live; your Claude finds the wasted spend.</p></span></span>
+            </a>
+            <a class="card" data-app="adforge" href="https://adforge.thelastprompt.ai" data-tags="meta ads generate creative facebook copy" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>AdForge</h4><p>URL in, Meta ads out — three concepts, one recommended, rendered on your Higgsfield.</p></span></span>
+            </a>
+            <a class="card" data-app="adgen" href="https://adgen.thelastprompt.ai" data-tags="ads wall volume brand generate higgsfield" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Adwall</h4><p>The volume play — six ad directions at once from your lent brand, render any tile on your Higgsfield.</p></span></span>
+            </a>
+            <a class="card" data-app="aplus" href="https://aplus.thelastprompt.ai" data-tags="amazon a+ content listing seller ecommerce" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>A-Plus</h4><p>Amazon A+ content in one pass — hero, feature grid, comparison chart, brand story.</p></span></span>
+            </a>
+            <a class="card" data-app="batch" href="./batch.html" data-tags="yc application y combinator pitch startup apply founder answers accelerator">
+              <span class="body"><span class="txt"><h4>Batch</h4><p>Your YC application, answer by answer — all 8 questions drafted on your own Claude.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Creative"><h3>Creative</h3><span>personas, images, reels — on your own models</span></div>
+          <div class="grid">
+            <a class="card" data-app="identity" href="./identity.html" data-tags="persona identity creator character cast avatar voice aesthetic audience context producer">
+              <span class="body"><span class="txt"><h4>Identity</h4><p>Compose an AI creator persona facet by facet, then publish it as a context Cast picks up.</p></span></span>
+            </a>
+            <a class="card" data-app="prism" href="https://prism.thelastprompt.ai" data-tags="image generate brand higgsfield" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Prism</h4><p>Prompt → image on your Higgsfield connector, on-brand when you lend it a brand context.</p></span></span>
+            </a>
+            <a class="card" data-app="reel" href="./reel.html" data-tags="video reel promo launch mp4 scenes higgsfield animation ad clip">
+              <span class="body"><span class="txt"><h4>Reel</h4><p>One line to a launch reel — Claude scripts scenes, Higgsfield paints them, renders in your browser.</p></span></span>
+            </a>
+            <a class="card" data-app="cast" href="https://cast.thelastprompt.ai" data-tags="persona creator ugc influencer video" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Cast</h4><p>An AI persona studio — creators that stay on-model across faces, scenes, and reels.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Commerce"><h3>Commerce</h3><span>inventory and product photography</span></div>
+          <div class="grid">
+            <a class="card" data-app="studio" href="https://studio.thelastprompt.ai" data-tags="product images photos shots photography" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Studio</h4><p>Product shots without the studio — one photo in, finished frames out, on your Higgsfield.</p></span></span>
+            </a>
+            <a class="card" data-app="shelf" href="https://shelf.thelastprompt.ai" data-tags="inventory stock reorder sku warehouse" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Shelf</h4><p>Inventory triage — reorder-now, watch, dead weight, and the cash locked on your shelf.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Viral"><h3>Viral</h3><span>dupes of the AI tools people can't stop sharing — on your own Claude, starring your library</span></div>
+          <div class="grid">
+            <a class="card" data-app="arcade" href="./arcade.html" data-tags="game maker playable arcade endless-runner flappy platformer brick-breaker generator sandbox rosebud your-brand-in-a-game">
+              <span class="body"><span class="txt"><h4>Arcade</h4><p>One line becomes a real playable game you keep — starring your brand, on your Claude.</p></span></span>
+            </a>
+            <a class="card" data-app="yearbook" href="./yearbook.html" data-tags="yearbook retro portraits nostalgia 90s 80s 70s y2k decades ai-photo higgsfield throwback headshot">
+              <span class="body"><span class="txt"><h4>Yearbook</h4><p>One line about someone becomes a page of retro yearbook portraits, every decade.</p></span></span>
+            </a>
+            <a class="card" data-app="toon" href="./toon.html" data-tags="comic manga strip cartoon storyboard panels toon higgsfield illustration character noir webcomic">
+              <span class="body"><span class="txt"><h4>Toon</h4><p>Turn any moment into a four-panel comic strip starring one consistent character.</p></span></span>
+            </a>
+            <a class="card" data-app="storybook" href="./storybook.html" data-tags="kids children picture-book story storybook bedtime illustration higgsfield hero mascot founder-book read-aloud">
+              <span class="body"><span class="txt"><h4>Storybook</h4><p>One line becomes an illustrated kids' picture book — your character as the hero.</p></span></span>
+            </a>
+            <a class="card" data-app="petrait" href="./petrait.html" data-tags="pet portrait renaissance oil ai cat dog regal royalty higgsfield fun">
+              <span class="body"><span class="txt"><h4>Petrait</h4><p>Describe your pet in one line, get a regal AI oil portrait of it.</p></span></span>
+            </a>
+            <a class="card" data-app="emote" href="./emote.html" data-tags="stickers sticker-pack genmoji emoji emote mascot character higgsfield transparent die-cut kawaii vaporwave">
+              <span class="body"><span class="txt"><h4>Emote</h4><p>Describe a character, get a pack of transparent die-cut emotion stickers on your Higgsfield.</p></span></span>
+            </a>
+            <a class="card" data-app="inkling" href="./inkling.html" data-tags="tattoo flash line-art ink body-art fine-line blackwork american-traditional design generator higgsfield">
+              <span class="body"><span class="txt"><h4>Inkling</h4><p>One idea in, three clean line-art flash designs out, rendered on your own Claude.</p></span></span>
+            </a>
+            <a class="card" data-app="roomify" href="./roomify.html" data-tags="interior redesign room restyle interiors home decor japandi minimalist maximalist ai render higgsfield staging">
+              <span class="body"><span class="txt"><h4>Roomify</h4><p>Name a room and a vibe — get three restyle directions, then repaint them on your own Claude.</p></span></span>
+            </a>
+            <a class="card" data-app="thumbs" href="./thumbs.html" data-tags="thumbnail youtube video ctr clickbait creator title higgsfield 16:9 image">
+              <span class="body"><span class="txt"><h4>Thumbs</h4><p>One video title in, three click-worthy thumbnail concepts, rendered on your Higgsfield.</p></span></span>
+            </a>
+            <a class="card" data-app="meme" href="./meme.html" data-tags="meme memes generator drake distracted-boyfriend two-buttons expanding-brain change-my-mind this-is-fine viral funny captions shitpost svg offline brand">
+              <span class="body"><span class="txt"><h4>Meme</h4><p>One topic in, a wall of captioned memes out — drawn on the spot, no image model.</p></span></span>
+            </a>
+            <a class="card" data-app="roast" href="./roast.html" data-tags="roast bio brand resume pitch comedy burn funny savage linkedin founder wink">
+              <span class="body"><span class="txt"><h4>Roast</h4><p>Paste a bio, brand, resume, or pitch — get roasted, funny and sharp, never cruel.</p></span></span>
+            </a>
+            <a class="card" data-app="rizz" href="./rizz.html" data-tags="rizz dating openers replies flirt bio wingman conversation tinder hinge bumble icebreaker charm messages">
+              <span class="body"><span class="txt"><h4>Rizz</h4><p>Their bio, the last text, or the vibe — get tasteful openers, replies, and bios on your own Claude.</p></span></span>
+            </a>
+            <a class="card" data-app="anthem" href="./anthem.html" data-tags="song music lyrics suno songwriter anthem audio track generator chorus">
+              <span class="body"><span class="txt"><h4>Anthem</h4><p>Name a person, moment, or brand — get full lyrics plus a copy-ready generation prompt.</p></span></span>
+            </a>
+            <a class="card" data-app="dreamlog" href="./dreamlog.html" data-tags="dream dreams interpretation dreamscape jungian symbols omens surreal sleep subconscious nightmare reading">
+              <span class="body"><span class="txt"><h4>Dreamlog</h4><p>Describe a dream, pick a lens, get a gentle reading — and, if you want, a surreal dreamscape.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="Play &amp; make"><h3>Play &amp; make</h3><span>record, build, and get on a call</span></div>
+          <div class="grid">
+            <a class="card" data-app="take" href="./take.html" data-tags="record screen camera video demo founder script webcam capture loom">
+              <span class="body"><span class="txt"><h4>Take</h4><p>Script it, then record it — Claude writes the beats, you capture in the page. Never leaves your browser.</p></span></span>
+            </a>
+            <a class="card" data-app="cartridge" href="https://cartridge.thelastprompt.ai" data-tags="game arcade play build" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Cartridge</h4><p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact.</p></span></span>
+            </a>
+            <a class="card" data-app="huddle" href="./huddle.html" data-tags="call video claude voice tts session project work pair chat live">
+              <span class="body"><span class="txt"><h4>Huddle</h4><p>Get on a working call with your own Claude — camera on, warm thread, grounded in a project folder.</p></span></span>
+            </a>
+          </div>
+
+          <div class="sec-h" data-cat="After hours"><h3>After hours</h3><span>the fun ones</span></div>
+          <div class="grid">
+            <a class="card" data-app="natal" href="https://natal.thelastprompt.ai" data-tags="astrology horoscope costar birth chart zodiac" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>NATAL</h4><p>Your chart, read bluntly — birth data in, sun/moon/rising and an unsentimental daily brief.</p></span></span>
+            </a>
+            <a class="card" data-app="arcana" href="https://arcana.thelastprompt.ai" data-tags="tarot cards reading spread fortune" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Arcana</h4><p>Three cards, no mercy — draw a spread and your Claude reads the exact cards you pulled.</p></span></span>
+            </a>
+          </div>
+
+          <div id="no-hits" class="lib-empty" hidden>Nothing matches — try a shorter search.</div>
+
+          <footer>
+            Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
+            your machine enforces. Open source at
+            <a href="https://github.com/sameeeeeeep/switchboard" target="_blank" rel="noreferrer">github.com/sameeeeeeep/switchboard</a>
+            — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
+          </footer>
+        </section>
       </div>
-
-      <div class="sec-h"><h3>After hours</h3><span>the fun ones</span></div>
-      <div class="grid">
-        <a class="card" href="https://natal.thelastprompt.ai" data-tags="astrology horoscope costar birth chart zodiac" style="--c:#E6E6F0">
-          <span class="mk">NT</span>
-          <span class="body"><h4>NATAL <span class="dot" title="live"></span></h4>
-          <p>Your chart, read bluntly — birth data in, sun/moon/rising and an unsentimental daily brief.</p></span>
-        </a>
-        <a class="card" href="https://arcana.thelastprompt.ai" data-tags="tarot cards reading spread fortune" style="--c:#D4B24A">
-          <span class="mk">AR</span>
-          <span class="body"><h4>Arcana <span class="dot" title="live"></span></h4>
-          <p>Three cards, no mercy — draw a spread and your Claude reads the exact cards you pulled.</p></span>
-        </a>
-      </div>
-
-      <div class="sec-h"><h3>Play &amp; make</h3><span>studios and experiments</span></div>
-      <div class="grid">
-        <a class="card" href="./redline.html" data-tags="landing page review feedback copy comments edit finalize grammarly proof warm thread" style="--c:#FF5C6E">
-          <span class="mk">RL</span>
-          <span class="body"><h4>Redline <span class="dot" title="live"></span></h4>
-          <p>Review a landing page like a document — bind the folder, drop comments, and your Claude proposes copy, references, diagrams &amp; mockups. Accept, it edits the real file.</p></span>
-        </a>
-        <a class="card" href="https://cartridge.thelastprompt.ai" data-tags="game arcade play build" style="--c:#FF3D9A">
-          <span class="mk">CG</span>
-          <span class="body"><h4>Cartridge <span class="dot" title="live"></span></h4>
-          <p>Form → playable game. Describe it, your Claude builds it, you keep the .html artifact. Remix forever.</p></span>
-        </a>
-        <a class="card" href="https://cast.thelastprompt.ai" data-tags="persona creator ugc influencer video" style="--c:#FF5A3C">
-          <span class="mk">CS</span>
-          <span class="body"><h4>Cast <span class="dot" title="live"></span></h4>
-          <p>An AI persona studio — creators that stay on-model across faces, scenes, and reels.</p></span>
-        </a>
-        <a class="card" href="https://prism.thelastprompt.ai" data-tags="image generate brand higgsfield" style="--c:#8A8FFF">
-          <span class="mk">PR</span>
-          <span class="body"><h4>Prism <span class="dot" title="live"></span></h4>
-          <p>Prompt → image on your Higgsfield connector, on-brand when you lend it a brand context.</p></span>
-        </a>
-        <a class="card" href="https://adgen.thelastprompt.ai" data-tags="ads website brand generate" style="--c:#EE6ACD">
-          <span class="mk">AG</span>
-          <span class="body"><h4>Ad generator <span class="dot" title="live"></span></h4>
-          <p>The original demo — reads a website's brand with your Claude, then generates ads with your Higgsfield.</p></span>
-        </a>
-      </div>
-
-      <div id="no-hits" class="lib-empty" hidden>Nothing matches — try a shorter search.</div>
-
-      <footer>
-        Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
-        your machine enforces. Open source at
-        <a href="https://github.com/sameeeeeeep/switchboard" target="_blank" rel="noreferrer">github.com/sameeeeeeep/switchboard</a>
-        — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
-      </footer>
     </div>
+
+    <!-- floating launcher (connected only) -->
+    <div id="dock" class="dock" hidden></div>
+
+    <!-- token pack sheet (SIMULATED preview) -->
+    <div id="pack-overlay" class="overlay" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Token packs — simulated preview">
+        <div class="sheet-h">
+          <span class="sheet-t">Token packs</span>
+          <span class="sim">simulated · preview</span>
+          <button id="pack-close" class="x" type="button">✕ close</button>
+        </div>
+        <div class="byo" style="margin-top:0">Your own Claude or local model runs everything <b>free, forever</b> — connected users never need a pack. Packs are the on-ramp for people with no AI set up yet.</div>
+        <div class="sheet-k">posted rate card <span>model → SB tokens per 1K model tokens</span></div>
+        <table class="rate"><tbody>
+          <tr><td>claude haiku</td><td>1 SB / 1K</td></tr>
+          <tr><td>claude sonnet</td><td>5 SB / 1K</td></tr>
+          <tr><td>claude opus</td><td>25 SB / 1K</td></tr>
+          <tr><td>your own claude / local model</td><td>0 SB — never billed</td></tr>
+        </tbody></table>
+        <div class="sheet-k">packs <span>one-time · never expire — breakage is not a business model</span></div>
+        <div class="packs">
+          <button class="pack" type="button" data-amt="500000" data-price="$5"><span class="amt">500K</span><span class="pr">SB tokens · $5</span></button>
+          <button class="pack" type="button" data-amt="2000000" data-price="$18"><span class="amt">2M</span><span class="pr">SB tokens · $18</span></button>
+          <button class="pack" type="button" data-amt="10000000" data-price="$80"><span class="amt">10M</span><span class="pr">SB tokens · $80</span></button>
+        </div>
+        <div id="pack-note" class="pack-note">Checkout here is a labeled simulation — no card, no charge; it credits a preview balance in your local wallet stub.</div>
+      </div>
+    </div>
+
     <script type="module" src="./dist/home.js"></script>
   </body>
 </html>

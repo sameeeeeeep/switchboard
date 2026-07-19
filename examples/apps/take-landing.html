@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Take — script it, then record it, on your own Claude</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D; --thumb-bg:#0E0E10;
+  --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --accent-ink:#0A0A0B; --accent-hover:#FFFFFF;
+  --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
+  --rec:#E0574B;
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
+  --shadow:0 0 0 1px var(--line), 0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -20px rgba(0,0,0,.8);
+  --shadow-pop:0 0 0 1px var(--line-2), 0 16px 40px -22px rgba(0,0,0,.9);
+  /* TAKE — teal family (play & make) */
+  --pop:#2E8B6A; --pop-soft:#E7F1EC; --pop-light:#7FC3AB;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#000;font-family:var(--font-sans)}
+::selection{background:rgba(127,195,171,.28)}
+.page{width:1440px;min-height:900px;margin:0 auto;background:var(--bg);color:var(--ink);font-family:var(--font-sans);overflow:hidden;position:relative}
+.wrap{max-width:1080px;margin:0 auto;padding:0 64px}
+a{color:inherit;text-decoration:none}
+.kicker{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.display{font-family:var(--font-display);letter-spacing:-.03em;font-weight:700}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---- top bar ---- */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.sb{display:flex;align-items:center;gap:10px}
+.sb-mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#6FC06A,#3C8B4E);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
+.sb-mark svg{width:15px;height:15px;display:block}
+.sb-word{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.01em;color:var(--ink-2)}
+.runs-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 14px}
+.runs-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+
+/* ---- hero ---- */
+.lp-hero{padding:52px 0 60px}
+.hero-tile{width:64px;height:64px;border-radius:18px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset, 0 12px 30px -14px rgba(46,139,106,.5)}
+.hero-tile svg{width:34px;height:34px;display:block}
+.hero-name{display:flex;align-items:center;gap:14px;margin:24px 0 0}
+.hero-name h1{font-family:var(--font-display);font-weight:700;letter-spacing:-.035em;font-size:56px;line-height:1;margin:0}
+.hero-tag{color:var(--ink-2);font-size:20px;line-height:1.5;max-width:46ch;margin:18px 0 0;font-weight:400}
+.hero-chips{display:flex;align-items:center;gap:10px;margin:24px 0 0}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px;background:var(--card)}
+.chip .pd{width:7px;height:7px;border-radius:50%;background:var(--pop-light)}
+.chip b{color:var(--ink);font-weight:600}
+.hero-meta{margin:16px 0 0;font-size:12px;color:var(--faint)}
+.hero-meta .mono{color:var(--faintest)}
+.hero-cta{display:flex;align-items:center;gap:14px;margin:30px 0 0}
+.btn-primary{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:15px;border-radius:var(--r-pill);padding:14px 26px;border:0;transition:background .15s}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary svg{width:16px;height:16px}
+.btn-ghost{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:500;font-size:14px;border:1px solid var(--line-2);border-radius:var(--r-pill);padding:13px 22px;transition:border-color .15s,color .15s}
+.btn-ghost:hover{color:var(--ink);border-color:var(--faint)}
+
+/* ---- section head ---- */
+.sec-head{margin:0 0 30px}
+.sec-title{font-family:var(--font-display);font-weight:700;letter-spacing:-.02em;font-size:26px;margin:12px 0 0;line-height:1.15}
+.sec-title span{color:var(--faint)}
+
+/* ---- what it does ---- */
+.lp-what{padding:26px 0 40px}
+.lp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.lp-step{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px 22px 26px}
+.step-ic{width:38px;height:38px;border-radius:11px;background:var(--card-2);color:var(--pop-light);display:grid;place-items:center;border:1px solid var(--line)}
+.step-ic svg{width:20px;height:20px}
+.step-n{font-family:var(--font-mono);font-size:11px;color:var(--faintest);float:right;margin-top:4px}
+.step-h{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;font-size:17px;margin:18px 0 8px}
+.step-p{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:0}
+
+/* ---- output mock ---- */
+.lp-output{padding:34px 0 44px}
+.mock{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-pop);padding:22px;display:grid;grid-template-columns:1fr 312px;gap:20px}
+/* recorder frame */
+.rec-frame{background:#0e0f0e;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+.rec-top{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line)}
+.mode-tab{font-size:10.5px;font-weight:600;color:var(--faint);border:1px solid var(--line);border-radius:var(--r-pill);padding:5px 11px}
+.mode-tab.on{color:var(--pop-light);border-color:rgba(127,195,171,.4);background:rgba(46,139,106,.12)}
+.rec-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;color:var(--rec);letter-spacing:.04em}
+.rec-badge .rd{width:9px;height:9px;border-radius:50%;background:var(--rec);box-shadow:0 0 8px var(--rec)}
+.rec-stage{position:relative;display:block}
+.rec-stage svg{display:block;width:100%}
+.rec-foot{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--line)}
+.wave{display:flex;align-items:center;gap:3px;height:20px}
+.wave i{width:3px;border-radius:2px;background:var(--pop-light);opacity:.85}
+.rec-foot .sp{flex:1}
+.stopbtn{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:var(--r-pill);padding:6px 12px}
+.stopbtn .sq{width:9px;height:9px;border-radius:2px;background:var(--rec)}
+.dlbtn{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--pop-light);border:1px solid rgba(127,195,171,.4);border-radius:var(--r-pill);padding:6px 12px}
+.dlbtn svg{width:13px;height:13px}
+/* the script */
+.script{background:#0f0f10;border:1px solid var(--line);border-radius:var(--r);padding:16px 16px 14px;display:flex;flex-direction:column}
+.script-head{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.sh-t{font-family:var(--font-display);font-weight:700;font-size:13px;letter-spacing:-.01em}
+.sh-badge{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--pop);background:rgba(46,139,106,.16);border-radius:4px;padding:2px 7px}
+.beats{display:flex;flex-direction:column;gap:11px}
+.beat{display:grid;grid-template-columns:16px 1fr;gap:9px;align-items:start}
+.beat .bn{font-family:var(--font-mono);font-size:10px;color:var(--pop-light);margin-top:1px}
+.beat .bt{font-size:11.5px;line-height:1.45;color:var(--ink-2);margin:0}
+.beat .bt b{color:var(--ink);font-weight:600}
+.steer{display:flex;gap:6px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.steer .sk{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);align-self:center;margin-right:2px}
+.steer .sc{font-size:10.5px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:var(--r-pill);padding:4px 10px}
+
+/* ---- byo strip ---- */
+.lp-byo{padding:20px 0 44px}
+.byo{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 36px;display:flex;align-items:center;gap:30px}
+.byo-mark{flex:none;width:52px;height:52px;border-radius:14px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center}
+.byo-mark svg{width:26px;height:26px}
+.byo-lead{font-size:16px;line-height:1.55;color:var(--ink);margin:0;max-width:64ch;font-weight:400}
+.byo-lead b{font-weight:600}
+.byo-points{display:flex;gap:22px;margin:14px 0 0;flex-wrap:wrap}
+.byo-points span{font-size:12px;color:var(--faint);display:inline-flex;align-items:center;gap:7px}
+.byo-points span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--pop-light)}
+.sim-tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--sim);background:var(--sim-bg);border-radius:4px;padding:2px 6px;margin-left:2px}
+
+/* ---- cta footer ---- */
+.lp-cta{padding:30px 0 30px;text-align:center}
+.cta-h{font-family:var(--font-display);font-weight:700;letter-spacing:-.025em;font-size:38px;margin:0 0 22px}
+.cta-sub{color:var(--faint);font-size:13px;margin:20px 0 0}
+.lp-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;font-size:12px;color:var(--faint)}
+.lp-foot a{color:var(--ink-2)}
+.lp-foot a:hover{color:var(--ink)}
+
+/* store detail-page chrome — this page is reached from the Switchboard directory, so it carries a
+   way back to the shelf and a way into the app without scrolling for one */
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:var(--r-pill);padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line);flex:none}
+.sb-word span{color:var(--faint)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:var(--r-pill);padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+@media (max-width:860px){.tb-rule,.runs-pill,.sb-word span{display:none}}
+
+
+/* ---- hero demo — a prototype frame of Take mid-record: the beat script it drafted, and the take
+   rolling against it. Also the store thumbnail, so every beat is a real line. ---- */
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:44px;align-items:center}
+.hero-copy{min-width:0}
+.demo{position:relative;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-pop),0 38px 70px -40px rgba(0,0,0,.95);overflow:hidden}
+.demo::after{content:"";position:absolute;left:-10%;right:-10%;top:-22%;height:62%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(127,195,171,.14),transparent)}
+.demo-bar{position:relative;z-index:1;display:flex;align-items:center;gap:10px;height:42px;padding:0 15px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.demo-bar .nm{font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);flex:none}
+.demo-bar .dsub{font-size:11.5px;color:var(--faint);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-bar .dtag{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--font-mono);font-weight:700;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:#E4826A;background:rgba(228,130,106,.12);border:1px solid rgba(228,130,106,.34);border-radius:var(--r-pill);padding:5px 9px}
+.demo-bar .dtag em{width:6px;height:6px;border-radius:50%;background:#E4826A;font-style:normal;animation:t-blink 1.6s steps(1,end) infinite}
+@keyframes t-blink{0%,55%{opacity:1}56%,100%{opacity:.2}}
+.demo-body{position:relative;z-index:1;padding:15px 15px 14px}
+.t-in{display:flex;align-items:center;gap:9px;background:#101014;border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:10px 12px}
+.t-in .tq{font-family:var(--font-mono);font-size:10.5px;color:var(--pop-light);flex:none}
+.t-in .tt{font-size:12.5px;color:var(--ink);line-height:1.35;min-width:0}
+.t-opts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.t-opt{font-size:10.5px;font-weight:500;color:var(--ink-2);background:var(--card-2);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:5px 10px;white-space:nowrap}
+.t-opt.on{color:var(--accent-ink);background:var(--pop-light);border-color:var(--pop-light);font-weight:700}
+.t-beats{margin-top:12px}
+.t-beat{display:grid;grid-template-columns:38px 1fr;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.t-tc{font-family:var(--font-mono);font-size:11px;color:var(--pop-light);font-variant-numeric:tabular-nums}
+.t-scr{font-size:11.5px;font-weight:600;color:var(--ink);letter-spacing:-.005em}
+.t-say{margin:3px 0 0;font-size:12px;line-height:1.4;color:var(--ink-2)}
+.t-rec{margin-top:13px;display:flex;align-items:center;gap:11px;background:#101014;border:1px solid rgba(127,195,171,.3);
+  border-radius:var(--r-sm);padding:11px 13px;animation:d-breathe 5s ease-in-out infinite}
+.t-time{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;flex:none}
+.t-time span{color:var(--faint);font-weight:400;font-size:11px}
+.t-wave{flex:1;display:flex;align-items:center;gap:2.5px;height:22px;min-width:0;overflow:hidden}
+.t-wave b{flex:none;width:2.5px;border-radius:2px;background:var(--pop-light);opacity:.85}
+.t-loc{flex:none;font-size:10px;color:var(--faintest);white-space:nowrap}
+@keyframes d-breathe{0%,100%{box-shadow:0 0 0 0 rgba(127,195,171,0)}50%{box-shadow:0 0 24px -8px rgba(127,195,171,.45)}}
+@media (prefers-reduced-motion:reduce){.t-rec{animation:none}.demo-bar .dtag em{animation:none}}
+@media (max-width:1080px){.hero-grid{grid-template-columns:1fr;gap:36px}}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- BAND 1 — HERO -->
+  <header class="lp-hero">
+    <div class="wrap">
+      <div class="lp-topbar">
+        <div class="tb-side">
+          <a class="tb-back" href="./index.html">← All wrapps</a>
+          <span class="tb-rule"></span>
+          <div class="sb">
+          <span class="sb-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+          <span class="sb-word">Switchboard <span>/ Take</span></span>
+          </div>
+        </div>
+        <div class="tb-side">
+          <span class="runs-pill"><span class="dot"></span>Runs on your own Claude</span>
+          <a class="tb-cta" href="./take.html">Open Take <span>→</span></a>
+        </div>
+      </div>
+
+      <div class="hero-grid">
+      <div class="hero-copy">
+      <span class="hero-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5Z"/></svg></span>
+
+      <div class="hero-name">
+        <h1 class="display">Take</h1>
+      </div>
+
+      <p class="hero-tag">One line about what you're recording and your own Claude writes the beats. Record screen or camera right in the page — the take never leaves your browser.</p>
+
+      <div class="hero-chips">
+        <span class="chip"><span class="pd"></span>Play &amp; make</span>
+        <span class="chip"><b>Free</b>&nbsp;core, forever</span>
+      </div>
+      <p class="hero-meta">Built with <span class="mono">120K</span> tokens &middot; dev-reported</p>
+
+      <div class="hero-cta">
+        <a class="btn-primary" href="./take.html">Open Take
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn-ghost" href="#what">See how it works</a>
+      </div>
+      </div>
+
+        <!-- demo prototype: the drafted beat script, and the take rolling against it -->
+        <div class="demo">
+          <div class="demo-bar">
+            <span class="nm">Take</span>
+            <span class="dsub">Screen + mic · up to 3:00</span>
+            <span class="dtag"><em></em>rec</span>
+          </div>
+          <div class="demo-body">
+            <div class="t-in">
+              <span class="tq">take ▸</span>
+              <span class="tt">"a 90-second demo of how Switchboard's consent card works"</span>
+            </div>
+            <div class="t-opts">
+              <span class="t-opt on">✓ show the fear first</span>
+              <span class="t-opt">problem-first</span>
+              <span class="t-opt">speedrun</span>
+            </div>
+            <div class="t-beats">
+              <div class="t-beat"><span class="t-tc">0:00</span><div><div class="t-scr">The store grid, scrolling</div><p class="t-say">"Forty apps here. Not one of them has your API key."</p></div></div>
+              <div class="t-beat"><span class="t-tc">0:14</span><div><div class="t-scr">Consent card, mid-approval</div><p class="t-say">"You approve once, per app, right here in your browser."</p></div></div>
+              <div class="t-beat"><span class="t-tc">0:41</span><div><div class="t-scr">AdPulse returning a verdict</div><p class="t-say">"That's your Claude doing the work. Not ours."</p></div></div>
+              <div class="t-beat"><span class="t-tc">1:08</span><div><div class="t-scr">Download, then the network tab</div><p class="t-say">"Nothing left the tab. Check for yourself."</p></div></div>
+            </div>
+            <div class="t-rec">
+              <span class="t-time">01:14 <span>/ 3:00</span></span>
+              <span class="t-wave"><b style="height:6px"></b><b style="height:13px"></b><b style="height:20px"></b><b style="height:11px"></b><b style="height:17px"></b><b style="height:8px"></b><b style="height:21px"></b><b style="height:14px"></b><b style="height:6px"></b><b style="height:18px"></b><b style="height:10px"></b><b style="height:16px"></b><b style="height:22px"></b><b style="height:9px"></b><b style="height:13px"></b><b style="height:7px"></b><b style="height:19px"></b><b style="height:12px"></b><b style="height:5px"></b><b style="height:15px"></b></span>
+              <span class="t-loc">stays on this machine</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- BAND 2 — WHAT IT DOES -->
+  <section class="lp-what" id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">How it works</span>
+        <h2 class="sec-title">Script, then shoot — <span>one line in, a finished take on your drive.</span></h2>
+      </div>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <span class="step-n">01</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/></svg></span>
+          <h3 class="step-h">Say what you're recording</h3>
+          <p class="step-p">One line: a demo, a pitch, an update. Pick screen-and-mic or camera-and-mic, and lend a context if you want the script grounded in it.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">02</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
+          <h3 class="step-h">Your Claude writes the beats</h3>
+          <p class="step-p">Three script angles, one recommended. Each beat is what's on screen and the line you say over it. Steer it plainer, punchier, or shorter to redraft.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">03</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></svg></span>
+          <h3 class="step-h">Record in the page, keep the file</h3>
+          <p class="step-p">Hit record against the script, capture locally, download the .webm. Claude only ever sees your one line — never the recording itself.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 3 — OUTPUT MOCK -->
+  <section class="lp-output">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">What you get</span>
+        <h2 class="sec-title">A script to hit and a recorder to hit it in — <span>side by side, one take.</span></h2>
+      </div>
+      <div class="mock">
+        <div class="rec-frame">
+          <div class="rec-top">
+            <span class="mode-tab on">Screen + mic</span>
+            <span class="mode-tab">Camera + mic</span>
+            <span class="rec-badge"><span class="rd"></span>REC 00:42</span>
+          </div>
+          <div class="rec-stage">
+            <svg viewBox="0 0 560 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+              <rect width="560" height="300" fill="#0b0d0c"/>
+              <!-- captured screen: a browser window -->
+              <rect x="46" y="34" width="468" height="232" rx="10" fill="#111312" stroke="#242726"/>
+              <rect x="46" y="34" width="468" height="30" rx="10" fill="#171a18"/>
+              <rect x="46" y="52" width="468" height="12" fill="#171a18"/>
+              <circle cx="66" cy="49" r="3.4" fill="#3A3F3C"/><circle cx="78" cy="49" r="3.4" fill="#3A3F3C"/><circle cx="90" cy="49" r="3.4" fill="#3A3F3C"/>
+              <rect x="150" y="43" width="230" height="12" rx="6" fill="#0e100f"/>
+              <text x="164" y="52" font-family="ui-monospace,Menlo,monospace" font-size="8" fill="#5A5F5C">switchboard · the store</text>
+              <!-- store cards being demoed -->
+              <g>
+                <rect x="70" y="82" width="128" height="70" rx="7" fill="#151817"/><rect x="82" y="94" width="24" height="24" rx="7" fill="rgba(127,195,171,.22)"/>
+                <text x="82" y="134" font-family="Space Grotesk,sans-serif" font-weight="600" font-size="11" fill="#8C948F">AdPulse</text>
+                <text x="82" y="146" font-family="Inter,sans-serif" font-size="8" fill="#5A5F5C">ads &amp; growth · free</text>
+                <rect x="214" y="82" width="128" height="70" rx="7" fill="#151817" stroke="#2E8B6A" stroke-opacity=".5"/><rect x="226" y="94" width="24" height="24" rx="7" fill="rgba(127,195,171,.5)"/>
+                <text x="226" y="134" font-family="Space Grotesk,sans-serif" font-weight="600" font-size="11" fill="#D6DBD8">Redline</text>
+                <text x="226" y="146" font-family="Inter,sans-serif" font-size="8" fill="#7FC3AB">copy review · free</text>
+                <rect x="358" y="82" width="128" height="70" rx="7" fill="#151817"/><rect x="370" y="94" width="24" height="24" rx="7" fill="rgba(127,195,171,.22)"/>
+                <text x="370" y="134" font-family="Space Grotesk,sans-serif" font-weight="600" font-size="11" fill="#8C948F">Shelf</text>
+                <text x="370" y="146" font-family="Inter,sans-serif" font-size="8" fill="#5A5F5C">retail · free</text>
+              </g>
+              <!-- a consent toast being demoed -->
+              <rect x="214" y="170" width="230" height="64" rx="9" fill="#12211b" stroke="#2E8B6A" stroke-opacity=".55"/>
+              <circle cx="236" cy="192" r="9" fill="rgba(127,195,171,.3)"/><path d="M232 192l3 3 5-6" stroke="#7FC3AB" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="254" y="190" font-family="Inter,sans-serif" font-weight="600" font-size="10" fill="#D6DBD8">Redline wants your Claude</text>
+              <text x="254" y="204" font-family="Inter,sans-serif" font-size="8.5" fill="#8C948F">Sonnet · no tools · this tab only</text>
+              <rect x="254" y="214" width="58" height="14" rx="7" fill="#2E8B6A"/>
+              <text x="283" y="223.5" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="8.5" fill="#07110d">Approve</text>
+              <!-- cursor -->
+              <path d="M300 150l0 22 6-6 4 9 5-2-4-9 8 0Z" fill="#EDEDEA" stroke="#0b0d0c" stroke-width="1"/>
+            </svg>
+          </div>
+          <div class="rec-foot">
+            <span class="wave">
+              <i style="height:6px"></i><i style="height:13px"></i><i style="height:19px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:20px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:15px"></i><i style="height:10px"></i><i style="height:18px"></i><i style="height:8px"></i>
+            </span>
+            <span class="sp"></span>
+            <span class="stopbtn"><span class="sq"></span>Stop</span>
+            <span class="dlbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></svg>take-screen.webm</span>
+          </div>
+        </div>
+
+        <div class="script">
+          <div class="script-head">
+            <span class="sh-t">Walk the loop</span>
+            <span class="sh-badge">recommended</span>
+          </div>
+          <div class="beats">
+            <div class="beat"><span class="bn">1</span><p class="bt"><b>Store open</b> — "This is Switchboard. Every app here runs on your own Claude."</p></div>
+            <div class="beat"><span class="bn">2</span><p class="bt"><b>Click a wrapp</b> — "I open Batch. It asks to borrow my Claude — I grant it, once."</p></div>
+            <div class="beat"><span class="bn">3</span><p class="bt"><b>Answer streams</b> — "And it's already drafting. No API key, no account."</p></div>
+            <div class="beat"><span class="bn">4</span><p class="bt"><b>Open the panel</b> — "Here's every permission I gave. Revocable any time."</p></div>
+            <div class="beat"><span class="bn">5</span><p class="bt"><b>Close</b> — "My data never left the tab. That's the whole point."</p></div>
+          </div>
+          <div class="steer">
+            <span class="sk">steer</span>
+            <span class="sc">punchier</span><span class="sc">shorter</span><span class="sc">different angle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 4 — ON YOUR OWN CLAUDE -->
+  <section class="lp-byo">
+    <div class="wrap">
+      <div class="byo">
+        <span class="byo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6Z"/><path d="M9 12l2 2 4-4.5"/></svg></span>
+        <div>
+          <p class="byo-lead"><b>Runs on YOUR Claude and YOUR tools through Switchboard.</b> The operator holds no key, runs no model, and never sees your data. The recording is captured and kept in your browser — only the one-line description reaches your model.</p>
+          <div class="byo-points"><span>BYO-Claude</span><span>consent-per-app</span><span>your data stays yours</span><span>token budgets <em class="sim-tag">SIMULATED</em></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 5 — CTA FOOTER -->
+  <section class="lp-cta">
+    <div class="wrap">
+      <h2 class="cta-h display">Give Take your Claude.</h2>
+      <a class="btn-primary" href="./take.html">Open Take
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <p class="cta-sub">Free core, forever &middot; the take stays in your browser, start to finish</p>
+      <div class="lp-foot">
+        <span><a href="./index.html">← All wrapps</a> &middot; a wrapp that runs on your own Claude</span>
+        <a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

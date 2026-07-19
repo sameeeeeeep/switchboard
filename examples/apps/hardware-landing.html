@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hardware Reality Check — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;
+  --pop:#7FB0E0;--pop-2:#3A6EA5;--pop-soft:rgba(127,176,224,0.14);--pop-line:rgba(127,176,224,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(127,176,224,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+/* nav */
+.nav{display:flex;align-items:center;gap:16px;height:84px}
+.brand{display:flex;align-items:center;gap:13px;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.03em}
+.brand .tile{width:44px;height:44px;border-radius:13px;background:#E7F0F6;color:#3A6EA5;display:grid;place-items:center}
+.brand .tile svg{width:24px;height:24px}
+.vmark{width:20px;height:20px;display:inline-block;margin-left:4px;vertical-align:-3px}
+.nav .sp{flex:1}
+.nav .lk{color:var(--ink-2);font-weight:500;font-size:15px;padding:0 6px}
+.nav .cta{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;font-family:var(--font-sans)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:64px 0 40px;min-height:660px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(127,176,224,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* ===== hero demo — a built prototype of this wrapp mid-result (no placeholder art) ===== */
+.mock .demo{position:relative;display:flex;flex-direction:column;min-height:456px;
+  background:var(--card);border:1.5px solid #2A2B30;border-radius:22px;overflow:hidden;
+  box-shadow:0 30px 70px rgba(0,0,0,.5);font-family:var(--font-sans)}
+.dbar{display:flex;align-items:center;gap:10px;flex:none;height:50px;padding:0 18px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.dbar .dm{width:22px;height:22px;border-radius:7px;background:var(--pop);display:grid;place-items:center;flex:none}
+.dbar .dm svg{width:13px;height:13px;stroke:#0A0A0B;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.dbar .dt{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.025em;color:var(--ink);white-space:nowrap}
+.dbar .dsub{font:500 12.5px/1 var(--font-sans);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbar .sp{flex:1}
+.dpill{flex:none;font:600 11.5px/1 var(--font-sans);letter-spacing:.05em;color:var(--pop);
+  background:var(--pop-soft);border:1px solid var(--pop-line);border-radius:999px;padding:6px 11px;white-space:nowrap}
+.dbody{flex:1;padding:17px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+.dhero{border:1px solid var(--pop-line);border-radius:15px;padding:16px 17px;
+  background:linear-gradient(170deg,var(--pop-soft),rgba(0,0,0,0) 78%),#17181C;
+  animation:dland .75s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dland{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.dk{font:700 11.5px/1 var(--font-mono);letter-spacing:.14em;color:var(--pop);margin:0 0 11px}
+.dl{font-family:var(--font-display);font-weight:600;font-size:23px;line-height:1.24;letter-spacing:-.025em;color:var(--ink);margin:0}
+.dn{font-size:13px;line-height:1.5;color:var(--ink-2);margin:11px 0 0}
+.drows{border:1px solid var(--line);border-radius:14px;background:#17181C;overflow:hidden}
+.drow{display:flex;align-items:center;gap:11px;padding:11px 15px}
+.drow+.drow{border-top:1px solid var(--line)}
+.rl{flex:none;width:104px;font:500 12.5px/1.3 var(--font-sans);color:var(--faint)}
+.rs{flex:1;min-width:0;font:500 13.5px/1.35 var(--font-sans);color:var(--ink)}
+.tag{flex:none;font:700 11.5px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase;
+  border-radius:7px;padding:6px 9px;border:1px solid transparent}
+.tag.on{color:var(--pop);background:var(--pop-soft);border-color:var(--pop-line)}
+.tag.go{color:#0A0A0B;background:var(--pop)}
+.tag.off{color:var(--faint);background:rgba(255,255,255,.035);border-color:var(--line)}
+.tag.src{text-transform:none;letter-spacing:.01em;font:500 11.5px/1 var(--font-mono);color:var(--ink-2);
+  background:rgba(255,255,255,.035);border-color:var(--line)}
+.dfiles{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dfile{display:inline-flex;align-items:center;gap:7px;font:500 12px/1 var(--font-mono);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:rgba(255,255,255,.02);white-space:nowrap}
+.dfile i{width:6px;height:6px;border-radius:2px;background:var(--pop);flex:none;font-style:normal}
+@media (max-width:760px){.mock .demo{min-height:0}}
+
+.dbom{border:1px solid var(--line);border-radius:14px;background:#17181C;overflow:hidden}
+.dbl{display:flex;align-items:center;gap:12px;padding:11px 15px;font:500 13.5px/1.3 var(--font-sans);color:var(--ink)}
+.dbl+.dbl{border-top:1px solid var(--line)}
+.dbl .sp{flex:1}
+.dbl .amt{font:600 13.5px/1 var(--font-mono);color:var(--ink-2);letter-spacing:-.01em}
+.dbl.sum{background:var(--pop-soft);border-top:1px solid var(--pop-line)}
+.dbl.sum span:first-child{font-weight:700;letter-spacing:.02em}
+.dbl.sum .amt{color:var(--pop);font-weight:700;font-size:15px}
+
+/* features */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 90px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+
+/* ============ store chrome: this page is a wrapp's detail page ============ */
+:root{--accent:#EDEDEA;--accent-ink:#0A0A0B;--accent-hover:#FFFFFF;
+  --pro-ink:#9FCB6E;--pro-soft:rgba(159,203,110,.11);--pro-line:rgba(159,203,110,.30)}
+.topbar{position:sticky;top:0;z-index:30;height:54px;
+  background:rgba(10,10,11,.88);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.tbin{max-width:1280px;margin:0 auto;padding:0 80px;height:100%;display:flex;align-items:center;gap:16px}
+.tbin .sp{flex:1}
+.back{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 13.5px/1 var(--font-sans);transition:color .14s}
+.back:hover{color:var(--ink)}
+.back .ar{font-size:15px;line-height:1;position:relative;top:-.5px}
+.tbd{width:1px;height:16px;background:var(--line-2)}
+.sbm{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.03em;color:var(--ink)}
+.sbm .g{width:20px;height:20px;border-radius:6px;background:linear-gradient(140deg,#7CC142,#4E7A1C);display:grid;place-items:center;flex:none}
+.sbm .g svg{width:11px;height:11px;stroke:#0A0A0B;stroke-width:2.6;fill:none}
+.tbc{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);
+  font:600 13px/1 var(--font-sans);border-radius:999px;padding:10px 17px;transition:background .14s}
+.tbc:hover{background:var(--accent-hover)}
+/* ============ facts strip — the receipt, in the hero ============ */
+.facts{display:flex;align-items:stretch;width:fit-content;max-width:100%;margin:34px 0 0;
+  border:1px solid var(--line);border-radius:14px;background:rgba(20,21,24,.62);overflow:hidden}
+.facts .fc{padding:13px 18px}
+.facts .fc+.fc{border-left:1px solid var(--line)}
+.facts dt{font:600 9.5px/1 var(--font-mono);letter-spacing:.15em;text-transform:uppercase;color:var(--faint);margin:0 0 9px;white-space:nowrap}
+.facts dd{margin:0;font:600 13.5px/1.25 var(--font-sans);color:var(--ink);letter-spacing:-.01em;white-space:nowrap}
+.facts dd.fn{margin-top:5px;font:400 11.5px/1.3 var(--font-sans);color:var(--ink-2);letter-spacing:0}
+/* ============ what it costs ============ */
+.feat{padding-bottom:60px}
+.plan{padding:0 0 76px}
+.plan h2{font-family:var(--font-display);font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.032em;margin:20px 0 0;max-width:22ch}
+.plan-line{color:var(--ink-2);font-size:17px;line-height:1.6;margin:20px 0 0;max-width:60ch}
+.plan-line b{color:var(--ink);font-weight:600}
+.plan-g{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:34px;max-width:880px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.pcard.is-pro{border-color:var(--pro-line);background:linear-gradient(180deg,var(--pro-soft),transparent 60%),var(--card)}
+.pt{display:flex;align-items:center;gap:10px}
+.pt h3{font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.02em;margin:0}
+.ptag{font:500 13px/1 var(--font-sans);color:var(--faint)}
+.pro-pill{font:600 9.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--pro-ink);
+  background:var(--pro-soft);border:1px solid var(--pro-line);border-radius:6px;padding:5px 8px}
+.pcard p{color:var(--ink-2);font-size:14.5px;line-height:1.6;margin:14px 0 0}
+.pcard ul{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:11px}
+.pcard li{display:flex;align-items:flex-start;gap:10px;font-size:15px;line-height:1.4;color:var(--ink)}
+.pcard li .tk{color:var(--pro-ink);flex:none;margin-top:2px}
+.pcard li .tk svg{width:15px;height:15px}
+.pcard .pn{font-size:12.5px;color:var(--faint);margin-top:18px;line-height:1.55}
+/* ============ footer ============ */
+.foot{border-top:1px solid var(--line)}
+.foot-in{display:flex;align-items:center;gap:24px;padding:32px 80px 44px;max-width:1280px;margin:0 auto}
+.foot .sp{flex:1}
+.fnote{color:var(--faint);font-size:12.5px;line-height:1.55;max-width:42ch}
+.flk{color:var(--ink-2);font:500 14px/1 var(--font-sans);transition:color .14s}
+.flk:hover{color:var(--ink)}
+.flk.strong{color:var(--ink);font-weight:600}
+
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="topbar">
+  <div class="tbin">
+    <a class="back" href="./index.html"><span class="ar">&#8592;</span>All wrapps</a>
+    <span class="tbd"></span>
+    <a class="sbm" href="./index.html"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</a>
+    <span class="sp"></span>
+    <a class="tbc" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware">Open Hardware Reality Check<span>&#8594;</span></a>
+  </div>
+</div>
+<div class="wrap">
+  <nav class="nav">
+    <span class="brand"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg></span>Hardware Reality Check<span class="vmark"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#4C8DF6"/><path d="M7.5 12.4l3 3 6-6.4" stroke="#0A0A0B" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+    <span class="sp"></span>
+    <a class="lk" href="#overview">Overview</a><a class="lk" href="#how">How it works</a><a class="lk" href="#plan">Pricing</a>
+  </nav>
+
+  <section class="hero" id="overview">
+    <div>
+      <span class="kick"><span class="d"></span>Validate an idea</span>
+      <h1>The honest maths of atoms.</h1>
+      <p class="sub">BOM, manufacturing, margin, channel and the capital it really takes to ship hardware.</p>
+      <div class="actions">
+        <a class="btn" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware">Open Hardware Reality Check<span>→</span></a>
+        <span class="btn ghost">Watch a run</span>
+      </div>
+      <dl class="facts">
+        <div class="fc"><dt>Category</dt><dd>Validate an idea</dd></div>
+        <div class="fc"><dt>Build cost</dt><dd>220K tokens</dd><dd class="fn">6 updates &middot; dev-reported</dd></div>
+        <div class="fc"><dt>Price</dt><dd>Free forever</dd><dd class="fn">runs on your own Claude</dd></div>
+      </dl>
+    </div>
+    <div class="mock"><span class="glow"></span><div class="demo"><div class="dbar"><span class="dm"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg></span><span class="dt">Hardware Reality Check</span><span class="dsub">Portable espresso press</span><span class="sp"></span><span class="dpill">BOM priced</span></div><div class="dbody"><div class="dhero"><div class="dk">MARGIN &mdash; DEFENSIBLE</div><p class="dl">42% gross at &#8377;4,990 retail &mdash; contract-manufactured.</p><p class="dn">In-house assembly lands at 29%. Off-the-shelf modules kill the form factor.</p></div><div class="dbom"><div class="dbl"><span>Machined body + tooling</span><span class="sp"></span><span class="amt">&#8377;412</span></div><div class="dbl"><span>Pump + PCBA</span><span class="sp"></span><span class="amt">&#8377;1,180</span></div><div class="dbl"><span>Assembly + packaging</span><span class="sp"></span><span class="amt">&#8377;720</span></div><div class="dbl"><span>18650 cell pack</span><span class="sp"></span><span class="amt">&#8377;340</span></div><div class="dbl"><span>Freight, duty, QC</span><span class="sp"></span><span class="amt">&#8377;238</span></div><div class="dbl sum"><span>Landed cost</span><span class="sp"></span><span class="amt">&#8377;2,890</span></div></div><div class="dfiles"><span class="dfile"><i></i>&#8377;38L to the first 5,000 units</span></div></div></div></div>
+  </section>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg></div><div class="num">01</div><h3>Options, then a recommended path</h3><p>Weighs a few ways to actually build it — contract-manufacture, off-the-shelf modules, or in-house — then names the one with real margin.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg></div><div class="num">02</div><h3>Receipts, not vibes</h3><p>Prices the whole BOM, tooling, freight and landed cost against your target retail, so the margin is a number you can defend.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg></div><div class="num">03</div><h3>A deck and a reach-out list</h3><p>Ends with an investor-ready deck and a shortlist of contract manufacturers to email — drafts written, all on your own Claude.</p></div>
+  </section>
+
+  <section class="plan" id="plan">
+    <span class="kick"><span class="d"></span>What it costs</span>
+    <h2>Free &mdash; everything, forever.</h2>
+    <p class="plan-line">Every part of Hardware Reality Check is free — the BOM maths, the channel model, the deck, the list of suppliers and partners to reach out to. There is no Pro tier to graduate into: it runs on the Claude you already pay for, so there is no key to paste, no seat to buy and <b>no bill from us</b>.</p>
+  </section>
+</div>
+
+<footer class="foot">
+  <div class="foot-in">
+    <a class="sbm" href="./index.html"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</a>
+    <span class="fnote">Your data stays yours &mdash; nothing leaves your machine without a consent row you approve.</span>
+    <span class="sp"></span>
+    <a class="flk" href="./index.html">&#8592; All wrapps</a>
+    <a class="flk strong" href="https://brandbrain.thelastprompt.ai/build?studio=idea&amp;template=hardware">Open Hardware Reality Check &#8594;</a>
+  </div>
+</footer>
+</body></html>

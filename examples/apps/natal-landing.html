@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>NATAL — your chart, read bluntly, on your own Claude</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D; --thumb-bg:#0E0E10;
+  --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --accent-ink:#0A0A0B; --accent-hover:#FFFFFF;
+  --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
+  --shadow:0 0 0 1px var(--line), 0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -20px rgba(0,0,0,.8);
+  --shadow-pop:0 0 0 1px var(--line-2), 0 16px 40px -22px rgba(0,0,0,.9);
+  /* NATAL — violet family (after hours) */
+  --pop:#7B5EA8; --pop-soft:#EDE8F3; --pop-light:#B49BD8;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#000;font-family:var(--font-sans)}
+::selection{background:rgba(180,155,216,.30)}
+.page{width:1440px;min-height:900px;margin:0 auto;background:var(--bg);color:var(--ink);font-family:var(--font-sans);overflow:hidden;position:relative}
+.wrap{max-width:1080px;margin:0 auto;padding:0 64px}
+a{color:inherit;text-decoration:none}
+.kicker{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.display{font-family:var(--font-display);letter-spacing:-.03em;font-weight:700}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---- top bar ---- */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.sb{display:flex;align-items:center;gap:10px}
+.sb-mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#6FC06A,#3C8B4E);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
+.sb-mark svg{width:15px;height:15px;display:block}
+.sb-word{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.01em;color:var(--ink-2)}
+.runs-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 14px}
+.runs-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+
+/* ---- hero ---- */
+.lp-hero{padding:52px 0 60px}
+.hero-tile{width:64px;height:64px;border-radius:18px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset, 0 12px 30px -14px rgba(123,94,168,.5)}
+.hero-tile svg{width:34px;height:34px;display:block}
+.hero-name{display:flex;align-items:center;gap:14px;margin:24px 0 0}
+.hero-name h1{font-family:var(--font-display);font-weight:700;letter-spacing:-.035em;font-size:56px;line-height:1;margin:0}
+.verified{display:inline-flex;align-items:center;gap:5px;color:var(--verify);font-size:12px;font-weight:600;margin-top:8px}
+.verified svg{width:17px;height:17px}
+.hero-tag{color:var(--ink-2);font-size:20px;line-height:1.5;max-width:46ch;margin:18px 0 0;font-weight:400}
+.hero-chips{display:flex;align-items:center;gap:10px;margin:24px 0 0}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px;background:var(--card)}
+.chip .pd{width:7px;height:7px;border-radius:50%;background:var(--pop-light)}
+.chip b{color:var(--ink);font-weight:600}
+.hero-meta{margin:16px 0 0;font-size:12px;color:var(--faint)}
+.hero-meta .mono{color:var(--faintest)}
+.hero-cta{display:flex;align-items:center;gap:14px;margin:30px 0 0}
+.btn-primary{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:15px;border-radius:var(--r-pill);padding:14px 26px;border:0;transition:background .15s}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary svg{width:16px;height:16px}
+.btn-ghost{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:500;font-size:14px;border:1px solid var(--line-2);border-radius:var(--r-pill);padding:13px 22px;transition:border-color .15s,color .15s}
+.btn-ghost:hover{color:var(--ink);border-color:var(--faint)}
+
+/* ---- section head ---- */
+.sec-head{margin:0 0 30px}
+.sec-title{font-family:var(--font-display);font-weight:700;letter-spacing:-.02em;font-size:26px;margin:12px 0 0;line-height:1.15}
+.sec-title span{color:var(--faint)}
+
+/* ---- what it does ---- */
+.lp-what{padding:26px 0 40px}
+.lp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.lp-step{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px 22px 26px}
+.step-ic{width:38px;height:38px;border-radius:11px;background:var(--card-2);color:var(--pop-light);display:grid;place-items:center;border:1px solid var(--line)}
+.step-ic svg{width:20px;height:20px}
+.step-n{font-family:var(--font-mono);font-size:11px;color:var(--faintest);float:right;margin-top:4px}
+.step-h{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;font-size:17px;margin:18px 0 8px}
+.step-p{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:0}
+
+/* ---- output mock ---- */
+.lp-output{padding:34px 0 44px}
+.mock{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-pop);padding:22px;display:grid;grid-template-columns:1fr 336px;gap:22px}
+/* chart wheel */
+.wheel-wrap{background:#0d0b13;border:1px solid var(--line-2);border-radius:var(--r);padding:16px 16px 8px;display:flex;flex-direction:column}
+.wheel-head{display:flex;align-items:center;justify-content:space-between;padding:0 2px 12px}
+.wheel-name{font-family:var(--font-display);font-weight:700;font-size:14px;letter-spacing:-.01em}
+.wheel-sub{font-family:var(--font-mono);font-size:10px;color:var(--faint);letter-spacing:.02em}
+.chart-svg{width:100%;display:block}
+.eph-strip{margin-top:6px}
+.eph-row{display:grid;grid-template-columns:20px 92px 1fr;gap:10px;align-items:baseline;padding:8px 2px;border-top:1px solid var(--line)}
+.eph-g{font-size:14px;color:var(--pop-light);text-align:center;line-height:1}
+.eph-p{font-size:10.5px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.09em}
+.eph-o{font-size:11.5px;color:var(--faint);line-height:1.4}
+/* reading column */
+.read-col{display:flex;flex-direction:column;gap:11px}
+.trip-card{background:#101019;border:1px solid var(--line);border-radius:var(--r);padding:14px 15px;display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start}
+.trip-g{font-size:21px;color:var(--pop-light);line-height:1;margin-top:1px}
+.trip-l{font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.trip-s{font-family:var(--font-display);font-weight:700;font-size:15px;margin:2px 0 5px;letter-spacing:-.01em}
+.trip-x{font-size:11.5px;color:var(--ink-2);line-height:1.5;margin:0}
+.pin{margin-top:auto;background:linear-gradient(150deg,rgba(123,94,168,.16),rgba(123,94,168,.04));border:1px solid rgba(180,155,216,.32);border-radius:var(--r);padding:15px 16px}
+.pin-k{font-family:var(--font-mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--pop-light);margin:0 0 8px}
+.pin-q{font-family:var(--font-display);font-weight:600;font-size:15px;line-height:1.4;letter-spacing:-.01em;margin:0;color:var(--ink)}
+
+/* ---- byo strip ---- */
+.lp-byo{padding:20px 0 44px}
+.byo{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 36px;display:flex;align-items:center;gap:30px}
+.byo-mark{flex:none;width:52px;height:52px;border-radius:14px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center}
+.byo-mark svg{width:26px;height:26px}
+.byo-lead{font-size:16px;line-height:1.55;color:var(--ink);margin:0;max-width:64ch;font-weight:400}
+.byo-lead b{font-weight:600}
+.byo-points{display:flex;gap:22px;margin:14px 0 0;flex-wrap:wrap}
+.byo-points span{font-size:12px;color:var(--faint);display:inline-flex;align-items:center;gap:7px}
+.byo-points span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--pop-light)}
+.sim-tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--sim);background:var(--sim-bg);border-radius:4px;padding:2px 6px;margin-left:2px}
+
+/* ---- cta footer ---- */
+.lp-cta{padding:30px 0 30px;text-align:center}
+.cta-h{font-family:var(--font-display);font-weight:700;letter-spacing:-.025em;font-size:38px;margin:0 0 22px}
+.cta-sub{color:var(--faint);font-size:13px;margin:20px 0 0}
+.lp-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;font-size:12px;color:var(--faint)}
+.lp-foot a{color:var(--ink-2)}
+.lp-foot a:hover{color:var(--ink)}
+
+/* store detail-page chrome — this page is reached from the Switchboard directory, so it carries a
+   way back to the shelf and a way into the app without scrolling for one */
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:var(--r-pill);padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line);flex:none}
+.sb-word span{color:var(--faint)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:var(--r-pill);padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+@media (max-width:860px){.tb-rule,.runs-pill,.sb-word span{display:none}}
+
+
+/* ---- hero demo — a prototype frame of NATAL mid-read. This is also the store thumbnail, so it
+   carries real placements and the one line, not decoration. ---- */
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:44px;align-items:center}
+.hero-copy{min-width:0}
+.demo{position:relative;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-pop),0 38px 70px -40px rgba(0,0,0,.95);overflow:hidden}
+.demo::after{content:"";position:absolute;left:-10%;right:-10%;top:-22%;height:62%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(180,155,216,.16),transparent)}
+.demo-bar{position:relative;z-index:1;display:flex;align-items:center;gap:10px;height:42px;padding:0 15px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.demo-bar .nm{font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);flex:none}
+.demo-bar .dsub{font-size:11.5px;color:var(--faint);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-bar .dtag{margin-left:auto;flex:none;font-family:var(--font-mono);font-weight:700;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--pop-light);background:rgba(180,155,216,.12);
+  border:1px solid rgba(180,155,216,.32);border-radius:var(--r-pill);padding:5px 9px}
+.demo-body{position:relative;z-index:1;padding:17px 16px 16px}
+.d-head{display:flex;align-items:center;gap:13px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.d-big{font-size:30px;line-height:1;color:var(--pop-light);flex:none}
+.d-h1{font-family:var(--font-display);font-weight:600;font-size:15.5px;line-height:1.3;letter-spacing:-.02em;color:var(--ink);margin:0}
+.d-h2{margin:6px 0 0;font-size:11.5px;color:var(--faint)}
+.d-tbl{margin-top:4px}
+.d-row{display:grid;grid-template-columns:20px 60px 1fr auto;gap:10px;align-items:baseline;
+  padding:9px 2px;border-bottom:1px solid var(--line)}
+.d-g{font-size:14px;line-height:1;color:var(--pop-light);text-align:center}
+.d-p{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.d-s{font-family:var(--font-mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.d-h{font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap}
+.d-pin{margin-top:14px;border:1px solid rgba(180,155,216,.34);border-radius:var(--r);padding:13px 14px;
+  background:linear-gradient(150deg,rgba(123,94,168,.20),rgba(123,94,168,.05));animation:d-breathe 5s ease-in-out infinite}
+.d-pk{margin:0;font-family:var(--font-mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--pop-light)}
+.d-pq{margin:8px 0 0;font-family:var(--font-display);font-weight:600;font-size:14.5px;line-height:1.42;letter-spacing:-.01em;color:var(--ink)}
+@keyframes d-breathe{0%,100%{box-shadow:0 0 0 0 rgba(180,155,216,0)}50%{box-shadow:0 0 26px -8px rgba(180,155,216,.5)}}
+@media (prefers-reduced-motion:reduce){.d-pin{animation:none}}
+@media (max-width:1080px){.hero-grid{grid-template-columns:1fr;gap:36px}}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- BAND 1 — HERO -->
+  <header class="lp-hero">
+    <div class="wrap">
+      <div class="lp-topbar">
+        <div class="tb-side">
+          <a class="tb-back" href="./index.html">← All wrapps</a>
+          <span class="tb-rule"></span>
+          <div class="sb">
+          <span class="sb-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+          <span class="sb-word">Switchboard <span>/ NATAL</span></span>
+          </div>
+        </div>
+        <div class="tb-side">
+          <span class="runs-pill"><span class="dot"></span>Runs on your own Claude</span>
+          <a class="tb-cta" href="https://natal.thelastprompt.ai">Open NATAL <span>→</span></a>
+        </div>
+      </div>
+
+      <div class="hero-grid">
+      <div class="hero-copy">
+      <span class="hero-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/></svg></span>
+
+      <div class="hero-name">
+        <h1 class="display">NATAL</h1>
+        <span class="verified"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".16"/><path d="M8 12.5l2.5 2.5 5-5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified</span>
+      </div>
+
+      <p class="hero-tag">Your birth data in, your whole chart out — sun, moon, rising and a daily brief in a voice that refuses to comfort you. Read on your own Claude; nothing is sent anywhere else.</p>
+
+      <div class="hero-chips">
+        <span class="chip"><span class="pd"></span>After hours</span>
+        <span class="chip"><b>Free</b>&nbsp;core, forever</span>
+      </div>
+      <p class="hero-meta">Built with <span class="mono">480K</span> tokens &middot; dev-reported</p>
+
+      <div class="hero-cta">
+        <a class="btn-primary" href="https://natal.thelastprompt.ai">Open NATAL
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn-ghost" href="#what">See how it works</a>
+      </div>
+      </div>
+
+        <!-- demo prototype: NATAL holding a finished chart + today's line -->
+        <div class="demo">
+          <div class="demo-bar">
+            <span class="nm">NATAL</span>
+            <span class="dsub">R. — 30 Jul 1994, 23:15 · New Orleans</span>
+            <span class="dtag">today</span>
+          </div>
+          <div class="demo-body">
+            <div class="d-head">
+              <span class="d-big">&#9807;&#xFE0E;</span>
+              <div>
+                <p class="d-h1">Scorpio sun, Aquarius moon, Leo rising.</p>
+                <p class="d-h2">whole chart · 10 placements · re-read this morning</p>
+              </div>
+            </div>
+            <div class="d-tbl">
+              <div class="d-row"><span class="d-g">&#9737;&#xFE0E;</span><span class="d-p">Sun</span><span class="d-s">Scorpio 12°</span><span class="d-h">8th house</span></div>
+              <div class="d-row"><span class="d-g">&#9789;&#xFE0E;</span><span class="d-p">Moon</span><span class="d-s">Aquarius 03°</span><span class="d-h">11th house</span></div>
+              <div class="d-row"><span class="d-g">&#8593;</span><span class="d-p">Rising</span><span class="d-s">Leo 27°</span><span class="d-h">1st house</span></div>
+              <div class="d-row"><span class="d-g">&#9794;&#xFE0E;</span><span class="d-p">Mars</span><span class="d-s">Scorpio 24°</span><span class="d-h">8th house</span></div>
+            </div>
+            <div class="d-pin">
+              <p class="d-pk">Today · moon square sun</p>
+              <p class="d-pq">"You'll call it a mood. It's a decision you keep not making."</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- BAND 2 — WHAT IT DOES -->
+  <section class="lp-what" id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">How it works</span>
+        <h2 class="sec-title">A blunt chart in three steps — <span>no ephemeris, no server, no mysticism.</span></h2>
+      </div>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <span class="step-n">01</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M9 15l2 2 4-4"/></svg></span>
+          <h3 class="step-h">Give it your birth data</h3>
+          <p class="step-p">Date, time, and place — or open a sample soul. If Switchboard already knows you, the intake is prefilled and it reads the moment you connect.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">02</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5Z"/><circle cx="17" cy="7" r=".9" fill="currentColor"/><circle cx="20" cy="11" r=".7" fill="currentColor"/></svg></span>
+          <h3 class="step-h">Your Claude reads the sky</h3>
+          <p class="step-p">No tools, no backend: your own model estimates the placements and delivers verdicts, not horoscopes. Nothing about your birth ever leaves the tab.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">03</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16l-7-3-7 3Z"/><path d="M9 9h6M9 12h4"/></svg></span>
+          <h3 class="step-h">A brief that turns with the day</h3>
+          <p class="step-p">Sun, moon, rising, a full ephemeris, do's and don'ts, and one line about today. Come back tomorrow and the brief re-reads itself — the chart doesn't move.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 3 — OUTPUT MOCK -->
+  <section class="lp-output">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">What you get</span>
+        <h2 class="sec-title">The whole chart, and the one line <span>you didn't want to hear.</span></h2>
+      </div>
+      <div class="mock">
+        <div class="wheel-wrap">
+          <div class="wheel-head">
+            <span class="wheel-name">R. — born 30 Jul, 23:15</span>
+            <span class="wheel-sub">New Orleans · Sun &#9803;&#xFE0E; Moon &#9810;&#xFE0E; Rising &#9804;&#xFE0E;</span>
+          </div>
+          <svg class="chart-svg" viewBox="0 0 400 340" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(200 170)">
+              <!-- zodiac band -->
+              <circle r="152" fill="none" stroke="#2C2C31" stroke-width="1"/>
+              <circle r="126" fill="none" stroke="#232327" stroke-width="1"/>
+              <circle r="86" fill="none" stroke="#232327" stroke-width="1" stroke-dasharray="2 6"/>
+              <!-- 12 house spokes between the two outer rings -->
+              <g stroke="#2C2C31" stroke-width="1">
+                <line x1="126" y1="0" x2="152" y2="0"/>
+                <line x1="109.1" y1="63" x2="131.6" y2="76"/>
+                <line x1="63" y1="109.1" x2="76" y2="131.6"/>
+                <line x1="0" y1="126" x2="0" y2="152"/>
+                <line x1="-63" y1="109.1" x2="-76" y2="131.6"/>
+                <line x1="-109.1" y1="63" x2="-131.6" y2="76"/>
+                <line x1="-126" y1="0" x2="-152" y2="0"/>
+                <line x1="-109.1" y1="-63" x2="-131.6" y2="-76"/>
+                <line x1="-63" y1="-109.1" x2="-76" y2="-131.6"/>
+                <line x1="0" y1="-126" x2="0" y2="-152"/>
+                <line x1="63" y1="-109.1" x2="76" y2="-131.6"/>
+                <line x1="109.1" y1="-63" x2="131.6" y2="-76"/>
+              </g>
+              <!-- aspect chords (inner) -->
+              <g stroke="#B49BD8" stroke-width="1" opacity=".5">
+                <line x1="82" y1="-32" x2="-70" y2="45"/>
+                <line x1="82" y1="-32" x2="-84" y2="21.9"/>
+                <line x1="-70" y1="45" x2="55" y2="66"/>
+                <line x1="70.7" y1="-70.7" x2="-67.2" y2="60"/>
+              </g>
+              <!-- ascendant axis -->
+              <line x1="-152" y1="0" x2="152" y2="0" stroke="#B49BD8" stroke-width="1" opacity=".28"/>
+              <!-- planet glyphs on the chart -->
+              <g fill="#B49BD8" font-family="ui-sans-serif,system-ui" font-size="17" text-anchor="middle">
+                <text x="107" y="-44">&#9737;&#xFE0E;</text>
+                <text x="-97" y="-52">&#9789;&#xFE0E;</text>
+                <text x="-108" y="34">&#8593;</text>
+              </g>
+              <g fill="#8C8C95" font-family="ui-sans-serif,system-ui" font-size="14" text-anchor="middle">
+                <text x="68" y="-96">&#9791;&#xFE0E;</text>
+                <text x="76" y="94">&#9792;&#xFE0E;</text>
+                <text x="-84" y="90">&#9794;&#xFE0E;</text>
+              </g>
+              <!-- endpoint dots -->
+              <g fill="#B49BD8">
+                <circle cx="82" cy="-32" r="2.4"/><circle cx="-70" cy="45" r="2.4"/><circle cx="-84" cy="21.9" r="2.4"/>
+              </g>
+              <circle r="2.6" fill="#7B5EA8"/>
+            </g>
+          </svg>
+          <div class="eph-strip">
+            <div class="eph-row"><span class="eph-g">&#9791;&#xFE0E;</span><span class="eph-p">Mercury · Sag</span><span class="eph-o">Your honesty has a body count. Aim it on purpose.</span></div>
+            <div class="eph-row"><span class="eph-g">&#9792;&#xFE0E;</span><span class="eph-p">Venus · Libra</span><span class="eph-o">You keep the peace by disappearing. That is not peace.</span></div>
+            <div class="eph-row"><span class="eph-g">&#9794;&#xFE0E;</span><span class="eph-p">Mars · Scorpio</span><span class="eph-o">You don't lose your temper. You file it.</span></div>
+          </div>
+        </div>
+
+        <div class="read-col">
+          <div class="trip-card">
+            <span class="trip-g">&#9737;&#xFE0E;</span>
+            <div><div class="trip-l">Sun</div><div class="trip-s">Scorpio &#9803;&#xFE0E;</div><p class="trip-x">You don't do casual. Everything is a vault or a wound, and you decide which.</p></div>
+          </div>
+          <div class="trip-card">
+            <span class="trip-g">&#9789;&#xFE0E;</span>
+            <div><div class="trip-l">Moon</div><div class="trip-s">Aquarius &#9810;&#xFE0E;</div><p class="trip-x">You feel things at a distance, then call the distance perspective.</p></div>
+          </div>
+          <div class="trip-card">
+            <span class="trip-g">&#8593;</span>
+            <div><div class="trip-l">Rising</div><div class="trip-s">Leo &#9804;&#xFE0E;</div><p class="trip-x">People remember you. You're still not sure you meant to let them.</p></div>
+          </div>
+          <div class="pin">
+            <p class="pin-k">The pin</p>
+            <p class="pin-q">"You call it standards. It is fear with a skincare routine."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 4 — ON YOUR OWN CLAUDE -->
+  <section class="lp-byo">
+    <div class="wrap">
+      <div class="byo">
+        <span class="byo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6Z"/><path d="M9 12l2 2 4-4.5"/></svg></span>
+        <div>
+          <p class="byo-lead"><b>Runs on YOUR Claude and YOUR tools through Switchboard.</b> The operator holds no key, runs no model, and never sees your data. Your birth date, time and place stay in the tab and go straight to your own model.</p>
+          <div class="byo-points"><span>BYO-Claude</span><span>consent-per-app</span><span>your data stays yours</span><span>token budgets <em class="sim-tag">SIMULATED</em></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 5 — CTA FOOTER -->
+  <section class="lp-cta">
+    <div class="wrap">
+      <h2 class="cta-h display">Give NATAL your Claude.</h2>
+      <a class="btn-primary" href="https://natal.thelastprompt.ai">Open NATAL
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <p class="cta-sub">Free core, forever &middot; the reading runs entirely on your own Claude</p>
+      <div class="lp-foot">
+        <span><a href="./index.html">← All wrapps</a> &middot; a wrapp that runs on your own Claude</span>
+        <a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

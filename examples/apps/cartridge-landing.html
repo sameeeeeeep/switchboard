@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cartridge — form → playable game, on your own Claude</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D; --thumb-bg:#0E0E10;
+  --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --accent-ink:#0A0A0B; --accent-hover:#FFFFFF;
+  --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
+  --shadow:0 0 0 1px var(--line), 0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -20px rgba(0,0,0,.8);
+  --shadow-pop:0 0 0 1px var(--line-2), 0 16px 40px -22px rgba(0,0,0,.9);
+  /* CARTRIDGE — violet family (play & make) */
+  --pop:#7B5EA8; --pop-soft:#EDE8F3; --pop-light:#B49BD8;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#000;font-family:var(--font-sans)}
+::selection{background:rgba(180,155,216,.30)}
+.page{width:1440px;min-height:900px;margin:0 auto;background:var(--bg);color:var(--ink);font-family:var(--font-sans);overflow:hidden;position:relative}
+.wrap{max-width:1080px;margin:0 auto;padding:0 64px}
+a{color:inherit;text-decoration:none}
+.kicker{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.display{font-family:var(--font-display);letter-spacing:-.03em;font-weight:700}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---- top bar ---- */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.sb{display:flex;align-items:center;gap:10px}
+.sb-mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#6FC06A,#3C8B4E);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
+.sb-mark svg{width:15px;height:15px;display:block}
+.sb-word{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.01em;color:var(--ink-2)}
+.runs-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 14px}
+.runs-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+
+/* ---- hero ---- */
+.lp-hero{padding:52px 0 60px}
+.hero-tile{width:64px;height:64px;border-radius:18px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset, 0 12px 30px -14px rgba(123,94,168,.5)}
+.hero-tile svg{width:34px;height:34px;display:block}
+.hero-name{display:flex;align-items:center;gap:14px;margin:24px 0 0}
+.hero-name h1{font-family:var(--font-display);font-weight:700;letter-spacing:-.035em;font-size:56px;line-height:1;margin:0}
+.verified{display:inline-flex;align-items:center;gap:5px;color:var(--verify);font-size:12px;font-weight:600;margin-top:8px}
+.verified svg{width:17px;height:17px}
+.hero-tag{color:var(--ink-2);font-size:20px;line-height:1.5;max-width:46ch;margin:18px 0 0;font-weight:400}
+.hero-chips{display:flex;align-items:center;gap:10px;margin:24px 0 0}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px;background:var(--card)}
+.chip .pd{width:7px;height:7px;border-radius:50%;background:var(--pop-light)}
+.chip b{color:var(--ink);font-weight:600}
+.hero-meta{margin:16px 0 0;font-size:12px;color:var(--faint)}
+.hero-meta .mono{color:var(--faintest)}
+.hero-cta{display:flex;align-items:center;gap:14px;margin:30px 0 0}
+.btn-primary{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:15px;border-radius:var(--r-pill);padding:14px 26px;border:0;transition:background .15s}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary svg{width:16px;height:16px}
+.btn-ghost{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:500;font-size:14px;border:1px solid var(--line-2);border-radius:var(--r-pill);padding:13px 22px;transition:border-color .15s,color .15s}
+.btn-ghost:hover{color:var(--ink);border-color:var(--faint)}
+
+/* ---- section head ---- */
+.sec-head{margin:0 0 30px}
+.sec-title{font-family:var(--font-display);font-weight:700;letter-spacing:-.02em;font-size:26px;margin:12px 0 0;line-height:1.15}
+.sec-title span{color:var(--faint)}
+
+/* ---- what it does ---- */
+.lp-what{padding:26px 0 40px}
+.lp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.lp-step{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px 22px 26px}
+.step-ic{width:38px;height:38px;border-radius:11px;background:var(--card-2);color:var(--pop-light);display:grid;place-items:center;border:1px solid var(--line)}
+.step-ic svg{width:20px;height:20px}
+.step-n{font-family:var(--font-mono);font-size:11px;color:var(--faintest);float:right;margin-top:4px}
+.step-h{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;font-size:17px;margin:18px 0 8px}
+.step-p{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:0}
+
+/* ---- output mock ---- */
+.lp-output{padding:34px 0 44px}
+.mock{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-pop);padding:22px;display:grid;grid-template-columns:1fr 320px;gap:18px}
+/* cabinet */
+.cab{background:#0b0913;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+.cab-bar{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#161226,#100d1c)}
+.cab-title{font-family:var(--font-display);font-weight:700;letter-spacing:.02em;font-size:14px;color:var(--pop-light)}
+.cab-meta{font-family:var(--font-mono);font-size:10.5px;color:var(--faint);letter-spacing:.02em}
+.cab-scene{display:block;width:100%}
+.cab-foot{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--line)}
+.cab-key{font-family:var(--font-mono);font-size:10px;color:var(--faint);border:1px solid var(--line-2);border-radius:5px;padding:3px 7px}
+.cab-foot .sp{flex:1}
+.cab-dl{font-size:11px;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+.cab-dl svg{width:13px;height:13px}
+/* pitch column */
+.pitches{display:flex;flex-direction:column;gap:12px}
+.pitch{background:#101019;border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;position:relative}
+.pitch.star{border-color:rgba(180,155,216,.5);box-shadow:0 0 0 1px rgba(180,155,216,.18)}
+.pbadge{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--pop-light);background:rgba(180,155,216,.13);border-radius:5px;padding:3px 8px;margin-bottom:9px}
+.pt{font-family:var(--font-display);font-weight:700;letter-spacing:.01em;font-size:15px;margin:0 0 6px}
+.pi{color:var(--ink-2);font-size:12px;line-height:1.5;margin:0 0 8px}
+.ptw{color:var(--faint);font-size:11px;margin:0 0 11px}
+.ptw b{color:var(--pop-light);font-weight:600}
+.ptags{display:flex;gap:6px;margin-bottom:12px}
+.ptag{font-size:10px;color:var(--faint);border:1px solid var(--line-2);border-radius:5px;padding:3px 8px}
+.forge{width:100%;text-align:center;font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);border-radius:8px;padding:8px 0}
+.pitch.star .forge{background:var(--pop);border-color:var(--pop);color:#0b0913;font-weight:700}
+
+/* ---- byo strip ---- */
+.lp-byo{padding:20px 0 44px}
+.byo{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 36px;display:flex;align-items:center;gap:30px}
+.byo-mark{flex:none;width:52px;height:52px;border-radius:14px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center}
+.byo-mark svg{width:26px;height:26px}
+.byo-lead{font-size:16px;line-height:1.55;color:var(--ink);margin:0;max-width:64ch;font-weight:400}
+.byo-lead b{font-weight:600}
+.byo-points{display:flex;gap:22px;margin:14px 0 0;flex-wrap:wrap}
+.byo-points span{font-size:12px;color:var(--faint);display:inline-flex;align-items:center;gap:7px}
+.byo-points span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--pop-light)}
+.sim-tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--sim);background:var(--sim-bg);border-radius:4px;padding:2px 6px;margin-left:2px}
+
+/* ---- cta footer ---- */
+.lp-cta{padding:30px 0 30px;text-align:center}
+.cta-h{font-family:var(--font-display);font-weight:700;letter-spacing:-.025em;font-size:38px;margin:0 0 22px}
+.cta-sub{color:var(--faint);font-size:13px;margin:20px 0 0}
+.lp-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;font-size:12px;color:var(--faint)}
+.lp-foot a{color:var(--ink-2)}
+.lp-foot a:hover{color:var(--ink)}
+
+/* store detail-page chrome — this page is reached from the Switchboard directory, so it carries a
+   way back to the shelf and a way into the app without scrolling for one */
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:var(--r-pill);padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line);flex:none}
+.sb-word span{color:var(--faint)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:var(--r-pill);padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+@media (max-width:860px){.tb-rule,.runs-pill,.sb-word span{display:none}}
+
+
+/* ---- hero demo — a prototype frame of Cartridge holding a finished, playable cartridge. Also the
+   store thumbnail: one real sentence in, one real game frame out, plus the file you keep. ---- */
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:44px;align-items:center}
+.hero-copy{min-width:0}
+.demo{position:relative;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-pop),0 38px 70px -40px rgba(0,0,0,.95);overflow:hidden}
+.demo::after{content:"";position:absolute;left:-10%;right:-10%;top:-22%;height:62%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(180,155,216,.16),transparent)}
+.demo-bar{position:relative;z-index:1;display:flex;align-items:center;gap:10px;height:42px;padding:0 15px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.demo-bar .nm{font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);flex:none}
+.demo-bar .dsub{font-family:var(--font-mono);font-size:11px;color:var(--faint);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-bar .dtag{margin-left:auto;flex:none;font-family:var(--font-mono);font-weight:700;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--pop-light);background:rgba(180,155,216,.12);
+  border:1px solid rgba(180,155,216,.32);border-radius:var(--r-pill);padding:5px 9px}
+.demo-body{position:relative;z-index:1;padding:15px 15px 14px}
+.c-prompt{display:flex;align-items:center;gap:9px;background:#101014;border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:10px 12px;margin-bottom:12px}
+.c-prompt .cq{font-family:var(--font-mono);font-size:11px;color:var(--pop-light);flex:none}
+.c-prompt .ct{font-size:12.5px;color:var(--ink);line-height:1.35;min-width:0}
+.c-screen{width:100%;display:block;border-radius:var(--r-sm);border:1px solid #2b2140;
+  box-shadow:0 0 30px -10px rgba(180,155,216,.45);animation:d-breathe 5s ease-in-out infinite}
+@keyframes d-breathe{0%,100%{box-shadow:0 0 22px -12px rgba(180,155,216,.35)}50%{box-shadow:0 0 36px -6px rgba(180,155,216,.6)}}
+@media (prefers-reduced-motion:reduce){.c-screen{animation:none}}
+.c-foot{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.c-pill{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.02em;color:var(--ink-2);
+  background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:6px 11px}
+.c-pill.go{color:var(--accent-ink);background:var(--pop-light);border-color:var(--pop-light);font-weight:700}
+.c-foot .cnote{margin-left:auto;font-size:10.5px;color:var(--faintest)}
+@media (max-width:1080px){.hero-grid{grid-template-columns:1fr;gap:36px}}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- BAND 1 — HERO -->
+  <header class="lp-hero">
+    <div class="wrap">
+      <div class="lp-topbar">
+        <div class="tb-side">
+          <a class="tb-back" href="./index.html">← All wrapps</a>
+          <span class="tb-rule"></span>
+          <div class="sb">
+          <span class="sb-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+          <span class="sb-word">Switchboard <span>/ Cartridge</span></span>
+          </div>
+        </div>
+        <div class="tb-side">
+          <span class="runs-pill"><span class="dot"></span>Runs on your own Claude</span>
+          <a class="tb-cta" href="https://cartridge.thelastprompt.ai">Open Cartridge <span>→</span></a>
+        </div>
+      </div>
+
+      <div class="hero-grid">
+      <div class="hero-copy">
+      <span class="hero-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></span>
+
+      <div class="hero-name">
+        <h1 class="display">Cartridge</h1>
+        <span class="verified"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".16"/><path d="M8 12.5l2.5 2.5 5-5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified</span>
+      </div>
+
+      <p class="hero-tag">Describe a game in a sentence. Your Claude writes a complete, self-contained arcade game you can play right now — and keep as one .html file.</p>
+
+      <div class="hero-chips">
+        <span class="chip"><span class="pd"></span>Play &amp; make</span>
+        <span class="chip"><b>Free</b>&nbsp;core, forever</span>
+      </div>
+      <p class="hero-meta">Built with <span class="mono">720K</span> tokens &middot; dev-reported</p>
+
+      <div class="hero-cta">
+        <a class="btn-primary" href="https://cartridge.thelastprompt.ai">Open Cartridge
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn-ghost" href="#what">See how it works</a>
+      </div>
+      </div>
+
+        <!-- demo prototype: one sentence in, one playable cartridge out -->
+        <div class="demo">
+          <div class="demo-bar">
+            <span class="nm">Cartridge</span>
+            <span class="dsub">neon-drift.html · 41 KB · one file</span>
+            <span class="dtag">playable</span>
+          </div>
+          <div class="demo-body">
+            <div class="c-prompt">
+              <span class="cq">idea ▸</span>
+              <span class="ct">"a neon racer where the road builds itself ahead of you"</span>
+            </div>
+            <svg class="c-screen" viewBox="0 0 400 232" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="csky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#150f2b"/><stop offset="1" stop-color="#331a4c"/>
+                </linearGradient>
+                <radialGradient id="csun" cx="50%" cy="100%" r="60%">
+                  <stop offset="0" stop-color="#F4C46B" stop-opacity=".5"/><stop offset="1" stop-color="#F4C46B" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <rect width="400" height="232" fill="#08060f"/>
+              <rect width="400" height="104" fill="url(#csky)"/>
+              <circle cx="200" cy="104" r="66" fill="url(#csun)"/>
+              <g fill="#B49BD8"><circle cx="46" cy="30" r="1.4" opacity=".55"/><circle cx="128" cy="18" r="1.1" opacity=".4"/><circle cx="322" cy="36" r="1.4" opacity=".5"/><circle cx="366" cy="60" r="1.2" opacity=".4"/></g>
+              <line x1="0" y1="104" x2="400" y2="104" stroke="#B49BD8" stroke-width="1.2" opacity=".75"/>
+              <g stroke="#8E6FD0" stroke-width="1.1" opacity=".5" fill="none">
+                <path d="M200 104 L-60 232"/><path d="M200 104 L44 232"/><path d="M200 104 L124 232"/>
+                <path d="M200 104 L276 232"/><path d="M200 104 L356 232"/><path d="M200 104 L460 232"/>
+              </g>
+              <g stroke="#8E6FD0" stroke-width="1" opacity=".34">
+                <line x1="0" y1="112" x2="400" y2="112"/><line x1="0" y1="123" x2="400" y2="123"/>
+                <line x1="0" y1="140" x2="400" y2="140"/><line x1="0" y1="165" x2="400" y2="165"/><line x1="0" y1="199" x2="400" y2="199"/>
+              </g>
+              <path d="M200 174 L217 209 L200 200 L183 209 Z" fill="#F4C46B"/>
+              <path d="M200 174 L217 209 L200 200 L183 209 Z" fill="none" stroke="#fff8e6" stroke-width="1" opacity=".55"/>
+              <text x="200" y="48" text-anchor="middle" fill="#F4C46B" font-family="Space Grotesk,sans-serif" font-weight="700" font-size="30" letter-spacing="4">NEON DRIFT</text>
+              <text x="200" y="72" text-anchor="middle" fill="#B49BD8" font-family="ui-monospace,Menlo,monospace" font-size="11" letter-spacing="2.5">PRESS SPACE TO START</text>
+              <text x="14" y="24" fill="#B49BD8" font-family="ui-monospace,Menlo,monospace" font-size="12" letter-spacing="1.4">SCORE 004120</text>
+              <text x="386" y="24" text-anchor="end" fill="#B49BD8" font-family="ui-monospace,Menlo,monospace" font-size="12" letter-spacing="1.4">LIVES 3</text>
+            </svg>
+            <div class="c-foot">
+              <span class="c-pill go">▶ Play</span>
+              <span class="c-pill">↓ neon-drift.html</span>
+              <span class="cnote">sandboxed · runs offline</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- BAND 2 — WHAT IT DOES -->
+  <section class="lp-what" id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">How it works</span>
+        <h2 class="sec-title">One mechanic, forged in three pulls — <span>no engine, no boilerplate.</span></h2>
+      </div>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <span class="step-n">01</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="16" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="16" r="1.3" fill="currentColor"/><circle cx="16" cy="16" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg></span>
+          <h3 class="step-h">Pitch it</h3>
+          <p class="step-p">Roll four wild game pitches or type your own idea, then set the genre, the vibe, and one signature twist.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">02</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6Z"/></svg></span>
+          <h3 class="step-h">Forge on your Claude</h3>
+          <p class="step-p">Your model streams a complete single-file HTML5 game — canvas, controls, particles and sound, all drawn from scratch.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">03</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5Z" fill="currentColor"/></svg></span>
+          <h3 class="step-h">Play &amp; keep</h3>
+          <p class="step-p">It runs instantly in a sandbox. Remix it with a line, then download the .html cartridge — it's yours to keep forever.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 3 — OUTPUT MOCK -->
+  <section class="lp-output">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">What you get</span>
+        <h2 class="sec-title">A finished, playable cartridge — <span>and a deck of pitches to fire up next.</span></h2>
+      </div>
+      <div class="mock">
+        <div class="cab">
+          <div class="cab-bar">
+            <span class="cab-title">LANTERN THIEF</span>
+            <span class="cab-meta">v1 · dodge-em-up · neon</span>
+          </div>
+          <svg class="cab-scene" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="bgg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#16112b"/><stop offset="1" stop-color="#0a0813"/>
+              </linearGradient>
+              <radialGradient id="lglow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#F4C46B" stop-opacity=".85"/>
+                <stop offset="55%" stop-color="#F4C46B" stop-opacity=".14"/>
+                <stop offset="100%" stop-color="#F4C46B" stop-opacity="0"/>
+              </radialGradient>
+              <radialGradient id="pglow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#B49BD8" stop-opacity=".9"/>
+                <stop offset="55%" stop-color="#8E6FD0" stop-opacity=".18"/>
+                <stop offset="100%" stop-color="#8E6FD0" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="620" height="300" fill="url(#bgg)"/>
+            <!-- stars -->
+            <g fill="#B49BD8">
+              <circle cx="60" cy="40" r="1.5" opacity=".6"/><circle cx="180" cy="26" r="1.2" opacity=".4"/>
+              <circle cx="330" cy="52" r="1.6" opacity=".55"/><circle cx="470" cy="34" r="1.3" opacity=".45"/>
+              <circle cx="560" cy="70" r="1.5" opacity=".5"/><circle cx="250" cy="90" r="1.1" opacity=".35"/>
+              <circle cx="410" cy="98" r="1.3" opacity=".4"/><circle cx="110" cy="110" r="1.2" opacity=".35"/>
+            </g>
+            <!-- lanterns -->
+            <g>
+              <circle cx="150" cy="96" r="52" fill="url(#lglow)"/>
+              <rect x="141" y="82" width="18" height="24" rx="6" fill="#F4C46B"/><rect x="145" y="76" width="10" height="6" rx="2" fill="#caa14a"/>
+              <circle cx="440" cy="120" r="46" fill="url(#lglow)"/>
+              <rect x="432" y="108" width="16" height="22" rx="6" fill="#F4C46B"/><rect x="435" y="102" width="10" height="6" rx="2" fill="#caa14a"/>
+              <circle cx="300" cy="70" r="38" fill="url(#lglow)" opacity=".7"/>
+              <rect x="293" y="60" width="14" height="20" rx="5" fill="#F4C46B" opacity=".85"/>
+            </g>
+            <!-- shuriken hazards -->
+            <g fill="none" stroke="#C9B6EC" stroke-width="2">
+              <g transform="translate(520 200) rotate(20)"><rect x="-9" y="-9" width="18" height="18" rx="3"/><circle cx="0" cy="0" r="3"/></g>
+              <g transform="translate(360 176) rotate(-15)"><rect x="-8" y="-8" width="16" height="16" rx="3"/><circle cx="0" cy="0" r="2.6"/></g>
+            </g>
+            <!-- ground -->
+            <rect x="0" y="262" width="620" height="38" fill="#1a1330"/>
+            <line x1="0" y1="262" x2="620" y2="262" stroke="#B49BD8" stroke-opacity=".55" stroke-width="1.5"/>
+            <!-- player (ninja) -->
+            <circle cx="250" cy="238" r="40" fill="url(#pglow)"/>
+            <g transform="translate(250 238)">
+              <path d="M0 -18 L15 0 L0 18 L-15 0 Z" fill="#8E6FD0" stroke="#D9C7F2" stroke-width="1.6"/>
+              <rect x="-13" y="-4" width="26" height="6" rx="3" fill="#0a0813"/>
+              <circle cx="-4" cy="-1" r="1.6" fill="#F4C46B"/><circle cx="5" cy="-1" r="1.6" fill="#F4C46B"/>
+            </g>
+            <!-- particles -->
+            <g fill="#F4C46B">
+              <circle cx="222" cy="214" r="1.6" opacity=".8"/><circle cx="278" cy="222" r="1.3" opacity=".6"/><circle cx="240" cy="200" r="1.2" opacity=".5"/>
+            </g>
+            <!-- HUD -->
+            <text x="18" y="30" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#EDEDEA" letter-spacing="1">SCORE 04120</text>
+            <text x="18" y="48" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#B49BD8" letter-spacing="1">WAVE 3</text>
+            <text x="602" y="30" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#E0728F">&#9829;&#9829;&#9829;</text>
+          </svg>
+          <div class="cab-foot">
+            <span class="cab-key">← →</span><span class="cab-key">SPACE</span><span class="cab-key">tap</span>
+            <span class="sp"></span>
+            <span class="cab-dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></svg>download .html</span>
+          </div>
+        </div>
+
+        <div class="pitches">
+          <div class="pitch star">
+            <span class="pbadge">&#9733; RECOMMENDED</span>
+            <h4 class="pt">MOTH RUSH</h4>
+            <p class="pi">A moth races toward streetlights without burning up.</p>
+            <p class="ptw">twist: <b>light heals AND hurts</b></p>
+            <div class="ptags"><span class="ptag">racer</span><span class="ptag">mono CRT</span></div>
+            <div class="forge">&#9654; FORGE THIS</div>
+          </div>
+          <div class="pitch">
+            <h4 class="pt">DECAF DOOM</h4>
+            <p class="pi">Defend the last coffee machine from Monday meetings.</p>
+            <p class="ptw">twist: <b>bosses send calendar invites</b></p>
+            <div class="ptags"><span class="ptag">shooter</span><span class="ptag">neon</span></div>
+            <div class="forge">&#9654; FORGE THIS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 4 — ON YOUR OWN CLAUDE -->
+  <section class="lp-byo">
+    <div class="wrap">
+      <div class="byo">
+        <span class="byo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6Z"/><path d="M9 12l2 2 4-4.5"/></svg></span>
+        <div>
+          <p class="byo-lead"><b>Runs on YOUR Claude and YOUR tools through Switchboard.</b> The operator holds no key, runs no model, and never sees your data. The game your model writes is sandboxed — it can't reach back into your session.</p>
+          <div class="byo-points"><span>BYO-Claude</span><span>consent-per-app</span><span>your data stays yours</span><span>token budgets <em class="sim-tag">SIMULATED</em></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 5 — CTA FOOTER -->
+  <section class="lp-cta">
+    <div class="wrap">
+      <h2 class="cta-h display">Give Cartridge your Claude.</h2>
+      <a class="btn-primary" href="https://cartridge.thelastprompt.ai">Open Cartridge
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <p class="cta-sub">Free core, forever &middot; you keep every .html cartridge you make</p>
+      <div class="lp-foot">
+        <span><a href="./index.html">← All wrapps</a> &middot; a wrapp that runs on your own Claude</span>
+        <a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
