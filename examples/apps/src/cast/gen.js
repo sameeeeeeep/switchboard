@@ -132,9 +132,9 @@ export async function stitchClips(relay, clipUrls) {
 }
 
 // ---------- audio / voice (Higgsfield TTS + audio-driven video) ----------
-// Speak text in the persona's voice using Higgsfield's own TTS. `voice` is a voice id/name from
-// list_voices (or a cloned voice from create_voice). Returns the audio URL — consistent across every
-// post, no local daemon needed. This is the persona's LOCKED voice, the audio twin of the face lock.
+// Speak text using Higgsfield's own TTS. `voice` (optional) is a voice id/name from list_voices or a
+// cloned create_voice id — nothing in Cast sets one yet, so callers omit it and get the default
+// narration voice. Returns the audio URL — consistent across every post, no local daemon needed.
 export async function generateSpeech(relay, line, voice) {
   const instruction =
     `Use the Higgsfield ${TTS} tool to speak this line as natural, warm creator narration: "${line}".` +

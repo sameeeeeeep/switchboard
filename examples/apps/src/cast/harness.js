@@ -41,12 +41,15 @@ function resolve(prompt) {
   return SHOTS.hook;
 }
 
+// Dates in the seeded demo are computed from today so the calendar never shows a stale month.
+const inDays = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+
 // Canned JSON for the rare case the user walks BACK into an option-generating stage under the harness
 // (facets / calendar / scripts). Keeps those stages functional without a live model.
 function cannedArray(prompt) {
   const p = (prompt || "").toLowerCase();
   if (/pillar/.test(p)) return [{ title: "Genius kitchen tips", body: "A fast, surprising cooking hack per post.", chips: ["knife skills", "pantry swaps"] }, { title: "5-minute meals", body: "One quick recipe, start to plate.", chips: ["weeknight", "one-pan"] }, { title: "Myth vs. method", body: "Debunk a cooking myth on camera.", chips: ["salting pasta water", "resting meat"] }];
-  if (/content plan|posts|calendar|trending/.test(p)) return [{ title: "3 genius cooking tips", body: "Rapid-fire kitchen hacks.", chips: ["Genius kitchen tips"], subtitle: "Trend", date: "2026-07-11" }, { title: "The pan-heat rule", body: "Why oil goes in AFTER the pan is hot.", chips: ["Myth vs. method"], subtitle: "Evergreen", date: "2026-07-15" }];
+  if (/content plan|posts|calendar|trending/.test(p)) return [{ title: "3 genius cooking tips", body: "Rapid-fire kitchen hacks.", chips: ["Genius kitchen tips"], subtitle: "Trend", date: inDays(3) }, { title: "The pan-heat rule", body: "Why oil goes in AFTER the pan is hot.", chips: ["Myth vs. method"], subtitle: "Evergreen", date: inDays(7) }];
   if (/script|beats|shot.*line/.test(p)) return SEED_BEATS.map((b) => ({ title: b.shot, body: b.line }));
   // facet fallback (person/voice/etc)
   return [{ title: "Nadia Rossi", subtitle: "home cooking & kitchen tips", body: "Warm, practical home cook who makes weeknight food feel easy.", chips: ["warm", "practical", "quick"], recommended: true }];
@@ -79,7 +82,7 @@ function seedAccount() {
   a.foundation.more = { pillars: [lock("5-minute meals"), lock("Myth vs. method")] };
   a.assets.face = { url: FACE, status: "done", approved: true, name: "Nadia" };
   a.assets.setting = { url: SETTING, status: "done", approved: true, name: "Bright home kitchen" };
-  a.calendar.slots = [{ id: "s1", date: "2026-07-11", pillar: "Genius kitchen tips", title: "3 genius cooking tips", angle: "Rapid-fire kitchen hacks, part one.", source: "Trend", approved: true, status: "planned" }];
+  a.calendar.slots = [{ id: "s1", date: inDays(3), pillar: "Genius kitchen tips", title: "3 genius cooking tips", angle: "Rapid-fire kitchen hacks, part one.", source: "Trend", approved: true, status: "planned" }];
   a.scripts = { s1: { beats: SEED_BEATS, approved: true, status: "written" } };
   a.productions = {};
   return a;
