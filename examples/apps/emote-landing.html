@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Emote — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;
+  --pop:#E08CB0;--pop-2:#B54A78;--pop-soft:rgba(224,140,176,0.14);--pop-line:rgba(224,140,176,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(224,140,176,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+.nav{display:flex;align-items:center;gap:16px;height:84px}
+.brand{display:flex;align-items:center;gap:13px;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.03em}
+.brand .tile{width:44px;height:44px;border-radius:13px;background:#F0E7F1;color:#B54A78;display:grid;place-items:center}
+.brand .tile svg{width:24px;height:24px}
+.nav .sp{flex:1}
+.nav .lk{color:var(--ink-2);font-weight:500;font-size:15px;padding:0 6px}
+.nav .cta{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;font-family:var(--font-sans)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:64px 0 40px;min-height:660px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(224,140,176,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 90px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+/* ── store chrome — added when this page became the wrapp's detail page in Switchboard ── */
+.sbbar{position:relative;z-index:50;background:var(--panel);border-bottom:1px solid var(--line)}
+.sbbar .in{max-width:1280px;margin:0 auto;padding:0 80px;height:54px;display:flex;align-items:center;gap:16px}
+.sbbar .sp{flex:1}
+.sbbar .sep{width:1px;height:16px;background:var(--line);flex:none}
+.back{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 13px/1 var(--font-sans);
+  padding:7px 13px 7px 11px;border:1px solid var(--line);border-radius:999px;transition:color .14s,border-color .14s}
+.back:hover{color:var(--ink);border-color:var(--line-2)}
+.back .a{font-size:13px;line-height:1;transform:translateY(-.5px)}
+.sbm{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;
+  font-size:14.5px;letter-spacing:-.03em;color:var(--ink)}
+.sbm .g{width:20px;height:20px;border-radius:6px;background:linear-gradient(140deg,#7CC142,#4E7A1C);
+  display:grid;place-items:center;flex:none}
+.sbm .g svg{width:11px;height:11px;stroke:#0A0A0B;stroke-width:2.8;fill:none}
+.sbbar .tier{font:500 11.5px/1 var(--font-mono);color:var(--faint);letter-spacing:.03em}
+.sbcta{background:#EDEDEA;color:#0A0A0B;font:600 13px/1 var(--font-sans);border-radius:999px;
+  padding:10px 17px;display:inline-flex;align-items:center;gap:7px;transition:background .14s}
+.sbcta:hover{background:#FFFFFF}
+/* facts — the store receipt, in the store's language */
+.facts{display:grid;grid-template-columns:.8fr 1fr 1.15fr;border:1px solid var(--line);border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);overflow:hidden;margin:82px 0 0}
+.fc{padding:20px 26px 22px;border-left:1px solid var(--line)}
+.fc:first-child{border-left:0}
+.fl{display:flex;align-items:center;gap:9px;font:600 10.5px/1 var(--font-sans);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--faint)}
+.fl .rep{font:500 9.5px/1 var(--font-mono);letter-spacing:.05em;text-transform:none;color:var(--faint);
+  background:var(--card);border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+.fv{font-family:var(--font-display);font-weight:600;font-size:17.5px;letter-spacing:-.025em;margin-top:12px;color:var(--ink)}
+.fv .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.fv .dot{color:var(--faint);font-weight:400;padding:0 3px}
+.fv .pop{color:var(--pop)}
+.fs{color:var(--ink-2);font-size:13px;line-height:1.5;margin-top:7px}
+/* pricing */
+.feat{padding-top:42px;padding-bottom:24px}
+.plans{padding:82px 0 0}
+.plans h2{font-family:var(--font-display);font-weight:700;font-size:42px;line-height:1.06;
+  letter-spacing:-.032em;margin:20px 0 0;max-width:19ch}
+.plans .psub{color:var(--ink-2);font-size:17px;line-height:1.55;margin:16px 0 0;max-width:58ch}
+.ponly{display:inline-flex;align-items:center;gap:14px;margin-top:28px;padding:14px 22px 14px 16px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;font-size:15px;color:var(--ink)}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:34px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 28px}
+.pcard.tier-pro{border-color:rgba(169,222,106,.24);background:linear-gradient(180deg,rgba(169,222,106,.05),var(--card))}
+.ptop{display:flex;align-items:center;gap:12px}
+.ptag{font:700 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);
+  background:rgba(255,255,255,.05);border:1px solid var(--line-2);border-radius:6px;padding:6px 9px}
+.ptag.lime{color:#A9DE6A;background:rgba(169,222,106,.11);border-color:rgba(169,222,106,.32)}
+.pnote{color:var(--faint);font-size:12.5px}
+.pcard h3{font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.025em;margin:18px 0 0}
+.pcard p{color:var(--ink-2);font-size:14.5px;line-height:1.6;margin:11px 0 0}
+.plist{list-style:none;margin:16px 0 0;padding:0}
+.plist li{display:flex;gap:11px;align-items:flex-start;color:var(--ink);font-size:15px;
+  padding:11px 0;border-top:1px solid var(--line)}
+.plist li:first-child{border-top:0;padding-top:4px}
+.plist .tk{color:#A9DE6A;flex:none;margin-top:2px}
+.plist .tk svg{width:15px;height:15px}
+/* footer */
+.foot{margin-top:86px;border-top:1px solid var(--line);padding:28px 0 60px;display:flex;align-items:center;gap:22px}
+.foot .sp{flex:1}
+.foot a{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 14px/1 var(--font-sans);transition:color .14s}
+.foot a:hover{color:var(--ink)}
+.foot a.open{color:var(--pop)}
+.foot .fnote{color:var(--faint);font-size:12.5px}
+
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+
+/* ── hero demo · a prototype frame of Emote mid-result (replaces the old placeholder mock) ── */
+.demo{position:relative;z-index:1;aspect-ratio:620/560;background:var(--card);border:1.5px solid #2A2B30;
+  border-radius:22px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 70px rgba(0,0,0,.5)}
+.dbar{display:flex;align-items:center;gap:10px;padding:0 18px;height:46px;flex:none;
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.045),transparent)}
+.dname{font-family:var(--font-display);font-weight:700;font-size:15px;letter-spacing:-.02em;color:var(--ink)}
+.dsp{flex:1}
+.dchip{font:600 12px/1 var(--font-mono);color:var(--pop);background:var(--pop-soft);
+  border:1px solid var(--pop-line);border-radius:999px;padding:7px 11px;white-space:nowrap}
+.dbrief{display:flex;align-items:baseline;gap:12px;padding:15px 18px 0}
+.dk{flex:none;font:600 11px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.dq{font:500 15px/1.35 var(--font-mono);color:var(--ink)}
+.dpack{display:flex;align-items:center;gap:10px;margin:13px 18px 0;padding:11px 13px;
+  background:rgba(255,255,255,.03);border:1px solid var(--pop-line);border-radius:12px}
+.dpick{flex:none;font-family:var(--font-display);font-weight:600;font-size:14.5px;color:var(--ink)}
+.dpn{flex:1;min-width:0;font-size:12.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drec{flex:none;font:700 10px/1 var(--font-sans);letter-spacing:.12em;text-transform:uppercase;
+  color:#0A0A0B;background:var(--pop);border-radius:5px;padding:5px 7px}
+.dgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:13px 18px 18px}
+.stk{position:relative;margin:0;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:#0E0F12}
+.stk img{position:absolute;top:0;left:0;width:300%;height:auto;display:block}
+.stk figcaption{position:absolute;left:0;right:0;bottom:0;padding:18px 9px 8px;
+  font:600 12.5px/1 var(--font-sans);color:var(--ink);
+  background:linear-gradient(transparent,rgba(8,8,10,.88) 58%)}
+.stk.pend{display:grid;place-items:center;border-style:dashed;border-color:var(--pop-line)}
+.stk .checker{position:absolute;inset:0;opacity:.55;background-color:#131418;background-size:14px 14px;
+  background-position:0 0,7px 7px;
+  background-image:linear-gradient(45deg,#1B1C21 25%,transparent 25%,transparent 75%,#1B1C21 75%),
+                   linear-gradient(45deg,#1B1C21 25%,transparent 25%,transparent 75%,#1B1C21 75%)}
+.stk .pl{position:relative;text-align:center;font:600 12px/1.35 var(--font-sans);color:var(--pop);
+  animation:dpulse 1.9s ease-in-out infinite}
+@keyframes dpulse{0%,100%{opacity:.45}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.stk .pl{animation:none}}
+
+</style></head>
+<body>
+<div class="sbbar">
+  <div class="in">
+    <a class="back" href="./index.html"><span class="a">←</span>All wrapps</a>
+    <span class="sep"></span>
+    <a class="sbm" href="./index.html"><span class="g"><svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</a>
+    <span class="sp"></span>
+    <span class="tier">Viral · free</span>
+    <a class="sbcta" href="./emote.html">Open Emote<span>→</span></a>
+  </div>
+</div>
+<div class="wrap">
+  <nav class="nav">
+    <span class="brand"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg></span>Emote</span>
+    <span class="sp"></span>
+    <a class="lk" href="#overview">Overview</a><a class="lk" href="#how">How it works</a><a class="lk" href="#pricing">Pricing</a>
+    <a class="cta" href="./emote.html">Open Emote</a>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <span class="kick"><span class="d"></span>Viral</span>
+      <h1>A sticker pack of your character.</h1>
+      <p class="sub">Describe a character and get a pack of transparent, die-cut emotion stickers — ready to drop anywhere.</p>
+      <div class="actions">
+        <a class="btn" href="./emote.html">Open Emote<span>→</span></a>
+        <span class="btn ghost">Watch a run</span>
+      </div>
+      <div class="trust">
+        <span class="chip"><span class="g">◆</span> Runs on your own Claude</span>
+        <span class="chip">Free core, forever</span>
+        <span class="chip">Your data stays yours</span>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span><div class="demo"><div class="dbar"><span class="dname">Emote</span><span class="dsp"></span><span class="dchip">6 stickers &middot; transparent PNG</span></div><div class="dbrief"><span class="dk">Character</span><span class="dq">a grumpy orange tabby barista</span></div><div class="dpack"><span class="dpick">Chunky Glossy 3D</span><span class="dpn">thick white die-cut border, glossy vinyl finish</span><span class="drec">Recommended</span></div><div class="dgrid"><figure class="stk"><img src="./img/emote.jpg" alt="Die-cut vinyl sticker of the tabby-barista character, happy" decoding="async" style="transform:translate(-14%,-5%)"><figcaption>happy</figcaption></figure><figure class="stk"><img src="./img/emote.jpg" alt="Die-cut vinyl sticker of the tabby-barista character, in love" decoding="async" style="transform:translate(-60%,-11%)"><figcaption>in love</figcaption></figure><figure class="stk"><img src="./img/emote.jpg" alt="Die-cut vinyl sticker of the tabby-barista character, smug" decoding="async" style="transform:translate(-33%,-31%)"><figcaption>smug</figcaption></figure><figure class="stk"><img src="./img/emote.jpg" alt="Die-cut vinyl sticker of the tabby-barista character, sleepy" decoding="async" style="transform:translate(-11%,-58%)"><figcaption>sleepy</figcaption></figure><figure class="stk"><img src="./img/emote.jpg" alt="Die-cut vinyl sticker of the tabby-barista character, shook" decoding="async" style="transform:translate(-60%,-58%)"><figcaption>shook</figcaption></figure><figure class="stk pend"><span class="checker"></span><span class="pl">raging<br>die-cutting&hellip;</span></figure></div></div></div>
+  </section>
+
+  <section class="facts" id="overview">
+    <div class="fc">
+      <div class="fl">Category</div>
+      <div class="fv">Viral</div>
+      <div class="fs">dupes of the tools people can't stop sharing</div>
+    </div>
+    <div class="fc">
+      <div class="fl">Build cost <span class="rep">dev-reported</span></div>
+      <div class="fv"><span class="n">172K</span> tokens<span class="dot">·</span><span class="n">1</span> update</div>
+      <div class="fs">what it cost to make — not what it costs you to run</div>
+    </div>
+    <div class="fc">
+      <div class="fl">What you pay</div>
+      <div class="fv"><span class="pop">Nothing.</span> Runs on your own Claude</div>
+      <div class="fs">free forever — the operator never holds a key, and never meters a token</div>
+    </div>
+  </section>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg></div><div class="num">01</div><h3>A full emotion set</h3><p>Happy, crying, mind-blown — the whole reaction range.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg></div><div class="num">02</div><h3>Die-cut & transparent</h3><p>Clean edges on a transparent bg, ready to paste.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg></div><div class="num">03</div><h3>On your Higgsfield</h3><p>Every sticker renders on the connector you lend it.</p></div>
+  </section>
+
+  <section class="plans" id="pricing">
+    <span class="kick"><span class="d"></span>Pricing</span>
+    <h2>Free — everything, forever.</h2>
+    <p class="psub">Emote has no paid tier and nothing held back. Every sticker is drawn on the models you already own, and the pack downloads straight to your machine.</p>
+    <div class="ponly"><span class="ptag">Free</span><span>Everything, forever — on your own Claude.</span></div>
+  </section>
+
+  <footer class="foot">
+    <a href="./index.html"><span>←</span>All wrapps on Switchboard</a>
+    <span class="sp"></span>
+    <span class="fnote">Built on the Switchboard wrapp template · runs on your own Claude</span>
+    <a class="open" href="./emote.html">Open Emote<span>→</span></a>
+  </footer>
+</div>
+</body></html>
