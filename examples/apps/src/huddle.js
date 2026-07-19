@@ -15,11 +15,15 @@ const APP = {
   name: "Huddle",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
-    reason: "Huddle — a working call with Claude on your own model; Claude speaks back on-device and can read a project folder you point it at",
+    reason: "Huddle — a working call with Claude on your own model; Claude speaks back on-device and can read the project you lend it",
     models: ["sonnet"],
     tools: ["WebSearch", "WebFetch"],
+    // The call is grounded in the LENT context first (that's what makes the openers real) and in an
+    // optional bound folder second. Reused grants are exact-match and ignore newly requested kinds,
+    // so every list()/use() call below tolerates an empty result or a throw.
+    contextKinds: ["project", "brand", "note", "personal"],
   },
-  usesContext: "none",                          // grounds on a BOUND folder, not a lent context
+  usesContext: "single",                        // a lent context grounds the call; a bound folder deepens it
 };
 
 // ==== dom + string helpers ==================================================================
@@ -80,7 +84,19 @@ async function onReady() { await syncContext(); await loadState(); render(); aut
 // docs/CONTEXT-KINDS.md). Hardcoded samples are allowed ONLY pre-connect, visibly labeled.
 async function syncContext() {
   if (!relay) return;
-  if (APP.usesContext === "single") brand = await relay.context.active().catch(() => null);
+  if (APP.usesContext === "single") {
+    brand = await relay.context.active().catch(() => null);
+    // Doctrine fallback: nothing lent → auto-select the best-matching banked context so the call
+    // still opens on something real. A project beats a brand beats whatever else is banked.
+    if (!brand && typeof relay.context.list === "function" && typeof relay.context.use === "function") {
+      try {
+        const metas = (await relay.context.list()) || [];
+        const rank = { project: 0, brand: 1, note: 2, personal: 3 };
+        const best = metas.slice().sort((a, b) => (rank[(a.kind || "").toLowerCase()] ?? 9) - (rank[(b.kind || "").toLowerCase()] ?? 9))[0];
+        if (best) brand = (await relay.context.use(best.id)) || null;
+      } catch { /* grant without the kind, or an older daemon — the picker still works */ }
+    }
+  }
   render();
 }
 
@@ -186,25 +202,43 @@ function connectSteps() {
   const s1 = el("div"); s1.innerHTML = notInstalled
     ? "<b>1</b> · Install Switchboard (button, top-right)"
     : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  const s2 = el("div"); s2.innerHTML = "<b>2</b> · One line in — the pipeline runs itself";
-  const s3 = el("div"); s3.innerHTML = "<b>3</b> · Pick a card, steer anywhere, keep what you like";
+  const s2 = el("div"); s2.innerHTML = "<b>2</b> · Four openers from your project — nothing to type";
+  const s3 = el("div"); s3.innerHTML = "<b>3</b> · The ★ one is already answered; take it from there";
   steps.append(s1, s2, s3);
   card.append(steps);
   return card;
 }
 
 // ==== APP LOGIC ═════════════════════════════════════════════════════════════════════════════
-// HUDDLE — a live working call. Camera preview (presence) + a warm claude_session thread grounded
-// in an optionally-bound project folder + Claude's replies SPOKEN via the kit speaker (local TTS).
-// You type a turn; Claude answers in text and voice; the thread stays warm across the whole call.
+// HUDDLE — a live working call that OPENS ITSELF. The moment Switchboard is connected (fresh chip
+// click OR a page-load with a standing grant) Huddle reads the lent context and drafts 4 opening
+// questions grounded in it — one ★ recommended — then ASKS the ★ one, so the founder lands on a
+// real answer instead of a blank composer. Camera preview (presence) + a warm claude_session thread
+// + replies SPOKEN via the kit speaker (local TTS). Typing stays available; it is never required.
 
 let running = false;
+let startersLoading = false;
+let startersTried = false;          // one proactive opener pass per page life — the chip's onConnect
+                                    // and the returning-user probe both funnel through onReady().
 let speaker = null;                 // kit/speaker handle
 let camStream = null;               // live getUserMedia stream (presence, NOT recorded)
 const SESSION_ID = "huddle-" + uid(); // one warm session for the whole page session
-let session = { folder: null, files: [], turns: [], camOn: false, voiceOn: true, status: "", error: null };
+let session = { folder: null, files: [], turns: [], starters: null, starterError: null, camOn: false, voiceOn: true, status: "", error: null };
 
-function autostart() { void loadCall(); }
+let opened = false;
+function autostart() { void openCall(); }
+async function openCall() {
+  // onReady() fires from BOTH the chip's onConnect and the returning-user probe — opening twice
+  // would read the transcript back over a turn that is mid-stream.
+  if (opened) return;
+  opened = true;
+  await loadCall();
+  // A warm call resumes where it was — never re-open (and never re-spend) on top of real turns.
+  if (session.turns.length) { startersTried = true; return; }
+  if (startersTried) return;
+  startersTried = true;
+  await loadStarters();
+}
 async function loadCall() { try { const raw = await relay.storage.get(APP.id + "-call"); if (raw) { const s = JSON.parse(raw); session.turns = s.turns || []; session.folder = s.folder || null; } } catch { /* fresh */ } if (session.folder) await refreshFiles(); render(); }
 async function saveCall() { try { await relay.storage.set(APP.id + "-call", JSON.stringify({ turns: session.turns.slice(-40), folder: session.folder })); } catch { /* non-fatal */ } }
 
@@ -231,6 +265,45 @@ async function projectGrounding() {
   return `PROJECT FOLDER: ${session.folder}\nFILES: ${session.files.join(", ")}\n\n${heads.join("\n\n")}`.slice(0, 6000);
 }
 
+// STAGE 0 — the openers. Derived from the lent context (plus the bound folder when there is one),
+// so the call starts on this project's real decisions. Degrades honestly with no context and never
+// leaves the UI locked (unlock in a finally).
+const ctxBlob = (n) => (brand ? JSON.stringify(brand.data || {}).slice(0, n || 2200) : "");
+
+async function loadStarters(steer) {
+  if (!relay || startersLoading) return;
+  startersLoading = true; session.starterError = null; render();
+  try {
+    const arr = await askJsonArray([
+      `You are setting the agenda for a founder's working session on "${brand ? brand.name : "their project"}".`,
+      brand
+        ? `THE PROJECT — every question must come from here (its products, status, roadmap, open tasks, audience): ${ctxBlob()}`
+        : "Nothing was lent, so keep the openers concrete and useful to any small product team shipping this week.",
+      session.folder && session.files.length ? `They also opened the folder ${session.folder} — files: ${session.files.slice(0, 20).join(", ")}` : "",
+      "Propose 4 opening questions the founder would genuinely want answered in the first ten minutes. Each must name something specific from the material above — a real product, a real decision, a real gap. No generic coaching questions, no 'what are your goals'.",
+      steer ? `Steer (apply it): "${steer}"` : "",
+      'Return ONLY a JSON array — no prose, no fences. Each element: {"label":<the question, asked in the founder\'s own first person, at most 14 words>,"text":<one line on why it is worth the first ten minutes>,"recommended":<true for exactly one>}',
+    ]);
+    if (!arr || !arr.length) throw new Error("no openers came back — hit ⟳ other openers");
+    const opts = arr.slice(0, 4).map((o) => ({
+      id: uid(),
+      label: String(o.label || o.title || o.question || "Where should I start?").slice(0, 120),
+      text: String(o.text || o.body || o.description || "").trim().slice(0, 240),
+      recommended: !!o.recommended,
+    }));
+    if (!opts.some((o) => o.recommended)) opts[0].recommended = true;
+    let seen = false;
+    for (const o of opts) { if (o.recommended) { if (seen) o.recommended = false; else seen = true; } }
+    session.starters = opts;
+  } catch (e) { session.starterError = msg(e); }
+  finally {
+    startersLoading = false; render();
+    // The ★ is a call, not a decoration: it gets asked, so the founder lands on an answer.
+    const rec = (session.starters || []).find((o) => o.recommended);
+    if (rec && !session.turns.length && !running) void ask(rec.label);
+  }
+}
+
 async function toggleCam() {
   session.camOn = !session.camOn;
   if (session.camOn) {
@@ -251,7 +324,9 @@ async function ask(text) {
     const grounding = await projectGrounding();
     const full = await streamText({
       sessionId: SESSION_ID,
-      system: "You are on a live working call with the founder, helping move their project forward. Be concise and spoken — short paragraphs, one idea at a time, like talk not an essay. Ask a sharp question when it would help." + (grounding ? "\n\nYou can see their project:\n" + grounding : ""),
+      system: "You are on a live working call with the founder, helping move their project forward. Be concise and spoken — short paragraphs, one idea at a time, like talk not an essay. Ask a sharp question when it would help."
+        + (brand ? `\n\nThe project they lent you is "${brand.name}":\n` + ctxBlob(2500) : "")
+        + (grounding ? "\n\nYou can also see their files:\n" + grounding : ""),
       prompt: text,
       maxTokens: 1200,
     }, (p) => { if (p.text) { turn.text = p.text; const live = document.querySelector(".turn.pending .bubble"); if (live) live.textContent = p.text; } });
@@ -291,9 +366,28 @@ function render() {
   if (session.status) view.append(researching(session.status));
   if (session.error) view.append(el("div", "err", session.error));
 
+  // ---- the openers: options on the table, never an empty composer ----
+  const shead = el("div", "opener-head");
+  shead.append(el("span", "kicker", "on the table"));
+  shead.append(el("span", "opener-src", brand ? "drawn from " + brand.name : "no context lent — general openers"));
+  const more = el("button", "act", "⟳ other openers");
+  more.disabled = startersLoading || running;
+  more.onclick = () => void loadStarters();
+  shead.append(more);
+  view.append(shead);
+
+  if (startersLoading) view.append(researching("reading " + (brand ? brand.name : "the project") + " for what's worth asking…"));
+  if (session.starterError) {
+    view.append(el("div", "err", session.starterError));
+    const t = el("button", "act", "try again"); t.onclick = () => void loadStarters(); view.append(t);
+  }
+  if (session.starters && session.starters.length) {
+    view.append(optionCards(session.starters, null, (o) => { if (!running) void ask(o.label); }));
+  }
+
   // transcript
   const log = el("div", "call-log");
-  if (!session.turns.length) log.append(el("div", "empty", "Say hello, or bring a project folder and ask what to do next. Claude will talk back."));
+  if (!session.turns.length && !startersLoading) log.append(el("div", "empty", "Pick one above — or type anything. Claude answers in text and talks back."));
   for (const t of session.turns) {
     const row = el("div", "turn " + t.role + (t.pending ? " pending" : ""));
     const b = el("div", "bubble"); b.textContent = t.pending ? "…" : t.text; row.append(b);

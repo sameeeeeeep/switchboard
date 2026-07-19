@@ -124,6 +124,7 @@
         transition: border-color 0.13s, background 0.13s, transform 0.13s; }
       .card:hover { border-color: var(--edge-soft); background: var(--raised); transform: translateY(-2px); }
       .card.picked { border-color: var(--lime); background: var(--lime-soft); }
+      .cards.busy .card { pointer-events: none; opacity: 0.55; }
       .cardtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .anglechip { font: 400 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
         color: var(--ink-dim); background: var(--raised); border-radius: 999px; padding: 5px 9px; }
@@ -253,6 +254,8 @@
           <button class="btn" id="sample" type="button">See a sample — Allbirds</button>
           <span class="hint" id="conn-hint"></span>
         </div>
+        <!-- "you've already banked this" — offered before the same site is read a second time. -->
+        <div id="borrow" hidden></div>
       </section>
 
       <!-- Secondary knob: below the single input, never beside it. -->

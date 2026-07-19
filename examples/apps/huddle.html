@@ -125,6 +125,9 @@
       .composer input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 400 13px/1.4 var(--sans); padding: 12px 13px; outline: none; }
       .composer input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
       .empty { color: var(--ink-faint); font: 400 12.5px/1.8 var(--sans); text-align: center; padding: 24px 12px; }
+      /* the openers rail — options on the table before a word is typed */
+      .opener-head { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; }
+      .opener-src { flex: 1; min-width: 0; font: 400 11.5px/1.4 var(--mono); color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style>
   </head>
   <body>
@@ -135,7 +138,7 @@
     <main>
       <section class="hero" id="hero">
         <h1>Get on a call <em>with your own Claude</em>.</h1>
-        <p>Camera on, a warm thread that remembers the whole call, and Claude talks back on-device. Point it at a project folder and work the problem together — nothing but your words leaves your machine.</p>
+        <p>Connect Switchboard and the call opens itself: Claude reads your project, puts four real questions on the table, and answers the recommended one before you type. Camera on, a warm thread, replies spoken on-device — nothing but your words leaves your machine.</p>
       </section>
       <div id="view"></div>
     </main>

@@ -3,38 +3,234 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ad generator — brand → ads on your Claude + Higgsfield</title>
+    <title>Adwall — a wall of ad directions from your brand</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
-      body { font: 15px/1.6 system-ui, sans-serif; max-width: 760px; margin: 32px auto; padding: 0 16px; }
-      h1 { font-size: 20px; }
-      .status { font-size: 13px; color: #666; }
-      .row { display: flex; gap: 8px; margin: 12px 0; }
-      input[type=url] { flex: 1; font: inherit; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
-      button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
-      .event { color: #555; font-size: 13px; margin: 4px 0; }
-      #brand { background: #f7f7f8; border-radius: 10px; padding: 12px; margin: 12px 0; white-space: pre-wrap; }
-      #ads { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
-      .ad { border: 1px solid #eee; border-radius: 12px; overflow: hidden; }
-      .ad img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; background: #eee; }
-      .ad .cap { padding: 8px; font-size: 12px; color: #444; }
+      /* Adwall — the house design system (brandbrain language), inlined for standalone deploy.
+         Chrome is ALWAYS the house system; the lent brand's palette appears only as swatches and
+         inside rendered creatives, never as app chrome. */
+      :root {
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --lime: #C8F250; --lime-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; }
+      body { background: var(--page); color: var(--ink); font: 400 15px/1.6 var(--sans);
+        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      a { color: var(--lime); text-decoration: none; }
+      .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 22px 90px; }
+
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 34px; flex-wrap: wrap; }
+      .markrow { display: flex; align-items: center; gap: 10px; }
+      .glyph { width: 16px; height: 16px; border-radius: 5px; background: var(--lime);
+        box-shadow: 0 0 14px rgba(200, 242, 80, 0.35); flex: none; }
+      .brand { font: 600 18px/1 var(--display); letter-spacing: -0.02em; }
+      .tag { font: 400 12.5px/1.4 var(--sans); color: var(--ink-faint); margin-top: 4px; }
+      .tag em { color: var(--lime); font-style: normal; font-weight: 600; }
+      #chip-dock { margin-left: auto; }
+
+      .kicker { font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.16em;
+        color: var(--ink-dim); margin: 0 0 12px; }
+      .kicker .num { color: var(--lime); }
+
+      .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; padding: 20px; }
+
+      /* ---- buttons ---- */
+      .btn { font: 500 13.5px/1 var(--sans); border-radius: 10px; padding: 12px 16px; cursor: pointer;
+        border: 1px solid var(--edge); background: var(--panel); color: var(--ink-sec);
+        transition: border-color 0.15s, color 0.15s, opacity 0.15s; white-space: nowrap; }
+      .btn:hover:not(:disabled) { border-color: var(--edge-soft); color: var(--ink); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn-primary { background: var(--lime); color: var(--page); border-color: transparent; font-weight: 600; }
+      .btn-primary:hover:not(:disabled) { opacity: 0.9; color: var(--page); }
+      .btn-big { width: 100%; padding: 15px 0; font: 600 15px/1 var(--display); letter-spacing: -0.01em; margin-top: 14px; }
+      .btn-sm { padding: 8px 12px; font-size: 12.5px; }
+      .linkish { background: none; border: 0; padding: 0; cursor: pointer; font: 400 12px/1 var(--mono);
+        color: var(--ink-faint); text-decoration: underline; text-underline-offset: 3px; }
+      .linkish:hover:not(:disabled) { color: var(--lime); }
+      .linkish:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      /* ---- inputs ---- */
+      input[type="url"], input[type="text"] { width: 100%; background: var(--inset); border: 1px solid var(--edge);
+        border-radius: 10px; color: var(--ink); padding: 12px 14px; outline: none;
+        transition: border-color 0.15s; font: 400 14px/1.4 var(--sans); }
+      input:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      input:disabled { opacity: 0.55; cursor: not-allowed; }
+      #f-url { font-family: var(--mono); font-size: 13.5px; }
+      .flabel { display: flex; align-items: baseline; gap: 8px; font: 500 10px/1 var(--mono);
+        letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin: 0 0 8px; }
+
+      /* ---- 01 · source ---- */
+      .brandrow { display: flex; align-items: flex-start; gap: 12px; }
+      .bname { font: 600 17px/1.2 var(--display); letter-spacing: -0.01em; }
+      .bline { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+        font: 400 12.5px/1.5 var(--sans); color: var(--ink-dim); margin-top: 5px; }
+      .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--edge); flex: none; }
+      #switch-brand { margin-left: auto; flex: none; }
+      #url-toggle { display: block; margin-top: 12px; }
+      .urlrow { display: flex; gap: 10px; }
+      .urlrow input { flex: 1; min-width: 0; }
+      .subrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+      .hint { font: 400 12.5px/1.5 var(--sans); color: var(--ink-faint); }
+      .hint a { color: var(--lime); text-decoration: underline; }
+      .steer { margin-top: 12px; }
+
+      /* ---- wall log ---- */
+      .walllog { margin-top: 14px; padding: 16px 18px; }
+      .loghead { display: flex; align-items: center; gap: 8px; font: 500 10px/1 var(--mono);
+        letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 10px; }
+      .dotlive { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); flex: none;
+        box-shadow: 0 0 10px rgba(200, 242, 80, 0.5); animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+      #log { max-height: 170px; overflow-y: auto; }
+      .logline { font: 400 12.5px/1.7 var(--mono); color: var(--ink-faint); }
+      .logline.live { color: var(--ink-sec); }
+      .logline.bad { color: var(--danger); }
+      .logline.good { color: var(--ok); }
+
+      .errbox { margin-top: 14px; background: var(--panel); border: 1px solid var(--edge);
+        border-left: 3px solid var(--danger); border-radius: 0 12px 12px 0; padding: 14px 16px;
+        display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+        font: 400 13.5px/1.55 var(--sans); color: var(--ink-sec); }
+      .errbox button { background: var(--raised); border: 1px solid var(--edge); color: var(--ink);
+        border-radius: 8px; padding: 8px 16px; cursor: pointer; font: 500 12.5px/1 var(--sans); }
+      .errbox button:hover { border-color: var(--edge-soft); }
+
+      /* ---- 02 · the wall ---- */
+      #wall-sec { margin-top: 40px; }
+      .sechead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .sechead .kicker { margin: 0; }
+      .brandline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        font: 400 12px/1.7 var(--mono); color: var(--ink-faint); margin: 10px 0 14px; }
+      .brandline b { color: var(--ink-sec); font-weight: 500; }
+      .srcchip { font: 500 9.5px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+        border-radius: 999px; padding: 4px 9px; background: var(--raised); color: var(--ink-dim); }
+      #wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .tile { background: var(--panel); border: 1px solid var(--edge); border-radius: 15px;
+        padding: 16px; display: flex; flex-direction: column; gap: 0;
+        transition: border-color 0.13s, background 0.13s; }
+      .tile:hover { border-color: var(--edge-soft); }
+      .tile.rec { border-color: color-mix(in srgb, var(--lime) 45%, var(--edge)); }
+      .tiletop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .anglechip { font: 400 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--ink-dim); background: var(--raised); border-radius: 999px; padding: 5px 9px; }
+      .recflag { font: 500 9px/1 var(--mono); letter-spacing: 0.14em; color: var(--page);
+        background: var(--lime); border-radius: 4px; padding: 4px 7px; }
+      .fmt { font: 500 10px/1 var(--mono); letter-spacing: 0.1em; color: var(--ink-faint);
+        border: 1px solid var(--edge); border-radius: 4px; padding: 4px 6px; margin-left: auto; }
+      .theadline { font: 600 16.5px/1.3 var(--display); letter-spacing: -0.01em; margin: 12px 0 7px; }
+      .tprompt { font: 400 12px/1.55 var(--sans); color: var(--ink-dim); flex: 1; }
+      .timgbox { position: relative; width: 100%; margin-top: 13px; border-radius: 10px; overflow: hidden;
+        background: var(--inset); border: 1px solid var(--edge-soft); }
+      .timgbox img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+      .timghint { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+        padding: 14px; color: var(--ink-faint); font: 400 12px/1.5 var(--mono); }
+      .timghint.bad { color: var(--danger); }
+      .castline { display: flex; align-items: center; justify-content: center; gap: 8px; }
+      .tilefoot { display: flex; gap: 8px; margin-top: 12px; }
+      .tilefoot .btn { flex: 1; text-align: center; padding: 10px 0; }
+      .morebar { margin-top: 16px; display: flex; justify-content: center; }
+
+      .foot { margin-top: 56px; font: 400 12px/1.7 var(--mono); color: var(--ink-faint);
+        border-top: 1px solid var(--edge); padding-top: 18px; }
+
+      @media (max-width: 940px) { #wall { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 640px) {
+        #wall { grid-template-columns: 1fr; }
+        .urlrow { flex-direction: column; }
+        .urlrow .btn { width: 100%; }
+        header { gap: 10px; }
+        #chip-dock { margin-left: auto; }
+      }
     </style>
   </head>
   <body>
-    <h1>🎨 Ad generator <span class="status" id="status">— not connected</span></h1>
-    <p class="status">
-      Paste a website. The app uses <em>your</em> Claude to read the site and extract its brand, then
-      <em>your</em> Higgsfield connector to generate ads — all via <code>window.claude</code>. The site
-      integrates nothing and pays for nothing. Reading the page is auto-approved; each image generation
-      (it spends credits) pops a per-action consent.
-    </p>
-    <button id="connect">Connect Relay</button>
-    <div class="row">
-      <input id="url" type="url" value="https://www.anthropic.com" placeholder="https://a-brand.com" />
-      <button id="go" disabled>Generate ads</button>
+    <div class="wrap">
+      <header>
+        <div>
+          <div class="markrow">
+            <span class="glyph"></span>
+            <span class="brand">Adwall</span>
+          </div>
+          <div class="tag">One brand in → a wall of ad directions out · drafted on <em>your own Claude</em>, rendered on <em>your Higgsfield</em></div>
+        </div>
+        <div id="chip-dock"></div>
+      </header>
+
+      <p class="kicker"><span class="num">01</span> · source</p>
+
+      <!-- Brand lent: context-first entry — the wall drafts itself, no typing needed. -->
+      <section class="panel" id="brand-entry" hidden>
+        <div class="brandrow">
+          <div>
+            <div class="bname" id="b-name">—</div>
+            <div class="bline" id="b-line"></div>
+          </div>
+          <button class="linkish" id="switch-brand" type="button">switch brand</button>
+        </div>
+        <button class="btn btn-primary btn-big" id="draft-brand" type="button">Draft the wall</button>
+        <button class="linkish" id="url-toggle" type="button">or draft from a site URL instead</button>
+      </section>
+
+      <!-- No brand lent: the single URL fallback. -->
+      <section class="panel" id="url-entry">
+        <label class="flabel" for="f-url">Site URL</label>
+        <div class="urlrow">
+          <input id="f-url" type="url" value="https://www.allbirds.com" spellcheck="false"
+            placeholder="https://your-startup.com" />
+          <button class="btn btn-primary" id="draft-url" type="button">Draft the wall</button>
+        </div>
+        <div class="subrow">
+          <button class="btn" id="use-brand" type="button">Use a lent brand instead</button>
+          <span class="hint" id="conn-hint"></span>
+        </div>
+        <!-- "you've already banked this" — offered before the same site is read a second time. -->
+        <div id="borrow" hidden></div>
+      </section>
+
+      <!-- The one optional free-text knob. -->
+      <div class="steer">
+        <label class="flabel" for="steer">Steer <span style="letter-spacing:0.06em">· optional</span></label>
+        <input id="steer" type="text"
+          placeholder="one line to steer the whole wall — e.g. holiday sale, founder story, gen-z humor" />
+      </div>
+
+      <section class="panel walllog" id="walllog" hidden>
+        <div class="loghead"><span class="dotlive"></span><span>wall log</span></div>
+        <div id="log"></div>
+      </section>
+
+      <div class="errbox" id="errbox" hidden>
+        <span id="err-msg"></span>
+        <button id="err-retry">Retry</button>
+      </div>
+
+      <section id="wall-sec" hidden>
+        <div class="sechead">
+          <p class="kicker"><span class="num">02</span> · the wall — render the ones worth money</p>
+          <button class="btn btn-sm" id="more" type="button">Draft 6 more</button>
+        </div>
+        <div class="brandline" id="brandline"></div>
+        <div id="wall"></div>
+        <div class="morebar">
+          <button class="btn" id="more-bottom" type="button">Draft 6 more</button>
+        </div>
+      </section>
+
+      <footer class="foot">Adwall ships only the interface. The brand it works from is lent by you; every
+        direction is drafted on your own Claude and every creative renders through your own Higgsfield
+        connector — each render asks your consent first, because it spends your credits.</footer>
     </div>
-    <div id="events"></div>
-    <div id="brand"></div>
-    <div id="ads"></div>
     <script type="module" src="./dist/adgen.js"></script>
   </body>
 </html>

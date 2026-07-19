@@ -14,6 +14,11 @@ let installed = null; // null = unknown, false = no extension, true = extension 
 let spread = null;    // [{ i: deck index, rev: boolean }] × 3
 let reading = null;   // parsed reading JSON
 let busy = false;
+let querent = null;   // { first, fullName, company, notes, projects[] } | null — what the table knows of the visitor
+let autoRan = false;  // the proactive first reading fires at most once per page load
+let stateT = 0;       // last-modified epoch ms of the persisted state (drives the remote reconcile)
+let restoring = false; // true while re-applying saved state, so persist() keeps the original timestamp
+const slotTimers = [[], [], []]; // pending flip/veil timeouts per slot — cleared on every redeal
 
 // ---------------- the deck: all 22 major arcana ----------------
 // g = the card's sigil, built from a small set of parameterized gold-line primitives so all
@@ -242,6 +247,10 @@ function deal(sp, { instant = false } = {}) {
   spread = sp;
   clearReadingUI();
   sp.forEach((s, k) => {
+    // Kill any flip/veil timers left over from a previous deal — a redraw mid-animation must not
+    // un-veil the NEW card's name on the OLD card's schedule (the .cardname element persists).
+    slotTimers[k].forEach(clearTimeout);
+    slotTimers[k] = [];
     const slot = $("slot-" + k);
     const c = DECK[s.i];
     const box = slot.querySelector(".cardbox");
@@ -264,36 +273,113 @@ function deal(sp, { instant = false } = {}) {
       nameEl.classList.add("veil");
       box.classList.add("dealing");
       box.style.animationDelay = k * 180 + "ms";
-      setTimeout(() => card.classList.add("flip"), 950 + k * 600);
-      setTimeout(() => nameEl.classList.remove("veil"), 1400 + k * 600);
+      slotTimers[k].push(
+        setTimeout(() => card.classList.add("flip"), 950 + k * 600),
+        setTimeout(() => nameEl.classList.remove("veil"), 1400 + k * 600),
+      );
     }
   });
-  $("readrow").hidden = false;
   $("draw").textContent = "Draw again";
   reflect();
   persist();
 }
 
 // ---------------- the standard connect chip ----------------
+// contextKinds ride in scope so the table can know the querent (their personal card) and their
+// projects. GOTCHA: grants are exact-match and a reconnect REUSES the existing grant, ignoring
+// newly requested kinds — so every relay.context.* call below degrades gracefully on an old grant.
 mountConnect($("chip-dock"), {
-  context: "none", // no brand need — identity-only chip, no "working on" project
-  scope: { reason: "read your cards", models: ["sonnet"] },
+  context: "none", // identity-only chip, no "working on" row — the kinds above are granted via scope
+  scope: { reason: "read your cards", models: ["sonnet"], contextKinds: ["personal", "project"] },
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; installed = true; reflect(); },
-  onDisconnect: () => { relay = null; reflect(); },
+  onConnect: async (r) => {
+    relay = r;
+    installed = true;
+    await loadQuerent();
+    renderChips();
+    reflect();
+    await autoRun();
+  },
+  onDisconnect: () => { relay = null; querent = null; renderChips(); reflect(); },
 });
-// Fast probe so a returning user's grant enables the reading without a click.
+// Fast probe so a returning user's grant enables — and STARTS — the reading without a click.
+// restore() already ran synchronously below, so spread/reading are settled before autoRun.
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
   if (r && "connect" in r) {
     installed = true;
     const grant = await r.permissions().catch(() => null);
-    if (grant) relay = r;
+    if (grant) {
+      relay = r;
+      await loadQuerent();
+      renderChips();
+    }
   } else {
     installed = false;
   }
   reflect();
+  if (relay) await autoRun();
 })();
+
+// ---------------- the querent: who is sitting at the table ----------------
+async function loadQuerent() {
+  querent = null;
+  if (!relay) return;
+  const me = await relay.identity().catch(() => null);
+  // list() rejects on an old grant without contextKinds — the table simply knows less.
+  const metas = await relay.context.list().catch(() => []);
+  let ctx = await relay.context.active().catch(() => null);
+  if (!ctx || (ctx.kind || "").toLowerCase() !== "personal") {
+    const meta = metas.find((m) => (m.kind || "").toLowerCase() === "personal");
+    ctx = meta ? await relay.context.use(meta.id).catch(() => null) : null;
+  }
+  const d = ctx && ctx.data && typeof ctx.data === "object" ? ctx.data : {};
+  const clean = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const fullName = clean(d.fullName) || clean(me?.name);
+  const q = {
+    first: fullName ? fullName.split(/\s+/)[0] : null,
+    fullName,
+    company: clean(d.company),
+    notes: clean(d.notes),
+    projects: metas.filter((m) => (m.kind || "").toLowerCase() === "project").map((m) => clean(m.name)).filter(Boolean),
+  };
+  // A table that learned nothing keeps querent null — everything downstream handles that.
+  querent = q.fullName || q.company || q.notes || q.projects.length ? q : null;
+}
+
+// ---------------- proactive: a connected table deals and reads, zero clicks ----------------
+async function autoRun() {
+  if (autoRan || busy || !relay) return;
+  autoRan = true;
+  // Reconcile cross-device state first: relay.storage may hold a newer reading than localStorage.
+  try {
+    const raw = await relay.storage.get(KEY).catch(() => null);
+    if (raw) {
+      let remote = null;
+      try { remote = JSON.parse(raw); } catch { /* corrupt remote — ignore it */ }
+      if (remote && typeof remote === "object" && (remote.t || 0) > stateT && validSpread(remote.spread)) {
+        restoring = true;
+        try {
+          stateT = remote.t || 0;
+          if (typeof remote.q === "string" && remote.q.trim()) $("q").value = remote.q;
+          deal(remote.spread, { instant: true });
+          if (validReading(remote.reading)) {
+            reading = remote.reading;
+            renderReading(remote.reading);
+          }
+        } finally { restoring = false; }
+        persist(); // sync localStorage with what remote gave us
+      }
+    }
+  } catch { /* storage unavailable — proceed with local state */ }
+  if (reading) return;                        // a shown reading is never re-bought with tokens
+  if (spread) { await readSpread(); return; } // dealt but unread — read it
+  deal(drawSpread());                         // blank table — deal and read; the status flame covers the flip
+  await readSpread();
+  // A failed auto-read lands in the errline with its retry button — visible and recoverable, no loop.
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function reflect() {
   const on = !!relay;
@@ -301,9 +387,15 @@ function reflect() {
   $("ask").disabled = !on || busy || !spread;
   $("draw").disabled = busy;
   $("again").disabled = busy;
+  $("q").disabled = busy;
+  $("fq").disabled = busy;
+  // A chip clicked mid-stream would rewrite #q under the in-flight reading — lock them while busy.
+  document.querySelectorAll("#chips .chip").forEach((b) => { b.disabled = busy; });
   const hint = $("conn-hint");
   if (on) {
-    hint.innerHTML = "read on <b>your</b> Claude — nothing leaves the table but the question";
+    hint.innerHTML = querent?.first
+      ? `the table knows you, ${escapeHtml(querent.first)} — read on <b>your</b> Claude; nothing leaves but the question`
+      : "read on <b>your</b> Claude — nothing leaves the table but the question";
   } else if (installed === false) {
     hint.innerHTML = `the reading runs on your own Claude — <a href="${INSTALL_URL}" target="_blank" rel="noreferrer">get Switchboard</a>, then connect (top right)`;
   } else {
@@ -318,8 +410,23 @@ function cardLine(pos, s) {
 }
 
 function buildPrompt(q) {
-  return [
+  const lines = [
     'You are the reader at Arcana, a midnight card table. Your voice: sharp, intimate, direct, a little dangerous. Modern language — no "thee" or "thou", no cosmic hedging, no disclaimers, no hedging of any kind. You respect the querent\'s intelligence and you never flatter. Reversed cards read as blocked, delayed, or internalized energy — never doom.',
+  ];
+  // When the table knows the querent, the cards speak to their actual life. With querent === null
+  // this block is skipped entirely and the prompt is byte-identical to the anonymous one.
+  if (querent) {
+    const facts = [];
+    if (querent.fullName) facts.push("name: " + querent.fullName);
+    if (querent.company) facts.push("company: " + querent.company);
+    if (querent.projects.length) facts.push("projects on their plate: " + querent.projects.join(", "));
+    if (querent.notes) facts.push("notes they keep: " + querent.notes);
+    lines.push(
+      "",
+      "What the table knows of the querent (use it where the cards touch it; address them by first name once; never recite these facts back as a list): " + facts.join("; ") + ".",
+    );
+  }
+  lines.push(
     "",
     `The querent asks: "${q}"`,
     "",
@@ -331,7 +438,8 @@ function buildPrompt(q) {
     'Read THIS spread for THIS question. Speak to the querent as "you".',
     "Respond with ONLY a valid JSON object — no prose before or after, no markdown fences — in exactly this shape:",
     '{"opening":"1-2 lines that meet the question head-on","cards":[{"position":"past","take":"3-4 sentences reading this exact card, in this position, for this question — honor its orientation"},{"position":"present","take":"3-4 sentences"},{"position":"future","take":"3-4 sentences"}],"synthesis":"the three cards as one arc — how past feeds present feeds future; 3-5 sentences","advice":"one concrete instruction the querent can act on this week — imperative and specific","omen":"a single closing line, ominous or hopeful, that they will remember"}',
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 const STATUS_LINES = [
@@ -415,20 +523,41 @@ function showErr(err) {
 function hideErr() { $("errline").hidden = true; }
 
 // ---------------- wiring ----------------
-const CHIP_QUESTIONS = [
-  "Should I take the job?",
+const GENERIC_QUESTIONS = [
   "What am I not seeing?",
+  "Should I take the job?",
   "This relationship — where is it going?",
   "What does this launch need from me?",
 ];
-CHIP_QUESTIONS.forEach((t) => {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "chip";
-  b.textContent = t;
-  b.addEventListener("click", () => { $("q").value = t; persist(); });
-  $("chips").append(b);
-});
+
+// Question chips, derived locally from the querent — zero tokens. The first chip is the ★
+// recommended one; disconnected or context-less tables fall back to the four generics.
+function renderChips() {
+  const qs = [];
+  if (querent?.company) qs.push(`What does ${querent.company} need from me right now?`);
+  if (querent?.projects?.[0]) qs.push(`Where is ${querent.projects[0]} actually stuck?`);
+  if (!qs.length) qs.push(DEFAULT_Q);
+  for (const g of GENERIC_QUESTIONS) {
+    if (qs.length >= 4) break;
+    if (!qs.includes(g)) qs.push(g);
+  }
+  const rec = qs[0];
+  const box = $("chips");
+  box.textContent = "";
+  qs.forEach((t, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (i === 0 ? " rec" : "");
+    b.textContent = (i === 0 ? "★ " : "") + t;
+    b.disabled = busy;
+    b.addEventListener("click", () => { if (busy) return; $("q").value = t; persist(); });
+    box.append(b);
+  });
+  // Prefill the ★ question — but never clobber a question the user typed themselves.
+  const qEl = $("q");
+  const cur = qEl.value.trim();
+  if ((!cur || cur === DEFAULT_Q) && cur !== rec) qEl.value = rec;
+}
 
 $("draw").addEventListener("click", () => { if (!busy) deal(drawSpread()); });
 $("again").addEventListener("click", () => {
@@ -451,28 +580,57 @@ $("ask").addEventListener("click", () => {
   readSpread();
 });
 $("fq").addEventListener("keydown", (e) => { if (e.key === "Enter") $("ask").click(); });
-$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") $("draw").click(); });
+$("q").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (reading) {
+    // A rendered reading is precious — Enter re-reads the SAME cards with the edited question
+    // (follow-up semantics) instead of silently redrawing over it. "Draw again" stays the
+    // explicit way to burn the spread.
+    if (busy) return;
+    if (!relay) { showErr(Object.assign(new Error("connect first"), { code: 4100 })); return; }
+    hideErr();
+    readSpread();
+  } else {
+    $("draw").click();
+  }
+});
 $("q").addEventListener("change", persist);
 
-// ---------------- persistence ----------------
+// ---------------- persistence: localStorage fast-path + relay.storage write-through ----------------
+function validSpread(sp) {
+  return Array.isArray(sp) && sp.length === 3 && sp.every((x) => x && DECK[x.i]);
+}
+function validReading(r) {
+  return !!(r && typeof r === "object" && typeof r.opening === "string" && Array.isArray(r.cards) && r.cards.length >= 3);
+}
 function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify({ q: $("q").value, spread, reading })); } catch { /* storage full/blocked — session-only */ }
+  if (!restoring) stateT = Date.now();
+  const blob = JSON.stringify({ q: $("q").value, spread, reading, t: stateT });
+  try { localStorage.setItem(KEY, blob); } catch { /* storage full/blocked — session-only */ }
+  // Write-through so the reading follows the user across devices (relay.storage values are strings).
+  if (relay) relay.storage.set(KEY, blob).catch(() => { /* read-only site / daemon asleep — local copy stands */ });
 }
 function restore() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { /* corrupt state — start fresh */ }
-  if (!s) return;
-  if (typeof s.q === "string" && s.q.trim()) $("q").value = s.q;
-  if (Array.isArray(s.spread) && s.spread.length === 3 && s.spread.every((x) => DECK[x?.i])) {
-    deal(s.spread, { instant: true });
-    if (s.reading) {
-      reading = s.reading;
-      renderReading(s.reading);
-      persist(); // deal() saved reading:null; re-save the full state
+  if (!s || typeof s !== "object") return;
+  restoring = true;
+  try {
+    stateT = s.t || 0;
+    if (typeof s.q === "string" && s.q.trim()) $("q").value = s.q;
+    if (validSpread(s.spread)) {
+      deal(s.spread, { instant: true });
+      if (validReading(s.reading)) {
+        reading = s.reading;
+        renderReading(s.reading);
+        persist(); // deal() saved reading:null; re-save the full state
+      }
+      // A corrupt/truncated reading is dropped: the dealt spread stays, button reads "Read the spread".
     }
-  }
+  } finally { restoring = false; }
 }
 
 ghosts();
 restore();
+renderChips();
 reflect();

@@ -40,6 +40,18 @@
       #vault-path { color: var(--ink-sec); }
       #vault-bind { font: 500 11px/1 var(--mono); background: none; border: 1px solid var(--edge); border-radius: 8px; color: var(--lime); padding: 6px 10px; cursor: pointer; }
       #vault-bind:hover { border-color: var(--lime); }
+      .bindrow input { flex: 1; min-width: 220px; max-width: 420px; background: var(--inset); color: var(--ink); border: 1px solid var(--edge); border-radius: 8px; padding: 7px 10px; font: 400 12px/1.4 var(--mono); outline: none; }
+      .bindrow input:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      #vault-bind-go { font: 500 11px/1 var(--mono); background: var(--lime); border: 1px solid transparent; border-radius: 8px; color: var(--page); padding: 7px 12px; cursor: pointer; }
+      #vault-bind-go:disabled { opacity: .55; cursor: wait; }
+
+      /* today's brief — the proactive panel: auto-streamed bullets + the ★ task */
+      .briefline { font: 400 13.5px/1.65 var(--sans); color: var(--ink-sec); padding-left: 16px; position: relative; }
+      .briefline + .briefline { margin-top: 7px; }
+      .briefline::before { content: "—"; position: absolute; left: 0; color: var(--ink-faint); }
+      .briefrec { display: flex; align-items: baseline; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--edge-soft); font: 500 13.5px/1.5 var(--sans); color: var(--ink); }
+      .recbadge { flex: 0 0 auto; font: 600 9.5px/1.4 var(--mono); letter-spacing: .06em; color: var(--page); background: var(--lime); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+      .chip-rec { border-color: var(--lime); color: var(--lime); background: var(--lime-soft); }
 
       .sysline { margin-top: 12px; font: 400 12px/1.6 var(--mono); color: var(--danger); }
 
@@ -97,11 +109,16 @@
       .proaditem::before { content: "→"; position: absolute; left: 0; color: var(--ink-faint); }
       .proadmore { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); margin-top: 6px; padding-left: 12px; }
       .pfoot { margin-top: 12px; }
+      /* brand swatches — the palette shown AS colour, each carrying the CSS variable it was read from */
+      .pswatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 11px; }
+      .pswatch { width: 22px; height: 22px; border-radius: 7px; border: 1px solid var(--edge); cursor: help; }
+      .pswatchnote { font: 400 10px/1 var(--mono); font-style: normal; color: var(--ink-faint); margin-left: 4px; }
 
       /* tasks — the board: quick-add bar + list cards, all backed by .md */
       .boardbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -2px 0 12px; }
       .quickadd { display: flex; gap: 8px; flex: 1; min-width: 260px; }
       .quickadd input { flex: 1; min-width: 0; padding: 9px 12px; font: 400 13px/1.5 var(--mono); }
+      #task-newlist { flex: 0 1 180px; min-width: 120px; }
       .quickadd select { background: var(--inset); color: var(--ink-sec); border: 1px solid var(--edge); border-radius: 10px; padding: 0 8px; font: 400 12px/1 var(--mono); cursor: pointer; max-width: 130px; }
       .quickadd select:focus { outline: none; border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
       .btn-add { font: 600 13px/1 var(--sans); background: var(--lime); color: var(--page); border: 1px solid transparent; border-radius: 10px; padding: 0 16px; cursor: pointer; transition: opacity .15s; }
@@ -135,6 +152,11 @@
       .backl { font: 400 11px/1.4 var(--mono); color: var(--ink-faint); }
       .ndel { position: absolute; top: 12px; right: 14px; font: 400 10.5px/1 var(--mono); color: var(--ink-faint); background: none; border: 0; cursor: pointer; }
       .ndel:hover { color: var(--danger); }
+      .ndel.armed { color: var(--danger); }
+      .note button.nt { background: none; border: 0; padding: 0; color: var(--ink); cursor: pointer; text-align: left; display: block; }
+      .note button.nt:hover { color: var(--lime); }
+      .nfull { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font: 400 12.5px/1.7 var(--mono); color: var(--ink-sec); background: var(--inset); border: 1px solid var(--edge-soft); border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
+      .nedit { margin-top: 10px; min-height: 150px; }
 
       /* ask */
       #ask-out { margin-top: 12px; white-space: pre-wrap; font: 400 13.5px/1.75 var(--sans); color: var(--ink-sec); background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; padding: 14px 16px; }
@@ -157,7 +179,24 @@
         <b>vault</b> <span id="vault-path"></span> · <span id="vault-state"></span>
         <button id="vault-bind" hidden>bind a folder (Obsidian vault works)</button>
       </div>
+      <div class="vault bindrow" id="vault-bindrow" hidden>
+        <b>folder</b>
+        <input type="text" id="vault-bind-path" spellcheck="false" placeholder="~/SwitchboardBrain — or an existing Obsidian vault" />
+        <button id="vault-bind-go">bind</button>
+        <button class="linklike" id="vault-bind-cancel" type="button">cancel</button>
+      </div>
       <div class="sysline" id="sysline" hidden></div>
+
+      <section class="sec" id="brief-sec" hidden>
+        <p class="kick"><b>today</b> the brief <i id="brief-note"></i></p>
+        <div class="panel">
+          <div id="brief-out" hidden></div>
+          <div class="chips" id="starter" hidden></div>
+          <div class="row">
+            <button class="linklike" id="brief-regen" type="button" disabled>↻ regenerate the brief</button>
+          </div>
+        </div>
+      </section>
 
       <section class="sec">
         <p class="kick"><b>01</b> bank it <i>one box — notes, [[links]] and “- [ ] tasks” all go here</i></p>
@@ -182,11 +221,17 @@
       </section>
 
       <section class="sec">
-        <p class="kick"><b>04</b> tasks <i id="tasks-count"></i></p>
+        <p class="kick"><b>04</b> brands <i id="brands-note"></i></p>
+        <div class="projects" id="brands"></div>
+      </section>
+
+      <section class="sec">
+        <p class="kick"><b>05</b> tasks <i id="tasks-count"></i></p>
         <div class="boardbar">
           <div class="quickadd">
             <input type="text" id="task-in" placeholder="add a task…" disabled />
             <select id="task-list" title="which list to file it under" disabled></select>
+            <input type="text" id="task-newlist" placeholder="new list name…" hidden />
             <button class="btn-add" id="task-add" disabled>Add</button>
           </div>
           <div class="boardtools">
@@ -199,12 +244,12 @@
       </section>
 
       <section class="sec">
-        <p class="kick"><b>05</b> the brain <i id="brain-note"></i></p>
+        <p class="kick"><b>06</b> the brain <i id="brain-note"></i></p>
         <div class="notes" id="notes"></div>
       </section>
 
       <section class="sec">
-        <p class="kick"><b>06</b> ask the bank <i>answers from your notes, on your Claude</i></p>
+        <p class="kick"><b>07</b> ask the bank <i>answers from your notes, on your Claude</i></p>
         <div class="panel">
           <input type="text" id="ask-in" placeholder="what am I forgetting about the launch?" />
           <div class="row">

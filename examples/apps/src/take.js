@@ -85,8 +85,14 @@ async function syncContext() {
 }
 
 // ==== per-origin state (values are opaque STRINGS — store JSON) =============================
-let state = { run: null };
-async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } }
+let state = { premises: null, premiseError: null, run: null };
+// onReady() fires from BOTH the chip's onConnect and the returning-user probe. A second boot must
+// never read state back over a run that is mid-stream — that would orphan the results.
+async function loadState() {
+  if (running || premLoading) return;
+  try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = Object.assign({ premises: null, premiseError: null, run: null }, JSON.parse(raw)); }
+  catch { state = { premises: null, premiseError: null, run: null }; }
+}
 async function saveState() { try { await relay.storage.set(APP.id + "-state", JSON.stringify(state)); } catch { /* non-fatal */ } }
 
 // ==== llm helpers — the EXACT stream contract; never guess these shapes =====================
@@ -186,35 +192,89 @@ function connectSteps() {
   const s1 = el("div"); s1.innerHTML = notInstalled
     ? "<b>1</b> · Install Switchboard (button, top-right)"
     : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  const s2 = el("div"); s2.innerHTML = "<b>2</b> · One line in — the pipeline runs itself";
-  const s3 = el("div"); s3.innerHTML = "<b>3</b> · Pick a card, steer anywhere, keep what you like";
+  const s2 = el("div"); s2.innerHTML = "<b>2</b> · Four takes worth recording appear — nothing to type";
+  const s3 = el("div"); s3.innerHTML = "<b>3</b> · The ★ one scripts itself; pick another or steer it";
   steps.append(s1, s2, s3);
   card.append(steps);
   return card;
 }
 
 // ==== APP LOGIC ═════════════════════════════════════════════════════════════════════════════
-// TAKE — script stage (this wrapp's only prompt work) + the shared kit RECORDER. ONE input: what
-// you're recording, in a line → your Claude drafts 3 beat-scripts (one recommended) → the recorder
-// mounts against the pick → record locally → download. Steering redrafts the script. The take never
-// leaves the browser; Claude only ever sees the one-line description, not the recording.
+// TAKE — PROACTIVE, context-first. The moment Switchboard is connected (fresh chip click OR a
+// page-load with a standing grant) Take reads the lent context and drafts 4 concrete PREMISES —
+// specific things THIS project is worth recording right now — one ★ recommended, then expands the
+// ★ into a full beat script with ZERO typing. The text box below is a steer ("or describe your
+// own take"), never a gate. Stage 2 is the shared kit RECORDER against the picked script; the take
+// never leaves the browser — Claude only ever sees the premise line, never the recording.
 
 const STEER_CHIPS = ["plainer words", "punchier", "shorter", "different angle"];
 const MODES = [
   { key: "screen", label: "Screen + mic", sub: "walk through a product, tool, or flow", maxSeconds: 180, fileName: "take-screen.webm" },
   { key: "camera", label: "Camera + mic", sub: "talk to camera — intro, pitch, update", maxSeconds: 120, fileName: "take-camera.webm" },
 ];
-let running = false;
+let running = false;      // the script stage is busy
+let premLoading = false;  // the premise stage is busy
+let premisesTried = false; // one proactive premise pass per page life — the chip's onConnect and the
+                           // returning-user probe both funnel through onReady(); this dedupes them.
 let recHost = null; // stable recorder host, kept OUT of render() so a re-render never kills a live take
 
-function autostart() { if (state.run) { state.run.status = ""; render(); } }
+// The whole doctrine in one function: connected → options on screen, nothing typed.
+function autostart() {
+  if (state.run) state.run.status = "";
+  render();
+  if (state.premises && state.premises.length) { premisesTried = true; return; }
+  if (premisesTried) return;
+  premisesTried = true;
+  void loadPremises();
+}
 
-async function start(input) {
-  if (!relay || running) return;
-  input = String(input || "").trim();
-  if (!input) { toast("One line on what you're recording first.", true); return; }
+const ctxBlob = (n) => (brand ? JSON.stringify(brand.data || {}).slice(0, n || 2200) : "");
+
+// STAGE 0 — the premises. Derived entirely from the lent project: its products, voice, audience.
+// Degrades honestly with no context (generic-but-real takes, visibly labeled) and never locks the UI.
+async function loadPremises(steer) {
+  if (!relay || premLoading) return;
+  premLoading = true; state.premiseError = null; render();
+  try {
+    const arr = await askJsonArray([
+      `You are ${APP.name}. A founder is about to hit record — screen or camera — and needs to know WHAT is worth recording right now.`,
+      brand
+        ? `THE PROJECT "${brand.name}" — everything must come from here (its products, voice, audience, positioning): ${ctxBlob()}`
+        : "No project was lent, so propose four takes any small product team could genuinely record this week, and keep them concrete.",
+      "Propose 4 takes. Each is a specific, shootable idea — a named product walked through end to end, a real objection answered out loud, a proof shown live on screen — not a category and not a topic. Never invent facts beyond what you're given.",
+      steer ? `Steer (apply it): "${steer}"` : "",
+      'Return ONLY a JSON array — no prose, no fences. Each element: {"label":<the take, 3-7 words>,"text":<one line: what happens on screen and who it is for>,"recommended":<true for exactly one>}',
+    ]);
+    if (!arr || !arr.length) throw new Error("no takes came back — hit ⟳ other takes");
+    const opts = arr.slice(0, 4).map((o) => ({
+      id: uid(),
+      label: String(o.label || o.title || "A take").slice(0, 70),
+      text: String(o.text || o.body || o.description || "").trim().slice(0, 320),
+      recommended: !!o.recommended,
+    }));
+    if (!opts.some((o) => o.recommended)) opts[0].recommended = true;
+    let seen = false;
+    for (const o of opts) { if (o.recommended) { if (seen) o.recommended = false; else seen = true; } }
+    state.premises = opts;
+  } catch (e) { state.premiseError = msg(e); }
+  finally {
+    premLoading = false; await saveState(); render();
+    // The ★ is a call, not a decoration: it details itself into a full script with zero clicks.
+    const rec = (state.premises || []).find((o) => o.recommended);
+    if (rec && !state.run && !running) void start(rec);
+  }
+}
+
+async function start(premise) {
+  if (!relay) return;
+  if (running) { toast("Still drafting that one — one sec."); return; }
+  const label = String(premise?.label || "").trim();
+  if (!label) { toast("Pick a take, or describe one.", true); return; }
   destroyRecorder();
-  state.run = { id: uid(), input, mode: "screen", options: null, selectedId: null, steers: [], status: "", error: null };
+  state.run = {
+    id: uid(), premiseId: premise.id || null, input: label, brief: String(premise.text || ""),
+    mode: "screen", options: null, selectedId: null, steers: [], status: "", error: null,
+  };
   await saveState(); render();
   await draftScript();
 }
@@ -228,7 +288,8 @@ async function draftScript(steer) {
     const arr = await askJsonArray([
       `You are ${APP.name}, scripting a ${mode.label.toLowerCase()} recording (${mode.sub}, up to ${mode.maxSeconds}s).`,
       `WHAT THEY'RE RECORDING: "${r.input}"`,
-      brand ? `LENT CONTEXT "${brand.name}" (ground the script in it — voice, specifics): ${JSON.stringify(brand.data).slice(0, 2500)}` : "",
+      r.brief ? `THE PREMISE IN FULL: ${r.brief}` : "",
+      brand ? `LENT CONTEXT "${brand.name}" (ground the script in it — voice, specifics): ${ctxBlob(2500)}` : "",
       "Draft 3 script options, each a genuinely different angle. Each option: a list of BEATS, one per line — for screen recordings each beat is 'what's on screen — the spoken line'; for camera each beat is a short spoken line. Plain words a person actually says out loud. Never invent facts beyond what you're given.",
       r.steers.length ? `Steering (apply the latest): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
       'Return ONLY a JSON array — no prose, no fences. Each element: {"label":<the angle, 2-5 words>,"text":<the beats, one per line>,"recommended":<true for exactly one>}',
@@ -261,31 +322,50 @@ async function copyScript() {
 function render() {
   const hero = $("hero"), view = $("view");
   const r = state.run;
-  hero.hidden = !!r;
+  hero.hidden = !!relay;
   view.textContent = "";
 
   if (!relay) { view.append(connectSteps()); return; }
 
-  if (!r) {
-    const startBox = el("div", "start");
-    if (brand) startBox.append(el("div", "ctx", "grounding scripts in your lent context — " + brand.name));
-    const row = el("div", "bindrow");
-    const input = el("input");
-    input.placeholder = "one line — what are you recording?";
-    const go = () => { if (input.value.trim()) void start(input.value); };
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
-    const btn = el("button", "primary", "Script it ▸"); btn.onclick = go;
-    row.append(input, btn);
-    startBox.append(row);
-    view.append(startBox);
-    setTimeout(() => input.focus(), 30);
-    return;
+  // ---- stage 0: the premises — always on screen the moment we're connected ----
+  const head = el("div", "runbar");
+  head.append(el("span", "kicker", "what to record"));
+  head.append(el("span", "run-input", brand ? "drawn from " + brand.name : "no context lent — generic takes"));
+  const more = el("button", "act", "⟳ other takes");
+  more.disabled = premLoading;
+  more.onclick = () => void loadPremises();
+  head.append(more);
+  view.append(head);
+
+  if (premLoading) view.append(researching("reading " + (brand ? brand.name : "the project") + " for what's worth recording…"));
+  if (state.premiseError) {
+    view.append(el("div", "err", state.premiseError));
+    const t = el("button", "act", "try again"); t.onclick = () => void loadPremises(); view.append(t);
+  }
+  if (state.premises && state.premises.length) {
+    view.append(optionCards(state.premises, r ? r.premiseId : null, (o) => { void start(o); }));
   }
 
+  // The ONE free-text box: a steer on an already-populated board, never a gate in front of it.
+  const own = el("div", "steer");
+  own.append(el("span", "kicker", "or describe your own — optional"));
+  const ownRow = el("div", "row");
+  const ownBox = el("div", "box");
+  const ownInput = el("input"); ownInput.placeholder = "e.g. a 40-second walkthrough of the pricing page";
+  const ownGo = () => { const t = ownInput.value.trim(); if (!t) return; ownInput.value = ""; void start({ id: null, label: t, text: "" }); };
+  ownInput.addEventListener("keydown", (e) => { if (e.key === "Enter") ownGo(); });
+  ownBox.append(ownInput);
+  const ownBtn = el("button", "send", "script it"); ownBtn.onclick = ownGo;
+  ownRow.append(ownBox, ownBtn); own.append(ownRow);
+  view.append(own);
+
+  if (!r) return;
+
   const bar = el("div", "runbar");
-  bar.append(el("span", "kicker", "recording"), el("span", "run-input", r.input), el("span", "grow"));
+  bar.style.marginTop = "26px";
+  bar.append(el("span", "kicker", "recording"), el("span", "run-input", r.input));
   const cp = el("button", "act", "copy script"); cp.onclick = () => void copyScript(); cp.disabled = !r.options;
-  const nu = el("button", "act", "× new"); nu.onclick = () => { destroyRecorder(); state.run = null; void saveState(); render(); };
+  const nu = el("button", "act", "× clear"); nu.onclick = () => { destroyRecorder(); state.run = null; void saveState(); render(); };
   bar.append(cp, nu);
   view.append(bar);
 
