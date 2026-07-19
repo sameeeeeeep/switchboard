@@ -39,17 +39,17 @@ export const APPS = [
     tokens: 940_000, updates: 16, pro: ["batch shot lists", "white-label exports"] },
   { id: "aplus", name: "A-Plus", href: "https://aplus.thelastprompt.ai",
     tokens: 1_100_000, updates: 18, pro: ["bulk listing runs", "variant A/B stacks"] },
-  { id: "batch", name: "Batch", href: "./batch.html",
+  { id: "batch", name: "Batch", href: "https://batch.thelastprompt.ai",
     tokens: 340_000, updates: 3, pro: null },
-  { id: "take", name: "Take", href: "./take.html",
+  { id: "take", name: "Take", href: "https://take.thelastprompt.ai",
     tokens: 120_000, updates: 2, pro: null },
-  { id: "identity", name: "Identity", href: "./identity.html",
+  { id: "identity", name: "Identity", href: "https://identity.thelastprompt.ai",
     tokens: 180_000, updates: 2, pro: null },
-  { id: "reel", name: "Reel", href: "./reel.html",
+  { id: "reel", name: "Reel", href: "https://reel.thelastprompt.ai",
     tokens: 260_000, updates: 2, pro: ["batch reels", "brand-kit auto-scenes"] },
-  { id: "marquee", name: "Marquee", href: "./marquee.html",
+  { id: "marquee", name: "Marquee", href: "https://marquee.thelastprompt.ai",
     tokens: 300_000, updates: 2, pro: ["multi-page sites", "publish to a domain"] },
-  { id: "huddle", name: "Huddle", href: "./huddle.html",
+  { id: "huddle", name: "Huddle", href: "https://huddle.thelastprompt.ai",
     tokens: 150_000, updates: 1, pro: null },
 
   // after hours
@@ -59,7 +59,7 @@ export const APPS = [
     tokens: 390_000, updates: 7, pro: null },
 
   // play & make
-  { id: "redline", name: "Redline", href: "./redline.html",
+  { id: "redline", name: "Redline", href: "https://redline.thelastprompt.ai",
     tokens: 1_700_000, updates: 26, pro: ["whole-site crawls", "scheduled re-reviews + diffs"] },
   { id: "cartridge", name: "Cartridge", href: "https://cartridge.thelastprompt.ai",
     tokens: 720_000, updates: 12, pro: null },
@@ -69,10 +69,12 @@ export const APPS = [
     tokens: 310_000, updates: 8, pro: null },
   { id: "adgen", name: "Adwall", href: "https://adgen.thelastprompt.ai",
     tokens: 540_000, updates: 11, pro: null },
-  { id: "chat", name: "betterchat", href: "./chat.html",
-    tokens: 610_000, updates: 3, pro: null },
+];
 
-  // the viral drop (2026-07) — dupes of viral AI tools, each on the /wrapp template
+// PARKED — the 14 one-off wrapps, trimmed from the shelf until each has its own subdomain
+// (per-origin isolation: a shared path would mean one grant + one storage partition for all of
+// them). Re-shelving one = move its entry back into APPS and restore its card in index.html.
+export const PARKED = [
   { id: "arcade", name: "Arcade", href: "./arcade.html",
     tokens: 185_000, updates: 3, pro: null },
   { id: "yearbook", name: "Yearbook", href: "./yearbook.html",
@@ -102,6 +104,7 @@ export const APPS = [
   { id: "dreamlog", name: "Dreamlog", href: "./dreamlog.html",
     tokens: 168_000, updates: 1, pro: null },
 ];
+
 
 export const APP_BY_ID = Object.fromEntries(APPS.map((a) => [a.id, a]));
 

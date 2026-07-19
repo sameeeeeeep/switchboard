@@ -426,13 +426,21 @@
   // returning-user probe AND the connect chip both fire onReady, and if the 2nd boot's loadState
   // read back what stage-1 just wrote, it would replace `state` mid-stream and orphan the results.
   var store = {};
+  // ONE exception to fresh-user: the bound folder holds a real page on disk (PROJECT.page), because
+  // a page-reviewing wrapp with nothing to review correctly fires no model call — which reads as a
+  // failure but is really missing fixture. Scoped to that single key: every OTHER get() still
+  // resolves null, so the stage-1 auto-run contract above is untouched.
+  var PAGE = /[?&]nopage=1/.test(location.search) ? null : ((PROJECT && PROJECT.page) || null);
+  function seededKeys() { return PAGE ? [PAGE.key] : []; }
   function storageOp(p) {
     p = p || {};
     switch (p.op) {
-      case "get": return { ok: true, value: null };
+      case "get":
+        if (PAGE && p.key === PAGE.key && !(p.key in store)) return { ok: true, value: PAGE.html };
+        return { ok: true, value: null };
       case "set": return { ok: true };
       case "delete": return { ok: true };
-      case "list": return { ok: true, keys: [] };
+      case "list": return { ok: true, keys: seededKeys() };
       // autoAssigned:false + a real folder so folder-bound wrapps (Redline) reach their model call.
       case "info": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
       case "bind": return { ok: true, info: { folder: p.path || BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };

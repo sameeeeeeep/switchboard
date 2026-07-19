@@ -75,6 +75,27 @@ const SWITCHBOARD = {
       tasks: ["Wire the Bank connector into the daemon", "Rev-share metering receipts"],
     },
   },
+  // The one FILE on disk in the bound folder — a real landing page for page-reviewing wrapps
+  // (Redline audits it; Huddle lists it as a project file). Deliberately imperfect: a vague hero,
+  // a weak CTA, an <img> with no alt, and a nav link to nowhere — so an audit has real findings
+  // to pin rather than inventing praise. See provider.js storageOp().
+  page: {
+    key: "index.html",
+    html: [
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+      '<title>Switchboard</title></head><body>',
+      '<nav><a href="/">Switchboard</a><a href="/docs">Docs</a><a href="#">Pricing</a></nav>',
+      '<header><h1>The future of AI apps is here</h1>',
+      '<p>Switchboard is a platform for the next generation of intelligent applications.</p>',
+      '<a href="/signup">Learn more</a></header>',
+      '<img src="/hero.png">',
+      '<section><h2>Features</h2><ul>',
+      '<li>Runs on your own Claude</li><li>No API keys</li><li>Per-origin consent</li>',
+      '</ul></section>',
+      '<footer><p>MIT licensed. Built by Sameep.</p></footer>',
+      '</body></html>',
+    ].join("\n"),
+  },
 };
 
 // ————————————————————————————————————————————————————————————————————————————————————————————
@@ -147,6 +168,24 @@ const NAILINIT = {
       tasks: ["Reorder brush-on glue (stock low)", "New A+ content for the starter kit"],
       links: [{ label: "store", url: "https://nailinit.example" }],
     },
+  },
+  // See the note on SWITCHBOARD.page — same role, consumer-brand voice, same planted flaws.
+  page: {
+    key: "index.html",
+    html: [
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+      '<title>NailInit</title></head><body>',
+      '<nav><a href="/">NailInit</a><a href="/shop">Shop</a><a href="#">About</a></nav>',
+      '<header><h1>Nails, reimagined</h1>',
+      '<p>Discover our range of premium press-on nails and at-home care essentials.</p>',
+      '<a href="/shop">Learn more</a></header>',
+      '<img src="/hands.jpg">',
+      '<section><h2>Why NailInit</h2><ul>',
+      '<li>Salon quality</li><li>Ten minutes</li><li>Reusable sets</li>',
+      '</ul></section>',
+      '<footer><p>Ships across India and the US.</p></footer>',
+      '</body></html>',
+    ].join("\n"),
   },
 };
 
