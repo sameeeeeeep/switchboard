@@ -130,6 +130,9 @@ async function load(): Promise<PanelData> {
     if (s === "unpaired") return { paired: false, reachable: true, ...EMPTY };
     if (s === "asleep") return { paired: true, reachable: false, ...EMPTY };
     if (s === "rejected") return { paired: true, reachable: false, tokenRejected: true, ...EMPTY };
+    // `cold` = set up and online, but an EMPTY library — the first-run state the three pointers
+    // exist for, and the one MOCK (a full library) can never show.
+    if (s === "cold") return { paired: true, reachable: true, ...EMPTY };
     return MOCK;
   }
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
@@ -302,11 +305,18 @@ async function renderProject(data: PanelData) {
   txt.append(el("div", "name", active ? active.name : (origin ? "Nothing lent to this app" : "No default yet")));
   const meta = origin
     ? (active ? `lent to ${host(origin)}${explicit ? "" : " · your default"}` : `pick one to lend ${host(origin)}`)
-    : (active ? `${active.kind ?? "project"} · your default — apps that ask inherit it` : "Pick a default to lend apps that ask");
+    : (active ? `${active.kind ?? "project"} · your default — apps that ask inherit it` : "Point at your site, a repo or a folder — every app borrows it");
   txt.append(el("div", "meta", meta));
   row.append(txt);
-  const sw = el("button", "switch", data.contexts.length ? (active ? "Switch" : "Choose") : "None yet");
-  if (data.contexts.length) sw.onclick = () => openPicker(data, origin);
+  // Cold start is the whole product's gate: an empty library means every proactive app has nothing
+  // to work from. So the button is NEVER dead — with nothing banked it opens straight into the
+  // pointer chooser instead of reading "None yet" and doing nothing.
+  const cold = !data.contexts.length;
+  const sw = el("button", "switch", cold ? "Set up" : active ? "Switch" : "Choose");
+  sw.onclick = () => {
+    if (cold) { expandedSections.add("pickerAdd"); addPointer = addPointer ?? "site"; }
+    openPicker(data, origin);
+  };
   row.append(sw);
   card.append(row);
   // No brand swatches here: a context's colours belong INSIDE the app that uses them, in its own
@@ -509,7 +519,13 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
     return a.localeCompare(b);
   });
 
-  if (!data.contexts.length) list.append(el("div", "empty-note", "Nothing to lend yet — add a project or connect a sheet below."));
+  // Cold start: a fresh install has an empty library, so every proactive app opens with nothing to
+  // work from. The way out is a POINTER, not a form — point at something you already have and it's
+  // read for you. (The Bank connector still seeds a whole folder of projects in one shot; that's the
+  // bulk path, mentioned second because it needs another Claude.)
+  if (!data.contexts.length) {
+    list.append(el("div", "empty-note", "Nothing to lend yet — point at your site, a repo or a folder below and it’s read for you. (Many at once? The Bank connector can seed the whole library from ~/Projects.)"));
+  }
 
   for (const gname of names) {
     if (groups.size > 1) list.append(el("div", "pgroup", gname)); // header only when there's more than one kind
@@ -555,51 +571,292 @@ function openPicker(data: PanelData, forOrigin: string | null = null) {
   renderAddRow(data, forOrigin);
 }
 
-// One quiet "Add" row instead of three stacked dashed affordances — expanding reveals the three
-// real forms (project / sheet / your details), shrinking the sheet's fixed tail.
-function renderAddRow(data: PanelData, forOrigin: string | null) {
-  const row = $("addRow") as HTMLElement; row.className = "addsrc"; row.textContent = "";
-  const open = expandedSections.has("pickerAdd");
-  const t = el("button", "toggle", open ? "− Hide add forms" : "＋ Add — project · sheet · your details");
-  t.onclick = () => { expandedSections[open ? "delete" : "add"]("pickerAdd"); openPicker(data, forOrigin); };
-  row.append(t);
-  ($("addProject") as HTMLElement).hidden = !open;
-  ($("addSheet") as HTMLElement).hidden = !open;
-  ($("addPersonal") as HTMLElement).hidden = !open;
+// ---- the three pointers: point at a website, a repo, or a folder → one banked context ----
+// Doctrine: ONE pointer, then WHAT WE FOUND, then confirm — never a blank form asking the user to
+// describe their own brand. The panel owns the FOLDER pointer end to end (it needs no model and no
+// network: the path is the whole input, and the daemon binds it to an app the moment you lend it).
+// Reading a WEBSITE or a REPO needs the user's Claude plus its web tools — a capability only a
+// connected page has; the panel has a control channel, not a session. So those two hand the pointer
+// to Switchboard home with it prefilled, and the copy says exactly that rather than implying the
+// panel can read the web. The published shape is identical either way (see docs/CONTEXT-KINDS.md),
+// so a context is the same object whichever surface pointed at it.
+type Pointer = "site" | "github" | "folder";
+let addPointer: Pointer | null = null;
+const pointerDraft: Record<Pointer, string> = { site: "", github: "", folder: "" }; // survives re-renders
+let folderDraft: { path: string; name: string } | null = null;        // set once a folder is pointed at
+let addedReady: { name: string; kind: "brand" | "project"; folder?: string } | null = null; // the ready card
+
+/** Switchboard home — the surface that CAN read a site or a repo (it runs on the user's Claude). */
+const HOME_URL = "https://thelastprompt.ai/apps/";
+/** The handoff contract: home opens straight into the pointer flow with this already filled in. */
+const handoff = (kind: Pointer, value: string) =>
+  `${HOME_URL}?add=${kind}&${kind === "folder" ? "path" : "url"}=${encodeURIComponent(value)}`;
+
+const PT_ICONS: Record<Pointer, string> = {
+  site: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.3 3.3 8.5S14.2 18.1 12 20.5c-2.2-2.4-3.3-5.3-3.3-8.5S9.8 5.9 12 3.5z"/></svg>`,
+  github: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="5.5" r="2.5"/><circle cx="7" cy="18.5" r="2.5"/><circle cx="17" cy="8" r="2.5"/><path d="M7 8v8M17 10.5c0 3-3.4 3.2-6.4 4.2"/></svg>`,
+  folder: KIND_MARKS.project!,
+};
+
+/** Which wrapps light up for a freshly banked context — each one really does request this kind at
+ *  connect (`contextKinds` in its scope), so the promise is checkable, not marketing. */
+const LIGHTS_UP: Record<"brand" | "project", Array<{ name: string; url: string }>> = {
+  brand: [
+    { name: "Prism", url: "https://prism.thelastprompt.ai" },
+    { name: "Cast", url: "https://cast.thelastprompt.ai" },
+    { name: "AdForge", url: "https://adforge.thelastprompt.ai" },
+    { name: "Ad generator", url: "https://adgen.thelastprompt.ai" },
+    { name: "A-Plus", url: "https://aplus.thelastprompt.ai" },
+    { name: "Bank", url: "https://bank.thelastprompt.ai" },
+  ],
+  project: [
+    { name: "Bank", url: "https://bank.thelastprompt.ai" },
+    { name: "Redline", url: `${HOME_URL}redline.html` },
+    { name: "Huddle", url: `${HOME_URL}huddle.html` },
+    { name: "betterchat", url: `${HOME_URL}chat.html` },
+    { name: "Cartridge", url: "https://cartridge.thelastprompt.ai" },
+    { name: "Arcana", url: "https://arcana.thelastprompt.ai" },
+  ],
+};
+
+/** Stable id from a pointer: the same site/repo/folder pointed at twice UPDATES in place, so the
+ *  library never fills with duplicates of one thing (docs/CONTEXT-KINDS.md, "stable id"). */
+const slugOf = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+/** A human name from a folder path: the basename, de-slugged. "~/Projects/redline" → "Redline". */
+const folderBase = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).pop() ?? "";
+const folderName = (p: string) => folderBase(p).replace(/[-_.]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+
+/** A pasted website, normalized. Bare hosts get https://; anything without a dotted host is a typo. */
+function normalizeSite(raw: string): { url: string; domain: string } | null {
+  const v = raw.trim();
+  if (!v) return null;
+  let u: URL;
+  try { u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`); } catch { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (!u.hostname.includes(".") || u.hostname.endsWith(".")) return null;
+  return { url: u.toString(), domain: u.hostname.replace(/^www\./, "") };
 }
 
-// "Add a project" — a named context that points at a real folder on disk. Lending it to an app
-// binds that app's storage to the folder (the wrapp reads/writes its actual project files instead
-// of a private sandbox). Panel-authored, like the personal card — the user is the trusted author,
-// so no per-action consent: pointing your own app at your own folder is your call. When the picker
-// is open FOR a specific app, adding a project also lends it to that app in one gesture.
-function renderAddProject(data: PanelData, forOrigin: string | null) {
-  const box = $("addProject"); box.className = "addsrc"; box.textContent = "";
-  const toggle = el("button", "toggle", "＋ Add a project (point an app at a folder)");
-  toggle.onclick = () => (box.className = "addsrc open");
-  const form = el("div", "form");
-  const name = el("input") as HTMLInputElement; name.placeholder = "Name (e.g. Redline)";
-  const folder = el("input") as HTMLInputElement; folder.placeholder = "Folder path (e.g. ~/Projects/redline)";
-  const hint = el("div", "hint", forOrigin
-    ? `The folder is created if it doesn't exist. Added here, it's lent to ${host(forOrigin)} right away — that app reads & writes these files.`
-    : "The folder is created if it doesn't exist. Lend the project to an app and that app reads & writes these files.");
-  const err = el("div", "err");
-  const go = el("button", "go", "Add project");
-  go.onclick = async () => {
-    const n = name.value.trim(), f = folder.value.trim();
-    if (!n || !f) { err.textContent = "Add a name and a folder path."; return; }
-    err.textContent = ""; go.setAttribute("disabled", "true");
-    const r = inExtension
-      ? ((await control("saveContext", { name: n, kind: "project", data: { folder: f } })) as { ok?: boolean; id?: string; error?: string })
-      : { ok: true, id: "mock" };
-    go.removeAttribute("disabled");
-    if (!r?.ok) { err.textContent = r?.error || "Couldn’t add that project."; return; }
-    // In per-app mode, lend the new project to that app immediately (this binds its folder).
-    if (forOrigin && r.id && inExtension) await control("selectContext", { origin: forOrigin, contextId: r.id });
-    (($("picker") as HTMLElement).hidden = true); refresh();
+/** A pasted GitHub repo, normalized: `github.com/o/r`, `.../tree/main/x`, `git@github.com:o/r.git`
+ *  and bare `o/r` all collapse to one canonical repo URL. Anything off GitHub returns null — that's
+ *  a typo to correct in place, never a dead end. */
+function normalizeRepo(raw: string): { owner: string; repo: string; url: string } | null {
+  let v = raw.trim().replace(/\.git$/i, "");
+  if (!v) return null;
+  const scp = /^git@([^:]+):(.+)$/.exec(v);                       // git@github.com:owner/repo
+  if (scp) {
+    if (!/^(www\.)?github\.com$/i.test(scp[1]!)) return null;
+    v = `https://github.com/${scp[2]}`;
+  } else if (!/^https?:\/\//i.test(v)) {
+    // no scheme: a first segment without a dot is a bare owner/repo, otherwise it's a bare host
+    v = (v.split("/")[0] ?? "").includes(".") ? `https://${v}` : `https://github.com/${v}`;
+  }
+  let u: URL;
+  try { u = new URL(v); } catch { return null; }
+  if (!/^(www\.)?github\.com$/i.test(u.hostname)) return null;
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const owner = parts[0]!, repo = parts[1]!.replace(/\.git$/i, "");
+  if (!owner || !repo) return null;
+  return { owner, repo, url: `https://github.com/${owner}/${repo}` };
+}
+
+// One quiet "Add" row that opens the pointer chooser. The three legacy forms (folder / sheet / your
+// details) are still here — folder IS the third pointer, the other two moved behind "Other ways".
+function renderAddRow(data: PanelData, forOrigin: string | null) {
+  const row = $("addRow") as HTMLElement; row.className = "addsrc"; row.textContent = "";
+
+  // Just banked something → the row becomes the READY card ("it's yours, here's what can use it").
+  if (addedReady) { row.append(readyCard(data, forOrigin)); showAddForms(false, false); renderOtherWays(data, forOrigin, false); return; }
+
+  const open = expandedSections.has("pickerAdd");
+  const t = el("button", "toggle", open ? "− Hide" : "＋ Add — point at a website, a repo or a folder");
+  t.onclick = () => {
+    if (open) expandedSections.delete("pickerAdd"); else { expandedSections.add("pickerAdd"); addPointer = addPointer ?? "site"; }
+    openPicker(data, forOrigin);
   };
-  form.append(name, folder, hint, err, go);
-  box.append(toggle, form);
+  row.append(t);
+  if (open) {
+    row.append(el("div", "ptlead", "Point Switchboard at something you already have. It’s read on your own Claude, on this machine — nothing is uploaded and the operator never sees it."));
+    const seg = el("div", "ptseg");
+    for (const [key, label] of [["site", "Website"], ["github", "GitHub"], ["folder", "Folder"]] as Array<[Pointer, string]>) {
+      const b = el("button", addPointer === key ? "on" : "");
+      const ic = el("span"); ic.innerHTML = PT_ICONS[key];
+      b.append(ic, el("span", "", label));
+      b.onclick = () => {
+        addPointer = key; folderDraft = null;
+        openPicker(data, forOrigin);
+        (document.getElementById("ptInput") as HTMLInputElement | null)?.focus();
+      };
+      seg.append(b);
+    }
+    row.append(seg);
+    if (addPointer === "site" || addPointer === "github") row.append(webPointer(addPointer, data, forOrigin));
+    // the folder pointer renders into #addProject below (keeping that id and its saveContext wiring)
+  }
+  showAddForms(open && addPointer === "folder", open && expandedSections.has("pickerOther"));
+  renderOtherWays(data, forOrigin, open);
+}
+
+function showAddForms(folder: boolean, other: boolean) {
+  ($("addProject") as HTMLElement).hidden = !folder;
+  ($("addSheet") as HTMLElement).hidden = !other;
+  ($("addPersonal") as HTMLElement).hidden = !other;
+}
+
+// The two web pointers. The panel validates and normalizes the URL here — a typo is corrected in
+// place, never carried into a tab that then fails — and hands the clean pointer to home.
+function webPointer(kind: "site" | "github", data: PanelData, forOrigin: string | null): HTMLElement {
+  const box = el("div", "ptbody");
+  const inp = el("input") as HTMLInputElement;
+  inp.id = "ptInput"; inp.spellcheck = false; inp.value = pointerDraft[kind];
+  inp.placeholder = kind === "site" ? "your-brand.com" : "github.com/owner/repo";
+  const hint = el("div", "hint", kind === "site"
+    ? "Your Claude reads the page and drafts the brand — name, one-liner, positioning, voice, audience, products, colours it can actually see. You pick a reading and tweak it; nothing is banked until you confirm."
+    : "Your Claude reads the README and package.json and drafts the project — what it is, its stack, where it is now, what’s next. You pick a reading and tweak it; nothing is banked until you confirm.");
+  const err = el("div", "err");
+  const go = el("button", "go", "Read it →");
+  const note = el("div", "ptnote", "Opens Switchboard home in a tab — reading the web needs your Claude and its web tools, which the panel can’t run on its own. The reading happens on your machine; the context lands back in this list.");
+  const submit = () => {
+    const v = inp.value.trim();
+    if (!v) { err.textContent = kind === "site" ? "Paste your site’s address." : "Paste a GitHub repo URL."; inp.focus(); return; }
+    const target = kind === "site" ? normalizeSite(v) : normalizeRepo(v);
+    if (!target) {
+      err.textContent = kind === "site"
+        ? "That doesn’t look like a website — try nailin.it or https://nailin.it."
+        : "That isn’t a GitHub repo URL — try github.com/owner/repo.";
+      inp.focus(); inp.select(); return;
+    }
+    err.textContent = "";
+    openWrapp(handoff(kind, target.url));
+  };
+  inp.oninput = () => { pointerDraft[kind] = inp.value; err.textContent = ""; };
+  inp.onkeydown = (e) => { if ((e as KeyboardEvent).key === "Enter") submit(); };
+  go.onclick = submit;
+  box.append(inp, hint, err, go);
+  // The one recovery worth designing for: a private repo is invisible to an anonymous reader, but
+  // the clone on this machine isn't. Hand the user straight to the folder pointer.
+  if (kind === "github") {
+    const alt = el("button", "ghost", "Private repo? Point at the local clone →");
+    alt.onclick = () => { addPointer = "folder"; openPicker(data, forOrigin); (document.getElementById("ptInput") as HTMLInputElement | null)?.focus(); };
+    box.append(alt);
+  }
+  box.append(note);
+  return box;
+}
+
+// The FOLDER pointer (still #addProject — same id, same saveContext wiring). Two beats: point at a
+// path, then confirm what we made of it. The name is DERIVED from the folder and editable — the user
+// confirms, they don't author. Panel-authored like the personal card: the user is the trusted author,
+// so no per-action consent (pointing your own app at your own folder is your call), and the daemon's
+// own bind consent still fires when the project is lent to an app.
+function renderAddProject(data: PanelData, forOrigin: string | null) {
+  const box = $("addProject"); box.className = "addsrc open"; box.textContent = "";
+  const form = el("div", "form");
+
+  if (!folderDraft) {
+    const path = el("input") as HTMLInputElement;
+    path.id = "ptInput"; path.spellcheck = false; path.value = pointerDraft.folder;
+    path.placeholder = "~/Projects/redline";
+    const hint = el("div", "hint", "Nothing is fetched and nothing leaves this machine — the path is the whole input. Lend the project to an app and the daemon points that app’s storage at this exact folder, so it reads and writes your real files.");
+    const err = el("div", "err");
+    const go = el("button", "go", "Point at it");
+    const submit = () => {
+      const p = path.value.trim().replace(/[\\/]+$/, "");
+      if (!p) { err.textContent = "Paste the folder’s path."; path.focus(); return; }
+      if (!folderBase(p)) { err.textContent = "That path has no folder name — point at a folder, not the root."; path.focus(); return; }
+      pointerDraft.folder = p;
+      folderDraft = { path: p, name: folderName(p) || folderBase(p) };
+      openPicker(data, forOrigin);
+    };
+    path.oninput = () => { pointerDraft.folder = path.value; err.textContent = ""; };
+    path.onkeydown = (e) => { if ((e as KeyboardEvent).key === "Enter") submit(); };
+    go.onclick = submit;
+    form.append(path, hint, err, go);
+  } else {
+    const draft = folderDraft;
+    const card = el("div", "ptconfirm");
+    card.append(el("div", "k", "Found"));
+    const name = el("input") as HTMLInputElement; name.value = draft.name; name.placeholder = "Project name";
+    card.append(name, el("div", "path", draft.path));
+    const again = el("button", "ghost", "Point somewhere else");
+    again.onclick = () => { folderDraft = null; openPicker(data, forOrigin); };
+    card.append(again);
+    const hint = el("div", "hint", forOrigin
+      ? `Banked as a project. Added here it’s lent to ${host(forOrigin)} right away — that app reads & writes these files.`
+      : "Banked as a project. Lend it to an app and that app reads & writes these files.");
+    const err = el("div", "err");
+    const go = el("button", "go", "Add project");
+    go.onclick = async () => {
+      const nm = name.value.trim();
+      if (!nm) { err.textContent = "Give it a name."; return; }
+      err.textContent = ""; go.setAttribute("disabled", "true");
+      // Same published shape as home's folder pointer: `folder` is what makes lending bind storage,
+      // `source` records what was pointed at and by whom.
+      const payload = {
+        id: slugOf(folderBase(draft.path)) || slugOf(nm),
+        name: nm,
+        kind: "project",
+        data: { folder: draft.path, source: { kind: "folder", path: draft.path, readAt: Date.now(), by: "switchboard-panel" } },
+      };
+      const r = inExtension
+        ? ((await control("saveContext", payload)) as { ok?: boolean; id?: string; error?: string })
+        : { ok: true, id: payload.id };
+      go.removeAttribute("disabled");
+      if (!r?.ok) { err.textContent = r?.error || "Couldn’t add that project."; return; }
+      // In per-app mode, lend the new project to that app immediately (this binds its folder).
+      if (forOrigin && r.id && inExtension) await control("selectContext", { origin: forOrigin, contextId: r.id });
+      addedReady = { name: nm, kind: "project", folder: draft.path };
+      folderDraft = null; pointerDraft.folder = "";
+      const fresh = inExtension ? await load() : data;
+      render(fresh);
+      // Stay in the sheet — the ready card is the payoff. Unless a consent landed mid-add: that view
+      // owns the panel, so close the sheet and let the ready card wait for the next open.
+      if (consentActive) (($("picker") as HTMLElement).hidden = true);
+      else openPicker(fresh, forOrigin);
+    };
+    // The panel banks the pointer; reading what's INSIDE the folder is a Claude job, so offer it.
+    const deep = el("button", "ghost", "Read what’s in it with your Claude →");
+    deep.onclick = () => openWrapp(handoff("folder", draft.path));
+    form.append(card, hint, err, go, deep);
+  }
+  box.append(form);
+}
+
+// "Banked — <name>", and the honest answer to "so what?": the wrapps that can use it right now.
+function readyCard(data: PanelData, forOrigin: string | null): HTMLElement {
+  const r = addedReady!;
+  const card = el("div", "ptready");
+  card.append(el("div", "h", `Banked — ${r.name}`));
+  card.append(el("div", "ptlead", r.folder
+    ? `It’s in your library as a project. Lend it to an app and that app’s storage points at ${r.folder} — it reads and writes those real files, not a sandbox copy.`
+    : "It’s in your library. Lend it to an app and that app works from it."));
+  card.append(el("div", "k", "Ready to use it"));
+  const lights = el("div", "lights");
+  for (const w of LIGHTS_UP[r.kind]) {
+    const b = el("button", "", w.name);
+    b.onclick = () => openWrapp(w.url);
+    lights.append(b);
+  }
+  card.append(lights);
+  const done = el("button", "go", "Done");
+  done.onclick = () => { addedReady = null; (($("picker") as HTMLElement).hidden = true); refresh(); };
+  const more = el("button", "ghost", "Point at something else");
+  more.onclick = () => { addedReady = null; addPointer = "site"; expandedSections.add("pickerAdd"); openPicker(lastData ?? data, forOrigin); };
+  card.append(done, more);
+  return card;
+}
+
+// The two panel-authored forms that aren't pointers (a published Sheet, your own contact card) —
+// still here, one level quieter, so the three pointers stay the headline.
+function renderOtherWays(data: PanelData, forOrigin: string | null, addOpen: boolean) {
+  const box = $("addOther") as HTMLElement; box.className = "addsrc"; box.textContent = "";
+  box.hidden = !addOpen;
+  if (!addOpen) return;
+  const open = expandedSections.has("pickerOther");
+  const t = el("button", "toggle", open ? "− Hide other ways" : "Other ways — a Google Sheet · your own details");
+  t.onclick = () => { expandedSections[open ? "delete" : "add"]("pickerOther"); openPicker(data, forOrigin); };
+  box.append(t);
 }
 
 // "Your details" — the personal context card (kind "personal"): name, phone, email, address,
@@ -668,7 +925,12 @@ function renderAddSheet() {
   form.append(name, url, hint, err, go);
   box.append(toggle, form);
 }
-$("pickerClose").addEventListener("click", () => (($("picker") as HTMLElement).hidden = true));
+// Closing the sheet drops the in-flight pointer state (a half-typed folder, the ready card) so the
+// next open starts clean — `expandedSections` and the chosen pointer persist, as everywhere else.
+$("pickerClose").addEventListener("click", () => {
+  folderDraft = null; addedReady = null;
+  ($("picker") as HTMLElement).hidden = true;
+});
 
 // ---- open any URL ----
 function openTyped() {
