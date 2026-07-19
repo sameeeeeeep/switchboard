@@ -202,6 +202,13 @@ function connectSteps() {
 // sequentially, cards filling as they land. Ground truth = the founder's line + the lent context;
 // the honesty contract (from ideabrain's yc-* tasks, kept verbatim in spirit): nothing fabricated,
 // missing facts marked as [yours to fill]. Editing the idea flags drafted answers stale.
+//
+// BRANCHING (the carve of brandbrain's lock()/dependentsOf refit cascade, reimplemented without a
+// board): an auto-selected recommendation is just a default — CLICKING an option LOCKS it. Locked
+// picks become the thesis every other question is drafted against, so the application converges on
+// one story instead of eight unrelated ones. A lock re-flows the rest: drafted-but-unlocked answers
+// go stale so you can see exactly which downstream answers moved. Locked answers are the spine and
+// never go stale by cascade — only editing the idea can unsettle them.
 
 const STEER_CHIPS = ["plainer words", "more concrete", "shorter", "different angle"];
 
@@ -264,7 +271,7 @@ async function start(brief) {
   if (!relay || running) return;
   brief = String(brief || "").trim();
   if (!brief) { toast("One line on what you're building first.", true); return; }
-  state.run = { id: uid(), brief, status: "", answers: QUESTIONS.map((s) => ({ n: s.n, options: null, selectedId: null, steers: [], stale: false, error: null })), videos: mkVideos() };
+  state.run = { id: uid(), brief, status: "", answers: QUESTIONS.map((s) => ({ n: s.n, options: null, selectedId: null, lockedId: null, steers: [], stale: false, staleReason: null, error: null })), videos: mkVideos() };
   await saveState(); render();
   await draftAll();
 }
@@ -296,6 +303,20 @@ function pickedDigest() {
   const r = state.run;
   return r.answers.filter((a) => a.options).map((a) => `Q${a.n}: ${selectedText(a)}`).join("\n").slice(0, 4000);
 }
+
+// THE BRANCH: the founder's locked picks, as ground truth for drafting any OTHER question. This is
+// what makes the eight answers one application — pick the Spotify analogy on Q1 and every other
+// question is drafted against it. Locked only: an auto-selected recommendation is not a commitment,
+// and conditioning on it would freeze the first draft's accidents into the whole application.
+function thesisDigest(exceptN) {
+  const r = state.run;
+  return r.answers
+    .filter((a) => a.lockedId && a.n !== exceptN && lockedText(a))
+    .map((a) => `Q${a.n} (${QUESTIONS[a.n - 1].q.slice(0, 60)}…) — SETTLED: ${lockedText(a)}`)
+    .join("\n\n")
+    .slice(0, 4000);
+}
+const THESIS_LINE = "THE FOUNDER'S SETTLED ANSWERS to other questions (also ground truth). They are decided — do not contradict them, do not re-argue them, and make this answer part of the SAME story: reuse their framing and vocabulary where it fits, and stay consistent on the business model, the moat and the stage.";
 
 async function draftVideo(key, steer) {
   const r = state.run; if (!r || !relay) return;
@@ -336,9 +357,11 @@ async function draftOne(n, steer) {
   if (steer) a.steers.push(steer);
   a.error = null;
   try {
+    const thesis = thesisDigest(n);
     const arr = await askJsonArray([
       "You are Batch, drafting a Y Combinator application with a founder, on their own Claude.",
       ...groundTruth(),
+      thesis ? `${THESIS_LINE}\n${thesis}` : "",
       `QUESTION ${n}: "${spec.q}"`,
       `Draft 3 complete answer options, each a genuinely different angle. ${spec.guide}`,
       a.steers.length ? `Steering from the founder (apply the latest): ${a.steers.map((s) => `"${s}"`).join(" → ")}` : "",
@@ -348,10 +371,107 @@ async function draftOne(n, steer) {
     a.options = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Angle").slice(0, 60), text: String(o.text || "").trim(), recommended: !!o.recommended }));
     if (!a.options.some((o) => o.recommended)) a.options[0].recommended = true;
     a.selectedId = (a.options.find((o) => o.recommended) || a.options[0]).id;
-    a.stale = false;
+    // a redraft replaces the very text they committed to, so the lock can't survive it — re-picking
+    // re-locks (and re-cascades). Silently keeping the lock would put text they never chose into
+    // every other question's ground truth.
+    a.lockedId = null;
+    a.stale = false; a.staleReason = null;
   } catch (e) { a.error = msg(e); }
   await saveState(); render();
 }
+
+// "Fetch more options" — APPEND genuinely different angles without disturbing the current pick.
+// (draftOne replaces; this one grows the choice set, which is what you want once one option is
+// nearly right but you'd like to see the road not taken.)
+async function moreOptions(n) {
+  const r = state.run; if (!r || !relay || running) return;
+  const spec = QUESTIONS[n - 1];
+  const a = r.answers[n - 1];
+  if (!a.options) return;
+  running = true; r.status = `fetching more angles for ${n} of 8…`; render();
+  try {
+    const thesis = thesisDigest(n);
+    const had = a.options.map((o) => `"${o.label}"`).join(", ");
+    const arr = await askJsonArray([
+      "You are Batch, drafting a Y Combinator application with a founder, on their own Claude.",
+      ...groundTruth(),
+      thesis ? `${THESIS_LINE}\n${thesis}` : "",
+      `QUESTION ${n}: "${spec.q}"`,
+      `The founder already has these angles: ${had}. Draft 3 MORE options in angles genuinely different from those — do not restate or lightly reword them. ${spec.guide}`,
+      a.steers.length ? `Steering from the founder (still applies): ${a.steers.map((s) => `"${s}"`).join(" → ")}` : "",
+      'Return ONLY a JSON array — no prose, no fences. Each element: {"label":<the angle, 2-5 words>,"text":<the complete answer>}',
+    ]);
+    if (!arr || !arr.length) throw new Error("no more angles came back");
+    // append — never touch selectedId/locked, and never a second "recommended" (one is already set)
+    a.options = a.options.concat(arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Angle").slice(0, 60), text: String(o.text || "").trim(), recommended: false })));
+  } catch (e) {
+    // the card renders options OR error, so a failure here must not hide the options they already have
+    toast(msg(e), true);
+  }
+  running = false; r.status = "";
+  await saveState(); render();
+}
+
+// THE BRANCH POINT — the assembly-board contract, not a click-to-commit. Selecting is FREE:
+// browsing options costs nothing and changes nothing. Locking is a separate, deliberate act, and
+// when it would invalidate work you already have, it asks first and names exactly what it will
+// re-research. (Silently staling nine cards behind a stray click is how a founder stops trusting
+// the board.)
+let confirmingN = null; // transient UI state — which question is showing its re-research warning
+
+// selecting is free — no lock, no cascade, nothing goes stale
+function selectAnswer(a, o) {
+  a.selectedId = o.id;
+  if (confirmingN === a.n) confirmingN = null;
+  void saveState(); render();
+}
+
+// what a lock on this question would invalidate: every OTHER drafted answer that isn't itself
+// locked (locked answers are the spine — with all-to-all coupling, re-staling them would thrash),
+// plus the video scripts, which are drafted from the picks.
+function affectedBy(n) {
+  const r = state.run; if (!r) return [];
+  const out = r.answers.filter((b) => b.n !== n && b.options && !b.lockedId).map((b) => `Q${b.n}`);
+  if (r.videos) for (const v of VIDEOS) if (r.videos[v.key] && r.videos[v.key].options) out.push(v.title.toLowerCase());
+  return out;
+}
+
+function lockIn(a) {
+  const r = state.run; if (!r || !a.selectedId) return;
+  const changed = a.lockedId && a.lockedId !== a.selectedId;
+  // first click on a change that costs something → ask, don't do (brandbrain's onLockClick)
+  if ((changed || !a.lockedId) && affectedBy(a.n).length && confirmingN !== a.n) { confirmingN = a.n; render(); return; }
+  commitLock(a);
+}
+
+function commitLock(a) {
+  const r = state.run; if (!r) return;
+  a.lockedId = a.selectedId;
+  a.stale = false; a.staleReason = null;
+  for (const b of r.answers) {
+    if (b.n === a.n || b.lockedId || !b.options) continue;
+    b.stale = true; b.staleReason = "picks";
+  }
+  if (r.videos) for (const k of Object.keys(r.videos)) if (r.videos[k].options) { r.videos[k].stale = true; r.videos[k].staleReason = "picks"; }
+  confirmingN = null;
+  void saveState(); render();
+}
+
+function unlockAnswer(a) {
+  a.lockedId = null;
+  if (confirmingN === a.n) confirmingN = null;
+  void saveState(); render();
+}
+
+// the label carries the state, exactly as the board does
+function lockLabel(a) {
+  if (!a.selectedId) return "Lock it in";
+  if (a.lockedId && a.lockedId === a.selectedId) return "Keep this pick";
+  if (a.lockedId) return "Change pick";
+  return "Lock it in";
+}
+
+const staleLabel = (s) => (s && s.staleReason === "picks" ? "your picks moved — redraft" : "idea changed — redraft");
 
 async function steerOne(n, steer) {
   const r = state.run; if (!r || !relay || running) return;
@@ -366,13 +486,17 @@ function editIdea(next) {
   const brief = String(next || "").trim();
   if (!brief || brief === r.brief) return;
   r.brief = brief;
-  for (const a of r.answers) if (a.options) a.stale = true;
-  if (r.videos) for (const k of Object.keys(r.videos)) if (r.videos[k].options) r.videos[k].stale = true;
+  // the idea is the one thing that unsettles even a locked answer — it was grounded in the old line
+  for (const a of r.answers) if (a.options) { a.stale = true; a.staleReason = "idea"; }
+  if (r.videos) for (const k of Object.keys(r.videos)) if (r.videos[k].options) { r.videos[k].stale = true; r.videos[k].staleReason = "idea"; }
   void saveState(); render();
 }
 
 // ---- export (carved from ideabrain's ycMarkdown — same honesty framing) ----
 function selectedText(a) { const o = (a.options || []).find((x) => x.id === a.selectedId); return o ? o.text : ""; }
+// the LOCKED text — what the founder actually committed to, and the only thing that conditions
+// other questions. A hovering selection must never leak into another answer's ground truth.
+function lockedText(a) { const o = (a.options || []).find((x) => x.id === a.lockedId); return o ? o.text : ""; }
 function applicationMd() {
   const r = state.run;
   const done = r.answers.filter((a) => a.options).length;
@@ -386,7 +510,7 @@ function applicationMd() {
     L.push(`## ${a.n}. ${QUESTIONS[a.n - 1].q}`, "");
     const t = selectedText(a);
     L.push(t || "_(not drafted yet)_", "");
-    if (a.stale) L.push("> Note: the idea changed after this was drafted — redraft it in Batch.", "");
+    if (a.stale) L.push(`> Note: ${a.staleReason === "picks" ? "your picks on other questions moved after this was drafted" : "the idea changed after this was drafted"} — redraft it in Batch.`, "");
   }
   L.push("---", "Built with Batch, on your own Claude.");
   return L.join("\n");
@@ -436,8 +560,10 @@ function render() {
   bar.append(el("span", "kicker", "the idea"), el("span", "run-input", r.brief), el("span", "grow"));
   const staleCount = r.answers.filter((x) => x.stale).length;
   const undrafted = r.answers.filter((x) => !x.options).length;
+  const settled = r.answers.filter((x) => x.lockedId).length;
+  if (settled) bar.append(el("span", "settled-chip", `${settled}/8 locked in`));
   if (!running && (staleCount || undrafted)) {
-    const rd = el("button", "act", staleCount ? `↻ redraft ${staleCount} stale` : `▸ draft remaining ${undrafted}`);
+    const rd = el("button", "act", staleCount ? `↻ redraft ${staleCount} against your picks` : `▸ draft remaining ${undrafted}`);
     rd.onclick = () => void draftAll();
     bar.append(rd);
   }
@@ -475,7 +601,7 @@ function videoCard(spec) {
   const vs = r.videos[spec.key];
   const card = el("div", "q-card");
   card.append(el("span", "q-num", spec.title));
-  if (vs.stale) card.append(el("span", "stale-chip", "idea changed — redraft"));
+  if (vs.stale) card.append(el("span", "stale-chip", staleLabel(vs)));
   card.append(el("div", "q-text", spec.sub));
   if (vs.options) {
     card.append(optionCards(vs.options, vs.selectedId, (o) => { vs.selectedId = o.id; void saveState(); render(); }));
@@ -504,14 +630,41 @@ function videoCard(spec) {
   return card;
 }
 
+// Never cascade silently — name what this lock will re-draft, and let them back out. Copy follows
+// the board's: state the consequence, list the casualties, offer "keep current".
+function confirmBlock(a) {
+  const aff = affectedBy(a.n);
+  const shown = aff.slice(0, 5).join(", ") + (aff.length > 5 ? ` and ${aff.length - 5} more` : "");
+  const box = el("div", "confirm");
+  box.append(el("p", "confirm-t", a.lockedId
+    ? `Changing question ${a.n} re-drafts ${shown} — they were built on the old pick.`
+    : `Locking question ${a.n} re-drafts ${shown} — they were drafted before you picked here.`));
+  const row = el("div", "confirm-row");
+  const go = el("button", "confirm-go", a.lockedId ? "Change & re-draft" : "Lock it in & re-draft");
+  go.onclick = () => commitLock(a);
+  const keep = el("button", "confirm-keep", "keep current");
+  keep.onclick = () => { confirmingN = null; render(); };
+  row.append(go, keep);
+  box.append(row);
+  return box;
+}
+
 function questionCard(a) {
   const spec = QUESTIONS[a.n - 1];
   const card = el("div", "q-card");
   card.append(el("span", "q-num", "question " + a.n));
-  if (a.stale) card.append(el("span", "stale-chip", "idea changed — redraft"));
+  if (a.lockedId) {
+    // the visible spine: this answer is locked in and every other question is drafted against it
+    const lk = el("span", "lock-chip", "✓ locked in — the rest is drafted against this");
+    const un = el("button", "lock-x", "×"); un.title = "unlock this answer";
+    un.onclick = () => unlockAnswer(a);
+    lk.append(un);
+    card.append(lk);
+  }
+  if (a.stale) card.append(el("span", "stale-chip", staleLabel(a)));
   card.append(el("div", "q-text", spec.q));
   if (a.options) {
-    const wrap = optionCards(a.options, a.selectedId, (o) => { a.selectedId = o.id; void saveState(); render(); });
+    const wrap = optionCards(a.options, a.selectedId, (o) => selectAnswer(a, o));
     if (a.n === 1) {
       // the 50-char limit is the whole game on Q1 — show the count on every option
       [...wrap.children].forEach((optEl, i) => {
@@ -520,7 +673,21 @@ function questionCard(a) {
       });
     }
     card.append(wrap);
-    if (!running) card.append(steerRow((s) => void steerOne(a.n, s)));
+    if (!running) {
+      if (confirmingN === a.n) {
+        card.append(confirmBlock(a)); // the warning replaces the controls until it's answered
+      } else {
+        const row = el("div", "lockrow");
+        const lk = el("button", "lock-btn", lockLabel(a));
+        lk.disabled = !a.selectedId || a.lockedId === a.selectedId;
+        lk.onclick = () => lockIn(a);
+        const more = el("button", "act", `+ more angles (${a.options.length} so far)`);
+        more.onclick = () => void moreOptions(a.n);
+        row.append(lk, more);
+        card.append(row);
+        card.append(steerRow((s) => void steerOne(a.n, s)));
+      }
+    }
   } else if (a.error) {
     card.append(el("div", "err", a.error));
     const t = el("button", "act", "try again"); t.onclick = () => void steerOne(a.n, null);

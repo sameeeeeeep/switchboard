@@ -108,6 +108,24 @@
       .stale-chip { display: inline-block; font: 500 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 999px; padding: 3px 7px; margin-left: 8px; }
       .charcount { font: 500 10px/1 var(--mono); color: var(--ink-faint); margin-left: 6px; }
       .charcount.over { color: var(--danger); }
+      /* the branch: a settled answer is the spine the other seven are drafted against */
+      .lock-chip { display: inline-flex; align-items: center; gap: 6px; font: 500 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 999px; padding: 3px 7px; margin-left: 8px; }
+      .lock-x { font: 500 12px/1 var(--mono); background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0 1px; opacity: .6; }
+      .lock-x:hover { opacity: 1; }
+      .settled-chip { font: 500 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; padding: 5px 9px; }
+      /* selecting is free; locking is the deliberate act — so it gets the only solid button here */
+      .lockrow { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 12px; }
+      .lock-btn { font: 500 13px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; transition: opacity .15s; }
+      .lock-btn:hover { opacity: .9; }
+      .lock-btn:disabled { opacity: .4; cursor: default; }
+      /* the cascade warning — warn-toned, states the consequence before it happens */
+      .confirm { display: flex; flex-direction: column; gap: 11px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: 12px; padding: 13px 14px; margin-top: 12px; }
+      .confirm-t { font: 400 12.5px/1.55 var(--sans); color: var(--ink); margin: 0; }
+      .confirm-row { display: flex; align-items: center; gap: 12px; }
+      .confirm-go { font: 500 13px/1 var(--sans); background: var(--warn); color: var(--page); border: 0; border-radius: 10px; padding: 9px 15px; cursor: pointer; transition: opacity .15s; }
+      .confirm-go:hover { opacity: .9; }
+      .confirm-keep { font: 400 12.5px/1 var(--sans); background: none; border: 0; color: var(--ink-dim); cursor: pointer; }
+      .confirm-keep:hover { color: var(--ink-sec); }
       .runbar { flex-wrap: wrap; gap: 8px; }
       .runbar .grow { flex: 1; }
       .gap-note { font: 400 11.5px/1.6 var(--mono); color: var(--warn); margin-top: 8px; }
