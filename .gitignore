@@ -21,3 +21,6 @@ switchboard-*.zip
 
 # Browser-pane / dev-server launch configs — developer-local, not shared
 **/.claude/launch.json
+
+# wrapp runtime state dumped during local dev/testing — not source
+batch-state.json

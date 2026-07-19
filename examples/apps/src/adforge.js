@@ -5,6 +5,10 @@
 // three concept options (one recommended), pick one, cast it into a pixel-faithful Meta feed ad
 // with a Higgsfield-rendered hero. The app holds no key, no model, and no brand data of its own.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import {
+  mountBankIt, mountBorrowOffer, clearBorrowOffer, findBankedForUrl, useContext, listContexts,
+  hostOf, slugId,
+} from "./store/bankit.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -20,9 +24,12 @@ let relay = null;
 let notInstalled = false;
 let forging = false;
 let casting = false;
-let lastAction = null;   // what "Retry" re-runs
-let lent = null;         // the normalized lent brand context, or null
-let urlRevealed = false; // brand lent, but the user opened the URL path anyway
+let lastAction = null;    // what "Retry" re-runs
+let lent = null;          // the normalized lent brand context, or null
+let urlRevealed = false;  // brand lent, but the user opened the URL path anyway
+let autoForgeKey = null;  // brand name the auto-forge already fired for (dedupes chip vs probe)
+let libraryMetas = [];    // context.list() metadata — dedupes the bank chip, powers the borrow offer
+let borrowSkipped = "";   // the URL the user chose to re-read anyway (the offer never nags twice)
 
 let state = {
   url: SAMPLE_URL,
@@ -85,31 +92,70 @@ const SAMPLE = {
 };
 
 // ---------- persistence ----------
+// Two tiers: localStorage is the instant-paint cache (works pre-connect, same profile only);
+// relay.storage is the source of truth once connected — the workspace follows the user's own
+// Switchboard origin store. savedAt arbitrates which copy is newer.
 function save() {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({
-      url: state.url, steer: state.steer, source: state.source, brand: state.brand,
-      concepts: state.concepts, picked: state.picked, aspect: state.aspect, images: state.images,
-      sample: state.sample,
-      siteCache: state.siteCache ? state.siteCache.slice(0, 12000) : null,
-      siteCacheUrl: state.siteCacheUrl,
-    }));
-  } catch { /* storage full or blocked — non-fatal */ }
+  state.savedAt = Date.now();
+  const payload = JSON.stringify({
+    url: state.url, steer: state.steer, source: state.source, brand: state.brand,
+    concepts: state.concepts, picked: state.picked, aspect: state.aspect, images: state.images,
+    sample: state.sample, savedAt: state.savedAt,
+    siteCache: state.siteCache ? state.siteCache.slice(0, 12000) : null,
+    siteCacheUrl: state.siteCacheUrl,
+  });
+  try { localStorage.setItem(STORE_KEY, payload); } catch { /* storage full or blocked — non-fatal */ }
+  if (relay && relay.storage && typeof relay.storage.set === "function") {
+    try { void relay.storage.set(STORE_KEY, payload).catch(() => {}); } catch { /* fire-and-forget */ }
+  }
 }
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (s && typeof s === "object") Object.assign(state, s);
-  } catch { /* corrupt store — start clean */ }
+function coerceState() {
   if (typeof state.url !== "string" || !state.url) state.url = SAMPLE_URL;
   if (typeof state.steer !== "string") state.steer = "";
   if (state.source !== "brand") state.source = "url";
   if (!Array.isArray(state.concepts)) state.concepts = [];
   if (!state.images || typeof state.images !== "object") state.images = {};
   if (state.aspect !== "4:5") state.aspect = "1:1";
+  if (typeof state.savedAt !== "number") state.savedAt = 0;
   if (!(Number.isInteger(state.picked) && state.picked >= 0 && state.picked < state.concepts.length)) state.picked = -1;
 }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s && typeof s === "object") Object.assign(state, s);
+  } catch { /* corrupt store — start clean */ }
+  coerceState();
+}
 load();
+
+// Pull the origin-store copy once connected; it wins only when strictly newer than what the
+// localStorage tier already painted. Sequenced by the callers (never raced against connect).
+async function syncFromRelayStorage() {
+  if (!relay || !relay.storage || typeof relay.storage.get !== "function") return;
+  let raw = null, parsed = null;
+  try {
+    raw = await relay.storage.get(STORE_KEY);
+    parsed = JSON.parse(raw);
+  } catch { return; /* nothing banked yet, or an older daemon — the local tier stands */ }
+  if (!parsed || typeof parsed !== "object") return;
+  if ((parsed.savedAt || 0) <= (state.savedAt || 0)) return;
+  Object.assign(state, parsed);
+  coerceState();
+  try { localStorage.setItem(STORE_KEY, raw); } catch { /* cache refresh only */ }
+  $("f-url").value = state.url;
+  $("steer").value = state.steer;
+  renderEntry();
+  if (state.concepts.length) {
+    renderConcepts();
+    $("concepts-sec").hidden = false;
+  } else {
+    // The newer copy has no concepts — clear any boot-rendered cards so no stale card
+    // (whose index no longer exists) is left clickable.
+    $("cards").textContent = "";
+    $("concepts-sec").hidden = true;
+  }
+  renderStudio(); // hides/reveals the studio per state.picked and calls reflect()
+}
 
 // ---------- small utils ----------
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -177,13 +223,41 @@ function wipeSample() {
 }
 
 // Read whatever brand the user has already lent AdForge — on connect AND on load with a grant.
+// When nothing is lent, fall back to the library: auto-select the first brand-kind context via
+// list()+use(). That path needs contextKinds granted at connect, and reused grants are
+// exact-match (they ignore newly requested scope) — so every failure or empty result falls
+// through to lent = null and the URL entry renders exactly as before.
 async function loadBrandCtx() {
   if (!relay || !relay.context || typeof relay.context.active !== "function") { lent = null; return; }
   try {
     const ctx = await relay.context.active();
     lent = ctx ? normalizeBrand(ctx) : null;
   } catch { lent = null; }
+  // One list() serves two jobs: the auto-select fallback below, and the library metadata the bank
+  // chip dedupes against / the borrow offer matches on. Metadata only — never payloads.
+  libraryMetas = await listContexts(relay);
+  if (!lent && libraryMetas.length && typeof relay.context.use === "function") {
+    const brands = libraryMetas.filter((m) => (m.kind || "").toLowerCase() === "brand");
+    if (brands.length) {
+      const ctx = await useContext(relay, brands[0].id);
+      lent = ctx ? normalizeBrand(ctx) : null;
+    }
+  }
   if (lent && state.sample) wipeSample(); // real context exists — the sample dies on the spot
+}
+
+// THE point of AdForge: the moment a brand is known, concepts forge themselves — zero clicks.
+// Fires from every connect path; dedupes the chip-onConnect vs fast-probe double fire by brand
+// name; never re-burns tokens when the persisted bench already holds this brand's concepts; and
+// never auto-casts — image renders spend Higgsfield credits and stay behind the explicit pick.
+function maybeAutoForge() {
+  if (!relay || !lent || forging || casting || state.sample) return;
+  if (autoForgeKey === lent.name) return;
+  autoForgeKey = lent.name;
+  if (state.source === "brand" && state.brand && state.brand.name === lent.name && state.concepts.length > 0) {
+    return; // returning user — their bench matches the lent brand; show it, burn nothing
+  }
+  void forgeRun({ mode: "brand", note: "forging from your lent brand automatically — steer + Regenerate to redirect" });
 }
 
 // The "switch"/"use a brand" affordance: open the Switchboard picker, then re-derive.
@@ -202,6 +276,7 @@ async function pickBrand(btn) {
       if (state.source === "brand" && (!lent || next.name !== lent.name)) clearBrandConcepts();
       lent = next;
       urlRevealed = false;
+      autoForgeKey = null; // an explicit pick always earns a forge (the bench-match check still dedupes)
       if (state.sample) wipeSample();
     }
   } catch (err) {
@@ -211,6 +286,7 @@ async function pickBrand(btn) {
     btn.disabled = false;
     renderEntry();
     reflect();
+    maybeAutoForge();
   }
 }
 
@@ -235,19 +311,25 @@ $("err-retry").addEventListener("click", () => { hideError(); if (lastAction) la
 // ---------- the standard connect chip (cartridge idiom, verbatim) ----------
 mountConnect($("chip-dock"), {
   scope: {
-    reason: "forge Meta ads from your lent brand or a site you name",
+    reason: "forge Meta ads from your lent brand or a site you name — and offer to bank what it reads off that site as a brand in your library",
     tools: ["WebFetch", "mcp__claude_ai_Higgsfield__*"],
     models: ["sonnet"],
+    // Lets loadBrandCtx auto-select a brand via list()+use() when nothing is lent. NOT relied
+    // on for returning users: reused grants are exact-match and ignore newly requested kinds,
+    // so every list()/use() caller tolerates an empty result or a throw.
+    contextKinds: ["brand"],
   },
   installUrl: INSTALL_URL,
   onConnect: async (r) => {
     relay = r;
-    wipeSample();          // connected — hardcoded sample data has no business here anymore
-    await loadBrandCtx();  // context-first: read the lent brand the moment we're in
+    wipeSample();                 // connected — hardcoded sample data has no business here anymore
+    await loadBrandCtx();         // context-first: read the lent brand the moment we're in
+    await syncFromRelayStorage(); // then the origin-store workspace — sequenced, never raced
     renderEntry();
     reflect();
+    maybeAutoForge();             // context-first, proactive: concepts forge with zero clicks
   },
-  onDisconnect: () => { relay = null; lent = null; renderEntry(); reflect(); },
+  onDisconnect: () => { relay = null; lent = null; autoForgeKey = null; renderEntry(); reflect(); },
   // The chip's own "Switch" menu runs context.pick() itself — without this hook the chip would
   // show the new brand while the entry card, forge button, and concepts still carried the old
   // one. Re-read the lent brand and apply the same stale-concept clearing pickBrand does
@@ -255,9 +337,12 @@ mountConnect($("chip-dock"), {
   onProjectChange: async () => {
     const prev = lent;
     await loadBrandCtx();
-    if (state.source === "brand" && (prev && prev.name) !== (lent && lent.name)) clearBrandConcepts();
+    const changed = (prev && prev.name) !== (lent && lent.name);
+    if (changed) autoForgeKey = null; // a switched brand earns its own auto-forge
+    if (state.source === "brand" && changed) clearBrandConcepts();
     renderEntry();
     reflect();
+    maybeAutoForge(); // a brand switch must never leave the page emptier than before
   },
 });
 // Fast probe so a returning user's grant enables everything without a click — and re-reads context.
@@ -269,12 +354,14 @@ mountConnect($("chip-dock"), {
       relay = r;
       wipeSample();
       await loadBrandCtx();
+      await syncFromRelayStorage();
     }
   } else {
     notInstalled = true;
   }
   renderEntry();
   reflect();
+  maybeAutoForge(); // no-op unless the grant path above set relay; deduped against onConnect
 })();
 
 // ---------- 01 · source: which entry the user sees ----------
@@ -305,6 +392,8 @@ function renderEntry() {
 function reflect() {
   const busy = forging || casting;
   const on = !!relay;
+  // pick() ignores clicks while a run is live — make the cards LOOK inert too.
+  $("cards").classList.toggle("busy", busy);
   $("forge").disabled = !on || busy;
   $("forge").textContent = forging ? "Forging…" : "Forge concepts";
   $("forge-brand").disabled = !on || busy;
@@ -440,6 +529,36 @@ function parseForge(raw, brandKnown) {
   } catch { return null; }
 }
 
+// The mirror of the bank chip: before the site is read AGAIN, ask the library whether this host is
+// already banked. list() is metadata only; use() runs only if the user takes the offer. Returns true
+// when the offer is on screen (the caller stands down and waits for the click).
+async function offerBorrow(url) {
+  const dock = $("borrow");
+  if (!dock || !relay || !url || borrowSkipped === url) return false;
+  if (lent && !urlRevealed) return false; // a brand is already lent — nothing to borrow
+  const meta = await findBankedForUrl(relay, url, "brand");
+  if (!meta) return false;
+  mountBorrowOffer(dock, {
+    name: meta.name,
+    detail: `banked brand · ${hostOf(url) || "your library"} — read once, reusable everywhere`,
+    swatches: meta.swatches || [],
+    onUse: async () => {
+      const ctx = await useContext(relay, meta.id);
+      if (!ctx) { borrowSkipped = url; void forgeRun({ mode: "url" }); return; }
+      lent = normalizeBrand(ctx);
+      urlRevealed = false;
+      autoForgeKey = lent.name; // this run IS the auto-forge for it
+      if (state.sample) wipeSample();
+      renderEntry();
+      reflect();
+      void forgeRun({ mode: "brand", note: `working from your banked “${lent.name}” — the site stays unread` });
+    },
+    // Dismissal always re-runs the fetch path — the offer is never a dead end.
+    onDismiss: () => { borrowSkipped = url; void forgeRun({ mode: "url" }); },
+  });
+  return true;
+}
+
 async function forgeRun(opts = {}) {
   if (!relay || forging || casting) return;
   const mode = opts.mode === "brand" || opts.mode === "url" ? opts.mode : (state.source === "brand" && lent ? "brand" : "url");
@@ -450,11 +569,16 @@ async function forgeRun(opts = {}) {
     state.url = url;
   }
   const cached = mode === "url" && !!(opts.useCache && state.siteCache && state.siteCacheUrl === state.url);
+  // BORROW BEFORE FETCHING: if this host is already banked, offer the banked brand instead of
+  // burning another read on the same site. An offer, never a gate — dismissing re-runs the fetch.
+  if (mode === "url" && !cached && await offerBorrow(state.url)) return;
   const priorNames = opts.avoidRepeats ? state.concepts.map((c) => c.name) : null;
   forging = true;
   reflect();
   hideError();
+  clearBorrowOffer($("borrow"));
   clearLog();
+  if (opts.note) logLine(opts.note); // e.g. the auto-forge announcement — logged after the clear
   let prompt;
   if (mode === "brand") {
     logLine(`working from your lent brand “${lent.name}” — no site fetch needed…`);
@@ -580,7 +704,9 @@ function parseCopyRegen(raw, old) {
 
 async function copyRegenRun() {
   if (!relay || forging || casting || state.picked < 0) return;
-  const c = cur();
+  const idx = state.picked; // captured at start — the completion write targets THIS slot, not
+  const c = cur();          // wherever state.picked points by then (belt-and-braces with pick()'s guard)
+  if (!c) return; // stale pick index — never lock `forging` on a dead slot
   const b = state.brand || {};
   forging = true;
   reflect();
@@ -604,7 +730,7 @@ async function copyRegenRun() {
     }
     const next = parseCopyRegen(acc, c);
     if (!next) throw new Error("The forge returned malformed copy — hit Retry; it usually lands clean on the second pass.");
-    state.concepts[state.picked] = next; // in place: picked index and rendered images survive
+    if (state.concepts[idx]) state.concepts[idx] = next; // in place at the CAPTURED index: pick and rendered images survive
     save();
     liveLine.textContent = "redrafting copy… done";
     logLine("fresh copy on the bench — same concept, same creative.", "good");
@@ -661,6 +787,46 @@ function renderBrandline() {
   });
   if (state.sample) mount.append(el("span", "srcchip sample", "sample"));
   else if (state.source === "brand") mount.append(el("span", "srcchip", "your lent brand"));
+  mountBankOffer(mount);
+}
+
+// STOP THE HOARDING: AdForge just read this site on the user's own Claude and extracted a brand from
+// it. Without this it would keep that read in state.siteCache — private, per-origin, and re-done by
+// the next wrapp pointed at the same site. One quiet, opt-in chip promotes it to a context every
+// wrapp can borrow. Absent when the brand CAME from the library (source === "brand" — nothing to
+// bank) and on the sample (there is no real brand behind it).
+function bankDraft() {
+  const b = state.brand;
+  if (!relay || state.sample || state.source !== "url" || !b || !b.name) return null;
+  // parseForge's placeholder — the read produced no real identity, so there is nothing worth banking.
+  if (b.name === "The brand") return null;
+  const domain = hostOf(state.url);
+  return {
+    id: slugId(domain || b.name),
+    name: b.name,
+    data: {
+      positioning: b.product || "",
+      voice: b.tone || "",
+      palette: Array.isArray(b.colors) ? b.colors : [],
+      products: [],
+      ...(domain ? { domain } : {}),
+      source: { kind: "site", url: state.url },
+    },
+  };
+}
+function mountBankOffer(mount) {
+  const draft = bankDraft();
+  if (!draft) return;
+  mountBankIt(mount, {
+    relay,
+    kind: "brand",
+    draft,
+    contexts: libraryMetas,
+    onPublished: (meta) => {
+      libraryMetas = libraryMetas.filter((m) => m.id !== meta.id).concat(meta);
+      logLine(`“${meta.name}” banked — every wrapp can borrow it now instead of re-reading the site.`, "good");
+    },
+  });
 }
 
 function renderConcepts() {
@@ -691,6 +857,11 @@ function renderConcepts() {
 }
 
 function pick(i) {
+  // Busy guard: a click mid-forge/mid-cast would wipe state.images (killing the creative that
+  // "Regenerate copy" promises to preserve) and re-render a studio the live run is about to
+  // discard — and it's the cross-concept corruption vector for copyRegenRun. Cards also get
+  // the .busy look via reflect(), but this is the actual lock.
+  if (forging || casting) return;
   state.picked = i;
   state.images = {}; // new concept → new creative
   save();
@@ -776,6 +947,7 @@ function castLineFor(name) {
 async function castRun(aspect) {
   if (!relay || casting || forging || state.picked < 0) return;
   const c = cur();
+  if (!c) return; // stale pick index (bench shrank under it) — never lock `casting` on a dead slot
   const b = state.brand || {};
   casting = true;
   reflect();

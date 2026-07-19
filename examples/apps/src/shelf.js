@@ -3,9 +3,15 @@
 // worksheet on pick. The parse + count are pure client-side; the triage runs on the VISITOR'S
 // own Claude through Switchboard. No tools, one model, ONLY-JSON contract.
 //
-// CONTEXT-FIRST: after connect Shelf reads the brand the user lent it (kind "brand" — see
-// docs/CONTEXT-KINDS.md) and derives from it: the strap ("triaging Aamras' shelf"), brand-aware
-// steer chips, and the triage prompt itself (positioning/heroes shape dead-stock and reorder calls).
+// CONTEXT-FIRST, PROACTIVE, ZERO-INPUT: after connect (fresh chip click OR page-load with a
+// standing grant) Shelf reads the brand the user lent it (kind "brand" — see docs/CONTEXT-KINDS.md;
+// falls back to the first banked brand via list()+use()) and LOADS THE SHEET ITSELF:
+//   · the context carries inventory  → that is the sheet, verbatim (source "context")
+//   · it carries only a catalogue    → a representative sheet off the product list (source "derived")
+//   · nothing is lent                → the built-in demo sheet (source "sample")
+// Then the triage auto-runs and the ★ recommended plan auto-details into the week-one worksheet —
+// the board is on screen before the user types anything. Pasting stays available and always wins:
+// the moment the user edits the sheet it becomes source "user" and Shelf never overwrites it.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +31,30 @@ let rows = [];
 let brand = null; // the lent brand context (normalized), or null
 let plans = [];
 let selectedPlan = null;
+let autoTriaged = false; // one proactive triage per page life — chip onConnect + the probe both funnel here
+let lastRendered = null; // the board result currently on screen (stale-marking on brand switch reads it)
+// WHERE THE SHEET ON DECK CAME FROM. "user" is sacred — Shelf never overwrites a sheet the person
+// typed, pasted, or banked. Everything else is Shelf's own doing and is free to be replaced when a
+// context arrives or the brand switches.
+let sheetSource = "sample"; // "context" | "derived" | "sample" | "user"
+let autoCsv = null;         // the exact text Shelf last loaded on its own
+
+// ---------- persistence: two tiers ----------
+// localStorage paints instantly (works pre-connect, same profile only); relay.storage mirrors it
+// into the user's own Switchboard origin store once connected — fire-and-forget on write,
+// restore-if-local-empty on connect (see syncFromRelayStorage).
+function persist(key, val) {
+  try { localStorage.setItem(key, val); } catch { /* full/blocked */ }
+  if (relay && relay.storage && typeof relay.storage.set === "function") {
+    try { void relay.storage.set(key, val).catch(() => {}); } catch { /* fire-and-forget */ }
+  }
+}
+function unpersist(key) {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+  if (relay && relay.storage && typeof relay.storage.delete === "function") {
+    try { void relay.storage.delete(key).catch(() => {}); } catch { /* fire-and-forget */ }
+  }
+}
 
 // ---------- the sample: ONLY for the not-connected state, always labeled as a sample ----------
 // A DTC skincare brand, 24 SKUs with a story: 3 heroes about to stock out, 5 dead SKUs on cash.
@@ -146,30 +176,45 @@ function renderStats() {
           : "paste a sheet or load the sample — the count is instant");
     return;
   }
+  const n = rows.length;
   const s = computeStats(rows);
   $("s-units").textContent = fmtNum(s.units);
   $("s-value").textContent = fmtINR(s.value);
   $("s-risk").textContent = String(s.risk.length);
   $("s-dead").textContent = String(s.dead.length);
-  if (isSample()) {
+  // Say exactly where the sheet came from — a loaded-for-you sheet must never pass as the real one.
+  if (sheetSource === "context") {
+    msg.className = "parse-msg ok";
+    msg.textContent = "✓ " + n + " SKUs loaded from " + (brand ? brand.name + "'s" : "your") + " inventory"
+      + (inventoryEstimated ? " · weekly sales estimated from reorder points — paste real sales to sharpen it" : "");
+  } else if (sheetSource === "derived") {
     msg.className = "parse-msg smp";
-    msg.textContent = "sample sheet — DTC skincare, " + rows.length + " SKUs · paste yours to replace it";
+    msg.textContent = "representative sheet — " + n + " SKUs off " + (brand ? brand.name + "'s" : "the") + " catalogue; the products are real, the stock and sales are stand-ins · paste the real sheet to replace it";
+  } else if (isSample()) {
+    msg.className = "parse-msg smp";
+    msg.textContent = relay
+      ? "sample sheet — DTC skincare, " + n + " SKUs · paste " + (brand ? brand.name + "'s" : "your") + " real sheet to replace it"
+      : "sample sheet — DTC skincare, " + n + " SKUs · paste yours to replace it";
   } else {
     msg.className = "parse-msg ok";
-    msg.textContent = "✓ " + rows.length + " SKUs read";
+    msg.textContent = "✓ " + n + " SKUs read";
   }
 }
-function reparse(persist = true) {
+function reparse(save = true) {
   rows = parseCsv($("csv").value);
-  if (persist) { try { localStorage.setItem(K_CSV, $("csv").value); } catch { /* full/blocked */ } }
+  if (save) persist(K_CSV, $("csv").value);
   renderStats();
   reflect();
 }
 
 let debounceT = null;
-$("csv").addEventListener("input", () => { clearTimeout(debounceT); debounceT = setTimeout(() => reparse(), 250); });
-$("load-sample").addEventListener("click", () => { $("csv").value = SAMPLE_CSV; reparse(); });
-$("clear-csv").addEventListener("click", () => { $("csv").value = ""; reparse(); });
+// A keystroke in the box makes the sheet the USER'S. From here on Shelf loads nothing over it.
+$("csv").addEventListener("input", () => {
+  if ($("csv").value !== autoCsv) { sheetSource = "user"; autoCsv = null; }
+  clearTimeout(debounceT); debounceT = setTimeout(() => reparse(), 250);
+});
+$("load-sample").addEventListener("click", () => { $("csv").value = SAMPLE_CSV; autoCsv = SAMPLE_CSV; sheetSource = "sample"; reparse(); });
+$("clear-csv").addEventListener("click", () => { $("csv").value = ""; autoCsv = null; sheetSource = "user"; reparse(); });
 
 // ---------- brand context: read what the user lent Shelf, derive everything from it ----------
 // Normalize an opaque brand context defensively (docs/CONTEXT-KINDS.md kind "brand" — no locked schema).
@@ -177,6 +222,9 @@ function normalizeBrand(ctx) {
   const d = (ctx && ctx.data) || {};
   const arrs = (v) => (Array.isArray(v) ? v.filter(Boolean).map(String) : []);
   const products = arrs(d.products).length ? arrs(d.products) : arrs(d.range);
+  // Commerce contexts may carry a real stock list. It is the whole point of this wrapp, so take it
+  // defensively from any of the shapes a publisher might use and let csvFromInventory() sort it out.
+  const inv = Array.isArray(d.inventory) ? d.inventory : Array.isArray(d.stock) ? d.stock : Array.isArray(d.skus) ? d.skus : [];
   return {
     name: String(ctx.name || d.name || "Brand"),
     voice: String(d.voice || d.vibe || "").trim(),
@@ -184,7 +232,72 @@ function normalizeBrand(ctx) {
     audience: String(d.audience || "").trim(),
     palette: arrs(d.palette), // FLAT color strings per the contract
     products,
+    inventory: inv.filter((x) => x && typeof x === "object"),
   };
+}
+
+// ---------- the sheet Shelf loads for you (doctrine: never an empty box, never "paste first") ----
+const CSV_HEAD = "SKU,Product,On hand,Avg weekly sales,Unit cost (INR),Price (INR),Lead time (days)";
+function skuFor(name, i) {
+  const w = String(name).toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+  const stem = (w[0] || "SKU").slice(0, 4) + (w[1] ? "-" + w[1].slice(0, 3) : "");
+  return stem + "-" + String(i + 1).padStart(2, "0");
+}
+const cnum = (v, fb) => { const n = Number(v); return Number.isFinite(n) ? n : fb; };
+// Real inventory → the sheet, verbatim. Contexts rarely carry a SALES column, so when it is missing
+// weekly demand is estimated from the reorder point (a reorder point IS ~ weekly demand × lead
+// weeks). The UI says "sales estimated" whenever that estimate was used — never silently.
+let inventoryEstimated = false;
+function csvFromInventory(inv) {
+  inventoryEstimated = false;
+  const rows = inv.slice(0, 60).map((it, i) => {
+    const lead = Math.max(1, cnum(it.leadDays ?? it.lead ?? it.leadTime, 21));
+    const stock = Math.max(0, cnum(it.stock ?? it.onHand ?? it.qty, 0));
+    let weekly = cnum(it.weekly ?? it.avgWeeklySales ?? it.sales, NaN);
+    if (!Number.isFinite(weekly) || weekly < 0) {
+      const reorderAt = cnum(it.reorderAt ?? it.reorderPoint, Math.max(2, Math.round(stock / 4)));
+      weekly = Math.round((reorderAt / Math.max(1, lead / 7)) * 10) / 10;
+      inventoryEstimated = true;
+    }
+    return [
+      String(it.sku || skuFor(it.name || it.product || "SKU", i)),
+      csvField(String(it.name || it.product || "Item " + (i + 1))),
+      stock, weekly, cnum(it.cost ?? it.unitCost, 0), cnum(it.price, 0), lead,
+    ].join(",");
+  });
+  return CSV_HEAD + "\n" + rows.join("\n");
+}
+// Only a catalogue → a REPRESENTATIVE sheet: the products are real, the numbers are stand-ins, and
+// the strip under the box says exactly that. It gets the person to a board they can react to.
+function csvFromProducts(products) {
+  inventoryEstimated = false;
+  const ON = [8, 140, 60, 15, 3, 220, 45, 90];
+  const WK = [10, 34, 18, 6, 4, 0.2, 12, 26];
+  const CO = [210, 165, 140, 340, 90, 120, 260, 75];
+  const PR = [649, 499, 449, 1290, 300, 399, 799, 249];
+  const LD = [21, 18, 14, 28, 26, 21, 30, 14];
+  const rows = products.slice(0, 12).map((p, i) =>
+    [skuFor(p, i), csvField(String(p)), ON[i % ON.length], WK[i % WK.length], CO[i % CO.length], PR[i % PR.length], LD[i % LD.length]].join(","));
+  return CSV_HEAD + "\n" + rows.join("\n");
+}
+function contextSheet() {
+  if (!brand) return null;
+  if (brand.inventory.length) return { csv: csvFromInventory(brand.inventory), source: "context" };
+  if (brand.products.length) return { csv: csvFromProducts(brand.products), source: "derived" };
+  return null;
+}
+// Loads the lent project's shelf into the box. Returns true when the sheet on deck actually changed.
+function applyContextSheet() {
+  if (sheetSource === "user") return false; // the person's own sheet is never overwritten
+  const s = contextSheet();
+  if (!s) return false;
+  const changed = $("csv").value.trim() !== s.csv.trim();
+  sheetSource = s.source;
+  autoCsv = s.csv;
+  if (!changed) return false;
+  $("csv").value = s.csv;
+  reparse(false); // never persist Shelf's own sheet over a sheet the user banked
+  return true;
 }
 async function loadBrand() {
   if (!relay || !relay.context || typeof relay.context.active !== "function") { brand = null; afterBrandChange(); return; }
@@ -192,17 +305,55 @@ async function loadBrand() {
     const ctx = await relay.context.active();
     brand = ctx ? normalizeBrand(ctx) : null;
   } catch { brand = null; }
+  // Doctrine fallback: nothing lent → auto-select the first banked kind-"brand" context.
+  // Needs contextKinds granted at connect, and reused grants are exact-match (they ignore newly
+  // requested kinds) — so every failure or empty list degrades to blind mode + "use a brand".
+  if (!brand && typeof relay.context.list === "function" && typeof relay.context.use === "function") {
+    try {
+      const metas = await relay.context.list();
+      const m = (metas || []).find((x) => (x.kind || "").toLowerCase() === "brand");
+      if (m) {
+        const ctx = await relay.context.use(m.id);
+        brand = ctx ? normalizeBrand(ctx) : null;
+      }
+    } catch { /* grant without the kind, or an older daemon — the manual picker still works */ }
+  }
   afterBrandChange();
 }
-async function pickBrand() {
+async function pickBrand(btn) {
   if (!relay || !relay.context || typeof relay.context.pick !== "function") return;
+  const was = btn.textContent;
+  btn.textContent = "choosing in Switchboard…";
+  btn.disabled = true;
+  const prev = brand ? brand.name : null;
   try {
     const ctx = await relay.context.pick(); // opens the side-panel picker; selecting lends it to Shelf
-    if (ctx) { brand = normalizeBrand(ctx); afterBrandChange(); }
+    if (ctx) { brand = normalizeBrand(ctx); afterBrandChange(); afterBrandSwitch(prev); }
   } catch { /* picker dismissed */ }
+  finally {
+    btn.textContent = was;
+    btn.disabled = false;
+  }
 }
-$("brand-load").addEventListener("click", pickBrand);
-$("brand-switch").addEventListener("click", pickBrand);
+$("brand-load").addEventListener("click", () => pickBrand($("brand-load")));
+$("brand-switch").addEventListener("click", () => pickBrand($("brand-switch")));
+
+// A switched brand must never leave a board triaged under the OLD brand looking current:
+// real sheet on deck → re-triage proactively (the new heroes/positioning reshape the calls);
+// otherwise mark the board with who it was triaged under so the staleness is visible.
+function afterBrandSwitch(prevName) {
+  const nowName = brand ? brand.name : null;
+  if ((prevName || null) === nowName) return;
+  applyContextSheet(); // a new brand brings its own shelf — unless the user pasted one
+  if (relay && rows.length && !running) { runTriage(); return; }
+  if ($("board").hidden) return;
+  markBoardStale();
+}
+function markBoardStale() {
+  const meta = $("b-meta");
+  if (meta.textContent.includes(" — re-triage")) return;
+  meta.textContent += " · triaged under " + (lastRendered && lastRendered.brandName ? lastRendered.brandName : "no brand") + " — re-triage";
+}
 
 function afterBrandChange() {
   updateCtxbar();
@@ -254,21 +405,73 @@ function renderSteerChips() {
     const b = el("button", "schip" + (c.brandy ? " brandy" : ""), c.label);
     b.addEventListener("click", () => {
       $("steer").value = c.steer;
-      try { localStorage.setItem(K_STEER, c.steer); } catch { /* ignore */ }
+      persist(K_STEER, c.steer);
     });
     mount.append(b);
   }
 }
-$("steer").addEventListener("input", () => { try { localStorage.setItem(K_STEER, $("steer").value); } catch { /* ignore */ } });
+$("steer").addEventListener("input", () => { persist(K_STEER, $("steer").value); });
 $("steer").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("go").disabled) runTriage(); });
 
 // ---------- the standard connect chip + returning-user probe ----------
-function onRelay(r) {
+// Once connected, prefer the user's own Switchboard origin store over an empty local cache —
+// a returning user on a fresh profile gets their sheet, board, and worksheet back before the
+// auto-triage decides whether anything needs regenerating. Local copies (already painted at
+// boot) always win; only empty keys are backfilled. Sequenced by onRelay, never raced.
+async function syncFromRelayStorage() {
+  if (!relay || !relay.storage || typeof relay.storage.get !== "function") return;
+  const pull = async (key) => {
+    let local = null;
+    try { local = localStorage.getItem(key); } catch { /* blocked */ }
+    if (local != null && local !== "") return null; // the local tier stands
+    let v = null;
+    try { v = await relay.storage.get(key); } catch { return null; }
+    if (typeof v !== "string" || !v) return null;
+    try { localStorage.setItem(key, v); } catch { /* cache refresh only */ }
+    return v;
+  };
+  const [csv, steer, last, play] = await Promise.all([pull(K_CSV), pull(K_STEER), pull(K_LAST), pull(K_PLAY)]);
+  if (steer != null) $("steer").value = steer;
+  // A banked sheet is the USER'S — it outranks anything Shelf would load from the context.
+  if (csv != null && csv.trim()) { $("csv").value = csv; sheetSource = "user"; autoCsv = null; reparse(false); }
+  let lastObj = null, playObj = null;
+  try { lastObj = JSON.parse(last || "null"); } catch { /* corrupt — skip */ }
+  try { playObj = JSON.parse(play || "null"); } catch { /* corrupt — skip */ }
+  if (lastObj && lastObj.data && $("board").hidden) {
+    renderBoard(lastObj, { selectedTitle: playObj?.planTitle || null });
+    if (playObj?.playbook && selectedPlan && selectedPlan.title === playObj.planTitle) renderPlaybook(playObj.playbook);
+  }
+}
+
+// Context-first, PROACTIVE: the moment we're connected with a sheet on deck and no fresh board
+// that matches it, the triage runs itself — progress strip up, zero clicks, and the recommended
+// plan details itself into the worksheet when the board lands (runTriage does that). This fires
+// for EVERY source, including the representative and demo sheets: the doctrine is that a connected
+// visitor sees a real board without typing, and a board on stand-in numbers (clearly labeled as
+// such under the box and on the board itself) beats an empty page telling them to paste.
+// autoTriaged dedupes the chip-onConnect vs fast-probe double fire and chip reconnects.
+function maybeAutoTriage() {
+  if (!relay || !rows.length || running || autoTriaged) return;
+  let savedLast = null;
+  try { savedLast = JSON.parse(localStorage.getItem(K_LAST) || "null"); } catch { /* corrupt — treat as absent */ }
+  const sig = sheetCsv().length + ":" + rows.length;
+  const fresh = !!(savedLast && savedLast.data && savedLast.csvSig === sig && Date.now() - (savedLast.at || 0) <= 24 * 3600 * 1000);
+  autoTriaged = true;
+  if (!fresh) { runTriage(); return; }
+  // Board is fresh — but a lit recommended plan with no worksheet is a promise unkept: top it up.
+  let savedPlay = null;
+  try { savedPlay = JSON.parse(localStorage.getItem(K_PLAY) || "null"); } catch { /* ignore */ }
+  if (selectedPlan && !savedPlay?.playbook) runRefine();
+}
+
+async function onRelay(r) {
   relay = r;
-  $("load-sample").hidden = true; // sample is a not-connected affordance only
-  if (isSample()) { $("csv").value = ""; reparse(); } // real context replaces the sample the moment it can exist
-  loadBrand(); // context-first: read the lent brand on connect AND on load with a standing grant
+  $("load-sample").hidden = true; // the sample is already loaded when it matters; the button is a not-connected affordance
+  await syncFromRelayStorage(); // origin store first — the sheet/board a returning user banked
+  await loadBrand(); // context-first: the lent brand (or the first banked one) shapes the prompt BEFORE any auto-run
+  applyContextSheet(); // …and brings the shelf with it, so nothing has to be pasted
   reflect();
+  maybeAutoTriage();
 }
 function offRelay() {
   relay = null;
@@ -277,11 +480,24 @@ function offRelay() {
   afterBrandChange();
 }
 mountConnect($("chip-dock"), {
-  scope: { models: ["sonnet"], reason: "triage your inventory" },
+  scope: {
+    models: ["sonnet"],
+    reason: "triage your inventory",
+    // Lets loadBrand auto-select a banked brand via list()+use() when nothing is lent. NOT relied
+    // on for returning users: reused grants are exact-match and ignore newly requested kinds, so
+    // every list()/use() caller tolerates an empty result or a throw.
+    contextKinds: ["brand"],
+  },
   installUrl: INSTALL_URL,
   onConnect: (r) => onRelay(r),
   onDisconnect: () => offRelay(),
-  onProjectChange: () => loadBrand(), // the chip's own "Switch ▸" must re-derive strap/chips/prompts too
+  // The chip's own "Switch ▸" must re-derive strap/chips/prompts too — and a board triaged under
+  // the old brand either re-triages (real sheet) or gets visibly marked stale.
+  onProjectChange: async () => {
+    const prev = brand ? brand.name : null;
+    await loadBrand();
+    afterBrandSwitch(prev);
+  },
 });
 // Fast probe so a returning user's grant enables the button (and loads the brand) without a click.
 (async () => {
@@ -304,6 +520,8 @@ function reflect() {
   if (running) { hint.append("the foreman is counting…"); return; }
   if (relay) {
     if (!rows.length) { hint.append("connected — paste " + (brand ? brand.name + "'s" : "a") + " sheet to triage"); return; }
+    if (sheetSource === "derived") { hint.append("board built on stand-in numbers off " + (brand ? brand.name + "'s" : "the") + " catalogue — paste the real sheet and it re-triages"); return; }
+    if (sheetSource === "sample") { hint.append("connected — the board below is the demo sheet; paste " + (brand ? brand.name + "'s" : "your") + " real sheet to replace it"); return; }
     const b = el("em", "you", "your own Claude");
     hint.append("runs on ", b, " — the sheet goes to your sidekick, nowhere else");
   } else if (installed) {
@@ -392,6 +610,14 @@ function showError(err) {
 async function runTriage() {
   if (!relay || running || !rows.length) return;
   const myRun = ++triageSeq;
+  // Snapshot what this run is actually triaging — a brand switch or CSV edit mid-stream must not
+  // mislabel the result (its attribution/signature describe the prompt, not the finish line).
+  const ranSteer = $("steer").value.trim();
+  const ranBrand = brand ? brand.name : null;
+  const ranSource = sheetSource;
+  const ranSample = sheetSource !== "user" && sheetSource !== "context"; // stand-in numbers — say so on the board
+  const ranSig = sheetCsv().length + ":" + rows.length;
+  const ranCount = rows.length;
   $("errbox").hidden = true;
   setRunning(true);
   let acc = "";
@@ -411,9 +637,22 @@ async function runTriage() {
     let data;
     try { data = JSON.parse(raw); }
     catch { throw new Error("the manifest came back smudged (bad JSON) — hit Re-run triage"); }
-    const result = { data, steer: $("steer").value.trim(), at: Date.now(), skuCount: rows.length };
-    try { localStorage.setItem(K_LAST, JSON.stringify(result)); } catch { /* ignore */ }
+    const result = {
+      data,
+      steer: ranSteer,
+      at: Date.now(),
+      skuCount: ranCount,
+      csvSig: ranSig, // maybeAutoTriage matches this against the live sheet
+      brandName: ranBrand, // the board carries its own attribution — restores never lose it
+      sample: ranSample, // a stand-in-numbers board is never mistaken for real inventory
+      source: ranSource,
+    };
+    persist(K_LAST, JSON.stringify(result));
     renderBoard(result, { fresh: true });
+    // The ★ is a call, not a decoration: the recommended plan (renderPlans just selected it)
+    // details itself into the week-one worksheet with zero clicks. Ordering is safe — the fresh
+    // renderBoard bumped refineSeq before runRefine takes its own token.
+    if (selectedPlan) runRefine();
     $("board").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     if (myRun === triageSeq) showError(err);
@@ -498,9 +737,10 @@ function renderPlans(ps, selectedTitle) {
       p.moves.forEach((m) => ul.append(el("li", null, m)));
       card.append(ul);
     }
+    // The lit card IS the selection: with no explicit pick the recommended plan is selected,
+    // not merely highlighted — callers (fresh triage, auto-triage) can refine it immediately.
     const chosen = selectedTitle ? p.title === selectedTitle : p.recommended;
-    if (chosen) card.classList.add("lit");
-    if (selectedTitle && p.title === selectedTitle) selectedPlan = p;
+    if (chosen) { card.classList.add("lit"); selectedPlan = p; }
     card.addEventListener("click", () => {
       grid.querySelectorAll(".plancard").forEach((c) => c.classList.remove("lit"));
       card.classList.add("lit");
@@ -560,7 +800,7 @@ async function runRefine() {
     try { pb = JSON.parse(raw); }
     catch { throw new Error("the worksheet came back smudged (bad JSON) — retry"); }
     renderPlaybook(pb);
-    try { localStorage.setItem(K_PLAY, JSON.stringify({ planTitle: selectedPlan.title, playbook: pb, at: Date.now() })); } catch { /* ignore */ }
+    persist(K_PLAY, JSON.stringify({ planTitle: selectedPlan.title, playbook: pb, at: Date.now() }));
   } catch (err) {
     if (myRun === refineSeq) {
       $("play-err").hidden = false;
@@ -599,12 +839,17 @@ $("play-cancel").addEventListener("click", () => { refineSeq++; $("play-prog").h
 
 function renderBoard(result, opts = {}) {
   const d = result.data || {};
+  lastRendered = result;
   $("board").hidden = false;
   const when = new Date(result.at || Date.now());
+  // Attribution comes from the STORED result, never the live brand global — a board restored at
+  // boot (brand still null, the probe takes up to 2s) keeps naming the brand it was triaged under.
+  const SRC_TAG = { context: "", derived: "representative sheet · ", sample: "sample sheet · ", user: "" };
   $("b-meta").textContent =
+    (SRC_TAG[result.source] ?? (result.sample ? "sample · " : "")) +
     "triaged " + when.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) +
     " · " + (result.skuCount || arr(d.reorderNow).length + arr(d.watch).length + arr(d.deadWeight).length) + " SKUs" +
-    (brand ? " · " + brand.name : "") +
+    (result.brandName ? " · " + result.brandName : "") +
     (result.steer ? " · steer: “" + result.steer.slice(0, 48) + (result.steer.length > 48 ? "…" : "") + "”" : "");
   $("b-summary").textContent = String(d.summary ?? "");
   const cash = coerceNum(d.cashLockedInDead);
@@ -624,7 +869,7 @@ function renderBoard(result, opts = {}) {
     $("playwrap").hidden = true;
     $("playbook").hidden = true;
     $("play-prog").hidden = true;
-    try { localStorage.removeItem(K_PLAY); } catch { /* ignore */ }
+    unpersist(K_PLAY);
   }
 }
 
@@ -637,8 +882,10 @@ function renderBoard(result, opts = {}) {
     savedLast = JSON.parse(localStorage.getItem(K_LAST) || "null");
     savedPlay = JSON.parse(localStorage.getItem(K_PLAY) || "null");
   } catch { /* ignore */ }
-  // Pre-connect the sample keeps the page explorable; the probe clears it the moment a grant exists.
-  $("csv").value = savedCsv != null && savedCsv.trim() ? savedCsv : SAMPLE_CSV;
+  // The demo sheet keeps the page explorable pre-connect and is the last-resort sheet after it
+  // (nothing lent). A banked sheet is the user's and outranks everything Shelf would load.
+  if (savedCsv != null && savedCsv.trim()) { $("csv").value = savedCsv; sheetSource = "user"; autoCsv = null; }
+  else { $("csv").value = SAMPLE_CSV; sheetSource = "sample"; autoCsv = SAMPLE_CSV; }
   $("steer").value = savedSteer;
   renderSteerChips();
   reparse(false);

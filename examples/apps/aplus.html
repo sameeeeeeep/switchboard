@@ -62,6 +62,8 @@
       input[type="text"] { width: 100%; font: 400 14px/1.55 var(--sans); color: var(--ink); background: var(--inset);
         border: 1px solid var(--edge); border-radius: 10px; padding: 12px 14px; outline: none; transition: border-color 0.15s; }
       input[type="text"]:focus { border-color: color-mix(in srgb, var(--lime) 55%, var(--edge)); }
+      input[type="text"]:disabled { opacity: 0.55; cursor: not-allowed; }
+      .pchip:disabled { opacity: 0.55; cursor: not-allowed; }
       .entry-label { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
       .sample-chip { font: 500 9.5px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
         color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--raised));
@@ -279,6 +281,8 @@
           <button class="btn-primary" id="go" type="button">Draft 3 directions</button>
           <span class="hint" id="conn-hint"></span>
         </div>
+        <!-- "you've already banked this" — offered before the same page is read a second time. -->
+        <div id="borrow" hidden></div>
       </section>
 
       <section class="statusbox" id="statusbox" hidden>
@@ -299,6 +303,9 @@
       <section id="directions" hidden>
         <div class="stage-head">
           <p class="kicker">01 · pick a direction</p>
+          <span class="sample-chip" id="dir-sample" hidden>sample — connect to write yours</span>
+          <!-- the opt-in "bank the brand this page just taught us" chip -->
+          <span id="bankit-dock"></span>
           <div class="tools">
             <button class="btn mini" id="rg-directions" type="button">↻ different directions</button>
           </div>
@@ -310,6 +317,7 @@
       <section id="preview" hidden>
         <div class="stage-head">
           <p class="kicker">02 · the stack — rendered like the real thing</p>
+          <span class="sample-chip" id="stack-sample" hidden>sample — connect to write yours</span>
           <div class="tools">
             <button class="btn mini" id="regen-all" type="button">↻ regenerate everything</button>
             <button class="btn mini" id="copy-all" type="button">⧉ copy all text</button>

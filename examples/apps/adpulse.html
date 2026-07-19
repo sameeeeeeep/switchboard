@@ -150,6 +150,8 @@
       #err-msg { font: 400 12.5px/1.6 var(--mono); color: var(--ink-dim); }
       #err-msg b { color: var(--danger); font-weight: 500; }
       .feed-err { margin-top: 10px; font: 400 12px/1.6 var(--mono); color: var(--danger); }
+      /* an unattended pull that found no connector is information, not a failure — say it quietly */
+      .feed-err.soft { color: var(--ink-faint); }
       .pull-status { margin-top: 12px; display: flex; align-items: center; gap: 10px; background: var(--raised); border: 1px solid var(--edge); border-radius: 10px; padding: 10px 14px; }
       .pull-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: blink 1.1s ease-in-out infinite; flex: none; }
       #pull-line { font: 400 12px/1.5 var(--mono); color: var(--ink-sec); }
@@ -164,6 +166,11 @@
       #headline { font: 600 20px/1.35 var(--display); letter-spacing: -0.01em; color: var(--ink); margin: 0; }
       .verdicthead .sig { font: 500 10px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--lime); margin-bottom: 9px; }
       .rerunrow { margin-top: 14px; }
+      .stale { margin-top: 10px; font: 400 11.5px/1.5 var(--mono); color: var(--warn); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .stale .btn { padding: 7px 11px; font-size: 11px; }
+      /* the readout is real even before a live pull — but it must always say WHOSE month it read */
+      .demo { margin-top: 10px; font: 400 11.5px/1.5 var(--mono); color: var(--ink-dim); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .demo .btn { padding: 7px 11px; font-size: 11px; }
 
       .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
       .col-h { display: flex; align-items: center; gap: 8px; font: 500 10px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 10px; }
@@ -190,6 +197,8 @@
       .tag.lo { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
       .tag.hard { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--panel)); }
       .tag.dim { color: var(--ink-dim); background: var(--raised); }
+      .tag.star { color: var(--page); background: var(--lime); }
+      .action.rec { background: color-mix(in srgb, var(--lime) 5%, transparent); border-left: 2px solid var(--lime); padding-left: 12px; border-radius: 0 10px 10px 0; }
       .vtag { display: inline-block; font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; padding: 5px 9px; }
       .vtag.scale { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
       .vtag.keep { color: var(--ink-sec); background: var(--raised); }
@@ -302,6 +311,8 @@
             <div class="rerunrow">
               <button class="btn" id="rerun">↻ regenerate — different focus</button>
             </div>
+            <div class="stale" id="stale-note" hidden>⚠ <span id="stale-why"></span> <button class="btn" id="stale-rerun">↻ re-run now</button></div>
+            <div class="demo" id="demo-note" hidden><span class="samplebadge">demo month</span><span>read on a representative DTC account — not your numbers.</span> <button class="btn" id="demo-pull">⚡ pull your account</button><button class="btn" id="demo-paste">paste your export</button></div>
           </div>
         </div>
 

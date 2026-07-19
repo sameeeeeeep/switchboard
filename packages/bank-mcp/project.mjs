@@ -8,6 +8,22 @@
 export const slugify = (s) =>
   String(s || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "project";
 
+// A folder is a project if it carries one of the markers a real project always leaves behind. This is
+// the cold-start heuristic: point at the folder your work lives in, and every project inside it gets
+// extracted. Deliberately marker-based rather than "any directory" — a screenshots folder is not a
+// project, and seeding the vault with junk is worse than seeding it with nothing.
+export const PROJECT_MARKERS = [
+  ".git", "package.json", "README.md", "readme.md", "CLAUDE.md", "ROADMAP.md",
+  "pyproject.toml", "requirements.txt", "Cargo.toml", "go.mod", "Gemfile",
+  "pom.xml", "build.gradle", "composer.json", "Package.swift", "pubspec.yaml",
+];
+
+/** Does this directory listing look like a project root? `names` is the plain `readdir` result. */
+export function isProjectDir(names = []) {
+  const set = new Set(names);
+  return PROJECT_MARKERS.some((m) => set.has(m));
+}
+
 const oneLine = (s) =>
   String(s || "").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 
@@ -32,10 +48,13 @@ function summaryFrom(readme, pkgDesc, tagline) {
 
 /** Build the structured project object from gathered repo facts. */
 export function buildProject(input = {}) {
-  const { readme = "", pkgName, pkgDesc, version, license, links = [], stack = [], docs = [], packages = [], wrapps = [], openTasks = [], roadmap = [], name: nameHint } = input;
+  const { readme = "", pkgName, pkgDesc, version, license, links = [], stack = [], docs = [], packages = [], wrapps = [], openTasks = [], roadmap = [], name: nameHint, dirName } = input;
   const h1 = String(readme).split("\n").find((l) => l.startsWith("# "));
   const { name: h1name, tagline } = splitTitle(h1);
-  const name = (nameHint || h1name || pkgName || "Project").trim();
+  // The folder name is the last honest identifier we have. Without this rung a repo carrying neither a
+  // README H1 nor a package name becomes the literal "Project" — which, in a bulk seed, collides with
+  // every other such repo and buries them all in one card.
+  const name = (nameHint || h1name || pkgName || dirName || "Project").trim();
   const status = [version && version !== "0.0.0" ? `v${version}` : null, license || null].filter(Boolean).join(" · ");
   return {
     slug: slugify(name),

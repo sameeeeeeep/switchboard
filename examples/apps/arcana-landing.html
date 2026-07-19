@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Arcana — three cards, no mercy, on your own Claude</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D; --thumb-bg:#0E0E10;
+  --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --accent-ink:#0A0A0B; --accent-hover:#FFFFFF;
+  --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
+  --shadow:0 0 0 1px var(--line), 0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -20px rgba(0,0,0,.8);
+  --shadow-pop:0 0 0 1px var(--line-2), 0 16px 40px -22px rgba(0,0,0,.9);
+  /* ARCANA — violet family (after hours); the deck itself is gilded */
+  --pop:#7B5EA8; --pop-soft:#EDE8F3; --pop-light:#B49BD8;
+  --gold:#C9A227; --gold-hi:#E8C34F;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#000;font-family:var(--font-sans)}
+::selection{background:rgba(180,155,216,.30)}
+.page{width:1440px;min-height:900px;margin:0 auto;background:var(--bg);color:var(--ink);font-family:var(--font-sans);overflow:hidden;position:relative}
+.wrap{max-width:1080px;margin:0 auto;padding:0 64px}
+a{color:inherit;text-decoration:none}
+.kicker{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.display{font-family:var(--font-display);letter-spacing:-.03em;font-weight:700}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---- top bar ---- */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.sb{display:flex;align-items:center;gap:10px}
+.sb-mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#6FC06A,#3C8B4E);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
+.sb-mark svg{width:15px;height:15px;display:block}
+.sb-word{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.01em;color:var(--ink-2)}
+.runs-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 14px}
+.runs-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+
+/* ---- hero ---- */
+.lp-hero{padding:52px 0 60px}
+.hero-tile{width:64px;height:64px;border-radius:18px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset, 0 12px 30px -14px rgba(123,94,168,.5)}
+.hero-tile svg{width:34px;height:34px;display:block}
+.hero-name{display:flex;align-items:center;gap:14px;margin:24px 0 0}
+.hero-name h1{font-family:var(--font-display);font-weight:700;letter-spacing:-.035em;font-size:56px;line-height:1;margin:0}
+.verified{display:inline-flex;align-items:center;gap:5px;color:var(--verify);font-size:12px;font-weight:600;margin-top:8px}
+.verified svg{width:17px;height:17px}
+.hero-tag{color:var(--ink-2);font-size:20px;line-height:1.5;max-width:46ch;margin:18px 0 0;font-weight:400}
+.hero-chips{display:flex;align-items:center;gap:10px;margin:24px 0 0}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px;background:var(--card)}
+.chip .pd{width:7px;height:7px;border-radius:50%;background:var(--pop-light)}
+.chip b{color:var(--ink);font-weight:600}
+.hero-meta{margin:16px 0 0;font-size:12px;color:var(--faint)}
+.hero-meta .mono{color:var(--faintest)}
+.hero-cta{display:flex;align-items:center;gap:14px;margin:30px 0 0}
+.btn-primary{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:15px;border-radius:var(--r-pill);padding:14px 26px;border:0;transition:background .15s}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary svg{width:16px;height:16px}
+.btn-ghost{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:500;font-size:14px;border:1px solid var(--line-2);border-radius:var(--r-pill);padding:13px 22px;transition:border-color .15s,color .15s}
+.btn-ghost:hover{color:var(--ink);border-color:var(--faint)}
+
+/* ---- section head ---- */
+.sec-head{margin:0 0 30px}
+.sec-title{font-family:var(--font-display);font-weight:700;letter-spacing:-.02em;font-size:26px;margin:12px 0 0;line-height:1.15}
+.sec-title span{color:var(--faint)}
+
+/* ---- what it does ---- */
+.lp-what{padding:26px 0 40px}
+.lp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.lp-step{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px 22px 26px}
+.step-ic{width:38px;height:38px;border-radius:11px;background:var(--card-2);color:var(--pop-light);display:grid;place-items:center;border:1px solid var(--line)}
+.step-ic svg{width:20px;height:20px}
+.step-n{font-family:var(--font-mono);font-size:11px;color:var(--faintest);float:right;margin-top:4px}
+.step-h{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;font-size:17px;margin:18px 0 8px}
+.step-p{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:0}
+
+/* ---- output mock ---- */
+.lp-output{padding:34px 0 44px}
+.mock{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-pop);padding:24px;display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:stretch}
+/* the spread */
+.table{background:radial-gradient(120% 90% at 50% 0%,#1a1030,#0c0913);border:1px solid var(--line-2);border-radius:var(--r);padding:22px 18px 20px;display:flex;flex-direction:column}
+.q-line{text-align:center;font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--pop-light);margin:0 0 18px;letter-spacing:.01em}
+.spread{display:flex;gap:12px;justify-content:center;align-items:flex-start}
+.tcard{flex:1;max-width:150px;display:flex;flex-direction:column;gap:9px}
+.tcard.mid{transform:translateY(-10px)}
+.card-face{width:100%;display:block;filter:drop-shadow(0 14px 24px rgba(0,0,0,.55))}
+.pos{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);text-align:center}
+.pos b{display:block;font-family:var(--font-sans);font-weight:600;font-size:11px;color:var(--ink-2);letter-spacing:0;text-transform:none;margin-top:4px}
+.pos .rvs{color:var(--gold-hi);font-weight:600}
+/* the reading */
+.reading{background:#101019;border:1px solid var(--line);border-radius:var(--r);padding:18px 18px 16px;display:flex;flex-direction:column}
+.r-open{font-family:var(--font-display);font-weight:600;font-size:14.5px;line-height:1.42;letter-spacing:-.01em;margin:0 0 16px;color:var(--ink)}
+.r-takes{display:flex;flex-direction:column;gap:11px;border-top:1px solid var(--line);padding-top:14px}
+.r-take .rt-l{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--pop-light);margin:0 0 3px}
+.r-take .rt-x{font-size:11.5px;color:var(--ink-2);line-height:1.45;margin:0}
+.r-advice{margin-top:16px;background:linear-gradient(150deg,rgba(123,94,168,.16),rgba(123,94,168,.03));border:1px solid rgba(180,155,216,.3);border-radius:var(--r-sm);padding:12px 13px}
+.r-advice .ak{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--pop-light);margin:0 0 6px}
+.r-advice p{font-size:12px;color:var(--ink);line-height:1.45;margin:0;font-weight:500}
+.r-omen{margin-top:14px;padding-top:13px;border-top:1px solid var(--line);display:flex;gap:9px;align-items:flex-start}
+.r-omen .om-g{color:var(--gold);font-size:13px;line-height:1;margin-top:1px}
+.r-omen p{font-family:var(--font-display);font-style:italic;font-size:12.5px;color:var(--gold-hi);line-height:1.4;margin:0}
+
+/* ---- byo strip ---- */
+.lp-byo{padding:20px 0 44px}
+.byo{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 36px;display:flex;align-items:center;gap:30px}
+.byo-mark{flex:none;width:52px;height:52px;border-radius:14px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center}
+.byo-mark svg{width:26px;height:26px}
+.byo-lead{font-size:16px;line-height:1.55;color:var(--ink);margin:0;max-width:64ch;font-weight:400}
+.byo-lead b{font-weight:600}
+.byo-points{display:flex;gap:22px;margin:14px 0 0;flex-wrap:wrap}
+.byo-points span{font-size:12px;color:var(--faint);display:inline-flex;align-items:center;gap:7px}
+.byo-points span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--pop-light)}
+.sim-tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--sim);background:var(--sim-bg);border-radius:4px;padding:2px 6px;margin-left:2px}
+
+/* ---- cta footer ---- */
+.lp-cta{padding:30px 0 30px;text-align:center}
+.cta-h{font-family:var(--font-display);font-weight:700;letter-spacing:-.025em;font-size:38px;margin:0 0 22px}
+.cta-sub{color:var(--faint);font-size:13px;margin:20px 0 0}
+.lp-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;font-size:12px;color:var(--faint)}
+.lp-foot a{color:var(--ink-2)}
+.lp-foot a:hover{color:var(--ink)}
+
+/* store detail-page chrome — this page is reached from the Switchboard directory, so it carries a
+   way back to the shelf and a way into the app without scrolling for one */
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:var(--r-pill);padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line);flex:none}
+.sb-word span{color:var(--faint)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:var(--r-pill);padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+@media (max-width:860px){.tb-rule,.runs-pill,.sb-word span{display:none}}
+
+
+/* ---- hero demo — a prototype frame of the Arcana table mid-read. Also the store thumbnail, so it
+   carries the real question, the three drawn cards, and the verdict. ---- */
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:44px;align-items:center}
+.hero-copy{min-width:0}
+.demo{position:relative;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-pop),0 38px 70px -40px rgba(0,0,0,.95);overflow:hidden}
+.demo::after{content:"";position:absolute;left:-10%;right:-10%;top:-22%;height:62%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(180,155,216,.16),transparent)}
+.demo-bar{position:relative;z-index:1;display:flex;align-items:center;gap:10px;height:42px;padding:0 15px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.demo-bar .nm{font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);flex:none}
+.demo-bar .dsub{font-size:11.5px;color:var(--faint);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-bar .dtag{margin-left:auto;flex:none;font-family:var(--font-mono);font-weight:700;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--pop-light);background:rgba(180,155,216,.12);
+  border:1px solid rgba(180,155,216,.32);border-radius:var(--r-pill);padding:5px 9px}
+.demo-body{position:relative;z-index:1;padding:16px 16px 15px;background:radial-gradient(120% 80% at 50% 0%,rgba(123,94,168,.10),transparent 70%)}
+.a-q{margin:0 0 13px;font-family:var(--font-display);font-weight:600;font-size:14.5px;letter-spacing:-.01em;color:var(--ink)}
+.a-spread{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.a-card{min-width:0}
+.a-face{width:100%;display:block;border-radius:8px}
+.a-card.now .a-face{box-shadow:0 0 22px -6px rgba(233,195,79,.55);animation:d-breathe 5s ease-in-out infinite}
+.a-pos{margin-top:8px;font-family:var(--font-mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint)}
+.a-card.now .a-pos{color:#E8C34F}
+.a-nm{margin-top:3px;font-family:var(--font-display);font-weight:600;font-size:12px;letter-spacing:-.01em;color:var(--ink);white-space:nowrap}
+.a-nm em{font-style:normal;color:var(--faint);font-weight:500}
+.a-read{margin-top:14px;border-top:1px solid var(--line);padding-top:13px}
+.a-rk{margin:0;font-family:var(--font-mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--pop-light)}
+.a-rx{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.a-rx b{color:var(--ink);font-weight:600}
+@keyframes d-breathe{0%,100%{box-shadow:0 0 14px -8px rgba(233,195,79,.35)}50%{box-shadow:0 0 26px -4px rgba(233,195,79,.7)}}
+@media (prefers-reduced-motion:reduce){.a-card.now .a-face{animation:none}}
+@media (max-width:1080px){.hero-grid{grid-template-columns:1fr;gap:36px}}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- BAND 1 — HERO -->
+  <header class="lp-hero">
+    <div class="wrap">
+      <div class="lp-topbar">
+        <div class="tb-side">
+          <a class="tb-back" href="./index.html">← All wrapps</a>
+          <span class="tb-rule"></span>
+          <div class="sb">
+          <span class="sb-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+          <span class="sb-word">Switchboard <span>/ Arcana</span></span>
+          </div>
+        </div>
+        <div class="tb-side">
+          <span class="runs-pill"><span class="dot"></span>Runs on your own Claude</span>
+          <a class="tb-cta" href="https://arcana.thelastprompt.ai">Open Arcana <span>→</span></a>
+        </div>
+      </div>
+
+      <div class="hero-grid">
+      <div class="hero-copy">
+      <span class="hero-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="10" height="14" rx="2"/><path d="M9 5.4l6 1.6a2 2 0 0 1 1.4 2.5L14 19"/></svg></span>
+
+      <div class="hero-name">
+        <h1 class="display">Arcana</h1>
+        <span class="verified"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".16"/><path d="M8 12.5l2.5 2.5 5-5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified</span>
+      </div>
+
+      <p class="hero-tag">Ask a real question, draw a three-card spread from a full major arcana, and your own Claude reads the exact cards you pulled — past, present, future, no hedging.</p>
+
+      <div class="hero-chips">
+        <span class="chip"><span class="pd"></span>After hours</span>
+        <span class="chip"><b>Free</b>&nbsp;core, forever</span>
+      </div>
+      <p class="hero-meta">Built with <span class="mono">390K</span> tokens &middot; dev-reported</p>
+
+      <div class="hero-cta">
+        <a class="btn-primary" href="https://arcana.thelastprompt.ai">Open Arcana
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn-ghost" href="#what">See how it works</a>
+      </div>
+      </div>
+
+        <!-- demo prototype: the table holding a drawn spread and its read -->
+        <div class="demo">
+          <div class="demo-bar">
+            <span class="nm">Arcana</span>
+            <span class="dsub">major arcana · drawn in your browser</span>
+            <span class="dtag">three cards</span>
+          </div>
+          <div class="demo-body">
+            <p class="a-q">"Do I take the offer?"</p>
+            <div class="a-spread">
+              <div class="a-card">
+                <svg class="a-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#392a55"/>
+                  <rect x="8" y="8" width="134" height="234" rx="7" fill="none" stroke="#C9A227" stroke-width="1" opacity=".9"/>
+                  <g fill="#C9A227"><circle cx="21" cy="21" r="1.8"/><circle cx="129" cy="21" r="1.8"/><circle cx="21" cy="229" r="1.8"/><circle cx="129" cy="229" r="1.8"/></g>
+                  <text x="75" y="44" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="19" letter-spacing="3">XV</text>
+                  <line x1="54" y1="56" x2="96" y2="56" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                  <g stroke="#C9A227" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 75 145)">
+                    <path d="M75 112 L109 172 L41 172 Z"/>
+                    <path d="M57 112c-7-11-5-20 4-24M93 112c7-11 5-20-4-24"/>
+                    <circle cx="75" cy="150" r="9"/>
+                  </g>
+                  <line x1="54" y1="212" x2="96" y2="212" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                </svg>
+                <div class="a-pos">Past</div>
+                <div class="a-nm">The Devil <em>· rev</em></div>
+              </div>
+              <div class="a-card now">
+                <svg class="a-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#5a4478"/>
+                  <rect x="8" y="8" width="134" height="234" rx="7" fill="none" stroke="#E8C34F" stroke-width="1.2"/>
+                  <g fill="#E8C34F"><circle cx="21" cy="21" r="1.8"/><circle cx="129" cy="21" r="1.8"/><circle cx="21" cy="229" r="1.8"/><circle cx="129" cy="229" r="1.8"/></g>
+                  <text x="75" y="44" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="19" letter-spacing="3">VII</text>
+                  <line x1="54" y1="56" x2="96" y2="56" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                  <g stroke="#E8C34F" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round">
+                    <path d="M75 100 L108 156 L42 156 Z"/>
+                    <circle cx="55" cy="188" r="15"/><circle cx="95" cy="188" r="15"/>
+                  </g>
+                  <g stroke="#C9A227" stroke-width="1.2" stroke-linecap="round">
+                    <path d="M59 188h11M57 191.5l5.5 9.5M53 191.5l-5.5 9.5M51 188H40M53 184.5l-5.5-9.5M57 184.5l5.5-9.5"/>
+                    <path d="M99 188h11M97 191.5l5.5 9.5M93 191.5l-5.5 9.5M91 188H80M93 184.5l-5.5-9.5M97 184.5l5.5-9.5"/>
+                  </g>
+                  <line x1="54" y1="218" x2="96" y2="218" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                </svg>
+                <div class="a-pos">Present</div>
+                <div class="a-nm">The Chariot</div>
+              </div>
+              <div class="a-card">
+                <svg class="a-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#392a55"/>
+                  <rect x="8" y="8" width="134" height="234" rx="7" fill="none" stroke="#C9A227" stroke-width="1" opacity=".9"/>
+                  <g fill="#C9A227"><circle cx="21" cy="21" r="1.8"/><circle cx="129" cy="21" r="1.8"/><circle cx="21" cy="229" r="1.8"/><circle cx="129" cy="229" r="1.8"/></g>
+                  <text x="75" y="44" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="19" letter-spacing="3">XX</text>
+                  <line x1="54" y1="56" x2="96" y2="56" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                  <g stroke="#C9A227" stroke-width="2" fill="none" stroke-linecap="round">
+                    <circle cx="75" cy="118" r="14"/>
+                    <path d="M75 132v46M48 178h54"/>
+                  </g>
+                  <g stroke="#C9A227" stroke-width="1.2" stroke-linecap="round" opacity=".85">
+                    <path d="M57.4 105.5 L45 98M64 97.5 L57 85M75 94 L75 80M86 97.5 L93 85M92.6 105.5 L105 98"/>
+                  </g>
+                  <line x1="54" y1="212" x2="96" y2="212" stroke="#C9A227" stroke-width=".6" opacity=".6"/>
+                </svg>
+                <div class="a-pos">Future</div>
+                <div class="a-nm">Judgement</div>
+              </div>
+            </div>
+            <div class="a-read">
+              <p class="a-rk">The read</p>
+              <p class="a-rx">The offer isn't the question. <b>You want permission to leave</b>, and you're shopping the cards for it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- BAND 2 — WHAT IT DOES -->
+  <section class="lp-what" id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">How it works</span>
+        <h2 class="sec-title">A midnight table, in three pulls — <span>the spread is yours, the read is your Claude's.</span></h2>
+      </div>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <span class="step-n">01</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-4 4V16H4Z"/></svg></span>
+          <h3 class="step-h">Ask, then draw</h3>
+          <p class="step-p">Type the question that's actually on your mind. Three cards turn face-up — past, present, future — drawn client-side with real randomness. The spread is genuinely yours.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">02</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="10" height="14" rx="2"/><path d="M9 5.4l6 1.6a2 2 0 0 1 1.4 2.5L14 19"/></svg></span>
+          <h3 class="step-h">Your Claude reads them</h3>
+          <p class="step-p">The reader speaks to your spread and your question — sharp, intimate, a little dangerous, never a disclaimer. It reads the exact cards you pulled, orientation and all.</p>
+        </div>
+        <div class="lp-step">
+          <span class="step-n">03</span>
+          <span class="step-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-11"/><path d="M4 20h16"/></svg></span>
+          <h3 class="step-h">One arc, one instruction</h3>
+          <p class="step-p">The three cards read as a single story, plus one concrete thing to do this week and a closing line you'll remember. Ask a follow-up and it re-reads the same cards.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 3 — OUTPUT MOCK -->
+  <section class="lp-output">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">What you get</span>
+        <h2 class="sec-title">Your spread, read straight — <span>past feeding present feeding future.</span></h2>
+      </div>
+      <div class="mock">
+        <div class="table">
+          <p class="q-line">"What am I not seeing?"</p>
+          <div class="spread">
+            <div class="tcard">
+              <svg class="card-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#392a55"/>
+                <rect x="7" y="7" width="136" height="236" rx="7" fill="none" stroke="#C9A227" stroke-width="1" opacity=".9"/>
+                <rect x="11" y="11" width="128" height="228" rx="5" fill="none" stroke="#C9A227" stroke-width=".5" opacity=".5"/>
+                <g fill="#C9A227"><circle cx="20" cy="20" r="1.7"/><circle cx="130" cy="20" r="1.7"/><circle cx="20" cy="230" r="1.7"/><circle cx="130" cy="230" r="1.7"/></g>
+                <text x="75" y="42" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="16" letter-spacing="3">XVI</text>
+                <line x1="55" y1="52" x2="95" y2="52" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <g stroke="#C9A227" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 75 132)">
+                  <rect x="61" y="116" width="28" height="46"/>
+                  <path d="M63 116v-7h6v4h6v-4h6v4h6v-4h6v7"/>
+                  <path d="M94 100l-19 24 8 3-14 22" stroke="#E8C34F"/>
+                </g>
+                <g fill="#C9A227"><circle cx="52" cy="150" r="1.6"/><circle cx="99" cy="166" r="1.6"/><circle cx="60" cy="176" r="1.3"/></g>
+                <line x1="52" y1="206" x2="98" y2="206" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <text x="75" y="224" text-anchor="middle" fill="#C9A227" font-family="Space Grotesk,serif" font-size="10" letter-spacing="1.5">THE TOWER</text>
+              </svg>
+              <div class="pos">Past<b class="rvs">The Tower · reversed</b></div>
+            </div>
+            <div class="tcard mid">
+              <svg class="card-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#392a55"/>
+                <rect x="7" y="7" width="136" height="236" rx="7" fill="none" stroke="#C9A227" stroke-width="1" opacity=".9"/>
+                <rect x="11" y="11" width="128" height="228" rx="5" fill="none" stroke="#C9A227" stroke-width=".5" opacity=".5"/>
+                <g fill="#C9A227"><circle cx="20" cy="20" r="1.7"/><circle cx="130" cy="20" r="1.7"/><circle cx="20" cy="230" r="1.7"/><circle cx="130" cy="230" r="1.7"/></g>
+                <text x="75" y="42" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="16" letter-spacing="3">XVII</text>
+                <line x1="55" y1="52" x2="95" y2="52" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <g stroke="#C9A227" stroke-width="1.6" fill="none" stroke-linejoin="round">
+                  <path d="M75 98 L82 126 L110 132 L82 138 L75 166 L68 138 L40 132 L68 126 Z"/>
+                </g>
+                <circle cx="75" cy="132" r="3" fill="#E8C34F"/>
+                <g fill="#C9A227"><circle cx="48" cy="104" r="1.6"/><circle cx="104" cy="160" r="1.6"/><circle cx="52" cy="172" r="1.3"/><circle cx="100" cy="98" r="1.3"/></g>
+                <line x1="52" y1="206" x2="98" y2="206" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <text x="75" y="224" text-anchor="middle" fill="#C9A227" font-family="Space Grotesk,serif" font-size="10.5" letter-spacing="1.5">THE STAR</text>
+              </svg>
+              <div class="pos">Present<b>The Star · upright</b></div>
+            </div>
+            <div class="tcard">
+              <svg class="card-face" viewBox="0 0 150 250" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1.5" y="1.5" width="147" height="247" rx="10" fill="#170c2a" stroke="#392a55"/>
+                <rect x="7" y="7" width="136" height="236" rx="7" fill="none" stroke="#C9A227" stroke-width="1" opacity=".9"/>
+                <rect x="11" y="11" width="128" height="228" rx="5" fill="none" stroke="#C9A227" stroke-width=".5" opacity=".5"/>
+                <g fill="#C9A227"><circle cx="20" cy="20" r="1.7"/><circle cx="130" cy="20" r="1.7"/><circle cx="20" cy="230" r="1.7"/><circle cx="130" cy="230" r="1.7"/></g>
+                <text x="75" y="42" text-anchor="middle" fill="#E8C34F" font-family="Space Grotesk,serif" font-size="16" letter-spacing="3">XXI</text>
+                <line x1="55" y1="52" x2="95" y2="52" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <g stroke="#C9A227" stroke-width="1.6" fill="none" stroke-linejoin="round">
+                  <ellipse cx="75" cy="132" rx="25" ry="40"/>
+                  <path d="M75 120 L85 132 L75 144 L65 132 Z"/>
+                </g>
+                <g fill="#C9A227"><circle cx="50" cy="100" r="1.6"/><circle cx="100" cy="100" r="1.6"/><circle cx="50" cy="164" r="1.6"/><circle cx="100" cy="164" r="1.6"/></g>
+                <line x1="52" y1="206" x2="98" y2="206" stroke="#C9A227" stroke-width=".5" opacity=".6"/>
+                <text x="75" y="224" text-anchor="middle" fill="#C9A227" font-family="Space Grotesk,serif" font-size="10" letter-spacing="1.5">THE WORLD</text>
+              </svg>
+              <div class="pos">Future<b>The World · upright</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reading">
+          <p class="r-open">You already know. You've known for weeks — you just wanted the cards to disagree with you.</p>
+          <div class="r-takes">
+            <div class="r-take"><p class="rt-l">Past · The Tower, reversed</p><p class="rt-x">The collapse you keep bracing for already happened, quietly, and you walked out of it.</p></div>
+            <div class="r-take"><p class="rt-l">Present · The Star</p><p class="rt-x">What's left is a smaller, truer hope — the kind you don't broadcast.</p></div>
+            <div class="r-take"><p class="rt-l">Future · The World</p><p class="rt-x">Not a beginning. A completion you've been avoiding calling done.</p></div>
+          </div>
+          <div class="r-advice">
+            <p class="ak">Do this week</p>
+            <p>Finish the thing that's ninety percent done before you start anything new.</p>
+          </div>
+          <div class="r-omen">
+            <span class="om-g">&#10022;</span>
+            <p>The door was never locked. You were leaning on it.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 4 — ON YOUR OWN CLAUDE -->
+  <section class="lp-byo">
+    <div class="wrap">
+      <div class="byo">
+        <span class="byo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6Z"/><path d="M9 12l2 2 4-4.5"/></svg></span>
+        <div>
+          <p class="byo-lead"><b>Runs on YOUR Claude and YOUR tools through Switchboard.</b> The operator holds no key, runs no model, and never sees your data. The cards are drawn in your browser; only your question ever reaches your own model.</p>
+          <div class="byo-points"><span>BYO-Claude</span><span>consent-per-app</span><span>your data stays yours</span><span>token budgets <em class="sim-tag">SIMULATED</em></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 5 — CTA FOOTER -->
+  <section class="lp-cta">
+    <div class="wrap">
+      <h2 class="cta-h display">Give Arcana your Claude.</h2>
+      <a class="btn-primary" href="https://arcana.thelastprompt.ai">Open Arcana
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <p class="cta-sub">Free core, forever &middot; the spread is yours, the read runs on your own Claude</p>
+      <div class="lp-foot">
+        <span><a href="./index.html">← All wrapps</a> &middot; a wrapp that runs on your own Claude</span>
+        <a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

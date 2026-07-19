@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AdForge — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;--faintest:#48484F;
+  --accent:#EDEDEA;--accent-ink:#0A0A0B;--accent-hover:#FFFFFF;--ok:#54B487;
+  --pro:#B8E04A;--pro-bg:rgba(184,224,74,.10);--pro-hair:rgba(184,224,74,.32);
+  --pop:#E9C56B;--pop-2:#B4802A;--pop-soft:rgba(233,197,107,0.14);--pop-line:rgba(233,197,107,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(233,197,107,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+/* store topbar — this page is a detail page in the Switchboard directory */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;border-bottom:1px solid var(--line)}
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:999px;padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line)}
+.brandmark{display:flex;align-items:center;gap:10px}
+.sb-squircle{width:24px;height:24px;border-radius:8px;background:linear-gradient(160deg,#5CC08A,#3E9E6E);
+  display:grid;place-items:center;box-shadow:0 2px 10px -4px rgba(84,180,135,.6)}
+.sb-squircle svg{width:14px;height:14px}
+.sb-word{font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.sb-word span{color:var(--faint);font-weight:500}
+.vmark{width:16px;height:16px;display:inline-block;vertical-align:-3px;margin-left:2px}
+.byo-pill{font:500 12.5px/1 var(--font-sans);color:var(--ink-2);border:1px solid var(--line);border-radius:999px;
+  padding:8px 15px;display:inline-flex;align-items:center;gap:8px}
+.byo-pill i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(84,180,135,.22)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:999px;padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:60px 0 44px;min-height:600px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(233,197,107,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* hero demo — a prototype frame of AdForge mid-result: one concept cast into a real Meta feed ad */
+.demo{position:relative;background:var(--card);border:1px solid var(--line-2);border-radius:22px;
+  box-shadow:0 30px 70px -40px rgba(0,0,0,.9);overflow:hidden}
+.dbar{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);background:#101115}
+.dmark{width:20px;height:20px;border-radius:6px;background:var(--pop-soft);border:1px solid var(--pop-line);
+  color:var(--pop);display:grid;place-items:center;font-size:11px;line-height:1;flex:none}
+.dname{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.01em;color:var(--ink)}
+.dsrc{margin-left:auto;font-family:var(--font-mono);font-size:12px;color:var(--faint)}
+.dbody{display:grid;grid-template-columns:1.02fr .98fr;gap:14px;padding:16px}
+/* the cast ad — a real Meta feed unit */
+.adcard{background:#101115;border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.adbrand{display:flex;align-items:center;gap:9px;padding:11px 12px 9px}
+.adbrand .av{width:26px;height:26px;border-radius:50%;flex:none;background:linear-gradient(150deg,var(--pop),var(--pop-2));
+  color:#20160A;font-family:var(--font-display);font-weight:700;font-size:13px;display:grid;place-items:center}
+.adbrand b{display:block;font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.25}
+.adbrand i{display:block;font-style:normal;font-size:12px;color:var(--faint);line-height:1.25}
+.adcopy{margin:0;padding:0 12px 10px;font-size:13px;line-height:1.45;color:var(--ink-2)}
+.adshot{position:relative;aspect-ratio:1/1;background:#0D0E11}
+.adshot img{width:100%;height:100%;object-fit:cover;display:block}
+.adfoot{display:flex;align-items:center;gap:10px;padding:11px 12px;background:#141519;border-top:1px solid var(--line)}
+.adhl{min-width:0}
+.adhl b{display:block;font-family:var(--font-display);font-size:13.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.adhl i{display:block;font-style:normal;font-size:12px;color:var(--faint);margin-top:2px}
+.adbtn{margin-left:auto;flex:none;font-size:12px;font-weight:600;color:var(--ink);
+  background:#212228;border:1px solid var(--line-2);border-radius:7px;padding:7px 11px}
+/* the three concepts, most-shippable first */
+.dcol{display:flex;flex-direction:column;gap:9px;min-width:0}
+.dk{font:600 12px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--faintest)}
+.crow{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#101115}
+.crow b{display:block;font-family:var(--font-display);font-size:13.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.crow .cang{display:block;font-family:var(--font-mono);font-size:12px;color:var(--faint);margin-top:4px}
+.crow p{margin:9px 0 0;font-size:12.5px;line-height:1.45;color:var(--ink-2)}
+.crow.rec{border-color:var(--pop-line);background:var(--pop-soft);
+  box-shadow:0 0 0 3px rgba(233,197,107,.07);animation:landed 3.2s ease-in-out infinite}
+.cflag{display:block;font:700 12px/1 var(--font-mono);letter-spacing:.08em;color:var(--pop);margin-bottom:7px}
+@keyframes landed{0%,100%{box-shadow:0 0 0 3px rgba(233,197,107,.07)}50%{box-shadow:0 0 0 6px rgba(233,197,107,.12)}}
+.dnote{margin-top:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint)}
+.dnote i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+@media (prefers-reduced-motion:reduce){.crow.rec{animation:none}}
+/* features */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 64px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* facts rail — category, dev-reported build cost, price */
+.facts{display:flex;align-items:stretch;margin-bottom:14px;background:var(--card);
+  border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.fact{flex:1;padding:16px 24px 18px;border-left:1px solid var(--line);min-width:0}
+.fact:first-child{border-left:0}
+.fact-k{font:600 9.5px/1 var(--font-sans);letter-spacing:.15em;text-transform:uppercase;color:var(--faintest)}
+.fact-v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;
+  font:500 14px/1.2 var(--font-sans);color:var(--ink);letter-spacing:-.005em}
+.fact-v .dot{width:7px;height:7px;border-radius:50%;background:var(--pop);flex:none}
+.fact-s{margin-top:6px;font:400 12px/1.3 var(--font-sans);color:var(--faint)}
+.devtag{font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--faintest);
+  border:1px solid var(--line-2);border-radius:5px;padding:2px 6px}
+/* bands */
+.band{padding:56px 0;border-top:1px solid var(--line)}
+.band-head{margin-bottom:30px}
+.kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.band-title{font-family:var(--font-display);font-weight:600;letter-spacing:-.025em;font-size:28px;margin:12px 0 0}
+.band-title .m{color:var(--faint)}
+/* free / pro */
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.tier{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px 28px 30px}
+.tier.pro{border-color:var(--pro-hair)}
+.tier-top{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+.tier-h{font-family:var(--font-display);font-weight:600;font-size:19px;letter-spacing:-.02em;margin:0}
+.pro-chip{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.13em;color:var(--pro);
+  background:var(--pro-bg);border:1px solid var(--pro-hair);border-radius:5px;padding:4px 7px}
+.tier-sub{font-size:14px;line-height:1.55;color:var(--ink-2);margin:0 0 20px}
+.tier ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.tier li{display:flex;align-items:flex-start;gap:11px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.tier li svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--ok)}
+.tier.pro li svg{color:var(--pro)}
+.freeonly{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 32px;
+  display:flex;align-items:baseline;gap:22px;flex-wrap:wrap}
+.freeonly h3{font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:-.02em;margin:0;flex:none}
+.freeonly p{font-size:14.5px;line-height:1.55;color:var(--ink-2);margin:0;max-width:60ch}
+/* closing cta + footer */
+.lp-cta{text-align:center;padding:70px 0 34px;border-top:1px solid var(--line)}
+.lp-cta h2{font-family:var(--font-display);font-weight:700;letter-spacing:-.03em;font-size:42px;margin:0 0 28px}
+.lp-cta .fine{margin-top:22px;font-size:13.5px;color:var(--faint)}
+footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:30px 0 44px;
+  border-top:1px solid var(--line);font-size:12.5px;color:var(--faint)}
+footer a{color:var(--ink-2);transition:color .14s}
+footer a:hover{color:var(--ink)}
+.foot-nav{display:flex;align-items:center;gap:16px}
+
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="wrap">
+  <header class="lp-topbar">
+    <div class="tb-side">
+      <a class="tb-back" href="./index.html">← All wrapps</a>
+      <span class="tb-rule"></span>
+      <div class="brandmark">
+        <span class="sb-squircle"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+        <span class="sb-word">Switchboard <span>/ AdForge</span></span><span class="vmark"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#4C8DF6"/><path d="M7.5 12.4l3 3 6-6.4" stroke="#0A0A0B" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </div>
+    <div class="tb-side">
+      <span class="byo-pill"><i></i> Runs on your own Claude</span>
+      <a class="tb-cta" href="https://adforge.thelastprompt.ai">Open AdForge <span>→</span></a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="kick"><span class="d"></span>Ads & growth</span>
+      <h1>URL in, ads out.</h1>
+      <p class="sub">Three ad concepts, one recommended, rendered on your Higgsfield. From a link to a launch set.</p>
+      <div class="actions">
+        <a class="btn" href="https://adforge.thelastprompt.ai">Open AdForge<span>→</span></a>
+        <a class="btn ghost" href="#how">See how it works ↓</a>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span>
+      <div class="demo">
+        <div class="dbar">
+          <span class="dmark">◆</span>
+          <span class="dname">AdForge</span>
+          <span class="dsrc">Máro · brand lent</span>
+        </div>
+        <div class="dbody">
+          <div class="adcard">
+            <div class="adbrand">
+              <span class="av">M</span>
+              <span><b>Máro</b><i>Sponsored</i></span>
+            </div>
+            <p class="adcopy">I keep one in the freezer door for exactly 4pm.</p>
+            <div class="adshot"><img src="./img/adforge.jpg" alt="A chilled mango soda on a sunlit terracotta table beside fresh mango halves and dried red chillies" decoding="async"></div>
+            <div class="adfoot">
+              <div class="adhl">
+                <b>Mango. Chilli. Zero sugar.</b>
+                <i>maro.in</i>
+              </div>
+              <span class="adbtn">Shop Now</span>
+            </div>
+          </div>
+          <div class="dcol">
+            <span class="dk">3 concepts drafted</span>
+            <div class="crow rec">
+              <span class="cflag">★ RECOMMENDED</span>
+              <b>Freezer-door ritual</b>
+              <span class="cang">UGC hook · 1:1 · cast</span>
+              <p>Runs the 4pm habit as the hook — the ad people already believe before they read the offer.</p>
+            </div>
+            <div class="crow"><b>The 3pm crash</b><span class="cang">Problem → solve · 4:5</span></div>
+            <div class="crow"><b>Two farmers, one press</b><span class="cang">Founder story · 4:5</span></div>
+            <div class="dnote"><i></i>Hero rendered on your own Higgsfield</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="facts">
+    <div class="fact">
+      <div class="fact-k">Category</div>
+      <div class="fact-v"><span class="dot"></span> Ads &amp; growth</div>
+      <div class="fact-s">on the Switchboard shelf</div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Build cost</div>
+      <div class="fact-v"><span class="mono">2.1M</span> tokens · <span class="mono">34</span> updates</div>
+      <div class="fact-s"><span class="devtag">dev-reported</span></div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Price</div>
+      <div class="fact-v">Free core, forever</div>
+      <div class="fact-s">runs on your own Claude</div>
+    </div>
+  </div>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/></svg></div><div class="num">01</div><h3>Your export or a live pull</h3><p>Point AdForge at a brand you've lent, or drop a URL — your Claude reads the site and lifts the voice, products, palette.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/></svg></div><div class="num">02</div><h3>Concepts you can actually ship</h3><p>Three full Meta ad concepts come back — hook, primary text, headline and CTA — with the one to run first flagged recommended.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/></svg></div><div class="num">03</div><h3>Rendered on your own connectors</h3><p>Pick one and the hero image renders on your own Higgsfield — square feed or 4:5 portrait, no stock and no design tool.</p></div>
+  </section>
+  <section class="band">
+    <div class="band-head">
+      <span class="kicker">What it costs</span>
+      <h2 class="band-title">Every concept is free. <span class="m">Pro is for running them at volume.</span></h2>
+    </div>
+      <div class="tiers">
+        <div class="tier">
+          <div class="tier-top"><h3 class="tier-h">Free — the complete core loop</h3></div>
+          <p class="tier-sub">One run, start to finish, forever. Nothing in the loop is held back.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Point it at a brand you've lent — or drop a URL</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Three full Meta concepts: hook, primary text, headline, CTA</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> The one to run first, flagged recommended</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Hero image rendered on your own Higgsfield, square feed or 4:5</li>
+          </ul>
+        </div>
+        <div class="tier pro">
+          <div class="tier-top"><h3 class="tier-h">Pro</h3><span class="pro-chip">PRO</span></div>
+          <p class="tier-sub">Everything in free, plus the parts that only matter once you're shipping every week.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Multi-variant matrices</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Competitor-reactive refresh</li>
+          </ul>
+        </div>
+      </div>
+  </section>
+
+  <section class="lp-cta">
+    <h2>Give AdForge your Claude.</h2>
+    <a class="btn" href="https://adforge.thelastprompt.ai">Open AdForge<span>→</span></a>
+    <div class="fine">Free core, forever · renders run on your own Higgsfield credits</div>
+  </section>
+
+  <footer>
+    <span class="foot-nav"><a href="./index.html">← All wrapps</a></span>
+    <span>Switchboard · a wrapp that runs on your own Claude</span>
+    <span class="foot-nav"><a href="https://adforge.thelastprompt.ai">Open AdForge ↗</a><a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a></span>
+  </footer>
+</div>
+</body></html>

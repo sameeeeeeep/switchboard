@@ -15,11 +15,18 @@ let brand = null;       // the lent brand context (normalized), or null
 let rows = null;        // parsed campaign rows
 let rawCsv = "";
 let srcLabel = "";
+let origSource = "";    // where the CURRENT data originally came from ("live"/"pasted"/"file"/"sample")
+let savedAt = 0;        // epoch ms the current data was ingested (restored across sessions)
 let report = null;      // last diagnosis JSON
+let reportFor = null;   // provenance: { csvSig, brand } the report was generated against
 let analysing = false;
 let runSeq = 0;         // per-run token: a cancelled diagnosis's late deltas can't touch the UI
 let pulling = false;
 let pullSeq = 0;        // per-run token: a stopped pull's late deltas can't touch the UI
+let autoRan = false;    // proactive kickoff fires once per page life
+
+// Cheap provenance signature: enough to catch a different month/export without hashing 200kb.
+const csvSig = () => rawCsv.length + ":" + rawCsv.slice(0, 80);
 
 // ---------- embedded sample: Verra Skincare, one month of Meta spend (INR) ----------
 // Pre-connect only, always labeled. The numbers tell a story: retargeting carries the account
@@ -116,11 +123,14 @@ function loadData(text, source) {
   rows = parsed;
   rawCsv = text;
   srcLabel = source;
+  origSource = source === "restored" ? (origSource || "restored") : source;
+  if (source !== "restored") savedAt = Date.now();
   hasAdset = col.adset !== -1;
   $("feed-err").hidden = true;
   renderTape();
   persist();
   reflect();
+  syncStale(); // pasting a new month over an old diagnosis flags the readout immediately
 }
 let hasAdset = true;
 
@@ -234,30 +244,88 @@ function renderTapeCaption() {
     b.textContent = srcLabel === "restored" ? "restored from your last session"
       : srcLabel === "live" ? "pulled live from your Ads Manager — via your own Meta connector"
       : "your export";
-    cap.append(b, ` — ${rows.length} campaigns parsed in this tab, all rows shown.`);
+    let tail = ` — ${rows.length} campaigns parsed in this tab, all rows shown.`;
+    if (srcLabel === "restored" && savedAt) {
+      const h = Math.round((Date.now() - savedAt) / 3600000);
+      tail = ` — ${rows.length} campaigns parsed in this tab, all rows shown · ${h < 1 ? "under an hour" : h + "h"} old.`;
+    }
+    cap.append(b, tail);
   }
 }
 
 // ---------- the standard connect chip ----------
+// contextKinds lets the app LIST banked brands (names only) so loadBrand can auto-select one.
+// Gotcha: reused grants are exact-match and will NOT gain this row on reconnect — every list()
+// call tolerates rejection and falls back to the lent-only model.
+// A REAL fresh connect is always preceded by a click on the chip (shadow-DOM clicks are composed,
+// so they reach the dock). The chip ALSO fires onConnect gesture-free when a persisted grant
+// surfaces late (cold service worker → late-binding provider watch) — that is a page LOAD, and it
+// must take the conservative kickoff path so a zero-gesture load never pops a consent window.
+let chipGesture = false;
+$("chip-dock").addEventListener("click", () => { chipGesture = true; }, true);
 mountConnect($("chip-dock"), {
-  scope: { reason: "diagnose your Meta ads performance", models: ["sonnet"] },
+  scope: { reason: "diagnose your Meta ads performance", models: ["sonnet"], contextKinds: ["brand"] },
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; reflect(); loadBrand(); },
+  onConnect: async (r) => { relay = r; reflect(); await loadBrand(); proactiveKickoff(chipGesture); },
   onDisconnect: () => { relay = null; brand = null; renderBrandLine(); rebuildBrandChips(); reflect(); },
   onProjectChange: () => loadBrand(), // chip-menu "Switch ▸" (or panel switch) re-reads the lent brand
 });
 // Fast probe so a returning user's grant enables everything without a click — and re-reads the
-// lent brand on load, not just on connect.
+// lent brand on load, not just on connect. boot() already ran synchronously at module bottom,
+// so rows/report are restored before this resolves — no race (home.js sequencing).
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
   if (r && "connect" in r) {
     const grant = await r.permissions().catch(() => null);
-    if (grant) { relay = r; loadBrand(); }
+    if (grant) { relay = r; await loadBrand(); proactiveKickoff(false); }
   } else if (r && r.installed === false) {
     notInstalled = true;
   }
   reflect();
 })();
+
+// ---------- proactive kickoff: connected means WORKING — never a tape waiting for a click ----------
+// Fresh chip connect → auto-pull the live account (the connector consent window is itself the
+// user's gate, and they JUST clicked connect). Page-load with an existing grant → only auto-pull
+// when the grant already covers the cached connector prefix, so a zero-gesture load never pops a
+// consent window; with real restored data it re-runs the diagnosis only when it's missing/stale.
+// And when there is no account to pull (no Meta connector on their Claude), connecting STILL lands
+// them on a real post-mortem: the representative month is diagnosed automatically and badged as a
+// demo. Nobody ever meets an empty paste box.
+async function grantCoversCachedPrefix() {
+  if (!relay) return false;
+  let cached = null;
+  try { cached = localStorage.getItem(PREFIX_KEY); } catch { /* blocked */ }
+  if (!cached) return false;
+  const grant = await relay.permissions().catch(() => null);
+  return !!grant?.tools?.some((t) => t.name === cached + "*" || String(t.name || "").startsWith(cached));
+}
+
+async function proactiveKickoff(viaFreshConnect) {
+  if (autoRan || !relay || analysing || pulling) return;
+  autoRan = true;
+  const real = rows && rows.length && srcLabel !== "sample";
+  if (real) {
+    // A live pull older than a day, connector already granted → silently refresh; pullLive
+    // re-ingests and auto-analyses, so this one call covers re-pull AND re-diagnosis.
+    if (origSource === "live" && savedAt && Date.now() - savedAt > 24 * 3600000 && await grantCoversCachedPrefix()) {
+      void pullLive();
+      return;
+    }
+    const fresh = report && reportFor && reportFor.csvSig === csvSig() && reportFor.brand === (brand?.name ?? null);
+    if (!fresh) void analyse();
+    return;
+  }
+  // Only the demo month is loaded. Try the REAL account first when we're allowed to: a fresh connect
+  // is the user's own gesture; a page load only when the existing grant already covers the cached
+  // connector (so a zero-gesture load never pops a consent window).
+  const mayPull = viaFreshConnect || await grantCoversCachedPrefix();
+  if (mayPull && await pullLive({ auto: true })) return;
+  // No connector, or the pull didn't land — diagnose the representative month anyway. The readout is
+  // badged "demo month" and carries a one-click pull, so it's a real post-mortem, never a fake one.
+  if (!rows || !rows.length) { $("csv-in").value = SAMPLE; ingest(SAMPLE, "sample"); }
+  if (rows && rows.length && !analysing && !pulling) await analyse();
+}
 
 // ---------- brand context: read what the user lent, derive the sharper diagnosis ----------
 // Normalize defensively — data is opaque, convention only (docs/CONTEXT-KINDS.md, kind "brand").
@@ -281,12 +349,21 @@ function normalizeBrand(ctx) {
 async function loadBrand() {
   if (!relay) return;
   try {
-    const ctx = await relay.context.active();
+    let ctx = await relay.context.active();
+    // Nothing lent but the grant lets us LIST brands → auto-select the first one, so a user
+    // with banked brands never sees "none lent — verdicts stay generic". Reused grants may
+    // lack the contextKinds row (exact-match), so list() failing just keeps brand = null.
+    if (!ctx && typeof relay.context.list === "function" && typeof relay.context.use === "function") {
+      const metas = await relay.context.list().catch(() => []);
+      const bm = metas.find((m) => (m.kind || "").toLowerCase() === "brand");
+      if (bm) ctx = await relay.context.use(bm.id).catch(() => null);
+    }
     brand = ctx ? normalizeBrand(ctx) : null;
   } catch { brand = null; }
   renderBrandLine();
   rebuildBrandChips();
   reflect();
+  if (report) renderReport(); // a brand change re-labels the readout + flags a stale verdict
 }
 
 // "diagnosing for {brand}" under the wordmark — palette swatches live here (inside content,
@@ -325,6 +402,7 @@ $("brand-switch").addEventListener("click", async () => {
       renderBrandLine();
       rebuildBrandChips();
       reflect();
+      if (report) renderReport(); // re-label the readout; the stale strip offers the re-run
     } else b.textContent = prev;
   } catch { b.textContent = prev; }
   finally { b.disabled = false; if (brand) b.textContent = "switch"; }
@@ -368,6 +446,7 @@ function reflect() {
   const haveData = !!rows && rows.length > 0;
   $("analyse").disabled = !relay || !haveData || analysing || pulling;
   $("rerun").disabled = !relay || !haveData || analysing || pulling;
+  $("stale-rerun").disabled = !relay || !haveData || analysing || pulling;
   $("pull-live").disabled = !relay || pulling || analysing;
   $("load-sample").hidden = !!relay; // the sample is a pre-connect affordance only
   $("pull-sub").textContent = relay
@@ -380,7 +459,10 @@ function reflect() {
   hint.textContent = "";
   if (relay) {
     const brandBit = brand ? ` Verdicts are judged against ${brand.name}'s positioning.` : "";
-    hint.append("connected — the diagnosis runs on ", strong("your"), " Claude." + brandBit + (haveData ? "" : " Pull live or paste an export first."));
+    const tail = !haveData ? " Pull live or paste an export first."
+      : srcLabel === "sample" ? " The demo month is diagnosed below — pull your account to judge your own numbers."
+      : "";
+    hint.append("connected — the diagnosis runs on ", strong("your"), " Claude." + brandBit + tail);
   } else if (notInstalled) {
     const a = document.createElement("a");
     a.href = INSTALL_URL; a.target = "_blank"; a.rel = "noreferrer";
@@ -390,13 +472,21 @@ function reflect() {
     hint.append("the sample is loaded and explorable — ", strong("connect Switchboard"), " (top right) to pull your live account and run the diagnosis.");
   }
   if (rows) renderTapeCaption();
+  syncDemo();
 }
 function strong(t) { const b = document.createElement("b"); b.textContent = t; return b; }
 
 // ---------- feed inputs (the secondary path) ----------
 function ingest(text, source) {
   try {
-    if (!text.trim()) { rows = null; $("tape").hidden = true; $("feed-err").hidden = true; reflect(); return; }
+    if (!text.trim()) {
+      rows = null; rawCsv = ""; srcLabel = ""; origSource = "";
+      $("tape").hidden = true; $("feed-err").hidden = true;
+      persist(); // a deliberate clear must stay cleared across reloads
+      reflect();
+      syncStale();
+      return;
+    }
     loadData(text, source);
   } catch (err) {
     rows = null;
@@ -492,51 +582,70 @@ function extractCsv(text) {
   return csv.split("\n").length >= 2 ? csv : null;
 }
 
-async function pullLive() {
-  if (!relay || pulling || analysing) return;
+// Resolves TRUE only when real numbers landed (and the diagnosis was kicked off) — the proactive
+// kickoff uses that to decide whether it still needs to fall back to the demo month.
+// `auto:true` marks the unattended path: a missing connector is then a quiet note, not a red error,
+// because the user asked to CONNECT, not to pull.
+async function pullLive({ auto = false } = {}) {
+  if (!relay || pulling || analysing) return false;
   const myRun = ++pullSeq;
   $("feed-err").hidden = true;
+  let sawOkTool = false, sawDenied = false; // for the surgical prefix-cache decision below
   try {
     const prefix = await discoverPrefix(myRun);
-    if (myRun !== pullSeq || !prefix) return;
+    if (myRun !== pullSeq || !prefix) return false;
     setPull(true, "asking your consent to read the ads connector…");
     await relay.connect({
       reason: "pull your Meta ads performance (read-only) to diagnose it",
       tools: [prefix + "*"],
       models: ["sonnet"],
     });
-    if (myRun !== pullSeq) return;
+    if (myRun !== pullSeq) return false;
     setPull(true, "opening your ad account…");
     let text = "";
     for await (const d of relay.stream({ prompt: PULL_PROMPT, agentic: true })) {
-      if (myRun !== pullSeq) return;
+      if (myRun !== pullSeq) return false;
       if (d.type === "tool_proposed") setPull(true, "calling " + d.call.name.split("__").pop() + "…");
-      else if (d.type === "tool_result" && !d.result.ok) setPull(true, "⛔ " + (d.result.error?.message || "denied") + " — continuing…");
+      else if (d.type === "tool_result") {
+        if (d.result.ok) sawOkTool = true;
+        else { sawDenied = true; setPull(true, "⛔ " + (d.result.error?.message || "denied") + " — continuing…"); }
+      }
       else if (d.type === "text") text += d.text;
       else if (d.type === "error") throw new Error(d.error?.message || "stream error");
     }
-    if (myRun !== pullSeq) return;
+    if (myRun !== pullSeq) return false;
     const csv = extractCsv(text);
     if (!csv) throw new Error("your Claude answered but not with a parseable CSV — pull again, it usually lands on the second pass.");
     $("csv-in").value = csv;
     ingest(csv, "live");
+    if (!rows || !rows.length) throw new Error("the pulled CSV had no campaign rows in it.");
     $("tape").scrollIntoView({ behavior: "smooth", block: "start" });
     // One-go: the user asked for their account ONCE — pulling it and then waiting for a second
     // click is a form in disguise. The diagnosis follows the pull automatically (steer stays live;
     // re-run with a different focus any time).
-    if (rows && rows.length && !analysing) void analyse();
+    if (!analysing) void analyse();
+    return true;
   } catch (err) {
-    if (myRun !== pullSeq) return;
-    // A stale cached prefix (connector renamed/removed) denies every call — clear it so a retry rediscovers.
-    try { localStorage.removeItem(PREFIX_KEY); } catch { /* ignore */ }
+    if (myRun !== pullSeq) return false;
+    // Clear the cached prefix ONLY when it looks genuinely stale — every tool call denied, or the
+    // connector itself is gone. A consent denial at connect() or an unparseable CSV reply keeps
+    // the valid discovery, so the retry skips a whole extra discovery stream.
+    const msg = String(err?.message || err);
+    if ((sawDenied && !sawOkTool) || /unknown tool|no such tool|not allowed|not found/i.test(msg)) {
+      try { localStorage.removeItem(PREFIX_KEY); } catch { /* ignore */ }
+    }
     const fe = $("feed-err");
     fe.hidden = false;
-    fe.textContent = "⚠ live pull failed: " + String(err?.message || err).slice(0, 240);
+    fe.classList.toggle("soft", auto);
+    fe.textContent = auto
+      ? "· couldn't reach a live account (" + msg.slice(0, 160) + ") — diagnosing the demo month below instead. ⚡ Pull from Ads Manager retries any time."
+      : "⚠ live pull failed: " + msg.slice(0, 240);
+    return false;
   } finally {
     if (myRun === pullSeq) setPull(false);
   }
 }
-$("pull-live").addEventListener("click", pullLive);
+$("pull-live").addEventListener("click", () => void pullLive());
 $("pull-cancel").addEventListener("click", () => { pullSeq++; setPull(false); });
 
 // ---------- the diagnosis ----------
@@ -615,6 +724,9 @@ async function analyse() {
     if (m) { try { data = JSON.parse(m[0]); } catch { /* handled below */ } }
     if (!data) throw new Error("the model didn't return clean JSON — hit ↻ RETRY, it usually lands on the second pass.");
     report = normalize(data);
+    // provenance: what this verdict was judged on — including WHOSE numbers, so a demo readout
+    // can never be mistaken for the user's account.
+    reportFor = { csvSig: csvSig(), brand: brand?.name ?? null, source: srcLabel };
     persist();
     renderReport();
     $("report").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -628,6 +740,7 @@ async function analyse() {
 $("analyse").addEventListener("click", analyse);
 $("rerun").addEventListener("click", analyse);
 $("retry").addEventListener("click", analyse);
+$("stale-rerun").addEventListener("click", analyse);
 $("cancel").addEventListener("click", () => { runSeq++; setLive(false); });
 $("focus-in").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("analyse").disabled) analyse(); });
 
@@ -638,7 +751,11 @@ function showError(err) {
   msg.textContent = "";
   const b = document.createElement("b");
   b.textContent = "Diagnosis failed. ";
-  msg.append(b, String(err?.message || err).slice(0, 240));
+  let detail = String(err?.message || err).slice(0, 240);
+  if (!relay) detail += " — reconnect Switchboard (top right) to retry.";
+  msg.append(b, detail);
+  // A dead retry is worse than none: analyse() silently no-ops without a relay or data.
+  $("retry").hidden = !relay || !rows;
 }
 
 function normalize(d) {
@@ -719,11 +836,46 @@ function tagEl(cls, text) {
   return t;
 }
 
+// The stale strip: the report stays visible (it's still useful history) but never silently lies
+// about what it was judged on — new numbers or a different brand flag it with a one-click re-run.
+function reportIsStale() {
+  return !!report && (!reportFor || reportFor.csvSig !== csvSig() || reportFor.brand !== (brand?.name ?? null));
+}
+// The demo strip: a diagnosed sample month is a REAL post-mortem of someone else's account, and the
+// readout says so — with the two ways to make it yours one click away.
+function syncDemo() {
+  const note = $("demo-note");
+  if (!note) return;
+  const onDemo = !!report && (reportFor ? reportFor.source === "sample" : srcLabel === "sample");
+  note.hidden = !onDemo || $("report").hidden;
+  $("demo-pull").disabled = !relay || pulling || analysing;
+}
+$("demo-pull").addEventListener("click", () => void pullLive());
+$("demo-paste").addEventListener("click", () => {
+  $("paste-alt").open = true;
+  $("csv-in").focus();
+  $("paste-alt").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+function syncStale() {
+  const note = $("stale-note");
+  if (!report || $("report").hidden) { note.hidden = true; return; }
+  const stale = reportIsStale();
+  note.hidden = !stale;
+  if (!stale) return;
+  $("stale-why").textContent = (!reportFor || reportFor.csvSig !== csvSig())
+    ? "the numbers changed since this diagnosis"
+    : `this verdict was generated for ${reportFor.brand ?? "no brand"} — you're now on ${brand?.name ?? "no brand"}`;
+}
+
 function renderReport() {
   if (!report) return;
   renderDial(report.score);
   $("headline").textContent = report.headline;
-  $("verdict-sig").textContent = brand ? `account health · verdict for ${brand.name}` : "account health · verdict";
+  // Attribute the verdict to the brand it was actually JUDGED for (provenance), not whatever
+  // brand happens to be loaded now — the stale strip carries the mismatch.
+  const judgedFor = reportFor ? reportFor.brand : (brand?.name ?? null);
+  $("verdict-sig").textContent = judgedFor ? `account health · verdict for ${judgedFor}` : "account health · verdict";
 
   const wins = $("wins"); wins.textContent = "";
   if (report.wins.length) report.wins.forEach((w) => wins.append(card("win", w.title, w.detail)));
@@ -737,12 +889,14 @@ function renderReport() {
   if (report.actions.length) {
     report.actions.forEach((a, i) => {
       const row = document.createElement("div"); row.className = "action";
+      if (i === 0) row.classList.add("rec"); // most-urgent-first ordering → the top one is THE move
       const idx = document.createElement("div"); idx.className = "idx"; idx.textContent = String(i + 1).padStart(2, "0");
       const body = document.createElement("div"); body.className = "body";
       const t = document.createElement("span"); t.className = "t"; t.textContent = a.title;
       body.append(t,
         tagEl(a.impact === "high" ? "hi" : "med", "impact " + a.impact),
         tagEl(a.effort === "low" ? "lo" : a.effort === "high" ? "hard" : "dim", "effort " + a.effort));
+      if (i === 0) body.append(tagEl("star", "★ do this first"));
       const d = document.createElement("div"); d.className = "d"; d.textContent = a.detail;
       body.append(d);
       row.append(idx, body);
@@ -772,6 +926,8 @@ function renderReport() {
 
   $("report").hidden = false;
   reflect();
+  syncStale();
+  syncDemo();
 }
 
 // ---------- persistence ----------
@@ -780,9 +936,11 @@ function persist() {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       csv: rawCsv.length <= 200000 ? rawCsv : "",
       source: srcLabel,
+      origSource,               // where the data ORIGINALLY came from, across restore cycles
       focus: $("focus-in").value,
       report,
-      at: Date.now(),
+      reportFor,                // provenance so a restored report can be checked against restored data
+      at: savedAt || Date.now(), // when the DATA was ingested — not when the focus last changed
     }));
   } catch { /* storage full or blocked — non-fatal */ }
 }
@@ -792,6 +950,9 @@ function persist() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* fresh visit */ }
   if (saved?.report) report = saved.report ? normalize(saved.report) : null;
+  reportFor = saved?.reportFor && typeof saved.reportFor === "object" ? saved.reportFor : null;
+  origSource = typeof saved?.origSource === "string" ? saved.origSource : "";
+  savedAt = Number(saved?.at) || 0; // restore BEFORE ingest so loadData/persist keep the real age
   $("focus-in").value = saved?.focus || "Find wasted spend";
   syncChips();
   if (saved?.csv) {

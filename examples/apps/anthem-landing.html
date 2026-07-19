@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Anthem — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;
+  --pop:#B49BD8;--pop-2:#7B5EA8;--pop-soft:rgba(180,155,216,0.14);--pop-line:rgba(180,155,216,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(180,155,216,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+.nav{display:flex;align-items:center;gap:16px;height:84px}
+.brand{display:flex;align-items:center;gap:13px;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.03em}
+.brand .tile{width:44px;height:44px;border-radius:13px;background:#EDE8F3;color:#7B5EA8;display:grid;place-items:center}
+.brand .tile svg{width:24px;height:24px}
+.nav .sp{flex:1}
+.nav .lk{color:var(--ink-2);font-weight:500;font-size:15px;padding:0 6px}
+.nav .cta{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;font-family:var(--font-sans)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:64px 0 40px;min-height:660px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(180,155,216,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* hero demo — a prototype frame of Anthem mid-song (the product doing its job) */
+.demo{position:relative;background:var(--card);border:1.5px solid #2A2B30;border-radius:22px;
+  overflow:hidden;box-shadow:0 26px 64px rgba(0,0,0,.52)}
+.demo .bar{display:flex;align-items:center;gap:10px;padding:13px 18px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.demo .bar .dot{width:9px;height:9px;border-radius:50%;background:var(--pop);flex:none}
+.demo .bar .nm{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.02em}
+.demo .bar .sp{flex:1}
+.demo .bar .st{font:500 12px/1 var(--font-mono);color:var(--faint)}
+.demo .band{position:relative;height:122px;border-bottom:1px solid var(--line)}
+.demo .band img{width:100%;height:100%;object-fit:cover;object-position:50% 62%;display:block}
+.demo .band .vg{position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(10,10,11,.18) 0%,rgba(10,10,11,.64) 48%,rgba(10,10,11,.94) 100%)}
+.demo .band .muse{position:absolute;left:18px;right:18px;bottom:12px;color:#EDEDEF;font-size:13px;
+  line-height:1.45;text-shadow:0 1px 6px rgba(0,0,0,.85)}
+.demo .band .muse b{color:#D3C1EC;font-weight:600}
+.demo .body{padding:15px 18px 18px}
+.demo .kick2{font:600 12px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.demo .cons{display:flex;gap:7px;margin:0 0 15px;flex-wrap:wrap}
+.demo .cn{font:500 12.5px/1 var(--font-sans);color:var(--ink-2);background:rgba(255,255,255,.03);
+  border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+.demo .cn.on{color:#0A0A0B;background:var(--pop);border-color:var(--pop);font-weight:600}
+.demo .sng{font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.03em;margin:0}
+.demo .sect2{font:600 12px/1 var(--font-mono);color:var(--pop);margin:13px 0 0;letter-spacing:.04em}
+.demo .lyr{margin:8px 0 0;color:var(--ink);font-size:15px;line-height:1.62;font-family:var(--font-display);font-weight:500}
+.demo .gp{margin:15px 0 0;padding:11px 13px;border-radius:12px;background:rgba(255,255,255,.03);
+  border:1px solid var(--line);font:500 12.5px/1.5 var(--font-mono);color:var(--ink-2);
+  animation:gpglow 4.5s ease-in-out infinite}
+.demo .gp span{color:var(--pop)}
+@keyframes gpglow{0%,100%{box-shadow:0 0 0 0 rgba(180,155,216,0)}50%{box-shadow:0 0 0 4px rgba(180,155,216,.11)}}
+@media (prefers-reduced-motion:reduce){.demo .gp{animation:none}}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 90px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+/* ── store chrome — added when this page became the wrapp's detail page in Switchboard ── */
+.sbbar{position:relative;z-index:50;background:var(--panel);border-bottom:1px solid var(--line)}
+.sbbar .in{max-width:1280px;margin:0 auto;padding:0 80px;height:54px;display:flex;align-items:center;gap:16px}
+.sbbar .sp{flex:1}
+.sbbar .sep{width:1px;height:16px;background:var(--line);flex:none}
+.back{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 13px/1 var(--font-sans);
+  padding:7px 13px 7px 11px;border:1px solid var(--line);border-radius:999px;transition:color .14s,border-color .14s}
+.back:hover{color:var(--ink);border-color:var(--line-2)}
+.back .a{font-size:13px;line-height:1;transform:translateY(-.5px)}
+.sbm{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;
+  font-size:14.5px;letter-spacing:-.03em;color:var(--ink)}
+.sbm .g{width:20px;height:20px;border-radius:6px;background:linear-gradient(140deg,#7CC142,#4E7A1C);
+  display:grid;place-items:center;flex:none}
+.sbm .g svg{width:11px;height:11px;stroke:#0A0A0B;stroke-width:2.8;fill:none}
+.sbbar .tier{font:500 11.5px/1 var(--font-mono);color:var(--faint);letter-spacing:.03em}
+.sbcta{background:#EDEDEA;color:#0A0A0B;font:600 13px/1 var(--font-sans);border-radius:999px;
+  padding:10px 17px;display:inline-flex;align-items:center;gap:7px;transition:background .14s}
+.sbcta:hover{background:#FFFFFF}
+/* facts — the store receipt, in the store's language */
+.facts{display:grid;grid-template-columns:.8fr 1fr 1.15fr;border:1px solid var(--line);border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);overflow:hidden;margin:82px 0 0}
+.fc{padding:20px 26px 22px;border-left:1px solid var(--line)}
+.fc:first-child{border-left:0}
+.fl{display:flex;align-items:center;gap:9px;font:600 10.5px/1 var(--font-sans);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--faint)}
+.fl .rep{font:500 9.5px/1 var(--font-mono);letter-spacing:.05em;text-transform:none;color:var(--faint);
+  background:var(--card);border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+.fv{font-family:var(--font-display);font-weight:600;font-size:17.5px;letter-spacing:-.025em;margin-top:12px;color:var(--ink)}
+.fv .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.fv .dot{color:var(--faint);font-weight:400;padding:0 3px}
+.fv .pop{color:var(--pop)}
+.fs{color:var(--ink-2);font-size:13px;line-height:1.5;margin-top:7px}
+/* pricing */
+.feat{padding-top:42px;padding-bottom:24px}
+.plans{padding:82px 0 0}
+.plans h2{font-family:var(--font-display);font-weight:700;font-size:42px;line-height:1.06;
+  letter-spacing:-.032em;margin:20px 0 0;max-width:19ch}
+.plans .psub{color:var(--ink-2);font-size:17px;line-height:1.55;margin:16px 0 0;max-width:58ch}
+.ponly{display:inline-flex;align-items:center;gap:14px;margin-top:28px;padding:14px 22px 14px 16px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;font-size:15px;color:var(--ink)}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:34px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 28px}
+.pcard.tier-pro{border-color:rgba(169,222,106,.24);background:linear-gradient(180deg,rgba(169,222,106,.05),var(--card))}
+.ptop{display:flex;align-items:center;gap:12px}
+.ptag{font:700 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);
+  background:rgba(255,255,255,.05);border:1px solid var(--line-2);border-radius:6px;padding:6px 9px}
+.ptag.lime{color:#A9DE6A;background:rgba(169,222,106,.11);border-color:rgba(169,222,106,.32)}
+.pnote{color:var(--faint);font-size:12.5px}
+.pcard h3{font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.025em;margin:18px 0 0}
+.pcard p{color:var(--ink-2);font-size:14.5px;line-height:1.6;margin:11px 0 0}
+.plist{list-style:none;margin:16px 0 0;padding:0}
+.plist li{display:flex;gap:11px;align-items:flex-start;color:var(--ink);font-size:15px;
+  padding:11px 0;border-top:1px solid var(--line)}
+.plist li:first-child{border-top:0;padding-top:4px}
+.plist .tk{color:#A9DE6A;flex:none;margin-top:2px}
+.plist .tk svg{width:15px;height:15px}
+/* footer */
+.foot{margin-top:86px;border-top:1px solid var(--line);padding:28px 0 60px;display:flex;align-items:center;gap:22px}
+.foot .sp{flex:1}
+.foot a{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 14px/1 var(--font-sans);transition:color .14s}
+.foot a:hover{color:var(--ink)}
+.foot a.open{color:var(--pop)}
+.foot .fnote{color:var(--faint);font-size:12.5px}
+
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="sbbar">
+  <div class="in">
+    <a class="back" href="./index.html"><span class="a">←</span>All wrapps</a>
+    <span class="sep"></span>
+    <a class="sbm" href="./index.html"><span class="g"><svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</a>
+    <span class="sp"></span>
+    <span class="tier">Viral · free</span>
+    <a class="sbcta" href="./anthem.html">Open Anthem<span>→</span></a>
+  </div>
+</div>
+<div class="wrap">
+  <nav class="nav">
+    <span class="brand"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="15" r="2.5"/><path d="M9.5 17V6l10-2v11"/></svg></span>Anthem</span>
+    <span class="sp"></span>
+    <a class="lk" href="#overview">Overview</a><a class="lk" href="#how">How it works</a><a class="lk" href="#pricing">Pricing</a>
+    <a class="cta" href="./anthem.html">Open Anthem</a>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <span class="kick"><span class="d"></span>Viral</span>
+      <h1>Everyone deserves a theme song.</h1>
+      <p class="sub">Name a person, moment, or brand and get full lyrics plus a copy-ready prompt for your music model.</p>
+      <div class="actions">
+        <a class="btn" href="./anthem.html">Open Anthem<span>→</span></a>
+        <span class="btn ghost">Watch a run</span>
+      </div>
+      <div class="trust">
+        <span class="chip"><span class="g">◆</span> Runs on your own Claude</span>
+        <span class="chip">Free core, forever</span>
+        <span class="chip">Your data stays yours</span>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span>
+      <div class="demo">
+        <div class="bar"><span class="dot"></span><span class="nm">Anthem</span><span class="sp"></span><span class="st">song &middot; ready</span></div>
+        <div class="band">
+          <img src="./img/anthem.jpg" alt="A vintage analog mixing console at night, worn faders and coloured knobs lit by warm tungsten light, headphones resting on the desk" decoding="async" width="1200" height="670">
+          <span class="vg"></span>
+          <span class="muse">For: <b>my sister Priya, who quit at 34 to open a bakery</b></span>
+        </div>
+        <div class="body">
+          <div class="cons"><span class="cn on">Stadium synth-pop</span><span class="cn">Slow-burn folk</span><span class="cn">90s house</span></div>
+          <p class="sng">Thirty-Four</p>
+          <p class="sect2">[Chorus]</p>
+          <p class="lyr">Thirty-four and the oven&rsquo;s on,<br>everybody said you&rsquo;d wait &mdash;<br>you took the loan and the six a.m.<br>and made the whole street smell like faith.</p>
+          <p class="gp"><span>Generation prompt</span> &mdash; stadium synth-pop, 118 BPM, analog pads, live drums, female lead, euphoric build.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="facts" id="overview">
+    <div class="fc">
+      <div class="fl">Category</div>
+      <div class="fv">Viral</div>
+      <div class="fs">dupes of the tools people can't stop sharing</div>
+    </div>
+    <div class="fc">
+      <div class="fl">Build cost <span class="rep">dev-reported</span></div>
+      <div class="fv"><span class="n">165K</span> tokens<span class="dot">·</span><span class="n">1</span> update</div>
+      <div class="fs">what it cost to make — not what it costs you to run</div>
+    </div>
+    <div class="fc">
+      <div class="fl">What you pay</div>
+      <div class="fv"><span class="pop">Nothing.</span> Runs on your own Claude</div>
+      <div class="fs">free forever — the operator never holds a key, and never meters a token</div>
+    </div>
+  </section>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="15" r="2.5"/><path d="M9.5 17V6l10-2v11"/></svg></div><div class="num">01</div><h3>Full lyrics</h3><p>Verse, chorus, bridge — a real song, not a jingle.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="15" r="2.5"/><path d="M9.5 17V6l10-2v11"/></svg></div><div class="num">02</div><h3>Ready to generate</h3><p>A tuned prompt you paste straight into Suno or friends.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="15" r="2.5"/><path d="M9.5 17V6l10-2v11"/></svg></div><div class="num">03</div><h3>About anyone</h3><p>A founder, a friend, a launch — pick the muse.</p></div>
+  </section>
+
+  <section class="plans" id="pricing">
+    <span class="kick"><span class="d"></span>Pricing</span>
+    <h2>Free — everything, forever.</h2>
+    <p class="psub">Anthem has no paid tier and nothing held back. Writing a song costs your own Claude a few thousand tokens, so there is nothing left here for anyone else to meter.</p>
+    <div class="ponly"><span class="ptag">Free</span><span>Everything, forever — on your own Claude.</span></div>
+  </section>
+
+  <footer class="foot">
+    <a href="./index.html"><span>←</span>All wrapps on Switchboard</a>
+    <span class="sp"></span>
+    <span class="fnote">Built on the Switchboard wrapp template · runs on your own Claude</span>
+    <a class="open" href="./anthem.html">Open Anthem<span>→</span></a>
+  </footer>
+</div>
+</body></html>

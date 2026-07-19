@@ -205,6 +205,32 @@
       .addsrc .form .hint { font: 500 11px/1.4 var(--sans); color: var(--ink-faint); }
       .addsrc .form .go { background: var(--lime); color: var(--page); border: 0; border-radius: 10px; padding: 11px; font: 700 13px/1 var(--sans); cursor: pointer; }
       .addsrc .form .err { color: var(--danger); font-size: 11.5px; min-height: 13px; }
+      /* ---- the three pointers: point at a website, a repo, or a folder ---- */
+      .addsrc .k { font: 600 10px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+      .ptseg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 9px; }
+      .ptseg button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 11px 4px; border: 1px solid var(--edge); background: var(--raised); color: var(--ink-dim); border-radius: 11px; font: 600 11.5px/1 var(--sans); cursor: pointer; }
+      .ptseg button:hover { border-color: var(--ink-faint); color: var(--ink); }
+      .ptseg button.on { border-color: var(--lime); background: var(--lime-soft); color: var(--ink); }
+      .ptseg svg { width: 17px; height: 17px; display: block; }
+      .ptlead { font: 500 11.5px/1.45 var(--sans); color: var(--ink-dim); margin-top: 9px; }
+      .ptnote { font: 500 10.5px/1.45 var(--sans); color: var(--ink-faint); }
+      .ptbody { display: flex; flex-direction: column; gap: 8px; margin-top: 9px; }
+      .ptbody input { background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 500 12.5px/1 var(--sans); padding: 11px; outline: none; }
+      .ptbody input:focus { border-color: color-mix(in srgb, var(--lime) 50%, var(--edge)); }
+      .ptbody .hint { font: 500 11px/1.4 var(--sans); color: var(--ink-faint); }
+      .ptbody .err { color: var(--danger); font-size: 11.5px; min-height: 13px; }
+      .ptbody .go, .ptready .go { background: var(--lime); color: var(--page); border: 0; border-radius: 10px; padding: 11px; font: 700 13px/1 var(--sans); cursor: pointer; }
+      .ghost { background: transparent; border: 1px solid var(--edge); color: var(--ink-dim); border-radius: 10px; padding: 10px; font: 600 12px/1 var(--sans); cursor: pointer; text-align: center; }
+      .ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .ptconfirm { border: 1px solid var(--edge); background: var(--raised); border-radius: 12px; padding: 11px; display: flex; flex-direction: column; gap: 8px; }
+      .ptconfirm input { background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 600 13px/1 var(--sans); padding: 10px; outline: none; }
+      .ptconfirm input:focus { border-color: color-mix(in srgb, var(--lime) 50%, var(--edge)); }
+      .ptconfirm .path { font: 500 11px/1.35 var(--mono); color: var(--ink-dim); word-break: break-all; }
+      .ptready { border: 1px solid color-mix(in srgb, var(--lime) 40%, var(--edge)); background: var(--lime-soft); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+      .ptready .h { font: 700 14px/1.2 var(--sans); color: var(--ink); }
+      .ptready .lights { display: flex; flex-wrap: wrap; gap: 6px; }
+      .ptready .lights button { background: var(--raised-2); border: 1px solid var(--edge); color: var(--ink); border-radius: 999px; padding: 7px 11px; font: 600 11.5px/1 var(--sans); cursor: pointer; }
+      .ptready .lights button:hover { border-color: var(--lime); }
       .picker .close { width: 100%; margin-top: 12px; background: transparent; color: var(--ink-dim); border: 1px solid var(--edge); border-radius: 10px; padding: 11px; font: 600 13px/1 var(--sans); cursor: pointer; }
 
       /* ---- activity (collapsed by default — the logs live here) ---- */
@@ -324,6 +350,7 @@
           <div class="plist" id="plist"></div>
           <div id="addRow" class="addsrc"></div>
           <div id="addProject" class="addsrc"></div>
+          <div id="addOther" class="addsrc"></div>
           <div id="addSheet" class="addsrc"></div>
           <div id="addPersonal" class="addsrc"></div>
           <button class="close" id="pickerClose">Close</button>

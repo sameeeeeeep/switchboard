@@ -54,6 +54,8 @@
       .toggle:hover { color: var(--ink); }
       .toggle.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
       .grow { flex: 1; }
+      /* a page Redline drafted from context (no file on disk yet) always says so, on the canvas */
+      .draftflag { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: 999px; padding: 6px 9px; }
       .frame-wrap { flex: 1; position: relative; overflow: hidden; }
       iframe { width: 100%; height: 100%; border: 0; background: #fff; }
       iframe.mobile { width: 400px; margin: 0 auto; display: block; box-shadow: 0 0 0 1px var(--edge); }
@@ -70,6 +72,22 @@
       .primary:disabled { opacity: .5; cursor: default; }
       .steps { margin: 22px 0 0; text-align: left; font: 400 12.5px/1.9 var(--mono); color: var(--ink-faint); }
       .steps b { color: var(--accent); font-weight: 500; }
+
+      /* stage flow: connected → project bind cards (one click, no typing) + manual folder fallback */
+      .stage-flow { text-align: left; margin-top: 6px; }
+      .stage-flow .stage-k { display: block; margin: 16px 0 8px; }
+      .stage-flow .opts { margin-top: 0; }
+      .stage-flow .opt.proj { padding-right: 64px; }
+      .stage-flow .opt .o-path { font: 400 10.5px/1.5 var(--mono); color: var(--ink-faint); margin-top: 4px; word-break: break-all; white-space: normal; }
+      .stage-flow .opt .go { position: absolute; right: 13px; top: 14px; font: 500 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); opacity: 0; transition: opacity .15s; }
+      .stage-flow .opt:hover .go { opacity: 1; }
+      .stage-flow .opt:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
+      .bindrow { display: flex; gap: 8px; }
+      .bindrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 400 12px/1.4 var(--mono); padding: 10px 12px; outline: none; }
+      .bindrow input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+      .bindrow .primary { flex: none; padding: 10px 16px; }
+      .stage-cancel { display: block; margin-top: 16px; background: none; border: 0; color: var(--ink-faint); font: 500 11.5px/1 var(--mono); cursor: pointer; padding: 4px 0; }
+      .stage-cancel:hover { color: var(--accent); }
 
       /* the wrapp: docked sidebar */
       .side { background: var(--page); border-left: 1px solid var(--edge-soft); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -128,6 +146,14 @@
       .opt .o-svg { background: #fff; border-radius: 8px; padding: 8px; margin-top: 8px; overflow: auto; }
       .opt .o-svg svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
       .opt .o-img { width: 100%; border-radius: 8px; border: 1px solid var(--edge); display: block; margin-top: 8px; }
+      .img-expired { display: block; width: 100%; margin-top: 8px; font: 500 11.5px/1.4 var(--mono); color: var(--warn); background: var(--inset); border: 1px dashed var(--edge); border-radius: 8px; padding: 14px 10px; cursor: pointer; text-align: center; }
+      .img-expired:hover { border-color: var(--warn); }
+
+      /* publish card: message + branch choice as house option cards (no browser dialogs) */
+      .pubcard .pub-body { padding: 13px; }
+      .pubcard .pub-k { display: block; margin-bottom: 8px; color: var(--accent); }
+      .pub-msg { width: 100%; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 400 12.5px/1.4 var(--mono); padding: 10px 12px; outline: none; margin-bottom: 4px; }
+      .pub-msg:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
 
       /* steer input */
       .steer { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
@@ -182,6 +208,8 @@
           <span class="path" id="proj-path">—</span>
           <select id="page-sel" title="page in this project"></select>
           <button class="mini" id="reopen" title="open a different folder">change</button>
+          <!-- the opt-in "bank this folder as a project every wrapp can open" chip -->
+          <span id="bankit-dock"></span>
         </div>
         <div id="chip-dock"></div>
       </header>
@@ -190,27 +218,25 @@
         <div class="canvas">
           <div class="canvas-bar" id="canvas-bar" hidden>
             <button class="toggle" id="pick-toggle">✎ comment mode</button>
+            <span class="draftflag" id="draft-flag" hidden>draft · nothing written yet</span>
+            <button class="mini" id="save-draft" hidden title="write this draft into the open folder">⤓ save page</button>
             <span class="grow"></span>
             <button class="toggle on" id="view-desktop">desktop</button>
             <button class="toggle" id="view-mobile">mobile</button>
+            <button class="toggle" id="run-scripts" title="run the page's own JavaScript inside the preview — only enable for pages you trust">js off</button>
             <button class="mini" id="reload" title="re-read the file from disk">↻</button>
             <button class="mini" id="collapse" title="hide the review panel">▸</button>
           </div>
           <div class="frame-wrap">
-            <iframe id="frame" title="page preview"></iframe>
+            <iframe id="frame" title="page preview" sandbox="allow-same-origin"></iframe>
             <div class="pick-hint" id="pick-hint" hidden>Click any element to review it · Esc to cancel</div>
           </div>
 
           <div class="stage" id="stage">
             <div class="card">
               <h1>Finalize a page, <em>decision by decision</em>.</h1>
-              <p>Open your landing-page project. Redline renders the real page; comment on anything and your own Claude returns options — pick one, steer it, lock it, and it writes to the file.</p>
-              <button class="primary" id="open-project" disabled>Open a project folder</button>
-              <div class="steps" id="stage-steps">
-                <div><b>1</b> · Connect Switchboard (top-right) — lends this page your Claude</div>
-                <div><b>2</b> · Bind the folder that holds your <b>index.html</b></div>
-                <div><b>3</b> · Comment → choose an option → lock → it’s written</div>
-              </div>
+              <p id="stage-sub">Redline renders your real page; your own Claude audits it, pins findings with fixes ready to lock, and every edit you approve writes to the actual file.</p>
+              <div class="stage-flow" id="stage-flow"></div>
             </div>
           </div>
         </div>
@@ -220,12 +246,14 @@
             <span class="t">Review</span>
             <span class="count" id="dec-count"></span>
             <span class="head-actions">
+              <button class="act send-all" id="audit" hidden>✦ Audit</button>
               <button class="act send-all" id="send-all" hidden>Send all</button>
+              <button class="act send-all" id="publish" hidden>⇪ Publish</button>
               <button class="act" id="add-comment" disabled>＋ comment</button>
             </span>
           </div>
           <div class="side-body" id="side-body">
-            <div class="empty" id="side-empty">No comments yet.<br /><b>Turn on comment mode</b> and click anything on the page — Redline proposes options you can lock in.</div>
+            <div class="empty" id="side-empty">Connect Switchboard and pick a project —<br />Redline audits the page itself and pins suggestions with fixes <b>ready to lock</b>.</div>
           </div>
         </aside>
       </div>

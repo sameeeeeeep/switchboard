@@ -41,14 +41,14 @@ export function renderReference(root, ctx) {
     value: r.brief,
     cta: "Ground it",
     chips: ["a Gen-Z skincare creator in Lisbon", "a streetwear sneakerhead in Seoul", "a cozy home-cook mum", "a no-BS fitness coach", "a minimalist interiors creator"],
-    onSubmit: (v) => { r.brief = v; ground(v); },
-    onChip: (v) => { r.brief = v; ctx.rerender(); },
+    onSubmit: (v) => { r.brief = v; ctx.save(); ground(v); },
+    onChip: (v) => { r.brief = v; ctx.save(); ctx.rerender(); },
   });
   card.append(brief);
-  // niche + mood (research fills these; editable)
+  // niche + mood (research fills these; editable — every keystroke persists via the debounced save)
   const g2 = el("div", "grid2"); g2.style.marginTop = "14px";
-  g2.append(field("Niche", r.niche, "sustainable skincare", (v) => (r.niche = v)));
-  g2.append(field("Mood / direction", r.moodNotes, "warm, unhurried, label-reading", (v) => (r.moodNotes = v)));
+  g2.append(field("Niche", r.niche, "sustainable skincare", (v) => { r.niche = v; ctx.save(); }));
+  g2.append(field("Mood / direction", r.moodNotes, "warm, unhurried, label-reading", (v) => { r.moodNotes = v; ctx.save(); }));
   card.append(g2);
   root.append(card);
 
@@ -60,23 +60,28 @@ export function renderReference(root, ctx) {
   (r.inspirations || []).forEach((ins, i) => {
     const chip = el("span", "insp");
     chip.append(el("b", null, ins.handle));
-    const x = el("button", "ix", "×"); x.onclick = () => { r.inspirations.splice(i, 1); ctx.rerender(); }; chip.append(x);
+    const x = el("button", "ix", "×"); x.onclick = () => { r.inspirations.splice(i, 1); ctx.save(); ctx.rerender(); }; chip.append(x);
     list.append(chip);
   });
-  const add = steer({ placeholder: "@handle or a note about an account you admire", cta: "Add", onSubmit: (v) => { if (!v) return; r.inspirations = r.inspirations || []; r.inspirations.push({ handle: v.startsWith("@") || v.length < 24 ? v : v, note: "" }); ctx.rerender(); } });
+  const add = steer({ placeholder: "@handle or a note about an account you admire", cta: "Add", onSubmit: (v) => { if (!v) return; r.inspirations = r.inspirations || []; r.inspirations.push({ handle: v.startsWith("@") || v.length < 24 ? v : v, note: "" }); ctx.save(); ctx.rerender(); } });
   insp.append(list, add);
   root.append(insp);
 
   root.append(gateBar(a, "reference", ctx.go));
-  // the confirm gate lives in-card: lock the brief
+  // the confirm gate lives in-card: lock the brief. Validation is inline, in-system — never alert().
   const confirm = el("div", "confirmrow");
   const btn = el("button", r.locked ? "ghost" : "primary", r.locked ? "Brief locked ✓ — edit above to re-ground" : "Confirm brief & begin →");
-  btn.onclick = () => { if (!r.brief && !r.niche) { alert("Give Cast a brief or a niche to ground the account."); return; } r.locked = true; ctx.save(); ctx.go("foundation"); };
-  confirm.append(btn);
+  const cerr = el("span", "note danger"); cerr.hidden = true;
+  btn.onclick = () => {
+    if (!r.brief && !r.niche) { cerr.textContent = "Give Cast a brief or a niche to ground the account."; cerr.hidden = false; return; }
+    cerr.hidden = true; r.locked = true; ctx.save(); ctx.go("foundation");
+  };
+  confirm.append(btn, cerr);
   root.append(confirm);
 
   async function ground(v) {
     if (ctx.mock) { r.niche = r.niche || deriveNiche(v); r.moodNotes = r.moodNotes || "warm, plain-spoken, considered"; ctx.rerender(); return; }
+    if (!ctx.relay) return; // disconnected — the banner above the stage says so
     brief._btn.disabled = true; brief._btn.textContent = "Reading the niche…";
     try {
       const obj = await gen.streamJsonObject(ctx.relay,
@@ -106,11 +111,16 @@ function renderEntry(root, ctx) {
   card.append(seg);
 
   if (entryMode === "describe") {
+    const chips = ["a Gen-Z skincare creator in Lisbon", "a streetwear sneakerhead in Seoul", "a cozy home-cook mum", "a no-BS fitness coach", "a minimalist interiors creator"];
+    // never a blank box: prefill with the brand-derived brief (the doctrine default), else the first
+    // suggestion — either way "Make it" works with zero typing.
+    const b = ctx.account.brand || ctx.brand;
+    const derived = b ? `an independent creator making content for ${b.name}${b.data?.positioning || b.data?.tagline ? " — " + (b.data.positioning || b.data.tagline) : ""}` : "";
     card.append(steer({
       placeholder: "Describe the account in a line — 'a plain-spoken skincare creator in Lisbon'",
-      value: r.brief,
+      value: r.brief || derived || chips[0],
       cta: "✨ Make it →",
-      chips: ["a Gen-Z skincare creator in Lisbon", "a streetwear sneakerhead in Seoul", "a cozy home-cook mum", "a no-BS fitness coach", "a minimalist interiors creator"],
+      chips,
       onSubmit: (v) => { if (v) begin(ctx, { brief: v }); },
     }));
   } else if (entryMode === "reference") {
@@ -179,10 +189,13 @@ function begin(ctx, { brief, handle, photo }) {
   groundInBackground(ctx);
 }
 
-async function groundInBackground(ctx) {
+// Exported: the shell also runs this after a brand-derived auto-start, so research refines the
+// derived niche/mood in the background while Foundation's autopilot is already streaming options.
+export async function groundInBackground(ctx) {
   const a = ctx.account, r = a.reference;
   if (r.niche && r.moodNotes) return;
   if (ctx.mock) { r.niche = r.niche || deriveNiche(r.brief); r.moodNotes = r.moodNotes || "warm, plain-spoken, considered"; ctx.save(); ctx.rerender(); return; }
+  if (!ctx.relay) return;
   try {
     const attachments = r.fromPhoto && a.assets.face?.url ? [{ handle: "face", filename: "face.png", contentType: "image/png", dataUrl: a.assets.face.url }] : undefined;
     const ask = attachments
@@ -241,7 +254,8 @@ function facetCard(facet, ctx) {
   let cards = genCards || [];
   for (const c of [lock, ...(fnd.more[facet.id] || [])].filter(Boolean)) if (!cards.some((x) => x.id === c.id)) cards = [c, ...cards];
   if (!cards.length) {
-    card.append(el("div", "empty-note", genCards ? "Nothing came back — steer below and regenerate, or write your own." : "Generate options to choose a direction."));
+    const offline = !ctx.mock && !ctx.relay;
+    card.append(el("div", "empty-note", offline ? "Switchboard disconnected — reconnect from the chip to keep generating." : genCards ? "Nothing came back — steer below and regenerate, or write your own." : "Generate options to choose a direction."));
     card.append(steerRow(facet, ctx, status));
     return card;
   }
@@ -266,7 +280,7 @@ function steerRow(facet, ctx, status) {
   const row = el("div", "steerrow fsteer");
   row.append(el("span", "spark", "✎"));
   const inp = Object.assign(el("input"), { type: "text", placeholder: facet.steer || "Steer the options, or write your own…", value: steers[facet.id] || "" });
-  inp.addEventListener("input", () => { steers[facet.id] = inp.value; });
+  inp.addEventListener("input", () => { steers[facet.id] = inp.value; ctx.save(); }); // a typed-but-unsent steer survives reloads
   const reg = el("button", "mini", "↻ Steer options");
   reg.disabled = status === "researching";
   reg.onclick = () => { steers[facet.id] = inp.value.trim(); ctx.save(); runFacet(facet, ctx); };
@@ -295,6 +309,7 @@ function relock(a, facetId, card) {
 }
 async function runFacet(facet, ctx) {
   const a = ctx.account;
+  if (!ctx.mock && !ctx.relay) return; // disconnected — leave cards unset so autopilot resumes on reconnect
   ctx.loading.add(facet.id); ctx.rerender();
   try {
     const cards = ctx.mock ? mockFacet(facet, a) : await gen.generateCards(ctx.relay, facetPrompt(a, facet), { web: facet.web });
@@ -344,17 +359,20 @@ function assetCard(spec, vals, ctx) {
     const cur = a.assets[spec.id];
     const box = el("div", "assetone");
     const well = el("div", "assetwell" + (cur?.status === "gen" ? " load" : ""));
-    if (cur?.status === "gen") well.append(el("div", "scan"));
-    else if (cur?.url) well.append(Object.assign(el("img"), { src: cur.url }));
+    if (cur?.status === "gen") {
+      if (cur.url) well.append(Object.assign(el("img"), { src: cur.url })); // the previous image, dimmed under the spinner
+      well.append(el("div", "scan"));
+    } else if (cur?.url) well.append(Object.assign(el("img"), { src: cur.url }));
     else well.append(el("span", "ph", "✨"));
     box.append(well);
     const side = el("div", "assetside");
     side.append(el("div", "d", cur?.url ? (cur.approved ? "Approved — used in every shot." : "Approve to lock it into the persona's world, or regenerate.") : "Generate from your locked foundation."));
     const btns = el("div", "facebtns");
     const g = el("button", "genbtn", cur?.url ? "↻ Regenerate" : "✨ Generate"); g.disabled = cur?.status === "gen"; g.onclick = () => genAsset(spec, seed, ctx); btns.append(g);
-    if (cur?.url && !cur.approved) { const ok = el("button", "okbtn", "Approve ✓"); ok.onclick = () => { cur.approved = true; ctx.save(); ctx.rerender(); }; btns.append(ok); }
+    if (cur?.url && !cur.approved && cur.status !== "gen") { const ok = el("button", "okbtn", "Approve ✓"); ok.onclick = () => { cur.approved = true; ctx.save(); ctx.rerender(); }; btns.append(ok); }
     if (cur?.approved) btns.append(el("span", "saved show", "Approved ✓"));
     side.append(btns);
+    if (cur?.error) side.append(el("div", "note danger", cur.error));
     box.append(side);
     card.append(box);
   } else {
@@ -363,6 +381,7 @@ function assetCard(spec, vals, ctx) {
     list.forEach((asset, i) => {
       const tile = el("div", "tile" + (asset.status === "gen" ? " load" : "") + (asset.approved ? " ok" : ""));
       if (asset.status === "gen") tile.append(el("div", "scan"));
+      else if (!asset.url) { const ph = el("div", "img"); tile.append(ph, el("div", "lb", "failed — × to remove")); }
       else { tile.append(Object.assign(el("img", "img"), { src: asset.url })); tile.append(el("div", "lb", asset.name || spec.title)); }
       if (asset.url && !asset.approved) { const ok = el("button", "tok", "✓"); ok.title = "Approve"; ok.onclick = () => { asset.approved = true; ctx.save(); ctx.rerender(); }; tile.append(ok); }
       const x = el("button", "x", "×"); x.onclick = () => { list.splice(i, 1); ctx.save(); ctx.rerender(); }; tile.append(x);
@@ -375,13 +394,19 @@ function assetCard(spec, vals, ctx) {
 }
 async function genAsset(spec, seed, ctx) {
   const a = ctx.account;
-  const rec = { id: newId(), status: "gen", approved: false, prompt: seed, name: spec.title };
+  if (!ctx.mock && !ctx.relay) return; // disconnected — leave the record unset so autopilot resumes on reconnect
+  // A regen must never be destructive: keep the previous record (an approved face is the account's
+  // locked identity) so a failure restores it — approved flag and all — instead of wiping the gate.
+  const prev = spec.one ? a.assets[spec.id] : null;
+  const rec = spec.one
+    ? { ...(prev || {}), id: newId(), status: "gen", approved: false, prompt: seed, name: spec.title, error: null }
+    : { id: newId(), status: "gen", approved: false, prompt: seed, name: spec.title };
   if (spec.one) a.assets[spec.id] = rec; else (a.assets[spec.id] = a.assets[spec.id] || []).push(rec);
   ctx.rerender();
   // fold the lent brand's style into the asset prompt (palette accents, brand look)
   const bseed = brandStyle(a) ? `${seed}, ${brandStyle(a)}` : seed;
+  let url = null;
   try {
-    let url;
     if (ctx.mock) { await gen.wait(800); url = gen.svgTile(spec.title, ...gen.COLORS[Math.floor(Math.random() * gen.COLORS.length)]); }
     else if (spec.id === "face") url = await gen.generateImage(ctx.relay, bseed, "1:1", gen.MODELS.face);
     else if (spec.id === "setting") url = await gen.generateImage(ctx.relay, bseed, "9:16", gen.MODELS.setting);
@@ -390,8 +415,10 @@ async function genAsset(spec, seed, ctx) {
       const refs = a.assets.face?.url ? [{ handle: "face", filename: "face.png", url: a.assets.face.url }] : [];
       url = refs.length ? await gen.generateOnModel(ctx.relay, bseed, "1:1", refs, null, gen.MODELS.shot) : await gen.generateImage(ctx.relay, bseed, "1:1", gen.MODELS.shot);
     }
-    rec.url = url; rec.status = url ? "done" : "fail";
-  } catch { rec.status = "fail"; }
+  } catch { url = null; }
+  if (url) { rec.url = url; rec.status = "done"; rec.approved = false; rec.error = null; } // a new image needs a fresh approval
+  else if (spec.one && prev?.url) a.assets[spec.id] = { ...prev, error: "Regeneration failed — kept the previous image." };
+  else { rec.status = "fail"; if (spec.one) rec.error = "Generation failed — try again."; }
   ctx.save(); ctx.rerender();
 }
 
@@ -447,14 +474,16 @@ function slotRow(s, ctx) {
 }
 async function proposePlan(ctx) {
   const a = ctx.account;
+  if (!ctx.mock && !ctx.relay) return; // disconnected — `_proposed` stays undefined so autopilot re-kicks on reconnect
   ctx.loading.add("plan"); ctx.rerender();
   try {
     const pillars = pillarList(a).map((p) => p.title);
+    const today = new Date().toISOString().slice(0, 10);
     const props = ctx.mock ? mockPlan(a) : await gen.generateCards(ctx.relay,
       `You are a social strategist for ${personaName(a)}, an account in ${a.reference.niche || "its niche"} (voice: ${a.foundation.locks.voice?.title || "n/a"}). ` +
       (brandLine(a) ? brandLine(a) + " Weave the brand in naturally where it fits, never forced. " : "") +
       `Pillars: ${pillars.join(", ") || "general"}. Use WebSearch for what's trending right now. Propose 6 specific posts spread over the next few weeks. ` +
-      `Reply with ONLY a JSON array of {"title","angle","pillar","source","date":"2026-07-DD"}.`, { web: true });
+      `Reply with ONLY a JSON array of {"title","angle","pillar","source","date":"YYYY-MM-DD"} — real future dates within 3 weeks starting from ${today}.`, { web: true });
     a.calendar._proposed = [...(a.calendar._proposed || []), ...props.map((c) => ({ title: c.title, angle: c.body || c.angle, pillar: c.chips?.[0] || c.pillar, source: c.subtitle || c.source, date: c.date }))];
   } catch { a.calendar._proposed = a.calendar._proposed || []; }
   ctx.loading.delete("plan"); ctx.save(); ctx.rerender();
@@ -500,6 +529,7 @@ function scriptCard(slot, ctx) {
 }
 async function writeScript(slot, ctx) {
   const a = ctx.account;
+  if (!ctx.mock && !ctx.relay) return; // disconnected — no marker, so autopilot re-drafts on reconnect
   ctx.loading.add("script:" + slot.id); ctx.rerender();
   try {
     const beats = ctx.mock ? mockScript(a, slot) : await gen.generateCards(ctx.relay,
@@ -508,6 +538,22 @@ async function writeScript(slot, ctx) {
       `Topic: ${slot.title}. ${slot.angle || ""}. 4 beats: hook, two middles, CTA. Each beat: {"shot": what we see on-location, "line": what they say in their voice}. ` +
       `Reply with ONLY a JSON array of {"shot","line"}.`).then((cards) => cards.map((c) => ({ shot: c.title, line: c.body || "" })));
     a.scripts[slot.id] = { beats, approved: false, status: "written" };
+    // A rewrite invalidates the old production: rebuild its shots from the NEW beats so storyboard
+    // and captions never mismatch the script — carrying over a shot (image + approval) only where
+    // the beat's visual is unchanged.
+    const prevProd = a.productions?.[slot.id];
+    if (prevProd) {
+      a.productions[slot.id] = {
+        ...prevProd,
+        shots: beats.map((b, i) => {
+          const o = prevProd.shots?.[i];
+          return o && o.desc === b.shot
+            ? { ...o, line: b.line }
+            : { id: newId(), desc: b.shot, line: b.line, url: null, status: "idle", approved: false };
+        }),
+        stitchedUrl: null, approved: false, status: "idle", error: null,
+      };
+    }
   } catch { if (!(slot.id in a.scripts)) a.scripts[slot.id] = null; } // marker: tried & failed, don't auto-retry
   ctx.loading.delete("script:" + slot.id); ctx.save(); ctx.rerender();
 }
@@ -527,7 +573,7 @@ function produceCard(slot, ctx) {
   const prod = a.productions[slot.id] || (a.productions[slot.id] = { shots: sc.beats.map((b, i) => ({ id: newId(), desc: b.shot, line: b.line, url: null, status: "idle", approved: false })), stitchedUrl: null, approved: false, status: "idle" });
   const card = el("div", "card");
   card.append(el("span", "eyebrow", slot.title));
-  card.append(el("div", "fblurb", "Storyboard — one still per beat (nano-banana keyframes). Approve them, then render each into a real video clip on your locked face + voice."));
+  card.append(el("div", "fblurb", "Storyboard — one still per beat (nano-banana keyframes). Approve them, then render each into a real video clip on your locked face, narrated beat by beat."));
   // storyboard filmstrip (stills, one per beat)
   const strip = el("div", "filmstrip");
   prod.shots.forEach((shot, i) => {
@@ -547,7 +593,11 @@ function produceCard(slot, ctx) {
 
   // shoot-all + stitch controls
   const foot = el("div", "confirmrow");
-  const shootAll = el("button", "ghost", "✨ Generate storyboard"); shootAll.onclick = () => shootAll_(slot, ctx); foot.append(shootAll);
+  const anyShotGen = prod.shots.some((s) => s.status === "gen");
+  const shootAll = el("button", "ghost", anyShotGen ? "Shooting…" : "✨ Generate storyboard");
+  shootAll.disabled = anyShotGen; // never queue duplicate generations for the same beats
+  shootAll.onclick = () => shootAll_(slot, ctx);
+  foot.append(shootAll);
   const approvedShots = prod.shots.filter((s) => s.approved && s.url).length;
   const stitch = el("button", "primary", prod.status === "stitch" ? "Rendering video…" : "🎬 Render reel (video) →");
   stitch.disabled = approvedShots < 1 || prod.status === "stitch";
@@ -563,12 +613,19 @@ function produceCard(slot, ctx) {
   rd.append(el("p", "empty-note", "Paste a reference reel whose energy you like. Cast makes a NEW clip that follows its pacing on your locked persona — video → video, one shot, no shot-by-shot."));
   const rrow = el("div", "confirmrow");
   const inp = Object.assign(el("input"), { type: "text", placeholder: "https://…/reference-reel.mp4", value: prod.refUrl || "" });
-  inp.addEventListener("input", () => (prod.refUrl = inp.value));
+  inp.addEventListener("input", () => { prod.refUrl = inp.value; ctx.save(); }); // the pasted URL survives reloads
   const rbtn = el("button", "ghost", prod.refStatus === "gen" ? "Driving…" : "🎬 Generate from reference");
-  rbtn.disabled = prod.refStatus === "gen" || !a.assets.face?.url;
-  rbtn.onclick = () => driveFromRef(slot, ctx, inp.value.trim());
+  rbtn.disabled = prod.refStatus === "gen" || prod.status === "stitch";
+  const rerr = el("div", "note danger"); rerr.hidden = true;
+  rbtn.onclick = () => {
+    const u = inp.value.trim();
+    if (!u) { rerr.textContent = "Paste a reference reel URL to drive from."; rerr.hidden = false; return; }
+    if (!a.assets.face?.url) { rerr.textContent = "Approve a face first — it's the identity we keep."; rerr.hidden = false; return; }
+    rerr.hidden = true;
+    driveFromRef(slot, ctx, u);
+  };
   rrow.append(inp, rbtn);
-  rd.append(rrow);
+  rd.append(rrow, rerr);
   card.append(rd);
 
   // The reel — a beat-synced preview that ACTUALLY follows the script: each beat's shot plays in
@@ -576,7 +633,7 @@ function produceCard(slot, ctx) {
   // the fix for "she's not following the script" — the output is built FROM the beats, not a
   // disconnected clip. A real stitched/driven MP4 (if produced) shows below as the exportable cut.
   const shownShots = prod.shots.filter((s) => s.url);
-  if (shownShots.length || prod.status === "stitch") renderReel(card, slot, ctx, prod, sc);
+  if (shownShots.length || prod.status === "stitch" || prod.error) renderReel(card, slot, ctx, prod, sc);
   return card;
 }
 
@@ -584,7 +641,9 @@ function produceCard(slot, ctx) {
 // (the per-beat stills cycling with their lines) clearly labelled as a plan, not the finished reel.
 function renderReel(card, slot, ctx, prod, sc) {
   const a = ctx.account, beats = sc.beats;
-  const hasVideo = prod.stitchedUrl && !prod.stitchedUrl.startsWith("data:image");
+  // Only a real video file counts as the rendered reel — a still (PNG fallback, data URL) must never
+  // be poured into a <video>, or the phone shows a broken black player labelled REEL.
+  const hasVideo = !!prod.stitchedUrl && /\.(mp4|webm|mov|m3u8)(\?|#|$)/i.test(prod.stitchedUrl);
   const out = el("div", "reelwrap"); out.style.marginTop = "16px";
   const phone = el("div", "phone");
   out.append(phone);
@@ -608,6 +667,8 @@ function renderReel(card, slot, ctx, prod, sc) {
   const meta = el("div", "reelmeta");
   const vo = el("div", "vo");
   vo.append(el("b", null, hasVideo ? `Reel · ${personaName(a)}'s voice` : `The script · storyboard`));
+  // a failed render says so — the UI never silently snaps back to the storyboard
+  if (prod.error && prod.status !== "stitch") vo.append(el("div", "note danger", prod.error));
   if (!hasVideo && prod.status !== "stitch") vo.append(el("div", "empty-note", "This is the storyboard. Render each beat into real video with the button above."));
   const ol = el("ol", "beatlines");
   beats.forEach((b, i) => { const li = el("li"); li.append(el("span", "bn", String(i + 1)), document.createTextNode(b.line || b.shot || "")); ol.append(li); });
@@ -634,11 +695,10 @@ function renderReel(card, slot, ctx, prod, sc) {
 // what makes the reel audibly follow the script.
 async function makeVoice(ctx, textLines) {
   if (!textLines) return null;
-  const a = ctx.account;
-  // 1) Higgsfield's own TTS — the persona's platform voice (consistent, cloud, no daemon). Uses the
-  //    locked voice id when the persona has one (see Voice lock).
+  // 1) Higgsfield's own TTS — a consistent cloud narration voice, no daemon needed. (No cloned/locked
+  //    voice exists yet — generateSpeech's default voice is used; a create_voice lock is future work.)
   if (!ctx.mock && ctx.relay?.stream) {
-    try { const url = await gen.generateSpeech(ctx.relay, textLines, a.assets?.voice?.voiceId); if (url) return { backend: "Higgsfield TTS", play: () => { const au = new Audio(url); au.play().catch(() => {}); } }; } catch { /* fall through */ }
+    try { const url = await gen.generateSpeech(ctx.relay, textLines); if (url) return { backend: "Higgsfield TTS", play: () => { const au = new Audio(url); au.play().catch(() => {}); } }; } catch { /* fall through */ }
   }
   // 2) on-device daemon TTS (macOS say / local server)
   if (!ctx.mock && ctx.relay?.speak && ctx.caps?.local?.tts) {
@@ -656,6 +716,7 @@ async function makeVoice(ctx, textLines) {
 }
 async function genShot(slot, i, ctx) {
   const a = ctx.account, prod = a.productions[slot.id], shot = prod.shots[i];
+  if (!ctx.mock && !ctx.relay) return; // disconnected — the banner says so; don't burn a failed stream
   shot.status = "gen"; ctx.rerender();
   try {
     let url;
@@ -673,46 +734,56 @@ async function genShot(slot, i, ctx) {
 }
 async function shootAll_(slot, ctx) {
   const prod = ctx.account.productions[slot.id];
-  for (let i = 0; i < prod.shots.length; i++) if (!prod.shots[i].url) await genShot(slot, i, ctx);
+  // skip shots that already have a frame AND shots already mid-generation — never double-shoot a beat
+  for (let i = 0; i < prod.shots.length; i++) if (!prod.shots[i].url && prod.shots[i].status !== "gen") await genShot(slot, i, ctx);
 }
 // Video → video: one call turns a reference reel + our locked face into a finished reel.
+// Input validation is inline in produceCard; this assumes a refUrl and a face exist.
 async function driveFromRef(slot, ctx, refUrl) {
   const a = ctx.account, prod = a.productions[slot.id];
-  if (!refUrl) { alert("Paste a reference reel URL to drive from."); return; }
-  if (!a.assets.face?.url) { alert("Approve a face first — it's the identity we keep."); return; }
+  if (!ctx.mock && !ctx.relay) return; // disconnected — the banner says so
+  prod.error = null;
   prod.refStatus = "gen"; prod.status = "stitch"; prod.refUrl = refUrl; ctx.rerender();
+  let out = null;
   try {
     const prompt = `${personaName(a)} — ${slot.title}. ${slot.angle || ""}`.trim();
-    prod.stitchedUrl = ctx.mock
+    out = ctx.mock
       ? (await gen.wait(1100), gen.svgTile("Ref-driven reel", "#C8F250", "#6B4CF0", 288, 512))
       : await gen.refDrive(ctx.relay, a.assets.face.url, refUrl, prompt);
-  } catch { /* leave stitchedUrl null → phone shows the failure state */ }
+  } catch { out = null; }
+  if (out) prod.stitchedUrl = out; // a failed drive never clobbers a previously rendered cut
+  else if (!ctx.mock) prod.error = "Reference drive failed — no video came back. Check the reel URL and try again.";
   prod.refStatus = "done"; prod.status = prod.stitchedUrl ? "done" : "idle"; ctx.save(); ctx.rerender();
 }
 async function stitch_(slot, ctx) {
   const a = ctx.account, prod = a.productions[slot.id];
+  if (!ctx.mock && !ctx.relay) return; // disconnected — the banner says so
+  prod.error = null;
   prod.status = "stitch"; ctx.rerender();
   try {
     if (ctx.mock) { await gen.wait(1000); prod.stitchedUrl = prod.shots.find((s) => s.url)?.url || gen.svgTile("Reel", "#FF5A3C", "#6B4CF0", 288, 512); }
     else {
-      // For each approved beat: speak its line in the persona's Higgsfield voice, then generate a REAL
+      // For each approved beat: speak its line (Higgsfield TTS narration), then generate a REAL
       // VIDEO clip (Seedance) — identity from the face, seeded by the storyboard still, acting the
       // beat and lip-synced/paced to that voiceover. NOT a still being panned. Stitch in order → a
       // reel where the persona actually performs and says the script.
-      const voiceId = a.assets?.voice?.voiceId;
       const face = a.assets?.face?.url;
       const clips = [];
       for (const s of prod.shots.filter((s) => s.approved && s.url)) {
         let audio = null;
-        try { if (s.line) audio = await gen.generateSpeech(ctx.relay, s.line, voiceId); } catch {}
+        try { if (s.line) audio = await gen.generateSpeech(ctx.relay, s.line); } catch {}
         let clip = null;
         try { clip = await gen.beatClip(ctx.relay, s.url, face || s.url, audio, s.desc); } catch {}
         if (!clip) { try { clip = await gen.generateVideo(ctx.relay, s.url, s.desc || "natural, candid"); } catch {} } // fallback: animate the still
         if (clip) clips.push(clip);
       }
-      prod.stitchedUrl = clips.length ? await gen.stitchClips(ctx.relay, clips) : (prod.shots.find((s) => s.url)?.url || null);
+      // NEVER fall back to a still here — a PNG in stitchedUrl renders as a broken <video>. No clips
+      // means the render failed; say so and stay on the storyboard (keeping any previous cut).
+      const out = clips.length ? await gen.stitchClips(ctx.relay, clips) : null;
+      if (out) prod.stitchedUrl = out;
+      else prod.error = "Rendering failed — no beat produced a clip. Try again.";
     }
-  } catch {}
+  } catch { prod.error = "Rendering failed — try again."; }
   prod.status = prod.stitchedUrl ? "done" : "idle"; ctx.save(); ctx.rerender();
 }
 
@@ -727,8 +798,13 @@ function deriveNiche(idea) {
   const i = (idea || "").toLowerCase();
   return /\bai\b|artificial intel|prompt|chatgpt|claude/.test(i) ? "AI apps & how to use them" : /skin|serum|beauty/.test(i) ? "sustainable skincare" : /sneaker|street|hype/.test(i) ? "streetwear & sneakers" : /cook|food|recipe/.test(i) ? "home cooking" : /fit|gym|coach/.test(i) ? "fitness & mobility" : /home|interior|decor/.test(i) ? "home & interiors" : (idea || "lifestyle").split(/\s+/).slice(-2).join(" ");
 }
-function nextDate(a) { const n = (a.calendar.slots || []).length; const day = 3 + n * 3; return `2026-07-${String(Math.min(28, day)).padStart(2, "0")}`; }
-function monthShort(m) { return ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][(parseInt(m, 10) || 7) - 1] || "JUL"; }
+// The next open calendar slot, computed from TODAY (never hardcoded): every 3 days out.
+function nextDate(a) {
+  const d = new Date();
+  d.setDate(d.getDate() + 3 * ((a.calendar.slots || []).length + 1));
+  return d.toISOString().slice(0, 10);
+}
+function monthShort(m) { const now = new Date().getMonth() + 1; return ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][(parseInt(m, 10) || now) - 1] || ""; }
 
 // ---------- demo (mock) fixtures ----------
 const ROUTER = { reference: renderReference, foundation: renderFoundation, assets: renderAssets, calendar: renderCalendar, scripts: renderScripts, produce: renderProduce };
@@ -774,13 +850,14 @@ function mockFacet(facet, a) {
 }
 function mockPlan(a) {
   const n = a.reference.niche || "your niche";
+  const inDays = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
   return [
-    { title: `The "skin cycling" backlash`, body: `React to the trend cooling; show your simpler routine.`, chips: ["Myth vs. formulation"], subtitle: "TikTok trends", date: "2026-07-05" },
-    { title: `Ingredient of the month: PDRN`, body: `Explain salmon-DNA serums plainly — hype?`, chips: ["Label reads"], subtitle: "Google News", date: "2026-07-09" },
-    { title: `A calm 4-step morning`, body: `On-location AM routine in the sunlit bathroom.`, chips: ["Calm routine"], subtitle: "Evergreen", date: "2026-07-12" },
-    { title: `SPF under makeup — the 3 asks`, body: `Answer the most-DM'd reapplication questions.`, chips: ["Q&A from DMs"], subtitle: "Audience DMs", date: "2026-07-16" },
-    { title: `€9 dupe vs. the €40`, body: `Break down why the formulation differs.`, chips: ["Myth vs. formulation"], subtitle: `Reddit`, date: "2026-07-20" },
-    { title: `A day in the lab`, body: `Behind-the-niche: how a small batch is made.`, chips: ["Behind the niche"], subtitle: "Original", date: "2026-07-24" },
+    { title: `The "skin cycling" backlash`, body: `React to the trend cooling; show your simpler routine.`, chips: ["Myth vs. formulation"], subtitle: "TikTok trends", date: inDays(2) },
+    { title: `Ingredient of the month: PDRN`, body: `Explain salmon-DNA serums plainly — hype?`, chips: ["Label reads"], subtitle: "Google News", date: inDays(6) },
+    { title: `A calm 4-step morning`, body: `On-location AM routine in the sunlit bathroom.`, chips: ["Calm routine"], subtitle: "Evergreen", date: inDays(9) },
+    { title: `SPF under makeup — the 3 asks`, body: `Answer the most-DM'd reapplication questions.`, chips: ["Q&A from DMs"], subtitle: "Audience DMs", date: inDays(13) },
+    { title: `€9 dupe vs. the €40`, body: `Break down why the formulation differs.`, chips: ["Myth vs. formulation"], subtitle: `Reddit`, date: inDays(17) },
+    { title: `A day in the lab`, body: `Behind-the-niche: how a small batch is made.`, chips: ["Behind the niche"], subtitle: "Original", date: inDays(21) },
   ].map((c) => ({ ...c, id: newId() }));
 }
 function mockScript(a, slot) {

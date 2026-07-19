@@ -1,15 +1,21 @@
 // Redline — review a landing page the brandbrain way, on the visitor's OWN Claude. The real page is
-// the canvas; the wrapp is the docked sidebar. Bind the project folder (the "warm thread":
-// storage.bind → the real index.html becomes a record we read AND write). Comment on an element and
-// the user's Claude returns a DECISION — 2–3 option cards, one recommended; the founder steers, then
-// LOCKS, and the chosen edit writes to the actual file. Copy runs on their Claude, mockups on their
+// the canvas; the wrapp is the docked sidebar. CONTEXT-FIRST: the moment a grant exists Redline
+// resolves the project itself — an already-bound folder (incl. a "project" context lent via the
+// panel, which binds it) loads instantly; otherwise the user's kind-"project" contexts render as
+// one-click bind cards (★ on the freshest), with a typed path only as the last fallback. Once a
+// page is open with nothing pinned, the AUDIT runs itself — the sidebar fills with findings, each
+// carrying a ready-to-lock recommended fix and steer chips. Comment on an element and the user's
+// Claude returns a DECISION — 2–3 option cards, one recommended; the founder steers, then LOCKS,
+// and the chosen edit writes to the actual file. Copy runs on their Claude, mockups on their
 // Higgsfield. The operator holds no key and never sees the page or the edits.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { mountBankIt, listContexts, useContext, slugId } from "./store/bankit.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*";
 const DEFAULT_FOLDER = "~/Documents/Projects/the-last-prompt/switchboard";
+const DRAFT_KEY = "index.html"; // where a drafted page lands the first time it's written
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "page";
@@ -22,59 +28,276 @@ let pages = [];
 let pageKey = null;
 let currentHtml = "";
 let decisions = [];      // [{ id, num, selector, snippet, tag, note, decision|null, locked|null }]
+let lastAuditAt = 0;     // per-page: when the one-pass audit last completed (persisted in the review record)
 let picking = false;
 let activeId = null;
+let runScripts = false;  // preview-only: whether the reviewed page's own JS runs inside the iframe
+let projectMetas = [];   // kind-"project" contexts with a folder — the one-click bind cards
+const bankedFolders = new Set(); // folders banked as projects in THIS session (keeps the ✓ standing)
+let binding = false;
+let isDraft = false;     // the open page was DRAFTED from context, not read off disk (nothing written)
+let drafting = false;
+let stageOverride = false; // user clicked "change" while a page is open → show the stage over it
+let bootstrapped = false;
+let booting = false;
+let relayWired = false;
+let syncSeq = 0;
 const busy = new Set();
 
 // ---------- connect chip ----------
 mountConnect($("chip-dock"), {
   scope: {
-    reason: "Redline — review this page on your own Claude: options for copy, references, diagrams, and image mockups",
+    reason: "Redline — review this page on your own Claude: options for copy, references, diagrams and image mockups, plus the offer to bank the folder you open as a project in your library",
     models: ["sonnet"],
     tools: [HIGGSFIELD, "WebSearch", "WebFetch"],
+    // contextKinds lets Redline LIST the user's projects (names + folders, never data) so entry is
+    // a one-click bind card instead of a typed filesystem path — and READ one, so a project with no
+    // page on disk still gets a first draft to review instead of a dead end. NOTE: pre-existing
+    // grants are exact-match and won't gain this on reconnect — list() failing falls back to the
+    // manual path, and a context that can't be read just means no draft.
+    contextKinds: ["project", "brand"],
   },
-  context: "none",
   installUrl: INSTALL_URL,
-  onConnect: (r) => { relay = r; onReady(); },
-  onDisconnect: () => { relay = null; reflect(); },
+  onConnect: (r) => { relay = r; wireRelay(r); onReady(); },
+  onDisconnect: () => { relay = null; bootstrapped = false; reflect(); },
+  // The chip's project switcher (and the panel) can re-point this origin's storage folder LIVE.
+  onProjectChange: () => { void syncProject(); },
 });
 (async () => {
   const r = await whenRelayReady(2000, { installUrl: INSTALL_URL });
-  if (r && "connect" in r) { const grant = await r.permissions().catch(() => null); if (grant) { relay = r; onReady(); return; } }
+  if (r && "connect" in r) { const grant = await r.permissions().catch(() => null); if (grant) { relay = r; wireRelay(r); onReady(); return; } }
   else if (r && r.installed === false) notInstalled = true;
   reflect();
 })();
 
+function wireRelay(r) {
+  if (relayWired) return; relayWired = true;
+  // A panel-side lend of a "project" context rebinds this origin's storage folder while we're open.
+  // Without this, pages/pageKey/currentHtml go stale and the next Lock & write would land the OLD
+  // page's HTML in the NEW folder. The daemon broadcasts permissionsChanged for it — re-check where
+  // storage points and reset the review state when the folder moved.
+  r.on("permissionsChanged", () => { void syncProject(); });
+}
+
 async function onReady() {
+  if (bootstrapped) { reflect(); return; }
+  bootstrapped = true; booting = true;
+  try { await resolveProject(); } finally { booting = false; }
+  reflect();
+}
+
+// PROACTIVE ENTRY: resolve the project with zero typing. Already-bound folder (returning user, or a
+// panel-lent "project" context — the lend binds the folder, so info() covers it) → load and review
+// instantly. Otherwise list the user's project contexts as one-click bind cards on the stage.
+async function resolveProject() {
+  if (!relay) return;
   const info = await relay.storage.info().catch(() => null);
-  if (info && !info.autoAssigned && info.folder) { bound = { folder: info.folder }; await loadProject(); }
+  // The project list is needed on BOTH paths: unbound, it is the bind cards; bound, it is what tells
+  // the bank chip this folder already belongs to a library project (→ nothing to offer).
+  await refreshProjectMetas();
+  if (info && !info.autoAssigned && info.folder) {
+    bound = { folder: info.folder };
+    binding = true; reflect();
+    try { await loadProject(); } finally { binding = false; reflect(); }
+    return;
+  }
+  reflect();
+}
+
+async function refreshProjectMetas() {
+  if (!relay) { projectMetas = []; return; }
+  try {
+    const metas = await relay.context.list();
+    projectMetas = metas
+      .filter((m) => (m.kind || "").toLowerCase() === "project" && m.folder)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  } catch { projectMetas = []; } // old grant without contextKinds → manual path still works
+}
+
+// The panel (or the chip's switcher) changed what's lent to this app — re-derive where storage
+// points and rebuild the review state if the folder moved. Sequenced so a stale read never wins.
+async function syncProject() {
+  if (!relay || booting) return;
+  const my = ++syncSeq;
+  const info = await relay.storage.info().catch(() => null);
+  if (my !== syncSeq || !relay) return;
+  const folder = info && !info.autoAssigned && info.folder ? info.folder : null;
+  if ((bound?.folder || null) === folder) return;
+  bound = folder ? { folder } : null;
+  pages = []; pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0; stageOverride = false;
+  $("page-sel").textContent = "";
+  await refreshProjectMetas(); // both paths need it — bind cards when unbound, bank-chip dedupe when bound
+  if (bound) await loadProject();
   reflect();
 }
 
 function reflect() {
   const connected = !!relay;
-  $("open-project").disabled = !connected;
   $("add-comment").disabled = !connected || !pageKey;
-  const steps = $("stage-steps");
-  if (steps) steps.querySelector("div:nth-child(1)").innerHTML = connected
-    ? "<b>✓</b> · Connected — this page runs on your Claude"
-    : notInstalled ? "<b>1</b> · Install Switchboard (button, top-right)" : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  $("stage").hidden = !!pageKey;
+  $("stage").hidden = !!pageKey && !stageOverride;
   $("canvas-bar").hidden = !pageKey;
   $("proj-bar").hidden = !bound;
+  $("draft-flag").hidden = !isDraft;
+  $("save-draft").hidden = !isDraft;
+  updatePublish();
+  updateAudit();
+  renderStage();
+  renderBankIt();
+}
+
+// STOP THE HOARDING: Redline is the wrapp most likely to be the first place a user's folder gets
+// bound — a typed path nothing else in the catalogue knows about. This offers that folder to the
+// library as a kind:"project" context (data.folder is what lets the panel and every other wrapp
+// point at it). Absent when the folder ALREADY belongs to a project context: that one came from the
+// library, so there is nothing to bank.
+function renderBankIt() {
+  const dock = $("bankit-dock");
+  if (!dock) return;
+  dock.textContent = "";
+  if (!relay || !bound || !bound.folder || booting || binding || drafting) return;
+  // Banked in this session: keep the confirmation standing. reflect() re-renders this dock constantly,
+  // and re-offering "↑ Bank" seconds after the user banked it would read as if nothing happened.
+  if (bankedFolders.has(bound.folder)) {
+    const done = el("button", "bankit is-done", "in your library ✓");
+    done.type = "button";
+    done.disabled = true;
+    done.title = "this folder is a project in your Switchboard library — every wrapp can open it";
+    dock.append(done);
+    return;
+  }
+  if (projectMetas.some((m) => m.folder === bound.folder)) return;
+  // Identity comes from the FOLDER, not the page's <title>: the folder is what this context points
+  // at, so name and id agree and re-banking the same folder updates in place instead of minting a
+  // second entry under the marketing name on the page.
+  mountBankIt(dock, {
+    relay,
+    kind: "project",
+    draft: {
+      id: slugId(folderName(bound.folder)),
+      name: prettyName(bound.folder),
+      data: {
+        summary: pageDescOf(currentHtml) || pageTitleOf(currentHtml),
+        folder: bound.folder,          // the load-bearing field: lending this project binds this folder
+        pages: pages.slice(0, 8),      // what's actually in there (not `docs` — these are .html, not docs/*.md)
+        source: { kind: "folder", path: bound.folder },
+      },
+    },
+    contexts: projectMetas,
+    onPublished: async (meta) => {
+      bankedFolders.add(bound.folder);
+      toast("“" + meta.name + "” is in your library — every wrapp can open this project now");
+      await refreshProjectMetas(); // it now exists as a bind card too
+      renderBankIt();
+    },
+  });
+}
+function prettyName(folder) {
+  const base = folderName(folder).replace(/[-_]+/g, " ").trim();
+  return base ? base[0].toUpperCase() + base.slice(1) : "Project";
+}
+function pageTitleOf(html) {
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html || "") || /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html || "");
+  if (!m) return "";
+  return stripTags(m[1]).replace(/\s+/g, " ").trim().split(/\s+[—|·|]\s+/)[0].slice(0, 60);
+}
+function pageDescOf(html) {
+  const m = /<meta[^>]+name=["']description["'][^>]+content=["']([^"']{8,300})["']/i.exec(html || "")
+    || /<h1[^>]*>[\s\S]*?<\/h1>\s*<p[^>]*>([\s\S]{8,300}?)<\/p>/i.exec(html || "");
+  return m ? stripTags(m[1]).replace(/\s+/g, " ").trim().slice(0, 240) : "";
+}
+
+// ---------- the stage: connect → pick a project (option cards, no typing) → review ----------
+function renderStage() {
+  const flow = $("stage-flow"); if (!flow) return;
+  flow.textContent = "";
+  const sub = $("stage-sub");
+
+  if (!relay) {
+    sub.textContent = "Redline renders your real page; your own Claude audits it, pins findings with fixes ready to lock, and every edit you approve writes to the actual file.";
+    const steps = el("div", "steps");
+    const s1 = el("div"); s1.innerHTML = notInstalled
+      ? "<b>1</b> · Install Switchboard (button, top-right)"
+      : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
+    const s2 = el("div"); s2.innerHTML = "<b>2</b> · Pick your project — Redline lists them the moment you connect";
+    const s3 = el("div"); s3.innerHTML = "<b>3</b> · The audit pins findings itself — steer, lock, it's written";
+    steps.append(s1, s2, s3);
+    flow.append(steps);
+    return;
+  }
+
+  if (drafting) {
+    const r = el("div", "researching");
+    r.append(el("div", "scan"), el("span", null, "no page in that folder — drafting the first one from your project…"));
+    flow.append(r);
+    return;
+  }
+
+  if (binding) {
+    const r = el("div", "researching");
+    r.append(el("div", "scan"), el("span", null, "opening the project…"));
+    flow.append(r);
+    return;
+  }
+
+  sub.textContent = projectMetas.length
+    ? "Pick the project to review — one click, no typing. Redline opens its page and runs the first audit itself."
+    : "Point Redline at the folder that holds the page (its index.html lives there).";
+
+  if (projectMetas.length) {
+    flow.append(el("div", "kicker stage-k", "your projects"));
+    const list = el("div", "opts");
+    projectMetas.slice(0, 5).forEach((m, i) => {
+      const o = el("div", "opt proj");
+      if (i === 0) o.append(el("div", "rec", "recommended"));
+      o.append(el("div", "go", "open ▸"));
+      o.append(el("div", "o-label", m.name));
+      o.append(el("div", "o-text o-path", m.folder));
+      o.onclick = () => bindFolder(m.folder);
+      list.append(o);
+    });
+    flow.append(list);
+  }
+
+  flow.append(el("div", "kicker stage-k", projectMetas.length ? "or open any folder" : "open a folder"));
+  const row = el("div", "bindrow");
+  const input = el("input");
+  input.placeholder = DEFAULT_FOLDER;
+  input.value = bound?.folder || DEFAULT_FOLDER;
+  const go = () => { const p = input.value.trim(); if (p) bindFolder(p); };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  const btn = el("button", "primary", "Open");
+  btn.onclick = go;
+  row.append(input, btn);
+  flow.append(row);
+
+  if (stageOverride && pageKey) {
+    const back = el("button", "stage-cancel", "← keep reviewing " + pageKey);
+    back.onclick = () => { stageOverride = false; reflect(); };
+    flow.append(back);
+  }
 }
 
 // ---------- project binding (warm thread) ----------
-$("open-project").addEventListener("click", openProject);
 $("reopen").addEventListener("click", openProject);
 async function openProject() {
   if (!relay) return;
-  const path = prompt("Folder that holds the page (its index.html lives here):", bound?.folder || DEFAULT_FOLDER);
-  if (!path) return;
-  const info = await relay.storage.bind(path.trim()).catch(() => null);
-  if (!info) { toast("Bind declined or failed.", true); return; }
-  bound = { folder: info.folder };
-  await loadProject();
+  stageOverride = true;
+  reflect();
+  await refreshProjectMetas();
+  renderStage();
+}
+
+async function bindFolder(path) {
+  if (!relay || binding) return;
+  binding = true; renderStage();
+  try {
+    const info = await relay.storage.bind(String(path).trim());
+    if (!info) throw new Error("bind declined");
+    bound = { folder: info.folder };
+    stageOverride = false;
+    await loadProject();
+  } catch (e) { toast("Couldn't open that folder — " + msg(e), true); }
+  finally { binding = false; reflect(); }
 }
 
 async function loadProject() {
@@ -84,28 +307,177 @@ async function loadProject() {
   try { keys = await relay.storage.list(); } catch { /* empty */ }
   pages = keys.filter((k) => /\.html?$/i.test(k)).sort();
   const sel = $("page-sel"); sel.textContent = "";
-  if (!pages.length) { toast("No .html file in that folder.", true); pageKey = null; reflect(); return; }
+  // NO PAGE ON DISK IS NOT A DEAD END. Redline's whole promise is that opening a project starts a
+  // review with zero clicks; an empty folder used to end at a toast and an idle sidebar. Draft the
+  // first page from the project's own context instead, then audit that — same zero-click contract.
+  if (!pages.length) { await draftFirstPage(); return; }
+  isDraft = false;
   for (const p of pages) sel.append(new Option(p, p));
   const preferred = pages.find((p) => /(^|\/)index\.html?$/i.test(p)) || pages[0];
   sel.value = preferred;
   await openPage(preferred);
 }
+
+// ---------- the first draft: a page to review when the folder has none ----------
+// Grounded in whatever the user lent (a "project" context, else a "brand"), written on THEIR Claude,
+// and held in memory — nothing touches the folder until the founder saves it or locks an edit, which
+// is what the "draft · nothing written yet" flag promises.
+async function groundingContext() {
+  if (!relay || !relay.context) return null;
+  let ctx = null;
+  try { ctx = await relay.context.active(); } catch { ctx = null; }
+  if (ctx) return ctx;
+  const metas = await listContexts(relay);
+  const mine = metas.find((m) => (m.kind || "").toLowerCase() === "project" && m.folder === bound?.folder);
+  const pick = mine
+    || metas.find((m) => (m.kind || "").toLowerCase() === "project")
+    || metas.find((m) => (m.kind || "").toLowerCase() === "brand");
+  return pick ? await useContext(relay, pick.id) : null;
+}
+
+function groundingLines(ctx) {
+  const d = (ctx && ctx.data) || {};
+  const s = (v) => (typeof v === "string" ? v.trim() : "");
+  const arr = (v) => (Array.isArray(v) ? v.filter(Boolean).map((x) => String(x)) : []);
+  const lines = [
+    ctx && ctx.name ? `Name: ${ctx.name}` : "",
+    s(d.summary) ? `What it is: ${d.summary}` : "",
+    s(d.positioning) ? `Positioning: ${d.positioning}` : "",
+    s(d.voice) ? `Voice — write every line in it: ${d.voice}` : "",
+    s(d.audience) ? `Audience — write to them: ${d.audience}` : "",
+    arr(d.products).length ? `What it sells: ${arr(d.products).join("; ")}` : "",
+    arr(d.stack).length ? `Built with: ${arr(d.stack).join(", ")}` : "",
+    arr(d.roadmap).length ? `On the roadmap: ${arr(d.roadmap).slice(0, 4).join("; ")}` : "",
+    arr(d.palette).length ? `Palette — use exactly these colours: ${arr(d.palette).join(", ")}` : "",
+  ].filter(Boolean);
+  return lines.length ? lines : [`Name: ${folderName(bound?.folder)}`];
+}
+
+function folderName(p) {
+  return String(p || "").replace(/[/\\]+$/, "").split(/[/\\]/).filter(Boolean).pop() || "project";
+}
+
+// Pull the document out of a model reply that may or may not have wrapped it in fences/prose.
+function extractHtml(text) {
+  const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+  const m = /<!doctype html[\s\S]*<\/html\s*>/i.exec(t) || /<html[\s\S]*<\/html\s*>/i.exec(t);
+  if (m) return m[0];
+  if (/<(section|main|header|div|h1|body)\b/i.test(t)) return "<!doctype html>\n<html>\n<body>\n" + t + "\n</body>\n</html>";
+  return "";
+}
+
+async function draftFirstPage() {
+  if (!relay || drafting) return;
+  drafting = true;
+  pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0;
+  reflect();
+  try {
+    const ctx = await groundingContext();
+    const text = await streamText({
+      prompt: [
+        "You are Redline. This project has no page yet — write the FIRST draft of its landing page, so there is something real on the canvas to review.",
+        "THE PROJECT:\n" + groundingLines(ctx).join("\n"),
+        "Return the landing page's HTML and nothing else — no prose before or after, no fences. One self-contained document: <!doctype html>, an inline <style>, no external assets and no scripts.",
+        "Sections, in order: a hero with ONE clear headline and one supporting line; what it is; who it's for; how it works; and a closing call to action. Write real, specific copy in the project's own voice — no lorem ipsum, no [placeholder] brackets, no generic AI hype.",
+      ].join("\n\n"),
+      maxTokens: 8000,
+    });
+    const html = extractHtml(text);
+    if (!html) throw new Error("no page came back — press ✦ Audit's neighbour “change” to open a folder that has one");
+    isDraft = true;
+    pageKey = DRAFT_KEY;
+    currentHtml = html;
+    pages = [DRAFT_KEY];
+    const sel = $("page-sel");
+    sel.textContent = "";
+    sel.append(new Option(DRAFT_KEY + " · draft", DRAFT_KEY));
+    sel.value = DRAFT_KEY;
+    stageOverride = false;
+    renderFrame(); renderSide(); reflect();
+    toast("No page in that folder — Redline drafted one from your project. Nothing is written yet.");
+    // Same zero-click contract as a real page: the draft audits itself immediately.
+    void audit();
+  } catch (e) {
+    isDraft = false; pageKey = null;
+    toast("Couldn't draft a first page — " + msg(e), true);
+  } finally {
+    drafting = false;
+    reflect();
+  }
+}
+
+// The draft becomes a real file only when the founder says so.
+$("save-draft").addEventListener("click", saveDraft);
+async function saveDraft() {
+  if (!relay || !isDraft || !pageKey || !currentHtml) return;
+  const btn = $("save-draft");
+  btn.disabled = true;
+  try {
+    await relay.storage.set(pageKey, currentHtml);
+    isDraft = false;
+    pages = [pageKey];
+    const sel = $("page-sel");
+    sel.textContent = "";
+    sel.append(new Option(pageKey, pageKey));
+    sel.value = pageKey;
+    await saveReview();
+    toast("Saved ✓ " + pageKey + " written into " + bound.folder);
+  } catch (e) { toast("Couldn't save the draft — " + msg(e), true); }
+  finally { btn.disabled = false; reflect(); }
+}
 $("page-sel").addEventListener("change", (e) => openPage(e.target.value));
-$("reload").addEventListener("click", () => pageKey && openPage(pageKey, true));
+$("reload").addEventListener("click", () => {
+  if (isDraft) { toast("This page is a draft — there's nothing on disk to re-read yet. Save it first.", true); return; }
+  if (pageKey) openPage(pageKey);
+});
 
 async function openPage(key) {
-  pageKey = key;
-  try { currentHtml = (await relay.storage.get(key)) || ""; }
-  catch (e) { toast("Couldn't read " + key + " — " + msg(e), true); return; }
-  decisions = await loadReview(); activeId = null;
+  // Read into locals FIRST — a failed read must leave the prior page's state (and its review key)
+  // fully intact, or a later saveReview() would write the old page's decisions under the new key.
+  const prev = pageKey;
+  let html;
+  try { html = (await relay.storage.get(key)) || ""; }
+  catch (e) {
+    toast("Couldn't read " + key + " — " + msg(e), true);
+    const sel = $("page-sel"); if (prev && pages.includes(prev)) sel.value = prev;
+    return;
+  }
+  pageKey = key; currentHtml = html; isDraft = false; // read off disk — a real file from here on
+  const rev = await loadReview();
+  decisions = rev.comments; lastAuditAt = rev.lastAuditAt; activeId = null;
   renderFrame(); renderSide(); reflect();
+  // PROACTIVE: a page with zero open comments and no prior audit reviews ITSELF — the sidebar fills
+  // with pinned findings (each with a ready-to-lock recommended fix) with no input. ✦ Audit re-runs.
+  if (!decisions.some((c) => c && !c.locked) && !lastAuditAt) void audit();
 }
 
 const reviewKey = () => "redline-" + slug(pageKey);
 async function loadReview() {
-  try { const raw = await relay.storage.get(reviewKey()); const arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr : []; } catch { return []; }
+  try {
+    const raw = await relay.storage.get(reviewKey());
+    const parsed = raw ? JSON.parse(raw) : null;
+    const arr = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.comments) ? parsed.comments : [];
+    const at = parsed && !Array.isArray(parsed) && Number(parsed.lastAuditAt) ? Number(parsed.lastAuditAt) : 0;
+    return { comments: arr.filter(Boolean).map(sanitizeComment), lastAuditAt: at };
+  } catch { return { comments: [], lastAuditAt: 0 }; }
 }
-async function saveReview() { try { await relay.storage.set(reviewKey(), JSON.stringify(decisions)); } catch { /* non-fatal */ } }
+// A persisted decision can carry loading/writing:true (saved mid-stream by a textarea blur). Restored
+// verbatim it would render a dead spinner with no way out — normalize it to the error+retry card.
+function sanitizeComment(c) {
+  const d = c && c.decision;
+  if (d && (d.loading || d.writing)) {
+    d.loading = false; d.writing = false; d.status = "";
+    const hasContent = (Array.isArray(d.options) && d.options.length) || d.markdown;
+    if (!hasContent) d.error = d.error || "interrupted — ask again";
+  }
+  return c;
+}
+// "draft · nothing written yet" has to be literally true: while the page is a draft, the review
+// sidecar stays in memory too. Saving the draft (or locking an edit) is what writes both.
+async function saveReview() {
+  if (!relay || isDraft) return;
+  try { await relay.storage.set(reviewKey(), JSON.stringify({ comments: decisions, lastAuditAt })); } catch { /* non-fatal */ }
+}
 
 // ---------- the frame ----------
 const OVERLAY_STYLE = `
@@ -113,13 +485,57 @@ const OVERLAY_STYLE = `
   [data-redline]::after{ content:attr(data-redline); position:absolute; top:-11px; left:-11px; width:20px; height:20px; border-radius:50%;
     background:#C8F250; color:#0A0C10; font:700 12px/20px ui-sans-serif,system-ui,sans-serif; text-align:center; z-index:2147483000; pointer-events:none; }
   [data-redline].rl-locked{ outline-color:#3DD68C !important; } [data-redline].rl-locked::after{ background:#3DD68C; }
+  @keyframes rlflash { 0%{ background-color: rgba(61,214,140,.4); } 100%{ background-color: transparent; } }
+  .rl-flash{ animation: rlflash 1.8s ease-out; }
   html.rl-picking *{ cursor:crosshair !important; }
   html.rl-picking *:hover{ outline:1.5px dashed rgba(200,242,80,.85) !important; outline-offset:1px; }
 `;
+// SECURITY: srcdoc is same-origin — the reviewed page's own <script>s would run with access to
+// window.parent and the injected relay provider (a compromised landing page could drive this app's
+// grant). The preview therefore renders a SANITIZED COPY: scripts, inline on* handlers and
+// javascript: URLs stripped. Writes always use the pristine currentHtml. The iframe additionally
+// carries sandbox=allow-same-origin (no allow-scripts) unless the user flips the "js" toggle for a
+// JS-dependent page they trust.
+function sanitizedPreview(html) {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const s of doc.querySelectorAll("script")) s.remove();
+    for (const n of doc.querySelectorAll("*")) {
+      for (const a of [...n.attributes]) {
+        if (/^on/i.test(a.name)) n.removeAttribute(a.name);
+        else if (/^(href|src|xlink:href)$/i.test(a.name) && /^\s*javascript:/i.test(a.value)) n.removeAttribute(a.name);
+      }
+    }
+    return "<!doctype html>\n" + doc.documentElement.outerHTML;
+  } catch { return String(html).replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, ""); }
+}
+// The change must be SEEN landing: a srcdoc reload resets scroll to the top, so a lock deep in the
+// page looked like nothing happened. Re-renders keep the reader's place; a just-locked edit scrolls
+// itself into view and flashes green (a removal keeps the old scroll so you see the gap it left).
+let flashId = null;
 function renderFrame() {
   const frame = $("frame");
-  frame.srcdoc = currentHtml;
-  frame.onload = () => { try { decorateFrame(); } catch { /* timing */ } };
+  let prevScroll = 0;
+  try { prevScroll = frameDoc()?.scrollingElement?.scrollTop ?? 0; } catch { /* first render */ }
+  frame.setAttribute("sandbox", runScripts ? "allow-same-origin allow-scripts" : "allow-same-origin");
+  frame.srcdoc = runScripts ? currentHtml : sanitizedPreview(currentHtml);
+  frame.onload = () => {
+    try {
+      decorateFrame();
+      const doc = frameDoc();
+      if (doc?.scrollingElement) doc.scrollingElement.scrollTop = prevScroll;
+      if (flashId) {
+        const c = decisions.find((x) => x.id === flashId);
+        flashId = null;
+        const node = c && doc ? findNode(doc, c) : null;
+        if (node) {
+          node.scrollIntoView({ block: "center" });
+          node.classList.add("rl-flash");
+          setTimeout(() => { try { node.classList.remove("rl-flash"); } catch { /* frame re-rendered */ } }, 2000);
+        }
+      }
+    } catch { /* timing */ }
+  };
 }
 function frameDoc() { try { return $("frame").contentDocument; } catch { return null; } }
 function decorateFrame() {
@@ -166,6 +582,193 @@ function findNode(doc, c) {
 $("pick-toggle").addEventListener("click", () => setPicking(!picking));
 $("add-comment").addEventListener("click", () => { if ($("work").classList.contains("collapsed")) setCollapsed(false); setPicking(true); });
 $("send-all").addEventListener("click", sendAll);
+$("publish").addEventListener("click", publish);
+$("audit").addEventListener("click", audit);
+$("run-scripts").addEventListener("click", () => {
+  runScripts = !runScripts;
+  const b = $("run-scripts");
+  b.classList.toggle("on", runScripts);
+  b.textContent = runScripts ? "js on" : "js off";
+  if (runScripts) toast("Page scripts now run inside the preview — only enable this for pages you trust.");
+  if (pageKey) renderFrame();
+});
+// ---------- audit: ONE upfront pass over the WHOLE page (true brandbrain style) ----------
+// The AI reads the full source once and pins its findings — AI-slop copy, pointless meta-text,
+// dead sections — as comments with the note pre-filled AND, where the fix survives validation,
+// a ready recommended option: open the card and Lock & write is already loaded. Steer regenerates.
+// Runs AUTOMATICALLY the first time a page opens with nothing pinned (the proactive first batch);
+// the ✦ Audit button is the "generate more" re-run.
+let auditing = false;
+async function audit() {
+  if (!relay || !pageKey || auditing) return;
+  const forPage = pageKey; // if the user switches pages mid-audit, drop the results — never pin page A's findings onto page B
+  auditing = true; updateAudit(); renderSide();
+  try {
+    const text = await streamText({
+      prompt: [
+        "You are Redline, auditing a landing page like a sharp editor + designer. Find the WORST offenders: AI-slop copy (generic hype, filler, clichés like unleash/seamless/empower/elevate, walls of meta-text), pointless or redundant meta lines, dead or duplicated sections, inconsistent voice, weak headlines. 5–8 findings, most damaging first.",
+        'Return ONLY a JSON array — no prose, no fences. Each element: {"tag":<lowercase tag of the element, e.g. "p">,"snippet":<EXACT visible text of that element, ≤100 chars, verbatim>,"issue":<one blunt sentence: what is wrong + the direction to fix>,"label":<2–4 word name for the fix>,"find":<EXACT unique substring of SOURCE containing what to change, ≤300 chars, enough markup to be unique>,"replace":<the find with the fix applied; "" to delete the element; ≤400 chars>,"preview":<the new visible text, or "removed">}',
+        "If a finding can't be expressed as a safe find/replace, omit find/replace and keep the issue only.",
+        "SOURCE:\n" + currentHtml,
+      ].join("\n\n"),
+      maxTokens: 8000,
+    });
+    if (pageKey !== forPage) return; // stale — a different page is open now
+    // Mark this page audited even on a clean/empty pass, so the auto-run never loops on reload.
+    lastAuditAt = Date.now();
+    const arr = parseJsonArray(text);
+    if (!arr || !arr.length) { await saveReview(); toast("Audit came back empty — press ✦ Audit to run it again."); return; }
+    const doc = frameDoc();
+    let added = 0;
+    for (const f of arr.slice(0, 10)) {
+      const snippet = String(f.snippet || "").trim();
+      const issue = String(f.issue || "").trim();
+      if (!snippet || !issue) continue;
+      // don't double-pin something the user (or a prior audit) already flagged
+      if (decisions.some((c) => c.snippet && (c.snippet.includes(snippet.slice(0, 40)) || snippet.includes(c.snippet.slice(0, 40))))) continue;
+      const node = doc ? locateBySnippet(doc, f.tag, snippet) : null;
+      const num = (decisions.reduce((m, c) => Math.max(m, c.num), 0) || 0) + 1;
+      const c = {
+        id: uid(), num,
+        selector: node ? cssPath(node) : "",
+        snippet: node ? (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 160) : snippet,
+        tag: (node ? node.tagName.toLowerCase() : String(f.tag || "section")).slice(0, 12),
+        note: issue.slice(0, 300), decision: null, locked: null,
+      };
+      // pre-seed the ready-to-lock option when the audit's edit applies cleanly to the source
+      const find = typeof f.find === "string" && f.find.length >= 8 ? f.find : null;
+      if (find && f.replace != null && currentHtml.includes(find)) {
+        const opt = { id: uid(), label: String(f.label || "Suggested fix").slice(0, 40), text: String(f.preview || "").trim() || stripTags(String(f.replace)).trim().slice(0, 220) || "(removed)", edit: { find, replace: String(f.replace) }, recommended: true };
+        c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], selectedId: opt.id, steers: [], markdown: "", find, summary: c.note, preseeded: true };
+      }
+      decisions.push(c); added++;
+    }
+    saveReview(); renderSide(); decorateFrame();
+    toast(added ? `Audit ✓ ${added} suggestion${added === 1 ? "" : "s"} pinned — open a card, the fix is ready to lock` : "Audit ✓ nothing new beyond your existing comments");
+  } catch (e) { toast("Audit failed — " + msg(e), true); }
+  finally { auditing = false; updateAudit(); renderSide(); }
+}
+function updateAudit() {
+  const b = $("audit"); if (!b) return;
+  b.hidden = !relay || !pageKey;
+  b.disabled = auditing;
+  b.textContent = auditing ? "auditing…" : "✦ Audit";
+}
+// Re-find an audit finding's element by its visible text — smallest matching node wins.
+function locateBySnippet(doc, tag, snippet) {
+  const want = snippet.replace(/\s+/g, " ").trim().slice(0, 60).toLowerCase();
+  if (!want || !doc.body) return null;
+  const sel = tag && /^[a-z0-9]+$/i.test(String(tag)) ? String(tag) : "h1,h2,h3,h4,p,li,a,button,blockquote,pre,span,div";
+  let best = null;
+  for (const n of doc.body.querySelectorAll(sel)) {
+    const t = (n.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (t.includes(want) && (!best || (n.textContent || "").length < (best.textContent || "").length)) best = n;
+  }
+  return best;
+}
+function parseJsonArray(text) {
+  const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+  const s = t.indexOf("["), e = t.lastIndexOf("]");
+  if (s === -1 || e <= s) return null;
+  try { const a = JSON.parse(t.slice(s, e + 1)); return Array.isArray(a) ? a : null; } catch { return null; }
+}
+// ---------- publish: commit + push the bound folder via the daemon's relay__git_commit_push ----------
+// The REAL confirmation is the Switchboard consent card (repo, branch, diffstat — a human click the
+// model can't fake). The in-sidebar card here only chooses the message and live-vs-review-branch —
+// and its Cancel truly aborts (no dialog where "Cancel" still pushes).
+let publishing = false;
+let publishUI = null; // { message, choice: "branch"|"live", branch }
+function publish() {
+  if (!relay || !pageKey || publishing) return;
+  if (publishUI) { publishUI = null; renderSide(); return; }
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  const done = decisions.filter((c) => c && c.locked);
+  const defaultMsg = "redline: " + (done.length
+    ? done.map((c) => (c.locked.label || labelFor(c.locked.kind)) + (c.note ? " — " + c.note.slice(0, 40) : "")).slice(0, 4).join("; ")
+    : "page edits");
+  publishUI = {
+    message: defaultMsg,
+    choice: "branch",
+    branch: "redline/" + new Date().toISOString().slice(2, 16).replace(/[-:T]/g, ""),
+  };
+  renderSide();
+  setTimeout(() => document.querySelector(".pubcard .pub-msg")?.focus(), 30);
+}
+function publishCard() {
+  const card = el("div", "dec active pubcard");
+  const b = el("div", "dec-body pub-body");
+  b.append(el("div", "kicker pub-k", "publish — commit & push this project"));
+  const input = el("input", "pub-msg");
+  input.value = publishUI.message; input.placeholder = "commit message";
+  b.append(input);
+  const opts = el("div", "opts");
+  let goBtn = null;
+  const mkOpt = (choice, label, text, rec) => {
+    const o = el("div", "opt" + (publishUI.choice === choice ? " sel" : ""));
+    o.onclick = () => { publishUI.choice = choice; renderSide(); };
+    o.append(el("div", "check", "✓"));
+    if (rec) o.append(el("div", "rec", "recommended"));
+    o.append(el("div", "o-label", label));
+    o.append(el("div", "o-text", text));
+    return o;
+  };
+  opts.append(
+    mkOpt("branch", "Review branch", "pushes to " + publishUI.branch + " — merge when you're happy", true),
+    mkOpt("live", "Push live", "commits straight to the current branch"),
+  );
+  b.append(opts);
+  if (publishing) {
+    const r = el("div", "researching");
+    r.append(el("div", "scan"), el("span", null, "publishing — approve the Switchboard card…"));
+    b.append(r);
+  } else {
+    const foot = el("div", "dec-foot");
+    goBtn = el("button", "lock", "⇪ Publish");
+    goBtn.disabled = !publishUI.message.trim();
+    goBtn.onclick = doPublish;
+    const cancel = el("button", "discard", "Cancel");
+    cancel.onclick = () => { publishUI = null; renderSide(); };
+    foot.append(goBtn, cancel);
+    b.append(foot);
+  }
+  input.addEventListener("input", () => { publishUI.message = input.value; if (goBtn) goBtn.disabled = !input.value.trim(); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && input.value.trim()) doPublish(); });
+  card.append(b);
+  return card;
+}
+async function doPublish() {
+  if (!relay || publishing || !publishUI) return;
+  const message = publishUI.message.trim(); if (!message) return;
+  const branch = publishUI.choice === "branch" ? publishUI.branch : undefined;
+  publishing = true; updatePublish(); renderSide();
+  try {
+    const args = { message, ...(branch ? { branch } : {}) };
+    const text = await streamText({
+      prompt: "Call the relay git_commit_push tool EXACTLY ONCE with exactly these arguments: " + JSON.stringify(args) + ". Then reply with ONLY the JSON result the tool returned — no prose, no fences.",
+      agentic: true,
+    });
+    const out = parseJson(text);
+    if (out && out.ok) {
+      toast("Published ✓ " + (out.sha || "") + " → " + (branch || "live") + (out.changes ? " · " + out.changes : ""));
+      publishUI = null;
+    } else if (!out && String(text || "").trim()) {
+      // A reused pre-tools grant (exact-match) makes the model answer in prose instead of running the
+      // tool — surface the actual fix instead of a generic "no result".
+      throw new Error("your grant predates publishing — disconnect and reconnect the Switchboard chip, then publish again");
+    } else {
+      throw new Error((out && out.error) || "no result came back");
+    }
+  } catch (e) { toast("Publish failed — " + msg(e), true); }
+  finally { publishing = false; updatePublish(); renderSide(); }
+}
+function updatePublish() {
+  const b = $("publish"); if (!b) return;
+  // A draft isn't on disk yet, so there is nothing for git to commit — "save page" (or the first
+  // Lock & write) comes first, and Publish reappears the moment the file is real.
+  b.hidden = !relay || !pageKey || isDraft;
+  b.disabled = publishing;
+  b.textContent = publishing ? "publishing…" : "⇪ Publish";
+}
 let sendingAll = false;
 // Run every comment that has a note but no answer yet — sequentially, so progress shows and we don't
 // hammer the model. Locking stays per-decision: you still review each proposal before it's written.
@@ -247,7 +850,10 @@ async function respond(c, steer) {
       'For "edit", find MUST appear verbatim exactly once in the SOURCE.',
       "SOURCE (the relevant section of the page's HTML):\n" + sourceWindow(c),
     ]);
-    const mode = route && route.mode;
+    // Malformed/empty router output is an ERROR (retry card) — never a fake "(no reply)" reply the
+    // user could mark done.
+    if (!route || typeof route !== "object" || !route.mode) throw new Error("no decision came back — try again");
+    const mode = route.mode;
     if (mode === "edit") {
       if (!route.find || !Array.isArray(route.options) || !route.options.length) throw new Error("no edit came back — try rephrasing");
       if (!currentHtml.includes(route.find)) throw new Error("the target no longer matches the file");
@@ -261,8 +867,9 @@ async function respond(c, steer) {
       c.decision.kind = "references"; c.decision.lockable = false;
       await runReferences(c, route.query || c.note);
     } else {
+      if (!route.markdown) throw new Error("no decision came back — try again");
       c.decision.kind = "reply"; c.decision.lockable = false;
-      c.decision.markdown = (route && route.markdown) || "(no reply came back)";
+      c.decision.markdown = route.markdown;
     }
     const rec = c.decision.options.find((o) => o.recommended) || c.decision.options[0];
     if (rec) c.decision.selectedId = rec.id;
@@ -316,8 +923,27 @@ async function lockDecision(c) {
     if (!applied.ok) throw new Error("couldn't find this text in the file anymore — click Ask Redline to regenerate against the current page");
     await relay.storage.set(pageKey, applied.next);
     currentHtml = applied.next;
-    c.locked = { kind: d.kind, label: opt.label, text: opt.text || "", svg: opt.svg || null, imageUrl: opt.imageUrl || null };
+    // Locking an edit on a DRAFT is the moment it stops being a draft: the file now exists on disk.
+    if (isDraft) {
+      isDraft = false;
+      pages = [pageKey];
+      const sel = $("page-sel");
+      sel.textContent = "";
+      sel.append(new Option(pageKey, pageKey));
+      sel.value = pageKey;
+      toast(pageKey + " created in " + bound.folder + " — the draft is a real file now");
+    }
+    // Higgsfield URLs are typically presigned and EXPIRE — persist the card's copy as a data: URL
+    // (best-effort; CORS/size may say no) so a returning user's locked card still shows the mockup.
+    let lockedImageUrl = opt.imageUrl || null;
+    if (lockedImageUrl && !lockedImageUrl.startsWith("data:")) {
+      d.status = "saving the mockup…"; renderSide();
+      const inlined = await toDataUrl(lockedImageUrl).catch(() => null);
+      if (inlined) lockedImageUrl = inlined;
+    }
+    c.locked = { kind: d.kind, label: opt.label, text: opt.text || "", svg: opt.svg || null, imageUrl: lockedImageUrl };
     c.decision = null;
+    flashId = c.id; // scroll the landed change into view + flash it green on the re-render
     saveReview(); renderFrame(); renderSide();
     toast("Done ✓ written to " + pageKey + " — reopen the card to make more changes");
   } catch (e) { if (c.decision) c.decision.lockError = msg(e); toast("Couldn't lock — " + msg(e), true); }
@@ -325,11 +951,15 @@ async function lockDecision(c) {
 }
 
 // Apply a find/replace, tolerating the model collapsing/altering whitespace in `find` (a common cause
-// of "the file changed" when the file actually hasn't). Exact match first; then a whitespace-flexible
-// regex; requires a single match so we never edit the wrong spot.
+// of "the file changed" when the file actually hasn't). Exact match first — but ONLY when it appears
+// exactly once (a non-unique find must never silently edit the first/wrong occurrence of a repeated
+// snippet); then a whitespace-flexible regex, same single-match rule.
 function applyEdit(html, find, replace) {
   if (typeof find !== "string" || !find) return { ok: false };
-  if (html.includes(find)) return { ok: true, next: html.replace(find, replace) };
+  const first = html.indexOf(find);
+  if (first !== -1 && html.indexOf(find, first + find.length) === -1) {
+    return { ok: true, next: html.slice(0, first) + replace + html.slice(first + find.length) };
+  }
   const pat = find.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
   try {
     const re = new RegExp(pat, "g");
@@ -355,6 +985,42 @@ async function genImage(promptText) {
   return url;
 }
 
+// Best-effort: pull a (presigned, soon-to-expire) image URL down into a durable data: URL for the
+// review record. Fails quietly on CORS/timeout/size — callers keep the hotlink then.
+async function toDataUrl(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const res = await fetch(url, { signal: ctl.signal });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob.size || blob.size > 1_500_000) return null;
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(new Error("read failed"));
+      r.readAsDataURL(blob);
+    });
+  } finally { clearTimeout(t); }
+}
+
+// An <img> whose source may be an expired presigned URL: when it breaks, swap in a house-styled
+// "regenerate" affordance instead of a broken-image glyph (reopens a locked card first).
+function imgWithFallback(url, alt, cls, c) {
+  const img = el("img", cls || null);
+  img.src = url; if (alt) img.alt = alt;
+  img.onerror = () => {
+    const b = el("button", "img-expired", "mockup expired — regenerate");
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (c.locked) { c.locked = null; saveReview(); }
+      respond(c, "the previous image mockup expired — regenerate it");
+    };
+    try { img.replaceWith(b); } catch { /* card re-rendered */ }
+  };
+  return img;
+}
+
 // ---------- the sidebar (the wrapp) ----------
 function renderSide() {
   const body = $("side-body"); body.textContent = "";
@@ -362,10 +1028,20 @@ function renderSide() {
   const open = live.filter((c) => !c.locked).length, done = live.length - open;
   $("dec-count").textContent = live.length ? `${open} open${done ? ` · ${done} done` : ""}` : "";
   updateSendAll();
+  if (publishUI) body.append(publishCard());
+  if (auditing) {
+    const r = el("div", "researching");
+    r.append(el("div", "scan"), el("span", null, "auditing the whole page — pinning suggestions…"));
+    body.append(r);
+  }
   if (!live.length) {
-    const e = el("div", "empty");
-    e.innerHTML = 'No comments yet.<br /><b>Turn on comment mode</b> and click anything on the page — Redline proposes options you can lock in.';
-    body.append(e);
+    if (!auditing) {
+      const e = el("div", "empty");
+      e.innerHTML = lastAuditAt
+        ? 'Audit ran clean — nothing left to pin.<br /><b>✦ Audit</b> runs another pass, or turn on <b>comment mode</b> and click anything on the page.'
+        : 'No comments yet.<br /><b>✦ Audit</b> runs one pass over the whole page and pins suggestions with fixes ready to lock — or turn on <b>comment mode</b> and click anything yourself.';
+      body.append(e);
+    }
     return;
   }
   // Open work on top, done (locked) below — the sidebar reads like a review checklist.
@@ -437,7 +1113,7 @@ function optionSet(c, d) {
     card.append(el("div", "o-label", o.label));
     if (o.text) card.append(el("div", "o-text", o.text));
     if (o.svg) { const s = el("div", "o-svg"); s.innerHTML = sanitizeSvg(o.svg); card.append(s); }
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
+    if (o.imageUrl) card.append(imgWithFallback(o.imageUrl, o.label, "o-img", c));
     wrap.append(card);
   }
   return wrap;
@@ -498,7 +1174,7 @@ function lockedCard(c) {
   if (c.note) lm.append(el("div", "lt-note", `you asked: “${c.note.slice(0, 120)}”`));
   if (c.locked.text) lm.append(el("div", "lt-text", c.locked.text));
   if (c.locked.svg) { const s = el("div", "lt-svg"); s.innerHTML = sanitizeSvg(c.locked.svg); lm.append(s); }
-  if (c.locked.imageUrl) { const img = el("img"); img.src = c.locked.imageUrl; lm.append(img); }
+  if (c.locked.imageUrl) lm.append(imgWithFallback(c.locked.imageUrl, "", null, c));
   const rl = el("button", "relock", "↩ reopen to make more changes"); rl.title = "see the result on the page, then ask for another change here"; rl.onclick = () => relock(c);
   lm.append(rl);
   tile.append(lm); b.append(tile); card.append(b);
@@ -512,22 +1188,33 @@ function scrollToNode(c) { const doc = frameDoc(); if (!doc) return; const n = f
 
 // ---------- llm + string helpers ----------
 // Stream text with a hard timeout, so a wedged daemon / dead connection surfaces as a clear message
-// instead of an infinite "reading the page…" spinner. onProgress gets {text} and {tool} as they arrive.
+// instead of an infinite "reading the page…" spinner. On timeout the iterator is RELEASED
+// (it.return() → the SDK's finally detaches the delta listener) so the abandoned stream doesn't keep
+// feeding a dead UI. onProgress gets {text} and {tool} as they arrive.
 const STREAM_TIMEOUT_MS = 180000;
 async function streamText(params, onProgress) {
-  let text = "", settled = false;
-  return await Promise.race([
-    (async () => {
-      for await (const d of relay.stream(params)) {
-        if (d.type === "text") { text += d.text; onProgress && onProgress({ text }); }
-        else if (d.type === "tool_proposed") { onProgress && onProgress({ tool: d.call?.name }); }
-        else if (d.type === "error") throw new Error(d.error?.message || "stream error");
-      }
-      settled = true;
-      return text;
-    })(),
-    new Promise((_, reject) => setTimeout(() => { if (!settled) reject(new Error("Switchboard didn't respond — is the sidekick running? Reload this tab and try again.")); }, STREAM_TIMEOUT_MS)),
-  ]);
+  const it = relay.stream(params);
+  let text = "", settled = false, timer = null;
+  try {
+    return await Promise.race([
+      (async () => {
+        for await (const d of it) {
+          if (d.type === "text") { text += d.text; onProgress && onProgress({ text }); }
+          else if (d.type === "tool_proposed") { onProgress && onProgress({ tool: d.call?.name }); }
+          else if (d.type === "error") throw new Error(d.error?.message || "stream error");
+        }
+        settled = true;
+        return text;
+      })(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          if (settled) return;
+          try { it.return?.(); } catch { /* already closed */ }
+          reject(new Error("Switchboard didn't respond — is the sidekick running? Reload this tab and try again."));
+        }, STREAM_TIMEOUT_MS);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
 }
 
 async function askJson(parts) {

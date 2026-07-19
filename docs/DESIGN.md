@@ -1,81 +1,56 @@
 # Switchboard Wrapp Store — DESIGN.md
 
-_The design system for the wrapp-store homepage (Home + Explore + Work). Warm, editorial, readable-first. Locked 2026-07-17. Every store surface inherits these tokens. The extension/broker panel is a **separate, dark** system — do not apply these there._
+_The design system for the wrapp-store homepage + wrapp detail/landing pages. **Dark, near-monochrome, directory-shaped.** Locked 2026-07-18. Canonical source of the live values: the `:root` block in `examples/apps/index.html` — this doc explains the intent; that block is the implementation._
+
+> **History / status.** A warm cream "editorial getmd" system was explored on 2026-07-17 and **superseded** on 2026-07-18: the founder anchored the store on a dark tool-directory reference ("I want it exactly like the reference"). The warm exploration is dead for the store — do not resurrect it. The **extension side panel** remains its own separate dark system (`packages/extension/`), and individual **wrapps keep their own skins**; this doc governs the store shell and the `{id}-landing.html` detail pages only.
 
 ## Principles
 
-1. **Readable before clever.** A daily driver you open every morning should feel like morning, not a terminal. Warmth, air, and one confident type voice beat density.
-2. **Hero, then substance.** Each surface states the one thing up top (greeting + the single command input + what's-next), then the real content sits below. No wall of equal panels.
-3. **Alive, not static.** The hero breathes with real preview cards (your next task, what just shipped, your brand) — the interface shows its own state.
-4. **The dock is the launcher.** Wrapps live in a floating dock, summonable from anywhere.
-5. **Calm home, louder discovery.** Home stays quiet and focused; Explore raises saturation (vibrant category tiles on the same cream ground) for record-store energy — same system, higher volume.
-6. **The accent wears the brand.** Switchboard's own accent is the green; the active brand tints the warmth (Aamras → gold). Switch brand, the warmth shifts.
+1. **The chrome is restrained; the previews carry the colour.** The page is near-black and near-monochrome so the 42 live landing-page preview thumbnails are the only real colour. Never add decorative gradients or neon — anything that competes with a preview is wrong.
+2. **Directory first.** A left sidebar (nav + your brands + categories with counts), a sticky top bar (tabs, search, filters, "Showing N"), and a scrolling main column. Browsing is the primary act.
+3. **Editorial, not furniture.** Every view — including the *connected* one — leads with a real typographic statement and sub-paragraph, then sections with a kicker→title→sub rhythm and generous air. No chip-soup rows, no generic metric-tile bands. (This is exactly the note that killed v1 of the connected view.)
+4. **Honesty is a design constraint.** Never fabricate numbers on the real connected path; the taskOS band shows a "coming" state. Build-cost badges are labelled dev-reported, plan/wallet are labelled SIMULATED, plays are illustrative. See `docs/TOKENS.md`.
+5. **Made, not generated.** Characterful display type, tight tracking, real scale contrast, hairline borders doing the separating. No AI-slop sameness.
 
-## Color tokens
+## Tokens (intent — live values in `index.html :root`)
 
-Warm neutrals — the ground everything sits on:
-```
---cream:      #EFECE4   /* page */
---cream-2:    #EDEAE1   /* below-hero band / recessed */
---card:       #FBFAF6   /* cards, inputs */
---card-2:     #F5F2EA   /* nested / hover */
---ink:        #1C1B17   /* primary text (warm near-black) */
---ink-2:      #565146   /* secondary text */
---faint:      #8C8676   /* muted / captions */
---line:       #E6E1D5   /* hairline */
---line-2:     #DAD3C4   /* stronger border / hover */
-```
-Switchboard accent (identity — links, "on your own Claude", small highlights):
-```
---green:      #5E8B23
---green-soft: #E9F0DB
-```
-Primary action — the dark pill:
-```
---pill:       #1C1B17   /* button bg */   text: #F3F0E8
-```
-Brand-adaptive (driven by the active context's palette; Aamras shown):
-```
---brand:      #B4802A   --brand-soft: #F2E8D2
-```
-Semantic status (task/artifact state — distinct from the accent):
-```
---ok:     #4E8A3A  (live / done)     --draft:  #B4802A  (draft / needs you)
---review: #3A6EA5  (in review)        --idle:   #8C8676  (not started)
-```
-Category tints (wrapp tiles — soft bg + saturated ink from the same family):
-```
-ads/founder   bg #F2E8D2  ink #B4802A
-build         bg #E9F0DB  ink #5E8B23
-studio/photo  bg #F0E7F1  ink #B54A78
-review/doc    bg #E7F0F6  ink #3A6EA5
-chat/make     bg #E7F1EC  ink #2E8B6A
-```
+**Surfaces** — near-black page, sidebar a hair darker, cards a hair lighter:
+`--bg:#0A0A0B` · `--panel:#0C0C0E` (sidebar/topbar) · `--card:#131315` · `--card-2:#191A1D` (hover/active) · `--thumb-bg:#0E0E10` (behind a lazy-loading preview)
+
+**Hairlines** — borders separate, not shadows: `--line:#232327` · `--line-2:#2C2C31`
+
+**Ink** — off-white, never pure `#fff`: `--ink:#F4F4F2` · `--ink-2:#A2A2A8` · `--faint:#6C6C74` · `--faintest:#48484F`
+
+**The one accent** — a solid near-white pill for primary actions: `--accent:#EDEDEA` on `--accent-ink:#0A0A0B` (aliases `--pill`/`--pill-ink`), `--accent-hover:#FFFFFF`
+
+**Semantics — used sparingly, as a glyph or a dot, never as a fill:** `--verify:#4C8DF6` (the verified check, the only blue) · `--ok:#54B487` (live dots, "on your own Claude") · `--sim:#C8A24B` + `--sim-bg` (SIMULATED labels)
+
+**Category colour** stays in the `glyphs.js` `FAM` families (soft tinted tile + ink glyph) — those tiles and the previews are the intended pop. Do not dark-ify them.
 
 ## Type
 
-- **Family:** a clean grotesk. System stack now: `"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`. (Candidate to license later: Inter Tight / Hanken Grotesk / Geist — pick one before public launch.)
-- **Two-ish weights that matter:** 800 hero, 700 section titles, 600 card titles/labels, 500 emphasis, 400 body. Avoid a soup of weights.
-- **Scale:** hero `clamp(38px, 6vw, 60px)` / -0.03em, section `20px`/700, card title `15px`/600, body `15–16px`/1.55, small `12–13px`. Never below 12px.
-- **Case:** sentence case everywhere except tiny mono-ish eyebrows (which may be uppercase with letter-spacing).
+- `--font-display` **Space Grotesk** — display statements and section titles only. Tight: `letter-spacing:-.03em`, weight 700.
+- `--font-sans` **Inter** — everything else.
+- `--font-mono` — counts, build-cost receipts, `⌘K` hints; always `tabular-nums`.
+- Scale: hero `clamp(30px,4vw,46px)`; section title 17–19px; body 14px; kicker `10.5px` uppercase `.14em` in `--faint`.
 
-## Shape, depth, motion
+## Shape & depth
 
-- **Radius:** cards `16–18px`, controls/inputs `12px`, tiles `12px`, pills/chips `999px`. Never rounded on a single-sided border.
-- **Shadow (warm, soft, barely there):** `0 1px 2px rgba(40,34,20,.04), 0 6px 20px -12px rgba(40,34,20,.14)`. No hard/neutral shadows, no glow.
-- **Motion:** restrained — hover lifts on the dock (`translateY(-4px)`), gentle fades on load. Respect `prefers-reduced-motion`. No parallax circus.
+Radii are deliberately varied, not rounded-everything: `--r:14` cards · `--r-sm:10` controls · `--r-xs:7` · `--r-lg:20` · `--r-thumb:12` previews · `--r-pill:999`.
+One restrained shadow (`--shadow`) that is mostly a 1px ring + a barely-there drop; borders do the separating.
 
-## Components (canonical)
+## Canonical components
 
-- **Pill button** — `--pill` bg, `#F3F0E8` text, radius 12, `600`. Ghost variant: transparent + `1px --line-2` border, `--ink` text.
-- **Composer** — the hero input: `--card` bg, `1px --line-2`, radius 18, soft shadow, big placeholder, dark "Go →" pill on the right.
-- **Card** — `--card`, `1px --line`, radius 16, soft shadow, `14–16px` padding.
-- **Live card** (hero rail) — a card with an uppercase micro-label, a row `[icon] [title + status] [action]`.
-- **Task row** — `[category tile] [title + status·wrapp·source] [do pill]`. Status is a colored dot + word.
-- **Eyebrow** — green-soft pill, `600 12px`, uppercase, letter-spacing .04em.
-- **Chip** — `--card`, `1px --line`, radius 999, `13px --ink-2`.
-- **Wrapp dock** — fixed, bottom-center, frosted (`rgba(251,250,246,.9)` + blur), `1px --line-2`, radius 20, big soft shadow; 44px rounded-tile icons + a dashed "+" to explore.
+- **Sidebar rows** — `.nav-row` (glyph + label, `.active` = `--card-2`), `.cat-row` (tinted category glyph + label + right-aligned mono `.cat-count`), `.brand-row` (brand monogram + name, personalized from `context.list()`).
+- **Preview thumbnail** — a clipped, fixed-aspect `.thumb` containing a 1440×900 same-origin iframe of `./{id}-landing.html`, CSS-scaled and `pointer-events:none`, mounted lazily via IntersectionObserver. This is the store's signature element.
+- **Wrapp card** — preview thumbnail, then glyph + name + `--verify` check + category tag + mono build-cost receipt.
+- **Featured split-hero** — left: glyph, name, description, category, near-white Open pill, build-cost; right: a live preview. Carousel dots.
+- **Recently-added row** — glyph + name + one-line category. **Icons are required on this list** (explicit founder ask).
+- **Wrapp detail page** (`{id}-landing.html`) — slim top bar (← All wrapps · mark · "Open on your Claude" pill → the real app URL), the page's own hero, a facts strip (category · dev-reported build cost · runs-on-your-own-Claude), and a Free/Pro block drawn only from `catalog.js` `pro` (never invented). Must stay handsome **as a scaled thumbnail** — the top bar stays slim and the hero stays the anchor.
+- **Wrapp dock** — floating, frosted, bottom-centre launcher.
 
-## The boundary
+## The two states
 
-The store homepage is warm. The **Switchboard extension panel** (connect, consent, connectors, revoke) stays its own **dark** system — it's broker chrome, and looking different from the store is correct. Wrapps themselves keep their own skins; the store only styles the shell around them.
+Both must be equally designed — this is the standing bar:
+- **Disconnected** — the editorial hero ("A home for your work, and the apps that move it forward."), the four-step "The way" stepper, Editor's picks. Clean catalog, zero personal chrome, no fake data.
+- **Connected** — a display statement composed from *real* state, a sub-paragraph naming the actual brands and what's in flight, one primary CTA inside the hero, then projects / review / library — carrying the disconnected view's rhythm and air.

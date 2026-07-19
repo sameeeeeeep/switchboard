@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AdPulse — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;--faintest:#48484F;
+  --accent:#EDEDEA;--accent-ink:#0A0A0B;--accent-hover:#FFFFFF;--ok:#54B487;
+  --pro:#B8E04A;--pro-bg:rgba(184,224,74,.10);--pro-hair:rgba(184,224,74,.32);
+  --pop:#E9C56B;--pop-2:#B4802A;--pop-soft:rgba(233,197,107,0.14);--pop-line:rgba(233,197,107,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(233,197,107,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+/* store topbar — this page is a detail page in the Switchboard directory */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;border-bottom:1px solid var(--line)}
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:999px;padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line)}
+.brandmark{display:flex;align-items:center;gap:10px}
+.sb-squircle{width:24px;height:24px;border-radius:8px;background:linear-gradient(160deg,#5CC08A,#3E9E6E);
+  display:grid;place-items:center;box-shadow:0 2px 10px -4px rgba(84,180,135,.6)}
+.sb-squircle svg{width:14px;height:14px}
+.sb-word{font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.sb-word span{color:var(--faint);font-weight:500}
+.vmark{width:16px;height:16px;display:inline-block;vertical-align:-3px;margin-left:2px}
+.byo-pill{font:500 12.5px/1 var(--font-sans);color:var(--ink-2);border:1px solid var(--line);border-radius:999px;
+  padding:8px 15px;display:inline-flex;align-items:center;gap:8px}
+.byo-pill i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(84,180,135,.22)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:999px;padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:60px 0 44px;min-height:600px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(233,197,107,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* features */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 64px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* facts rail — category, dev-reported build cost, price */
+.facts{display:flex;align-items:stretch;margin-bottom:14px;background:var(--card);
+  border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.fact{flex:1;padding:16px 24px 18px;border-left:1px solid var(--line);min-width:0}
+.fact:first-child{border-left:0}
+.fact-k{font:600 9.5px/1 var(--font-sans);letter-spacing:.15em;text-transform:uppercase;color:var(--faintest)}
+.fact-v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;
+  font:500 14px/1.2 var(--font-sans);color:var(--ink);letter-spacing:-.005em}
+.fact-v .dot{width:7px;height:7px;border-radius:50%;background:var(--pop);flex:none}
+.fact-s{margin-top:6px;font:400 12px/1.3 var(--font-sans);color:var(--faint)}
+.devtag{font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--faintest);
+  border:1px solid var(--line-2);border-radius:5px;padding:2px 6px}
+/* bands */
+.band{padding:56px 0;border-top:1px solid var(--line)}
+.band-head{margin-bottom:30px}
+.kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.band-title{font-family:var(--font-display);font-weight:600;letter-spacing:-.025em;font-size:28px;margin:12px 0 0}
+.band-title .m{color:var(--faint)}
+/* free / pro */
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.tier{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px 28px 30px}
+.tier.pro{border-color:var(--pro-hair)}
+.tier-top{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+.tier-h{font-family:var(--font-display);font-weight:600;font-size:19px;letter-spacing:-.02em;margin:0}
+.pro-chip{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.13em;color:var(--pro);
+  background:var(--pro-bg);border:1px solid var(--pro-hair);border-radius:5px;padding:4px 7px}
+.tier-sub{font-size:14px;line-height:1.55;color:var(--ink-2);margin:0 0 20px}
+.tier ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.tier li{display:flex;align-items:flex-start;gap:11px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.tier li svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--ok)}
+.tier.pro li svg{color:var(--pro)}
+.freeonly{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 32px;
+  display:flex;align-items:baseline;gap:22px;flex-wrap:wrap}
+.freeonly h3{font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:-.02em;margin:0;flex:none}
+.freeonly p{font-size:14.5px;line-height:1.55;color:var(--ink-2);margin:0;max-width:60ch}
+/* closing cta + footer */
+.lp-cta{text-align:center;padding:70px 0 34px;border-top:1px solid var(--line)}
+.lp-cta h2{font-family:var(--font-display);font-weight:700;letter-spacing:-.03em;font-size:42px;margin:0 0 28px}
+.lp-cta .fine{margin-top:22px;font-size:13.5px;color:var(--faint)}
+footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:30px 0 44px;
+  border-top:1px solid var(--line);font-size:12.5px;color:var(--faint)}
+footer a{color:var(--ink-2);transition:color .14s}
+footer a:hover{color:var(--ink)}
+.foot-nav{display:flex;align-items:center;gap:16px}
+
+
+/* hero product shot — AdPulse's own UI holding a real post-mortem */
+.shot{position:relative;background:#141518;border:1.5px solid #2A2B30;border-radius:22px;overflow:hidden;
+  box-shadow:0 34px 64px -34px rgba(0,0,0,.92)}
+.shot-bar{display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #2A2B30}
+.shot-bar .tile{width:21px;height:21px;border-radius:6px;background:var(--pop-soft);color:var(--pop);
+  display:grid;place-items:center;flex:none}
+.shot-bar .tile svg{width:12px;height:12px}
+.shot-bar .st{min-width:0;font:500 12.5px/1 var(--font-sans);color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shot-bar .sp{margin-left:auto;flex:none;font:700 9.5px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--pop);background:var(--pop-soft);border:1px solid var(--pop-line);border-radius:999px;padding:6px 10px}
+.shot-body{padding:20px 20px 22px}
+.ap-top{display:flex;align-items:center;gap:16px;padding-bottom:16px;border-bottom:1px solid #232327}
+.ap-dial{position:relative;width:66px;height:66px;flex:none}
+.ap-dial svg{width:66px;height:66px}
+.ap-dial .n{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-display);
+  font-weight:700;font-size:23px;color:var(--pop);font-variant-numeric:tabular-nums}
+.ap-hl{font-family:var(--font-display);font-weight:600;font-size:15.5px;line-height:1.32;letter-spacing:-.02em;color:var(--ink);margin:0}
+.ap-sig{margin-top:7px;font:500 11.5px/1 var(--font-sans);color:var(--faint)}
+.ap-leak{margin-top:16px;background:#1B1C20;border:1px solid #2A2B30;border-left:3px solid var(--pop);border-radius:12px;padding:13px 15px}
+.ap-leak .k{font:700 9.5px/1 var(--font-mono);letter-spacing:.14em;color:var(--pop)}
+.ap-leak .t{margin:9px 0 0;font:600 13.5px/1.3 var(--font-sans);color:var(--ink)}
+.ap-leak .d{margin:5px 0 0;font:400 12.5px/1.45 var(--font-sans);color:var(--ink-2)}
+.ap-leak .b{margin:9px 0 0;font-family:var(--font-mono);font-weight:600;font-size:12px;color:#E4826A;font-variant-numeric:tabular-nums}
+.ap-tbl{margin-top:17px;width:100%;border-collapse:collapse}
+.ap-tbl th{text-align:left;font:600 9.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faintest);padding:0 10px 9px 0}
+.ap-tbl td{padding:9px 10px 9px 0;border-top:1px solid #232327;font:400 12px/1.38 var(--font-sans);color:var(--ink-2);vertical-align:top}
+.ap-tbl td.c{font-weight:500;font-size:12.5px;color:var(--ink);white-space:nowrap}
+.ap-tbl td.v{white-space:nowrap}
+.vtag{display:inline-block;font-family:var(--font-mono);font-weight:700;font-size:9.5px;line-height:1;
+  letter-spacing:.1em;text-transform:uppercase;border-radius:5px;padding:4px 7px;border:1px solid}
+.vtag.scale{color:#8FD3A8;background:rgba(84,180,135,.13);border-color:rgba(84,180,135,.36)}
+.vtag.fix{color:var(--pop);background:var(--pop-soft);border-color:var(--pop-line)}
+.vtag.kill{color:#E4826A;background:rgba(228,130,106,.12);border-color:rgba(228,130,106,.34)}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="wrap">
+  <header class="lp-topbar">
+    <div class="tb-side">
+      <a class="tb-back" href="./index.html">← All wrapps</a>
+      <span class="tb-rule"></span>
+      <div class="brandmark">
+        <span class="sb-squircle"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+        <span class="sb-word">Switchboard <span>/ AdPulse</span></span><span class="vmark"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#4C8DF6"/><path d="M7.5 12.4l3 3 6-6.4" stroke="#0A0A0B" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </div>
+    <div class="tb-side">
+      <span class="byo-pill"><i></i> Runs on your own Claude</span>
+      <a class="tb-cta" href="https://adpulse.thelastprompt.ai">Open AdPulse <span>→</span></a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="kick"><span class="d"></span>Ads & growth</span>
+      <h1>Find the wasted spend.</h1>
+      <p class="sub">A Meta ads post-mortem on your own Claude — paste the export or pull it live, see where the money leaked.</p>
+      <div class="actions">
+        <a class="btn" href="https://adpulse.thelastprompt.ai">Open AdPulse<span>→</span></a>
+        <a class="btn ghost" href="#how">See how it works ↓</a>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span>
+      <div class="shot">
+        <div class="shot-bar"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5M4 20h16"/><path d="M7 16l3.5-4 3 2.2L20 8"/></svg></span><span class="st">AdPulse — Meta Ads · Sep 1–30 · ₹4,82,000 spend</span><span class="sp">post-mortem</span></div>
+        <div class="shot-body">
+          <div class="ap-top">
+            <span class="ap-dial">
+              <svg viewBox="0 0 66 66" xmlns="http://www.w3.org/2000/svg"><circle cx="33" cy="33" r="27" fill="none" stroke="#26272C" stroke-width="6"/><circle cx="33" cy="33" r="27" fill="none" stroke="#E9C56B" stroke-width="6" stroke-linecap="round" stroke-dasharray="64 106" transform="rotate(-90 33 33)"/></svg>
+              <span class="n">38</span>
+            </span>
+            <div>
+              <p class="ap-hl">You are funding a retargeting habit, not a growth engine.</p>
+              <div class="ap-sig">account health · verdict for Kadak Coffee Co.</div>
+            </div>
+          </div>
+          <div class="ap-leak">
+            <span class="k">LEAK</span>
+            <p class="t">Retargeting is eating the prospecting budget</p>
+            <p class="d">“Retarget — 7d All Visitors” takes 31% of spend at 0.6× ROAS. You are paying to re-buy people who were going to convert anyway.</p>
+            <p class="b">▼ ₹68,400 / mo burn</p>
+          </div>
+          <table class="ap-tbl">
+            <tr><th>Campaign</th><th>Verdict</th><th>Why</th></tr>
+            <tr><td class="c">Retarget — 7d All</td><td class="v"><span class="vtag kill">kill</span></td><td>0.6× ROAS on ₹96,400. Frequency 8.4 — the window is exhausted.</td></tr>
+            <tr><td class="c">Prospect — LAL 3%</td><td class="v"><span class="vtag fix">fix</span></td><td>CPA ₹1,840 against a ₹610 target. Cap daily, drop the 45+ band.</td></tr>
+            <tr><td class="c">Mango UGC v4</td><td class="v"><span class="vtag scale">scale</span></td><td>3.9× ROAS on ₹71,200 — above target three weeks running.</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="facts">
+    <div class="fact">
+      <div class="fact-k">Category</div>
+      <div class="fact-v"><span class="dot"></span> Ads &amp; growth</div>
+      <div class="fact-s">on the Switchboard shelf</div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Build cost</div>
+      <div class="fact-v"><span class="mono">1.4M</span> tokens · <span class="mono">22</span> updates</div>
+      <div class="fact-s"><span class="devtag">dev-reported</span></div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Price</div>
+      <div class="fact-v">Free core, forever</div>
+      <div class="fact-s">runs on your own Claude</div>
+    </div>
+  </div>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5M4 20h16"/><path d="M7 16l3.5-4 3 2.2L20 8"/></svg></div><div class="num">01</div><h3>Your export or a live pull</h3><p>Paste a Meta Ads Manager export, drop a CSV, or pull your last 30 days live through your own Meta connector.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5M4 20h16"/><path d="M7 16l3.5-4 3 2.2L20 8"/></svg></div><div class="num">02</div><h3>Wins, leaks and what to kill</h3><p>Your Claude reads the numbers and hands back wins, leaks with a monthly burn figure, and fix-or-kill moves ranked most-urgent first.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5M4 20h16"/><path d="M7 16l3.5-4 3 2.2L20 8"/></svg></div><div class="num">03</div><h3>Nothing leaves the tab</h3><p>The CSV parses right in the tab and the whole post-mortem runs on your own Claude — no upload, no backend, nothing leaves.</p></div>
+  </section>
+  <section class="band">
+    <div class="band-head">
+      <span class="kicker">What it costs</span>
+      <h2 class="band-title">The whole post-mortem is free. <span class="m">Pro is for never having to run it.</span></h2>
+    </div>
+      <div class="tiers">
+        <div class="tier">
+          <div class="tier-top"><h3 class="tier-h">Free — the complete core loop</h3></div>
+          <p class="tier-sub">Every number, every call, forever. Nothing in the loop is held back.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Paste an Ads Manager export, drop a CSV, or pull 30 days live</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Wins, and leaks with a monthly burn figure attached</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Fix-or-kill moves ranked most-urgent first</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Parsed right in the tab — no upload, no backend</li>
+          </ul>
+        </div>
+        <div class="tier pro">
+          <div class="tier-top"><h3 class="tier-h">Pro</h3><span class="pro-chip">PRO</span></div>
+          <p class="tier-sub">Everything in free, plus the parts that keep watching after you close the tab.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Scheduled post-mortems</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Multi-account rollups</li>
+          </ul>
+        </div>
+      </div>
+  </section>
+
+  <section class="lp-cta">
+    <h2>Give AdPulse your Claude.</h2>
+    <a class="btn" href="https://adpulse.thelastprompt.ai">Open AdPulse<span>→</span></a>
+    <div class="fine">Free core, forever · your numbers never leave the browser</div>
+  </section>
+
+  <footer>
+    <span class="foot-nav"><a href="./index.html">← All wrapps</a></span>
+    <span>Switchboard · a wrapp that runs on your own Claude</span>
+    <span class="foot-nav"><a href="https://adpulse.thelastprompt.ai">Open AdPulse ↗</a><a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a></span>
+  </footer>
+</div>
+</body></html>

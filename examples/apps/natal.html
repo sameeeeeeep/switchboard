@@ -9,7 +9,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       /* NATAL — a printed ephemeris. Pure black, white ink, hairline rules, thin serif,
-         letterspaced mono labels. Monochrome. The only Switchboard element is the chip. */
+         letterspaced mono labels. Monochrome. The only Switchboard element is the chip.
+         DESIGN NOTE: this own-brand look is kept deliberately as NATAL's fun-app exemption
+         from the brandbrain token layer (per the fixer pass's "keep the existing visual
+         language" directive) — flag to the founder if a token restyle is wanted instead. */
       :root {
         color-scheme: dark;
         --ink: #ffffff;
@@ -53,6 +56,7 @@
       }
       .field input:focus { border-bottom-color: #fff; }
       .field input:disabled { color: var(--faint); border-bottom-style: dashed; }
+      .field input::placeholder { color: var(--faint); opacity: 1; }
       .toggle { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; font: 500 10px/1 var(--mono); letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; user-select: none; }
       .toggle input { appearance: none; -webkit-appearance: none; width: 13px; height: 13px; margin: 0; border: 1px solid var(--hair); background: transparent; cursor: pointer; border-radius: 0; }
       .toggle input:checked { background: #fff; }
@@ -63,6 +67,19 @@
       .souls { display: flex; flex-wrap: wrap; gap: 10px; }
       .soul { background: transparent; border: 1px solid var(--hair-soft); border-radius: 0; color: var(--dim); font: 400 11px/1 var(--mono); letter-spacing: 0.08em; padding: 9px 14px; cursor: pointer; transition: border-color 0.12s, color 0.12s; }
       .soul:hover { border-color: #fff; color: #fff; }
+      .soul.star { border-color: var(--hair); color: var(--ink); }
+
+      /* ---- deeper cuts (the generate-more affordance) ---- */
+      .cuts { display: flex; flex-wrap: wrap; gap: 10px; }
+      .cut { background: transparent; border: 1px solid var(--hair-soft); border-radius: 0; color: var(--dim); font: 500 10px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; padding: 12px 16px; cursor: pointer; transition: border-color 0.12s, color 0.12s, background 0.12s; }
+      .cut:hover:not(:disabled) { border-color: #fff; color: #fff; }
+      .cut.rec { border-color: #fff; color: var(--ink); }
+      .cut.rec:hover:not(:disabled) { background: #fff; color: #000; }
+      .cut.more { border-style: dashed; }
+      .cut:disabled { border-color: var(--hair-soft); color: var(--faint); cursor: not-allowed; }
+      .cutsec { max-width: 62ch; border-top: 1px solid var(--hair-soft); margin-top: 30px; padding-top: 20px; }
+      .cutsec .ctitle { font: 500 10px/1 var(--mono); letter-spacing: 0.3em; color: var(--dim); text-transform: uppercase; margin: 0 0 12px; }
+      .cutsec .cbody { font: 400 19px/1.6 var(--serif); margin: 0; }
 
       .actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
       .btn { background: transparent; border: 1px solid #fff; border-radius: 0; color: #fff; font: 500 12px/1 var(--mono); letter-spacing: 0.3em; text-transform: uppercase; padding: 16px 26px; cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
@@ -153,27 +170,27 @@
           <div class="frow">
             <div class="field">
               <label for="f-name">Name or initial</label>
-              <input type="text" id="f-name" value="S." maxlength="40" autocomplete="off" />
+              <input type="text" id="f-name" maxlength="40" autocomplete="off" />
             </div>
             <div class="field">
               <label for="f-place">Place of birth</label>
-              <input type="text" id="f-place" value="Bombay, India" maxlength="80" autocomplete="off" />
+              <input type="text" id="f-place" maxlength="80" autocomplete="off" placeholder="City, country" />
             </div>
           </div>
           <div class="frow">
             <div class="field">
               <label for="f-date">Date of birth</label>
-              <input type="date" id="f-date" value="1994-11-02" />
+              <input type="date" id="f-date" />
             </div>
             <div class="field">
               <label for="f-time">Time of birth</label>
-              <input type="time" id="f-time" value="09:40" />
+              <input type="time" id="f-time" />
               <label class="toggle" for="f-unknown"><input type="checkbox" id="f-unknown" /> Time unknown</label>
               <p class="time-note" id="time-note" hidden>No time, no rising sign. It is withheld, not guessed.</p>
             </div>
           </div>
           <div class="souls-row">
-            <div class="souls-label">Or try a sample soul</div>
+            <div class="souls-label" id="souls-label">Or try a sample soul</div>
             <div class="souls" id="souls"></div>
           </div>
           <div class="actions">
@@ -216,6 +233,10 @@
         </div>
 
         <blockquote id="pin-quote"></blockquote>
+
+        <p class="kicker">Deeper cuts</p>
+        <div class="cuts" id="cuts"></div>
+        <div id="cut-secs"></div>
 
         <div class="chart-actions">
           <button class="btn" id="rebrief">New day, new brief</button>

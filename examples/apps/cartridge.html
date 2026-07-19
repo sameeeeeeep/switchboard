@@ -91,6 +91,37 @@
       .cancel { background: none; border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: 500 12px/1 var(--body); }
       .cancel:hover { border-color: var(--danger); color: var(--danger); }
 
+      /* ---- attract mode (the pitch deck) ---- */
+      .pitchdeck { margin-top: 26px; }
+      .pd-head { display: flex; align-items: center; gap: 12px; }
+      .pd-head .kick { margin: 0; flex: 1; }
+      .pd-line { display: inline-flex; align-items: center; gap: 8px; font: 400 8px/1 var(--pix); color: var(--cyan); letter-spacing: .1em; }
+      .pd-line .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: blink 1s steps(2) infinite; }
+      .btn-roll { background: transparent; border: 1px solid var(--line-hot); color: var(--cyan); cursor: pointer; border-radius: 10px; padding: 9px 14px; font: 500 12.5px/1 var(--body); }
+      .btn-roll:hover { background: rgba(41,243,255,.07); }
+      .btn-roll:disabled { color: var(--ink-faint); border-color: var(--line); cursor: not-allowed; background: none; }
+      .pd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+      @media (max-width: 640px) { .pd-grid { grid-template-columns: 1fr; } }
+      .pitch { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 9px; transition: border-color .12s, transform .12s; }
+      .pitch:hover { border-color: var(--line-hot); transform: translateY(-2px); }
+      .pitch.star { border-color: var(--gold); box-shadow: 0 0 26px rgba(255,197,50,.10); }
+      .pbadges { display: flex; gap: 7px; flex-wrap: wrap; }
+      .pb { font: 400 8px/1 var(--pix); letter-spacing: .08em; border-radius: 6px; padding: 5px 7px; }
+      .pb.rec { background: var(--gold); color: #241500; box-shadow: 0 0 14px rgba(255,197,50,.35); }
+      .pb.you { border: 1px solid var(--cyan); color: var(--cyan); }
+      .pitch .pt { font: 400 11px/1.5 var(--pix); color: var(--magenta); text-shadow: 0 0 12px rgba(255,46,151,.35); }
+      .pitch .pi { font: 450 13.5px/1.5 var(--body); color: var(--ink); }
+      .pitch .ptw { font: italic 450 12.5px/1.5 var(--body); color: var(--ink-dim); }
+      .ptags { display: flex; gap: 6px; flex-wrap: wrap; }
+      .ptags .tag { font: 500 11px/1 var(--mono); color: var(--ink-faint); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; }
+      .pitch .forge { margin-top: auto; background: var(--magenta-soft); border: 1px solid var(--magenta); color: #ffd7ea; border-radius: 10px; padding: 11px 0; cursor: pointer; font: 400 9px/1 var(--pix); letter-spacing: .06em; }
+      .pitch .forge:hover { background: var(--magenta); color: #14040d; box-shadow: 0 0 22px rgba(255,46,151,.35); }
+      .pitch.skel { min-height: 158px; border-style: dashed; position: relative; overflow: hidden; }
+      .pitch.skel::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(167,155,200,.07) 50%, transparent 70%); animation: shine 1.4s infinite; }
+      @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+      .note .retry { margin-left: 8px; background: none; border: 1px solid var(--line-hot); color: var(--cyan); border-radius: 8px; padding: 5px 10px; cursor: pointer; font: 500 12px/1 var(--body); }
+      .note .retry:hover { background: rgba(41,243,255,.07); }
+
       /* ---- the cabinet (play) ---- */
       .cabinet { margin-top: 18px; }
       .bezel {
@@ -103,6 +134,8 @@
       .bezel-top .spacer { margin-left: auto; }
       .iconbtn { background: var(--raised); border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: 500 12.5px/1 var(--body); }
       .iconbtn:hover { color: var(--ink); border-color: var(--line-hot); }
+      .iconbtn:disabled { color: var(--ok); border-color: var(--line); background: none; cursor: default; }
+      .iconbtn:disabled:hover { color: var(--ok); border-color: var(--line); }
       #stage { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; border: 0; display: block; }
       .remixrow { display: flex; gap: 10px; margin-top: 12px; }
       .remixrow input { flex: 1; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); padding: 12px 14px; font: 450 14px/1 var(--body); outline: none; }
@@ -160,8 +193,8 @@
         </div>
         <div class="frow">
           <div class="field">
-            <label for="f-twist">Twist (optional)</label>
-            <input type="text" id="f-twist" placeholder="gravity flips every 10 seconds" maxlength="160" />
+            <label>Twist</label>
+            <div class="seg" id="f-twist"></div>
           </div>
           <div class="field">
             <label>Difficulty</label>
@@ -173,6 +206,16 @@
           <button class="btn-dice" id="dice" title="fill the form with a random game">🎲 surprise me</button>
           <span class="hint" id="conn-hint"></span>
         </div>
+      </section>
+
+      <section class="pitchdeck" id="pitches" hidden>
+        <div class="pd-head">
+          <p class="kick">attract mode · fresh pitches from your claude</p>
+          <span class="pd-line" id="pitch-line" hidden><span class="dot"></span>PULLING PITCHES…</span>
+          <button class="btn-roll" id="pitch-roll" disabled>↻ roll 4 more</button>
+        </div>
+        <div class="pd-grid" id="pitch-grid"></div>
+        <div class="note err" id="pitch-err" hidden></div>
       </section>
 
       <section class="genbox" id="genbox" hidden>
@@ -208,6 +251,7 @@
         <p class="kick">the shelf</p>
         <div class="carts" id="carts"></div>
         <div class="empty" id="shelf-empty">No cartridges yet. Generate your first game and hit <b>＋ shelf</b>.</div>
+        <div class="note err" id="shelf-err" hidden></div>
       </section>
     </div>
     <script type="module" src="./dist/cartridge.js"></script>

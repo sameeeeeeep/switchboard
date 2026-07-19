@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Toon — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;
+  --pop:#B49BD8;--pop-2:#7B5EA8;--pop-soft:rgba(180,155,216,0.14);--pop-line:rgba(180,155,216,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(180,155,216,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+.nav{display:flex;align-items:center;gap:16px;height:84px}
+.brand{display:flex;align-items:center;gap:13px;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.03em}
+.brand .tile{width:44px;height:44px;border-radius:13px;background:#EDE8F3;color:#7B5EA8;display:grid;place-items:center}
+.brand .tile svg{width:24px;height:24px}
+.nav .sp{flex:1}
+.nav .lk{color:var(--ink-2);font-weight:500;font-size:15px;padding:0 6px}
+.nav .cta{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;font-family:var(--font-sans)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:64px 0 40px;min-height:660px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(180,155,216,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* ===== hero demo — a built prototype of this wrapp mid-result (no placeholder art) ===== */
+/* grid items floor at min-content; nowrap rows inside the demo would otherwise widen this column */
+.mock{min-width:0}
+.mock .demo{position:relative;display:flex;flex-direction:column;aspect-ratio:620/560;
+  background:var(--card);border:1.5px solid #2A2B30;border-radius:22px;overflow:hidden;
+  box-shadow:0 30px 70px rgba(0,0,0,.5);font-family:var(--font-sans)}
+.dbar{display:flex;align-items:center;gap:10px;flex:none;height:50px;padding:0 18px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+.dbar .dm{width:22px;height:22px;border-radius:7px;background:var(--pop);display:grid;place-items:center;flex:none}
+.dbar .dm svg{width:13px;height:13px;stroke:#0A0A0B;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.dbar .dt{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.025em;color:var(--ink);white-space:nowrap}
+.dbar .dsub{font:500 12.5px/1 var(--font-sans);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbar .sp{flex:1}
+.dpill{flex:none;font:600 11.5px/1 var(--font-sans);letter-spacing:.05em;color:var(--pop);
+  background:var(--pop-soft);border:1px solid var(--pop-line);border-radius:999px;padding:6px 11px;white-space:nowrap}
+.dq{display:flex;align-items:baseline;gap:10px;flex:none;padding:13px 18px;border-bottom:1px solid var(--line)}
+.dq i{flex:none;font:700 10px/1 var(--font-mono);font-style:normal;letter-spacing:.15em;text-transform:uppercase;color:var(--faint)}
+.dq span{font-size:14.5px;font-weight:500;line-height:1.3;color:var(--ink)}
+.dbody{flex:1;min-height:0;padding:15px 17px 17px;display:flex;flex-direction:column;gap:11px}
+.dshot{position:relative;flex:1;min-height:0;border-radius:13px;overflow:hidden;
+  border:1px solid var(--line-2);background:#0E0F12;animation:dland .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dland{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.dshot img{width:100%;height:100%;object-fit:cover;display:block}
+.dstamp{position:absolute;top:11px;right:11px;font:700 10px/1 var(--font-mono);letter-spacing:.12em;
+  text-transform:uppercase;color:#0A0A0B;background:var(--pop);border-radius:999px;padding:6px 10px}
+.drow{flex:none;display:flex;gap:8px}
+.dcard{flex:1;min-width:0;background:#17181C;border:1px solid var(--line-2);border-radius:10px;
+  padding:10px 11px;font:600 12.5px/1.25 var(--font-sans);color:var(--ink-2)}
+.dcard.on{border-color:var(--pop-line);background:var(--pop-soft);color:var(--ink)}
+.dcard em{display:block;font:700 9px/1 var(--font-mono);font-style:normal;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--pop);margin-top:6px}
+@media (max-width:760px){.mock .demo{aspect-ratio:auto;min-height:520px}}
+
+.tnbox{position:absolute;left:10px;right:10px;bottom:10px;background:#F4F4F0;color:#141414;
+  font:600 12.5px/1.35 var(--font-sans);padding:8px 10px;border-radius:4px}
+.tnno{position:absolute;top:10px;left:10px;font:700 11px/1 var(--font-mono);color:#0A0A0B;
+  background:var(--pop);border-radius:5px;padding:5px 7px}
+.tnlead{flex:none;display:flex;align-items:baseline;gap:8px;font-size:11.5px;line-height:1.35;color:var(--ink-2)}
+.tnlead b{flex:none;font:700 9px/1 var(--font-mono);letter-spacing:.13em;text-transform:uppercase;color:var(--pop)}
+.dcard i{display:block;font:700 9.5px/1 var(--font-mono);font-style:normal;letter-spacing:.1em;
+  color:var(--faint);margin-bottom:6px}
+
+.mock{aspect-ratio:620/560;border-radius:22px}
+.shot-img{position:relative;width:100%;height:100%;object-fit:cover;display:block;border-radius:22px;border:1.5px solid #2A2B30}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 90px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+/* ---- Switchboard store chrome (detail-page topbar) ---- */
+.topbar{border-bottom:1px solid var(--line);background:rgba(10,10,11,.86)}
+.tb-in{max-width:1280px;margin:0 auto;padding:0 80px;height:46px;display:flex;align-items:center;gap:15px}
+.tb-back{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2);font:500 13.5px/1 var(--font-sans);transition:color .14s}
+.tb-back:hover{color:var(--ink)}
+.tb-div{width:1px;height:15px;background:var(--line-2);flex:none}
+.tb-mark{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;font-size:14px;letter-spacing:-.03em;color:var(--ink)}
+.tb-mark .m{width:19px;height:19px;border-radius:6px;background:linear-gradient(140deg,#7CC142,#4E7A1C);display:grid;place-items:center;flex:none}
+.tb-mark .m svg{width:11px;height:11px;stroke:#0A0A0B;stroke-width:2.8}
+.tb-sp{flex:1}
+.tb-open{background:#EDEDEA;color:#0A0A0B;font:600 13px/1 var(--font-sans);border-radius:999px;padding:9px 16px;display:inline-flex;align-items:center;gap:7px;transition:background .14s}
+.tb-open:hover{background:#fff}
+/* ---- facts strip ---- */
+.facts{display:grid;grid-template-columns:1fr 1.3fr 1.25fr;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-top:22px}
+.fcell{padding:24px 28px 26px;border-left:1px solid var(--line)}
+.fcell:first-child{border-left:0}
+.f-l{font:600 10.5px/1 var(--font-sans);letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+.f-v{font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-.025em;margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.f-v .mono{font-family:var(--font-mono);font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.f-v .sep{color:var(--faint);font-weight:400}
+.f-v .cd{width:8px;height:8px;border-radius:50%;background:var(--pop);flex:none}
+.f-tag{font:600 9.5px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line-2);border-radius:5px;padding:5px 7px}
+.f-note{color:var(--ink-2);font-size:13.5px;line-height:1.5;margin-top:9px;max-width:44ch}
+/* ---- what it costs ---- */
+.plan{padding:0 0 92px}
+.plan-k{display:inline-flex;align-items:center;gap:9px;font:600 11px/1 var(--font-sans);letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+.plan-h{font-family:var(--font-display);font-size:36px;font-weight:700;letter-spacing:-.032em;line-height:1.1;margin:16px 0 28px;max-width:24ch}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.pcol{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 28px;display:flex;flex-direction:column}
+.pcol.solo{grid-column:1 / -1;display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:start}
+.phead{display:flex;align-items:center;gap:11px}
+.pchip{font:700 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;border-radius:999px;padding:8px 13px;color:var(--ink);background:rgba(255,255,255,.055);border:1px solid var(--line-2)}
+.pchip.pro{color:#9BD25E;background:rgba(124,193,66,.12);border-color:rgba(124,193,66,.32)}
+.phd{color:var(--ink-2);font-size:14.5px}
+.plist{list-style:none;margin:20px 0 0;padding:0}
+.plist li{position:relative;padding-left:24px;color:var(--ink-2);font-size:15px;line-height:1.5;margin-top:12px}
+.plist li::before{content:"";position:absolute;left:3px;top:8px;width:7px;height:7px;border-radius:2px;background:var(--pop)}
+.pcol.is-pro .plist li::before{background:#9BD25E}
+.pfoot{color:var(--faint);font-size:12.5px;line-height:1.5;margin:24px 0 0;margin-top:auto;padding-top:24px;padding-top:16px;border-top:1px solid var(--line)}
+.solo-h{font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:-.025em}
+.solo-p{color:var(--ink-2);font-size:15px;line-height:1.55;margin:10px 0 0;max-width:70ch}
+/* ---- footer ---- */
+.foot{border-top:1px solid var(--line);background:var(--panel)}
+.foot-in{max-width:1280px;margin:0 auto;padding:0 80px;height:80px;display:flex;align-items:center;gap:18px}
+.foot-back{display:inline-flex;align-items:center;gap:9px;color:var(--ink-2);font:500 14.5px/1 var(--font-sans);transition:color .14s}
+.foot-back:hover{color:var(--ink)}
+.foot-sp{flex:1}
+.foot-note{color:var(--faint);font-size:13px}
+.foot-open{color:var(--ink);font:600 14.5px/1 var(--font-sans);border:1px solid var(--line-2);border-radius:999px;padding:12px 20px;display:inline-flex;align-items:center;gap:8px;transition:border-color .14s}
+.foot-open:hover{border-color:var(--faint)}
+
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="topbar"><div class="tb-in">
+  <a class="tb-back" href="./index.html"><span>&#8592;</span>All wrapps</a>
+  <span class="tb-div"></span>
+  <a class="tb-mark" href="./index.html"><span class="m"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></span>Switchboard</a>
+  <span class="tb-sp"></span>
+  <a class="tb-open" href="./toon.html">Open Toon<span>&#8594;</span></a>
+</div></div>
+<div class="wrap">
+  <nav class="nav">
+    <span class="brand"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/></svg></span>Toon</span>
+    <span class="sp"></span>
+    <a class="lk" href="#overview">Overview</a><a class="lk" href="#how">How it works</a><a class="lk" href="#pricing">Pricing</a>
+  </nav>
+
+  <section class="hero" id="overview">
+    <div>
+      <span class="kick"><span class="d"></span>Viral</span>
+      <h1>Life in four panels.</h1>
+      <p class="sub">Turn any moment into a four-panel comic strip starring one character who stays on-model panel to panel.</p>
+      <div class="actions">
+        <a class="btn" href="./toon.html">Open Toon<span>→</span></a>
+        <span class="btn ghost">Watch a run</span>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span><div class="demo"><div class="dbar"><span class="dm"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/></svg></span><span class="dt">Toon</span><span class="dsub">Noir Ink Wash</span><span class="sp"></span><span class="dpill">Panel 1 of 4 inked</span></div><div class="dq"><i>Line</i><span>a courier&rsquo;s last delivery, in the rain</span></div><div class="dbody"><div class="dshot"><img src="./img/toon.jpg" alt="Inked comic panel: a hooded courier with an umbrella in a rain-slicked alley" decoding="async"/><span class="tnno">01</span><span class="tnbox">Last drop of the night. The alley smells like rain and regret.</span></div><div class="tnlead"><b>Lead</b><span>Kesh &mdash; hooded jacket, taped umbrella, same face in every panel.</span></div><div class="drow"><span class="dcard"><i>02</i>The address doesn&rsquo;t exist.</span><span class="dcard"><i>03</i>Something shifts behind the dumpster.</span><span class="dcard"><i>04</i>It&rsquo;s the package. And it&rsquo;s breathing.</span></div></div></div></div>
+  </section>
+
+  <section class="facts">
+    <div class="fcell">
+      <div class="f-l">In the store</div>
+      <div class="f-v"><span class="cd"></span>Viral</div>
+      <p class="f-note">dupes of the tools people can't stop sharing</p>
+    </div>
+    <div class="fcell">
+      <div class="f-l">Build cost</div>
+      <div class="f-v"><span class="mono">176K tokens</span><span class="sep">&#183;</span><span class="mono">1 update</span><span class="f-tag">dev-reported</span></div>
+      <p class="f-note">What it took to build Toon, reported by its developer &mdash; not a broker-metered receipt.</p>
+    </div>
+    <div class="fcell">
+      <div class="f-l">What you pay</div>
+      <div class="f-v">Free &mdash; forever</div>
+      <p class="f-note">Runs on your own Claude: your keys, your data, and no metering by Switchboard.</p>
+    </div>
+  </section>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/></svg></div><div class="num">01</div><h3>One consistent character</h3><p>The same face and outfit across every panel — no drift.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/></svg></div><div class="num">02</div><h3>Any moment, any genre</h3><p>Noir, manga, newspaper strip — pick the look, keep the story.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/></svg></div><div class="num">03</div><h3>Yours to keep</h3><p>Export the strip as a file you own, on your own Claude.</p></div>
+  </section>
+
+  <section class="plan" id="pricing">
+    <span class="plan-k">What it costs</span>
+    <h2 class="plan-h">Free. All of it.</h2>
+    <div class="pgrid">
+      <div class="pcol solo">
+        <span class="pchip">Free</span>
+        <div>
+          <div class="solo-h">Everything, forever.</div>
+          <p class="solo-p">Toon has no pro tier and nothing held back — every panel is free, and the only bill is the Claude plan you already pay for.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<footer class="foot"><div class="foot-in">
+  <a class="foot-back" href="./index.html"><span>&#8592;</span>All wrapps on Switchboard</a>
+  <span class="foot-sp"></span>
+  <span class="foot-note">A Switchboard wrapp &mdash; it runs on your own Claude.</span>
+  <a class="foot-open" href="./toon.html">Open Toon<span>&#8594;</span></a>
+</div></footer>
+</body></html>
