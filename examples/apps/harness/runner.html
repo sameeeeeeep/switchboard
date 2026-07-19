@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wrapp Harness Runner</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 13px/1.5 system-ui, sans-serif; margin: 0; background: #0b0b0f; color: #e8e8f0; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #8a8aa0; margin-bottom: 16px; }
+  #bar { height: 6px; background: #1a1a24; border-radius: 3px; overflow: hidden; margin-bottom: 16px; max-width: 900px; }
+  #bar > i { display: block; height: 100%; width: 0; background: #5B8CFF; transition: width .3s; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #23232e; text-align: left; vertical-align: top; }
+  th { color: #8a8aa0; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .id { font-weight: 600; }
+  .cat { color: #6a6a80; font-size: 11px; margin-left: 6px; }
+  .v { font-weight: 600; padding: 1px 7px; border-radius: 5px; font-size: 11px; }
+  .pass { background: #10331f; color: #58d68d; }
+  .warn { background: #33270f; color: #e0a458; }
+  .fail { background: #3a1620; color: #e06a80; }
+  .run { background: #1a1a24; color: #8fb0ff; }
+  .detail { color: #8a8aa0; font-size: 11px; }
+  .err { color: #e06a80; font-size: 11px; }
+  #stage { position: fixed; right: 12px; bottom: 12px; width: 380px; height: 240px; border: 1px solid #33334a; border-radius: 8px; background: #000; }
+</style>
+<h1>Wrapp Harness Runner</h1>
+<div class="sub" id="status">booting…</div>
+<div id="bar"><i></i></div>
+<table>
+  <thead><tr><th>wrapp</th><th>switchboard</th><th>nailinit</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<iframe id="stage" title="current wrapp under test"></iframe>
+<script type="module" src="/runner.js"></script>

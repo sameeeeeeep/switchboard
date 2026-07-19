@@ -1,0 +1,233 @@
+<style>
+ :root{--bg:#f5f7fc;--pnl:#ffffff;--pnl2:#f2f4fa;--ln:#e2e6f1;--fg:#171a24;--mut:#5b6379;--accent:#3f6fe0;--chip:#eef1f9;--pass-bg:#e3f6ec;--pass-fg:#127a41;--warn-bg:#fbf0d9;--warn-fg:#95610b;--fail-bg:#fce5ea;--fail-fg:#bc2a45;--shadow:0 1px 2px #1a234010}
+ @media (prefers-color-scheme:dark){:root{--bg:#0b0b0f;--pnl:#14141c;--pnl2:#0f0f16;--ln:#23232e;--fg:#e9e9f2;--mut:#8b8ba2;--accent:#7ea2ff;--chip:#1a1a24;--pass-bg:#12331f;--pass-fg:#5fd88f;--warn-bg:#332810;--warn-fg:#e4ad5f;--fail-bg:#3a1620;--fail-fg:#e97088;--shadow:0 1px 0 #ffffff08}}
+ :root[data-theme="dark"]{--bg:#0b0b0f;--pnl:#14141c;--pnl2:#0f0f16;--ln:#23232e;--fg:#e9e9f2;--mut:#8b8ba2;--accent:#7ea2ff;--chip:#1a1a24;--pass-bg:#12331f;--pass-fg:#5fd88f;--warn-bg:#332810;--warn-fg:#e4ad5f;--fail-bg:#3a1620;--fail-fg:#e97088;--shadow:0 1px 0 #ffffff08}
+ :root[data-theme="light"]{--bg:#f5f7fc;--pnl:#ffffff;--pnl2:#f2f4fa;--ln:#e2e6f1;--fg:#171a24;--mut:#5b6379;--accent:#3f6fe0;--chip:#eef1f9;--pass-bg:#e3f6ec;--pass-fg:#127a41;--warn-bg:#fbf0d9;--warn-fg:#95610b;--fail-bg:#fce5ea;--fail-fg:#bc2a45;--shadow:0 1px 2px #1a234010}
+ *{box-sizing:border-box}
+ .wrap{max-width:1020px;margin:0 auto;padding:44px 24px 96px;background:var(--bg);color:var(--fg);
+   font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+   font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+ .wrap :is(h1,h2,h3){text-wrap:balance}
+ .eyebrow{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+ h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px}
+ .lede{color:var(--mut);margin:0 0 30px;max-width:66ch;font-size:15.5px}
+ h2{font-size:15px;letter-spacing:.02em;margin:44px 0 16px;padding-top:20px;border-top:1px solid var(--ln);display:flex;align-items:baseline;gap:10px}
+ h2 .n{font:600 11px/1 ui-monospace,monospace;color:var(--mut)}
+ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--chip);border:1px solid var(--ln);padding:.5px 5px;border-radius:5px;font-size:.86em}
+ .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
+ @media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+ .kpi{background:var(--pnl);border:1px solid var(--ln);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+ .kpi b{font-size:32px;letter-spacing:-.02em;display:block;line-height:1.1}
+ .kpi span{color:var(--mut);font-size:11.5px;display:block;margin-top:4px}
+ .kpi.p{border-top:2px solid var(--pass-fg)}.kpi.p b{color:var(--pass-fg)}
+ .kpi.w{border-top:2px solid var(--warn-fg)}.kpi.w b{color:var(--warn-fg)}
+ .kpi.f{border-top:2px solid var(--fail-fg)}.kpi.f b{color:var(--fail-fg)}
+ .kpi.t{border-top:2px solid var(--accent)}
+ .projects{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ @media(max-width:720px){.projects{grid-template-columns:1fr}}
+ .pc{background:var(--pnl);border:1px solid var(--ln);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+ .pc-h b{font-size:17px}.pc-h span{color:var(--mut);font-size:12px;display:block;margin-top:3px}
+ .sw{display:flex;gap:6px;margin:12px 0}.sw i{width:28px;height:28px;border-radius:7px;display:block;box-shadow:inset 0 0 0 1px #00000018}
+ .pc-b{font-size:12.5px;color:var(--fg);opacity:.9;line-height:1.55}.pc-b b{color:var(--accent);font-weight:600}
+ .pc-f{color:var(--mut);font-size:11px;margin-top:10px;font-family:ui-monospace,monospace}
+ .tablewrap{overflow-x:auto;border:1px solid var(--ln);border-radius:14px;background:var(--pnl);box-shadow:var(--shadow)}
+ table{border-collapse:collapse;width:100%;min-width:520px}
+ th,td{padding:11px 14px;border-bottom:1px solid var(--ln);text-align:left;vertical-align:top}
+ tbody tr:last-child td{border-bottom:none}
+ tbody tr:hover{background:var(--pnl2)}
+ th{color:var(--mut);font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+ td.w{width:38%}.cat{color:var(--mut);font-size:11px;margin-left:8px}
+ .sig{color:var(--mut);font-size:11px;margin-top:3px;font-family:ui-monospace,monospace}
+ td .d{color:var(--mut);font-size:11px;margin-top:3px}
+ .v{display:inline-block;font:700 10.5px/1.5 ui-monospace,monospace;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.03em}
+ .v.pass{background:var(--pass-bg);color:var(--pass-fg)}.v.warn{background:var(--warn-bg);color:var(--warn-fg)}.v.fail{background:var(--fail-bg);color:var(--fail-fg)}
+ .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.cards{grid-template-columns:1fr}}
+ .card{background:var(--pnl);border:1px solid var(--ln);border-radius:13px;padding:15px 16px;box-shadow:var(--shadow)}
+ .card-h b{font-size:15px}.card-m{color:var(--mut);font-size:12px;margin:7px 0 11px}.card-m b{color:var(--fg);opacity:.85}
+ .st{background:var(--chip);border:1px solid var(--ln);border-radius:6px;padding:1px 6px;font-size:10.5px;font-family:ui-monospace,monospace}
+ .card-p{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ .pp{background:var(--pnl2);border:1px solid var(--ln);border-radius:9px;padding:9px 11px}
+ .pp-h{font-size:11.5px;font-weight:600;text-transform:capitalize;display:flex;align-items:center;gap:6px}
+ .pp-d{color:var(--mut);font-size:11px;margin-top:4px}
+ .pp-c{color:var(--mut);font-size:10px;background:var(--chip);border:1px solid var(--ln);border-radius:5px;padding:1px 5px;margin-left:2px;white-space:nowrap;font-family:ui-monospace,monospace}
+ .pp-e{margin:5px 0 0;padding-left:16px;color:var(--fail-fg);font-size:10.5px}
+ .method{background:var(--pnl);border:1px solid var(--ln);border-radius:14px;padding:18px 22px;font-size:13.5px;color:var(--fg);line-height:1.65;box-shadow:var(--shadow)}
+ .method b{color:var(--accent)}
+ .foot{color:var(--mut);font-size:11.5px;margin-top:34px;font-family:ui-monospace,monospace;line-height:1.7}
+</style>
+<div class="wrap">
+<p class="eyebrow">Switchboard &middot; wrapp test harness</p>
+<h1>Every wrapp, driven headless against two projects</h1>
+<p class="lede">All 34 wrapps booted on a mock <code>window.claude</code>, each lent one of two projects as context, then driven through its real stage-1 pipeline. 68 runs &mdash; one per wrapp &times; project.</p>
+
+<div class="kpis">
+  <div class="kpi p"><b>64</b><span>PASS &mdash; stage-1 rendered clean</span></div>
+  <div class="kpi w"><b>2</b><span>WARN &mdash; partial / needs a live backend</span></div>
+  <div class="kpi f"><b>2</b><span>FAIL &mdash; no stage-1 output</span></div>
+  <div class="kpi t"><b>68</b><span>total runs</span></div>
+</div>
+
+<h2><span class="n">01</span> The two projects</h2>
+<div class="projects"><div class="pc">
+    <div class="pc-h"><b>Switchboard</b><span>B2B developer-tool / AI marketplace (the product itself)</span></div>
+    <div class="sw"><i style="background:#0B0B0F"></i><i style="background:#5B8CFF"></i><i style="background:#E8E8F0"></i><i style="background:#FF7A45"></i></div>
+    <div class="pc-b"><b>Positioning.</b> The app store where every app runs on the visitor's own Claude and connectors &mdash; developers ship the wrapper, users bring the compute.<br><b>Voice.</b> Technical, candid, anti-hype &mdash; talks to builders like peers, never markets at them.<br><b>Audience.</b> Indie developers, technical founders, and small agencies who already pay for Claude and want to ship AI apps without paying for inference.<br><b>Products.</b> Switchboard Pro subscription, Relay SDK, Browser extension + local daemon, The wrapp App Store</div>
+    <div class="pc-f">facets lent: brand &middot; persona &middot; personal &middot; project</div>
+  </div><div class="pc">
+    <div class="pc-h"><b>NailInit</b><span>B2C beauty DTC &mdash; press-on nails &amp; at-home nail-care</span></div>
+    <div class="sw"><i style="background:#F7C9D9"></i><i style="background:#C0446B"></i><i style="background:#F4ECE2"></i><i style="background:#2B2B2B"></i><i style="background:#C7CBD1"></i></div>
+    <div class="pc-b"><b>Positioning.</b> Salon-quality press-on nails and at-home nail-care kits &mdash; designed in-house, shipped direct, no appointment and no two-hour wait.<br><b>Voice.</b> Playful, warm, a little bold &mdash; hype-girl energy without the cringe.<br><b>Audience.</b> Gen-Z and millennial women who love a fresh manicure but not the salon price or the wait.<br><b>Products.</b> Press-on nail sets, Brush-on nail glue, Cuticle oil pen, At-home starter kit, Chrome powder, Nail prep kit</div>
+    <div class="pc-f">facets lent: brand &middot; persona &middot; personal &middot; project</div>
+  </div></div>
+
+<h2><span class="n">02</span> Results matrix</h2>
+<div class="tablewrap"><table><thead><tr><th>wrapp</th><th>switchboard</th><th>nailinit</th></tr></thead><tbody><tr><td class="w"><b>AdForge</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; forge_concepts_brand</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Adwall</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; brand-draft</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td></tr><tr><td class="w"><b>A-Plus</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; directions</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Prism</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; concept-batch-draft</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td></tr><tr><td class="w"><b>Shelf</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; triage</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td></tr><tr><td class="w"><b>Studio</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; today_shoot_list</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td></tr><tr><td class="w"><b>Reel</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; script</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;5</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;5</div></td></tr><tr><td class="w"><b>Marquee</b><span class="cat">founder-stack</span><div class="sig">text &mdash; generate</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td></tr><tr><td class="w"><b>Take</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; draftScript</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;2</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;2</div></td></tr><tr><td class="w"><b>Identity</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; person</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Batch</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; draft_answer</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;10</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;10</div></td></tr><tr><td class="w"><b>Bank</b><span class="cat">founder-stack</span><div class="sig">jsonObject &mdash; today's brief</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td></tr><tr><td class="w"><b>Redline</b><span class="cat">founder-stack</span><div class="sig">jsonArray &mdash; audit</div></td><td><span class="v fail">fail</span><div class="d">no model call fired &mdash; folder-bound, no page on disk</div></td><td><span class="v fail">fail</span><div class="d">no model call fired &mdash; folder-bound, no page on disk</div></td></tr><tr><td class="w"><b>AdPulse</b><span class="cat">founder-stack</span><div class="sig">text &mdash; discover_meta_connector_prefix</div></td><td><span class="v warn">warn</span><div class="d">partial &mdash; CSV precursor renders; full diagnosis needs a live Meta connector</div></td><td><span class="v warn">warn</span><div class="d">partial &mdash; CSV precursor renders; full diagnosis needs a live Meta connector</div></td></tr><tr><td class="w"><b>Huddle</b><span class="cat">chat</span><div class="sig">text &mdash; call-turn</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td></tr><tr><td class="w"><b>betterchat</b><span class="cat">chat</span><div class="sig">jsonArray &mdash; starter_suggestions</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td></tr><tr><td class="w"><b>Cartridge</b><span class="cat">play-make</span><div class="sig">jsonArray &mdash; pitch-deck</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td></tr><tr><td class="w"><b>Arcana</b><span class="cat">after-hours</span><div class="sig">jsonObject &mdash; reading</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td></tr><tr><td class="w"><b>NATAL</b><span class="cat">after-hours</span><div class="sig">jsonObject &mdash; full-read</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Cast</b><span class="cat">play-make</span><div class="sig"></div></td><td><span class="v pass">pass</span><div class="d">rendered</div></td><td><span class="v pass">pass</span><div class="d">rendered (shared harness)</div></td></tr><tr><td class="w"><b>Arcade</b><span class="cat">game-generator</span><div class="sig">jsonArray &mdash; proposePitches</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Yearbook</b><span class="cat">image-generation (viral retro portrait; text-to-image, NOT selfie-based)</span><div class="sig">jsonArray &mdash; propose-eras</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;9</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;9</div></td></tr><tr><td class="w"><b>Toon</b><span class="cat">creative-image-gen (four-panel comic strip generator)</span><div class="sig">jsonArray &mdash; proposeTreatments</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;7</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;7</div></td></tr><tr><td class="w"><b>Storybook</b><span class="cat">creative-generative</span><div class="sig">jsonArray &mdash; proposeBooks &mdash; 3 book concepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Petrait</b><span class="cat">image-generation</span><div class="sig">jsonArray &mdash; proposeConcepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Emote</b><span class="cat">image-generation</span><div class="sig">jsonArray &mdash; proposePacks</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Inkling</b><span class="cat">image-generation</span><div class="sig">jsonArray &mdash; proposeConcepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Roomify</b><span class="cat">image-generation</span><div class="sig">jsonArray &mdash; proposeDirections</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Thumbs</b><span class="cat">creative-marketing</span><div class="sig">jsonArray &mdash; propose-concepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Meme</b><span class="cat">meme-generator</span><div class="sig">jsonArray &mdash; proposeConcepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;4</div></td></tr><tr><td class="w"><b>Roast</b><span class="cat">fun-text-generator</span><div class="sig">jsonArray &mdash; proposeAngles</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Rizz</b><span class="cat">dating-copywriting</span><div class="sig">jsonArray &mdash; proposeStrategies</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;6</div></td></tr><tr><td class="w"><b>Anthem</b><span class="cat">music</span><div class="sig">jsonArray &mdash; propose_concepts</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr><tr><td class="w"><b>Dreamlog</b><span class="cat">personal / fun &mdash; gentle dream interpreter (text-in, optional image-out)</span><div class="sig">jsonArray &mdash; proposeLenses</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td><td><span class="v pass">pass</span><div class="d">rendered &times;3</div></td></tr></tbody></table></div>
+
+<h2><span class="n">03</span> Per-wrapp detail</h2>
+<div class="cards"><div class="card">
+    <div class="card-h"><b>AdForge</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">jsonObject</span> <span class="st">imageUrl</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Adwall</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">jsonObject</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>A-Plus</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">jsonObject</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Prism</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Shelf</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Studio</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Reel</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;5 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;5 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Marquee</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">text</span> <span class="st">imageUrl</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Take</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;2 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;2 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Identity</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">jsonArray</span> <span class="st">jsonArray</span> <span class="st">jsonArray</span> <span class="st">jsonArray</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Batch</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>idea, project</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">jsonArray</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;10 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;10 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Bank</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand, personal, persona, project, csv, gsheet, note</b> context (list) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">text</span> <span class="st">jsonObject</span> <span class="st">jsonArray</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Redline</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>project</b> context (list) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">jsonObject</span> <span class="st">text</span> <span class="st">imageUrl</span> <span class="st">jsonObject</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v fail">fail</span></div><div class="pp-d">no model call fired &mdash; folder-bound, no page on disk </div></div><div class="pp"><div class="pp-h">nailinit <span class="v fail">fail</span></div><div class="pp-d">no model call fired &mdash; folder-bound, no page on disk </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>AdPulse</b><span class="cat">founder-stack</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">text</span> <span class="st">text</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v warn">warn</span></div><div class="pp-d">partial &mdash; CSV precursor renders; full diagnosis needs a live Meta connector <span class="pp-c">5 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v warn">warn</span></div><div class="pp-d">partial &mdash; CSV precursor renders; full diagnosis needs a live Meta connector <span class="pp-c">5 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Huddle</b><span class="cat">chat</span></div>
+    <div class="card-m">reads <b>no</b> context (none) &middot; pipeline: <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>betterchat</b><span class="cat">chat</span></div>
+    <div class="card-m">reads <b>personal, project, brand, note, csv, gsheet</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Cartridge</b><span class="cat">play-make</span></div>
+    <div class="card-m">reads <b>personal, brand, project</b> context (pick) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span> <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Arcana</b><span class="cat">after-hours</span></div>
+    <div class="card-m">reads <b>personal, project</b> context (list) &middot; pipeline: <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>NATAL</b><span class="cat">after-hours</span></div>
+    <div class="card-m">reads <b>personal</b> context (single) &middot; pipeline: <span class="st">jsonObject</span> <span class="st">jsonObject</span> <span class="st">jsonObject</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Cast</b><span class="cat">play-make</span></div>
+    <div class="card-m"> &middot; pipeline: </div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered </div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered (shared harness) </div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Arcade</b><span class="cat">game-generator</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">html</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Yearbook</b><span class="cat">image-generation (viral retro portrait; text-to-image, NOT selfie-based)</span></div>
+    <div class="card-m">reads <b>brand, persona</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;9 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;9 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Toon</b><span class="cat">creative-image-gen (four-panel comic strip generator)</span></div>
+    <div class="card-m">reads <b>single lent context (any kind &mdash; brand/founder/project); generic, no kind check</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;7 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;7 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Storybook</b><span class="cat">creative-generative</span></div>
+    <div class="card-m">reads <b>single, brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">jsonObject</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Petrait</b><span class="cat">image-generation</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Emote</b><span class="cat">image-generation</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Inkling</b><span class="cat">image-generation</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Roomify</b><span class="cat">image-generation</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Thumbs</b><span class="cat">creative-marketing</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Meme</b><span class="cat">meme-generator</span></div>
+    <div class="card-m">reads <b>no</b> context (single) &middot; pipeline: <span class="st">jsonArray</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 <span class="pp-c">1 model call</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;4 <span class="pp-c">1 model call</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Roast</b><span class="cat">fun-text-generator</span></div>
+    <div class="card-m">reads <b>single</b> context (single (APP.usesContext='single'; brand = await relay.context.active()). Optional &mdash; drives the cold-open autostart when present, otherwise the app waits for a typed line.) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Rizz</b><span class="cat">dating-copywriting</span></div>
+    <div class="card-m">reads <b>persona</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;6 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Anthem</b><span class="cat">music</span></div>
+    <div class="card-m">reads <b>brand</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div><div class="card">
+    <div class="card-h"><b>Dreamlog</b><span class="cat">personal / fun &mdash; gentle dream interpreter (text-in, optional image-out)</span></div>
+    <div class="card-m">reads <b>no</b> context (single) &middot; pipeline: <span class="st">jsonArray</span> <span class="st">text</span> <span class="st">imageUrl</span></div>
+    <div class="card-p"><div class="pp"><div class="pp-h">switchboard <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div><div class="pp"><div class="pp-h">nailinit <span class="v pass">pass</span></div><div class="pp-d">rendered &times;3 <span class="pp-c">2 model calls</span></div></div></div>
+  </div></div>
+
+<h2><span class="n">04</span> How the harness works</h2>
+<div class="method">
+ A single mock <code>window.claude</code> provider is injected into each wrapp's page <b>before</b> its module script, so every wrapp boots the returning-user path (a granted <code>permissions()</code>) with no click. The provider answers <code>context.active()/list()/use()</code> with the lent project (brand &middot; persona &middot; personal &middot; project facets), serves per-origin <code>storage</code>, and &mdash; the interesting part &mdash; answers <code>stream()</code> with a keyword-routed responder that returns the <b>exact shape each wrapp parses</b> (e.g. AdForge's <code>{concepts:[&hellip;]}</code>, Adwall's <code>{directions:[6]}</code>, Shelf's triage object), grounded in the lent brand. Image stages resolve to a real branded placeholder PNG. Because the responses derive from the brand, Switchboard and NailInit produce visibly different output for the same wrapp &mdash; the point of running both.
+ <br><br><b>Verdict key.</b> <span class="v pass">pass</span> stage-1 success signal rendered, no page errors &middot; <span class="v warn">warn</span> rendered but with a captured console/runtime error, or a partial precursor &middot; <span class="v fail">fail</span> no stage-1 output within timeout.
+ <br><br><b>Known limitations.</b> <b>Cast</b> uses its own built-in <code>?harness</code> (a fixed cooking persona), so it's project-agnostic &mdash; the same verdict is shown for both columns. <b>Redline</b> and <b>AdPulse</b> are folder-/connector-bound in production; the harness stands in a bound folder / canned CSV, so their verdicts reflect the mock path, not a live audit/connector pull.
+</div>
+
+<p class="foot">Generated by examples/apps/harness/report.mjs from a live browser run of examples/apps/harness/runner.html.<br>Re-run: node examples/apps/harness/serve.mjs &rarr; open /runner.html &rarr; node report.mjs results.json &gt; report.html</p>
+</div>
