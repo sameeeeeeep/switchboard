@@ -8,7 +8,7 @@
     "bank-mcp": "./bank-mcp.mjs"
   },
   "scripts": {
-    "test": "node tasks.test.mjs"
+    "test": "node tasks.test.mjs && node project.test.mjs && node brand.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
