@@ -53,6 +53,22 @@ type State =
   | { kind: "disconnected"; relay: Relay }
   | { kind: "connected"; relay: Relay; user: UserIdentity | null; project: Context | null };
 
+/** A rejected provider request, as the extension delivers it: a 4900 carries `data.reason` naming
+ *  which rung failed (see HealthReason). Older workers send the code with no `data` at all. */
+type ProviderError = { code?: number; data?: { reason?: "unreachable" | "unpaired" } } | null;
+
+/** Derive the ladder rung from a failed request — the fallback path for extensions too old to
+ *  answer `claude_health` (shipped 0.1.2 is one: it has no such method, so Relay.health() resolves
+ *  null and every `h &&` rung above is skipped). A 4900 already tells us what health would have:
+ *  the daemon refused or was never there. Absent `data.reason`, "unreachable" is the safe read —
+ *  it matches the extension's own 4900 text ("sidekick not reachable"), and pairing against a dead
+ *  daemon is a dead end anyway (HealthReason precedence). Returns null for any other error so a
+ *  user rejection (4001) still leaves the Connect button alone. */
+function rungFromError(e: ProviderError): { kind: "unreachable" } | { kind: "unpaired" } | null {
+  if (e?.code !== BYOPErrorCode.PROVIDER_UNAVAILABLE) return null;
+  return e?.data?.reason === "unpaired" ? { kind: "unpaired" } : { kind: "unreachable" };
+}
+
 /** One-click extension install (the landing page stays the "full setup" story: extension + sidekick). */
 const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb";
 
@@ -167,9 +183,18 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     if (destroyed || my !== seq) return;
     if (h && !h.reachable) { state = { kind: "unreachable" }; emitTransition(false); return render(); }
     if (h && !h.paired) { state = { kind: "unpaired" }; emitTransition(false); return render(); }
-    const grant = sessionDisconnected ? null : await r.permissions().catch(() => null);
+    let permErr: ProviderError = null;
+    const grant = sessionDisconnected ? null : await r.permissions().catch((e) => { permErr = e as ProviderError; return null; });
     if (destroyed || my !== seq) return;
-    if (!grant) { state = { kind: "disconnected", relay: r }; emitTransition(false); return render(); }
+    if (!grant) {
+      // SKEW GUARD, second half. When `h` is null the two rungs above were skipped, so a dead
+      // daemon lands here and renders a bare Connect button — indistinguishable from "just not
+      // connected yet". The 4900 permissions() threw IS the ladder answer, so read the rung off
+      // the error instead. Only when `h` is null: a health-capable extension already answered.
+      const rung = !h ? rungFromError(permErr) : null;
+      if (rung) { state = rung; emitTransition(false); return render(); }
+      state = { kind: "disconnected", relay: r }; emitTransition(false); return render();
+    }
     const wantsContext = opts.context !== "none";
     const [user, project] = await Promise.all([
       r.identity(),
@@ -219,7 +244,17 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       // A fast 4900 means the ladder moved beneath us (sidekick asleep / unpaired): re-read it so
       // the chip lands on the right rung instead of a silently dead Connect click. A user
       // rejection (4001) leaves the Connect button in place, as today.
-      if ((e as { code?: number } | null)?.code === BYOPErrorCode.PROVIDER_UNAVAILABLE) void refresh();
+      const err = e as ProviderError;
+      if (err?.code !== BYOPErrorCode.PROVIDER_UNAVAILABLE) return;
+      await refresh();
+      // refresh() is authoritative when the extension can answer claude_health. When it CAN'T, it
+      // leaves us on "disconnected" — a bare Connect button, so the click reads as "nothing
+      // happened" and the user is never told to open the menubar app. That was the whole silent
+      // failure. Land the rung from the 4900 we already caught.
+      if (state.kind === "disconnected") {
+        const rung = rungFromError(err);
+        if (rung) { state = rung; emitTransition(false); render(); }
+      }
     }
   }
 

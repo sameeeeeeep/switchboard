@@ -65,7 +65,7 @@ const SWITCHBOARD = {
     id: "switchboard-repo", name: "Switchboard", kind: "project", publishedBy: "harness", updatedAt: now,
     data: {
       summary: "BYO-Claude broker — a local sidekick brokers your model + tools to any site, per-origin and consent-gated.",
-      status: "v0.1.2 · MIT",
+      status: "v0.1.3 · MIT",
       stack: ["TypeScript", "esbuild", "MCP", "Chrome MV3", "Swift (menubar)"],
       packages: ["sdk", "sidekick", "protocol", "extension", "menubar", "bank-mcp"],
       wrapps: ["bank", "imagegen", "adgen", "cast", "redline", "shelf", "studio"],
