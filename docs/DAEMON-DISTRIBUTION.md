@@ -7,13 +7,13 @@ work exactly as before.
 
 ## 1. What ships in the DMG
 
-`Relay-0.1.2.dmg` (~111 MB) contains `Relay.app` and an `/Applications` symlink. The app
+`Relay-0.1.3.dmg` (~111 MB) contains `Relay.app` and an `/Applications` symlink. The app
 carries its whole runtime — a fresh Mac needs no Node, no npm, no checkout:
 
 ```
 Relay.app/Contents/
   MacOS/Relay                      the menubar app (swiftc, single file)
-  Info.plist                       version 0.1.2
+  Info.plist                       version 0.1.3
   Resources/
     Relay.icns                     app icon (reused from the extension's mark)
     node                           Node v20.19.0, arm64, copied verbatim (Node.js signature intact)
@@ -41,7 +41,7 @@ What does NOT ship: no API keys, no tokens, no state. Everything user-specific l
   spawn the *system* `claude` (found via `~/.local/bin`, `/opt/homebrew/bin`,
   `/usr/local/bin`, or `CLAUDE_CLI`), so `claude` should be installed and logged in.
   Note the two binaries can drift in version; the bundled one is pinned by the agent-sdk.
-- **Chrome + the Switchboard extension 0.1.2** (`switchboard-0.1.2.zip`).
+- **Chrome + the Switchboard extension 0.1.3** (`switchboard-0.1.3.zip`).
 - **macOS 13+ on Apple Silicon.** The DMG is arm64-only for now (universal2 is future work).
 
 ## 3. Install
@@ -110,10 +110,10 @@ Ad-hoc friction (§4) is a funnel killer; before any real launch:
 3. Submit and staple:
 
    ```sh
-   xcrun notarytool submit packages/menubar/build/Relay-0.1.2.dmg \
+   xcrun notarytool submit packages/menubar/build/Relay-0.1.3.dmg \
      --keychain-profile relay-notary --wait
    xcrun stapler staple packages/menubar/build/dmg-staging/Relay.app
-   xcrun stapler staple packages/menubar/build/Relay-0.1.2.dmg
+   xcrun stapler staple packages/menubar/build/Relay-0.1.3.dmg
    ```
 
 4. Result: no "Open Anyway", no translocation, first launch just works.
@@ -125,10 +125,10 @@ whoever owns `packages/extension` — one release train, §8). Prepared command 
 until the release is cut):
 
 ```sh
-gh release create v0.1.2 \
-  packages/menubar/build/Relay-0.1.2.dmg \
-  switchboard-0.1.2.zip \
-  --title "Switchboard 0.1.2" \
+gh release create v0.1.3 \
+  packages/menubar/build/Relay-0.1.3.dmg \
+  switchboard-0.1.3.zip \
+  --title "Switchboard 0.1.3" \
   --notes "First packaged daemon: Relay.app now ships its own runtime (node + single-file sidekick + agent CLI). Drag to /Applications, click start, paste the token."
 ```
 
@@ -148,7 +148,7 @@ instructions):
 
 ## 8. Versioning
 
-One release train, three artifacts, one number — currently **0.1.2**:
+One release train, three artifacts, one number — currently **0.1.3**:
 
 | artifact | where the version lives |
 |---|---|

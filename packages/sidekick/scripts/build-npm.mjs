@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = join(HERE, "..");
 const OUT = join(PKG, "npm-dist");
-const VERSION = process.env.NPM_VERSION || "0.1.2"; // track the GitHub release train
+const VERSION = process.env.NPM_VERSION || "0.1.3"; // track the GitHub release train
 
 const src = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"));
 const EXTERNAL = ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/sdk", "ws", "zod"];
