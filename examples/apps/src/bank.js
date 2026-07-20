@@ -735,8 +735,11 @@ function taskRow(n, t, rec) {
   const cb = document.createElement("input"); cb.type = "checkbox";
   cb.checked = t.done; cb.disabled = sampleActive || !relay;
   cb.onchange = () => void toggleTask(n, t, cb);
-  const dm = DUE_RE.exec(t.text);
-  const span = document.createElement("span"); span.textContent = dm ? dm[1] : t.text;
+  // Strip a trailing store routing `@<wrapp>` tag before the due split, so a store-tagged task shows a
+  // clean label + clean due badge here instead of "Fri @canvas" bleeding into the board.
+  const clean = t.text.replace(/\s+@[a-z][a-z0-9-]{0,47}\s*$/i, "");
+  const dm = DUE_RE.exec(clean);
+  const span = document.createElement("span"); span.textContent = dm ? dm[1] : clean;
   row.append(cb, span);
   if (rec) row.append(Object.assign(document.createElement("span"), { className: "recbadge", textContent: "★ do this first" }));
   if (dm && !t.done) row.append(Object.assign(document.createElement("span"), { className: "due", textContent: dm[2] }));
@@ -756,7 +759,9 @@ function populateLists(lists) {
 // Deliberately the SAME file + dialect the Bank connector writes, so a task typed here and a task
 // sent in from a Claude thread land in one place. Mirrors packages/bank-mcp/tasks.mjs::addTask.
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const normText = (s) => String(s || "").toLowerCase().replace(/\s+—\s+by\s+.*$/i, "").replace(/\s+/g, " ").trim();
+// Peel a trailing store routing `@<wrapp>` tag (dead-last, after the due) BEFORE the "— by <due>" strip,
+// so a store-tagged task doesn't dupe the same task quick-added here. Mirrors home.js normTask.
+const normText = (s) => String(s || "").toLowerCase().replace(/\s+@[a-z][a-z0-9-]{0,47}\s*$/i, "").replace(/\s+—\s+by\s+.*$/i, "").replace(/\s+/g, " ").trim();
 function appendTask(existing, text, list) {
   const clean = text.trim();
   if (!clean) return null;

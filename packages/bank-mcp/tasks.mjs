@@ -10,8 +10,10 @@ const TASK_RE = /^(\s*)- \[( |x|X)\] (.+)$/;
 const HEAD_RE = /^##\s+(.+)$/;
 
 const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
-// A task's base text ignores a trailing "— by <due>" hint, so re-adding with a new due isn't a dupe.
-const baseText = (t) => String(t || "").replace(/\s+—\s+by\s+.*$/i, "").trim();
+// A task's base text ignores a trailing routing `@<wrapp>` tag (the store pins it dead-last) AND a
+// trailing "— by <due>" hint, so re-adding a store-routed task — or re-adding with a new due — isn't a
+// dupe. Peel the tag FIRST (it sits after the due), then the due, mirroring home.js normTask.
+const baseText = (t) => String(t || "").replace(/\s+@[a-z][a-z0-9-]{0,47}\s*$/i, "").replace(/\s+—\s+by\s+.*$/i, "").trim();
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // A list name becomes a heading — collapse to one clean line, strip markdown that would break it.
 export const cleanList = (s) => (String(s || "").replace(/[\r\n#]+/g, " ").replace(/\s+/g, " ").trim() || "Inbox").slice(0, 80);

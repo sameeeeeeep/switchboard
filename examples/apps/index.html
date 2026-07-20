@@ -233,6 +233,70 @@
       .rec .new{font:600 9.5px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ok);background:rgba(84,180,135,.1);border-radius:5px;padding:3px 6px}
       .rec .why{font-size:12.5px;color:var(--ink-2);line-height:1.55;display:block}
 
+      /* ===== What's next / Tasks — intent bar + the one shared task list (tasks.md) ===== */
+      /* Reuses the .pt-* single-input chrome and the .act/.rec card tokens — no new palette. */
+      #next-sec{margin-top:4px}
+      .next-bar{max-width:640px}
+      .next-vault{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 0;
+        font:500 12px/1.5 var(--font-mono);color:var(--faint);letter-spacing:.01em}
+      .next-vault .nv-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+      .next-vault.sandbox{color:var(--sim)} .next-vault.sandbox .nv-dot{background:var(--sim)}
+      .next-vault .nv-bind{background:var(--card-2);border:1px solid var(--line-2);color:var(--ink);
+        border-radius:var(--r-sm);padding:6px 11px;font:600 11.5px/1 var(--font-sans);cursor:pointer;margin-left:2px}
+      .next-vault .nv-bind:hover{border-color:var(--faint)}
+      .next-bindrow{display:flex;gap:9px;margin-top:10px;max-width:520px}
+      .next-suggest{display:grid;gap:9px;margin-top:14px;max-width:640px}
+      .next-thinking{font:500 12.5px/1 var(--font-mono);color:var(--faint);padding:5px 0}
+      .next-empty{background:var(--card);border:1px dashed var(--line-2);border-radius:var(--r);padding:15px 17px}
+      .next-empty h5{margin:0 0 6px;font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+      .next-empty p{margin:0 0 11px;font-size:12.5px;color:var(--ink-2);line-height:1.55;max-width:64ch}
+      .next-fallbacks{display:flex;gap:9px;flex-wrap:wrap}
+      .next-fb{background:var(--card-2);border:1px solid var(--line-2);color:var(--ink);border-radius:var(--r-sm);
+        padding:8px 13px;font:600 12px/1 var(--font-sans);cursor:pointer}
+      .next-fb:hover{border-color:var(--faint)}
+      /* a matched suggestion — mirrors .rec, with a launch pill */
+      .next-match{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;
+        display:flex;align-items:center;gap:13px;transition:transform .12s,border-color .12s}
+      a.next-match:hover{transform:translateY(-2px);border-color:var(--line-2)}
+      .next-match .ic{flex:none;border-radius:var(--r-sm)} .next-match .ic svg{width:56%;height:56%}
+      .next-match .nm-b{min-width:0;flex:1}
+      .next-match .nm-n{font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;
+        display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+      .next-match .nm-cat{font:600 9.5px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;
+        color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px}
+      .next-match .nm-why{font-size:12.5px;color:var(--ink-2);line-height:1.5;display:block;margin-top:4px}
+      .next-match .nm-go{margin-left:auto;flex:none;background:var(--accent);color:var(--accent-ink);border:0;
+        border-radius:var(--r-pill);padding:9px 15px;font:600 12.5px/1 var(--font-sans);cursor:pointer;white-space:nowrap}
+      .next-match .nm-go:hover{background:var(--accent-hover)}
+      .next-match .nm-go.ghost{background:var(--card-2);border:1px solid var(--line-2);color:var(--ink)}
+      .next-alts{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+      .next-alts .na-k{font:600 10px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+      /* the task list */
+      .next-list{margin-top:20px;max-width:720px}
+      .next-list .nl-empty{background:var(--card);border:1px dashed var(--line-2);border-radius:var(--r);
+        padding:15px 17px;font-size:12.5px;color:var(--faint);line-height:1.55;max-width:64ch}
+      .next-group{margin-bottom:6px}
+      .next-group .ng-k{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;
+        color:var(--faint);margin:14px 0 9px}
+      .trow-n{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--r);padding:10px 13px;margin-bottom:8px}
+      .trow-n .nt-main{display:flex;align-items:center;gap:11px;min-width:0;flex:1;margin:0;cursor:pointer}
+      .trow-n .nt-main input{width:16px;height:16px;flex:none;accent-color:var(--ok);cursor:pointer}
+      .trow-n .nt-label{font-size:13.5px;color:var(--ink);line-height:1.4;min-width:0}
+      .trow-n.done .nt-label{color:var(--faint);text-decoration:line-through}
+      .trow-n .nt-due{font:500 11px/1 var(--font-mono);color:var(--sim);border:1px solid var(--line-2);
+        border-radius:6px;padding:4px 7px;flex:none}
+      .trow-n .nt-open{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:7px;background:var(--card-2);
+        border:1px solid var(--line-2);color:var(--ink);border-radius:var(--r-pill);padding:6px 12px;
+        font:600 11.5px/1 var(--font-sans);cursor:pointer;white-space:nowrap}
+      .trow-n .nt-open:hover{border-color:var(--faint)}
+      .trow-n .nt-open .nt-wi{width:18px;height:18px;border-radius:5px;flex:none;display:grid;place-items:center}
+      .trow-n .nt-open .nt-wi svg{width:11px;height:11px}
+      /* the lighter pre-connect echo in the hero */
+      .next-pre{max-width:560px;margin:0 0 26px}
+      .next-pre .pt-inrow{margin-top:0}
+      .next-pre .next-suggest{margin-top:12px;max-width:560px}
+
       #library-sec .lib-kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:16px 0 9px}
       .lib-row{display:flex;flex-wrap:wrap;gap:9px}
       .lib-card{display:inline-flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 12px 7px 8px}
@@ -657,6 +721,26 @@
             </div>
           </div>
 
+          <!-- WHAT'S NEXT — intent bar + the one shared task list (tasks.md, the Bank dialect).
+               Unhidden by home.js renderNext() on the connected path. -->
+          <section id="next-sec" hidden>
+            <div class="zone"><span class="z">Start here</span><h2>What's next</h2><span class="s">type a task — your Claude routes it to the right wrapp and saves it to your one list</span></div>
+            <div class="next-bar" id="next-bar">
+              <div class="pt-inrow">
+                <input class="pt-input" id="next-input" type="text" autocomplete="off" spellcheck="false" placeholder="What do you need to get done? e.g. draft this week's ads for Aamras">
+                <button class="pt-go" id="next-go" type="button">Route it ▸</button>
+              </div>
+              <p class="next-vault" id="next-vault"></p>
+              <div class="next-bindrow" id="next-bindrow" hidden>
+                <input class="pt-input" id="next-bind-path" type="text" autocomplete="off" spellcheck="false" placeholder="Your Bank folder">
+                <button class="pt-go" id="next-bind-go" type="button">Connect ▸</button>
+                <button class="next-fb" id="next-bind-cancel" type="button">cancel</button>
+              </div>
+              <div class="next-suggest" id="next-suggest" hidden></div>
+            </div>
+            <div class="next-list" id="next-list"></div>
+          </section>
+
           <section id="review-sec">
             <div class="zone"><span class="z">Needs you now</span><h2>Ready to review</h2><span class="s" id="review-sub"></span></div>
             <div class="review" id="review"></div>
@@ -690,8 +774,18 @@
           <p class="hero-sub">Connect Switchboard and this page becomes <b>your</b> dashboard — your projects, what's next, and the wrapp for each job. Every app runs on <b>your</b> Claude and <b>your</b> tools; the operator never holds a key or sees your data.</p>
           <button class="hero-cta" id="hero-connect" type="button"><span>Connect Switchboard</span><span>→</span></button>
 
+          <!-- LIGHTER pre-connect intent bar — a synchronous keyword scorer routes a described task to a
+               detail page. No list, no write until you connect. -->
+          <div class="next-pre" id="next-pre">
+            <div class="pt-inrow">
+              <input class="pt-input" id="next-pre-input" type="text" autocomplete="off" spellcheck="false" placeholder="Know the job but not the tool? Describe the task">
+              <button class="pt-go" id="next-pre-go" type="button">Find the wrapp ▸</button>
+            </div>
+            <div class="next-suggest" id="next-pre-suggest" hidden></div>
+          </div>
+
           <!-- FIRST-PROJECT SETUP. Two homes for one section: here inside #hero while disconnected,
-               and moved to the top of #dash (before #review-sec) once connected. home.js does the
+               and moved to the top of #dash (before #next-sec) once connected. home.js does the
                move; point.js owns everything inside #pt-stage. -->
           <section id="point-sec" hidden>
             <div class="zone" id="pt-zone">

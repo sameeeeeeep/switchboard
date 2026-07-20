@@ -71,6 +71,22 @@ const demoTasks = isDemo && !isDemoEmpty;
 // are the latest builds); each row carries the wrapp glyph + a category one-liner.
 const RECENTLY_ADDED = ["huddle", "reel", "identity", "take", "batch", "marquee", "redline", "chat"];
 
+// ---------- WHAT'S NEXT / TASKS — the intent bar + the one shared task list ----------
+// The store writes tasks into the SAME file + dialect Bank writes (bank.js:29,75-89,760-777), so a
+// task routed here re-reads on Bank's board and in Obsidian. The one store-specific addition is a
+// routing tag pinned DEAD-LAST on the line — read BEFORE the due split, resolving to a wrapp or, for an
+// unknown/PARKED id, staying as harmless trailing text so a routed task never dead-ends. NO ids /
+// frontmatter / JSON ever enter a task file (the bank-mcp connector's hard contract).
+const TASKS_KEY = "tasks.md";
+const WRAPP_TAG_RE = /\s+@([a-z][a-z0-9-]{0,47})\s*$/i;         // the @<wrapp-id> tag, dead-last
+const TASK_DUE_RE = /^(.*?)\s+—\s+by\s+(.+)$/;                  // the SAME split Bank uses (bank.js:693)
+const escapeTaskRe = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// dedupe key: peel the routing tag AND the due suffix, so re-routing the same task never dupes a row.
+// The store is the SOLE writer of the @tag (never a tagged + untagged twin), per the bank-mcp caveat.
+const normTask = (x) => String(x || "").toLowerCase()
+  .replace(WRAPP_TAG_RE, "").replace(/\s+—\s+by\s+.*$/i, "").replace(/\s+/g, " ").trim();
+let tasksRaw = ""; // last-read tasks.md body, for the optimistic checkbox rewrite (mirrors note.body)
+
 let relay = null;
 let booted = false;
 const way = { installed: false, connected: false, brands: 0 };
@@ -90,6 +106,13 @@ let promotedAction = null; // the action the hero's primary CTA took — Quick a
 // pointer finishes. If that restore bind is declined we stay frozen for the session rather than
 // silently resuming writes into someone's source tree.
 let storageFrozen = false;
+
+// THE VAULT-POLLUTION GUARD. Once the user binds this origin's store to their REAL Bank vault (or any
+// folder they name), the store must stop dropping its app-internal convenience files — recents, the
+// plan flag, the wallet stub — into that vault. Only tasks.md is a real user artifact that belongs
+// there. Set from storage.info() in renderNext (autoAssigned === false ⇒ bound) and again the moment a
+// bind succeeds; every convenience write early-returns while it's true. Task writes are NOT gated on it.
+let vaultBound = false;
 
 // THE ONE CONTEXT DOOR — list and publish, and no reader. See the INVARIANT in the header. The
 // setup flow never gets the raw client either: `pointRelay` hands it a publish-only context surface,
@@ -506,20 +529,32 @@ function clickConnect() { $("chip-dock").firstElementChild?.shadowRoot?.querySel
 // FIRST-PROJECT SETUP — one section, two homes
 // ========================================================================================
 // Disconnected it sits inside #hero above "The way", tiles live but the input disabled. Connected it
-// moves to the top of #dash, before "Ready to review" — the first thing a signed-in user sees when
-// their library is empty. Onboarding never leaves the store again.
+// moves to the top of #dash, before "What's next" — the first thing a signed-in user sees when their
+// library is empty. Onboarding never leaves the store again.
 const point = createPoint({
   scope: SCOPE,
   clickConnect: () => clickConnect(),
   isFrozen: () => storageFrozen,
-  freeze: (on) => { storageFrozen = !!on; },
+  // Flipping the freeze flag must also refresh the already-rendered task checkboxes: they were painted
+  // with cb.disabled=storageFrozen and there's no re-render otherwise, so without this they'd look
+  // enabled during a folder-point freeze (clicks correctly no-op but the box flips and snaps back).
+  freeze: (on) => { storageFrozen = !!on; syncFrozenUI(); },
   buildActions: (focus) => buildActions(focus),
   onPublished: () => refreshLibrary(),
 });
+// Cheap honesty pass over the rendered task list when the freeze flag flips — no full renderNext.
+function syncFrozenUI() {
+  const list = $("next-list");
+  if (!list) return;
+  list.setAttribute("aria-disabled", storageFrozen ? "true" : "false");
+  list.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.disabled = storageFrozen; });
+}
 function movePoint(toDash) {
   const s = $("point-sec");
   if (!s) return;
-  if (toDash) $("dash").insertBefore(s, $("review-sec"));
+  // Insert before #next-sec (What's next), not #review-sec — on an empty-library first run #next-sec is
+  // the first dash section, so setup must land ahead of IT to stay the front door.
+  if (toDash) $("dash").insertBefore(s, $("next-sec"));
   else $("hero").insertBefore(s, $("way-sec"));
 }
 
@@ -758,6 +793,7 @@ async function refreshLibrary() {
   renderWay();
   // the hero waits for identity + library so its statement is true on first paint, not corrected
   renderHero();
+  void renderNext();      // the intent bar + the one shared task list — unconditional on the real path
   renderProjects(metas);
   renderBrands(metas);
   renderActions();
@@ -1017,7 +1053,9 @@ function renderDock() {
 
 async function recordRecent(id) {
   if (!relay || !APP_BY_ID[id]) return;
-  if (storageFrozen) return; // the folder pointer has our store pointed at the user's own directory
+  // Frozen: the folder pointer has our store pointed at the user's own directory. Bound: the store now
+  // shares the user's real Bank vault — recents are app-internal chrome and never belong in either.
+  if (storageFrozen || vaultBound) return;
   try {
     const raw = await relay.storage.get("recents");
     let list = safeParse(raw, []);
@@ -1150,6 +1188,418 @@ function renderActions() {
   }
 }
 
+// ========================================================================================
+// WHAT'S NEXT — intent bar + the one shared task list (tasks.md, the Bank dialect)
+// ========================================================================================
+// parseTasksMd is Bank's note parser (bank.js:75-89) scoped to the single tasks.md doc: the SAME
+// `## `→section and `- [ ]`→task regexes, so every line round-trips between here and the board. Per
+// task we peel the routing tag FIRST (it's dead-last), THEN the due suffix — order matters, or the due
+// split would swallow the trailing @id.
+function parseTasksMd(raw) {
+  const lines = String(raw || "").split("\n");
+  const tasks = [];
+  let section = "";
+  lines.forEach((l, i) => {
+    const hs = /^##\s+(.+)$/.exec(l);
+    if (hs) { section = hs[1].trim(); return; }
+    const m = /^\s*- \[( |x|X)\] (.+)$/.exec(l);
+    if (!m) return;
+    const text = m[2].trim();
+    const tag = WRAPP_TAG_RE.exec(text);
+    const id = tag ? tag[1].toLowerCase() : null;
+    const wrapp = id && APP_BY_ID[id] ? id : null;          // unknown/PARKED → no route
+    // Only peel the tag off the visible base text when it RESOLVES to a real wrapp. An unresolved
+    // trailing @token stays verbatim — harmless text, never silently dropped, never a dead chip.
+    const untagged = wrapp ? text.slice(0, tag.index).trim() : text;
+    const dm = TASK_DUE_RE.exec(untagged);
+    tasks.push({
+      line: i, done: m[1] !== " ", text, section: section || "Inbox",
+      wrapp, clean: dm ? dm[1].trim() : untagged, due: dm ? dm[2].trim() : "",
+    });
+  });
+  return tasks;
+}
+
+// The compact, id-keyed catalog view the matcher reasons over — catalog fact + the SAME hand-authored
+// data-tags the store search indexes (index.html data-tags, read at home.js applyFilters). Pure catalog
+// data; the user's library is added only later, at prompt time, for grounding.
+function catalogDigest() {
+  return APPS.map((app) => {
+    const category = categoryOf(app.id);
+    return {
+      id: app.id, name: app.name, category,
+      blurb: CATEGORY_BLURB[category] || "",
+      // the SAME data-tags the search index reads (applyFilters over #store a.card) — scoped to the
+      // catalog card, not the tag-less recently-added row / featured slide that share the same id.
+      tags: document.querySelector(`#store a.card[data-app="${app.id}"]`)?.dataset.tags || "",
+      pro: !!app.pro,
+    };
+  });
+}
+
+// Pre-connect (no relay): a synchronous token-overlap scorer over the digest — no model, no write.
+// Ranked desc, top 3 above a small floor, else an empty list (the caller shows the honest empty state).
+function keywordMatch(query) {
+  const toks = [...new Set(String(query || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))];
+  if (!toks.length) return [];
+  const scored = catalogDigest().map((d) => {
+    const name = d.name.toLowerCase();
+    const hay = `${name} ${d.category.toLowerCase()} ${d.blurb.toLowerCase()} ${d.tags.toLowerCase()}`;
+    let score = 0; const hit = [];
+    for (const t of toks) {
+      if (name.includes(t)) { score += 3; hit.push(t); }
+      else if (hay.includes(t)) { score += 1; hit.push(t); }
+    }
+    return { id: d.id, category: d.category, score, hit };
+  }).filter((x) => x.score >= 2).sort((a, b) => b.score - a.score);
+  return scored.slice(0, 3).map((x) => ({ id: x.id, why: `keyword match on ${x.hit.slice(0, 3).join(", ")} · ${x.category}` }));
+}
+
+// Connected: the user's OWN Claude matches ONE task to the catalog, grounded in their library. A single
+// non-agentic turn (no tools) that must return JSON and is allowed — required — to return none rather
+// than force a match. Every id is validated against APP_BY_ID; unknowns are dropped.
+async function matchIntent(query) {
+  if (!relay) return { matches: [], none: true, reason: "not connected" };
+  const digest = catalogDigest();
+  const lib = metasCache.map((m) => `${m.name} (${(m.kind || "context")})`).filter(Boolean).join(", ") || "(empty)";
+  const catalog = digest.map((d) => `${d.id} · ${d.name} · ${d.category}${d.tags ? " · " + d.tags : ""}`).join("\n");
+  const system =
+    "You match ONE user task to wrapps in this exact catalog. You MUST choose only from the given ids. " +
+    "If nothing genuinely fits, say so — do not force a match.";
+  const prompt = [
+    "CATALOG (id · name · category · tags):", catalog, "",
+    `THE USER'S LIBRARY (names + kinds, for grounding only — never invent from it): ${lib}`, "",
+    `THE TASK: ${String(query || "").slice(0, 400)}`, "",
+    "Reply with ONLY JSON — no prose, no code fence. Either:",
+    '{"matches":[{"id":"<catalog id>","why":"<one short reason, second person>"}],"none":false}',
+    "with 1–3 matches, best first — or, if nothing genuinely fits:",
+    '{"matches":[],"none":true,"reason":"<one short honest line>"}',
+  ].join("\n");
+  let acc = "";
+  try {
+    for await (const d of relay.stream({ system, prompt, model: "sonnet", maxTokens: 400 })) {
+      if (d.type === "text") acc += d.text;
+      else if (d.type === "error") throw new Error(d.error?.message || "stream error");
+    }
+  } catch (e) {
+    return { matches: [], none: true, reason: "Couldn't check that right now — try again in a moment." };
+  }
+  const parsed = safeParse(firstJsonBlob(acc), null);
+  const matches = parsed && Array.isArray(parsed.matches)
+    ? parsed.matches.filter((m) => m && APP_BY_ID[m.id]).map((m) => ({ id: m.id, why: String(m.why || "").slice(0, 160) }))
+    : [];
+  if (!parsed || parsed.none === true || !matches.length) {
+    const reason = (parsed && String(parsed.reason || "").slice(0, 160)) || "No wrapp in the catalog clearly fits that yet.";
+    return { matches: [], none: true, reason };
+  }
+  return { matches: matches.slice(0, 3), none: false };
+}
+// Pull the first {...} blob out of a model reply — robust to a stray code fence or lead-in line.
+function firstJsonBlob(str) {
+  const t = String(str || "");
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  return a >= 0 && b > a ? t.slice(a, b + 1) : t;
+}
+
+// Build `- [ ] <text> @<id>` — the routing tag DEAD-LAST, after any due suffix already inside <text>.
+function buildTaskLine(text, wrappId) {
+  let body = String(text || "").trim();
+  if (wrappId && APP_BY_ID[wrappId]) body += ` @${wrappId}`;
+  return `- [ ] ${body}`;
+}
+// Persist one task into tasks.md under `## <list>`, tag pinned last — the SAME insertion Bank's
+// appendTask does (bank.js:760-777). wrappId null → an unrouted task with no tag. Respects the freeze.
+async function appendTaskTagged(text, wrappId, list = "Inbox") {
+  const clean = String(text || "").trim();
+  if (!clean || !relay || storageFrozen) return false;
+  const existing = (await relay.storage.get(TASKS_KEY).catch(() => null)) || "";
+  const exLines = existing.split("\n");
+  for (let li = 0; li < exLines.length; li++) {
+    const m = /^\s*- \[( |x|X)\] (.+)$/.exec(exLines[li]);
+    if (!m || normTask(m[2]) !== normTask(clean)) continue;
+    // A twin is already on the list. If it carries NO resolved route and we have one to add, REWRITE it
+    // in place with the @tag dead-last (after any due) — otherwise runConnectedIntent promises a launch
+    // chip the persisted row can't show. If it's already routed, the no-op success stands.
+    const twin = m[2].trim();
+    const tg = WRAPP_TAG_RE.exec(twin);
+    const routed = tg && APP_BY_ID[tg[1].toLowerCase()];
+    if (wrappId && APP_BY_ID[wrappId] && !routed) {
+      exLines[li] = exLines[li].replace(/^(\s*- \[(?: |x|X)\] )(.+)$/, (_, mark, body) => `${mark}${body.trim()} @${wrappId}`);
+      const rewritten = exLines.join("\n");
+      try { await relay.storage.set(TASKS_KEY, rewritten); tasksRaw = rewritten; return true; }
+      catch { return false; }
+    }
+    return true; // already routed (or nothing new to route) — a no-op success
+  }
+  const line = buildTaskLine(clean, wrappId);
+  let doc = existing.trim() ? existing.replace(/\n+$/, "\n") : "# Tasks\n";
+  const lines = doc.split("\n");
+  const hi = lines.findIndex((l) => new RegExp(`^##\\s+${escapeTaskRe(list)}\\s*$`, "i").test(l));
+  let next;
+  if (hi === -1) { if (!doc.endsWith("\n")) doc += "\n"; next = `${doc}\n## ${list}\n${line}\n`; }
+  else {
+    let j = hi + 1; while (j < lines.length && !/^##\s+/.test(lines[j])) j++;
+    let at = j; while (at - 1 > hi && lines[at - 1].trim() === "") at--;
+    lines.splice(at, 0, line);
+    next = lines.join("\n");
+  }
+  try { await relay.storage.set(TASKS_KEY, next); tasksRaw = next; return true; }
+  catch { return false; }
+}
+// Checkbox toggle — RE-READ tasks.md fresh (never the stale module snapshot) and locate the row by
+// MATCHING the task's raw text in its pre-flip state, not the stale absolute line index. Two quick
+// toggles each start from disk and match by text, so neither drops the other's flip. Flip only that
+// marker, write back, repaint; revert the optimistic flip on failure. Honours the storage freeze;
+// copies Bank's toggleTask (bank.js:794-805). No global lock — fresh-read + match-by-text is enough.
+async function toggleTaskLine(task, cb) {
+  if (!relay || storageFrozen) { cb.checked = task.done; return; }
+  const fresh = (await relay.storage.get(TASKS_KEY).catch(() => null)) || "";
+  const lines = fresh.split("\n");
+  const want = String(task.text || "").trim(); // the full raw text (tag + due included) parseTasksMd kept
+  const idx = lines.findIndex((l) => {
+    const m = /^\s*- \[( |x|X)\] (.+)$/.exec(l);
+    return m && m[2].trim() === want && (m[1] !== " ") === task.done; // match the row in its pre-flip state
+  });
+  if (idx === -1) { tasksRaw = fresh; void renderNext(); return; } // moved/changed under us — repaint from truth
+  lines[idx] = task.done
+    ? lines[idx].replace(/- \[[xX]\]/, "- [ ]")
+    : lines[idx].replace("- [ ]", "- [x]");
+  const next = lines.join("\n");
+  try { await relay.storage.set(TASKS_KEY, next); tasksRaw = next; await renderNext(); }
+  catch { cb.checked = task.done; }
+}
+
+// A launch chip for a saved task row — an <a data-app> that reuses the store's delegated launch handler
+// (home.js document click): it records the recent + navigates. The href carries ?task= so the wrapp CAN
+// prefill once it reads it (wrapps prefill from context.active today, e.g. batch.js); the store's own
+// guarantee is only "saved to the one list AND the wrapp opens", never that the input is pre-filled.
+function launchAnchor(wrappId, text, label) {
+  const app = APP_BY_ID[wrappId];
+  const a = mk("a", "nt-open");
+  const base = app.href;
+  a.href = base + (base.includes("?") ? "&" : "?") + "task=" + encodeURIComponent(text);
+  a.dataset.app = wrappId;
+  const wi = mk("span", "nt-wi"); const f = famOf(wrappId);
+  wi.style.background = f.soft; wi.style.color = f.ink; wi.innerHTML = glyphSvg(wrappId);
+  a.append(wi, document.createTextNode(label), Object.assign(document.createElement("span"), { textContent: "→" }));
+  return a;
+}
+// A pill variant of the launch chip for suggestion cards (accent, no glyph tile).
+function launchPill(wrappId, text, label) {
+  const app = APP_BY_ID[wrappId];
+  const a = mk("a", "nm-go");
+  const base = app.href;
+  a.href = base + (base.includes("?") ? "&" : "?") + "task=" + encodeURIComponent(text);
+  a.dataset.app = wrappId;
+  a.textContent = label;
+  return a;
+}
+
+// The vault-state line — mirrors Bank's vault bar (bank.js:221-227). Honest about where tasks are saved:
+// the store can PROVE a folder is Bank's own only when it's the SwitchboardBrain default (a different
+// origin owns Bank, so any other bound path is just "your folder"). Either way show the friendly last
+// path segment, never a raw ~/ path.
+function renderNextVault(info) {
+  const el = $("next-vault");
+  if (!el) return;
+  const shared = !!info && info.autoAssigned === false;
+  el.textContent = "";
+  el.className = "next-vault" + (shared ? "" : " sandbox");
+  el.append(mk("span", "nv-dot"));
+  if (shared) {
+    const folder = String(info.folder || "");
+    const name = folder.split("/").filter(Boolean).pop() || "your folder";
+    const isBank = /SwitchboardBrain$/.test(folder); // the only folder we can prove is Bank's own vault
+    el.append(document.createTextNode(
+      isBank ? `shared with your Bank · ${name}` : `saved to your folder · ${name}`));
+  } else {
+    el.append(document.createTextNode("Saved here in the store for now — connect your Bank to keep all your tasks in one place."));
+    const bind = mk("button", "nv-bind", "Connect Bank");
+    bind.type = "button";
+    bind.onclick = () => {
+      const row = $("next-bindrow");
+      if (!row) return;
+      row.hidden = false;
+      const i = $("next-bind-path");
+      if (i) { if (!i.value.trim()) i.value = "~/SwitchboardBrain"; i.focus(); i.select(); } // default prefilled — one click works
+    };
+    el.append(bind);
+  }
+  const row = $("next-bindrow");
+  if (row && shared) row.hidden = true; // once bound, no reason to keep the bind row open
+}
+async function bindNextVault() {
+  if (!relay || storageFrozen) return; // a folder-point is mid-flight — don't race its freeze/restore window
+  const path = ($("next-bind-path")?.value || "").trim();
+  if (!path) return;
+  const go = $("next-bind-go");
+  if (go) { go.disabled = true; go.textContent = "connecting…"; }
+  try {
+    const info = await relay.storage.bind(path).catch(() => null);
+    if (info) {
+      vaultBound = true; // store now writes into the user's real vault — keep app-internal files out
+      $("next-bindrow").hidden = true;
+      await renderNext();
+    }
+  } finally { if (go) { go.disabled = false; go.textContent = "Connect ▸"; } }
+}
+
+// (1) load tasks.md, (2) parse, (3) group by section → checkbox + label + due + launch chip.
+// Renders UNCONDITIONALLY on the real connected path (like renderProjects), never behind demoTasks.
+async function renderNext() {
+  const sec = $("next-sec");
+  if (!sec) return;
+  if (!relay) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const raw = await relay.storage.get(TASKS_KEY).catch(() => null);
+  if (!relay) return;
+  tasksRaw = raw || "";
+  const info = await relay.storage.info().catch(() => null);
+  if (!relay) return;
+  vaultBound = !!info && info.autoAssigned === false; // bound to the user's real vault → keep app-internal writes out
+  renderNextVault(info);
+  renderNextList(parseTasksMd(tasksRaw));
+}
+function renderNextList(tasks) {
+  const box = $("next-list");
+  if (!box) return;
+  box.textContent = "";
+  if (!tasks.length) {
+    box.append(mk("div", "nl-empty",
+      "No tasks yet — type what you need above and your Claude routes it here, or send tasks in from any Claude thread and they land on this same list."));
+    return;
+  }
+  const groups = new Map();
+  for (const t of tasks) { const g = t.section || "Inbox"; (groups.get(g) ?? groups.set(g, []).get(g)).push(t); }
+  for (const [section, list] of groups) {
+    const open = list.filter((t) => !t.done), done = list.filter((t) => t.done);
+    const wrap = mk("div", "next-group");
+    wrap.append(mk("div", "ng-k", `${section} · ${open.length} open`));
+    for (const t of open.concat(done)) wrap.append(nextTaskRow(t));
+    box.append(wrap);
+  }
+}
+function nextTaskRow(t) {
+  const row = mk("div", "trow-n" + (t.done ? " done" : ""));
+  const main = mk("label", "nt-main");
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.checked = t.done; cb.disabled = storageFrozen;
+  cb.onchange = () => void toggleTaskLine(t, cb);
+  main.append(cb, mk("span", "nt-label", t.clean));
+  row.append(main);
+  if (t.due && !t.done) row.append(mk("span", "nt-due", t.due));
+  if (t.wrapp && APP_BY_ID[t.wrapp]) row.append(launchAnchor(t.wrapp, t.clean, `complete with ${APP_BY_ID[t.wrapp].name}`));
+  return row;
+}
+
+// The intent bar submit — connected. Match, persist the top pick tagged, confirm + show the "why" and
+// any alternatives as open-with pills, then repaint the list so the new row lands with its launch chip.
+async function runConnectedIntent(q, input, go) {
+  if (!q) return;
+  const suggest = $("next-suggest");
+  if (!suggest) return;
+  suggest.hidden = false;
+  suggest.textContent = "";
+  suggest.append(mk("div", "next-thinking", "finding the right wrapp…"));
+  if (go) go.disabled = true;
+  const res = await matchIntent(q);
+  if (go) go.disabled = false;
+  suggest.textContent = "";
+  if (res.none || !res.matches.length) { renderNoMatch(suggest, q, res.reason); return; }
+  const top = res.matches[0];
+  const saved = await appendTaskTagged(q, top.id);
+  if (input) input.value = "";
+  const app = APP_BY_ID[top.id];
+  const card = mk("div", "next-match");
+  card.append(glyphTile(top.id, 34));
+  const b = mk("span", "nm-b");
+  const n = mk("span", "nm-n");
+  n.append(document.createTextNode(saved ? `Saved · routed to ${app.name}` : `Routed to ${app.name}`));
+  n.append(mk("span", "nm-cat", categoryOf(top.id)));
+  b.append(n, mk("span", "nm-why", top.why || ""));
+  card.append(b, launchPill(top.id, q, `Open ${app.name} ▸`));
+  suggest.append(card);
+  if (res.matches.length > 1) {
+    const alt = mk("div", "next-alts");
+    alt.append(mk("span", "na-k", "also fits:"));
+    for (const m of res.matches.slice(1)) {
+      const p = launchPill(m.id, q, APP_BY_ID[m.id].name);
+      p.classList.add("ghost");
+      alt.append(p);
+    }
+    suggest.append(alt);
+  }
+  await renderNext();
+}
+// The honest empty state: NEVER a forced match. Two real fallbacks — the pointer flow (a real brand to
+// ground on) and "save it anyway (unrouted)" which writes the task with NO @tag.
+function renderNoMatch(holder, q, reason) {
+  const box = mk("div", "next-empty");
+  box.append(mk("h5", null, "No wrapp fits that yet"));
+  box.append(mk("p", null, (reason || "Nothing in the catalog clearly matches that.") +
+    " Forcing a bad match would waste your time — two honest moves instead:"));
+  const fb = mk("div", "next-fallbacks");
+  const p1 = mk("button", "next-fb", "Add your website — it helps match the right app");
+  p1.type = "button"; p1.onclick = () => point.open("site");
+  const p2 = mk("button", "next-fb", "Save it anyway (unrouted)");
+  p2.type = "button";
+  p2.onclick = async () => {
+    const ok = await appendTaskTagged(q, null);
+    if (!ok) return;
+    const i = $("next-input"); if (i) i.value = "";
+    // Leave a persistent confirmation card (mirrors the routed "Saved · routed to X" path) rather than
+    // vanishing the whole box with no acknowledgement that anything happened.
+    holder.textContent = "";
+    const card = mk("div", "next-match");
+    const b = mk("span", "nm-b");
+    b.append(mk("span", "nm-n", "Saved to your list"),
+      mk("span", "nm-why", "no wrapp routed — it's on your one list, ready when you are"));
+    card.append(b);
+    holder.append(card);
+    await renderNext();
+  };
+  fb.append(p1, p2);
+  box.append(fb);
+  holder.append(box);
+}
+// The intent bar submit — pre-connect. Keyword scorer only: browse to detail pages, never a write.
+function runPreIntent(q) {
+  const holder = $("next-pre-suggest");
+  if (!holder) return;
+  if (!q) { holder.hidden = true; holder.textContent = ""; return; }
+  holder.hidden = false;
+  holder.textContent = "";
+  const matches = keywordMatch(q);
+  if (!matches.length) {
+    const box = mk("div", "next-empty");
+    box.append(mk("h5", null, "No obvious match"));
+    box.append(mk("p", null, "Nothing in the catalog jumps out for those words. Connect Switchboard and your own Claude routes it properly — and saves it as a task."));
+    const fb = mk("div", "next-fallbacks");
+    const c = mk("button", "next-fb", "Connect Switchboard"); c.type = "button"; c.onclick = () => clickConnect();
+    fb.append(c); box.append(fb); holder.append(box);
+    return;
+  }
+  for (const m of matches) {
+    const app = APP_BY_ID[m.id];
+    const a = mk("a", "next-match");
+    a.href = detailHref(m.id);
+    a.dataset.detail = "1"; // browsing a detail page, not launching — keep it out of recents
+    a.append(glyphTile(m.id, 34));
+    const b = mk("span", "nm-b");
+    const n = mk("span", "nm-n"); n.append(document.createTextNode(app.name)); n.append(mk("span", "nm-cat", categoryOf(m.id)));
+    b.append(n, mk("span", "nm-why", "connect to save this as a task"));
+    a.append(b, Object.assign(document.createElement("span"), { className: "nm-go ghost", textContent: "See it ▸" }));
+    holder.append(a);
+  }
+}
+// Wire an intent bar's input + button to a run fn (Enter or click).
+function renderIntentBar(inputId, goId, run) {
+  const input = $(inputId), go = $(goId);
+  if (!input || !go) return;
+  go.onclick = () => run(input.value.trim(), input, go);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(input.value.trim(), input, go); } });
+}
+
 // ---------- plan card (SIMULATED) ----------
 function renderPlan() {
   const el = $("plan-card");
@@ -1175,7 +1625,7 @@ async function togglePlan() {
   plan = plan === "pro" ? "free" : "pro";
   document.body.classList.toggle("plan-pro", plan === "pro");
   renderPlan();
-  if (storageFrozen) return; // simulated state — dropping one write costs nothing, a stray file in someone's repo does not
+  if (storageFrozen || vaultBound) return; // simulated state — never a stray file in someone's repo OR their real Bank vault
   try { await relay?.storage.set("plan", plan); } catch { /* re-toggle next visit at worst */ }
 }
 
@@ -1217,7 +1667,7 @@ async function buyPack(amt, price) {
   wallet.ledger = wallet.ledger.slice(0, 20);
   renderWallet();
   $("pack-note").textContent = `SIMULATED checkout complete — ${amt.toLocaleString("en-US")} SB credited to the preview stub. ${price} was NOT charged; no card exists here. Packs never expire.`;
-  if (storageFrozen) return;
+  if (storageFrozen || vaultBound) return; // stub only — never lands in a folder-point target or a bound vault
   try { await relay?.storage.set("wallet", JSON.stringify(wallet)); } catch { /* stub only */ }
 }
 $("pack-close").onclick = closePacks;
@@ -1341,6 +1791,16 @@ document.addEventListener("keydown", (e) => {
 
 $("hero-connect").onclick = () => clickConnect();
 $("projects-new").onclick = () => point.open();
+
+// the two intent bars — connected (routes + saves to tasks.md) and the lighter pre-connect echo
+renderIntentBar("next-input", "next-go", (q, input, go) => void runConnectedIntent(q, input, go));
+renderIntentBar("next-pre-input", "next-pre-go", (q) => runPreIntent(q));
+$("next-bind-go")?.addEventListener("click", () => void bindNextVault());
+$("next-bind-cancel")?.addEventListener("click", () => { $("next-bindrow").hidden = true; });
+$("next-bind-path")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); void bindNextVault(); }
+  else if (e.key === "Escape") $("next-bindrow").hidden = true;
+});
 
 // ========================================================================================
 // FIRST PAINT
