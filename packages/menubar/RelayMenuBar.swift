@@ -205,6 +205,7 @@ struct Panel: View {
     let onToken: () -> Void
     let onLogs: () -> Void
     let onRestart: () -> Void
+    let onStop: () -> Void
     let onTakeOver: () -> Void
     let onRepair: () -> Void
     let onQuit: () -> Void
@@ -301,11 +302,18 @@ struct Panel: View {
                 GhostButton(icon: "doc.on.doc", label: "token", action: onToken)
                 GhostButton(icon: "text.alignleft", label: "logs", action: onLogs)
                 GhostButton(icon: "arrow.clockwise", label: model.running ? "restart" : "start", action: onRestart)
+                if model.running {
+                    // The audit's "leaving" journey: the power glyph read as "turn Switchboard
+                    // off" but only quit this app — the daemon kept serving every wrapp with the
+                    // user's only handle on it gone. Stop is now its own explicit control.
+                    GhostButton(icon: "stop.circle", label: "stop", action: onStop)
+                }
                 Spacer()
                 if let t = model.toast {
                     Text(t).font(.system(size: 10)).foregroundColor(.lime).lineLimit(1)
                 }
                 GhostButton(icon: "power", label: nil, action: onQuit)
+                    .help("Quit this app. The sidekick daemon keeps running — use stop to end it.")
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
         }
@@ -368,6 +376,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
+            onStop: { [weak self] in self?.stopDaemon() },
             onTakeOver: { [weak self] in self?.takeOverDaemon() },
             onRepair: { [weak self] in self?.repairDaemon() },
             onQuit: { NSApp.terminate(nil) }
@@ -520,6 +529,15 @@ final class RelayController: NSObject, NSApplicationDelegate {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.poll() }
         model.plist = plistState()
+    }
+
+    /// Actually stop the daemon: bootout unloads the job entirely, so KeepAlive cannot respawn
+    /// it. The plist stays on disk — the start button bootstraps it again. Before this existed
+    /// there was NO way to stop the daemon from any UI; quitting the app just orphaned it.
+    private func stopDaemon() {
+        launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
+        toast("sidekick stopped")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.poll() }
     }
 
     /// Write the bundle-pointing plist and bootstrap it. The one path that creates the LaunchAgent.

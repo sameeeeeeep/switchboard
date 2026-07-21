@@ -37,6 +37,12 @@ export interface HealthStatus {
   connected: boolean;
   /** Present iff degraded — the single reason to surface (see HealthReason precedence). */
   reason?: HealthReason;
+  /** Whether the Relay app has EVER been seen from this browser (a token was stored, or a dial
+   *  reached a daemon at some point). Distinguishes "never installed the app" from "app asleep" —
+   *  the two states the ladder previously collapsed into one "unreachable", telling users who had
+   *  never downloaded anything to "wake" a sidekick they didn't have. Optional: absent on older
+   *  extensions; consumers treat absence as unknown, never as false. */
+  installedHere?: boolean;
 }
 
 /** The provider event name for live ladder transitions (window.claude.on(HEALTH_EVENT, …)). */

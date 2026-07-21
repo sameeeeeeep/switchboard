@@ -48,7 +48,7 @@ export interface ConnectChipHandle {
 type State =
   | { kind: "booting" }
   | { kind: "not-installed"; installUrl: string }
-  | { kind: "unreachable" }
+  | { kind: "unreachable"; appMissing?: boolean }
   | { kind: "unpaired" }
   | { kind: "disconnected"; relay: Relay }
   | { kind: "connected"; relay: Relay; user: UserIdentity | null; project: Context | null };
@@ -71,6 +71,8 @@ function rungFromError(e: ProviderError): { kind: "unreachable" } | { kind: "unp
 
 /** One-click extension install (the landing page stays the "full setup" story: extension + sidekick). */
 const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb";
+/** Stable unversioned asset — survives releases (see DAEMON-DISTRIBUTION.md §7). */
+const RELAY_DMG_URL = "https://github.com/sameeeeeeep/switchboard/releases/latest/download/Relay.dmg";
 
 const STYLE = `
 :host { all: initial; }
@@ -181,7 +183,10 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     // store users run an older extension against newer wrapp bundles.
     const h = await r.health();
     if (destroyed || my !== seq) return;
-    if (h && !h.reachable) { state = { kind: "unreachable" }; emitTransition(false); return render(); }
+    // installedHere === false is a 0.1.4+ extension SAYING the Relay app was never seen on this
+    // machine — render "get the app", not "wake it". Absence of the field (older worker) means
+    // unknown, and the calmer "asleep" copy stays the safe default.
+    if (h && !h.reachable) { state = { kind: "unreachable", appMissing: h.installedHere === false }; emitTransition(false); return render(); }
     if (h && !h.paired) { state = { kind: "unpaired" }; emitTransition(false); return render(); }
     let permErr: ProviderError = null;
     const grant = sessionDisconnected ? null : await r.permissions().catch((e) => { permErr = e as ProviderError; return null; });
@@ -290,9 +295,12 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       wrap.append(b);
       if (menuOpen) {
         const menu = el("div", "menu");
-        const store = el("button", "item", "Add to Chrome ↗");
+        // The only rung whose menu had no explanatory copy — and the one where the two-part
+        // install most needs saying, or "Add to Chrome" reads as the complete action.
+        menu.append(el("div", "body", "Two parts: the Chrome extension, then Relay for Mac."));
+        const store = el("button", "item", "1 · Add to Chrome ↗");
         store.onclick = () => { menuOpen = false; render(); window.open(CHROME_STORE_URL, "_blank", "noopener"); };
-        const guide = el("button", "item", "Full setup guide ↗");
+        const guide = el("button", "item", "2 · Get Relay for Mac ↗");
         guide.onclick = () => { menuOpen = false; render(); window.open(url, "_blank", "noopener"); };
         menu.append(store, guide);
         wrap.append(menu);
@@ -301,21 +309,29 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       return;
     }
 
-    // Sidekick asleep: the daemon's socket can't be opened (never installed, or not running — the
-    // browser can't tell them apart). Amber, not red: nothing is broken, one action wakes it, and
-    // the health push auto-upgrades the chip the moment the daemon answers.
+    // Sidekick asleep — OR never installed. A 0.1.4+ extension tells us which (installedHere);
+    // appMissing renders "get the app" instead of telling someone to wake a ghost. Amber either
+    // way: nothing is broken, and the health push auto-upgrades the chip when the daemon answers.
     if (state.kind === "unreachable") {
+      const appMissing = state.appMissing === true;
       const wrap = el("div", "wrap");
       const b = el("button", "btn get");
-      b.append(el("span", "glyph"), el("span", undefined, "Your sidekick is asleep"), el("span", "dot"), el("span", "caret", "▾"));
+      b.append(el("span", "glyph"), el("span", undefined, appMissing ? "Get Relay for Mac" : "Your sidekick is asleep"), el("span", appMissing ? "arr" : "dot", appMissing ? "↗" : undefined), ...(appMissing ? [] : [el("span", "caret", "▾")]));
       b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
       wrap.append(b);
       if (menuOpen) {
         const menu = el("div", "menu");
-        menu.append(el("div", "body", "Open the Relay menubar app to wake it."));
-        const retry = el("button", "item", "Retry");
-        retry.onclick = () => { menuOpen = false; render(); void refresh(); };
-        menu.append(retry, el("div", "sep"));
+        if (appMissing) {
+          menu.append(el("div", "body", "Extension ✓ — now the other half: Relay, the Mac app that holds your Claude."));
+          const dl = el("button", "item", "Download Relay.dmg ↗");
+          dl.onclick = () => { menuOpen = false; render(); window.open(RELAY_DMG_URL, "_blank", "noopener"); };
+          menu.append(dl, el("div", "sep"));
+        } else {
+          menu.append(el("div", "body", "Open the Relay menubar app to wake it."));
+          const retry = el("button", "item", "Retry");
+          retry.onclick = () => { menuOpen = false; render(); void refresh(); };
+          menu.append(retry, el("div", "sep"));
+        }
         const setup = el("button", "item", "New here? Full setup ↗");
         setup.onclick = () => { menuOpen = false; render(); window.open(installUrl, "_blank", "noopener"); };
         menu.append(setup);

@@ -24,8 +24,13 @@ let authed = false;
  *  just recomputes on the next dial. Reset on auth_ok so a long-ago rejection can't go stale. */
 let lastDial = { openedButUnauthed: false, at: 0 };
 
-const inflight = new Map<string, chrome.runtime.Port>();     // page request id → page port
+const inflight = new Map<string, { port: chrome.runtime.Port; method: string }>(); // page request id → port + method
 const pagePorts = new Set<chrome.runtime.Port>();            // all page ports (for events)
+/** streamId → the page port that started it. Deltas route HERE, not to every page: sibling wrapps
+ *  are separate origins with separate grants, and broadcasting let any page (window.claude.on is
+ *  public API) read another origin's model output. Unknown streamId (worker evicted mid-stream,
+ *  map lost) falls back to the old fan-out so tails are never dropped. */
+const streamPorts = new Map<string, chrome.runtime.Port>();
 const pendingConsent = new Map<string, { resolve: (r: unknown) => void }>(); // daemon prompt id → resolver
 const pendingControl = new Map<string, { resolve: (r: unknown) => void }>(); // control call id → resolver
 const consentBodies = new Map<string, { kind: string; body: unknown }>();    // prompt id → data for the window
@@ -48,6 +53,24 @@ async function getToken(): Promise<string | null> {
   const { pairingToken } = await chrome.storage.local.get("pairingToken");
   return pairingToken ?? null;
 }
+
+/** Sticky "the Relay app exists on this machine" bit: set the first time a dial ever reaches a
+ *  daemon (or a token is stored) and never unset by mere unreachability. Lets health distinguish
+ *  "never installed the app" (→ 'Get Relay for Mac') from "app asleep" (→ 'wake it') — the two
+ *  states the ladder previously collapsed, sending never-installed users to wake a ghost. */
+async function everReached(): Promise<boolean> {
+  const { relaySeen } = await chrome.storage.local.get("relaySeen");
+  return !!relaySeen;
+}
+function markReached(): void { void chrome.storage.local.set({ relaySeen: true }); }
+
+/** First install: open the setup page. Without this, installing ends in Chrome's generic bubble
+ *  and silence — and the wrapp tab the user came from doesn't even know the extension landed. */
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    void chrome.tabs.create({ url: "https://thelastprompt.ai/switchboard/#install" });
+  }
+});
 
 /** Resolves TRUE only once the socket is open AND authenticated (auth_ok received). A single
  *  in-flight connect is shared; MV3 can evict the worker between calls, so this reconnects on
@@ -81,25 +104,41 @@ function ensureSocket(): Promise<boolean> {
         switch (msg.type) {
           case "auth_ok":
             authed = true;
+            markReached(); // a daemon answered — the Relay app exists on this machine
             lastDial = { openedButUnauthed: false, at: Date.now() }; // accepted pairing — clear any stale rejection
             clearTimeout(timer); finish(true);
             void broadcastHealth(); // the ladder moved up — pages/panel upgrade live
             break;
           case "response": {
-            const port = inflight.get(msg.id); inflight.delete(msg.id);
-            port?.postMessage({ id: msg.id, result: msg.result, error: msg.error });
+            const entry = inflight.get(msg.id); inflight.delete(msg.id);
+            // A stream's ack carries its streamId — bind it to the asking port so deltas route.
+            const sid = (msg.result as { streamId?: string } | undefined)?.streamId;
+            if (entry && entry.method === "claude_stream" && sid) streamPorts.set(sid, entry.port);
+            entry?.port.postMessage({ id: msg.id, result: msg.result, error: msg.error });
             break;
           }
-          case "event":
+          case "event": {
+            if (msg.event === "delta") {
+              const sid = (msg.payload as { streamId?: string; type?: string } | undefined)?.streamId;
+              const owner = sid ? streamPorts.get(sid) : undefined;
+              if (owner) {
+                try { owner.postMessage({ event: "delta", payload: msg.payload }); } catch { /* gone */ }
+              } else {
+                // Unknown stream (mapping lost to eviction, or a pre-0.1.4 daemon) — old fan-out.
+                for (const p of pagePorts) { try { p.postMessage({ event: "delta", payload: msg.payload }); } catch { /* gone */ } }
+              }
+              const t = (msg.payload as { type?: string } | undefined)?.type;
+              if (sid && (t === "done" || t === "error")) streamPorts.delete(sid);
+              // TabSidekick streams its task output into the panel, so the panel DOES need `delta`.
+              try { panelPort?.postMessage({ type: "delta", payload: msg.payload }); } catch { /* panel gone */ }
+              break;
+            }
             for (const p of pagePorts) { try { p.postMessage({ event: msg.event, payload: msg.payload }); } catch { /* gone */ } }
-            // TabSidekick streams its task output into the panel, so the panel DOES need `delta` here
-            // (unlike page streams, which flow to the page ports above). Route it to the panel port.
-            if (msg.event === "delta") { try { panelPort?.postMessage({ type: "delta", payload: msg.payload }); } catch { /* panel gone */ } }
-            // Also nudge the side panel: a grant/pick/permission change means its view is stale, so
-            // it re-pulls fresh state instead of needing a reopen. Skip `delta` — it fires per stream
-            // token and changes nothing the panel's home shows (that would be a refresh on every token).
-            else { try { panelPort?.postMessage({ type: "state:changed", event: msg.event }); } catch { /* panel gone */ } }
+            // Nudge the side panel: a grant/pick/permission change means its view is stale, so
+            // it re-pulls fresh state instead of needing a reopen.
+            try { panelPort?.postMessage({ type: "state:changed", event: msg.event }); } catch { /* panel gone */ }
             break;
+          }
           case "prompt":
             void openConsent(msg.id, msg.kind, msg.body);
             break;
@@ -112,6 +151,16 @@ function ensureSocket(): Promise<boolean> {
       };
       socket.onclose = () => {
         authed = false; socket = null; ready = null; clearTimeout(timer); finish(false);
+        // DRAIN, don't orphan. Every awaited request and open stream dies with this socket; left
+        // alone they hang into inject.ts's 130s backstop with zero feedback. Fail them NOW with
+        // the same classified 4900 the fast-fail path uses, so wrapps render an honest error.
+        const gone = { code: 4900, message: "your sidekick disconnected mid-request — open the Relay app", data: { reason: "unreachable" as const } };
+        for (const [id, entry] of inflight) { try { entry.port.postMessage({ id, error: gone }); } catch { /* gone */ } }
+        inflight.clear();
+        for (const [sid, port] of streamPorts) {
+          try { port.postMessage({ event: "delta", payload: { streamId: sid, type: "error", error: { code: "4900", message: gone.message } } }); } catch { /* gone */ }
+        }
+        streamPorts.clear();
         // The ladder moved down (daemon stopped, or an auth-rejected close). Deduped inside, so the
         // ~1s reconnect loop below never spams identical pushes.
         void broadcastHealth();
@@ -144,6 +193,7 @@ function probeReachable(timeoutMs = 800): Promise<boolean> {
       if (settled) return;
       settled = true;
       probeCache = { ok, at: Date.now() };
+      if (ok) markReached(); // even an unauthed dial proves a daemon lives here
       probeInflight = null;
       resolve(ok);
     };
@@ -166,15 +216,16 @@ async function grantFor(origin: string): Promise<{ origin: string; mode?: string
 /** The setup ladder WITHOUT the per-origin bit: reachable/paired/reason from the worker's own state.
  *  Never redials when a token is stored — it classifies from the last dial (fresh at every
  *  transition call site), so a broadcast from socket.onclose can't recurse into a reconnect. */
-async function baseHealth(): Promise<{ installed: true; reachable: boolean; paired: boolean; reason?: HealthReason }> {
-  if (socket && socket.readyState === WebSocket.OPEN && authed) return { installed: true, reachable: true, paired: true };
+async function baseHealth(): Promise<{ installed: true; reachable: boolean; paired: boolean; reason?: HealthReason; installedHere: boolean }> {
+  if (socket && socket.readyState === WebSocket.OPEN && authed) return { installed: true, reachable: true, paired: true, installedHere: true };
   const token = await getToken();
+  const seen = !!token || (await everReached());
   if (token) {
-    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, reason: "unpaired" };
-    return { installed: true, reachable: false, paired: false, reason: "unreachable" };
+    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, reason: "unpaired", installedHere: true };
+    return { installed: true, reachable: false, paired: false, reason: "unreachable", installedHere: seen };
   }
   const reachable = await probeReachable();
-  return { installed: true, reachable, paired: false, reason: reachable ? "unpaired" : "unreachable" };
+  return { installed: true, reachable, paired: false, reason: reachable ? "unpaired" : "unreachable", installedHere: reachable || seen };
 }
 
 /** claude_health's answer — the one method that never NEEDS the daemon. Degraded states resolve
@@ -182,16 +233,17 @@ async function baseHealth(): Promise<{ installed: true; reachable: boolean; pair
  *  and only for this origin's `connected` bit. */
 async function healthSnapshot(origin: string): Promise<HealthStatus> {
   if (socket && socket.readyState === WebSocket.OPEN && authed) {
-    return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)) };
+    return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)), installedHere: true };
   }
   const token = await getToken();
+  const seen = !!token || (await everReached());
   if (token) {
-    if (await ensureSocket()) return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)) };
-    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, connected: false, reason: "unpaired" };
-    return { installed: true, reachable: false, paired: false, connected: false, reason: "unreachable" };
+    if (await ensureSocket()) return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)), installedHere: true };
+    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, connected: false, reason: "unpaired", installedHere: true };
+    return { installed: true, reachable: false, paired: false, connected: false, reason: "unreachable", installedHere: seen };
   }
   const reachable = await probeReachable();
-  return { installed: true, reachable, paired: false, connected: false, reason: reachable ? "unpaired" : "unreachable" };
+  return { installed: true, reachable, paired: false, connected: false, reason: reachable ? "unpaired" : "unreachable", installedHere: reachable || seen };
 }
 
 /** Fan the `health` event out to every page (per-origin `connected`) and nudge the open panel to
@@ -447,13 +499,14 @@ chrome.runtime.onConnect.addListener((port) => {
       params: m.params as never,
       sentAt: Date.now(),
     };
-    inflight.set(m.id, port);
+    inflight.set(m.id, { port, method: m.method });
     socket.send(JSON.stringify({ type: "request", ...envelope }));
   });
 
   port.onDisconnect.addListener(() => {
     pagePorts.delete(port);
-    for (const [id, p] of inflight) if (p === port) inflight.delete(id);
+    for (const [id, e] of inflight) if (e.port === port) inflight.delete(id);
+    for (const [sid, p] of streamPorts) if (p === port) streamPorts.delete(sid);
   });
 });
 

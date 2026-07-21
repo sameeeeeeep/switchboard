@@ -203,6 +203,27 @@ async function main() {
   const root = mountEl.attachShadow({ mode: "closed" });
   (document.documentElement || document.body).appendChild(mountEl);
   render(root, view, host, !!store[COLLAPSED_KEY]);
+
+  // STAY HONEST. This card previously rendered once and subscribed to nothing — it asserted
+  // "Connected — running on your Claude" indefinitely against a daemon that had died. The status
+  // view now re-pulls worker state on a slow tick and whenever the tab regains visibility (the
+  // moment a stale claim would actually be read). Alts view is static — no refresh needed.
+  if (view.kind === "status") {
+    let lastKey = JSON.stringify(view.state);
+    const refresh = async () => {
+      if (document.hidden) return;
+      const s = (await send({ type: "widgetState" })) as WidgetState | undefined;
+      if (!s) return;
+      const key = JSON.stringify(s);
+      if (key === lastKey) return;
+      lastKey = key;
+      const st = await chrome.storage.local.get([COLLAPSED_KEY]);
+      root.replaceChildren();
+      render(root, { kind: "status", state: s }, host, !!st[COLLAPSED_KEY]);
+    };
+    setInterval(() => { void refresh(); }, 25_000);
+    document.addEventListener("visibilitychange", () => { void refresh(); });
+  }
 }
 
 void main();
