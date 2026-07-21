@@ -194,7 +194,7 @@ function render(data: PanelData) {
     } else {                      // paired, sidekick asleep — retry is a courtesy; health auto-recovers
       $("pairH2").textContent = "Your sidekick is asleep";
       tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
-      err.className = "err calm"; err.textContent = "Your sidekick isn’t running. Open the Relay app in your menu bar to wake it — or run npm run sidekick.";
+      err.className = "err calm"; err.textContent = "Your sidekick isn’t running. Open Relay from Applications — it lives in your menu bar — and it will wake up.";
       $("pairBtn").textContent = "Retry";
     }
   }
