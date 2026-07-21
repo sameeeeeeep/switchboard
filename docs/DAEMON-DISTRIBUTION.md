@@ -41,7 +41,8 @@ What does NOT ship: no API keys, no tokens, no state. Everything user-specific l
   spawn the *system* `claude` (found via `~/.local/bin`, `/opt/homebrew/bin`,
   `/usr/local/bin`, or `CLAUDE_CLI`), so `claude` should be installed and logged in.
   Note the two binaries can drift in version; the bundled one is pinned by the agent-sdk.
-- **Chrome + the Switchboard extension 0.1.3** (`switchboard-0.1.3.zip`).
+- **Chrome + the Switchboard extension 0.1.3** — from the Chrome Web Store, or
+  `switchboard-extension.zip` loaded unpacked for development.
 - **macOS 13+ on Apple Silicon.** The DMG is arm64-only for now (universal2 is future work).
 
 ## 3. Install
@@ -58,23 +59,22 @@ What does NOT ship: no API keys, no tokens, no state. Everything user-specific l
 3. Click **token** in the popover and paste it into the extension's pairing field.
    State lives in `~/.relay`: pairing token (0600), contexts, grants, audit log.
 
-## 4. Gatekeeper reality for the ad-hoc v1
+## 4. Gatekeeper
 
-The v1 DMG is **ad-hoc signed** (no Apple Developer identity yet), so first launch is blocked:
+**Signed and notarized since 0.1.3** — first launch just works. No "Open Anyway", no
+`xattr -dr com.apple.quarantine`, no right-click → Open. Both the app and the DMG carry a
+stapled notarization ticket, so this holds offline too.
 
-1. Double-click Relay → macOS says *"Apple could not verify 'Relay' is free of malware"*. Close it.
-2. **System Settings → Privacy & Security**, scroll to the security section → **Open Anyway**.
-3. Reopen Relay → confirm **Open** in the final dialog.
-
-The old right-click → Open bypass **no longer works on macOS 15+**. Terminal alternative:
+Verify any build before shipping it:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Relay.app
+spctl -a -t open --context context:primary-signature -vv packages/menubar/build/Relay-0.1.3.dmg
+# → accepted / source=Notarized Developer ID
 ```
 
-Even after "Open Anyway", an app still sitting in Downloads runs translocated — the popover
-will keep saying "move Relay to /Applications, then reopen it" instead of starting. That
-message is the guard from §3 doing its job.
+Translocation still applies, and is unrelated to signing: an app left in Downloads runs from
+a randomized read-only path, so the popover keeps saying "move Relay to /Applications, then
+reopen it" instead of starting. That is the §3 guard doing its job, not a Gatekeeper problem.
 
 ## 5. Taking over from a dev install
 
@@ -94,57 +94,61 @@ A third state, **stale** (plist points into a bundle that no longer has the file
 moved or updated), gets a **repair** button: rewrite + bootout/bootstrap (launchd caches
 `ProgramArguments`, so a plain kickstart would respawn the dead paths).
 
-## 6. The notarization path (before public distribution)
+## 6. Signing + notarization (automatic)
 
-Ad-hoc friction (§4) is a funnel killer; before any real launch:
+`package-dmg.sh` does the whole thing when two prerequisites are present — a **Developer ID
+Application** certificate in the keychain, and a notarytool credential profile:
 
-1. Join the **Apple Developer Program** ($99/yr) and create a **Developer ID Application**
-   certificate in the keychain.
-2. Re-run `package-dmg.sh` — it auto-detects the identity and signs the app *and*
-   `Resources/node` with `--options runtime --timestamp` (hardened runtime is a notarization
-   requirement for every executable; official node builds already carry it under the Node.js
-   Developer ID, but re-signing keeps the whole bundle under one identity — defensive and
-   cheap). Anthropic's `claude` already carries hardened runtime + timestamp and stays
-   vendor-signed — which is also why the script never uses `codesign --deep`: a deep re-sign
-   would destroy that signature.
-3. Submit and staple:
+```sh
+# one-time; omit --password so it prompts and never lands in shell history
+xcrun notarytool store-credentials relay-notary --apple-id <email> --team-id <TEAMID>
+```
 
-   ```sh
-   xcrun notarytool submit packages/menubar/build/Relay-0.1.3.dmg \
-     --keychain-profile relay-notary --wait
-   xcrun stapler staple packages/menubar/build/dmg-staging/Relay.app
-   xcrun stapler staple packages/menubar/build/Relay-0.1.3.dmg
-   ```
+Then `./packages/menubar/package-dmg.sh` signs → smoke-tests → notarizes the app → staples it
+→ builds the DMG → signs the DMG → notarizes → staples → asserts `spctl` accepts it. Two notary
+round-trips, roughly ten minutes total.
 
-4. Result: no "Open Anyway", no translocation, first launch just works.
+Three things here are load-bearing and easy to get wrong:
+
+- **`node.entitlements` is not optional.** `codesign` drops entitlements unless they are passed
+  back in, and node without `com.apple.security.cs.allow-jit` cannot start V8 at all — it dies
+  with *"Fatal process OOM in Failed to reserve virtual memory for CodeRange"*. The file mirrors
+  Node.js's own signing set minus `get-task-allow`, which the notary service rejects.
+- **The app is stapled before it enters the DMG.** Notarizing only the DMG registers the app's
+  cdhash with Apple, but an un-stapled app must reach Apple's servers on first launch; offline
+  users get *"Relay.app is damaged and can't be opened"*.
+- **The DMG is signed after `hdiutil create`**, which emits an unsigned image. Skip this and the
+  DMG fails Gatekeeper with *"no usable signature"* even with a perfectly notarized app inside.
+
+Never `codesign --deep`: it would re-sign and destroy Anthropic's signature on the bundled
+`claude` CLI. The script signs each executable explicitly instead, then verifies all three.
+
+The smoke test (step 10) boots the *staged* daemon on an isolated port and state dir before any
+DMG is cut. It is what catches a mis-signed node — keep it.
 
 ## 7. Hosting + landing page
 
-Host the artifact on **GitHub Releases**, beside the extension zip (coordinate the tag with
-whoever owns `packages/extension` — one release train, §8). Prepared command (do not run
-until the release is cut):
+**Live since 0.1.3.** The DMG is a **GitHub Release asset** — 111 MB is over GitHub's 100 MB
+per-file repo limit, so it cannot be committed to a Pages repo.
+
+The asset is named **`Relay.dmg`, unversioned on purpose**. The landing page links to
+`releases/latest/download/Relay.dmg`, which keeps working across releases; a versioned filename
+would 404 the moment the next tag ships. The version lives in the release tag and notes, so
+rename the built DMG before uploading:
 
 ```sh
-gh release create v0.1.3 \
-  packages/menubar/build/Relay-0.1.3.dmg \
-  switchboard-0.1.3.zip \
-  --title "Switchboard 0.1.3" \
-  --notes "First packaged daemon: Relay.app now ships its own runtime (node + single-file sidekick + agent CLI). Drag to /Applications, click start, paste the token."
+cp packages/menubar/build/Relay-<ver>.dmg /tmp/Relay.dmg
+gh release create v<ver> /tmp/Relay.dmg switchboard-extension.zip --title "Switchboard v<ver>"
 ```
 
-Ready-to-paste **step 02** replacement copy for the landing page (currently the npm/dev
-instructions):
+`switchboard-extension.zip` stays on the release for development installs, but the landing page
+no longer offers it — the [Chrome Web Store listing][cws] is the single path for the extension.
+Keep that asset name stable regardless: `docs/CHROME-WEB-STORE.md` links to it.
 
-> **02 — Run the sidekick**
->
-> Download **Relay.dmg** and drag Relay into **Applications** (it has to live there — macOS
-> quarantines apps run from Downloads). First open: macOS will balk — go to **System
-> Settings → Privacy & Security → Open Anyway**, then reopen.
->
-> Click the Relay mark in your menu bar, hit **start**, then **token** — and paste it into
-> the extension. That's it: your Claude, brokered on your machine.
->
-> *Prefer the terminal? `npm i -g @thelastprompt/switchboard && switchboard start` still works.*
+[cws]: https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb
+
+The landing page lives in a **separate repo**: `the-last-prompt`, at `switchboard/index.html`
+(CNAME → `thelastprompt.ai`, GitHub Pages). The install steps are the `.install-grid` section.
 
 ## 8. Versioning
 
@@ -161,7 +165,7 @@ automatically.
 
 ## 9. Future work
 
-- **Sparkle auto-update** — needs Developer ID first (§6); appcast on GitHub Pages.
+- **Sparkle auto-update** — Developer ID is in place now (§6); appcast on GitHub Pages.
 - **universal2** — `lipo` the node binary + ship both `claude-agent-sdk-darwin-*` platform
   packages; roughly doubles the DMG.
 - **Windows/Linux** — the daemon is portable Node (the npm package already covers dev users

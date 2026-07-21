@@ -43,12 +43,16 @@ operator pays for and holds nothing.
 
 Put this in every app's README. To use the live features of *any* Switchboard app, a visitor needs:
 
-1. **The Switchboard extension** (Chrome/Chromium), loaded unpacked from `packages/extension`
-   (it is not on the Web Store yet). Its content script matches `<all_urls>`, so it injects
-   `window.claude` on any origin — localhost, github.io, anywhere.
+1. **The Switchboard extension** (Chrome/Chromium) — [on the Chrome Web Store][cws]; a dev
+   checkout can still load `packages/extension` unpacked. Its content script matches
+   `<all_urls>`, so it injects `window.claude` on any origin — localhost, github.io, anywhere.
 2. **The Switchboard app / sidekick daemon**, running locally and **paired** to the extension
    (a pairing token). This is what fulfills `claude_complete` (model) and `claude_storage`
-   (persistence) by shelling out to the visitor's signed-in Claude Code CLI.
+   (persistence) by shelling out to the visitor's signed-in Claude Code CLI. Ships as a signed,
+   notarized DMG: [`releases/latest/download/Relay.dmg`][dmg] (Apple Silicon, macOS 13+).
+
+[cws]: https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb
+[dmg]: https://github.com/sameeeeeeep/switchboard/releases/latest/download/Relay.dmg
 
 Then, on the site: click **Connect Switchboard** → approve the scoped consent → (optionally) bind
 a data folder. After that the app's routes round-trip through their own Claude.
