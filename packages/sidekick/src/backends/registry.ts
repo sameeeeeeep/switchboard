@@ -10,6 +10,9 @@ import { LocalOpenAIBackend } from "./local-openai.js";
 export class BackendRegistry {
   private backends: ModelBackend[] = [];
   private modelToBackend = new Map<string, ModelBackend>();
+  /** Last observed health per backend id — refreshed by refreshModels()/onlineIds() (the panel's
+   *  health poll drives the latter), so backendFor() can be sync and still honest. */
+  private lastHealthy = new Map<string, boolean>();
 
   static async boot(): Promise<BackendRegistry> {
     const reg = new BackendRegistry();
@@ -29,7 +32,9 @@ export class BackendRegistry {
   async refreshModels(): Promise<void> {
     this.modelToBackend.clear();
     for (const b of this.backends) {
-      if (!(await b.healthy())) continue;
+      const ok = await b.healthy();
+      this.lastHealthy.set(b.id, ok);
+      if (!ok) continue;
       for (const m of await b.listModels()) {
         if (!this.modelToBackend.has(m)) this.modelToBackend.set(m, b);
       }
@@ -38,8 +43,9 @@ export class BackendRegistry {
 
   backendFor(model: string | undefined): ModelBackend | null {
     if (model && this.modelToBackend.has(model)) return this.modelToBackend.get(model)!;
-    // Default: first healthy backend (Claude Code).
-    return this.backends[0] ?? null;
+    // Default: first backend whose LAST OBSERVED health was good. The old `backends[0] ?? null`
+    // made PROVIDER_UNAVAILABLE dead code — an offline Claude was still handed every request.
+    return this.backends.find((b) => this.lastHealthy.get(b.id) === true) ?? null;
   }
 
   async models(): Promise<string[]> {
@@ -48,7 +54,16 @@ export class BackendRegistry {
 
   async onlineIds(): Promise<string[]> {
     const ids: string[] = [];
-    for (const b of this.backends) if (await b.healthy()) ids.push(b.id);
+    let cameOnline = false;
+    for (const b of this.backends) {
+      const ok = await b.healthy();
+      if (ok && this.lastHealthy.get(b.id) === false) cameOnline = true;
+      this.lastHealthy.set(b.id, ok);
+      if (ok) ids.push(b.id);
+    }
+    // A backend that was down at boot (e.g. Claude installed AFTER Relay) has no models in the
+    // map; rebuild once on the transition so recovery doesn't require a daemon restart.
+    if (cameOnline) await this.refreshModels();
     return ids;
   }
 }

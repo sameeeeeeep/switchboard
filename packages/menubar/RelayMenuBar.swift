@@ -65,6 +65,11 @@ func writeDaemonPlist(to path: String = PLIST) throws {
         "EnvironmentVariables": [
             "HOME": home,
             "PATH": "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            // Point warm sessions and claudeBin() checks at the CLI this bundle SHIPS. Without
+            // this the daemon hunted the system PATH for a claude the user may not have, while
+            // a perfectly good Anthropic-signed one sat beside sidekick.mjs unused.
+            "RELAY_CLAUDE_CLI": ((Bundle.main.resourcePath ?? "") as NSString)
+                .appendingPathComponent("daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
         ],
     ]
     // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
@@ -95,17 +100,23 @@ extension Color {
 func glyphImage(running: Bool, working: Bool, phase: Int) -> NSImage {
     let size = NSSize(width: 18, height: 18)
     let img = NSImage(size: size, flipped: false) { rect in
-        let body = running ? LIME_NS : SLATE_NS
+        // Stopped: draw in black and let template rendering recolor it — slate #6E7C90 was
+        // near-invisible against a dark menu bar, which is exactly the state a first-run user
+        // must find. Running: keep the lime brand mark (template off, see below).
+        let body = running ? LIME_NS : NSColor.black
         let alpha: CGFloat = working ? (phase % 2 == 0 ? 1.0 : 0.55) : 1.0
         body.withAlphaComponent(alpha).setFill()
         let r = rect.insetBy(dx: 1.5, dy: 1.5)
         NSBezierPath(roundedRect: r, xRadius: 4.5, yRadius: 4.5).fill()
-        PAGE_NS.withAlphaComponent(alpha).setFill()
+        let dot = running ? PAGE_NS : NSColor.black
+        dot.withAlphaComponent(running ? alpha : 0).setFill()
         let d: CGFloat = 3.6
         NSBezierPath(ovalIn: NSRect(x: r.maxX - d - 3.0, y: r.maxY - d - 3.0, width: d, height: d)).fill()
         return true
     }
-    img.isTemplate = false
+    // Template when stopped: macOS renders it in the menu bar's own foreground ink (white on
+    // dark, black on light), so the mark is findable in the state where finding it matters most.
+    img.isTemplate = !running
     return img
 }
 
@@ -374,6 +385,32 @@ final class RelayController: NSObject, NSApplicationDelegate {
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
+        }
+
+        // FIRST RUN: launching the app IS the user's intent to run the daemon it ships — the
+        // landing page promises "Launch it once — it prints a pairing token", so keep it. Auto-
+        // install only when NO LaunchAgent exists (a dev checkout's plist is never touched here;
+        // take-over stays an explicit, confirmed button) and never from a translocated path.
+        let firstRun = !FileManager.default.fileExists(atPath: TOKEN_FILE)
+        switch plistState() {
+        case .missing where hasBundledDaemon() && !isTranslocated():
+            installAndStart(verb: "installed")
+        case .staleOurs:
+            // App was moved/updated since the plist was written — heal without being asked.
+            repairDaemon()
+        default:
+            break
+        }
+        // …and SHOW the app once. An accessory app's launch is otherwise invisible: no Dock icon,
+        // no window — just an 18px mark appearing in a crowded menu bar. Presenting the popover
+        // one time teaches where Relay lives and puts the token button on screen. Never again
+        // after that (the token file exists on every later launch).
+        if firstRun {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+                guard let self, self.panel?.isVisible != true else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                self.togglePopover()
+            }
         }
     }
 

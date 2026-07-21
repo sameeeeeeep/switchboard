@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { query, type CanUseTool, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
-import type { CompletionParams } from "@relay/protocol";
+import { BYOPErrorCode, ProviderError, type CompletionParams } from "@relay/protocol";
 import type { BackendRunContext, ModelBackend } from "./types.js";
 
 /**
@@ -28,6 +30,38 @@ export function claudeBin(): string {
   return "claude";
 }
 
+/** The CLI `query()` will ACTUALLY spawn: the agent SDK's own native binary, resolved the same
+ *  way sdk.mjs resolves it. In the packaged app this is the CLI the DMG ships beside sidekick.mjs;
+ *  in a dev checkout it's the one in node_modules. Null when the native package is absent. */
+function sdkNativeCli(): string | null {
+  try {
+    const cli = createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk-darwin-arm64/claude");
+    return existsSync(cli) ? cli : null;
+  } catch { return null; }
+}
+
+/** Cached spawn probe. `existsSync` alone was a tautology (claudeBin() falls back to the literal
+ *  "claude", so `|| === "claude"` could never be false) — the daemon reported "backends online:
+ *  claude-code" on machines with no Claude at all, and the first real call failed opaquely. A
+ *  real probe execs the CLI that query() will use. Note: this proves the RUNTIME works, not that
+ *  the user is signed in — sign-in lives in ~/.claude/Keychain and is only truly testable by a
+ *  real call, so auth failures are classified at run() time instead (see the result branch). */
+let cliProbe: { at: number; ok: boolean } | null = null;
+const PROBE_TTL_MS = 60_000;
+
+function probeCli(): Promise<boolean> {
+  const bin = sdkNativeCli() ?? (existsSync(claudeBin()) ? claudeBin() : null);
+  if (!bin) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const p = spawn(bin, ["--version"], { stdio: "ignore", timeout: 8_000 });
+    p.on("error", () => resolve(false));
+    p.on("exit", (code) => resolve(code === 0));
+  });
+}
+
+/** Sign-in failures come back inside the SDK's result message, not as spawn errors. */
+const AUTH_ERROR_RE = /log ?in|logged.?out|not.+authenticated|authentication|credential|api.?key|unauthorized|oauth|billing|subscription/i;
+
 const DEFAULT_MODEL = process.env.RELAY_CLAUDE_MODEL || "sonnet";
 
 function toPrompt(params: CompletionParams): string {
@@ -40,7 +74,10 @@ export class ClaudeCodeBackend implements ModelBackend {
   id = "claude-code";
 
   async healthy(): Promise<boolean> {
-    return existsSync(claudeBin()) || claudeBin() === "claude";
+    if (!cliProbe || Date.now() - cliProbe.at > PROBE_TTL_MS) {
+      cliProbe = { at: Date.now(), ok: await probeCli() };
+    }
+    return cliProbe.ok;
   }
 
   async listModels(): Promise<string[]> {
@@ -121,9 +158,19 @@ export class ClaudeCodeBackend implements ModelBackend {
             ctx.emit({ type: "tool_result", call, result: { ok: !block.is_error, content } });
           }
         } else if (msg.type === "result") {
-          const u = (msg as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
-          if (u) { inputTokens = u.input_tokens ?? 0; outputTokens = u.output_tokens ?? 0; }
-          if (typeof (msg as { result?: unknown }).result === "string" && !text) text = (msg as { result: string }).result;
+          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string };
+          if (r.usage) { inputTokens = r.usage.input_tokens ?? 0; outputTokens = r.usage.output_tokens ?? 0; }
+          // The SDK reports failures IN the result message, not by throwing — an unread is_error
+          // meant "not signed in" surfaced as a generic backend error (or worse, empty success).
+          if (r.is_error || (r.subtype && r.subtype !== "success")) {
+            const raw = typeof r.result === "string" ? r.result : (r.subtype ?? "backend error");
+            if (AUTH_ERROR_RE.test(raw)) {
+              throw new ProviderError(BYOPErrorCode.UNAUTHORIZED,
+                "Claude Code isn’t signed in on this Mac. Open Terminal, run `claude`, and log in once — Switchboard runs on your own Claude.");
+            }
+            throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, raw.slice(0, 200));
+          }
+          if (typeof r.result === "string" && !text) text = r.result;
         }
       }
     } finally {

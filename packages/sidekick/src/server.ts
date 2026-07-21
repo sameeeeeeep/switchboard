@@ -213,7 +213,7 @@ export class Broker implements ConsentPrompter {
   private async handle(ws: WebSocket, env: RequestEnvelope) {
     const respond = (result?: unknown, error?: unknown) => ws.send(JSON.stringify({ type: "response", id: env.id, result, error }));
     try {
-      const result = await this.dispatch(env);
+      const result = await this.dispatch(env, ws);
       this.deps.audit.record({ origin: env.origin, kind: "request", method: env.method, outcome: "ok" });
       respond(result);
     } catch (err) {
@@ -223,7 +223,7 @@ export class Broker implements ConsentPrompter {
     }
   }
 
-  private async dispatch(env: RequestEnvelope): Promise<unknown> {
+  private async dispatch(env: RequestEnvelope, ws: WebSocket): Promise<unknown> {
     const { origin, method } = env;
     switch (method as BYOPMethod) {
       case "claude_capabilities":
@@ -243,7 +243,7 @@ export class Broker implements ConsentPrompter {
       case "claude_complete":
         return this.complete(origin, env.params as CompletionParams);
       case "claude_stream":
-        return this.startStream(origin, env.params as CompletionParams);
+        return this.startStream(origin, env.params as CompletionParams, ws);
       case "claude_cancel": {
         const { streamId } = env.params as { streamId: string };
         this.streams.get(streamId)?.abort();
@@ -718,7 +718,7 @@ export class Broker implements ConsentPrompter {
     };
   }
 
-  private async startStream(origin: string, params: CompletionParams): Promise<{ streamId: string }> {
+  private async startStream(origin: string, params: CompletionParams, ws: WebSocket): Promise<{ streamId: string }> {
     params = this.withModelOverride(origin, params);
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
@@ -726,7 +726,11 @@ export class Broker implements ConsentPrompter {
     const streamId = randomUUID();
     const controller = new AbortController();
     this.streams.set(streamId, controller);
-    const emit = (delta: StreamDelta) => this.broadcast({ type: "event", event: "delta", payload: { streamId, ...delta } });
+    // Deltas go to the socket that ASKED, not to every connected browser. Broadcasting leaked
+    // one origin's model output into every other paired profile's extension (and from there into
+    // every page port). sendTo falls back to broadcast only if the requesting socket is gone —
+    // an MV3 worker evicted mid-stream reconnects as a NEW socket and must still get the tail.
+    const emit = (delta: StreamDelta) => this.sendTo(ws, { type: "event", event: "delta", payload: { streamId, ...delta } });
     const ctx = {
       origin,
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
@@ -749,10 +753,23 @@ export class Broker implements ConsentPrompter {
       })
       .catch((err) => {
         console.error(`[stream] ${streamId.slice(0, 8)} ERROR after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${String(err).slice(0, 200)}`);
-        emit({ type: "error", error: { code: String(BYOPErrorCode.BACKEND_ERROR), message: String(err).slice(0, 160) } });
+        // Preserve typed errors — flattening everything to BACKEND_ERROR hid the one message
+        // that tells a user what to actually do ("Claude Code isn't signed in…", UNAUTHORIZED).
+        const code = err instanceof ProviderError ? e_code(err) : BYOPErrorCode.BACKEND_ERROR;
+        const message = err instanceof ProviderError ? err.message : String(err).slice(0, 160);
+        emit({ type: "error", error: { code: String(code), message } });
       })
       .finally(() => this.streams.delete(streamId));
     return { streamId };
+  }
+
+  /** Deliver to the socket that made the request; broadcast only when it's gone (worker evicted
+   *  mid-stream reconnects as a new socket — the tail must not be lost). */
+  private sendTo(ws: WebSocket, msg: unknown) {
+    if (ws.readyState === ws.OPEN) {
+      try { ws.send(JSON.stringify(msg)); return; } catch { /* fall through to broadcast */ }
+    }
+    this.broadcast(msg);
   }
 
   private broadcast(msg: unknown) {
