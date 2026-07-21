@@ -109,7 +109,10 @@ if [ -n "${IDENTITY:-}" ]; then
   say "signing with: $IDENTITY (hardened runtime)"
   # notarization needs hardened runtime on every executable we own; re-sign node with our
   # identity (nvm's node lacks hardened runtime). Anthropic's claude already has it — leave it.
-  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$RES/node"
+  # node.entitlements is REQUIRED here: codesign drops entitlements unless they are passed
+  # back in, and a node without allow-jit cannot boot V8 at all (step 10 catches it).
+  codesign --force --options runtime --timestamp \
+    --entitlements "$HERE/node.entitlements" --sign "$IDENTITY" "$RES/node"
   codesign --force --options runtime --timestamp --sign "$IDENTITY" "$STAGE"
 else
   say "signing ad-hoc (no Developer ID identity in keychain)"
@@ -150,7 +153,35 @@ else
   say "smoke test skipped (RELAY_SKIP_SMOKE=1)"
 fi
 
-# ---------- 11. the DMG ----------
+# ---------- 11. notarize the APP and staple the ticket INTO the bundle ----------
+# Order matters. Notarizing only the DMG registers the app's cdhash with Apple, but an app
+# with no ticket of its own must reach Apple's servers on first launch — offline users get
+# "Relay.app is damaged and can't be opened", Gatekeeper's spectacularly misleading way of
+# saying "I couldn't ask". Stapling here, before the app is copied into the DMG, makes the
+# first launch work with no network at all.
+NOTARY_PROFILE="${RELAY_NOTARY_PROFILE:-relay-notary}"
+NOTARIZE=0
+if [ -n "${IDENTITY:-}" ] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  NOTARIZE=1
+fi
+
+notarize_submit() {  # $1 = path to submit (.zip or .dmg)
+  xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait \
+    || die "notarization failed for $(basename "$1") — inspect with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
+}
+
+if [ "$NOTARIZE" = "1" ]; then
+  say "notarizing Relay.app with profile '$NOTARY_PROFILE' (a few minutes)…"
+  ZIP_DIR="$(mktemp -d)"
+  # ditto, not zip: plain `zip` mangles bundle symlinks and drops the signature.
+  ditto -c -k --keepParent "$STAGE" "$ZIP_DIR/Relay.app.zip"
+  notarize_submit "$ZIP_DIR/Relay.app.zip"
+  rm -rf "$ZIP_DIR"
+  xcrun stapler staple "$STAGE" || die "stapling the app failed"
+  say "app notarized + stapled (first launch works offline)"
+fi
+
+# ---------- 12. the DMG — built from the stapled app, then signed itself ----------
 DMG="$HERE/build/Relay-$VERSION.dmg"
 DMG_SRC="$(mktemp -d)"
 cp -R "$STAGE" "$DMG_SRC/"
@@ -159,25 +190,31 @@ say "creating DMG…"
 hdiutil create -volname "Relay $VERSION" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" -quiet
 rm -rf "$DMG_SRC"
 
+# hdiutil emits an UNSIGNED disk image. Without this the DMG itself fails Gatekeeper with
+# "no usable signature" even when the app inside it is perfectly notarized.
+if [ -n "${IDENTITY:-}" ]; then
+  say "signing the DMG…"
+  codesign --force --timestamp --sign "$IDENTITY" "$DMG" || die "DMG signing failed"
+fi
+
+# ---------- 13. notarize + staple the DMG (the app inside already carries its own ticket) ----------
+if [ "$NOTARIZE" = "1" ]; then
+  say "notarizing the DMG…"
+  notarize_submit "$DMG"
+  xcrun stapler staple "$DMG" || die "stapling the DMG failed"
+  xcrun stapler validate "$DMG" || die "staple validation failed"
+  spctl -a -t open --context context:primary-signature -v "$DMG" \
+    || die "Gatekeeper rejected the finished DMG"
+  say "Gatekeeper: DMG accepted (notarized Developer ID)"
+elif [ -n "${IDENTITY:-}" ]; then
+  say "note: signed with Developer ID but NOT notarized — no notarytool profile '$NOTARY_PROFILE'."
+  say "      one-time: xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <email> --team-id <TEAMID>"
+fi
+
 SIZE="$(du -h "$DMG" | cut -f1 | tr -d ' ')"
 say "done: $DMG ($SIZE)"
 say "payload: node $NODE_VER + sidekick bundle + claude CLI $SDK_VER (arm64, macOS 13+)"
 if [ -z "${IDENTITY:-}" ]; then
   say "note: ad-hoc signed — users must use System Settings > Privacy & Security > Open Anyway."
   say "      see docs/DAEMON-DISTRIBUTION.md for the notarization path."
-fi
-
-# ---------- 12. notarize + staple (automatic when signed with a Developer ID and a notarytool ----------
-# keychain profile exists; one-time setup: xcrun notarytool store-credentials relay-notary …)
-NOTARY_PROFILE="${RELAY_NOTARY_PROFILE:-relay-notary}"
-if [ -n "${IDENTITY:-}" ] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
-  say "notarizing with keychain profile '$NOTARY_PROFILE' (this takes a few minutes)…"
-  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait \
-    || die "notarization failed — inspect with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
-  xcrun stapler staple "$DMG" || die "stapling failed"
-  xcrun stapler validate "$DMG" || die "staple validation failed"
-  say "notarized + stapled: Gatekeeper will open this DMG without warnings (verify: spctl -a -t open --context context:primary-signature '$DMG')"
-elif [ -n "${IDENTITY:-}" ]; then
-  say "note: signed with Developer ID but NOT notarized — no notarytool profile '$NOTARY_PROFILE'."
-  say "      one-time: xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <email> --team-id <TEAMID> --password <app-specific-pw>"
 fi
