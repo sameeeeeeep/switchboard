@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+  <meta name="google-site-verification" content="QWNvZV25SwA6QShgioOIhmtgE9hVY2u63mK03ZEYLHw" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Last Prompt</title>
+<meta name="description" content="An AI lab for the application layer. Switchboard makes intelligence common across apps — your AI, tools, context and data, lent to any app under consent. No new accounts, no new subscriptions.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Newsreader:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;overflow-x:hidden;background:#030305;color:#e2ddd3;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(201,169,110,0.25)}
+#canvas-container{position:fixed;inset:0;z-index:0}
+canvas{display:block}
+#scroll-spacer{position:relative;z-index:1;pointer-events:none;height:1100vh}
+.scene{position:fixed;inset:0;z-index:2;display:none;align-items:center;justify-content:center;pointer-events:none;opacity:0}
+.scene.active{display:flex;opacity:1;animation:sceneIn 0.6s ease forwards}
+@keyframes sceneIn{from{opacity:0}to{opacity:1}}
+.scene.active .clickable{pointer-events:auto}
+.opening{position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.adam-hands{position:relative;width:100%;display:flex;align-items:center;justify-content:center;overflow:visible}
+.hand-left,.hand-right{width:min(800px,50vw);height:auto;pointer-events:none;flex-shrink:0;will-change:transform,opacity;opacity:1}
+.hand-left{margin-right:max(-400px,-25vw)}
+.hand-right{margin-left:max(-400px,-25vw)}
+.opening-question{text-align:center;max-width:90vw;margin-top:32px}
+#oq-line1,#oq-line2{opacity:0;transform:translateY(10px);transition:opacity 0.8s ease,transform 0.8s ease}
+#oq-line1.show{opacity:1;transform:translateY(0)}
+#oq-line2.show{opacity:1;transform:translateY(0)}
+.opening-question h2{font-family:'Newsreader',serif;font-size:clamp(1.1rem,2.5vw,1.6rem);font-weight:300;color:#5a564f}
+.opening-question em{font-style:italic;color:#c9a96e}
+.terminal-3d{width:min(680px,88vw);background:rgba(8,8,14,0.85);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 40px 160px rgba(0,0,0,0.5);overflow:hidden;transform:perspective(800px) rotateX(2deg)}
+.term-bar{display:flex;gap:7px;padding:13px 16px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04)}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#ff5f57}.dot.y{background:#ffbd2e}.dot.g{background:#28c840}
+.term-body{padding:24px 22px 32px;font-family:'Space Mono',monospace;font-size:0.78rem;line-height:2;min-height:200px}
+.term-line{opacity:0;transform:translateY(3px);transition:all 0.4s ease}
+.term-line.on{opacity:1;transform:none}
+.terminal-3d.dissolving{animation:termDissolve 1.5s ease forwards}
+@keyframes termDissolve{0%{opacity:1;transform:perspective(800px) rotateX(2deg) scale(1);filter:blur(0)}60%{opacity:0.6;transform:perspective(800px) rotateX(2deg) scale(1.02);filter:blur(2px)}100%{opacity:0;transform:perspective(800px) rotateX(2deg) scale(1.08);filter:blur(12px)}}
+.tp{color:#7eb8a8}.tc{color:#e2ddd3}.to{color:#5a564f}.ta{color:#c9a96e}.ts{color:#28c840}
+.prose-float h2 .teal{color:#7eb8a8;font-style:italic}
+.prose-float h2 .purple{color:#a78bfa;font-style:italic}
+.apps-text h2 .red{color:#f87171;font-style:italic}
+.interface-text h2 .purple{color:#a78bfa;font-style:italic}
+.interface-text h2 .teal{color:#7eb8a8;font-style:italic}
+.blink{display:inline-block;width:8px;height:15px;background:#c9a96e;vertical-align:middle;margin-left:2px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.prose-float{max-width:620px;padding:0 28px;text-align:center}
+.prose-float h2{font-family:'Newsreader',serif;font-size:clamp(1.8rem,4.5vw,3rem);font-weight:300;line-height:1.18;letter-spacing:-0.015em;margin-bottom:28px}
+.prose-float h2 em{font-style:italic;color:#c9a96e}
+.prose-float p{font-size:clamp(0.95rem,1.8vw,1.08rem);line-height:1.85;color:#8a847a}
+.prose-float p+p{margin-top:1.3em}
+.prose-float strong{color:#e2ddd3;font-weight:400}
+.constraint-text{text-align:center;max-width:500px;padding:0 24px}
+.constraint-text p{font-family:'Newsreader',serif;font-size:clamp(1.3rem,3vw,1.8rem);font-weight:300;line-height:1.5;color:#8a847a;font-style:italic}
+.constraint-text .gold{color:#c9a96e;font-style:normal;font-weight:400}
+/* old senses styles removed — replaced by POV HUD */
+.apps-text,.interface-text{text-align:center;max-width:580px;padding:0 24px}
+.apps-text h2,.interface-text h2{font-family:'Newsreader',serif;font-size:clamp(1.5rem,3.5vw,2.4rem);font-weight:300;line-height:1.25;margin-bottom:20px}
+.apps-text h2 em,.interface-text h2 em{font-style:italic;color:#c9a96e}
+.apps-text p,.interface-text p{font-size:0.95rem;line-height:1.8;color:#8a847a}
+.interface-text p strong{color:#e2ddd3;font-weight:400}
+/* SENSE SCENES */
+.sense-scene{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:0 24px}
+.sense-icon-lg{width:64px;height:64px;color:rgba(126,184,168,0.5);margin-bottom:8px}
+.sense-icon-lg svg{width:100%;height:100%}
+.sense-icon-voice{color:rgba(201,169,110,0.5)}
+.sense-icon-vision{color:rgba(167,139,250,0.5)}
+.sense-icon-neural{color:rgba(90,86,79,0.4)}
+.sense-num-lg{font-family:'Space Mono',monospace;font-size:0.55rem;letter-spacing:0.2em;color:#3d3a36}
+.sense-title{font-family:'Newsreader',serif;font-size:clamp(2rem,5vw,3.5rem);font-weight:300;letter-spacing:-0.02em}
+.sense-desc{font-size:clamp(0.9rem,1.6vw,1.05rem);color:#8a847a;max-width:400px;line-height:1.7}
+.sense-status{font-family:'Space Mono',monospace;font-size:0.55rem;letter-spacing:0.15em;text-transform:uppercase;margin-top:8px}
+.sense-st-live{color:#28c840}
+.sense-st-soon{color:#c9a96e}
+.sense-st-future{color:#3d3a36}
+
+/* POV SHARED */
+.pov-container{display:flex;flex-direction:column;align-items:center;gap:24px;width:100%;height:100%;justify-content:center;padding:60px 24px 24px}
+.pov-label{font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:#5a564f;display:flex;align-items:center;gap:12px}
+.pov-num{color:#c9a96e}
+.pov-badge{font-size:0.5rem;padding:2px 8px;border:1px solid rgba(255,255,255,0.08);border-radius:2px}
+.pov-live{color:#28c840;border-color:rgba(40,200,64,0.2)}
+.pov-soon{color:#c9a96e;border-color:rgba(201,169,110,0.2)}
+.pov-future{color:#3d3a36;border-color:rgba(61,58,54,0.2)}
+.pov-caption{font-size:0.85rem;color:#5a564f;text-align:center;max-width:460px;line-height:1.6}
+
+/* SCREEN POV */
+.pov-screen{width:min(720px,90vw);border:1px solid rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;background:rgba(20,20,30,0.9);box-shadow:0 20px 80px rgba(0,0,0,0.6)}
+.pov-menubar{display:flex;justify-content:space-between;padding:6px 14px;background:rgba(40,40,50,0.8);font-size:0.6rem;color:#8a847a;font-family:'DM Sans',sans-serif;border-bottom:1px solid rgba(255,255,255,0.04)}
+.pov-mb-left,.pov-mb-right{letter-spacing:0.02em}
+.pov-desktop{position:relative;min-height:320px;padding:20px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.pov-win{border:1px solid rgba(255,255,255,0.06);border-radius:6px;overflow:hidden;background:rgba(15,15,22,0.95);flex:1;min-width:200px}
+.pov-win-bar{display:flex;gap:5px;padding:8px 12px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04);align-items:center}
+.pov-win-bar .dot{width:7px;height:7px}
+.pov-win-title{font-family:'Space Mono',monospace;font-size:0.55rem;color:#5a564f;margin-left:8px}
+.pov-win-body{padding:12px 14px;font-size:0.72rem;line-height:1.8}
+.pov-code-body{font-family:'Space Mono',monospace}
+.pov-code-line{display:flex;gap:12px}
+.pov-ln{color:#3d3a36;min-width:20px;text-align:right}
+.pov-err{color:#f87171}
+.pov-dim{color:#5a564f}
+.pov-task-title{color:#e2ddd3;font-weight:500;margin-bottom:4px}
+.pov-task-status{color:#c9a96e;font-family:'Space Mono',monospace;font-size:0.6rem}
+.pov-toast{position:absolute;bottom:20px;right:20px;width:320px;background:rgba(8,8,14,0.95);border:1px solid rgba(52,211,153,0.15);border-radius:10px;padding:14px 16px;backdrop-filter:blur(16px);box-shadow:0 8px 40px rgba(0,0,0,0.4);animation:toastIn 0.5s ease 1.5s both}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px) scale(0.97)}to{opacity:1;transform:none}}
+.pov-toast-header{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:0.7rem;color:#e2ddd3;margin-bottom:10px}
+.pov-toast-ghost{width:18px;height:18px}
+.pov-toast-mode{font-size:0.5rem;color:#34d399;border:1px solid rgba(52,211,153,0.2);padding:1px 6px;border-radius:2px;margin-left:auto}
+.pov-toast-body{font-size:0.72rem;color:#8a847a;line-height:1.65;margin-bottom:12px}
+.pov-toast-actions{display:flex;gap:8px}
+.pov-toast-btn{font-family:'Space Mono',monospace;font-size:0.58rem;padding:6px 14px;border:1px solid rgba(255,255,255,0.08);border-radius:4px;color:#8a847a;cursor:pointer}
+.pov-btn-approve{background:rgba(52,211,153,0.1);border-color:rgba(52,211,153,0.2);color:#34d399}
+
+/* VOICE POV */
+.pov-voice{display:flex;flex-direction:column;align-items:center;gap:28px;width:min(580px,90vw)}
+.pov-voice-ctx{font-family:'Newsreader',serif;font-size:1.1rem;color:#5a564f;font-style:italic;text-align:center}
+.pov-voice-wave{width:100%;height:60px;position:relative;overflow:hidden}
+.pov-voice-wave::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(201,169,110,0.15) 3px,rgba(201,169,110,0.15) 4px);animation:waveShift 2s linear infinite}
+@keyframes waveShift{from{transform:translateX(0)}to{transform:translateX(-40px)}}
+.pov-voice-thought{display:flex;flex-direction:column;gap:12px;width:100%;padding:16px 20px;border-left:2px solid rgba(201,169,110,0.2);background:rgba(201,169,110,0.03)}
+.pov-vt-line{font-size:0.85rem;color:#c9a96e;opacity:0;transform:translateX(-8px);transition:all 0.5s ease;line-height:1.6}
+.pov-vt-line.on{opacity:1;transform:none}
+.pov-voice-sub{font-family:'Space Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;color:#3d3a36;text-transform:uppercase}
+
+/* VISION POV */
+.pov-vision{width:min(700px,90vw);height:380px;position:relative}
+.pov-vision-frame{width:100%;height:100%;position:relative;border:1px solid rgba(167,139,250,0.12);border-radius:4px;overflow:hidden;background:rgba(10,8,20,0.6)}
+.pov-vision-env{position:absolute;inset:0}
+.pov-v-object{position:absolute;display:flex;flex-direction:column;gap:2px;animation:vObjIn 0.6s ease both}
+@keyframes vObjIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:none}}
+.pov-v-tag{font-family:'Space Mono',monospace;font-size:0.6rem;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.15);padding:3px 10px;border-radius:2px;white-space:nowrap}
+.pov-v-sub{font-size:0.6rem;color:#5a564f;padding-left:10px}
+.pov-vision-corners{position:absolute;inset:0;pointer-events:none}
+.pov-vc{position:absolute;width:24px;height:24px;border-color:rgba(167,139,250,0.25);border-style:solid;border-width:0}
+.pov-vc-tl{top:8px;left:8px;border-top-width:2px;border-left-width:2px}
+.pov-vc-tr{top:8px;right:8px;border-top-width:2px;border-right-width:2px}
+.pov-vc-bl{bottom:8px;left:8px;border-bottom-width:2px;border-left-width:2px}
+.pov-vc-br{bottom:8px;right:8px;border-bottom-width:2px;border-right-width:2px}
+.pov-vision-scan{position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg,transparent,rgba(167,139,250,0.3),transparent);animation:vScan 3s linear infinite}
+@keyframes vScan{from{top:0}to{top:100%}}
+
+/* NEURAL POV */
+.pov-neural{width:min(600px,90vw);height:300px;position:relative}
+.pov-neural-thoughts{position:absolute;inset:0}
+.pov-nt{position:absolute;font-family:'Newsreader',serif;font-size:1rem;color:rgba(90,86,79,0.6);opacity:0;transition:all 0.8s ease}
+.pov-nt.on{opacity:1}
+.pov-nt:nth-child(odd){color:rgba(226,221,211,0.3);font-style:italic}
+.pov-nt:nth-child(even){color:rgba(126,184,168,0.4);font-family:'Space Mono',monospace;font-size:0.75rem}
+
+/* POV HUD */
+.pov-hud{width:100%;height:100%;display:flex;align-items:center;justify-content:center;perspective:800px}
+.hud-frame{position:relative;width:min(800px,92vw);height:min(500px,75vh);border:1px solid rgba(126,184,168,0.15);border-radius:4px;display:flex;flex-direction:column;justify-content:space-between;padding:20px 28px;background:rgba(3,3,5,0.4);backdrop-filter:blur(4px);transform:rotateX(1deg)}
+.hud-corner{position:absolute;width:20px;height:20px;border-color:rgba(126,184,168,0.3);border-style:solid;border-width:0}
+.hud-tl{top:-1px;left:-1px;border-top-width:2px;border-left-width:2px}
+.hud-tr{top:-1px;right:-1px;border-top-width:2px;border-right-width:2px}
+.hud-bl{bottom:-1px;left:-1px;border-bottom-width:2px;border-left-width:2px}
+.hud-br{bottom:-1px;right:-1px;border-bottom-width:2px;border-right-width:2px}
+.hud-top{display:flex;justify-content:space-between;align-items:center}
+.hud-tag{font-family:'Space Mono',monospace;font-size:0.5rem;letter-spacing:0.15em;text-transform:uppercase;color:rgba(126,184,168,0.4);padding:4px 10px;border:1px solid rgba(126,184,168,0.1);border-radius:2px}
+.hud-live{color:rgba(40,200,64,0.7);border-color:rgba(40,200,64,0.2)}
+.hud-center-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Newsreader',serif;font-size:clamp(1.4rem,3vw,2rem);font-weight:300;color:rgba(226,221,211,0.7);text-align:center;pointer-events:none}
+.hud-senses{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:auto 0;max-width:600px;align-self:center}
+.hud-sense{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid rgba(255,255,255,0.04);border-radius:3px;background:rgba(255,255,255,0.02);transition:all 0.3s}
+.hud-s-active{border-color:rgba(126,184,168,0.15);background:rgba(126,184,168,0.04)}
+.hud-icon{width:28px;height:28px;color:rgba(126,184,168,0.4);flex-shrink:0}
+.hud-s-active .hud-icon{color:rgba(126,184,168,0.7)}
+.hud-icon svg{width:100%;height:100%}
+.hud-s-info{display:flex;flex-direction:column;gap:2px;flex:1}
+.hud-s-name{font-family:'Space Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#8a847a}
+.hud-s-desc{font-size:0.72rem;color:#4a463f}
+.hud-s-active .hud-s-name{color:#e2ddd3}
+.hud-s-active .hud-s-desc{color:#7eb8a8}
+.hud-s-status{font-family:'Space Mono',monospace;font-size:0.5rem;letter-spacing:0.12em;flex-shrink:0}
+.hud-st-live{color:#28c840}
+.hud-st-soon{color:#c9a96e}
+.hud-st-future{color:#3d3a36}
+.hud-bottom{display:flex;justify-content:space-between}
+.hud-coord{font-family:'Space Mono',monospace;font-size:0.45rem;letter-spacing:0.1em;color:rgba(126,184,168,0.2)}
+@media(max-width:640px){.hud-senses{grid-template-columns:1fr}.hud-bottom{flex-wrap:wrap;gap:8px}}
+
+.final-cta{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:0 24px}
+.final-cta .ghost-img{width:44px;height:44px;margin-bottom:14px;opacity:0.6}
+.final-cta .phase-tag{font-family:'Space Mono',monospace;font-size:0.5rem;letter-spacing:0.15em;text-transform:uppercase;color:#7eb8a8;margin-bottom:10px}
+.final-cta h2{font-family:'Newsreader',serif;font-size:clamp(1.6rem,4vw,2.8rem);font-weight:300;margin-bottom:24px;text-align:center}
+.layer-stage{position:relative;width:min(440px,88vw);height:180px;margin-bottom:28px}
+.layer-card{position:absolute;inset:0;border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:28px 24px;background:rgba(255,255,255,0.02);backdrop-filter:blur(8px);text-align:left;opacity:0;transform:translateY(12px) scale(0.98);transition:all 0.45s ease;pointer-events:none}
+.layer-card.active{opacity:1;transform:none;pointer-events:auto}
+.layer-card .lc-quote{font-family:'Newsreader',serif;font-size:clamp(1.1rem,2.5vw,1.35rem);font-weight:300;color:#e2ddd3;line-height:1.35;margin-bottom:12px}
+.layer-card .lc-body{font-size:0.82rem;line-height:1.75;color:#6b6560;margin-bottom:14px}
+.layer-card .lc-tag{font-family:'Space Mono',monospace;font-size:0.45rem;letter-spacing:0.1em;text-transform:uppercase;color:#3d3a36}
+.layer-dots{display:flex;gap:8px;margin-bottom:24px}
+.layer-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.1);transition:all 0.3s}
+.layer-dot.on{background:#7eb8a8}
+.cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn-gold{font-family:'Space Mono',monospace;font-size:0.72rem;letter-spacing:0.04em;padding:14px 26px;background:#c9a96e;color:#030305;border:none;text-decoration:none;pointer-events:auto;cursor:pointer;transition:all 0.3s}
+.btn-gold:hover{filter:brightness(1.15);transform:translateY(-1px)}
+.btn-ghost{font-family:'Space Mono',monospace;font-size:0.72rem;letter-spacing:0.04em;padding:14px 26px;background:none;color:#6b6560;border:1px solid rgba(255,255,255,0.06);text-decoration:none;pointer-events:auto;cursor:pointer;transition:all 0.3s}
+.btn-ghost:hover{color:#e2ddd3;border-color:rgba(255,255,255,0.12)}
+#progress-bar{position:fixed;bottom:0;left:0;width:100%;height:2px;z-index:50;background:rgba(255,255,255,0.02)}
+#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#7eb8a8,#c9a96e);transition:width 0.1s linear}
+#nav{position:fixed;top:0;width:100%;z-index:40;padding:18px 32px;display:flex;justify-content:space-between;align-items:center;opacity:0;transition:opacity 0.8s ease;pointer-events:none}
+#nav.show{opacity:1;pointer-events:auto}
+.nav-mark{font-family:'Space Mono',monospace;font-size:0.75rem;color:#c9a96e;text-decoration:none;letter-spacing:0.08em;text-transform:uppercase}
+.nav-r{display:flex;gap:24px}
+.nav-r a{font-family:'Space Mono',monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:#4a463f;text-decoration:none;transition:color 0.3s}
+.nav-r a:hover{color:#8a847a}
+.scroll-hint{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:30;font-family:'Space Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;color:#3d3a36;opacity:0;transition:opacity 1s ease;animation:hfloat 2.5s ease-in-out infinite}
+.scroll-hint.show{opacity:1}
+@keyframes hfloat{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-6px)}}
+.signup-end{text-align:center;max-width:480px;padding:0 24px}
+.signup-end h2{font-family:'Newsreader',serif;font-size:clamp(1.6rem,4vw,2.8rem);font-weight:300;margin-bottom:12px}
+.signup-end p{font-size:0.95rem;line-height:1.75;color:#8a847a;margin-bottom:28px}
+.signup-form{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.signup-input{font-family:'Space Mono',monospace;font-size:0.78rem;padding:14px 18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);color:#e2ddd3;outline:none;min-width:220px;transition:border-color 0.3s}
+.signup-input:focus{border-color:rgba(201,169,110,0.4)}
+.signup-input::placeholder{color:#4a463f}
+.signup-btn{letter-spacing:0.04em}
+.signup-note{font-family:'Space Mono',monospace;font-size:0.68rem;margin-top:16px;min-height:1.2em}
+.signup-note.ok{color:#28c840}
+.signup-note.err{color:#f87171}
+@media(max-width:640px){.terminal-3d{transform:none}.sense-item{flex-wrap:wrap;gap:8px}.sense-name{min-width:100px;font-size:1.05rem}}
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<div id="scroll-spacer"></div>
+<nav id="nav" class="show"><a href="#" class="nav-mark">The Last Prompt</a><div class="nav-r"><a href="https://github.com/sameeeeeeep/switchboard">GitHub</a><a href="/switchboard/">Switchboard</a></div></nav>
+<div class="scene" id="scene-0"><div class="opening"><div class="adam-hands"><img src="./handsnobg.png" alt="" class="hand-left" id="hands-img" crossorigin="anonymous" style="clip-path:inset(0 50% 0 0)"><img src="./handsnobg.png" alt="" class="hand-right" style="clip-path:inset(0 0 0 50%)"></div><div class="opening-question"><h2 id="oq-line1">What stands between you and superintelligence?</h2><h2 id="oq-line2"><em>A prompt.</em></h2></div></div></div>
+<div class="scene" id="scene-1"><div class="apps-text"><h2>Intelligence is trapped in boxes. Inside individual <span class="red">apps.</span></h2><p><strong>You are the integration layer.</strong> The model isn't the bottleneck. <strong>The prompt is.</strong></p></div></div>
+<div class="scene" id="scene-2"><div class="prose-float"><h2>What if intelligence became <em>common?</em></h2><p>One intelligence, every app. <strong>No context to re-explain. No accounts to create. No subscriptions to stack.</strong></p></div></div>
+<div class="scene" id="scene-3"><div class="terminal-3d"><div class="term-bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div><div class="term-body" id="term-body"></div></div></div>
+<div class="scene" id="scene-4"><div class="interface-text"><h2>Introducing <span class="teal">Switchboard.</span></h2><p><strong>One connection between you and every app.</strong><br>Your AI, your tools, your context, your data — lent to any app, under consent.<br>Apps become pure frontends. You stop signing up.</p></div></div>
+<div class="scene" id="scene-5"><div class="final-cta">
+  <div class="phase-tag">One connection · every app</div>
+  <h2>Switchboard</h2>
+  <div class="layer-stage" id="layer-stage">
+    <div class="layer-card active" data-layer="0">
+      <div class="lc-quote">Sign up once. For nothing.</div>
+      <div class="lc-body">Open the page — that's the whole onboarding. Apps run on the AI subscription you already have, so there's no account to create, no key to paste, no new bill to stack.</div>
+      <div class="lc-tag">BYO Inference · Zero Signup</div>
+    </div>
+    <div class="layer-card" data-layer="1">
+      <div class="lc-quote">Your context travels.</div>
+      <div class="lc-body">Teach one app your brand, your project, your world — every other app already knows it. The re-explaining tax, gone. Intelligence stops living per-app and starts living with you.</div>
+      <div class="lc-tag">Portable Context · No Switching</div>
+    </div>
+    <div class="layer-card" data-layer="2">
+      <div class="lc-quote">Consent is the interface.</div>
+      <div class="lc-body">Apps get exactly what you hand them — per site, scoped, revocable. Reads run within the grant; every change-making action asks first. Keys and data never leave your machine.</div>
+      <div class="lc-tag">Per-site Permission · Kill Switch</div>
+    </div>
+    <div class="layer-card" data-layer="3">
+      <div class="lc-quote">Apps become frontends.</div>
+      <div class="lc-body">The backend is your computer — model, tools, storage, data. Builders ship a page; you ship the rest. A store of wrapps that are yours the moment you open them.</div>
+      <div class="lc-tag">Wrapp Store · Your Machine</div>
+    </div>
+  </div>
+  <div class="layer-dots" id="layer-dots"><div class="layer-dot on"></div><div class="layer-dot"></div><div class="layer-dot"></div><div class="layer-dot"></div></div>
+  <div class="cta-row"><a href="/switchboard/" class="btn-gold clickable">Explore Switchboard</a><a href="https://github.com/sameeeeeeep/switchboard" class="btn-ghost clickable">Star on GitHub</a></div>
+</div></div>
+<div class="scene" id="scene-6"><div class="signup-end">
+  <h2>Stay in the loop.</h2>
+  <p>Get updates as we ship new phases.</p>
+  <form class="signup-form" id="signup-form" autocomplete="off">
+    <input type="email" name="email" placeholder="your@email.com" required class="signup-input clickable">
+    <button type="submit" class="btn-gold clickable signup-btn">Notify me</button>
+  </form>
+  <p class="signup-note" id="signup-note"></p>
+</div></div>
+<div class="scroll-hint" id="scroll-hint">scroll</div>
+<div id="progress-bar"><div id="progress-fill"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const PC=6000;
+const C={gold:new THREE.Color(0xc9a96e),teal:new THREE.Color(0x7eb8a8),dim:new THREE.Color(0x2a2620),bright:new THREE.Color(0xe2ddd3),purple:new THREE.Color(0xa78bfa),red:new THREE.Color(0xf87171),green:new THREE.Color(0x28c840)};
+function recolor(accent){const ca=geo.attributes.color.array;for(let i=0;i<PC;i++){const i3=i*3;const r=Math.random();let c;if(r<0.18)c=accent;else if(r<0.28)c=C.teal;else if(r<0.38)c=C.bright;else c=C.dim;ca[i3]=c.r;ca[i3+1]=c.g;ca[i3+2]=c.b}geo.attributes.color.needsUpdate=true}
+const mouse={x:0,y:0,nx:0,ny:0};
+let scrollPct=0,lastScene=-1,termShown=false,sensesShown=false;
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x030305);
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+const sc=new THREE.Scene();
+sc.fog=new THREE.FogExp2(0x030305,0.0008);
+const cam=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,2000);
+cam.position.set(0,0,500);
+const geo=new THREE.BufferGeometry();
+const pos=new Float32Array(PC*3),col=new Float32Array(PC*3),sz=new Float32Array(PC),tgt=new Float32Array(PC*3),ph=new Float32Array(PC);
+for(let i=0;i<PC;i++){const i3=i*3;const r=Math.random()*12;const t=Math.random()*Math.PI*2;const p=Math.acos(2*Math.random()-1);pos[i3]=r*Math.sin(p)*Math.cos(t)+120;pos[i3+1]=r*Math.sin(p)*Math.sin(t);pos[i3+2]=r*Math.cos(p);tgt[i3]=pos[i3];tgt[i3+1]=pos[i3+1];tgt[i3+2]=pos[i3+2];const cc=Math.random();let c;if(cc<0.15)c=C.gold;else if(cc<0.25)c=C.teal;else if(cc<0.35)c=C.bright;else c=C.dim;col[i3]=c.r;col[i3+1]=c.g;col[i3+2]=c.b;sz[i]=Math.random()*2.5+0.5;ph[i]=Math.random()*Math.PI*2}
+geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+geo.setAttribute('size',new THREE.BufferAttribute(sz,1));
+const mat=new THREE.ShaderMaterial({uniforms:{uAlpha:{value:0.0}},vertexShader:'attribute float size;varying vec3 vColor;void main(){vColor=color;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=size*(400.0/-mv.z);gl_Position=projectionMatrix*mv;}',fragmentShader:'uniform float uAlpha;varying vec3 vColor;void main(){float d=length(gl_PointCoord-0.5);if(d>0.5)discard;float a=smoothstep(0.5,0.1,d)*0.7*uAlpha;gl_FragColor=vec4(vColor,a);}',transparent:true,vertexColors:true,depthWrite:false,blending:THREE.AdditiveBlending});
+const pts=new THREE.Points(geo,mat);sc.add(pts);
+const lgeo=new THREE.BufferGeometry();const lp=new Float32Array(600*6);lgeo.setAttribute('position',new THREE.BufferAttribute(lp,3));
+const lmat=new THREE.LineBasicMaterial({color:0xe2ddd3,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+const lns=new THREE.LineSegments(lgeo,lmat);sc.add(lns);
+
+let handPoints=null;
+function sampleHandPoints(){
+  // Load a fresh copy of the full image to sample green pixels
+  const img=new Image();
+  img.crossOrigin='anonymous';
+  img.onload=function(){
+    const cv=document.createElement('canvas');
+    const w=img.naturalWidth,h=img.naturalHeight;
+    cv.width=w;cv.height=h;
+    const cx=cv.getContext('2d');
+    cx.drawImage(img,0,0);
+    try{
+      const d=cx.getImageData(0,0,w,h).data;
+      const pts=[];
+      // Only sample right half of image (the green/AI hand)
+      const startX=Math.floor(w*0.4);
+      for(let y=0;y<h;y+=3){for(let x=startX;x<w;x+=3){
+        const i=(y*w+x)*4;
+        const r=d[i],g=d[i+1],b=d[i+2],a=d[i+3];
+        if(a>20&&g>40&&g>r*0.8){
+          // Map: right half of image -> world coords, scaled to match on-screen hand
+          const wx=(x/w-0.5)*550;
+          const wy=-(y/h-0.5)*350;
+          const weight=g>150?4:g>80?2:1;
+          for(let ww=0;ww<weight;ww++)pts.push([wx,wy]);
+        }
+      }}
+      if(pts.length>200){
+        handPoints=pts;
+        delete tgtCache['dense_fallback'];
+        if(lastScene<=0)T_Dense();
+      }
+    }catch(e){}
+  };
+  img.src='/handsnobg.png';
+}
+// --- CACHED TARGET SYSTEM ---
+// Each formation is generated once and cached so scroll-back looks identical
+const tgtCache={};
+function cachedTargets(name,genFn){
+  if(!tgtCache[name]){
+    const tmp=new Float32Array(PC*3);
+    genFn(tmp);
+    tgtCache[name]=tmp;
+  }
+  tgt.set(tgtCache[name]);
+}
+function T_Dense(){
+  // Use hand-shaped formation if available, otherwise tight cluster
+  // Invalidate cache when handPoints first become available
+  const key=handPoints&&handPoints.length>100?'dense_hand':'dense_fallback';
+  if(key==='dense_hand')delete tgtCache['dense_fallback'];
+  cachedTargets(key,function(t){
+    if(!handPoints||handPoints.length<100){
+      for(let i=0;i<PC;i++){const i3=i*3;const r=Math.random()*12;const th=Math.random()*Math.PI*2;const p=Math.acos(2*Math.random()-1);t[i3]=r*Math.sin(p)*Math.cos(th)+120;t[i3+1]=r*Math.sin(p)*Math.sin(th);t[i3+2]=r*Math.cos(p)}
+    } else {
+      for(let i=0;i<PC;i++){const i3=i*3;const pt=handPoints[Math.floor(Math.random()*handPoints.length)];t[i3]=pt[0]+(Math.random()-0.5)*4;t[i3+1]=pt[1]+(Math.random()-0.5)*4;t[i3+2]=(Math.random()-0.5)*10}
+    }
+  });
+}
+function T_Vibrate(){cachedTargets('vibrate',function(t){for(let i=0;i<PC;i++){const i3=i*3;const r=30+Math.random()*60;const th=Math.random()*Math.PI*2;const p=Math.acos(2*Math.random()-1);t[i3]=r*Math.sin(p)*Math.cos(th);t[i3+1]=r*Math.sin(p)*Math.sin(th);t[i3+2]=r*Math.cos(p)}})}
+function T_Box(){cachedTargets('box',function(t){const bw=120,bh=80,bd=20;for(let i=0;i<PC;i++){const i3=i*3;const f=Math.floor(Math.random()*6);let x,y,z;switch(f){case 0:x=-bw/2;y=(Math.random()-0.5)*bh;z=(Math.random()-0.5)*bd;break;case 1:x=bw/2;y=(Math.random()-0.5)*bh;z=(Math.random()-0.5)*bd;break;case 2:x=(Math.random()-0.5)*bw;y=-bh/2;z=(Math.random()-0.5)*bd;break;case 3:x=(Math.random()-0.5)*bw;y=bh/2;z=(Math.random()-0.5)*bd;break;case 4:x=(Math.random()-0.5)*bw;y=(Math.random()-0.5)*bh;z=-bd/2;break;case 5:x=(Math.random()-0.5)*bw;y=(Math.random()-0.5)*bh;z=bd/2;break}t[i3]=x;t[i3+1]=y;t[i3+2]=z}})}
+function T_Release(){cachedTargets('release',function(t){for(let i=0;i<PC;i++){const i3=i*3;const r=300+Math.random()*600;const th=Math.random()*Math.PI*2;const p=Math.acos(2*Math.random()-1);t[i3]=r*Math.sin(p)*Math.cos(th);t[i3+1]=r*Math.sin(p)*Math.sin(th);t[i3+2]=r*Math.cos(p)}})}
+function T_Apps(){cachedTargets('apps',function(t){const bx=[{x:-200,y:80,w:100,h:70},{x:0,y:80,w:100,h:70},{x:200,y:80,w:100,h:70},{x:-100,y:-60,w:100,h:70},{x:100,y:-60,w:100,h:70}];for(let i=0;i<PC;i++){const i3=i*3;const b=bx[Math.floor(Math.random()*bx.length)];const f=Math.floor(Math.random()*4);let x,y;switch(f){case 0:x=b.x-b.w/2;y=b.y+(Math.random()-0.5)*b.h;break;case 1:x=b.x+b.w/2;y=b.y+(Math.random()-0.5)*b.h;break;case 2:x=b.x+(Math.random()-0.5)*b.w;y=b.y-b.h/2;break;case 3:x=b.x+(Math.random()-0.5)*b.w;y=b.y+b.h/2;break}t[i3]=x;t[i3+1]=y;t[i3+2]=(Math.random()-0.5)*20}})}
+function T_Interface(){cachedTargets('interface',function(t){for(let i=0;i<PC;i++){const i3=i*3;t[i3]=(Math.random()-0.5)*800;t[i3+1]=(Math.random()-0.5)*40;t[i3+2]=(Math.random()-0.5)*300}})}
+let interfaceActive=false;
+function flowInterface(t){if(!interfaceActive)return;for(let i=0;i<PC;i++){const i3=i*3;const px=ph[i];tgt[i3]+=Math.sin(t*0.4+px)*0.8;tgt[i3+1]+=Math.cos(t*0.3+px*1.5)*0.3;if(tgt[i3]>400)tgt[i3]=-400;if(tgt[i3]<-400)tgt[i3]=400}}
+function T_Screen(){cachedTargets('screen',function(t){const w=180,h=120;for(let i=0;i<PC;i++){const i3=i*3;const f=Math.floor(Math.random()*4);let x,y;switch(f){case 0:x=-w/2;y=(Math.random()-0.5)*h;break;case 1:x=w/2;y=(Math.random()-0.5)*h;break;case 2:x=(Math.random()-0.5)*w;y=-h/2;break;case 3:x=(Math.random()-0.5)*w;y=h/2;break}t[i3]=x;t[i3+1]=y;t[i3+2]=(Math.random()-0.5)*8}})}
+function T_Wave(){cachedTargets('wave',function(t){for(let i=0;i<PC;i++){const i3=i*3;const x=(Math.random()-0.5)*500;const freq=0.02+Math.random()*0.01;const amp=40+Math.random()*30;t[i3]=x;t[i3+1]=Math.sin(x*freq)*amp+(Math.random()-0.5)*8;t[i3+2]=(Math.random()-0.5)*20}})}
+function T_Eye(){cachedTargets('eye',function(t){for(let i=0;i<PC;i++){const i3=i*3;const r2=Math.random();if(r2<0.3){const a=Math.random()*Math.PI*2;const r=30+Math.random()*5;t[i3]=Math.cos(a)*r;t[i3+1]=Math.sin(a)*r}else{const a=Math.random()*Math.PI*2;const r=80+Math.random()*15;const sq=Math.abs(Math.cos(a));t[i3]=Math.cos(a)*r;t[i3+1]=Math.sin(a)*r*0.5*sq}t[i3+2]=(Math.random()-0.5)*10}})}
+function T_Neural(){cachedTargets('neural',function(t){const nodes=[];for(let l=0;l<5;l++){const cnt=6+Math.floor(Math.random()*4);for(let n=0;n<cnt;n++){nodes.push({x:(l-2)*100,y:(n-cnt/2)*45+(Math.random()-0.5)*15,z:(Math.random()-0.5)*60})}}for(let i=0;i<PC;i++){const i3=i*3;const nd=nodes[Math.floor(Math.random()*nodes.length)];t[i3]=nd.x+(Math.random()-0.5)*30;t[i3+1]=nd.y+(Math.random()-0.5)*30;t[i3+2]=nd.z+(Math.random()-0.5)*30}})}
+function T_Ambient(){cachedTargets('ambient',function(t){for(let i=0;i<PC;i++){const i3=i*3;const r=200+Math.random()*500;const th=Math.random()*Math.PI*2;const p=Math.acos(2*Math.random()-1);t[i3]=r*Math.sin(p)*Math.cos(th);t[i3+1]=r*Math.sin(p)*Math.sin(th);t[i3+2]=r*Math.cos(p)-100}})}
+T_Dense();
+const sIds=['scene-0','scene-1','scene-2','scene-3','scene-4','scene-5','scene-6'];
+const sR=[[0,0.13],[0.13,0.23],[0.23,0.33],[0.33,0.47],[0.47,0.59],[0.59,0.86],[0.86,1.0]];
+function getS(p){for(let i=0;i<sR.length;i++)if(p>=sR[i][0]&&p<sR[i][1])return i;return sR.length-1}
+function updateScenes(){const s=getS(scrollPct);const changed=s!==lastScene;lastScene=s;if(!changed)return;sIds.forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===s));document.getElementById('nav').classList.add('show');document.getElementById('scroll-hint').classList.toggle('show',s===0);interfaceActive=false;switch(s){case 0:T_Dense();lmat.opacity=0.12;recolor(C.gold);break;case 1:T_Apps();lmat.opacity=0.10;recolor(C.red);break;case 2:T_Release();lmat.opacity=0.02;recolor(C.teal);break;case 3:T_Dense();lmat.opacity=0.08;recolor(C.gold);resetTerm();runTerm();break;case 4:T_Interface();lmat.opacity=0.04;recolor(C.teal);interfaceActive=true;break;case 5:T_Ambient();lmat.opacity=0.02;recolor(C.teal);activateLayers();break;case 6:T_Ambient();lmat.opacity=0.01;recolor(C.gold);break}}
+
+let currentLayer=-1;
+function updateLayerScroll(){
+  if(lastScene!==5)return;
+  const s5start=sR[5][0],s5end=sR[5][1];
+  const p=Math.max(0,Math.min(1,(scrollPct-s5start)/(s5end-s5start)));
+  const idx=Math.min(Math.floor(p*4),3);
+  if(idx===currentLayer)return;
+  currentLayer=idx;
+  document.querySelectorAll('#layer-stage .layer-card').forEach((c,i)=>c.classList.toggle('active',i===idx));
+  document.querySelectorAll('#layer-dots .layer-dot').forEach((d,i)=>d.classList.toggle('on',i===idx));
+}
+function activateLayers(){currentLayer=-1;updateLayerScroll()}
+function resetTerm(){
+  const term=document.querySelector('.terminal-3d');
+  if(term){term.classList.remove('dissolving');term.style.opacity='1'}
+  clearTimeout(window._termDissolveTimer);
+  clearTimeout(window._termScrollTimer);
+}
+let termTimeouts=[];
+function runTerm(){
+  termTimeouts.forEach(t=>clearTimeout(t));
+  termTimeouts=[];
+  const body=document.getElementById('term-body');
+  body.textContent='';
+  const lines=[
+    {cls:['to'],texts:['// this is the last prompt'],d:400},
+    {cls:['to'],texts:['// after which apps stop asking who you are'],d:600},
+    {cls:[],texts:[],d:400},
+    {cls:['tp','tc'],texts:['$ ','open a wrapp — any app built on Switchboard'],d:500},
+    {cls:[],texts:[],d:400},
+    {cls:['ta'],texts:['it asks: your AI · your context · one folder'],d:700},
+    {cls:['tc'],texts:['you approve. once.'],d:600},
+    {cls:[],texts:[],d:300},
+    {cls:['ts','ta'],texts:['lending inference... ','your claude'],d:500},
+    {cls:['ts','ta'],texts:['lending context... ','your brand'],d:500},
+    {cls:['ts','ta'],texts:['lending tools... ','gmail · shopify · search'],d:500},
+    {cls:[],texts:[],d:400},
+    {cls:['ts'],texts:['no signup. no api key. no new subscription.'],d:600},
+    {cls:['ts'],texts:['intelligence is now common.'],d:0,blink:true,last:true},
+  ];
+  let delay=200;
+  lines.forEach(line=>{
+    delay+=line.d;
+    termTimeouts.push(setTimeout(()=>{
+      const div=document.createElement('div');
+      div.className='term-line';
+      if(line.texts.length===0){
+        div.textContent='\u00A0';
+      } else {
+        line.texts.forEach((txt,idx)=>{
+          const span=document.createElement('span');
+          if(line.cls[idx])span.className=line.cls[idx];
+          span.textContent=txt;
+          div.appendChild(span);
+        });
+        if(line.blink){
+          const bl=document.createElement('span');
+          bl.className='blink';
+          div.appendChild(bl);
+        }
+      }
+      body.appendChild(div);
+      requestAnimationFrame(()=>div.classList.add('on'));
+      if(line.last){window._termDissolveTimer=setTimeout(()=>{const term=document.querySelector('.terminal-3d');if(term&&lastScene===3){term.classList.add('dissolving');setTimeout(()=>{if(lastScene===3){const mx=document.getElementById('scroll-spacer').offsetHeight-window.innerHeight;window.scrollTo({top:sR[4][0]*mx+10,behavior:'smooth'})}},1400)}},2500)}
+    },delay));
+  });
+}
+
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+  mouse.nx+=(mouse.x-mouse.nx)*0.05;mouse.ny+=(mouse.y-mouse.ny)*0.05;
+  flowInterface(t);
+  const p=geo.attributes.position.array;
+  const ls=0.08;
+  const isS0=lastScene===0;
+  for(let i=0;i<PC;i++){const i3=i*3;p[i3]+=(tgt[i3]-p[i3])*ls;p[i3+1]+=(tgt[i3+1]-p[i3+1])*ls;p[i3+2]+=(tgt[i3+2]-p[i3+2])*ls;const pp=ph[i];if(isS0){const sp=scrollPct/sR[0][1];p[i3]+=Math.sin(sp*6+pp)*0.12;p[i3+1]+=Math.cos(sp*5+pp*1.3)*0.12;p[i3+2]+=Math.sin(sp*4+pp*0.7)*0.08}else{p[i3]+=Math.sin(t*0.3+pp)*0.15;p[i3+1]+=Math.cos(t*0.25+pp*1.3)*0.15;p[i3+2]+=Math.sin(t*0.2+pp*0.7)*0.1}const dx=p[i3]-mouse.nx*300;const dy=p[i3+1]-mouse.ny*200;const d=Math.sqrt(dx*dx+dy*dy);if(d<150){const f=(150-d)/150*0.8;p[i3]+=dx*f*0.02;p[i3+1]+=dy*f*0.02}}
+  geo.attributes.position.needsUpdate=true;
+  const ll=lns.geometry.attributes.position.array;let li=0;const ml=600,md=60;
+  for(let i=0;i<PC&&li<ml;i+=12){for(let j=i+12;j<PC&&li<ml;j+=12){const i3=i*3,j3=j*3;const dx=p[i3]-p[j3];const dy=p[i3+1]-p[j3+1];const dz=p[i3+2]-p[j3+2];const d=dx*dx+dy*dy+dz*dz;if(d<md*md){const l6=li*6;ll[l6]=p[i3];ll[l6+1]=p[i3+1];ll[l6+2]=p[i3+2];ll[l6+3]=p[j3];ll[l6+4]=p[j3+1];ll[l6+5]=p[j3+2];li++}}}
+  for(let k=li*6;k<ll.length;k++)ll[k]=0;
+  lns.geometry.attributes.position.needsUpdate=true;
+  cam.position.x+=(mouse.nx*40-cam.position.x)*0.02;cam.position.y+=(mouse.ny*25-cam.position.y)*0.02;cam.lookAt(0,0,0);
+  // In scene 0, keep particles flat so hand shape is recognizable; other scenes rotate freely
+  if(lastScene===0){pts.rotation.y=scrollPct*0.3;pts.rotation.x=0;} else {pts.rotation.y=t*0.02+scrollPct*Math.PI*0.5;pts.rotation.x=Math.sin(t*0.01)*0.05;}
+  lns.rotation.y=pts.rotation.y;lns.rotation.x=pts.rotation.x;
+  renderer.render(sc,cam);
+}
+window.addEventListener('mousemove',e=>{mouse.x=(e.clientX/window.innerWidth)*2-1;mouse.y=-(e.clientY/window.innerHeight)*2+1});
+window.addEventListener('scroll',()=>{const mx=document.getElementById('scroll-spacer').offsetHeight-window.innerHeight;scrollPct=Math.min(window.scrollY/mx,1);document.getElementById('progress-fill').style.width=(scrollPct*100)+'%';
+  updateScene0Scroll();
+  updateScenes();
+  updateLayerScroll()},{passive:true});
+window.addEventListener('resize',()=>{cam.aspect=window.innerWidth/window.innerHeight;cam.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight)});
+window.addEventListener('touchmove',e=>{if(e.touches.length){mouse.x=(e.touches[0].clientX/window.innerWidth)*2-1;mouse.y=-(e.touches[0].clientY/window.innerHeight)*2+1}},{passive:true});
+// Sample hand image for particle positions
+const himg=document.getElementById('hands-img');
+// Sample green hand pixels from the full image (async)
+sampleHandPoints();
+
+// Hands and particles are scroll-driven in scene 0
+const handL=document.querySelector('.hand-left');
+const handR=document.querySelector('.hand-right');
+const openQ=document.querySelector('.opening-question');
+// Use viewport-relative offset so hands are clearly visible on screen edges
+function getStartOffset(){return Math.min(window.innerWidth*0.12,200)}
+const minGap=15; // small gap so hands almost touch but don't
+// Convert pixel offset to Three.js world-space offset
+function pxToWorld(px){
+  const aspect=window.innerWidth/window.innerHeight;
+  const halfW=500*Math.tan(Math.PI/6)*aspect;
+  return px*(halfW*2/window.innerWidth);
+}
+function updateScene0Scroll(){
+  const s0end=sR[0][1];
+  const startOff=getStartOffset();
+  if(scrollPct<=s0end){
+    const p=Math.min(scrollPct/s0end,1);
+    // Hands: come very close with a slight gap
+    const offset=minGap+(startOff-minGap)*(1-p);
+    const opacity=Math.min(0.75+p*0.25,1.0);
+    if(handL){handL.style.transform='translateX(-'+offset+'px)';handL.style.opacity=opacity}
+    if(handR){handR.style.transform='translateX('+offset+'px)';handR.style.opacity=opacity}
+    // Position particles to overlay on the green hand image
+    // The green hand is on the right side; offset pushes it further right
+    const particleTrackX=pxToWorld(offset*0.8);
+    pts.position.x=particleTrackX;lns.position.x=particleTrackX;
+    // Text: line 1 at 35%, line 2 at 60%
+    const l1=document.getElementById('oq-line1');
+    const l2=document.getElementById('oq-line2');
+    if(l1){if(p>0.2)l1.classList.add('show');else l1.classList.remove('show')}
+    if(l2){if(p>0.8)l2.classList.add('show');else l2.classList.remove('show')}
+    // Particles + lines: fade in with first text line (start at 20%, full at 60%)
+    if(p>0.2){
+      const pAlpha=Math.min((p-0.2)*2.5,1.0);
+      mat.uniforms.uAlpha.value=pAlpha;
+      lmat.opacity=pAlpha*0.12;
+      pts.visible=true;lns.visible=true;
+      window._particlesRevealed=true;
+    } else {
+      mat.uniforms.uAlpha.value=0;
+      lmat.opacity=0;
+      pts.visible=false;lns.visible=false;
+      window._particlesRevealed=false;
+    }
+  } else {
+    mat.uniforms.uAlpha.value=1.0;
+    pts.visible=true;lns.visible=true;
+    pts.position.x=pxToWorld(minGap*0.5);lns.position.x=pts.position.x;
+    if(handL){handL.style.transform='translateX(-'+minGap+'px)';handL.style.opacity='1'}
+    if(handR){handR.style.transform='translateX('+minGap+'px)';handR.style.opacity='1'}
+    const l1b=document.getElementById('oq-line1');const l2b=document.getElementById('oq-line2');
+    if(l1b)l1b.classList.add('show');if(l2b)l2b.classList.add('show');
+  }
+}
+// Init: hands visible on sides, particles completely hidden
+const initOff=getStartOffset();
+if(handL){handL.style.transform='translateX(-'+initOff+'px)';handL.style.opacity='0.75'}
+if(handR){handR.style.transform='translateX('+initOff+'px)';handR.style.opacity='0.75'}
+mat.uniforms.uAlpha.value=0;
+pts.visible=false;lns.visible=false;
+updateScenes();
+setTimeout(()=>document.getElementById('scroll-hint').classList.add('show'),1800);
+animate();
+
+// --- SIGNUP FORM (posts to Google Form via hidden iframe) ---
+const GFORM_URL='https://docs.google.com/forms/d/e/1FAIpQLScbxN8cHzFjeOR3CEJVy46a7q-dSc9ltkRLIZT-2zAVdB4cRQ/formResponse';
+const GFORM_ENTRY='entry.1371637174';
+document.getElementById('signup-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  const email=this.email.value.trim();
+  const note=document.getElementById('signup-note');
+  if(!email){note.textContent='Enter an email.';note.className='signup-note err';return}
+  const self=this;
+  let iframe=document.getElementById('gform-iframe');
+  if(!iframe){iframe=document.createElement('iframe');iframe.id='gform-iframe';iframe.name='gform-iframe';iframe.style.display='none';document.body.appendChild(iframe);}
+  const f=document.createElement('form');
+  f.method='POST';f.action=GFORM_URL;f.target='gform-iframe';f.style.display='none';
+  const inp=document.createElement('input');inp.name=GFORM_ENTRY;inp.value=email;
+  f.appendChild(inp);document.body.appendChild(f);
+  f.submit();
+  setTimeout(()=>{f.remove();note.textContent="You're on the list.";note.className='signup-note ok';self.email.value='';},1000);
+});
+</script>
+</body>
+</html>
