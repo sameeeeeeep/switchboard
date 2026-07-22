@@ -136,6 +136,7 @@ function reflect() {
   $("add-comment").disabled = !connected || !pageKey;
   $("stage").hidden = !!pageKey && !stageOverride;
   $("canvas-bar").hidden = !pageKey;
+  $("cutbar").hidden = !cutMode || !pageKey;
   $("proj-bar").hidden = !bound;
   $("draft-flag").hidden = !isDraft;
   $("save-draft").hidden = !isDraft;
@@ -487,6 +488,7 @@ const OVERLAY_STYLE = `
   [data-redline].rl-locked{ outline-color:#3DD68C !important; } [data-redline].rl-locked::after{ background:#3DD68C; }
   @keyframes rlflash { 0%{ background-color: rgba(61,214,140,.4); } 100%{ background-color: transparent; } }
   .rl-flash{ animation: rlflash 1.8s ease-out; }
+  .rl-hover{ outline:2px dashed rgba(200,242,80,.9) !important; outline-offset:4px; }
   html.rl-picking *{ cursor:crosshair !important; }
   html.rl-picking *:hover{ outline:1.5px dashed rgba(200,242,80,.85) !important; outline-offset:1px; }
 `;
@@ -545,12 +547,24 @@ function decorateFrame() {
   st.textContent = OVERLAY_STYLE;
   for (const c of decisions) { const n = findNode(doc, c); if (n) { n.setAttribute("data-redline", String(c.num)); n.classList.toggle("rl-locked", !!c.locked); } }
   if (!doc.__rlWired) { doc.addEventListener("click", onFrameClick, true); doc.__rlWired = true; }
+  if (!doc.__rlCutWired) {
+    doc.addEventListener("scroll", cutSync, { passive: true });
+    doc.addEventListener("mouseover", cutPageHover, true);
+    doc.__rlCutWired = true;
+  }
+  // srcdoc re-renders swap the document; page heights settle late (fonts, images) — re-measure
+  if (cutMode) { $("cutbar").hidden = !pageKey; for (const t of [60, 500, 1600]) setTimeout(cutLayout, t); setTimeout(() => cutThumbnails(), 1900); cutSync(); }
   doc.documentElement.classList.toggle("rl-picking", picking);
 }
 function onFrameClick(e) {
   if (!picking) return;
   e.preventDefault(); e.stopPropagation();
   const node = e.target; if (!node || node.nodeType !== 1) return;
+  commentOn(node);
+}
+// ONE path creates a decision, whether the click came from the page (comment mode) or from the
+// CUT timeline's ELEMENTS track — same anchor, same lifecycle, same Ask/options/lock.
+function commentOn(node) {
   const snippet = (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 160) || node.tagName.toLowerCase();
   const num = (decisions.reduce((m, c) => Math.max(m, c.num), 0) || 0) + 1;
   const c = { id: uid(), num, selector: cssPath(node), snippet, tag: node.tagName.toLowerCase(), note: "", decision: null, locked: null };
@@ -559,6 +573,7 @@ function onFrameClick(e) {
   activeId = c.id;
   saveReview(); renderSide(); decorateFrame();
   setTimeout(() => { const ta = document.querySelector(`.dec[data-id="${c.id}"] textarea`); ta?.focus(); ta?.scrollIntoView({ block: "center" }); }, 30);
+  return c;
 }
 function cssPath(node) {
   const parts = []; let e = node;
@@ -577,6 +592,347 @@ function findNode(doc, c) {
   if (c.snippet) { const want = c.snippet.slice(0, 40).toLowerCase(); for (const n of (doc.body ? doc.body.querySelectorAll(c.tag || "*") : [])) if ((n.textContent || "").trim().replace(/\s+/g, " ").toLowerCase().includes(want)) return n; }
   return null;
 }
+
+// ---------- CUT: the timeline surface ----------
+// The sidebar answers "what changed"; the timeline answers WHERE in the reader's journey it
+// changes. Nothing new is created here: the chips ARE the sidebar's decisions — same numbers,
+// same lifecycle (pinned → asking → option ready → locked) — projected onto scroll position.
+// The PAGE track renders the page's own top-level blocks as clips; the playhead is the reader.
+let cutMode = false;
+let cutPlaying = false;
+let cutLastT = 0;
+const CUT_SPEED = 340; // px/s when "playing" the page like footage
+const cutClamp = (v) => Math.max(0, Math.min(1, v));
+function cutDoc() { const d = frameDoc(); return d && d.scrollingElement && d.body ? d : null; }
+function cutMax(d) { return Math.max(1, d.scrollingElement.scrollHeight - $("frame").clientHeight); }
+function cutX(d, y) { return cutClamp(y / cutMax(d)); }
+const cutBlockLabel = (n) => (n.id || (n.querySelector?.("h1,h2,h3")?.textContent || "").trim().slice(0, 18) || n.tagName).toLowerCase();
+function cutBlocks(d) {
+  return [...d.body.children].filter((n) => !/^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(n.tagName) && n.getBoundingClientRect().height >= 120);
+}
+function toggleCut(on) {
+  cutMode = on ?? !cutMode;
+  $("cut-toggle").classList.toggle("on", cutMode);
+  $("cutbar").hidden = !cutMode || !pageKey;
+  if (cutMode) { cutSync(); setTimeout(() => cutThumbnails(), 300); if (!cutWatchTimer) cutWatchTimer = setInterval(cutWatchTick, 80); } else cutStop();
+  renderSide(); // position badges on the cards appear/disappear with the bar; renderSide re-lays the tracks too
+}
+// The sanitized preview iframe (sandbox without allow-scripts) swallows scroll EVENTS even though
+// scrolling itself works — and rAF can be throttled to zero in background/embedded contexts — so
+// the playhead POLLS scrollTop on an interval. Runs only while CUT is open; stops on toggle-off.
+let cutWatchTimer = 0, cutLastY = -1;
+function cutWatchTick() {
+  if (!cutMode) { clearInterval(cutWatchTimer); cutWatchTimer = 0; return; }
+  const d = cutDoc();
+  if (d) { const y = d.scrollingElement.scrollTop; if (y !== cutLastY) { cutLastY = y; cutSync(); } }
+}
+// filmstrip: html2canvas runs PARENT-side against the same-origin frame doc, so it works even
+// when the reviewed page's own scripts are sandboxed off. Loaded lazily from CDN; no CDN or a
+// tainted block → the clip keeps its label, nothing breaks.
+let cutThumbs = [];
+let cutThumbing = false;
+let h2cReady = null;
+function ensureH2C() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  if (!h2cReady) h2cReady = new Promise((res) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    s.onload = () => res(window.html2canvas);
+    s.onerror = () => res(null);
+    document.head.appendChild(s);
+  });
+  return h2cReady;
+}
+async function cutThumbnails(force) {
+  const d = cutDoc(); if (!d || cutThumbing || !cutMode || $("cutbar").hidden) return;
+  if (d.__rlThumbed && !force) return;
+  cutThumbing = true;
+  document.querySelectorAll("#cut-page .cut-clip").forEach((c) => c.classList.add("rendering"));
+  const h2c = await ensureH2C();
+  const next = [];
+  if (h2c) {
+    const bg = d.defaultView?.getComputedStyle(d.body).backgroundColor || "#fff";
+    for (const n of cutBlocks(d).slice(0, 12)) {
+      try {
+        const cv = await h2c(n, { backgroundColor: bg, logging: false });
+        if (!cv.width || !cv.height) continue;
+        const t = document.createElement("canvas");
+        t.width = 150; t.height = Math.max(1, Math.round(150 * cv.height / cv.width));
+        t.getContext("2d").drawImage(cv, 0, 0, t.width, t.height);
+        const u = t.toDataURL("image/png");
+        if (u.length > 200) next.push({ el: n, url: u }); // "data:," (6 bytes) is the taint signature
+      } catch { /* tainted or hostile block — label survives */ }
+    }
+  }
+  cutThumbs = next;
+  if (cutDoc() === d) d.__rlThumbed = true;
+  cutThumbing = false;
+  cutLayout();
+}
+// Every CUT gesture is an INTENT, not an edit. It mints a regular decision (same object, same
+// card) with the note pre-written from the gesture, and asks Redline immediately — the AI does
+// the work, options land async, LOCK stays the only thing that writes.
+function intentDecision(node, note) {
+  const c = commentOn(node);
+  c.note = note;
+  renderSide();
+  if (relay) respond(c);
+  return c;
+}
+// ---------- the seams: hover, position and motion travel across all three surfaces ----------
+// One hover = three highlights: the element on the page, the chip on the track, the card in
+// the sidebar. Any surface can originate it; the others follow.
+let cutHoverNode = null;
+function setLinkHover(decId, node, on) {
+  if (cutHoverNode && (!on || cutHoverNode !== node)) { try { cutHoverNode.classList.remove("rl-hover"); } catch { /* frame re-rendered */ } cutHoverNode = null; }
+  if (on && node) { node.classList.add("rl-hover"); cutHoverNode = node; }
+  document.querySelectorAll(".dec.linked, .cut-pin.linked, .cut-elb.linked").forEach((x) => x.classList.remove("linked"));
+  if (on && decId) {
+    document.querySelector(`.dec[data-id="${decId}"]`)?.classList.add("linked");
+    document.getElementById("cutpin-" + decId)?.classList.add("linked");
+  }
+}
+// sidebar → page + track, delegated so decisionCard/lockedCard stay untouched
+{
+  let lastHoverCard = null;
+  $("side-body").addEventListener("mouseover", (e) => {
+    if (!cutMode) return;
+    const card = e.target.closest(".dec[data-id]");
+    if (card === lastHoverCard) return;
+    lastHoverCard = card;
+    const c = card && decisions.filter(Boolean).find((k) => k.id === card.dataset.id);
+    const d = c && cutDoc();
+    setLinkHover(c ? c.id : null, d ? findNode(d, c) : null, !!c);
+  });
+  $("side-body").addEventListener("mouseleave", () => { lastHoverCard = null; setLinkHover(null, null, false); });
+}
+// page → track + sidebar: hovering the page lights the chip/card of a pinned element and the
+// ELEMENTS block of any layer — the direction that was still missing
+let cutElbByNode = new Map(); // rebuilt every cutLayout: element node → its ELEMENTS-track block
+function cutPageHover(e) {
+  if (!cutMode || picking || $("cutbar").hidden) return;
+  document.querySelectorAll(".dec.linked, .cut-pin.linked, .cut-elb.linked").forEach((x) => x.classList.remove("linked"));
+  const pinned = e.target.closest?.("[data-redline]");
+  const c = pinned && decisions.filter(Boolean).find((k) => String(k.num) === pinned.getAttribute("data-redline"));
+  if (c) {
+    document.querySelector(`.dec[data-id="${c.id}"]`)?.classList.add("linked");
+    document.getElementById("cutpin-" + c.id)?.classList.add("linked");
+  }
+  const lay = e.target.closest?.("h1,h2,h3,p,a,button,img,input");
+  const elb = lay && cutElbByNode.get(lay);
+  if (elb) elb.classList.add("linked");
+}
+// where a decision lives on the film — stamped on its sidebar card while CUT is open
+function cutPosBadge(c) {
+  if (!cutMode || $("cutbar").hidden) return "";
+  const d = cutDoc(); const n = d && findNode(d, c);
+  if (!n) return "";
+  return " · ⧗ " + Math.round(cutX(d, n.getBoundingClientRect().top + d.scrollingElement.scrollTop) * 100) + "%";
+}
+const cutLastStatus = new Map(); // a status transition pulses the chip — change is motion, not just a repaint
+// every meaningful layer inside a block, for the ELEMENTS track
+function cutBlockElements(n) {
+  return [...n.querySelectorAll("h1,h2,h3,p,a,button,img,input")]
+    .filter((m) => /^(IMG|INPUT)$/.test(m.tagName) || (m.textContent || "").trim())
+    .slice(0, 5);
+}
+function cutLayout() {
+  if (!cutMode || $("cutbar").hidden) return;
+  const d = cutDoc(); if (!d) return;
+  const scrollTop = d.scrollingElement.scrollTop;
+  const thumbByEl = new Map(cutThumbs.map((t) => [t.el, t.url]));
+  const clips = $("cut-page"); clips.textContent = "";
+  const elems = $("cut-elems"); elems.textContent = "";
+  $("cut-back").textContent = "";
+  cutElbByNode = new Map();
+  // SOUND track: shown only when the page actually has audio layers — sound is part of the film
+  // the moment a page carries any (or the founder stages an intent to add some via any element)
+  const sounds = [...d.querySelectorAll("audio, video, [data-sound]")];
+  $("cut-audio-track").hidden = !sounds.length;
+  const audioRow = $("cut-audio"); audioRow.textContent = "";
+  for (const s of sounds) {
+    const host = s.getBoundingClientRect().height ? s : (s.parentElement || d.body);
+    const y = host.getBoundingClientRect().top + scrollTop;
+    const auPinned = decisions.filter(Boolean).find((c) => (c.note || "").startsWith("Sound:") && findNode(d, c) === s);
+    const au = el("div", "cut-au" + (auPinned ? " pinned" : ""));
+    au.style.left = (cutX(d, y) * 100) + "%"; au.style.width = "6%";
+    au.append(el("span", null, "♪ " + ((s.getAttribute("src") || s.tagName).split("/").pop() || "sound").slice(0, 16).toLowerCase()));
+    au.title = auPinned ? "sound layer — open decision #" + auPinned.num : s.tagName.toLowerCase() + " — when it plays, how loud, how it fades: part of the cut";
+    au.onclick = (e) => {
+      e.stopPropagation(); cutStop();
+      if (auPinned) return cutOpen(auPinned);
+      if ($("work").classList.contains("collapsed")) setCollapsed(false);
+      intentDecision(s, "Sound: review this page's audio layer — when it should start, at what volume, and whether it needs a fade tied to scroll position.");
+    };
+    audioRow.append(au);
+  }
+  for (const [bi, n] of cutBlocks(d).entries()) {
+    const r = n.getBoundingClientRect(); const top = r.top + scrollTop;
+    const a = cutX(d, top), b = cutX(d, top + r.height);
+    const clip = el("div", "cut-clip" + (cutThumbing ? " rendering" : ""));
+    clip.style.left = (a * 100) + "%"; clip.style.width = (Math.max(0.02, b - a) * 100) + "%";
+    const u = thumbByEl.get(n);
+    if (u) { const film = el("div", "film"); const im = document.createElement("img"); im.src = u; im.draggable = false; film.append(im); clip.append(film); }
+    clip.append(el("span", "c-name", cutBlockLabel(n)));
+    clip.onclick = () => { cutStop(); d.scrollingElement.scrollTop = Math.max(0, top - 40); };
+    clips.append(clip);
+    // BACKDROP track: the section's real background as a strip — click = restyle intent
+    const bkPinned = decisions.filter(Boolean).find((c) => (c.note || "").startsWith("Backdrop:") && findNode(d, c) === n);
+    const bk = el("div", "cut-bk" + (bkPinned ? " pinned" : ""));
+    bk.style.left = (a * 100) + "%"; bk.style.width = (Math.max(0.02, b - a) * 100) + "%";
+    const cs = d.defaultView.getComputedStyle(n);
+    bk.style.background = cs.backgroundImage !== "none" ? cs.backgroundImage : cs.backgroundColor;
+    bk.title = bkPinned
+      ? '"' + cutBlockLabel(n) + '" backdrop — open decision #' + bkPinned.num
+      : '"' + cutBlockLabel(n) + '" backdrop — click to restyle; Redline writes the edit';
+    bk.onclick = (e) => {
+      e.stopPropagation(); cutStop();
+      if (bkPinned) return cutOpen(bkPinned);
+      if ($("work").classList.contains("collapsed")) setCollapsed(false);
+      intentDecision(n, 'Backdrop: restyle the "' + cutBlockLabel(n) + '" section\'s background — keep the palette, add depth (a subtle gradient or texture), keep text contrast.');
+    };
+    $("cut-back").append(bk);
+    // ⧖ at this block's entrance — how it should come in. An INTENT Redline executes, not a knob.
+    if (bi) {
+      const label = cutBlockLabel(n);
+      const existing = decisions.filter(Boolean).find((c) => (c.note || "").startsWith("Entrance:") && findNode(d, c) === n);
+      const trn = el("div", "cut-trn" + (existing ? (existing.locked ? " done" : " staged") : ""), "⧖");
+      trn.style.left = (a * 100) + "%";
+      trn.title = existing
+        ? '"' + label + '" entrance — open decision #' + existing.num
+        : '"' + label + '" — stage how this section enters; Redline writes the edit';
+      trn.onclick = (e) => {
+        e.stopPropagation(); cutStop();
+        if (existing) return cutOpen(existing);
+        if ($("work").classList.contains("collapsed")) setCollapsed(false);
+        intentDecision(n, 'Entrance: make the "' + label + '" section come in softly as it scrolls into view — a gentle fade and rise, no layout jump. Write it into this page\'s own styles.');
+      };
+      clips.append(trn);
+    }
+    // the block's layers, clickable → a REAL comment (same path as comment mode)
+    const members = cutBlockElements(n);
+    const w = (b - a) / Math.max(1, members.length);
+    members.forEach((m, k) => {
+      const media = /^(IMG|INPUT)$/.test(m.tagName);
+      const pinnedBy = decisions.filter(Boolean).find((c) => findNode(d, c) === m);
+      const eb = el("div", "cut-elb" + (media ? " media" : "") + (pinnedBy ? " pinned" : ""));
+      eb.style.left = ((a + w * k + 0.002) * 100) + "%";
+      eb.style.width = (Math.max(0.012, w - 0.004) * 100) + "%";
+      eb.append(el("b", null, m.tagName.toLowerCase()));
+      eb.append(el("span", null, media ? "(media)" : (m.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24)));
+      eb.title = pinnedBy ? "open decision #" + pinnedBy.num
+        : media ? m.tagName.toLowerCase() + " — ask your Claude for a mockup to replace it"
+        : "click to comment on this " + m.tagName.toLowerCase();
+      eb.onclick = (e) => {
+        e.stopPropagation(); cutStop();
+        if (pinnedBy) return cutOpen(pinnedBy);
+        if ($("work").classList.contains("collapsed")) setCollapsed(false);
+        if (media) intentDecision(m, "Mock up a stronger replacement for this " + (m.tagName === "IMG" ? "image" : "form element") + " — match the page's style and palette.");
+        else commentOn(m);
+      };
+      eb.onmouseenter = () => setLinkHover(pinnedBy ? pinnedBy.id : null, m, true);
+      eb.onmouseleave = () => setLinkHover(null, null, false);
+      cutElbByNode.set(m, eb);
+      elems.append(eb);
+    });
+  }
+  const pins = $("cut-pins"); pins.textContent = "";
+  for (const c of decisions.filter(Boolean)) {
+    const node = findNode(d, c); if (!node) continue;
+    const y = node.getBoundingClientRect().top + scrollTop;
+    const st = cutStatus(c);
+    const chip = el("div", "cut-pin " + st + (c.id === activeId ? " sel" : ""), String(c.num));
+    chip.id = "cutpin-" + c.id;
+    if (cutLastStatus.has(c.id) && cutLastStatus.get(c.id) !== st) chip.classList.add("pulse");
+    cutLastStatus.set(c.id, st);
+    chip.title = `${c.tag}${c.snippet ? " · " + c.snippet.slice(0, 60) : ""}`;
+    chip.style.left = (cutX(d, y) * 100) + "%";
+    chip.onclick = (e) => { e.stopPropagation(); cutOpen(c); };
+    chip.onmouseenter = () => setLinkHover(c.id, node, true);
+    chip.onmouseleave = () => setLinkHover(null, null, false);
+    pins.append(chip);
+  }
+  const ruler = $("cut-ruler"); ruler.textContent = "";
+  for (const p of [0, 25, 50, 75, 100]) { const s = el("span", null, p + "%"); s.style.left = p + "%"; ruler.append(s); }
+}
+function cutStatus(c) {
+  if (c.locked) return "done";
+  if (busy.has(c.id) || c.decision?.loading) return "busy";
+  if (c.decision) return "ready";
+  return "pending";
+}
+function cutOpen(c) {
+  cutStop();
+  activeId = c.id;
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  scrollToNode(c); renderSide();
+  document.querySelector(`.dec[data-id="${c.id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function cutSync() {
+  if (!cutMode || $("cutbar").hidden) return;
+  const d = cutDoc(); if (!d) return;
+  const x = cutX(d, d.scrollingElement.scrollTop);
+  $("cut-playhead").style.left = (x * 100) + "%";
+  $("cut-pct").textContent = Math.round(x * 100) + "%";
+  let name = "—";
+  for (const n of cutBlocks(d)) if (n.getBoundingClientRect().top <= $("frame").clientHeight * 0.4) name = cutBlockLabel(n);
+  $("cut-sec").textContent = name;
+  // ◎ follow: only while the film is DRIVEN (scrub or play) — never hijack the user's own reading scroll
+  if (cutFollow && (cutPlaying || cutScrubbing)) {
+    let best = null, bestDist = 0.06; // generous capture radius — scrubbing lands NEAR a chip, not on it
+    for (const c of decisions.filter(Boolean)) {
+      const n = findNode(d, c); if (!n) continue;
+      const cx = cutX(d, n.getBoundingClientRect().top + d.scrollingElement.scrollTop);
+      const dist = Math.abs(cx - x);
+      if (dist < bestDist) { best = c; bestDist = dist; }
+    }
+    if (best && best.id !== activeId) {
+      activeId = best.id; renderSide();
+      document.querySelector(`.dec[data-id="${best.id}"]`)?.scrollIntoView({ block: "nearest" });
+    }
+  }
+}
+let cutScrubbing = false; // module-visible: follow mode needs to know the film is being driven
+{
+  const scrub = $("cut-scrub");
+  const seek = (e) => { const d = cutDoc(); if (!d) return; const r = scrub.getBoundingClientRect(); d.scrollingElement.scrollTop = cutClamp((e.clientX - r.left) / r.width) * cutMax(d); };
+  scrub.addEventListener("pointerdown", (e) => { if (e.target.closest(".cut-pin,.cut-elb,.cut-trn,.cut-bk,.cut-au")) return; cutScrubbing = true; cutStop(); seek(e); });
+  window.addEventListener("pointermove", (e) => { if (cutScrubbing) seek(e); });
+  window.addEventListener("pointerup", () => { cutScrubbing = false; });
+}
+// ◎ follow: while the film is being driven, the decision under the playhead opens itself —
+// review by scrubbing, instead of scrub-then-hunt-then-click
+let cutFollow = false;
+$("cut-follow").addEventListener("click", () => { cutFollow = !cutFollow; $("cut-follow").classList.toggle("on", cutFollow); });
+let cutPlayTimer = 0;
+function cutTick() {
+  if (!cutPlaying) return;
+  const d = cutDoc(); if (!d) return cutStop();
+  const t = performance.now(); const dt = (t - cutLastT) / 1000; cutLastT = t;
+  d.scrollingElement.scrollTop += CUT_SPEED * dt;
+  if (d.scrollingElement.scrollTop >= cutMax(d) - 2) cutStop();
+}
+function cutStop() { cutPlaying = false; if (cutPlayTimer) { clearInterval(cutPlayTimer); cutPlayTimer = 0; } const b = $("cut-play"); b.classList.remove("on"); b.textContent = "▶"; }
+function cutPlay() {
+  if (cutPlaying) return cutStop();
+  const d = cutDoc(); if (!d) return;
+  cutPlaying = true; const b = $("cut-play"); b.classList.add("on"); b.textContent = "❚❚";
+  cutLastT = performance.now(); cutPlayTimer = setInterval(cutTick, 33);
+}
+function cutJump(dir) {
+  const d = cutDoc(); if (!d) return; cutStop();
+  const here = d.scrollingElement.scrollTop;
+  const anchored = decisions.filter(Boolean)
+    .map((c) => { const n = findNode(d, c); return n ? { c, y: n.getBoundingClientRect().top + here } : null; })
+    .filter(Boolean).sort((a, b) => a.y - b.y);
+  const hit = dir > 0 ? anchored.find((a) => a.y > here + 8) : [...anchored].reverse().find((a) => a.y < here - 8);
+  if (hit) cutOpen(hit.c);
+}
+$("cut-toggle").addEventListener("click", () => toggleCut());
+$("cut-play").addEventListener("click", cutPlay);
+$("cut-prev").addEventListener("click", () => cutJump(-1));
+$("cut-next").addEventListener("click", () => cutJump(1));
+$("cut-rethumb").addEventListener("click", () => cutThumbnails(true));
 
 // ---------- comment mode + view + collapse ----------
 $("pick-toggle").addEventListener("click", () => setPicking(!picking));
@@ -599,50 +955,71 @@ $("run-scripts").addEventListener("click", () => {
 // Runs AUTOMATICALLY the first time a page opens with nothing pinned (the proactive first batch);
 // the ✦ Audit button is the "generate more" re-run.
 let auditing = false;
+// complete array elements from a PARTIAL stream: parse up to the last closing brace; a brace that
+// closes mid-element fails the parse and we simply wait for more text
+function parseJsonPrefix(text) {
+  const s = text.indexOf("["); if (s < 0) return null;
+  const e = text.lastIndexOf("}"); if (e < s) return null;
+  try { return JSON.parse(text.slice(s, e + 1) + "]"); } catch { return null; }
+}
 async function audit() {
   if (!relay || !pageKey || auditing) return;
   const forPage = pageKey; // if the user switches pages mid-audit, drop the results — never pin page A's findings onto page B
   auditing = true; updateAudit(); renderSide();
+  let added = 0, streamedThrough = 0;
+  // one finding → one pinned decision; used BOTH by the stream (as each element completes) and by
+  // the final pass — the snippet-overlap dedupe makes the second call a no-op for anything pinned
+  const pinFinding = (f) => {
+    const snippet = String(f.snippet || "").trim();
+    const issue = String(f.issue || "").trim();
+    if (!snippet || !issue) return false;
+    if (decisions.some((c) => c.snippet && (c.snippet.includes(snippet.slice(0, 40)) || snippet.includes(c.snippet.slice(0, 40))))) return false;
+    const doc = frameDoc();
+    const node = doc ? locateBySnippet(doc, f.tag, snippet) : null;
+    const num = (decisions.reduce((m, c) => Math.max(m, c.num), 0) || 0) + 1;
+    const c = {
+      id: uid(), num,
+      selector: node ? cssPath(node) : "",
+      snippet: node ? (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 160) : snippet,
+      tag: (node ? node.tagName.toLowerCase() : String(f.tag || "section")).slice(0, 12),
+      note: issue.slice(0, 300), decision: null, locked: null,
+    };
+    // pre-seed the ready-to-lock option when the audit's edit applies cleanly to the source
+    const find = typeof f.find === "string" && f.find.length >= 8 ? f.find : null;
+    if (find && f.replace != null && currentHtml.includes(find)) {
+      const opt = { id: uid(), label: String(f.label || "Suggested fix").slice(0, 40), text: String(f.preview || "").trim() || stripTags(String(f.replace)).trim().slice(0, 220) || "(removed)", edit: { find, replace: String(f.replace) }, recommended: true };
+      c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], selectedId: opt.id, steers: [], markdown: "", find, summary: c.note, preseeded: true };
+    }
+    decisions.push(c); added++;
+    return true;
+  };
+  // findings land on the page + timeline AS THE MODEL FINDS THEM, not as one batch at the end
+  const onChunk = (p) => {
+    if (!p.text || pageKey !== forPage) return;
+    const arr = parseJsonPrefix(p.text);
+    if (!arr || arr.length <= streamedThrough) return;
+    let fresh = 0;
+    for (const f of arr.slice(streamedThrough, 10)) if (pinFinding(f)) fresh++;
+    streamedThrough = Math.min(arr.length, 10);
+    if (fresh) { renderSide(); decorateFrame(); }
+  };
   try {
     const text = await streamText({
       prompt: [
         "You are Redline, auditing a landing page like a sharp editor + designer. Find the WORST offenders: AI-slop copy (generic hype, filler, clichés like unleash/seamless/empower/elevate, walls of meta-text), pointless or redundant meta lines, dead or duplicated sections, inconsistent voice, weak headlines. 5–8 findings, most damaging first.",
+        "Within that budget, you may include up to 2 FILM findings — about how the page MOVES, not what it says: a section whose entrance feels abrupt or lifeless as the reader scrolls to it, or an image that undercuts its section. For an entrance finding: tag = the section's own tag, snippet = exact visible text from inside that section, and issue MUST start with \"Entrance: \". Motion rarely fits a safe find/replace — omit find/replace for these unless certain.",
         'Return ONLY a JSON array — no prose, no fences. Each element: {"tag":<lowercase tag of the element, e.g. "p">,"snippet":<EXACT visible text of that element, ≤100 chars, verbatim>,"issue":<one blunt sentence: what is wrong + the direction to fix>,"label":<2–4 word name for the fix>,"find":<EXACT unique substring of SOURCE containing what to change, ≤300 chars, enough markup to be unique>,"replace":<the find with the fix applied; "" to delete the element; ≤400 chars>,"preview":<the new visible text, or "removed">}',
         "If a finding can't be expressed as a safe find/replace, omit find/replace and keep the issue only.",
         "SOURCE:\n" + currentHtml,
       ].join("\n\n"),
       maxTokens: 8000,
-    });
+    }, onChunk);
     if (pageKey !== forPage) return; // stale — a different page is open now
     // Mark this page audited even on a clean/empty pass, so the auto-run never loops on reload.
     lastAuditAt = Date.now();
     const arr = parseJsonArray(text);
-    if (!arr || !arr.length) { await saveReview(); toast("Audit came back empty — press ✦ Audit to run it again."); return; }
-    const doc = frameDoc();
-    let added = 0;
-    for (const f of arr.slice(0, 10)) {
-      const snippet = String(f.snippet || "").trim();
-      const issue = String(f.issue || "").trim();
-      if (!snippet || !issue) continue;
-      // don't double-pin something the user (or a prior audit) already flagged
-      if (decisions.some((c) => c.snippet && (c.snippet.includes(snippet.slice(0, 40)) || snippet.includes(c.snippet.slice(0, 40))))) continue;
-      const node = doc ? locateBySnippet(doc, f.tag, snippet) : null;
-      const num = (decisions.reduce((m, c) => Math.max(m, c.num), 0) || 0) + 1;
-      const c = {
-        id: uid(), num,
-        selector: node ? cssPath(node) : "",
-        snippet: node ? (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 160) : snippet,
-        tag: (node ? node.tagName.toLowerCase() : String(f.tag || "section")).slice(0, 12),
-        note: issue.slice(0, 300), decision: null, locked: null,
-      };
-      // pre-seed the ready-to-lock option when the audit's edit applies cleanly to the source
-      const find = typeof f.find === "string" && f.find.length >= 8 ? f.find : null;
-      if (find && f.replace != null && currentHtml.includes(find)) {
-        const opt = { id: uid(), label: String(f.label || "Suggested fix").slice(0, 40), text: String(f.preview || "").trim() || stripTags(String(f.replace)).trim().slice(0, 220) || "(removed)", edit: { find, replace: String(f.replace) }, recommended: true };
-        c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], selectedId: opt.id, steers: [], markdown: "", find, summary: c.note, preseeded: true };
-      }
-      decisions.push(c); added++;
-    }
+    if ((!arr || !arr.length) && !added) { await saveReview(); toast("Audit came back empty — press ✦ Audit to run it again."); return; }
+    for (const f of (arr || []).slice(0, 10)) pinFinding(f); // stragglers only — the dedupe guard makes this idempotent
     saveReview(); renderSide(); decorateFrame();
     toast(added ? `Audit ✓ ${added} suggestion${added === 1 ? "" : "s"} pinned — open a card, the fix is ready to lock` : "Audit ✓ nothing new beyond your existing comments");
   } catch (e) { toast("Audit failed — " + msg(e), true); }
@@ -1023,6 +1400,7 @@ function imgWithFallback(url, alt, cls, c) {
 
 // ---------- the sidebar (the wrapp) ----------
 function renderSide() {
+  cutLayout(); // decision state is already current at entry — chips follow the lifecycle colors
   const body = $("side-body"); body.textContent = "";
   const live = decisions.filter(Boolean);
   const open = live.filter((c) => !c.locked).length, done = live.length - open;
@@ -1054,7 +1432,7 @@ function decisionCard(c) {
   const head = el("div", "dec-head");
   head.append(el("div", "dec-num", String(c.num)));
   const main = el("div", "dec-main");
-  main.append(el("div", "dec-target", `${c.tag}${c.snippet ? " · " + c.snippet.slice(0, 60) : ""}`));
+  main.append(el("div", "dec-target", `${c.tag}${c.snippet ? " · " + c.snippet.slice(0, 60) : ""}${cutPosBadge(c)}`));
   main.append(el("div", "dec-snip", c.snippet));
   const x = el("button", "dec-x", "×"); x.title = "delete"; x.onclick = (e) => { e.stopPropagation(); removeDecision(c); };
   head.append(main, x);
@@ -1161,7 +1539,7 @@ function lockedCard(c) {
   const head = el("div", "dec-head");
   head.append(el("div", "dec-num done", "✓"));   // a done comment is a checked-off item
   const main = el("div", "dec-main");
-  main.append(el("div", "dec-target", `${c.tag}${c.snippet ? " · " + c.snippet.slice(0, 60) : ""}`));
+  main.append(el("div", "dec-target", `${c.tag}${c.snippet ? " · " + c.snippet.slice(0, 60) : ""}${cutPosBadge(c)}`));
   const x = el("button", "dec-x", "×"); x.title = "delete"; x.onclick = (e) => { e.stopPropagation(); removeDecision(c); };
   head.append(main, x);
   head.onclick = () => { activeId = c.id; scrollToNode(c); };
