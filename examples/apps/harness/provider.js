@@ -224,14 +224,49 @@
     };
   }
   function redlineAudit() {
+    // These five sentences exist VERBATIM in the switchboard seed page (projects.js), each inside a
+    // real <p> — so findings anchor (pins + timeline chips) and the find/replace validates against
+    // source, exercising Redline's pre-seeded ready-to-lock path. tag must be a real tag name:
+    // locateBySnippet feeds it to querySelectorAll.
     var slop = ["seamless", "unleash", "empower", "elevate", "game-changing"];
     var out = [];
     for (var i = 0; i < 5; i++) out.push({
-      tag: ["headline", "cta", "body", "subhead", "footer"][i], label: "AI-slop: " + slop[i],
+      tag: "p", label: "AI-slop: " + slop[i],
       snippet: "We " + slop[i] + " your workflow with next-gen synergy.", issue: "Empty hype word '" + slop[i] + "' — say the concrete thing instead.",
       find: "We " + slop[i] + " your workflow with next-gen synergy.", replace: bname + " " + (products[0] || "does the job") + " — " + voice + ".", preview: "Concrete, on-brand rewrite.",
     });
     return out;
+  }
+  // Redline's respond-router, answered BY INTENT — the reviewer's comment travels in the prompt.
+  // Entrance intents become a real <section id="…"> attribute edit (verbatim in the seed source);
+  // mockup intents route to the agentic image path; everything else gets a proper 2-option edit
+  // anchored to the element's visible text. Shapes per respond()'s contract in src/redline.js.
+  function redlineRespond(p) {
+    var note = (p.match(/Reviewer's comment: "([\s\S]*?)"\n/) || [])[1] || "";
+    var vis = (p.match(/Current visible text: "([^"\n]{4,})"/) || [])[1] || bname;
+    var sel = (p.match(/Element CSS path: (\S+)/) || [])[1] || "";
+    if (/^Mock up/i.test(note)) return { mode: "image", brief: "A stronger hero visual for " + bname + " — match the page's dark palette, product-forward, no text overlays" };
+    if (/^Entrance:/i.test(note) || /^Backdrop:/i.test(note)) {
+      var id = sel.charAt(0) === "#" ? sel.slice(1) : null;
+      if (!id) return { mode: "reply", markdown: "This section has no id to anchor a style edit — give it one and ask again." };
+      var open = 'id="' + id + '"'; // tag-agnostic: matches <header>/<section>/<footer> alike, exactly once
+      var isBack = /^Backdrop:/i.test(note);
+      var mk = function (label, style, rec) { return { label: label, replace: open + " " + style, preview: label, recommended: rec }; };
+      return {
+        mode: "edit", summary: isBack ? "Restyle the backdrop" : "Soften the entrance",
+        find: open,
+        options: isBack
+          ? [mk("Deep gradient", 'data-backdrop="gradient"', true), mk("Subtle texture", 'data-backdrop="texture"', false)]
+          : [mk("Gentle rise (0.8s)", 'data-entrance="rise-800"', true), mk("Slow drift (1.6s)", 'data-entrance="drift-1600"', false)],
+      };
+    }
+    return {
+      mode: "edit", summary: "Tighten the copy", find: vis,
+      options: [
+        { label: "Tighter", replace: vis.split(" ").slice(0, Math.max(3, Math.ceil(vis.split(" ").length / 2))).join(" "), preview: "Tighter cut of the line.", recommended: true },
+        { label: "On-voice", replace: bname + " — " + (brand.tagline || voice), preview: "On-voice rewrite.", recommended: false },
+      ],
+    };
   }
   function cartridgePitches() {
     var g = ["Runner", "Shooter", "Puzzle", "Dodge"]; var out = [];
@@ -265,6 +300,10 @@
     // OBJECT where the audit parses a JSON ARRAY (→ "audit came back empty", zero pinned cards).
     // The specific route has to win. Same shadowing hazard as the natal pair below.
     [function (lc, p) { return /worst offenders|ai-slop copy|unleash\/seamless|walls of meta-text|most damaging first/i.test(p); }, function () { return redlineAudit(); }],
+    // redline respond-router — ORDER MATTERS (same hazard as above): the router prompt embeds
+    // '"find":<EXACT unique substring…' so the generic find/replace route below would shadow it
+    // and answer a modeless object (→ "no decision came back" on every comment). Must win first.
+    [function (lc, p) { return /choose a mode|left a comment on one element|the comment wants to change/i.test(p); }, function (lc, p) { return redlineRespond(p); }],
     // redline / marquee find-replace edits and placements
     [function (lc, p) { return /place an image into the raw html|img src=|woven in appropriately/i.test(p); }, function () { return { find: "</body>", replace: '<img src="' + IMG_BASE + "/" + PROJECT.id + '/960x540/hero.png" style="max-width:100%"></body>' }; }],
     [function (lc, p) { return /find\/replace|exact unique substring|"find"[\s\S]*"replace"|the change the founder wants/i.test(p); }, function () { return { find: bname, replace: bname + " — " + (brand.tagline || "") }; }],
@@ -323,8 +362,7 @@
     [function (lc, p) { return /chat-starter prompts|single best starter|at most 90 characters/i.test(p); }, function () { var a = [{ text: "Draft a launch post for " + (products[0] || bname), recommended: true }, { text: "What should I ship this week?", recommended: false }, { text: "Rewrite my homepage hero", recommended: false }]; return a; }],
     // huddle / chat turns / generic prose
     [function (lc, p) { return /live working call|move their project forward|you are betterchat|no-frills chat/i.test(p); }, function () { return "text:Here's the move for " + bname + ": pick the one lever that matters this week — " + (products[0] || "your core offer") + " — and cut everything else. What's blocking it right now?"; }],
-    // redline respond-router (the audit route itself lives up top — see the ORDER MATTERS note there)
-    [function (lc, p) { return /choose a mode|left a comment on one element|the comment wants to change/i.test(p); }, function () { return { mode: "edit", summary: "Tighten the copy", find: bname, replace: bname + " — " + voice, recommended: true, options: [], label: "Tighten", preview: "clearer" }; }],
+    // (redline respond-router lives up top with the audit route — see the ORDER MATTERS notes there)
   ];
 
   function imageUrlFor(prompt, vertical) {

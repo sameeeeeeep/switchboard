@@ -79,20 +79,40 @@ const SWITCHBOARD = {
   // (Redline audits it; Huddle lists it as a project file). Deliberately imperfect: a vague hero,
   // a weak CTA, an <img> with no alt, and a nav link to nowhere — so an audit has real findings
   // to pin rather than inventing praise. See provider.js storageOp().
+  // Restructured for CUT: five tall top-level blocks with distinct backdrops and section ids, an
+  // <img> mid-page, and the canned audit's exact slop sentences planted as REAL copy — so audit
+  // findings finally ANCHOR (pins + timeline chips + validated pre-seeded fixes), the ⧖ entrance
+  // chips have boundaries to sit on, the media element block appears, and entrance edits can be
+  // real `<section id="…"` attribute rewrites. Audit-bait kept: dead "#" nav link, alt-less img,
+  // weak "Learn more" CTA.
   page: {
     key: "index.html",
     html: [
       '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-      '<title>Switchboard</title></head><body>',
+      '<title>Switchboard</title>',
+      '<style>header,section{min-height:420px;padding:48px 24px}footer{min-height:200px;padding:40px 24px}h1{font-size:40px}</style>',
+      '</head><body style="margin:0;font-family:system-ui,sans-serif">',
       '<nav><a href="/">Switchboard</a><a href="/docs">Docs</a><a href="#">Pricing</a></nav>',
-      '<header><h1>The future of AI apps is here</h1>',
+      '<header id="s-hero" style="background:#0b0d10;color:#e8edf4">',
+      '<h1>The future of AI apps is here</h1>',
+      '<p>We seamless your workflow with next-gen synergy.</p>',
       '<p>Switchboard is a platform for the next generation of intelligent applications.</p>',
       '<a href="/signup">Learn more</a></header>',
-      '<img src="/hero.png">',
-      '<section><h2>Features</h2><ul>',
-      '<li>Runs on your own Claude</li><li>No API keys</li><li>Per-origin consent</li>',
-      '</ul></section>',
-      '<footer><p>MIT licensed. Built by Sameep.</p></footer>',
+      '<section id="s-product" style="background:#101623;color:#dfe6f2">',
+      '<h2>One connection, every app</h2>',
+      '<p>We unleash your workflow with next-gen synergy.</p>',
+      '<img src="/hero.png" width="640" height="360"></section>',
+      '<section id="s-features" style="background:#0d1117;color:#d7dee8">',
+      '<h2>Features</h2>',
+      '<p>We empower your workflow with next-gen synergy.</p>',
+      '<ul><li>Runs on your own Claude</li><li>No API keys</li><li>Per-origin consent</li></ul></section>',
+      '<section id="s-pricing" style="background:#131a26;color:#e2e8f0">',
+      '<h2>Pricing</h2>',
+      '<p>We elevate your workflow with next-gen synergy.</p>',
+      '<a href="#">Start free</a></section>',
+      '<footer id="s-footer" style="background:#08090c;color:#9aa4b5">',
+      '<p>We game-changing your workflow with next-gen synergy.</p>',
+      '<p>MIT licensed. Built by Sameep.</p></footer>',
       '</body></html>',
     ].join("\n"),
   },
