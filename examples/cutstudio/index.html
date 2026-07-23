@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CUT studio — the video editor for landing pages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="./html2canvas.min.js"></script>
+<style>
+/* CUT STUDIO — the no-AI cut room. A landing page is footage: upload one, scrub it, select and
+   cut like an editor, export the HTML or a scroll-through video. Everything runs in this tab —
+   no accounts, no servers, no AI. House Atlas-cockpit tokens. */
+:root {
+  --page:#0A0C10; --inset:#070809; --panel:#12151C; --raised:#1A1F29;
+  --edge:#262C38; --edge-soft:#1C212B;
+  --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+  --accent:#C8F250; --accent-soft:#232B0D;
+  --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E; --blue:#7DE0FF;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --mono:"Spline Sans Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box} [hidden]{display:none!important}
+html,body{margin:0;height:100%}
+body{background:var(--page);color:var(--ink);font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+::selection{background:rgba(200,242,80,.3)}
+button{font-family:inherit}
+
+.app{display:flex;flex-direction:column;height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--edge-soft);flex:none;flex-wrap:wrap}
+.word{font:700 19px/1 var(--display);letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+.word em{font-style:normal;color:var(--accent)}
+.word .mk{width:21px;height:21px;border-radius:6px;background:var(--accent);box-shadow:0 0 14px rgba(200,242,80,.4);position:relative}
+.word .mk::after{content:"";position:absolute;left:5px;right:5px;top:9px;height:2px;background:var(--page)}
+.tagline{font:400 11px/1.4 var(--mono);color:var(--ink-faint)}
+.spacer{flex:1}
+.act{font:500 11.5px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:8px 12px;cursor:pointer;transition:border-color .15s,color .15s}
+.act:hover{border-color:var(--accent);color:var(--ink)}
+.act.lit{border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));color:var(--accent)}
+.act.lit:hover{background:var(--accent-soft)}
+.act:disabled{opacity:.4;cursor:default}
+
+.canvas{flex:1;position:relative;min-height:0;background:var(--inset)}
+iframe{width:100%;height:100%;border:0;background:#0B0D10}
+/* the empty stage: drop a file or open the sample */
+.stage{position:absolute;inset:0;display:grid;place-items:center;background:var(--inset);z-index:30}
+.stage .card{max-width:520px;text-align:center;padding:20px}
+.stage h1{font:700 clamp(1.7rem,3.4vw,2.5rem)/1.08 var(--display);letter-spacing:-.02em;margin:0 0 10px}
+.stage h1 em{font-style:normal;color:var(--accent)}
+.stage p{color:var(--ink-sec);margin:0 0 22px;font-size:14.5px}
+.primary{font:600 13.5px/1 var(--sans);border-radius:10px;padding:12px 18px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:var(--page);transition:filter .15s}
+.primary:hover{filter:brightness(1.08)}
+.ghost{font:600 13.5px/1 var(--sans);border-radius:10px;padding:12px 18px;cursor:pointer;border:1px solid var(--edge);background:none;color:var(--ink-sec)}
+.ghost:hover{border-color:var(--accent);color:var(--ink)}
+.stage .hint{margin-top:18px;font:400 11px/1.7 var(--mono);color:var(--ink-faint)}
+.stage.dropping .card{outline:2px dashed var(--accent);outline-offset:16px;border-radius:12px}
+
+/* selection verb bar */
+.selbar{position:absolute;z-index:26;display:flex;align-items:center;gap:4px;background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--edge));border-radius:10px;padding:4px 6px;box-shadow:0 10px 30px -12px rgba(0,0,0,.7)}
+.selbar b{font:600 9px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--accent);padding:0 3px}
+.selbar button{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:7px;color:var(--ink-sec);padding:6px 8px;cursor:pointer}
+.selbar button:hover{border-color:var(--accent);color:var(--ink)}
+.selbar button.danger:hover{border-color:var(--danger);color:var(--danger)}
+
+/* render overlay */
+.render{position:absolute;inset:0;display:grid;place-items:center;background:rgba(7,8,9,.82);z-index:40}
+.render .box{text-align:center}
+.render .box .k{font:500 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:12px}
+.render .barx{width:280px;height:6px;background:var(--raised);border-radius:6px;overflow:hidden;margin:0 auto}
+.render .barx i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+
+/* ---------- timeline ---------- */
+.tl{flex:none;position:relative;border-top:1px solid var(--edge-soft);background:var(--inset);padding:0 0 10px;user-select:none}
+.tl-resize{position:absolute;top:-4px;left:0;right:0;height:9px;cursor:ns-resize;z-index:9}
+.tl-resize:hover,.tl-resize.dragging{border-top:2px solid color-mix(in srgb,var(--accent) 60%,transparent)}
+.transport{display:flex;align-items:center;gap:9px;padding:9px 16px 7px;flex-wrap:wrap}
+.tbtn{width:30px;height:30px;border-radius:9px;background:var(--panel);border:1px solid var(--edge);color:var(--ink-sec);cursor:pointer;display:grid;place-items:center;font-size:12px;transition:border-color .15s,color .15s}
+.tbtn:hover{border-color:var(--accent);color:var(--accent)}
+.tbtn.play{width:36px;height:36px;border-radius:11px}
+.tbtn.play.on{background:var(--accent);border-color:var(--accent);color:var(--page)}
+.tbtn:disabled{opacity:.35;cursor:default}
+.readout{font:500 11px/1 var(--mono);color:var(--ink-dim);display:flex;gap:12px;align-items:baseline}
+.readout .pct{color:var(--accent);font-size:15px;min-width:44px;display:inline-block}
+.readout .sec{color:var(--ink-sec);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hinttext{margin-left:auto;font:400 10px/1.5 var(--mono);color:var(--ink-faint)}
+.hinttext b{color:var(--ink-dim);font-weight:500}
+
+.scrub-outer{position:relative;margin:0 14px;padding-left:58px}
+.rails{position:absolute;left:0;top:0;bottom:0;width:54px;pointer-events:none}
+.rails span{position:absolute;right:8px;transform:translateY(-50%);font:500 8.5px/1 var(--mono);letter-spacing:.12em;color:var(--ink-faint)}
+.scrub{position:relative;overflow-x:auto;overflow-y:hidden;cursor:crosshair}
+.scrub::-webkit-scrollbar{height:7px}
+.scrub::-webkit-scrollbar-thumb{background:var(--edge);border-radius:7px}
+.zoomwrap{position:relative;min-width:100%;width:100%}
+.ruler{position:relative;height:15px;border-bottom:1px solid var(--edge-soft);font:500 8.5px/1 var(--mono);color:var(--ink-faint)}
+.ruler span{position:absolute;top:2px;transform:translateX(-50%)}
+.tracks{position:relative;padding:5px 0 2px}
+.track{position:relative;height:calc(28px * var(--s,1));margin-bottom:5px}
+.track.back{height:calc(9px * var(--s,1))}
+.track.elems{height:auto}
+.clips{position:absolute;inset:0}
+.clip{position:absolute;top:0;bottom:0;background:var(--panel);border:1px solid var(--edge);border-radius:7px;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab}
+.clip.dragging{opacity:.45;cursor:grabbing}
+.clip .film{position:absolute;inset:0;display:flex}
+.clip .film img{height:100%;flex:1 1 0;object-fit:cover;min-width:0;opacity:.85}
+.clip .nm{position:relative;z-index:2;font:500 8.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--inset) 74%,transparent);border-radius:4px;padding:2px 5px}
+.clip.here{border-color:color-mix(in srgb,var(--accent) 45%,var(--edge))}
+.clip.here .nm{color:var(--accent)}
+.dropline{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--accent);box-shadow:0 0 8px rgba(200,242,80,.6);transform:translateX(-1px);z-index:6;pointer-events:none}
+.bk{position:absolute;top:0;bottom:0;border-radius:3px;border:1px solid var(--edge)}
+.elb{position:absolute;background:var(--raised);border:1px solid var(--edge);border-radius:5px;font:400 8.5px/1 var(--mono);color:var(--ink-dim);display:flex;align-items:center;gap:4px;padding:0 5px;overflow:hidden;cursor:pointer;transition:border-color .15s,color .15s}
+.elb:hover{border-color:var(--accent);color:var(--ink-sec)}
+.elb b{font:600 8px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);flex:none}
+.elb span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.elb.media{opacity:.65}
+.elb.onscreen{border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));color:var(--ink-sec)}
+.elb.onscreen b{color:var(--accent)}
+.elb.selected{box-shadow:0 0 0 2px var(--accent)}
+.elb.linked{border-color:color-mix(in srgb,var(--accent) 60%,var(--edge));color:var(--ink-sec)}
+.elb.dragging{opacity:.65;z-index:9;border-color:var(--accent);cursor:grabbing}
+.playhead{position:absolute;top:0;bottom:0;width:0;z-index:5;pointer-events:none}
+.playhead .line{position:absolute;top:0;bottom:0;left:-1px;width:2px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.5)}
+.playhead .cap{position:absolute;top:-13px;left:-6px;width:12px;height:10px;background:var(--accent);clip-path:polygon(0 0,100% 0,50% 100%)}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--edge));color:var(--ink);font:500 12px/1.4 var(--sans);padding:10px 16px;border-radius:10px;z-index:60;box-shadow:0 12px 34px -12px rgba(0,0,0,.7)}
+.toast.err{border-color:color-mix(in srgb,var(--danger) 50%,var(--edge))}
+footer{position:fixed;right:12px;bottom:8px;font:400 10px/1 var(--mono);color:var(--ink-faint);z-index:5}
+footer a{color:var(--ink-dim);text-decoration:none}
+footer a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="word"><span class="mk"></span>CUT <em>studio</em></div>
+    <span class="tagline">the video editor for landing pages · no code · no signup · nothing leaves this tab</span>
+    <div class="spacer"></div>
+    <button class="act" id="open-btn">⌥ Open HTML…</button>
+    <button class="act" id="js-btn" title="run the page's own JavaScript in the preview — only for files you trust">js off</button>
+    <button class="act" id="undo-btn" title="⌘Z">↶ Undo</button>
+    <button class="act" id="redo-btn" title="⇧⌘Z">↷ Redo</button>
+    <button class="act lit" id="export-html">⇓ Export HTML</button>
+    <button class="act lit" id="export-video">▸ Render video</button>
+  </header>
+
+  <div class="canvas">
+    <iframe id="frame" title="your page" sandbox="allow-same-origin"></iframe>
+    <div class="selbar" id="selbar" hidden></div>
+    <div class="render" id="render" hidden><div class="box"><div class="k" id="render-k">rendering the scroll-through…</div><div class="barx"><i id="render-bar"></i></div></div></div>
+    <div class="stage" id="stage">
+      <div class="card">
+        <h1>Fix your landing page in <em>minutes</em>.</h1>
+        <p>Drop in any HTML page and edit it like a video: drag sections into a better order, delete what's not working, retype the headline, change when things appear as you scroll. Download the finished page — or turn it into a scroll-through video for your socials.</p>
+        <button class="primary" id="open-btn2">Open an HTML file</button>
+        &nbsp;<button class="ghost" id="sample-btn">Try the sample page</button>
+        <div class="hint">or drop an .html file anywhere · everything stays in this tab</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tl" id="tl" hidden>
+    <div class="tl-resize" id="tl-resize" title="drag up to grow the timeline"></div>
+    <div class="transport">
+      <button class="tbtn play" id="play" title="play the scroll (space)">▶</button>
+      <button class="tbtn" id="zoom-out" title="zoom out (⌘/ctrl + wheel)">−</button>
+      <button class="tbtn" id="zoom-in" title="zoom in">+</button>
+      <button class="tbtn" id="zoom-fit" title="fit">⤢</button>
+      <span class="readout"><span class="pct" id="pct">0%</span><span class="sec" id="secname">—</span></span>
+      <span class="hinttext"><b>click</b> selects · <b>dbl-click</b> retypes text · <b>⌫</b> deletes · <b>drag a clip</b> reorders · <b>⌘Z</b> undoes</span>
+    </div>
+    <div class="scrub-outer">
+      <div class="rails" id="rails"></div>
+      <div class="scrub" id="scrub">
+        <div class="zoomwrap" id="zoomwrap">
+          <div class="ruler" id="ruler"></div>
+          <div class="tracks">
+            <div class="track" data-label="PAGE"><div class="clips" id="t-page"></div></div>
+            <div class="track back" data-label="BACKDROP"><div class="clips" id="t-back"></div></div>
+            <div class="track elems" data-label="ELEMENTS"><div class="clips" id="t-elems"></div></div>
+            <div class="playhead" id="playhead"><span class="cap"></span><span class="line"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<footer>want it to write the edits for you? <a href="https://thelastprompt.ai/switchboard/" target="_blank" rel="noopener">Get Switchboard</a></footer>
+<input type="file" id="file-input" accept=".html,.htm" hidden />
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const frame = $("frame");
+
+  // ---------- state: the DOM IS the document; undo = whole-page snapshots ----------
+  let doc = null, win = null;
+  let fileName = "page.html";
+  const undoStack = [], redoStack = [];
+  let sel = null;           // selected element
+  let zoom = 1, vscale = 1;
+  let playing = false, playTimer = 0, lastT = 0;
+  const SPEED = 340;
+  let watchTimer = 0, lastY = -1;
+  let thumbs = [];          // [{el, url}]
+  let thumbing = false;
+  let elbByNode = new Map();
+
+  const serialize = () => "<!doctype html>\n" + doc.documentElement.outerHTML;
+  function toast(text, err) {
+    document.querySelectorAll(".toast").forEach((t) => t.remove());
+    const t = el("div", "toast" + (err ? " err" : ""), text);
+    document.body.append(t); setTimeout(() => t.remove(), 2600);
+  }
+
+  // Scripts are NEUTRALIZED (type-swapped), never removed: with js off nothing executes (the
+  // sandbox has no allow-scripts either), but the page's code survives every edit and ships in
+  // the export. The js toggle re-renders with scripts live — for JS-driven pages (scroll reveals,
+  // scene films) that's the difference between footage and a blank reel. Only for files you trust.
+  let runScripts = false;
+  function swapScripts(html, activate) {
+    try {
+      const d = new DOMParser().parseFromString(html, "text/html");
+      for (const s of d.querySelectorAll("script")) {
+        if (activate) {
+          if (s.getAttribute("type") === "text/x-cut-inert") {
+            const t = s.getAttribute("data-cut-type");
+            if (t) s.setAttribute("type", t); else s.removeAttribute("type");
+            s.removeAttribute("data-cut-type");
+          }
+        } else if (s.getAttribute("type") !== "text/x-cut-inert") {
+          s.setAttribute("data-cut-type", s.getAttribute("type") || "");
+          s.setAttribute("type", "text/x-cut-inert");
+        }
+      }
+      return "<!doctype html>\n" + d.documentElement.outerHTML;
+    } catch { return html; }
+  }
+  function renderDoc(html, after) {
+    frame.setAttribute("sandbox", runScripts ? "allow-same-origin allow-scripts" : "allow-same-origin");
+    frame.srcdoc = swapScripts(html, runScripts);
+    frame.onload = () => {
+      doc = frame.contentDocument; win = frame.contentWindow;
+      wireDoc(); layout(); sync();
+      [400, 1400].forEach((t) => setTimeout(layout, t));
+      setTimeout(makeThumbs, 900);
+      if (after) after();
+    };
+  }
+
+  // ---------- load ----------
+  function load(html, name) {
+    fileName = name || fileName;
+    undoStack.length = 0; redoStack.length = 0; sel = null; thumbs = [];
+    $("stage").hidden = true; $("tl").hidden = false;
+    renderDoc(html);
+    if (!watchTimer) watchTimer = setInterval(() => {
+      if (!doc) return;
+      const y = doc.scrollingElement.scrollTop;
+      if (y !== lastY) { lastY = y; sync(); }
+    }, 80);
+    updateActs();
+  }
+  function wireDoc() {
+    doc.addEventListener("click", onPageClick, true);
+    doc.addEventListener("dblclick", onPageDbl, true);
+    doc.addEventListener("keydown", onKey, true);
+    doc.addEventListener("mouseover", (e) => { const lay = e.target.closest?.(SELECTOR); const b = lay && elbByNode.get(lay); document.querySelectorAll(".elb.linked").forEach((x) => x.classList.remove("linked")); if (b) b.classList.add("linked"); }, true);
+  }
+
+  // ---------- geometry ----------
+  const SELECTOR = "h1,h2,h3,h4,p,a,button,img,input,li,blockquote";
+  const maxScroll = () => Math.max(1, doc.documentElement.scrollHeight - win.innerHeight);
+  const fx = (y) => clamp01(y / maxScroll());
+  function blocks() {
+    return [...doc.body.children].filter((n) =>
+      !/^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(n.tagName) &&
+      n.getBoundingClientRect().height >= 100 &&
+      win.getComputedStyle(n).position !== "fixed");
+  }
+  const blockLabel = (n) => (n.id || (n.querySelector?.("h1,h2,h3")?.textContent || "").trim().slice(0, 16) || n.tagName).toLowerCase();
+
+  // ---------- history ----------
+  function commit(fn) {
+    undoStack.push(serialize()); if (undoStack.length > 50) undoStack.shift();
+    redoStack.length = 0;
+    fn();
+    clearSel(); layout(); sync(); updateActs();
+  }
+  function timeTravel(from, to, label) {
+    if (!from.length) return;
+    const html = from.pop(); to.push(serialize());
+    const y = doc.scrollingElement.scrollTop;
+    thumbs = [];
+    renderDoc(html, () => { doc.scrollingElement.scrollTop = y; updateActs(); });
+    toast(label + " ✓");
+  }
+  function updateActs() { $("undo-btn").disabled = !undoStack.length; $("redo-btn").disabled = !redoStack.length; }
+
+  // ---------- selection + verbs ----------
+  function clearSel() {
+    if (sel) { try { sel.classList.remove("cs-sel"); if (!sel.getAttribute("class")) sel.removeAttribute("class"); } catch { /* gone */ } }
+    sel = null; $("selbar").hidden = true;
+    document.querySelectorAll(".elb.selected").forEach((x) => x.classList.remove("selected"));
+  }
+  function revealX(f) {
+    const scrub = $("scrub"), wrap = $("zoomwrap");
+    const px = f * wrap.offsetWidth;
+    if (px < scrub.scrollLeft + 20 || px > scrub.scrollLeft + scrub.clientWidth - 60) scrub.scrollLeft = Math.max(0, px - scrub.clientWidth / 3);
+  }
+  function select(node) {
+    clearSel(); if (!node) return;
+    sel = node; node.classList.add("cs-sel");
+    ensureSelStyle();
+    const b = elbByNode.get(node);
+    if (b) { b.classList.add("selected"); revealX(parseFloat(b.style.left) / 100); }
+    buildSelbar(); placeSelbar();
+  }
+  function ensureSelStyle() {
+    if (doc.getElementById("__cs_style")) return;
+    const st = doc.createElement("style"); st.id = "__cs_style";
+    st.textContent = ".cs-sel{outline:2px solid #C8F250 !important;outline-offset:3px}.cs-edit{outline:2px dashed #C8F250 !important;outline-offset:3px;cursor:text}";
+    doc.head.appendChild(st);
+  }
+  function buildSelbar() {
+    const bar = $("selbar"); bar.textContent = "";
+    const media = /^(IMG|INPUT)$/.test(sel.tagName);
+    bar.append(el("b", null, sel.tagName.toLowerCase()));
+    const verb = (label, fn, danger) => { const b = el("button", danger ? "danger" : null, label); b.onclick = (e) => { e.stopPropagation(); fn(); }; bar.append(b); };
+    if (!media) verb("✎ Retype", () => { const n = sel; clearSel(); startInlineEdit(n); });
+    verb("⌫ Delete", () => { const n = sel; commit(() => n.remove()); toast("Deleted — ⌘Z to undo"); }, true);
+    verb("⧉ Duplicate", () => { const n = sel; commit(() => n.after(n.cloneNode(true))); toast("Duplicated"); });
+    if (sel.hasAttribute("data-cs-appear")) verb("◔ Reset timing", () => { const n = sel; clearSel(); clearRetime(n); });
+    const x = el("button", null, "✕"); x.onclick = (e) => { e.stopPropagation(); clearSel(); }; bar.append(x);
+    bar.hidden = false;
+  }
+  function placeSelbar() {
+    const bar = $("selbar"); if (bar.hidden || !sel) return;
+    let r; try { r = sel.getBoundingClientRect(); } catch { return clearSel(); }
+    const fw = frame.getBoundingClientRect();
+    bar.style.top = Math.max(4, Math.min(fw.height - 38, r.top - 36)) + "px";
+    bar.style.left = Math.max(4, Math.min(fw.width - bar.offsetWidth - 8, r.left)) + "px";
+  }
+  function onPageClick(e) {
+    if (e.target.closest?.("[contenteditable]")) return;
+    e.preventDefault(); e.stopPropagation();
+    const lay = e.target.closest?.(SELECTOR);
+    if (!lay || !elbByNode.get(lay)) return clearSel();
+    select(lay);
+  }
+  function startInlineEdit(lay) {
+    const beforeInner = lay.innerHTML;
+    ensureSelStyle();
+    lay.setAttribute("contenteditable", "plaintext-only");
+    lay.classList.add("cs-edit"); lay.focus();
+    try { doc.getSelection().selectAllChildren(lay); } catch { /* nicety */ }
+    const finish = (commitIt) => {
+      lay.removeEventListener("blur", onBlur); lay.removeEventListener("keydown", onEditKey);
+      lay.removeAttribute("contenteditable"); lay.classList.remove("cs-edit");
+      if (!lay.getAttribute("class")) lay.removeAttribute("class");
+      const after = lay.innerHTML;
+      if (!commitIt || after === beforeInner) { lay.innerHTML = beforeInner; return; }
+      lay.innerHTML = beforeInner;                    // rewind, then commit so the snapshot is the true before-state
+      commit(() => { lay.innerHTML = after; });
+      toast("Retyped — ⌘Z to undo");
+    };
+    const onBlur = () => finish(true);
+    const onEditKey = (ev) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); lay.blur(); }
+      else if (ev.key === "Escape") { ev.preventDefault(); lay.removeEventListener("blur", onBlur); finish(false); }
+    };
+    lay.addEventListener("blur", onBlur); lay.addEventListener("keydown", onEditKey);
+  }
+  function onPageDbl(e) {
+    const lay = e.target.closest?.("h1,h2,h3,h4,p,a,button,li,blockquote");
+    if (!lay || !elbByNode.get(lay)) return;
+    e.preventDefault(); e.stopPropagation();
+    clearSel(); startInlineEdit(lay);
+  }
+  function onKey(e) {
+    const t = e.target;
+    if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? timeTravel(redoStack, undoStack, "Redo") : timeTravel(undoStack, redoStack, "Undo"); return; }
+    if (e.key === "Escape") { clearSel(); return; }
+    if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); const n = sel; commit(() => n.remove()); toast("Deleted — ⌘Z to undo"); }
+    if (e.code === "Space" && doc) { e.preventDefault(); playing ? stopPlay() : startPlay(); }
+  }
+  window.addEventListener("keydown", onKey);
+
+  // ---------- timeline ----------
+  function buildRuler() {
+    const r = $("ruler"); r.textContent = "";
+    const step = zoom >= 6 ? 5 : zoom >= 3 ? 10 : 25;
+    for (let p = 0; p <= 100; p += step) { const s = el("span", null, p + "%"); s.style.left = p + "%"; r.append(s); }
+  }
+  function layout() {
+    if (!doc || !doc.body) return;
+    const scrollTop = doc.scrollingElement.scrollTop;
+    const page = $("t-page"), back = $("t-back"), elems = $("t-elems");
+    page.textContent = ""; back.textContent = ""; elems.textContent = "";
+    elbByNode = new Map();
+    const thumbBy = new Map(thumbs.map((t) => [t.el, t.url]));
+    const layers = [];
+    for (const n of blocks()) {
+      const r = n.getBoundingClientRect(); const top = r.top + scrollTop;
+      const a = fx(top), b = Math.max(fx(top + r.height), a + 0.02);
+      const clip = el("div", "clip");
+      clip.style.left = (a * 100) + "%"; clip.style.width = ((b - a) * 100) + "%";
+      const u = thumbBy.get(n);
+      if (u) { const f = el("div", "film"); const im = document.createElement("img"); im.src = u; im.draggable = false; f.append(im); clip.append(f); }
+      clip.append(el("span", "nm", blockLabel(n)));
+      clip.dataset.name = blockLabel(n);
+      wireClipDrag(clip, n, top);
+      page.append(clip);
+      const bk = el("div", "bk");
+      bk.style.left = (a * 100) + "%"; bk.style.width = ((b - a) * 100) + "%";
+      const cs = win.getComputedStyle(n);
+      bk.style.background = cs.backgroundImage !== "none" ? cs.backgroundImage : cs.backgroundColor;
+      back.append(bk);
+      for (const m of [...n.querySelectorAll(SELECTOR)].filter((x) => /^(IMG|INPUT)$/.test(x.tagName) || (x.textContent || "").trim()).slice(0, 7)) layers.push(m);
+    }
+    // visibility windows + lanes
+    const vh = frame.clientHeight;
+    const bars = layers.map((m) => {
+      const r = m.getBoundingClientRect(); const top = r.top + scrollTop;
+      let a = fx(top - vh); const b = Math.max(fx(top + r.height), a + 0.015);
+      const ap = parseFloat(m.getAttribute("data-cs-appear"));
+      const retimed = !isNaN(ap);
+      if (retimed) a = Math.min(b - 0.01, a + (b - a) * ap / 100); // the bar shows WHEN IT APPEARS, not where it sits
+      return { m, a, b, lane: 0, retimed };
+    }).sort((p, q) => p.a - q.a || q.b - p.b);
+    const laneEnds = [];
+    for (const L of bars) {
+      let lane = laneEnds.findIndex((end) => end <= L.a + 0.004);
+      if (lane === -1) {
+        if (laneEnds.length < 6) { lane = laneEnds.length; laneEnds.push(0); }
+        else { lane = 0; for (let i = 1; i < laneEnds.length; i++) if (laneEnds[i] < laneEnds[lane]) lane = i; }
+      }
+      L.lane = lane; laneEnds[lane] = L.b;
+    }
+    const laneH = Math.round(13 * vscale);
+    elems.parentElement.style.height = (Math.max(1, laneEnds.length) * laneH + 3) + "px";
+    for (const L of bars) {
+      const m = L.m, media = /^(IMG|INPUT)$/.test(m.tagName);
+      const b = el("div", "elb" + (media ? " media" : ""));
+      b.style.left = (L.a * 100) + "%"; b.style.width = ((L.b - L.a) * 100) + "%";
+      b.style.top = (L.lane * laneH + 1) + "px"; b.style.height = (laneH - 2) + "px";
+      b.dataset.a = String(L.a); b.dataset.b = String(L.b);
+      b.append(el("b", null, (L.retimed ? "◔ " : "") + m.tagName.toLowerCase()));
+      b.append(el("span", null, media ? "(media)" : (m.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24)));
+      b.title = (L.retimed ? "retimed — appears at " + Math.round(L.a * 100) + "% · " : "") + "click selects · drag left/right to change when it comes in";
+      wireBarDrag(b, m);
+      b.onclick = (e) => { e.stopPropagation(); if (barJustDragged) return; stopPlay(); m.scrollIntoView({ behavior: "smooth", block: "center" }); select(m); };
+      if (sel === m) b.classList.add("selected");
+      elbByNode.set(m, b);
+      elems.append(b);
+    }
+    buildRuler();
+    const rails = $("rails"); rails.textContent = "";
+    const rTop = rails.getBoundingClientRect().top;
+    for (const t of document.querySelectorAll("#tl .track")) {
+      const r = t.getBoundingClientRect();
+      const s = el("span", null, t.dataset.label || "");
+      s.style.top = (r.top - rTop + r.height / 2) + "px";
+      rails.append(s);
+    }
+  }
+  function sync() {
+    if (!doc) return;
+    const x = fx(doc.scrollingElement.scrollTop);
+    $("playhead").style.left = (x * 100) + "%";
+    $("pct").textContent = Math.round(x * 100) + "%";
+    let name = "—";
+    for (const n of blocks()) if (n.getBoundingClientRect().top <= frame.clientHeight * 0.4) name = blockLabel(n);
+    $("secname").textContent = name;
+    document.querySelectorAll("#t-page .clip").forEach((c) => c.classList.toggle("here", c.dataset.name === name));
+    for (const b of document.querySelectorAll("#t-elems .elb")) b.classList.toggle("onscreen", x >= parseFloat(b.dataset.a || "0") && x <= parseFloat(b.dataset.b || "1"));
+    const wrap = $("zoomwrap"), scrub = $("scrub");
+    if (zoom > 1 && (playing || scrubbing)) {
+      const px = x * wrap.offsetWidth;
+      if (px < scrub.scrollLeft + 30 || px > scrub.scrollLeft + scrub.clientWidth - 30) scrub.scrollLeft = Math.max(0, px - scrub.clientWidth / 2);
+    }
+    placeSelbar();
+  }
+
+  // ---------- retime: drag a bar horizontally = change WHEN it comes in ----------
+  // Inside its own visibility window → a scroll-driven CSS entrance (invisible until that scroll
+  // moment; Chrome view-timeline, pure CSS so it survives export and needs no page JS). Outside
+  // its window → the element physically relocates to the part of the page that owns that time.
+  let barJustDragged = false;
+  function naturalWindow(m) {
+    const scrollTop = doc.scrollingElement.scrollTop;
+    const r = m.getBoundingClientRect(); const top = r.top + scrollTop;
+    const a = fx(top - frame.clientHeight);
+    return [a, Math.max(fx(top + r.height), a + 0.02)];
+  }
+  function ensureRetimeCss() {
+    if (doc.getElementById("cs-retime")) return;
+    const st = doc.createElement("style"); st.id = "cs-retime";
+    st.textContent = "@keyframes cs-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}";
+    doc.head.appendChild(st);
+  }
+  function retimeOrRelocate(m, drop) {
+    const [a, b] = naturalWindow(m);
+    if (drop > a + 0.01 && drop < b - 0.01) {
+      const P = Math.round(((drop - a) / (b - a)) * 100);
+      commit(() => {
+        ensureRetimeCss();
+        m.setAttribute("data-cs-appear", String(P));
+        m.style.animationName = "cs-in";
+        m.style.animationTimeline = "view()";
+        m.style.animationRange = "cover " + Math.max(0, P - 2) + "% cover " + Math.min(100, P + 12) + "%";
+        m.style.animationFillMode = "both";
+      });
+      toast("Retimed — appears at ~" + Math.round(drop * 100) + "% of the scroll");
+    } else {
+      const bs = blocks();
+      const target = bs.find((n) => { const r = n.getBoundingClientRect(); const t = r.top + doc.scrollingElement.scrollTop; return drop >= fx(t) && drop <= fx(t + r.height); }) || (drop < 0.05 ? bs[0] : bs[bs.length - 1]);
+      if (!target) return;
+      commit(() => {
+        const kids = [...target.children].filter((k) => k.matches && k.matches(SELECTOR));
+        let ref = null;
+        for (const k of kids) { if (naturalWindow(k)[0] > drop) { ref = k; break; } }
+        if (ref) target.insertBefore(m, ref); else target.appendChild(m);
+      });
+      toast('Moved into "' + blockLabel(target) + '" — it comes in there now');
+    }
+  }
+  function clearRetime(m) {
+    commit(() => {
+      m.removeAttribute("data-cs-appear");
+      m.style.removeProperty("animation-name"); m.style.removeProperty("animation-timeline");
+      m.style.removeProperty("animation-range"); m.style.removeProperty("animation-fill-mode");
+      if (!m.getAttribute("style")) m.removeAttribute("style");
+    });
+    toast("Timing reset — appears naturally again");
+  }
+  function wireBarDrag(bar, m) {
+    bar.addEventListener("pointerdown", (pe) => {
+      pe.stopPropagation();
+      try { bar.setPointerCapture(pe.pointerId); } catch { /* synthetic */ }
+      const sx = pe.clientX; const startLeft = parseFloat(bar.style.left); let dragging = false;
+      const move = (me) => {
+        if (!dragging && Math.abs(me.clientX - sx) > 6) { dragging = true; bar.classList.add("dragging"); }
+        if (dragging) {
+          const wr = $("zoomwrap").getBoundingClientRect();
+          bar.style.left = (startLeft + (me.clientX - sx) / wr.width * 100) + "%";
+          $("pct").textContent = Math.round(clamp01((me.clientX - wr.left) / wr.width) * 100) + "%";
+        }
+      };
+      const up = (ue) => {
+        window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+        bar.classList.remove("dragging");
+        if (!dragging) return; // a plain click → select via onclick
+        barJustDragged = true; setTimeout(() => { barJustDragged = false; }, 0);
+        const wr = $("zoomwrap").getBoundingClientRect();
+        if (wr.width) retimeOrRelocate(m, clamp01((ue.clientX - wr.left) / wr.width));
+      };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    });
+  }
+
+  // ---------- clip drag = reorder sections (pure DOM: insert, snapshot, done) ----------
+  function gapAt(clientX) {
+    const wr = $("zoomwrap").getBoundingClientRect();
+    if (!wr.width) return null;
+    const f = (clientX - wr.left) / wr.width;
+    if (!isFinite(f)) return null;
+    const scrollTop = doc.scrollingElement.scrollTop;
+    let best = { after: null, x: 0, dist: Math.abs(f) };
+    for (const nb of blocks()) {
+      const r = nb.getBoundingClientRect();
+      const end = fx(r.top + scrollTop + r.height);
+      if (Math.abs(f - end) < best.dist) best = { after: nb, x: end, dist: Math.abs(f - end) };
+    }
+    return best;
+  }
+  function wireClipDrag(clip, n, top) {
+    clip.addEventListener("pointerdown", (pe) => {
+      pe.stopPropagation();
+      try { clip.setPointerCapture(pe.pointerId); } catch { /* synthetic */ }
+      const sx = pe.clientX; let dragging = false, ind = null;
+      const move = (me) => {
+        if (!dragging && Math.abs(me.clientX - sx) > 6) { dragging = true; clip.classList.add("dragging"); ind = el("div", "dropline"); $("t-page").append(ind); }
+        if (dragging) { const g = gapAt(me.clientX); if (g) ind.style.left = (g.x * 100) + "%"; }
+      };
+      const up = (ue) => {
+        window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+        clip.classList.remove("dragging"); if (ind) ind.remove();
+        if (!dragging) { stopPlay(); doc.scrollingElement.scrollTop = Math.max(0, top - 40); return; }
+        const g = gapAt(ue.clientX); if (!g || g.after === n) return;
+        const bs = blocks(); const ai = bs.indexOf(n);
+        if ((g.after === null && ai === 0) || (g.after && bs.indexOf(g.after) === ai - 1)) return;
+        commit(() => { if (g.after === null) doc.body.insertBefore(n, bs[0]); else g.after.after(n); });
+        toast("Section moved — ⌘Z to undo");
+      };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    });
+  }
+
+  // ---------- scrub / zoom / vertical scale / play ----------
+  let scrubbing = false;
+  const fracFromEvent = (e) => { const r = $("zoomwrap").getBoundingClientRect(); return clamp01((e.clientX - r.left) / r.width); };
+  const seek = (e) => { if (doc) doc.scrollingElement.scrollTop = fracFromEvent(e) * maxScroll(); };
+  {
+    const scrub = $("scrub");
+    scrub.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".elb,.clip")) return;
+      try { scrub.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+      scrubbing = true; stopPlay(); seek(e);
+    });
+    window.addEventListener("pointermove", (e) => { if (scrubbing) seek(e); });
+    window.addEventListener("pointerup", () => { scrubbing = false; });
+    scrub.addEventListener("wheel", (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2), fracFromEvent(e));
+    }, { passive: false });
+  }
+  function setZoom(z, anchor) {
+    z = Math.max(1, Math.min(12, z));
+    const scrub = $("scrub"), wrap = $("zoomwrap");
+    const frac = anchor != null ? anchor : (doc ? fx(doc.scrollingElement.scrollTop) : 0);
+    const aPx = frac * wrap.offsetWidth - scrub.scrollLeft;
+    zoom = z; wrap.style.width = (z * 100) + "%";
+    scrub.scrollLeft = Math.max(0, frac * wrap.offsetWidth - aPx);
+    buildRuler();
+  }
+  $("zoom-in").onclick = () => setZoom(zoom * 1.5);
+  $("zoom-out").onclick = () => setZoom(zoom / 1.5);
+  $("zoom-fit").onclick = () => setZoom(1);
+  {
+    const h = $("tl-resize");
+    h.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { h.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+      h.classList.add("dragging");
+      const sy = e.clientY, ss = vscale;
+      const move = (ev) => { vscale = Math.max(0.8, Math.min(3, ss + (sy - ev.clientY) / 120)); $("tl").style.setProperty("--s", String(vscale)); layout(); };
+      const up = () => { h.classList.remove("dragging"); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    });
+  }
+  function tick() {
+    if (!playing || !doc) return stopPlay();
+    const t = performance.now(); const dt = (t - lastT) / 1000; lastT = t;
+    doc.scrollingElement.scrollTop += SPEED * dt;
+    if (doc.scrollingElement.scrollTop >= maxScroll() - 2) stopPlay();
+  }
+  function startPlay() { if (!doc) return; playing = true; $("play").classList.add("on"); $("play").textContent = "❚❚"; lastT = performance.now(); playTimer = setInterval(tick, 33); }
+  function stopPlay() { playing = false; if (playTimer) { clearInterval(playTimer); playTimer = 0; } $("play").classList.remove("on"); $("play").textContent = "▶"; }
+  $("play").onclick = () => (playing ? stopPlay() : startPlay());
+
+  // ---------- filmstrip thumbnails ----------
+  async function makeThumbs() {
+    if (!doc || thumbing || !window.html2canvas) return;
+    thumbing = true;
+    const next = [];
+    const bg = win.getComputedStyle(doc.body).backgroundColor || "#fff";
+    for (const n of blocks().slice(0, 12)) {
+      try {
+        const cv = await html2canvas(n, { backgroundColor: bg, logging: false });
+        if (!cv.width || !cv.height) continue;
+        const t = document.createElement("canvas");
+        t.width = 150; t.height = Math.max(1, Math.round(150 * cv.height / cv.width));
+        t.getContext("2d").drawImage(cv, 0, 0, t.width, t.height);
+        const u = t.toDataURL("image/png");
+        if (u.length > 200) next.push({ el: n, url: u });
+      } catch { /* tainted block — label survives */ }
+    }
+    thumbs = next; thumbing = false; layout();
+  }
+
+  // ---------- export: the page, or the film of it ----------
+  function download(name, blob) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  $("export-html").onclick = () => {
+    if (!doc) return;
+    download(fileName.replace(/\.html?$/i, "") + "-cut.html", new Blob([swapScripts(serialize(), true)], { type: "text/html" })); // exports always ship LIVE scripts
+    toast("HTML exported");
+  };
+  // Render = capture the full page ONCE, then pan a viewport over it into a recorded canvas —
+  // smooth 30fps without re-capturing, everything client-side.
+  $("export-video").onclick = async () => {
+    if (!doc || !window.html2canvas) return;
+    const overlay = $("render"), bar = $("render-bar");
+    overlay.hidden = false; bar.style.width = "4%";
+    try {
+      const full = await html2canvas(doc.body, { backgroundColor: win.getComputedStyle(doc.body).backgroundColor || "#fff", logging: false });
+      bar.style.width = "25%";
+      const vw = 1280, vh = Math.round(vw * frame.clientHeight / frame.clientWidth);
+      const scale = full.width / doc.body.clientWidth;
+      const srcVh = Math.round(frame.clientHeight * scale);
+      const cv = document.createElement("canvas"); cv.width = vw; cv.height = vh;
+      const ctx = cv.getContext("2d");
+      const stream = cv.captureStream(30);
+      const rec = new MediaRecorder(stream, { mimeType: "video/webm" });
+      const parts = []; rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+      const doneRec = new Promise((res) => { rec.onstop = res; });
+      rec.start(200);
+      const total = Math.max(1, full.height - srcVh);
+      const secs = Math.max(4, Math.min(24, total / (SPEED * scale)));
+      const t0 = performance.now();
+      await new Promise((res) => {
+        const step = () => {
+          const p = Math.min(1, (performance.now() - t0) / (secs * 1000));
+          const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+          ctx.fillStyle = "#0B0D10"; ctx.fillRect(0, 0, vw, vh);
+          ctx.drawImage(full, 0, eased * total, full.width, srcVh, 0, 0, vw, vh);
+          bar.style.width = (25 + p * 70) + "%";
+          if (p >= 1) res(); else setTimeout(step, 33);
+        };
+        step();
+      });
+      rec.stop(); await doneRec;
+      const blob = new Blob(parts, { type: "video/webm" });
+      window.__cutExport = { size: blob.size, secs };
+      if (!blob.size) throw new Error("the recorder produced no frames in this browser");
+      download(fileName.replace(/\.html?$/i, "") + "-scroll.webm", blob);
+      toast("Video rendered — " + Math.round(secs) + "s scroll-through");
+    } catch (e) { toast("Render failed — " + String(e.message || e).slice(0, 80), true); }
+    finally { overlay.hidden = true; }
+  };
+
+  // ---------- open / sample / drop ----------
+  function openFile() { $("file-input").click(); }
+  $("open-btn").onclick = openFile; $("open-btn2").onclick = openFile;
+  $("file-input").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => load(String(r.result), f.name);
+    r.readAsText(f);
+  });
+  window.addEventListener("dragover", (e) => { e.preventDefault(); $("stage").classList.add("dropping"); });
+  window.addEventListener("dragleave", () => $("stage").classList.remove("dropping"));
+  window.addEventListener("drop", (e) => {
+    e.preventDefault(); $("stage").classList.remove("dropping");
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f && /\.html?$/i.test(f.name)) { const r = new FileReader(); r.onload = () => load(String(r.result), f.name); r.readAsText(f); }
+  });
+  const SAMPLE = [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Aurora — sample</title>',
+    '<style>body{margin:0;font-family:system-ui,sans-serif;color:#e8edf4}header,section,footer{min-height:520px;padding:64px 8vw;display:flex;flex-direction:column;justify-content:center}h1{font-size:52px;margin:0 0 14px}h2{font-size:34px;margin:0 0 12px}p{max-width:56ch;line-height:1.6;color:#c7d0dd}a.cta{display:inline-block;margin-top:18px;padding:12px 20px;border-radius:10px;background:#c8f250;color:#0a0c10;text-decoration:none;font-weight:600;width:fit-content}</style>',
+    '</head><body>',
+    '<header style="background:#0b0d10"><h1>Meet Aurora</h1><p>The note-taking app that files itself. Write anything; Aurora puts it where you will look for it.</p><a class="cta" href="#">Start free</a></header>',
+    '<section style="background:#101623"><h2>Never organize again</h2><p>Folders, tags and links happen automatically as you type. Your notes stay yours — everything lives on your device.</p><svg width="220" height="120" viewBox="0 0 220 120"><rect x="8" y="10" width="90" height="100" rx="10" fill="#1a2233"/><rect x="120" y="10" width="90" height="100" rx="10" fill="#22304a"/><circle cx="53" cy="60" r="22" fill="#c8f250"/></svg></section>',
+    '<section style="background:#0d1117"><h2>Find it in a keystroke</h2><p>Search that understands what you meant, not just what you typed. Jump anywhere in under a second.</p></section>',
+    '<section style="background:#131a26"><h2>Simple pricing</h2><p>Free forever for personal notes. Pro adds sync across devices for the price of a coffee.</p><a class="cta" href="#">See pricing</a></section>',
+    '<footer style="background:#08090c;min-height:220px"><p>Aurora is made by three people who love plain text. No trackers, no lock-in — export everything, any time.</p></footer>',
+    '</body></html>',
+  ].join("\n");
+  $("sample-btn").onclick = () => load(SAMPLE, "aurora-sample.html");
+  $("js-btn").onclick = () => {
+    if (!doc) return;
+    runScripts = !runScripts;
+    $("js-btn").textContent = runScripts ? "js on" : "js off";
+    $("js-btn").classList.toggle("lit", runScripts);
+    renderDoc(serialize());
+    toast(runScripts
+      ? "Page scripts now run in the preview — only for files you trust. Exports capture the page as rendered."
+      : "Page scripts frozen — the preview renders inert again.");
+  };
+  $("undo-btn").onclick = () => timeTravel(undoStack, redoStack, "Undo");
+  $("redo-btn").onclick = () => timeTravel(redoStack, undoStack, "Redo");
+  updateActs();
+})();
+</script>
+</body>
+</html>
