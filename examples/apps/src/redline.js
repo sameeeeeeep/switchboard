@@ -266,9 +266,13 @@ function renderStage() {
   input.value = bound?.folder || DEFAULT_FOLDER;
   const go = () => { const p = input.value.trim(); if (p) bindFolder(p); };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  const browse = el("button", "primary", "Browse…");
+  browse.title = "pick the folder in your OS's own file dialog — the pick is the consent";
+  browse.disabled = binding;
+  browse.onclick = pickFolder;
   const btn = el("button", "primary", "Open");
   btn.onclick = go;
-  row.append(input, btn);
+  row.append(browse, input, btn);
   flow.append(row);
 
   if (stageOverride && pageKey) {
@@ -286,6 +290,21 @@ async function openProject() {
   reflect();
   await refreshProjectMetas();
   renderStage();
+}
+
+// The PROPER folder chooser: the daemon raises the OS's own dialog (the page never sees the
+// filesystem), and the pick comes back already bound. Cancel or a daemon without a native picker
+// resolves undefined — the typed-path row below stays as the fallback.
+async function pickFolder() {
+  if (!relay || binding) return;
+  binding = true; renderStage();
+  try {
+    const info = await relay.storage.pick("review and edit the landing page in this folder");
+    if (!info) return;
+    bound = { folder: info.folder };
+    stageOverride = false;
+    await loadProject();
+  } finally { binding = false; reflect(); }
 }
 
 async function bindFolder(path) {
@@ -489,6 +508,8 @@ const OVERLAY_STYLE = `
   @keyframes rlflash { 0%{ background-color: rgba(61,214,140,.4); } 100%{ background-color: transparent; } }
   .rl-flash{ animation: rlflash 1.8s ease-out; }
   .rl-hover{ outline:2px dashed rgba(200,242,80,.9) !important; outline-offset:4px; }
+  .rl-sel{ outline:2px solid #C8F250 !important; outline-offset:3px; }
+  .rl-editing{ outline:2px dashed #C8F250 !important; outline-offset:3px; cursor:text; }
   html.rl-picking *{ cursor:crosshair !important; }
   html.rl-picking *:hover{ outline:1.5px dashed rgba(200,242,80,.85) !important; outline-offset:1px; }
 `;
@@ -550,10 +571,14 @@ function decorateFrame() {
   if (!doc.__rlCutWired) {
     doc.addEventListener("scroll", cutSync, { passive: true });
     doc.addEventListener("mouseover", cutPageHover, true);
+    doc.addEventListener("click", cutInspectClick, true);
+    doc.addEventListener("dblclick", cutInlineEdit, true); // double-click text = type into the page
+    doc.addEventListener("keydown", cutKeydown, true); // Delete works even when the frame has focus
     doc.__rlCutWired = true;
   }
   // srcdoc re-renders swap the document; page heights settle late (fonts, images) — re-measure
   if (cutMode) { $("cutbar").hidden = !pageKey; for (const t of [60, 500, 1600]) setTimeout(cutLayout, t); setTimeout(() => cutThumbnails(), 1900); cutSync(); }
+  if (cutSel && (!frameDoc() || !frameDoc().contains(cutSel.node))) cutClearSel(); // re-render swapped the doc — the old node is gone
   doc.documentElement.classList.toggle("rl-picking", picking);
 }
 function onFrameClick(e) {
@@ -614,7 +639,7 @@ function toggleCut(on) {
   cutMode = on ?? !cutMode;
   $("cut-toggle").classList.toggle("on", cutMode);
   $("cutbar").hidden = !cutMode || !pageKey;
-  if (cutMode) { cutSync(); setTimeout(() => cutThumbnails(), 300); if (!cutWatchTimer) cutWatchTimer = setInterval(cutWatchTick, 80); } else cutStop();
+  if (cutMode) { cutSync(); setTimeout(() => cutThumbnails(), 300); if (!cutWatchTimer) cutWatchTimer = setInterval(cutWatchTick, 80); } else { cutStop(); cutClearSel(); }
   renderSide(); // position badges on the cards appear/disappear with the bar; renderSide re-lays the tracks too
 }
 // The sanitized preview iframe (sandbox without allow-scripts) swallows scroll EVENTS even though
@@ -745,6 +770,7 @@ function cutLayout() {
   const elems = $("cut-elems"); elems.textContent = "";
   $("cut-back").textContent = "";
   cutElbByNode = new Map();
+  const layers = []; // every element across all blocks — laid out as visibility windows below
   // SOUND track: shown only when the page actually has audio layers — sound is part of the film
   // the moment a page carries any (or the founder stages an intent to add some via any element)
   const sounds = [...d.querySelectorAll("audio, video, [data-sound]")];
@@ -774,7 +800,27 @@ function cutLayout() {
     const u = thumbByEl.get(n);
     if (u) { const film = el("div", "film"); const im = document.createElement("img"); im.src = u; im.draggable = false; film.append(im); clip.append(film); }
     clip.append(el("span", "c-name", cutBlockLabel(n)));
-    clip.onclick = () => { cutStop(); d.scrollingElement.scrollTop = Math.max(0, top - 40); };
+    // drag the clip to REORDER sections (like moving footage on a track); a plain click still seeks
+    clip.addEventListener("pointerdown", (pe) => {
+      if (pe.target.closest(".cut-trn")) return;
+      pe.stopPropagation(); // never start a scrub from a clip
+      try { clip.setPointerCapture(pe.pointerId); } catch { /* synthetic pointer */ }
+      const sx = pe.clientX; let dragging = false; let indicator = null;
+      const move = (me) => {
+        if (!dragging && Math.abs(me.clientX - sx) > 6) {
+          dragging = true; clip.classList.add("dragging");
+          indicator = el("div", "cut-dropline"); $("cut-page").append(indicator);
+        }
+        if (dragging) { const g = cutGapAt(me.clientX); if (g) indicator.style.left = (g.x * 100) + "%"; }
+      };
+      const up = (ue) => {
+        window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+        clip.classList.remove("dragging"); if (indicator) indicator.remove();
+        if (!dragging) { cutStop(); d.scrollingElement.scrollTop = Math.max(0, top - 40); return; }
+        cutDropMove(n, ue.clientX);
+      };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    });
     clips.append(clip);
     // BACKDROP track: the section's real background as a strip — click = restyle intent
     const bkPinned = decisions.filter(Boolean).find((c) => (c.note || "").startsWith("Backdrop:") && findNode(d, c) === n);
@@ -809,32 +855,80 @@ function cutLayout() {
       };
       clips.append(trn);
     }
-    // the block's layers, clickable → a REAL comment (same path as comment mode)
-    const members = cutBlockElements(n);
-    const w = (b - a) / Math.max(1, members.length);
-    members.forEach((m, k) => {
+    // collect this block's layers — rendered AFTER the loop as visibility-window bars in lanes
+    for (const m of cutBlockElements(n)) layers.push(m);
+  }
+  // ELEMENTS as a true time map: each layer's bar spans its VISIBILITY WINDOW — the scroll range
+  // during which it is actually on screen (enters when its top crosses the viewport bottom, leaves
+  // when its bottom crosses the viewport top) — and simultaneous layers stack into parallel lanes,
+  // like V1/V2/V3 in an NLE. At any playhead position, the bars under it are what the viewer sees.
+  {
+    const vh = $("frame").clientHeight;
+    const bars = layers.map((m) => {
+      const r = m.getBoundingClientRect();
+      const top = r.top + scrollTop;
+      let a2 = cutX(d, top - vh);
+      const b2 = Math.max(cutX(d, top + r.height), a2 + 0.015);
+      const ap = parseFloat(m.getAttribute("data-rl-appear"));
+      const retimed = !isNaN(ap);
+      if (retimed) a2 = Math.min(b2 - 0.01, a2 + (b2 - a2) * ap / 100); // the bar shows WHEN it appears
+      return { m, a: a2, b: b2, lane: 0, retimed };
+    }).sort((p, q) => p.a - q.a || q.b - p.b);
+    const laneEnds = [];
+    for (const L of bars) {
+      let lane = laneEnds.findIndex((end) => end <= L.a + 0.004);
+      if (lane === -1) {
+        if (laneEnds.length < 6) { lane = laneEnds.length; laneEnds.push(0); }
+        else { lane = 0; for (let i = 1; i < laneEnds.length; i++) if (laneEnds[i] < laneEnds[lane]) lane = i; }
+      }
+      L.lane = lane; laneEnds[lane] = L.b;
+    }
+    const laneH = Math.round(13 * cutScale);
+    elems.parentElement.style.height = (Math.max(1, laneEnds.length) * laneH + 3) + "px";
+    for (const L of bars) {
+      const m = L.m;
       const media = /^(IMG|INPUT)$/.test(m.tagName);
       const pinnedBy = decisions.filter(Boolean).find((c) => findNode(d, c) === m);
       const eb = el("div", "cut-elb" + (media ? " media" : "") + (pinnedBy ? " pinned" : ""));
-      eb.style.left = ((a + w * k + 0.002) * 100) + "%";
-      eb.style.width = (Math.max(0.012, w - 0.004) * 100) + "%";
-      eb.append(el("b", null, m.tagName.toLowerCase()));
+      eb.style.left = (L.a * 100) + "%";
+      eb.style.width = ((L.b - L.a) * 100) + "%";
+      eb.style.top = (L.lane * laneH + 1) + "px";
+      eb.style.height = (laneH - 2) + "px"; eb.style.bottom = "auto";
+      eb.dataset.a = String(L.a); eb.dataset.b = String(L.b);
+      eb.append(el("b", null, (L.retimed ? "◔ " : "") + m.tagName.toLowerCase()));
       eb.append(el("span", null, media ? "(media)" : (m.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24)));
+      eb.addEventListener("pointerdown", (pe) => {
+        pe.stopPropagation();
+        try { eb.setPointerCapture(pe.pointerId); } catch { /* synthetic */ }
+        const sx = pe.clientX; const startLeft = parseFloat(eb.style.left); let dragging = false;
+        const mv = (me) => {
+          if (!dragging && Math.abs(me.clientX - sx) > 6) { dragging = true; eb.classList.add("dragging"); }
+          if (dragging) { const wr = $("cut-zoomwrap").getBoundingClientRect(); if (wr.width) eb.style.left = (startLeft + (me.clientX - sx) / wr.width * 100) + "%"; }
+        };
+        const upd = (ue) => {
+          window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", upd);
+          eb.classList.remove("dragging");
+          if (!dragging) return;
+          cutBarDragged = true; setTimeout(() => { cutBarDragged = false; }, 0);
+          const wr = $("cut-zoomwrap").getBoundingClientRect();
+          if (wr.width) cutRetime(m, cutClamp((ue.clientX - wr.left) / wr.width));
+        };
+        window.addEventListener("pointermove", mv); window.addEventListener("pointerup", upd);
+      });
       eb.title = pinnedBy ? "open decision #" + pinnedBy.num
         : media ? m.tagName.toLowerCase() + " — ask your Claude for a mockup to replace it"
         : "click to comment on this " + m.tagName.toLowerCase();
       eb.onclick = (e) => {
-        e.stopPropagation(); cutStop();
-        if (pinnedBy) return cutOpen(pinnedBy);
-        if ($("work").classList.contains("collapsed")) setCollapsed(false);
-        if (media) intentDecision(m, "Mock up a stronger replacement for this " + (m.tagName === "IMG" ? "image" : "form element") + " — match the page's style and palette.");
-        else commentOn(m);
+        e.stopPropagation(); if (cutBarDragged) return; cutStop();
+        m.scrollIntoView({ behavior: "smooth", block: "center" }); // the vice-versa: timeline → that part of the page
+        cutSelect(m); // same grammar as the page: click selects, the verb bar acts
       };
+      if (cutSel && cutSel.node === m) eb.classList.add("selected");
       eb.onmouseenter = () => setLinkHover(pinnedBy ? pinnedBy.id : null, m, true);
       eb.onmouseleave = () => setLinkHover(null, null, false);
       cutElbByNode.set(m, eb);
       elems.append(eb);
-    });
+    }
   }
   const pins = $("cut-pins"); pins.textContent = "";
   for (const c of decisions.filter(Boolean)) {
@@ -852,8 +946,17 @@ function cutLayout() {
     chip.onmouseleave = () => setLinkHover(null, null, false);
     pins.append(chip);
   }
-  const ruler = $("cut-ruler"); ruler.textContent = "";
-  for (const p of [0, 25, 50, 75, 100]) { const s = el("span", null, p + "%"); s.style.left = p + "%"; ruler.append(s); }
+  buildRuler();
+  // rails: track names pinned in the left gutter, OUTSIDE the zooming/scrolling area
+  const rails = $("cut-rails"); rails.textContent = "";
+  const railTop = rails.getBoundingClientRect().top;
+  for (const t of document.querySelectorAll("#cutbar .cut-track")) {
+    if (t.hidden) continue;
+    const r = t.getBoundingClientRect();
+    const s = el("span", null, t.dataset.label || "");
+    s.style.top = (r.top - railTop + r.height / 2) + "px";
+    rails.append(s);
+  }
 }
 function cutStatus(c) {
   if (c.locked) return "done";
@@ -877,6 +980,17 @@ function cutSync() {
   let name = "—";
   for (const n of cutBlocks(d)) if (n.getBoundingClientRect().top <= $("frame").clientHeight * 0.4) name = cutBlockLabel(n);
   $("cut-sec").textContent = name;
+  // zoomed in: keep the playhead in view while the film is driven
+  if (cutZoom > 1 && (cutPlaying || cutScrubbing)) {
+    const wrap = $("cut-zoomwrap"), scrubEl = $("cut-scrub");
+    const px = x * wrap.offsetWidth;
+    if (px < scrubEl.scrollLeft + 30 || px > scrubEl.scrollLeft + scrubEl.clientWidth - 30) scrubEl.scrollLeft = Math.max(0, px - scrubEl.clientWidth / 2);
+  }
+  // light the bars whose window contains the playhead — what the viewer sees NOW
+  for (const bb of document.querySelectorAll("#cut-elems .cut-elb")) {
+    bb.classList.toggle("onscreen", x >= parseFloat(bb.dataset.a || "0") && x <= parseFloat(bb.dataset.b || "1"));
+  }
+  cutPlaceSelbar(); // the verb bar rides with its element as the page scrolls
   // ◎ follow: only while the film is DRIVEN (scrub or play) — never hijack the user's own reading scroll
   if (cutFollow && (cutPlaying || cutScrubbing)) {
     let best = null, bestDist = 0.06; // generous capture radius — scrubbing lands NEAR a chip, not on it
@@ -892,11 +1006,323 @@ function cutSync() {
     }
   }
 }
+// ---------- vertical scale: drag the timeline's top edge like any NLE ----------
+let cutScale = 1;
+{
+  const handle = $("cut-resize");
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    // capture the pointer: without this the drag DIES the moment the cursor crosses onto the
+    // preview iframe (frames swallow pointer events); captured events retarget to the handle and
+    // still bubble to window, so the listeners below keep firing (and synthetic tests still work)
+    try { handle.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+    handle.classList.add("dragging");
+    const sy = e.clientY, ss = cutScale;
+    const move = (ev) => {
+      cutScale = Math.max(0.8, Math.min(3, ss + (sy - ev.clientY) / 120));
+      $("cutbar").style.setProperty("--cut-scale", String(cutScale));
+      cutLayout(); // lane geometry is inline px — re-lay with the new scale
+    };
+    const up = () => { handle.classList.remove("dragging"); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+
+// ---------- selection: click = SELECT, verbs act — the video-editor grammar ----------
+// A selected element stays selected (lime outline on the page, ring on its bar) and grows a
+// floating verb bar: Change / Delete / Duplicate / Mock up. Delete and Duplicate PRE-SEED a
+// ready-to-lock edit when the element's serialized HTML matches source exactly-once; otherwise
+// they Ask the model for the safe edit. Lock stays the only thing that writes.
+let cutSel = null; // { node } — single selection
+function cutClearSel() {
+  if (cutSel && cutSel.node) { try { cutSel.node.classList.remove("rl-sel"); } catch { /* frame re-rendered */ } }
+  cutSel = null;
+  const bar = $("cut-selbar"); if (bar) bar.hidden = true;
+  document.querySelectorAll(".cut-elb.selected").forEach((x) => x.classList.remove("selected"));
+}
+function cutSelect(node) {
+  cutClearSel();
+  if (!node) return;
+  cutSel = { node };
+  node.classList.add("rl-sel");
+  const elb = cutElbByNode.get(node);
+  if (elb) {
+    elb.classList.add("selected");
+    const scrub = $("cut-scrub"), wrap = $("cut-zoomwrap");
+    const px = (parseFloat(elb.style.left) / 100) * wrap.offsetWidth;
+    if (px < scrub.scrollLeft + 20 || px > scrub.scrollLeft + scrub.clientWidth - 60) scrub.scrollLeft = Math.max(0, px - scrub.clientWidth / 3);
+  }
+  cutBuildSelbar();
+  cutPlaceSelbar();
+}
+function cutBuildSelbar() {
+  const bar = $("cut-selbar"); bar.textContent = "";
+  const m = cutSel.node;
+  const media = /^(IMG|INPUT)$/.test(m.tagName);
+  const doc = frameDoc();
+  const pinnedBy = decisions.filter(Boolean).find((c) => doc && findNode(doc, c) === m);
+  bar.append(el("b", null, m.tagName.toLowerCase()));
+  const verb = (label, fn, danger) => { const b = el("button", danger ? "danger" : null, label); b.onclick = (e) => { e.stopPropagation(); fn(); }; bar.append(b); };
+  if (pinnedBy) verb("Open #" + pinnedBy.num, () => { if ($("work").classList.contains("collapsed")) setCollapsed(false); cutOpen(pinnedBy); });
+  else if (media) verb("✦ Mock up", () => { if ($("work").classList.contains("collapsed")) setCollapsed(false); intentDecision(m, "Mock up a stronger replacement for this " + (m.tagName === "IMG" ? "image" : "form element") + " — match the page's style and palette."); });
+  else verb("✎ Change", () => { if ($("work").classList.contains("collapsed")) setCollapsed(false); commentOn(m); });
+  verb("⌫ Delete", () => cutDeleteSel(), true);
+  if (!media) verb("⧉ Duplicate", () => cutDupSel());
+  if (m.getAttribute && m.getAttribute("data-rl-appear")) verb("◔ Reset timing", () => {
+    const before = cutCleanHtml(m);
+    const c2 = cutCleanNode(m);
+    c2.removeAttribute("data-rl-appear");
+    for (const p of ["animation-name", "animation-timeline", "animation-range", "animation-fill-mode"]) c2.style.removeProperty(p);
+    if (!c2.getAttribute("style")) c2.removeAttribute("style");
+    if ($("work").classList.contains("collapsed")) setCollapsed(false);
+    preseedEdit(m, "Reset this element's entrance timing.", "Reset timing", "appears naturally", before, c2.outerHTML, "Remove scroll-driven entrance");
+    cutClearSel();
+  });
+  const x = el("button", null, "✕"); x.onclick = (e) => { e.stopPropagation(); cutClearSel(); }; bar.append(x);
+  bar.hidden = false;
+}
+function cutPlaceSelbar() {
+  const bar = $("cut-selbar"); if (!bar || bar.hidden || !cutSel || !cutSel.node) return;
+  let r; try { r = cutSel.node.getBoundingClientRect(); } catch { return cutClearSel(); }
+  const fw = $("frame").getBoundingClientRect();
+  bar.style.top = Math.max(4, Math.min(fw.height - 38, r.top - 36)) + "px";
+  bar.style.left = Math.max(4, Math.min(fw.width - bar.offsetWidth - 8, r.left)) + "px";
+}
+// a clone of the node minus redline's own decorations — safe to mutate for building edits
+function cutCleanNode(m) {
+  const c = m.cloneNode(true);
+  for (const n of [c, ...c.querySelectorAll("[data-redline], .rl-sel, .rl-hover, .rl-locked, .rl-flash, .rl-editing")]) {
+    n.removeAttribute("data-redline");
+    n.classList.remove("rl-sel", "rl-hover", "rl-locked", "rl-flash", "rl-editing");
+    if (!n.getAttribute("class")) n.removeAttribute("class");
+  }
+  return c;
+}
+function cutCleanHtml(m) { return cutCleanNode(m).outerHTML; }
+// ---------- retime: drag an ELEMENTS bar horizontally = change WHEN it comes in ----------
+// Inside its own window → a scroll-driven CSS entrance (invisible until that moment; pure CSS,
+// works with page scripts off) pre-seeded ready to lock. Outside its window → the model is asked
+// to move it there coherently. Same rule as everything: lock writes.
+let cutBarDragged = false;
+function cutNaturalWindow(m) {
+  const d = cutDoc();
+  const scrollTop = d.scrollingElement.scrollTop;
+  const r = m.getBoundingClientRect(); const top = r.top + scrollTop;
+  const a = cutX(d, top - $("frame").clientHeight);
+  return [a, Math.max(cutX(d, top + r.height), a + 0.02)];
+}
+function cutRetime(m, drop) {
+  const [a, b] = cutNaturalWindow(m);
+  const pct = Math.round(drop * 100);
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  if (drop > a + 0.01 && drop < b - 0.01) {
+    const P = Math.round(((drop - a) / (b - a)) * 100);
+    const before = cutCleanHtml(m);
+    const clone = cutCleanNode(m);
+    clone.setAttribute("data-rl-appear", String(P));
+    clone.style.animationName = "rl-cutin";
+    clone.style.animationTimeline = "view()";
+    clone.style.animationRange = "cover " + Math.max(0, P - 2) + "% cover " + Math.min(100, P + 12) + "%";
+    clone.style.animationFillMode = "both";
+    const kf = currentHtml.includes("@keyframes rl-cutin") ? "" : '<style id="rl-cutin">@keyframes rl-cutin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}</style>';
+    preseedEdit(m, "Retime: this should first appear around " + pct + "% of the scroll.", "Retime it", "comes in at ~" + pct + "%", before, kf + clone.outerHTML, "Scroll-driven entrance");
+  } else {
+    intentDecision(m, "Retime: this " + m.tagName.toLowerCase() + " should first appear around " + pct + "% of the page's scroll — move it (or delay its entrance) so it comes in there, keeping the design coherent.");
+  }
+}
+function preseedEdit(m, note, label, text, find, replace, summary) {
+  const c = commentOn(m);
+  c.note = note;
+  const idx = find ? currentHtml.indexOf(find) : -1;
+  if (idx !== -1 && currentHtml.indexOf(find, idx + 1) === -1) {
+    const opt = { id: uid(), label, text, edit: { find, replace }, recommended: true };
+    c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], selectedId: opt.id, steers: [], markdown: "", find, summary, preseeded: true };
+  } else if (relay) {
+    respond(c); // serialized DOM ≠ authored source here — the model finds the safe edit instead
+  }
+  saveReview(); renderSide();
+}
+function cutDeleteSel() {
+  const m = cutSel && cutSel.node; if (!m) return;
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  preseedEdit(m, "Delete this " + m.tagName.toLowerCase() + ".", "Remove it", "(removed)", cutCleanHtml(m), "", "Remove this element");
+  cutClearSel();
+}
+function cutDupSel() {
+  const m = cutSel && cutSel.node; if (!m) return;
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  const html = cutCleanHtml(m);
+  preseedEdit(m, "Duplicate this " + m.tagName.toLowerCase() + ".", "Duplicate", "(duplicated)", html, html + html, "Duplicate this element");
+  cutClearSel();
+}
+// ---------- undo/redo: every locked write snapshots the whole page — ⌘Z back, ⇧⌘Z forward ----------
+// Snapshots (not inverse edits) because a deletion's inverse has no unique anchor; whole-page
+// restore through the SAME storage.set path every lock uses. Session-local, capped at 30.
+const cutUndoStack = [];
+const cutRedoStack = [];
+async function cutTimeTravel(fromStack, toStack, label) {
+  if (!fromStack.length || !relay || !pageKey) return;
+  const html = fromStack.pop();
+  toStack.push(currentHtml);
+  try {
+    await relay.storage.set(pageKey, html);
+    currentHtml = html;
+    renderFrame(); renderSide();
+    toast(label + " ✓");
+  } catch (e) { fromStack.push(html); toStack.pop(); toast(label + " failed — " + msg(e), true); }
+}
+function cutKeydown(e) {
+  if (!cutMode) return;
+  const t = e.target;
+  if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (e.shiftKey) void cutTimeTravel(cutRedoStack, cutUndoStack, "Redo");
+    else void cutTimeTravel(cutUndoStack, cutRedoStack, "Undo");
+    return;
+  }
+  if (e.key === "Escape") { cutClearSel(); return; }
+  if ((e.key === "Delete" || e.key === "Backspace") && cutSel) { e.preventDefault(); cutDeleteSel(); }
+}
+window.addEventListener("keydown", cutKeydown);
+// ---------- inline edit: double-click text on the canvas, type, Enter — the editor's native verb ----------
+// The live DOM previews your words immediately; committing stages a ready-to-lock rewrite
+// (find = the element's clean serialization when it matches source exactly-once, model otherwise).
+function cutInlineEdit(e) {
+  if (!cutMode || picking || $("cutbar").hidden) return;
+  const lay = e.target.closest?.("h1,h2,h3,p,a,button");
+  if (!lay || !cutElbByNode.get(lay)) return;
+  e.preventDefault(); e.stopPropagation();
+  cutClearSel();
+  const before = cutCleanHtml(lay);
+  const beforeInner = lay.innerHTML;
+  lay.setAttribute("contenteditable", "plaintext-only");
+  lay.classList.add("rl-editing");
+  lay.focus();
+  try { const s = frameDoc().getSelection(); s.selectAllChildren(lay); } catch { /* selection is a nicety */ }
+  const finish = (commit) => {
+    lay.removeEventListener("blur", onBlur); lay.removeEventListener("keydown", onKey);
+    lay.removeAttribute("contenteditable"); lay.classList.remove("rl-editing");
+    if (!commit) { lay.innerHTML = beforeInner; return; }
+    const after = cutCleanHtml(lay);
+    if (after === before) return;
+    if ($("work").classList.contains("collapsed")) setCollapsed(false);
+    preseedEdit(lay, "Rewrite this " + lay.tagName.toLowerCase() + " to: " + (lay.textContent || "").trim().slice(0, 80),
+      "Your rewrite", (lay.textContent || "").trim().slice(0, 120), before, after, "Direct rewrite");
+  };
+  const onBlur = () => finish(true);
+  const onKey = (ev) => {
+    ev.stopPropagation();
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); lay.blur(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); lay.removeEventListener("blur", onBlur); finish(false); }
+  };
+  lay.addEventListener("blur", onBlur);
+  lay.addEventListener("keydown", onKey);
+}
+// ---------- drag-reorder: move a section like a clip on the track ----------
+// The drop becomes a SOURCE-LEVEL move (one find/replace spanning both sections, interstitial
+// whitespace preserved) pre-seeded ready to lock — or an intent for the model when the page's
+// serialization doesn't match its source. Same gate as everything: lock writes, nothing else.
+function cutGapAt(clientX) {
+  const d = cutDoc(); const blocks = cutBlocks(d);
+  const wr = $("cut-zoomwrap").getBoundingClientRect();
+  if (!wr.width) return null; // mid-re-render or zero-size viewport — a drop must be a no-op, never "move to top"
+  const fx = (clientX - wr.left) / wr.width;
+  if (!isFinite(fx)) return null;
+  const scrollTop = d.scrollingElement.scrollTop;
+  let best = { after: null, x: 0, dist: Math.abs(fx) }; // the gap before the first block
+  for (const nb of blocks) {
+    const r = nb.getBoundingClientRect();
+    const end = cutX(d, r.top + scrollTop + r.height);
+    if (Math.abs(fx - end) < best.dist) best = { after: nb, x: end, dist: Math.abs(fx - end) };
+  }
+  return best;
+}
+function cutDropMove(A, clientX) {
+  const d = cutDoc(); if (!d) return;
+  const gap = cutGapAt(clientX);
+  if (!gap) return;
+  const B = gap.after;
+  if (B === A) return;
+  const blocks = cutBlocks(d); const ai = blocks.indexOf(A);
+  if ((B === null && ai === 0) || (B && blocks.indexOf(B) === ai - 1)) return; // dropped where it already lives
+  const src = currentHtml;
+  const aH = cutCleanHtml(A);
+  const aIdx = src.indexOf(aH);
+  const aOk = aIdx !== -1 && src.indexOf(aH, aIdx + 1) === -1;
+  const label = cutBlockLabel(A), tLabel = B ? cutBlockLabel(B) : "the top";
+  if ($("work").classList.contains("collapsed")) setCollapsed(false);
+  const bH = B ? cutCleanHtml(B) : null;
+  const bIdx = bH ? src.indexOf(bH) : -1;
+  const bOk = !B || (bIdx !== -1 && src.indexOf(bH, bIdx + 1) === -1);
+  if (!aOk || !bOk) {
+    intentDecision(A, 'Move: place the "' + label + '" section ' + (B ? 'immediately AFTER the "' + tLabel + '" section' : "at the very top of the page") + ", keeping everything else unchanged.");
+    return;
+  }
+  let find, replace;
+  if (B === null) {
+    const fH = cutCleanHtml(blocks[0]); const fIdx = src.indexOf(fH);
+    find = src.slice(fIdx, aIdx + aH.length);
+    replace = aH + src.slice(fIdx, aIdx);
+  } else if (aIdx < bIdx) {
+    find = src.slice(aIdx, bIdx + bH.length);
+    replace = src.slice(aIdx + aH.length, bIdx + bH.length) + aH;
+  } else {
+    find = src.slice(bIdx, aIdx + aH.length);
+    replace = src.slice(bIdx, bIdx + bH.length) + aH + src.slice(bIdx + bH.length, aIdx);
+  }
+  preseedEdit(A, 'Move the "' + label + '" section ' + (B ? 'after "' + tLabel + '"' : "to the top") + ".", "Move it", "(moved)", find, replace, "Reorder sections");
+}
+// click ON THE PAGE: select the layer under the cursor; empty space clears. Footage never navigates.
+function cutInspectClick(e) {
+  if (!cutMode || picking || $("cutbar").hidden) return;
+  e.preventDefault(); e.stopPropagation();
+  const lay = e.target.closest?.("h1,h2,h3,p,a,button,img,input");
+  if (!lay || !cutElbByNode.get(lay)) return cutClearSel();
+  cutSelect(lay);
+}
+
+// ---------- zoom: the film at section scale ----------
+// zoomwrap scales horizontally inside the scrolling scrub; every position stays in % of the wrap,
+// so clips/playhead/seek all keep working at any zoom. Zoom anchors on the playhead (or cursor).
+let cutZoom = 1;
+function cutFracFromEvent(e) { const r = $("cut-zoomwrap").getBoundingClientRect(); return cutClamp((e.clientX - r.left) / r.width); }
+function buildRuler() {
+  const ruler = $("cut-ruler"); if (!ruler) return;
+  ruler.textContent = "";
+  const step = cutZoom >= 6 ? 5 : cutZoom >= 3 ? 10 : 25;
+  for (let p = 0; p <= 100; p += step) { const s = el("span", null, p + "%"); s.style.left = p + "%"; ruler.append(s); }
+}
+function setCutZoom(z, anchorFrac) {
+  z = Math.max(1, Math.min(12, z));
+  const scrub = $("cut-scrub"), wrap = $("cut-zoomwrap");
+  const d = cutDoc();
+  const frac = anchorFrac != null ? anchorFrac : (d ? cutX(d, d.scrollingElement.scrollTop) : 0);
+  const anchorPx = frac * wrap.offsetWidth - scrub.scrollLeft; // keep the anchor at the same screen x
+  cutZoom = z;
+  wrap.style.width = (z * 100) + "%";
+  scrub.scrollLeft = Math.max(0, frac * wrap.offsetWidth - anchorPx);
+  buildRuler();
+}
+$("cut-zoom-in").addEventListener("click", () => setCutZoom(cutZoom * 1.5));
+$("cut-zoom-out").addEventListener("click", () => setCutZoom(cutZoom / 1.5));
+$("cut-zoom-fit").addEventListener("click", () => setCutZoom(1));
+$("cut-scrub").addEventListener("wheel", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return; // plain wheel = the native horizontal scroll
+  e.preventDefault();
+  setCutZoom(cutZoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2), cutFracFromEvent(e));
+}, { passive: false });
+
 let cutScrubbing = false; // module-visible: follow mode needs to know the film is being driven
 {
   const scrub = $("cut-scrub");
-  const seek = (e) => { const d = cutDoc(); if (!d) return; const r = scrub.getBoundingClientRect(); d.scrollingElement.scrollTop = cutClamp((e.clientX - r.left) / r.width) * cutMax(d); };
-  scrub.addEventListener("pointerdown", (e) => { if (e.target.closest(".cut-pin,.cut-elb,.cut-trn,.cut-bk,.cut-au")) return; cutScrubbing = true; cutStop(); seek(e); });
+  const seek = (e) => { const d = cutDoc(); if (!d) return; d.scrollingElement.scrollTop = cutFracFromEvent(e) * cutMax(d); };
+  scrub.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".cut-pin,.cut-elb,.cut-trn,.cut-bk,.cut-au")) return;
+    try { scrub.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ } // scrub survives the cursor crossing the iframe
+    cutScrubbing = true; cutStop(); seek(e);
+  });
   window.addEventListener("pointermove", (e) => { if (cutScrubbing) seek(e); });
   window.addEventListener("pointerup", () => { cutScrubbing = false; });
 }
@@ -1298,6 +1724,7 @@ async function lockDecision(c) {
     if (!edit) throw new Error("this option can't be written automatically — try Ask Redline again");
     const applied = applyEdit(currentHtml, edit.find, edit.replace);
     if (!applied.ok) throw new Error("couldn't find this text in the file anymore — click Ask Redline to regenerate against the current page");
+    cutUndoStack.push(currentHtml); if (cutUndoStack.length > 30) cutUndoStack.shift(); cutRedoStack.length = 0; // every write is one ⌘Z away from undone
     await relay.storage.set(pageKey, applied.next);
     currentHtml = applied.next;
     // Locking an edit on a DRAFT is the moment it stops being a draft: the file now exists on disk.

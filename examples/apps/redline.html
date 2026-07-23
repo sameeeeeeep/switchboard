@@ -198,7 +198,7 @@
       /* CUT — the timeline surface. The page is footage: PAGE track = its sections as clips,
          PINS track = every sidebar decision at its scroll position, playhead = where the reader
          is. Chips ARE the decisions — same numbers, colors follow the lifecycle. */
-      .cutbar { flex: none; border-top: 1px solid var(--edge-soft); background: var(--inset); padding: 0 0 8px; user-select: none; }
+      .cutbar { flex: none; position: relative; border-top: 1px solid var(--edge-soft); background: var(--inset); padding: 0 0 8px; user-select: none; }
       .cut-transport { display: flex; align-items: center; gap: 9px; padding: 8px 14px 6px; }
       .tbtn { width: 28px; height: 28px; border-radius: 8px; background: var(--panel); border: 1px solid var(--edge); color: var(--ink-sec); cursor: pointer; display: grid; place-items: center; font-size: 11px; transition: border-color .15s, color .15s; }
       .tbtn:hover { border-color: var(--accent); color: var(--accent); }
@@ -214,12 +214,35 @@
       .cut-legend .busy i { background: var(--blue); }
       .cut-legend .ready i { background: var(--accent); }
       .cut-legend .done i { background: var(--ok); }
-      .cut-scrub { position: relative; margin: 0 14px 0 52px; cursor: crosshair; }
+      /* the timeline scrolls + zooms: rails (track names) stay fixed in the left gutter while the
+         zoomwrap scales horizontally inside the scrolling scrub */
+      .cut-scrub-outer { position: relative; margin: 0 14px; padding-left: 58px; }
+      .cut-rails { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; pointer-events: none; }
+      .cut-rails span { position: absolute; right: 8px; transform: translateY(-50%); font: 500 8.5px/1 var(--mono); letter-spacing: .12em; color: var(--ink-faint); }
+      .cut-scrub { position: relative; overflow-x: auto; overflow-y: hidden; cursor: crosshair; }
+      .cut-scrub::-webkit-scrollbar { height: 7px; }
+      .cut-scrub::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 7px; }
+      .cut-zoomwrap { position: relative; min-width: 100%; width: 100%; }
       .cut-ruler { position: relative; height: 14px; border-bottom: 1px solid var(--edge-soft); font: 500 8.5px/1 var(--mono); color: var(--ink-faint); }
       .cut-ruler span { position: absolute; top: 2px; transform: translateX(-50%); }
       .cut-tracks { position: relative; padding: 5px 0 2px; }
-      .cut-track { position: relative; height: 26px; margin-bottom: 5px; }
-      .cut-tag { position: absolute; left: -1px; top: 50%; transform: translate(-100%, -50%); padding-right: 8px; font: 500 8.5px/1 var(--mono); letter-spacing: .12em; color: var(--ink-faint); }
+      .cut-track { position: relative; height: calc(26px * var(--cut-scale, 1)); margin-bottom: 5px; }
+      /* drag the timeline's top edge to grow/shrink every track (--cut-scale) */
+      .cut-resize { position: absolute; top: -4px; left: 0; right: 0; height: 9px; cursor: ns-resize; z-index: 9; }
+      .cut-resize:hover, .cut-resize.dragging { border-top: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+      /* selection: click selects (page or timeline), the floating verb bar acts */
+      .cut-elb.selected { box-shadow: 0 0 0 2px var(--accent); }
+      .cut-clip { cursor: grab; }
+      .cut-clip.dragging { opacity: .45; cursor: grabbing; }
+      .cut-dropline { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--accent); box-shadow: 0 0 8px rgba(200, 242, 80, .6); transform: translateX(-1px); z-index: 6; pointer-events: none; }
+      .cut-selbar { position: absolute; z-index: 26; display: flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--edge)); border-radius: 10px; padding: 4px 6px; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .7); }
+      .cut-selbar b { font: 600 9px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); padding: 0 3px; }
+      .cut-selbar button { font: 500 11px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 7px; color: var(--ink-sec); padding: 6px 8px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .cut-selbar button:hover { border-color: var(--accent); color: var(--ink); }
+      .cut-selbar button.danger:hover { border-color: var(--danger); color: var(--danger); }
+      /* ELEMENTS bars carry their visibility window; lit = under the playhead = on screen NOW */
+      .cut-elb.onscreen { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); color: var(--ink-sec); }
+      .cut-elb.onscreen b { color: var(--accent); }
       .cut-clips { position: absolute; inset: 0; }
       .cut-clip { position: absolute; top: 0; bottom: 0; background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: border-color .15s; }
       .cut-clip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); }
@@ -258,13 +281,14 @@
       .cut-elb.pinned { border-color: var(--warn); }
       .cut-elb.pinned b { color: var(--warn); }
       .cut-elb.linked { border-color: var(--accent); color: var(--ink-sec); }
+      .cut-elb.dragging { opacity: .65; z-index: 9; border-color: var(--accent); cursor: grabbing; }
       /* BACKDROP: each section's real background as a strip — the page's light, on the timeline */
-      .cut-track.back { height: 10px; }
+      .cut-track.back { height: calc(10px * var(--cut-scale, 1)); }
       .cut-bk { position: absolute; top: 0; bottom: 0; border-radius: 3px; border: 1px solid var(--edge); cursor: pointer; transition: box-shadow .15s; }
       .cut-bk:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
       .cut-bk.pinned { border-color: var(--warn); }
       /* SOUND: present only when the page has audio layers — never a fake affordance */
-      .cut-track.audio { height: 22px; }
+      .cut-track.audio { height: calc(22px * var(--cut-scale, 1)); }
       .cut-au { position: absolute; top: 1px; bottom: 1px; background: color-mix(in srgb, var(--blue) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--blue) 45%, var(--edge)); color: var(--blue); border-radius: 5px; font: 500 8.5px/1 var(--mono); display: flex; align-items: center; gap: 4px; padding: 0 5px; overflow: hidden; cursor: pointer; transition: filter .15s; }
       .cut-au:hover { filter: brightness(1.2); }
       .cut-au.pinned { border-color: var(--warn); color: var(--warn); }
@@ -292,7 +316,7 @@
         <div class="canvas">
           <div class="canvas-bar" id="canvas-bar" hidden>
             <button class="toggle" id="pick-toggle">✎ comment mode</button>
-            <button class="toggle" id="cut-toggle" title="timeline: the page as footage — every pinned decision at its scroll position">⧗ cut</button>
+            <button class="toggle" id="cut-toggle" title="timeline — scrub the page, drag things around, see every decision at its scroll position">⧗ cut</button>
             <span class="draftflag" id="draft-flag" hidden>draft · nothing written yet</span>
             <button class="mini" id="save-draft" hidden title="write this draft into the open folder">⤓ save page</button>
             <span class="grow"></span>
@@ -305,27 +329,37 @@
           <div class="frame-wrap">
             <iframe id="frame" title="page preview" sandbox="allow-same-origin"></iframe>
             <div class="pick-hint" id="pick-hint" hidden>Click any element to review it · Esc to cancel</div>
+            <div class="cut-selbar" id="cut-selbar" hidden></div>
           </div>
 
           <div class="cutbar" id="cutbar" hidden>
+            <div class="cut-resize" id="cut-resize" title="drag up to grow the timeline"></div>
             <div class="cut-transport">
               <button class="tbtn" id="cut-prev" title="previous decision">⏮</button>
-              <button class="tbtn play" id="cut-play" title="play the page like footage">▶</button>
+              <button class="tbtn play" id="cut-play" title="auto-scroll the page (space)">▶</button>
               <button class="tbtn" id="cut-next" title="next decision">⏭</button>
               <button class="tbtn" id="cut-rethumb" title="re-render filmstrip thumbnails">⟲</button>
               <button class="tbtn" id="cut-follow" title="follow — while scrubbing or playing, the decision under the playhead opens itself">◎</button>
+              <button class="tbtn" id="cut-zoom-out" title="zoom out (⌘/ctrl + wheel works too)">−</button>
+              <button class="tbtn" id="cut-zoom-in" title="zoom in (⌘/ctrl + wheel works too)">+</button>
+              <button class="tbtn" id="cut-zoom-fit" title="fit the whole film">⤢</button>
               <span class="cut-readout"><span class="pct" id="cut-pct">0%</span><span class="secname" id="cut-sec">—</span></span>
               <span class="cut-legend"><span class="pending"><i></i>pinned</span><span class="busy"><i></i>asking</span><span class="ready"><i></i>option ready</span><span class="done"><i></i>locked</span></span>
             </div>
-            <div class="cut-scrub" id="cut-scrub">
+            <div class="cut-scrub-outer">
+              <div class="cut-rails" id="cut-rails"></div>
+              <div class="cut-scrub" id="cut-scrub">
+                <div class="cut-zoomwrap" id="cut-zoomwrap">
               <div class="cut-ruler" id="cut-ruler"></div>
               <div class="cut-tracks">
-                <div class="cut-track"><span class="cut-tag">PAGE</span><div class="cut-clips" id="cut-page"></div></div>
-                <div class="cut-track back"><span class="cut-tag">BACKDROP</span><div class="cut-clips" id="cut-back"></div></div>
-                <div class="cut-track elems"><span class="cut-tag">ELEMENTS</span><div class="cut-clips" id="cut-elems"></div></div>
-                <div class="cut-track audio" id="cut-audio-track" hidden><span class="cut-tag">SOUND</span><div class="cut-clips" id="cut-audio"></div></div>
-                <div class="cut-track"><span class="cut-tag">PINS</span><div class="cut-pins-wrap cut-clips" id="cut-pins"></div></div>
+                <div class="cut-track" data-label="PAGE"><div class="cut-clips" id="cut-page"></div></div>
+                <div class="cut-track back" data-label="BACKDROP"><div class="cut-clips" id="cut-back"></div></div>
+                <div class="cut-track elems" data-label="ELEMENTS"><div class="cut-clips" id="cut-elems"></div></div>
+                <div class="cut-track audio" id="cut-audio-track" data-label="SOUND" hidden><div class="cut-clips" id="cut-audio"></div></div>
+                <div class="cut-track" data-label="PINS"><div class="cut-pins-wrap cut-clips" id="cut-pins"></div></div>
                 <div class="cut-playhead" id="cut-playhead"><span class="cap"></span><span class="line"></span></div>
+              </div>
+                </div>
               </div>
             </div>
           </div>

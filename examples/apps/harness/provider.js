@@ -482,6 +482,7 @@
       // autoAssigned:false + a real folder so folder-bound wrapps (Redline) reach their model call.
       case "info": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
       case "bind": return { ok: true, info: { folder: p.path || BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
+      case "pick": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } }; // the mock "native dialog" always picks the seed folder
       default: return { ok: false, error: "unknown storage op" };
     }
   }
