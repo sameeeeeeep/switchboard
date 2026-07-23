@@ -282,6 +282,8 @@
       .cut-elb.pinned b { color: var(--warn); }
       .cut-elb.linked { border-color: var(--accent); color: var(--ink-sec); }
       .cut-elb.dragging { opacity: .65; z-index: 9; border-color: var(--accent); cursor: grabbing; }
+      .cut-elb.live { background: repeating-linear-gradient(100deg, var(--raised) 0 6px, color-mix(in srgb, var(--blue) 14%, var(--raised)) 6px 12px); }
+      .cut-elb.live .loop { font-style: normal; color: var(--blue); font-weight: 600; font-size: 8px; flex: none; }
       /* BACKDROP: each section's real background as a strip — the page's light, on the timeline */
       .cut-track.back { height: calc(10px * var(--cut-scale, 1)); }
       .cut-bk { position: absolute; top: 0; bottom: 0; border-radius: 3px; border: 1px solid var(--edge); cursor: pointer; transition: box-shadow .15s; }
@@ -343,6 +345,7 @@
               <button class="tbtn" id="cut-zoom-out" title="zoom out (⌘/ctrl + wheel works too)">−</button>
               <button class="tbtn" id="cut-zoom-in" title="zoom in (⌘/ctrl + wheel works too)">+</button>
               <button class="tbtn" id="cut-zoom-fit" title="fit the whole film">⤢</button>
+              <button class="tbtn" id="cut-motion" title="⏱ lock motion to the playhead — scrubbing drives tickers, loops and video too">⏱</button>
               <span class="cut-readout"><span class="pct" id="cut-pct">0%</span><span class="secname" id="cut-sec">—</span></span>
               <span class="cut-legend"><span class="pending"><i></i>pinned</span><span class="busy"><i></i>asking</span><span class="ready"><i></i>option ready</span><span class="done"><i></i>locked</span></span>
             </div>

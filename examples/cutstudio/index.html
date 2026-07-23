@@ -120,6 +120,9 @@ iframe{width:100%;height:100%;border:0;background:#0B0D10}
 .elb.selected{box-shadow:0 0 0 2px var(--accent)}
 .elb.linked{border-color:color-mix(in srgb,var(--accent) 60%,var(--edge));color:var(--ink-sec)}
 .elb.dragging{opacity:.65;z-index:9;border-color:var(--accent);cursor:grabbing}
+.elb.live{background:repeating-linear-gradient(100deg,var(--raised) 0 6px,color-mix(in srgb,var(--blue) 14%,var(--raised)) 6px 12px)}
+.elb.live .loop{font-style:normal;color:var(--blue);font-weight:600;font-size:8px;flex:none}
+.tbtn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .playhead{position:absolute;top:0;bottom:0;width:0;z-index:5;pointer-events:none}
 .playhead .line{position:absolute;top:0;bottom:0;left:-1px;width:2px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.5)}
 .playhead .cap{position:absolute;top:-13px;left:-6px;width:12px;height:10px;background:var(--accent);clip-path:polygon(0 0,100% 0,50% 100%)}
@@ -166,6 +169,7 @@ footer a:hover{color:var(--accent)}
       <button class="tbtn" id="zoom-out" title="zoom out (⌘/ctrl + wheel)">−</button>
       <button class="tbtn" id="zoom-in" title="zoom in">+</button>
       <button class="tbtn" id="zoom-fit" title="fit">⤢</button>
+      <button class="tbtn" id="motion-lock" title="⏱ lock motion to the playhead — scrubbing drives tickers, loops and video too">⏱</button>
       <span class="readout"><span class="pct" id="pct">0%</span><span class="sec" id="secname">—</span></span>
       <span class="hinttext"><b>click</b> selects · <b>dbl-click</b> retypes text · <b>⌫</b> deletes · <b>drag a clip</b> reorders · <b>⌘Z</b> undoes</span>
     </div>
@@ -201,7 +205,7 @@ footer a:hover{color:var(--accent)}
   let fileName = "page.html";
   const undoStack = [], redoStack = [];
   let sel = null;           // selected element
-  let zoom = 1, vscale = 1;
+  let zoom = 1, vscale = 1, motionLock = false;
   let playing = false, playTimer = 0, lastT = 0;
   const SPEED = 340;
   let watchTimer = 0, lastY = -1;
@@ -334,6 +338,26 @@ footer a:hover{color:var(--accent)}
     verb("⌫ Delete", () => { const n = sel; commit(() => n.remove()); toast("Deleted — ⌘Z to undo"); }, true);
     verb("⧉ Duplicate", () => { const n = sel; commit(() => n.after(n.cloneNode(true))); toast("Duplicated"); });
     if (sel.hasAttribute("data-cs-appear")) verb("◔ Reset timing", () => { const n = sel; clearSel(); clearRetime(n); });
+    // moving elements get motion verbs — freeze holds the animation still, persistently (exports frozen)
+    let liveTargets = [];
+    try {
+      liveTargets = [...new Set(sel.getAnimations({ subtree: true })
+        .filter((a) => !(a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") && a.animationName !== "cs-in")
+        .map((a) => a.effect && a.effect.target).filter(Boolean))];
+    } catch { /* none */ }
+    if (liveTargets.length) {
+      const frozen = liveTargets.every((t) => win.getComputedStyle(t).animationPlayState.includes("paused"));
+      verb(frozen ? "▶ Unfreeze" : "⏸ Freeze", () => {
+        const targets = liveTargets; clearSel();
+        commit(() => {
+          for (const t of targets) {
+            if (frozen) { t.style.removeProperty("animation-play-state"); if (!t.getAttribute("style")) t.removeAttribute("style"); }
+            else t.style.animationPlayState = "paused";
+          }
+        });
+        toast(frozen ? "Motion resumed" : "Frozen — holds still now, exports frozen too");
+      });
+    }
     const x = el("button", null, "✕"); x.onclick = (e) => { e.stopPropagation(); clearSel(); }; bar.append(x);
     bar.hidden = false;
   }
@@ -423,6 +447,24 @@ footer a:hover{color:var(--accent)}
       back.append(bk);
       for (const m of [...n.querySelectorAll(SELECTOR)].filter((x) => /^(IMG|INPUT)$/.test(x.tagName) || (x.textContent || "").trim()).slice(0, 7)) layers.push(m);
     }
+    // the SECOND clock: wall-time motion (tickers, marquees, pulses, autoplay video) — detected
+    // FIRST so anything that moves earns a bar even when it lives outside the normal layer set
+    const motionBy = new Map();
+    try {
+      for (const a of (doc.getAnimations ? doc.getAnimations() : [])) {
+        if (a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") continue; // scroll-driven = the first clock, already ours
+        if (a.animationName === "cs-in") continue; // our own retime entrances
+        const t0 = a.effect && a.effect.target; if (!t0) continue;
+        const host = (t0.closest && t0.closest(SELECTOR)) || t0;
+        const tm = a.effect.getTiming();
+        const cur = motionBy.get(host) || { dur: 0, inf: false };
+        cur.dur = Math.max(cur.dur, typeof tm.duration === "number" ? tm.duration : 0);
+        cur.inf = cur.inf || tm.iterations === Infinity;
+        motionBy.set(host, cur);
+      }
+      for (const v of doc.querySelectorAll("video[autoplay], marquee")) motionBy.set((v.closest && v.closest(SELECTOR)) || v, { dur: 0, inf: true });
+    } catch { /* no WAAPI → bars stay plain */ }
+    for (const host of motionBy.keys()) if (!layers.includes(host) && host.getBoundingClientRect().height) layers.push(host);
     // visibility windows + lanes
     const vh = frame.clientHeight;
     const bars = layers.map((m) => {
@@ -450,9 +492,15 @@ footer a:hover{color:var(--accent)}
       b.style.left = (L.a * 100) + "%"; b.style.width = ((L.b - L.a) * 100) + "%";
       b.style.top = (L.lane * laneH + 1) + "px"; b.style.height = (laneH - 2) + "px";
       b.dataset.a = String(L.a); b.dataset.b = String(L.b);
+      const mo = motionBy.get(m);
+      if (mo) {
+        b.classList.add("live");
+        b.append(el("i", "loop", (mo.inf ? "∞" : "▸") + (mo.dur ? " " + (mo.dur / 1000).toFixed(1).replace(/\.0$/, "") + "s" : "")));
+      }
       b.append(el("b", null, (L.retimed ? "◔ " : "") + m.tagName.toLowerCase()));
       b.append(el("span", null, media ? "(media)" : (m.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24)));
-      b.title = (L.retimed ? "retimed — appears at " + Math.round(L.a * 100) + "% · " : "") + "click selects · drag left/right to change when it comes in";
+      b.title = (mo ? "moves on its own" + (mo.dur ? " (" + (mo.dur / 1000).toFixed(1) + "s loop)" : "") + " — ⏱ locks it to the playhead, Freeze holds it still · " : "")
+        + (L.retimed ? "retimed — appears at " + Math.round(L.a * 100) + "% · " : "") + "click selects · drag left/right to change when it comes in";
       wireBarDrag(b, m);
       b.onclick = (e) => { e.stopPropagation(); if (barJustDragged) return; stopPlay(); m.scrollIntoView({ behavior: "smooth", block: "center" }); select(m); };
       if (sel === m) b.classList.add("selected");
@@ -484,8 +532,36 @@ footer a:hover{color:var(--accent)}
       const px = x * wrap.offsetWidth;
       if (px < scrub.scrollLeft + 30 || px > scrub.scrollLeft + scrub.clientWidth - 30) scrub.scrollLeft = Math.max(0, px - scrub.clientWidth / 2);
     }
+    // ⏱ one master clock: the playhead drives wall-time too — tickers, loops and video scrub
+    if (motionLock) {
+      const tMs = x * (maxScroll() / SPEED) * 1000;
+      try {
+        for (const a of doc.getAnimations()) {
+          if (a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") continue;
+          if (a.playState === "running") a.pause();
+          a.currentTime = tMs;
+        }
+      } catch { /* no WAAPI */ }
+      for (const v of doc.querySelectorAll("video")) { try { if (!v.paused) v.pause(); if (v.duration) v.currentTime = (tMs / 1000) % v.duration; } catch { /* cross-origin */ } }
+    }
     placeSelbar();
   }
+  $("motion-lock") && ($("motion-lock").onclick = () => {
+    if (!doc) return;
+    motionLock = !motionLock;
+    $("motion-lock").classList.toggle("on", motionLock);
+    if (!motionLock) {
+      try {
+        for (const a of doc.getAnimations()) {
+          const t = a.effect && a.effect.target;
+          if (t && win.getComputedStyle(t).animationPlayState.includes("paused")) continue; // user-frozen stays frozen
+          a.play();
+        }
+      } catch { /* no WAAPI */ }
+      for (const v of doc.querySelectorAll("video[autoplay]")) { try { v.play(); } catch { /* fine */ } }
+    } else sync();
+    toast(motionLock ? "Motion locked to the playhead — scrubbing drives the tickers now" : "Motion runs free again");
+  });
 
   // ---------- retime: drag a bar horizontally = change WHEN it comes in ----------
   // Inside its own visibility window → a scroll-driven CSS entrance (invisible until that scroll
@@ -746,9 +822,12 @@ footer a:hover{color:var(--accent)}
   });
   const SAMPLE = [
     '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Aurora — sample</title>',
-    '<style>body{margin:0;font-family:system-ui,sans-serif;color:#e8edf4}header,section,footer{min-height:520px;padding:64px 8vw;display:flex;flex-direction:column;justify-content:center}h1{font-size:52px;margin:0 0 14px}h2{font-size:34px;margin:0 0 12px}p{max-width:56ch;line-height:1.6;color:#c7d0dd}a.cta{display:inline-block;margin-top:18px;padding:12px 20px;border-radius:10px;background:#c8f250;color:#0a0c10;text-decoration:none;font-weight:600;width:fit-content}</style>',
+    '<style>body{margin:0;font-family:system-ui,sans-serif;color:#e8edf4}header,section,footer{min-height:520px;padding:64px 8vw;display:flex;flex-direction:column;justify-content:center}h1{font-size:52px;margin:0 0 14px}h2{font-size:34px;margin:0 0 12px}p{max-width:56ch;line-height:1.6;color:#c7d0dd}a.cta{display:inline-block;margin-top:18px;padding:12px 20px;border-radius:10px;background:#c8f250;color:#0a0c10;text-decoration:none;font-weight:600;width:fit-content}',
+    '.rotator{display:inline-block;height:1.2em;overflow:hidden;vertical-align:bottom}.rotator i{display:block;font-style:normal;color:#c8f250;animation:rot 6s infinite}@keyframes rot{0%,28%{transform:translateY(0)}33%,61%{transform:translateY(-1.2em)}66%,94%{transform:translateY(-2.4em)}100%{transform:translateY(-3.6em)}}',
+    '.tape{white-space:nowrap;overflow:hidden;background:#c8f250;color:#0a0c10;font-weight:700;padding:10px 0}.tape span{display:inline-block;padding-left:100%;animation:tape 12s linear infinite}@keyframes tape{to{transform:translateX(-100%)}}</style>',
     '</head><body>',
-    '<header style="background:#0b0d10"><h1>Meet Aurora</h1><p>The note-taking app that files itself. Write anything; Aurora puts it where you will look for it.</p><a class="cta" href="#">Start free</a></header>',
+    '<header style="background:#0b0d10"><h1>Notes that <span class="rotator"><i>file themselves</i><i>tag themselves</i><i>link themselves</i><i>file themselves</i></span></h1><p>The note-taking app that files itself. Write anything; Aurora puts it where you will look for it.</p><a class="cta" href="#">Start free</a></header>',
+    '<div class="tape"><span>AURORA — NOTES THAT FILE THEMSELVES — FREE FOREVER — AURORA — NOTES THAT FILE THEMSELVES —</span></div>',
     '<section style="background:#101623"><h2>Never organize again</h2><p>Folders, tags and links happen automatically as you type. Your notes stay yours — everything lives on your device.</p><svg width="220" height="120" viewBox="0 0 220 120"><rect x="8" y="10" width="90" height="100" rx="10" fill="#1a2233"/><rect x="120" y="10" width="90" height="100" rx="10" fill="#22304a"/><circle cx="53" cy="60" r="22" fill="#c8f250"/></svg></section>',
     '<section style="background:#0d1117"><h2>Find it in a keystroke</h2><p>Search that understands what you meant, not just what you typed. Jump anywhere in under a second.</p></section>',
     '<section style="background:#131a26"><h2>Simple pricing</h2><p>Free forever for personal notes. Pro adds sync across devices for the price of a coffee.</p><a class="cta" href="#">See pricing</a></section>',

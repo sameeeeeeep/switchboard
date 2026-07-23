@@ -858,6 +858,24 @@ function cutLayout() {
     // collect this block's layers — rendered AFTER the loop as visibility-window bars in lanes
     for (const m of cutBlockElements(n)) layers.push(m);
   }
+  // the SECOND clock: wall-time motion (tickers, marquees, pulses, autoplay video) — detected
+  // FIRST so anything that moves earns a bar even outside the normal layer set
+  const motionBy = new Map();
+  try {
+    for (const a of (d.getAnimations ? d.getAnimations() : [])) {
+      if (a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") continue;
+      if (a.animationName === "rl-cutin") continue;
+      const t0 = a.effect && a.effect.target; if (!t0) continue;
+      const host = (t0.closest && t0.closest("h1,h2,h3,p,a,button,img,input")) || t0;
+      const tm = a.effect.getTiming();
+      const cur = motionBy.get(host) || { dur: 0, inf: false };
+      cur.dur = Math.max(cur.dur, typeof tm.duration === "number" ? tm.duration : 0);
+      cur.inf = cur.inf || tm.iterations === Infinity;
+      motionBy.set(host, cur);
+    }
+    for (const v of d.querySelectorAll("video[autoplay], marquee")) motionBy.set((v.closest && v.closest("h1,h2,h3,p,a,button,img,input")) || v, { dur: 0, inf: true });
+  } catch { /* no WAAPI → bars stay plain */ }
+  for (const host of motionBy.keys()) if (!layers.includes(host) && host.getBoundingClientRect().height) layers.push(host);
   // ELEMENTS as a true time map: each layer's bar spans its VISIBILITY WINDOW — the scroll range
   // during which it is actually on screen (enters when its top crosses the viewport bottom, leaves
   // when its bottom crosses the viewport top) — and simultaneous layers stack into parallel lanes,
@@ -895,6 +913,11 @@ function cutLayout() {
       eb.style.top = (L.lane * laneH + 1) + "px";
       eb.style.height = (laneH - 2) + "px"; eb.style.bottom = "auto";
       eb.dataset.a = String(L.a); eb.dataset.b = String(L.b);
+      const mo = motionBy.get(m);
+      if (mo) {
+        eb.classList.add("live");
+        eb.append(el("i", "loop", (mo.inf ? "∞" : "▸") + (mo.dur ? " " + (mo.dur / 1000).toFixed(1).replace(/\.0$/, "") + "s" : "")));
+      }
       eb.append(el("b", null, (L.retimed ? "◔ " : "") + m.tagName.toLowerCase()));
       eb.append(el("span", null, media ? "(media)" : (m.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24)));
       eb.addEventListener("pointerdown", (pe) => {
@@ -991,6 +1014,18 @@ function cutSync() {
     bb.classList.toggle("onscreen", x >= parseFloat(bb.dataset.a || "0") && x <= parseFloat(bb.dataset.b || "1"));
   }
   cutPlaceSelbar(); // the verb bar rides with its element as the page scrolls
+  // ⏱ one master clock: the playhead drives wall-time too — tickers, loops and video scrub with it
+  if (cutMotionLock) {
+    const tMs = x * (cutMax(d) / CUT_SPEED) * 1000;
+    try {
+      for (const a of d.getAnimations()) {
+        if (a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") continue;
+        if (a.playState === "running") a.pause();
+        a.currentTime = tMs;
+      }
+    } catch { /* no WAAPI */ }
+    for (const v of d.querySelectorAll("video")) { try { if (!v.paused) v.pause(); if (v.duration) v.currentTime = (tMs / 1000) % v.duration; } catch { /* cross-origin */ } }
+  }
   // ◎ follow: only while the film is DRIVEN (scrub or play) — never hijack the user's own reading scroll
   if (cutFollow && (cutPlaying || cutScrubbing)) {
     let best = null, bestDist = 0.06; // generous capture radius — scrubbing lands NEAR a chip, not on it
@@ -1069,6 +1104,30 @@ function cutBuildSelbar() {
   else verb("✎ Change", () => { if ($("work").classList.contains("collapsed")) setCollapsed(false); commentOn(m); });
   verb("⌫ Delete", () => cutDeleteSel(), true);
   if (!media) verb("⧉ Duplicate", () => cutDupSel());
+  // moving elements get a Freeze verb — a persistent style edit through the same lock gate
+  let liveTargets = [];
+  try {
+    liveTargets = [...new Set(m.getAnimations({ subtree: true })
+      .filter((a) => !(a.timeline && a.timeline.constructor && a.timeline.constructor.name !== "DocumentTimeline") && a.animationName !== "rl-cutin")
+      .map((a) => a.effect && a.effect.target).filter(Boolean))];
+  } catch { /* none */ }
+  if (liveTargets.length) {
+    const doc2 = frameDoc();
+    const frozen = liveTargets.every((t) => doc2.defaultView.getComputedStyle(t).animationPlayState.includes("paused"));
+    verb(frozen ? "▶ Unfreeze" : "⏸ Freeze", () => {
+      if ($("work").classList.contains("collapsed")) setCollapsed(false);
+      if (liveTargets.length === 1 && liveTargets[0] === m) {
+        const before = cutCleanHtml(m);
+        const c2 = cutCleanNode(m);
+        if (frozen) { c2.style.removeProperty("animation-play-state"); if (!c2.getAttribute("style")) c2.removeAttribute("style"); }
+        else c2.style.animationPlayState = "paused";
+        preseedEdit(m, (frozen ? "Unfreeze" : "Freeze") + " this element's motion.", frozen ? "Unfreeze" : "Freeze it", frozen ? "moves again" : "holds still", before, c2.outerHTML, (frozen ? "Resume" : "Pause") + " its animation");
+      } else {
+        intentDecision(m, (frozen ? "Unfreeze" : "Freeze") + " the motion inside this " + m.tagName.toLowerCase() + " — " + (frozen ? "let its animation run again" : "pause its animation so it holds still") + ", changing nothing else.");
+      }
+      cutClearSel();
+    });
+  }
   if (m.getAttribute && m.getAttribute("data-rl-appear")) verb("◔ Reset timing", () => {
     const before = cutCleanHtml(m);
     const c2 = cutCleanNode(m);
@@ -1330,6 +1389,25 @@ let cutScrubbing = false; // module-visible: follow mode needs to know the film 
 // review by scrubbing, instead of scrub-then-hunt-then-click
 let cutFollow = false;
 $("cut-follow").addEventListener("click", () => { cutFollow = !cutFollow; $("cut-follow").classList.toggle("on", cutFollow); });
+// ⏱ preview-only: locking wall-time to the playhead changes nothing in the file — it makes the
+// page's own motion scrubbable while you edit
+let cutMotionLock = false;
+$("cut-motion").addEventListener("click", () => {
+  const d = cutDoc(); if (!d) return;
+  cutMotionLock = !cutMotionLock;
+  $("cut-motion").classList.toggle("on", cutMotionLock);
+  if (!cutMotionLock) {
+    try {
+      for (const a of d.getAnimations()) {
+        const t = a.effect && a.effect.target;
+        if (t && d.defaultView.getComputedStyle(t).animationPlayState.includes("paused")) continue; // frozen stays frozen
+        a.play();
+      }
+    } catch { /* no WAAPI */ }
+    for (const v of d.querySelectorAll("video[autoplay]")) { try { v.play(); } catch { /* fine */ } }
+  } else cutSync();
+  toast(cutMotionLock ? "Motion locked to the playhead — scrubbing drives the page's own animation" : "Motion runs free again");
+});
 let cutPlayTimer = 0;
 function cutTick() {
   if (!cutPlaying) return;
