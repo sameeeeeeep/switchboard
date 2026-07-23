@@ -166,6 +166,11 @@ export class Relay {
       info: (): Promise<StorageInfo | undefined> => req({ op: "info" }).then((r) => r.info),
       /** Point this app's store at a real folder (triggers a path-consent click). */
       bind: (path: string): Promise<StorageInfo | undefined> => req({ op: "bind", path }).then((r) => r.info),
+      /** Open a NATIVE folder chooser on the daemon's machine (macOS today). The user picking a
+       *  folder in an OS dialog that names this origin IS the path consent, so a successful pick
+       *  comes back already bound. Resolves undefined on cancel or when no native picker exists —
+       *  keep a typed-path `bind` as the fallback UI. */
+      pick: (reason?: string): Promise<StorageInfo | undefined> => req({ op: "pick", reason }).then((r) => r.info).catch(() => undefined),
     };
   }
 

@@ -21,7 +21,7 @@
  */
 
 /** The operation a claude_storage request performs. */
-export type StorageOp = "get" | "set" | "list" | "delete" | "bind" | "info";
+export type StorageOp = "get" | "set" | "list" | "delete" | "bind" | "info" | "pick";
 
 export interface StorageRequest {
   op: StorageOp;
@@ -32,6 +32,9 @@ export interface StorageRequest {
   value?: string;
   /** For `bind`: the folder path the user is asked to authorize (absolute, or `~`-relative). */
   path?: string;
+  /** For `pick`: a short purpose line shown in the daemon's native folder dialog (sanitized and
+   *  truncated daemon-side; the dialog always names the requesting origin regardless). */
+  reason?: string;
 }
 
 /** Where an origin's storage currently resolves, surfaced by `info` / after `bind`. */

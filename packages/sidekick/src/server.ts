@@ -32,6 +32,7 @@ import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError } from "./storage/store.js";
+import { pickFolderNative } from "./native-picker.js";
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
@@ -168,6 +169,11 @@ export class Broker implements ConsentPrompter {
    *  path is shown; this is the one storage escalation that always needs a human click. */
   requestStorageBindConsent(origin: string, path: string): Promise<boolean> {
     return this.ask<boolean>("consent:storage-bind", { origin, path }, 120_000, false);
+  }
+  /** Panel-anchored folder pick, step 1 of 2: the extension card announces WHO is asking in the
+   *  surface every other grant lives in; the approval click is what raises the OS folder dialog. */
+  requestStoragePickConsent(origin: string, reason?: string): Promise<boolean> {
+    return this.ask<boolean>("consent:storage-pick", { origin, reason }, 120_000, false);
   }
   /** Ask the user to pick a context to lend this origin — the picker shows the library (names only)
    *  and returns the chosen id, or null. Selecting IS the consent to share that whole context. */
@@ -545,6 +551,22 @@ export class Broker implements ConsentPrompter {
           store.bind(origin, req.path);
           const info = store.info(origin);
           log("bind", "ok", info.folder.slice(0, 120));
+          this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
+          return { ok: true, info };
+        }
+        case "pick": {
+          // The same escalation as bind, PANEL-ANCHORED: the extension card announces who's asking
+          // (in the surface every other grant uses), and approving it raises the OS's OWN folder
+          // dialog daemon-side. The page supplies at most a sanitized purpose line and never sees
+          // the filesystem; the eventual pick binds directly — both clicks are human gestures no
+          // page or model output can forge.
+          const wanted = await this.requestStoragePickConsent(origin, req.reason);
+          if (!wanted) { log("pick", "denied", "declined"); throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user declined the folder picker"); }
+          const picked = await pickFolderNative(origin, req.reason);
+          if (!picked) { log("pick", "denied", "cancelled"); throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user cancelled the folder picker"); }
+          store.bind(origin, picked);
+          const info = store.info(origin);
+          log("pick", "ok", info.folder.slice(0, 120));
           this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
           return { ok: true, info };
         }

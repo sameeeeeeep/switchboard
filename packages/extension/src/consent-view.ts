@@ -26,9 +26,10 @@ interface ConnectBody {
 }
 interface WriteBody { origin: string; tool: { name: string; arguments: Record<string, unknown> }; }
 interface StorageBindBody { origin: string; path: string; }
+interface StoragePickBody { origin: string; reason?: string; }
 interface ContextMetaRow { id: string; name: string; kind?: string; source?: string }
 interface ContextPickBody { origin: string; contexts: ContextMetaRow[] }
-export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:context-pick"; body: unknown; }
+export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:storage-pick" | "consent:context-pick"; body: unknown; }
 
 const el = (tag: string, cls?: string, text?: string): HTMLElement => {
   const n = document.createElement(tag);
@@ -153,6 +154,7 @@ export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d:
   root.appendChild(rc);
   if (prompt.kind === "consent:connect") renderConnect(rc, prompt.body as ConnectBody, onDecision);
   else if (prompt.kind === "consent:storage-bind") renderStorageBind(rc, prompt.body as StorageBindBody, onDecision);
+  else if (prompt.kind === "consent:storage-pick") renderStoragePick(rc, prompt.body as StoragePickBody, onDecision);
   else if (prompt.kind === "consent:context-pick") renderContextPick(rc, prompt.body as ContextPickBody, onDecision);
   else renderWrite(rc, prompt.body as WriteBody, onDecision);
 }
@@ -349,6 +351,23 @@ function renderStorageBind(rc: HTMLElement, body: StorageBindBody, onDecision: (
   const actions = el("div", "actions");
   const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
   const approve = el("button", "approve", "Bind folder"); approve.onclick = () => onDecision(true as unknown as Decision);
+  actions.append(deny, approve);
+  rc.append(actions);
+}
+
+function renderStoragePick(rc: HTMLElement, body: StoragePickBody, onDecision: (d: Decision) => void) {
+  rc.append(el("div", "kick", "Folder access"));
+  const h = el("h2");
+  h.append(originIcon(body.origin), document.createTextNode("Let "), Object.assign(el("span", "o"), { textContent: host(body.origin) }), document.createTextNode(" open a folder?"));
+  rc.append(h);
+  const p = el("div", "reason");
+  p.append(document.createTextNode("Choosing continues in your Mac's own folder dialog. The app never sees your files — only the folder you pick becomes its store, readable and writable there and nowhere else."));
+  rc.append(p);
+  if (body.reason) { const sec = section(rc, "Why"); sec.append(el("div", "args", body.reason)); }
+  rc.append(el("div", "reason warn", "Pick only a folder you want this app to read and write."));
+  const actions = el("div", "actions");
+  const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
+  const approve = el("button", "approve", "Choose folder…"); approve.onclick = () => onDecision(true as unknown as Decision);
   actions.append(deny, approve);
   rc.append(actions);
 }

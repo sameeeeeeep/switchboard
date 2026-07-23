@@ -329,6 +329,9 @@ function consentToast(kind: string, body: any): { title: string; message: string
   if (kind === "consent:storage-bind") {
     return { title: "Switchboard — folder access", message: `${h(body?.origin ?? "")} wants to read & write ${body?.path ?? "a folder"}` };
   }
+  if (kind === "consent:storage-pick") {
+    return { title: "Switchboard — folder access", message: `${h(body?.origin ?? "")} wants to open a folder — approving opens your Mac's folder chooser` };
+  }
   return null;
 }
 
