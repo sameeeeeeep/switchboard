@@ -26,12 +26,23 @@ The daemon's `RelayHostTransport` / `relayMemberUrl` (in `packages/sidekick/src/
 directly. `examples/harness/local-relay.mjs` is a protocol-identical Node stand-in used by
 `npm run try-team-relay` to prove the path headless with no cloud.
 
-## Deploy
+## Live
+
+A hosted instance runs at **`wss://switchboard-team-relay.switchboard-team.workers.dev`** — it's
+the panel's prefilled default when hosting, so teams are cross-network with one paste. Proven live
+end-to-end by `RELAY_URL=wss://switchboard-team-relay.switchboard-team.workers.dev npm run try-team-relay`
+(two isolated daemons syncing through the real Worker). Root path returns a plain liveness string;
+all real traffic is sealed WebSocket frames it can't read.
+
+## Deploy your own
 
 ```bash
 cd packages/relay
 npx wrangler deploy
 ```
+
+Runs on the Workers **free** plan (the DO is SQLite-backed and stores nothing). Point a team at your
+own instance via the panel's relay field or `RELAY_TEAM_RELAY=wss://…` on the daemon.
 
 Then a team is made relay-backed either per-host (the panel's relay field / `team.host {relay}`) or
 globally via `RELAY_TEAM_RELAY=wss://your-relay.workers.dev` on the daemon. The invite code embeds the

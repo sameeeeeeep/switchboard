@@ -123,6 +123,11 @@ The invite code carries the relay URL, so a joiner still just pastes one code; a
 make every team relay-backed with `RELAY_TEAM_RELAY=wss://…`. MIT like everything else, so the
 free version is guaranteed — **self-host it** or use a hosted default (a clean Pro perk).
 
+**Live now**: a hosted instance runs at `wss://switchboard-team-relay.switchboard-team.workers.dev`
+(the panel prefills it when hosting, so a team is cross-network by one paste; clear it for a
+same-network team). Proven live end-to-end — two isolated daemons syncing through the real Worker —
+via `RELAY_URL=wss://switchboard-team-relay.switchboard-team.workers.dev npm run try-team-relay`.
+
 **Zero-infra bridges** for teams that prefer tools they already run:
 - **Git backing** (built): any free private repo is the async path across any network.
 - **Syncthing**: open source, free, community-run encrypted relays — point it at the team folder

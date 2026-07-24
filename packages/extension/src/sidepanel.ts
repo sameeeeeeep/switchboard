@@ -349,6 +349,11 @@ async function renderProject(data: PanelData) {
 // ops (panel-only, out of band); presence refreshes through the normal state:changed re-pull.
 let teamErr = ""; // last action error, shown inline until the next successful action
 
+// The hosted team relay (a Cloudflare Worker + Durable Object that forwards only sealed frames —
+// holds no key, stores nothing). Prefilled when hosting so teams are cross-network by default;
+// clearable for same-network-only, and self-hostable (see packages/relay). Proven live end-to-end.
+const DEFAULT_TEAM_RELAY = "wss://switchboard-team-relay.switchboard-team.workers.dev";
+
 /** Every member gets a stable colour derived from their deviceId — the same member is the same
  *  colour on every machine and every visit, with no coordination. Greyed out while offline. */
 const TEAM_COLORS = ["#C8F250", "#6FB5FF", "#FF8AC2", "#FFC24B", "#6FE3D2", "#C9A6FF"];
@@ -410,7 +415,11 @@ function renderTeam(data: PanelData) {
         if (r?.ok && r.path) folder.value = r.path;
         else if (r && !r.ok) { teamErr = r.error || "no picker here — type the path"; if (lastData) render(lastData); }
       };
-      const relayInput = el("input") as HTMLInputElement; relayInput.placeholder = "relay URL (optional — for teammates on other networks)";
+      // Prefilled with the hosted relay so a team is cross-network by default with one paste —
+      // teammates anywhere can join. Clear it for a pure same-network (LAN) team.
+      const relayInput = el("input") as HTMLInputElement;
+      relayInput.placeholder = "relay URL — clear for same-network only";
+      relayInput.value = DEFAULT_TEAM_RELAY;
       const go = el("button", "go", "Host — start sharing this folder");
       go.onclick = async () => {
         if (!folder.value.trim()) { teamErr = "pick or type the folder to share"; if (lastData) render(lastData); return; }
@@ -418,7 +427,7 @@ function renderTeam(data: PanelData) {
         if (await teamAct("team.host", { folder: folder.value.trim(), teamName: name.value.trim() || undefined, lan: true, ...(rl ? { relay: rl } : {}) }))
           expandedSections.delete("team:host");
       };
-      form.append(name, folder, pick, relayInput, go, el("div", "hint", "Everything in this folder syncs to every member. Their Claude never becomes yours — each runs their own. Leave the relay blank for same-network teams; set it (e.g. wss://…) so people on other networks can join."));
+      form.append(name, folder, pick, relayInput, go, el("div", "hint", "Everything in this folder syncs to every member. Their Claude never becomes yours — each runs their own. The relay lets people on other networks join (it only ever moves sealed, unreadable frames) — clear it for a same-network team."));
       card.append(form);
     } else {
       const form = el("div", "tform");
