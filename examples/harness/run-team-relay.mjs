@@ -48,8 +48,15 @@ async function boot(name, { port, user }) {
 async function main() {
   hr(); console.log("TEAM MODE × RELAY — cross-network path, no direct socket"); hr();
 
-  relay = startLocalRelay(8899);
-  console.log(`local relay (stands in for the Cloudflare DO) at ${relay.url}`);
+  // RELAY_URL points the harness at a REAL deployed relay (e.g. the Cloudflare Worker at
+  // wss://…workers.dev) instead of the in-process stand-in — the live end-to-end proof.
+  if (process.env.RELAY_URL) {
+    relay = { url: process.env.RELAY_URL.replace(/\/+$/, ""), close: () => {} };
+    console.log(`LIVE relay: ${relay.url}`);
+  } else {
+    relay = startLocalRelay(8899);
+    console.log(`local relay (stands in for the Cloudflare DO) at ${relay.url}`);
+  }
 
   const alice = await boot("alice", { port: 8811, user: "Alice" });
   const bob = await boot("bob", { port: 8812, user: "Bob" });
@@ -89,7 +96,7 @@ async function main() {
   console.log("\n[4] the sealed frames stay sealed — the relay is a mailman, not a landlord");
   // The daemons never hand the relay a key; it only ever saw ciphertext. (Structural: the relay
   // process shares nothing with the daemons; this asserts the invariant is what shipped.)
-  assert(hosted.status.relay.startsWith("ws://") , "relay transport is a plain pipe carrying only AES-256-GCM frames");
+  assert(/^wss?:\/\//.test(hosted.status.relay), "relay transport is a plain pipe carrying only AES-256-GCM frames");
 
   hr(); console.log("TEAM MODE × RELAY: all green"); hr();
   alice.ext.close(); bob.ext.close();

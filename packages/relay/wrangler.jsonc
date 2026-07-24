@@ -9,7 +9,10 @@
       { "name": "TEAM_ROOM", "class_name": "TeamRoom" }
     ]
   },
+  // SQLite-backed Durable Object → eligible on the Workers FREE plan (classic KV-backed DOs need
+  // Workers Paid). The relay stores nothing, so it never touches the SQL storage — this is purely
+  // to keep deployment free. No code change required.
   "migrations": [
-    { "tag": "v1", "new_classes": ["TeamRoom"] }
+    { "tag": "v1", "new_sqlite_classes": ["TeamRoom"] }
   ]
 }
