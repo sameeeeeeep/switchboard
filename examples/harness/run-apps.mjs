@@ -39,11 +39,10 @@ const hr = (s) => console.log(`\n${"─".repeat(64)}\n${s}\n${"─".repeat(64)}`
 let denyWrites = false;
 function onConsent(kind, body) {
   if (kind === "consent:connect") {
-    const { requested, available } = body.requested;
-    const want = new Set(requested.tools ?? []);
-    const tools = available.tools.filter((t) => want.has(t.name)).map((t) => ({ name: t.name, access: t.access }));
+    // body.tools is already the REQUESTED set, daemon-classified: [{name, access, label}].
+    const tools = (body.tools ?? []).map((t) => ({ name: t.name, access: t.access }));
     console.log(`   🔐 CONNECT consent from ${body.origin} — approving ${tools.length} tool(s): ${tools.map((t) => `${t.name}[${t.access}]`).join(", ") || "(none)"}`);
-    return { models: requested.models ?? available.models.slice(0, 1), tools, budgets: { maxTokensPerDay: 500000, maxCallsPerMin: 60 } };
+    return { models: body.models?.requested?.length ? body.models.requested : (body.models?.available ?? []).slice(0, 1), tools, budgets: { maxTokensPerDay: 500000, maxCallsPerMin: 60 } };
   }
   // per-action write
   const decision = denyWrites ? false : true;
@@ -53,11 +52,18 @@ function onConsent(kind, body) {
 
 async function main() {
   const tok = await token();
-  await sleep(500); // let the daemon's MCP client connect
 
   // ---- App 1: chat.example — pure completion ----
   hr("App 1 · chat.example — a chat app running on YOUR Claude (no tools)");
-  const chat = await connectAsExtension({ port: PORT, token: tok, origin: "https://chat.example", onConsent });
+  // First dial retries: the token file lands before the WS listens (MCP + backend probes boot
+  // in between, ~1s+ cold) — a fixed sleep loses that race on a cold machine.
+  const chat = await (async () => {
+    const t0 = Date.now();
+    for (;;) {
+      try { return await connectAsExtension({ port: PORT, token: tok, origin: "https://chat.example", onConsent }); }
+      catch (err) { if (Date.now() - t0 > 20_000) throw err; await sleep(250); }
+    }
+  })();
   await chat.request("claude_connect", { reason: "demo chat", tools: [] });
   process.stdout.write("   💬 Q: In one sentence, what problem does a 'bring your own model' broker solve?\n   💬 A: ");
   await chat.stream({ prompt: "In one sentence, what problem does a 'bring your own model' broker for websites solve?", model: "sonnet" },

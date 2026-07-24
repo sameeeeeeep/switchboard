@@ -25,6 +25,10 @@ const daemon = spawn(process.execPath, [resolve("packages/sidekick/dist/index.js
   env: { ...process.env, RELAY_DIR: dir, RELAY_PORT: String(PORT) },
   stdio: ["ignore", "inherit", "inherit"],
 });
+// Safety net: kill the daemon on ANY exit — including an uncaught exception in a ws callback,
+// which bypasses main().catch. An orphaned daemon keeps the port and poisons every later run
+// (a fresh spike dials the stale daemon, fails auth, and hangs).
+process.on("exit", () => { try { daemon.kill("SIGKILL"); } catch { /* gone */ } });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitForToken() {
@@ -33,10 +37,23 @@ async function waitForToken() {
   throw new Error("token never appeared");
 }
 
+/** The token file lands the moment config loads, but the WS only listens after the MCP client
+ *  and the backend probe finish booting (~1s+ cold) — so poll the dial instead of guessing
+ *  with a fixed sleep. */
+async function dialRetry(fn, ms = 20_000) {
+  const t0 = Date.now();
+  for (;;) {
+    try { return await fn(); } catch (err) { if (Date.now() - t0 > ms) throw err; await sleep(250); }
+  }
+}
+
 function connect(token) {
   return new Promise((resolveConn, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`); // no Origin header ⇒ treated as extension
     const pending = new Map();     // request id → resolver
+    // A close before auth_ok must REJECT (so dialRetry can retry) — e.g. a stale daemon on the
+    // port refusing our fresh token. Rejecting after resolve is a harmless no-op.
+    ws.on("close", () => reject(new Error("socket closed before auth (stale daemon on the port?)")));
     ws.on("open", () => ws.send(JSON.stringify({ type: "auth", token })));
     ws.on("message", (data) => {
       const msg = JSON.parse(data.toString());
@@ -48,11 +65,11 @@ function connect(token) {
         // with the daemon's classification), DENY every write.
         let result;
         if (msg.kind === "consent:connect") {
-          const { requested, available } = msg.body.requested;
-          const want = new Set(requested.tools ?? []);
+          // Current consent body: { origin, reason, models: {available, requested}, tools:
+          // [{name, access, label}] (already just the REQUESTED set, daemon-classified), budgets }.
           result = {
-            models: requested.models ?? available.models.slice(0, 1),
-            tools: available.tools.filter((t) => want.has(t.name)).map((t) => ({ name: t.name, access: t.access })),
+            models: msg.body.models?.requested?.length ? msg.body.models.requested : (msg.body.models?.available ?? []).slice(0, 1),
+            tools: (msg.body.tools ?? []).map((t) => ({ name: t.name, access: t.access })),
             budgets: { maxTokensPerDay: 500000, maxCallsPerMin: 60 },
           };
           console.error(`  [ext] connect prompt → approving ${result.tools.length} tools`);
@@ -72,8 +89,7 @@ function connect(token) {
 
 async function main() {
   const token = await waitForToken();
-  await sleep(400); // let the MCP server finish connecting
-  const { request, control } = await connect(token);
+  const { request, control } = await dialRetry(() => connect(token));
   const ORIGIN = "https://demo.test";
   const results = {};
 

@@ -32,9 +32,8 @@ async function token() {
 const TOOL = "mcp__higgsfield__generate_image";
 function onConsent(kind, body) {
   if (kind === "consent:connect") {
-    const { requested, available } = body.requested;
-    const want = new Set(requested.tools ?? []);
-    return { models: [], tools: available.tools.filter((t) => want.has(t.name)).map((t) => ({ name: t.name, access: t.access })), budgets: { maxTokensPerDay: 1e6, maxCallsPerMin: 120 } };
+    // body.tools is already the REQUESTED set, daemon-classified: [{name, access, label}].
+    return { models: [], tools: (body.tools ?? []).map((t) => ({ name: t.name, access: t.access })), budgets: { maxTokensPerDay: 1e6, maxCallsPerMin: 120 } };
   }
   console.log(`   🔐 approve generate: "${String(body.tool.arguments.prompt).slice(0, 48)}…"`);
   return true;
@@ -42,8 +41,15 @@ function onConsent(kind, body) {
 
 async function main() {
   const tok = await token();
-  await sleep(600);
-  const app = await connectAsExtension({ port: PORT, token: tok, origin: "https://imagegen.example", onConsent });
+  // Retry the dial: the token file lands before the WS listens (MCP + backend probes boot in
+  // between) — a fixed sleep loses that race on a cold machine.
+  const app = await (async () => {
+    const t0 = Date.now();
+    for (;;) {
+      try { return await connectAsExtension({ port: PORT, token: tok, origin: "https://imagegen.example", onConsent }); }
+      catch (err) { if (Date.now() - t0 > 20_000) throw err; await sleep(250); }
+    }
+  })();
   await app.request("claude_connect", { reason: "generate images", tools: [TOOL] });
 
   const prompts = [
