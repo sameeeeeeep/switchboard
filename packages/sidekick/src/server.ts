@@ -1,5 +1,7 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
+import { resolve as resolvePath, sep as pathSep } from "node:path";
+import { realpathSync } from "node:fs";
 import type {
   BYOPMethod,
   Capabilities,
@@ -31,11 +33,12 @@ import type { McpRegistry } from "./mcp/registry.js";
 import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
-import { StorageStore, StorageKeyError } from "./storage/store.js";
+import { StorageStore, StorageKeyError, expandTilde } from "./storage/store.js";
 import { pickFolderNative } from "./native-picker.js";
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
+import { TeamEngine } from "./team/engine.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
@@ -71,6 +74,9 @@ export interface BrokerDeps {
   storage: StorageStore;
   contexts: ContextLibrary;
   sessions: SessionManager;
+  /** Team Mode engine — inert unless the user switched the mode on. Peers connect to ITS
+   *  listener, never this Broker's socket; team sockets are never in `extensions`. */
+  team: TeamEngine;
 }
 
 interface Pending { resolve: (v: any) => void; reject: (e: any) => void; }
@@ -435,6 +441,69 @@ export class Broker implements ConsentPrompter {
         this.deps.audit.record({ origin: "*", kind: "revoke", outcome: "ok", note: "kill switch" });
         this.broadcast({ type: "event", event: "disconnect", payload: { reason: "kill-switch" } });
         return { ok: true };
+      // ---- Team Mode (all panel-driven; a page can never reach these). Every case answers
+      // {ok, …} instead of throwing, matching the control channel's non-throwing convention. ----
+      case "team.status":
+        return { ok: true, status: this.deps.team.status() };
+      case "team.setEnabled":
+        // The mode switch itself — flipping it on/off is a user gesture in the panel, out of band.
+        return { ok: true, status: this.deps.team.setEnabled(!!args?.on) };
+      case "team.pickFolder": {
+        // Choose the folder to share, via the daemon-raised NATIVE dialog (the pick IS the path
+        // consent — same trust story as storage "pick"). Falls back to a typed path on non-macOS.
+        try {
+          const path = await pickFolderNative("Team Mode", "choose the folder your team will share");
+          return { ok: true, path };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 160) };
+        }
+      }
+      case "team.host": {
+        const folder = String(args?.folder ?? "").trim();
+        if (!folder) return { ok: false, error: "folder required" };
+        try {
+          const { invite, status } = this.deps.team.host({
+            folder,
+            teamName: args?.teamName ? String(args.teamName) : undefined,
+            lan: !!args?.lan,
+            port: args?.port ? Number(args.port) : undefined,
+            relay: args?.relay ? String(args.relay) : undefined,
+          });
+          return { ok: true, invite, status };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 160) };
+        }
+      }
+      case "team.join": {
+        try {
+          const status = await this.deps.team.join(String(args?.code ?? ""), { folder: args?.folder ? String(args.folder) : undefined });
+          return { ok: true, status };
+        } catch (err) {
+          // Never echo the pasted code back — it embeds the team secret.
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 160) };
+        }
+      }
+      case "team.leave":
+        return { ok: true, status: this.deps.team.leave() };
+      case "team.setGit": {
+        // Host names the team repo (or clears it with a null/absent remote). The panel button
+        // that triggers this states the consequence in full: "commit & push this folder".
+        try {
+          const status = await this.deps.team.setGit(args?.remote ? String(args.remote) : null);
+          return { ok: true, status };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 200) };
+        }
+      }
+      case "team.setGitEnabled": {
+        // Per-member opt-in: THIS machine starts (or stops) pushing with its own git auth.
+        try {
+          const status = await this.deps.team.setGitEnabled(!!args?.on);
+          return { ok: true, status };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 200) };
+        }
+      }
       default:
         return { ok: false, error: `unknown control action ${action}` };
     }
@@ -798,6 +867,57 @@ export class Broker implements ConsentPrompter {
     const s = JSON.stringify(msg);
     for (const ext of this.extensions) { try { ext.send(s); } catch { /* dropped */ } }
   }
+
+  // ---- Team Mode notifications. Both ride the existing `permissionsChanged` fan-out on purpose:
+  // wrapps (Bank-style) already re-read their storage on that event, so a teammate's write shows
+  // up live in every bound app with zero SDK/protocol change; the panel re-pulls on any event.
+  // The payload is a bare reason — no member names, no file names — because non-delta events
+  // reach EVERY connected page. ----
+
+  /** A teammate's sync just changed files on this machine. When the changed folder maps to
+   *  specific origins (apps bound to it), the nudge is ORIGIN-SCOPED — the extension routes it
+   *  only to those origins' pages, so unrelated wrapps neither re-read nor learn anything.
+   *  With no bound origin (or on an older extension, which ignores the extra field and keeps
+   *  the fan-out) the unscoped legacy broadcast still does the job. */
+  notifyTeamSync(folder?: string) {
+    const payload = { reason: "storage-changed" };
+    const targets = folder ? this.originsUsing(folder) : [];
+    if (!targets.length) {
+      this.broadcast({ type: "event", event: "permissionsChanged", payload });
+      return;
+    }
+    for (const origin of targets) this.broadcast({ type: "event", event: "permissionsChanged", payload, origin });
+  }
+
+  /** Every LIVE granted origin whose storage resolves into (or under) `folder`. Containment,
+   *  not equality: an app bound to a subfolder of the team folder holds synced files too (the
+   *  git layer changes subtrees). Both sides are canonicalized the way bind() normalizes —
+   *  tilde-expanded, resolved, realpath'd (symlinks like /tmp→/private/tmp, APFS casing) — so
+   *  two spellings of the same directory can't silently break the scoping. */
+  private originsUsing(folder: string): string[] {
+    const want = canonPath(folder);
+    const out: string[] = [];
+    for (const g of this.deps.grants.list()) {
+      if (g.expiresAt && Date.now() > g.expiresAt) continue; // a lapsed page learns nothing, even a nudge
+      try {
+        const f = canonPath(this.deps.storage.folderFor(g.origin).folder);
+        if (f === want || f.startsWith(want + pathSep)) out.push(g.origin);
+      } catch { /* skip */ }
+    }
+    return out;
+  }
+
+  /** Team membership/presence/mode changed — the panel should re-pull team.status. */
+  notifyTeamChanged() {
+    this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "team-changed" } });
+  }
+}
+
+/** One canonical form for a user-facing folder path: tilde-expanded, resolved, realpath'd
+ *  (falls back to the resolved string when the path doesn't exist yet). */
+function canonPath(p: string): string {
+  const abs = resolvePath(expandTilde(p));
+  try { return (realpathSync.native ?? realpathSync)(abs); } catch { return abs; }
 }
 
 /** A friendly label for a requested tool/connector name for the consent UI. */

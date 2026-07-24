@@ -44,8 +44,9 @@ export function slugOrigin(origin: string): string {
   return safe;
 }
 
-/** Expand a leading `~` to the user's home dir (bind paths are user-facing). */
-function expandTilde(p: string): string {
+/** Expand a leading `~` to the user's home dir (bind paths are user-facing). Exported so every
+ *  folder-comparing surface (e.g. Team Mode's origin scoping) normalizes the same way bind does. */
+export function expandTilde(p: string): string {
   if (p === "~") return homedir();
   if (p.startsWith("~/") || p.startsWith("~\\")) return join(homedir(), p.slice(2));
   return p;
