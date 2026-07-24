@@ -89,6 +89,17 @@ eviction during an open consent prompt (fail-closed to a denial for now — a du
 future work); the consent/control UI is proven on the daemon side headlessly but not yet in a live
 loaded extension; classification pins are in-memory (not persisted).
 
+## Team Mode (opt-in, additive)
+
+One shared folder, everyone's own Claude. OFF by default behind a marker-file switch; every verb
+is a panel-only control action (no protocol/SDK changes); the host's team listener is a SECOND
+socket speaking only AES-256-GCM-sealed frames keyed from the invite secret — the extension's
+loopback WS and the consent broker are untouched, and team peers are never extension sockets.
+File-level LWW sync (Lamport clock + deviceId tiebreak, tombstoned deletes, scan-based detection)
+converges members' folders byte-for-byte; wrapps see teammate changes through the existing
+`permissionsChanged` re-read path. Design + threat model: [docs/TEAMMODE.md](docs/TEAMMODE.md);
+proof: `npm run try-team` (two isolated daemons, the full grammar asserted headless).
+
 ## Secondary form factor: relay mode
 
 The reference transport already prototypes an outbound "relay" mode where a *hosted* app forwards a

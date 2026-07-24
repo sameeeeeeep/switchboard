@@ -10,7 +10,7 @@
  */
 import { WebSocket } from "ws";
 
-export function connectAsExtension({ port, token, origin, onConsent }) {
+export function connectAsExtension({ port, token, origin, onConsent, onEvent }) {
   return new Promise((resolveConn, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`); // no Origin header ⇒ accepted as extension
     const pending = new Map();          // request/control id → resolver
@@ -26,6 +26,7 @@ export function connectAsExtension({ port, token, origin, onConsent }) {
         case "control_result": pending.get(msg.id)?.(msg.result); pending.delete(msg.id); break;
         case "event":
           if (msg.event === "delta") streams.get(msg.payload.streamId)?.(msg.payload);
+          else onEvent?.(msg); // non-delta daemon events (incl. origin-scoped frames), if the caller cares
           break;
         case "prompt": {
           // A consent prompt from the daemon — connect scope or a per-action write. Ask the

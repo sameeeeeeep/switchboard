@@ -10,6 +10,7 @@ import { BackendRegistry } from "./backends/registry.js";
 import { StorageStore } from "./storage/store.js";
 import { ContextLibrary } from "./context/library.js";
 import { SessionManager } from "./session/manager.js";
+import { TeamEngine } from "./team/engine.js";
 import { Broker } from "./server.js";
 
 // Safety net: a long-lived daemon must NEVER die on a stray socket error or an unhandled
@@ -42,8 +43,18 @@ async function main() {
     requestConnectConsent: (o: string, req: unknown) => broker.requestConnectConsent(o, req),
   };
   const gate = new Gate(grants, budgets, audit, prompter, mcp);
-  broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions });
+  // Team Mode (OFF by default) — same late-bound trick: the engine notifies through the Broker
+  // (panel refresh + the storage-changed nudge wrapps already re-read on), which exists later.
+  const team = new TeamEngine({
+    stateDir: config.stateDir,
+    userName: () => config.profile.name,
+    audit: (method, outcome, note) => audit.record({ origin: "team", kind: "request", method, outcome, note }),
+    onFolderChanged: (folder) => broker?.notifyTeamSync(folder),
+    onTeamChanged: () => broker?.notifyTeamChanged(),
+  });
+  broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions, team });
   broker.start();
+  team.resume(); // no-op unless the user already enabled Team Mode and has a team
 
   console.error(`[relay] pairing token (paste into the extension): ${config.pairingToken}`);
   console.error(`[relay] paired as: ${config.profile.name} (set ~/.relay/profile.json or RELAY_USER to change)`);

@@ -8,6 +8,7 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { collection, mountLive } from "./kit/livestore.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -59,6 +60,7 @@ let relay = null;
 let notInstalled = false;
 let brand = null;         // the ONE lent context, when APP.usesContext === "single"
 let wired = false;
+let live = null;          // kit/mountLive handle — re-reads on teammate/Obsidian/git changes
 
 mountConnect($("chip-dock"), {
   scope: APP.scope,
@@ -74,8 +76,20 @@ mountConnect($("chip-dock"), {
   else if (r && r.installed === false) notInstalled = true;
   render();
 })();
-function wire(r) { if (wired) return; wired = true; r.on("permissionsChanged", () => void syncContext()); }
+function wire(r) {
+  if (wired) return; wired = true;
+  r.on("permissionsChanged", () => void syncContext());
+  // TEAM-READY (doctrine gate 7): re-read persisted state whenever reality moves — a teammate's
+  // Team Mode sync, your own edit in another window, an Obsidian save, a git pull. Throttled +
+  // guarded by the kit; solo users never notice (no teammates ⇒ no nudges). `reloadState` re-reads
+  // storage and re-renders; keep it idempotent.
+  live = mountLive(r, reloadState);
+}
 async function onReady() { await syncContext(); await loadState(); render(); autostart(); }
+/** Re-read everything this wrapp persists, then render. Called on every live nudge. For a wrapp
+ *  that ACCUMULATES items (a library, notes, a task list), read the collection here (see `items`
+ *  below) — never a single growing blob, or two teammates' edits clobber each other. */
+async function reloadState() { if (!relay) return; await loadState(); render(); }
 
 // CONTEXT-FIRST: the moment a context is lent, everything derives from it — options from
 // data.products, tone from data.voice, colors from data.palette (FLAT hex strings — see
@@ -87,6 +101,15 @@ async function syncContext() {
 }
 
 // ==== per-origin state (values are opaque STRINGS — store JSON) =============================
+// TWO shapes, and picking the right one is doctrine gate 7 (team-ready):
+//   • THE RUN — one ephemeral, single-user editing session (this template's generate pipeline).
+//     A single `<id>-state` blob is correct: there's one run, one editor. Kept below.
+//   • ACCUMULATED ITEMS — a library / notes / tasks / a gallery that grows over time. Use a
+//     `collection` (one item = one file), NEVER an array in one blob: under Team Mode, per-file
+//     LWW then merges two teammates editing different items instead of clobbering. Example:
+//         const items = collection(relay, APP.id + "-item");   // files: <id>-item-<uid>.json
+//         await items.put(uid(), { title, body, at: Date.now() });
+//         const all = await items.all();   // [{ id, ... }] — read this in reloadState()
 let state = { run: null };
 async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } }
 async function saveState() { try { await relay.storage.set(APP.id + "-state", JSON.stringify(state)); } catch { /* non-fatal */ } }

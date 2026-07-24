@@ -31,6 +31,9 @@ const daemon = spawn(process.execPath, [resolve("packages/sidekick/dist/index.js
   env: { ...process.env, RELAY_DIR: dir, RELAY_PORT: String(PORT), RELAY_LOCAL_OPENAI_URL: OLLAMA_URL, RELAY_IMPORT_CLAUDE: "0" },
   stdio: ["ignore", "inherit", "inherit"],
 });
+// Safety net: kill the daemon on ANY exit path (incl. uncaught ws-callback exceptions) — an
+// orphaned daemon keeps the port and poisons every later run.
+process.on("exit", () => { try { daemon.kill("SIGKILL"); } catch { /* gone */ } });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitForToken() {
@@ -75,8 +78,13 @@ function connect(token) {
 
 async function main() {
   const token = await waitForToken();
-  await sleep(300);
-  const { request, control } = await connect(token);
+  // Token file ≠ server listening (MCP + backend probes boot in between) — poll the dial.
+  const t0 = Date.now();
+  let conn;
+  for (;;) {
+    try { conn = await connect(token); break; } catch (err) { if (Date.now() - t0 > 20_000) throw err; await sleep(250); }
+  }
+  const { request, control } = conn;
   const ORIGIN = "https://demo.test";
   // Grant TWO local models so we can prove the user override substitutes one for the other.
   const APP_MODEL = "qwen2.5:3b";       // what the "app" asks for on every call

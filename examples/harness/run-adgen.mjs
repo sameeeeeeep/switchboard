@@ -38,11 +38,10 @@ async function token() {
 
 function onConsent(kind, body) {
   if (kind === "consent:connect") {
-    const { requested, available } = body.requested;
-    const want = new Set(requested.tools ?? []);
-    const tools = available.tools.filter((t) => want.has(t.name)).map((t) => ({ name: t.name, access: t.access }));
+    // body.tools is already the REQUESTED set, daemon-classified: [{name, access, label}].
+    const tools = (body.tools ?? []).map((t) => ({ name: t.name, access: t.access }));
     console.log(`🔐 CONNECT ${body.origin} → grant ${tools.map((t) => `${t.name}[${t.access}]`).join(", ")}`);
-    return { models: requested.models ?? available.models.slice(0, 1), tools, budgets: { maxTokensPerDay: 1000000, maxCallsPerMin: 120 } };
+    return { models: body.models?.requested?.length ? body.models.requested : (body.models?.available ?? []).slice(0, 1), tools, budgets: { maxTokensPerDay: 1000000, maxCallsPerMin: 120 } };
   }
   console.log(`🔐 WRITE consent → ${body.tool.name}  prompt="${String(body.tool.arguments.prompt ?? "").slice(0, 60)}…" → APPROVE`);
   return true; // approve every image generation in this demo
@@ -50,8 +49,15 @@ function onConsent(kind, body) {
 
 async function main() {
   const tok = await token();
-  await sleep(600);
-  const app = await connectAsExtension({ port: PORT, token: tok, origin: "https://adgen.example", onConsent });
+  // Retry the dial: the token file lands before the WS listens (MCP + backend probes boot in
+  // between) — a fixed sleep loses that race on a cold machine.
+  const app = await (async () => {
+    const t0 = Date.now();
+    for (;;) {
+      try { return await connectAsExtension({ port: PORT, token: tok, origin: "https://adgen.example", onConsent }); }
+      catch (err) { if (Date.now() - t0 > 20_000) throw err; await sleep(250); }
+    }
+  })();
   await app.request("claude_connect", { reason: "generate ads", tools: ["WebFetch", "mcp__higgsfield__generate_image"] });
 
   console.log(`\n🎨 Generating ads for ${URL_ARG} …\n`);

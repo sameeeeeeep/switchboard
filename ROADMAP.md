@@ -38,6 +38,22 @@ network egress) so a stranger's app can't exfiltrate your data — the basis for
   openings, model via the broker, no server.
 - **App Store** (`examples/apps`): brandbrain (demo card), Prism (airgapped image gen), Ad
   generator, Tool assistant, Chat. Provider SDK: `@relay/sdk`. Spec: `spec/BYOP-1.md`.
+- **Team Mode** (`packages/sidekick/src/team`, opt-in, OFF by default): N people, N Claudes, ONE
+  shared folder. Host/join with a sealed invite code (every daemon↔daemon frame AES-256-GCM +
+  AAD-sequenced; silent knock-first handshake, authorship binding, connection caps), file-level
+  LWW sync with tombstones + presence, panel Team section, wrapps update live via the existing
+  `permissionsChanged` re-read path. **Git backing**: the team folder is optionally a repo —
+  debounced attributed auto-commits, pull/merge/push with the member's own git auth, so teams
+  sync through the GitHub they already have when apart (repo access = revocable membership).
+  **Cross-network relay** (`packages/relay`, a Cloudflare Worker + Durable Object): host + members
+  dial OUT to a dumb store-and-forward that moves only sealed frames (holds no key, stores nothing —
+  a mailman, not a landlord); the invite carries the relay URL so a joiner still pastes one code.
+  MIT, self-hostable. **Team-ready wrapps for free** via `kit/livestore.js` (`collection()` +
+  `mountLive()`, shipped in the wrapp template as doctrine gate 7; Redline/CUT migrated as flagship).
+  Visible default join folder (`~/Switchboard Teams/<team>`) + per-member presence colours.
+  Zero protocol/SDK changes; consent broker untouched. Proven headless: `npm run try-team` +
+  `try-team-git` + `try-team-relay`; 68-cell wrapp harness green. Design + threat model:
+  `docs/TEAMMODE.md`.
 - **`claude_context` primitive** (`packages/sidekick/src/context`): the shared, cross-app CONTEXT
   layer — the third BYO pillar (inference + backend + **context**). An app `publish`es a whole,
   opaque context (e.g. a brand); another app reads it ONLY via `active` — the one context the user

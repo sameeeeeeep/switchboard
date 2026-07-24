@@ -21,7 +21,10 @@ interface Grant {
 }
 interface AuditEntry { ts: number; origin: string; method?: string; toolName?: string; kind: string; decision?: string; outcome: string; }
 interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number; folder?: string }
-interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; }
+interface TeamMember { deviceId: string; name: string; online: boolean; lastSeen: number; you?: boolean }
+interface TeamGit { remote: string; branch: string; enabled: boolean; lastPushAt?: number; lastPullAt?: number; error?: string }
+interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamName?: string; folder?: string; invite?: string; connected?: boolean; members: TeamMember[]; error?: string; git?: TeamGit; relay?: string }
+interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
@@ -44,6 +47,17 @@ function openWrapp(url: string) {
 
 const MOCK: PanelData = {
   paired: true, reachable: true,
+  // Team Mode preview: hosting a small team, one teammate offline — every state the section draws.
+  team: {
+    enabled: true, role: "host", teamName: "Aamras studio", folder: "/Users/you/Projects/aamras/.data", connected: true,
+    invite: "swb1.eyJob3N0IjoiMTkyLjE2OC4xLjIxIiwicG9ydCI6ODc5MH0",
+    git: { remote: "git@github.com:aamras/studio-vault.git", branch: "main", enabled: true, lastPushAt: Date.now() - 180_000 },
+    members: [
+      { deviceId: "you", name: "Sameep", online: true, lastSeen: Date.now(), you: true },
+      { deviceId: "m2", name: "Ira", online: true, lastSeen: Date.now() - 20_000 },
+      { deviceId: "m3", name: "Dev", online: false, lastSeen: Date.now() - 3_600_000 },
+    ],
+  },
   contexts: [
     { id: "aamras", name: "Aamras", kind: "brand", updatedAt: Date.now() - 3_600_000, swatches: ["#8B1A1A", "#F4A000", "#0D0D0D", "#D4C89A"] },
     { id: "haazma", name: "Haazma", kind: "brand", updatedAt: Date.now() - 86_400_000, swatches: ["#F5A623", "#6B2737", "#3D7D4E", "#F5F0E8"] },
@@ -119,7 +133,7 @@ function control(action: string, args?: unknown): Promise<any> {
 }
 
 /** The empty shell every degraded state shares — only the ladder flags differ. */
-const EMPTY = { grants: [], audit: [], contexts: [], activeProject: null, selections: [] };
+const EMPTY = { grants: [], audit: [], contexts: [], activeProject: null, selections: [], team: null };
 
 async function load(): Promise<PanelData> {
   if (!inExtension) {
@@ -141,6 +155,9 @@ async function load(): Promise<PanelData> {
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
   const c = await control("listContexts");
+  // An older daemon answers team.status with {ok:false, error:"unknown control action…"} —
+  // null hides the section entirely, so the panel stays compatible in both directions.
+  const t = await control("team.status");
   return {
     paired: true, reachable: true,
     grants: (g?.grants ?? []).map((x: any) => ({ ...x, pending: x.pending ?? null })),
@@ -148,6 +165,7 @@ async function load(): Promise<PanelData> {
     contexts: c?.contexts ?? [],
     activeProject: c?.activeProject ?? null,
     selections: c?.selections ?? [],
+    team: t?.ok ? (t.status as TeamStatus) : null,
   };
 }
 
@@ -202,6 +220,7 @@ function render(data: PanelData) {
 
   void renderCurrentSite(data);
   void renderProject(data);
+  renderTeam(data);
   renderConnectors(data);
   renderApps(data);
   renderWrapps(data);
@@ -321,6 +340,182 @@ async function renderProject(data: PanelData) {
   card.append(row);
   // No brand swatches here: a context's colours belong INSIDE the app that uses them, in its own
   // field — showing them in Switchboard's chrome just decorates and dilutes the meaning.
+  box.append(card);
+}
+
+// ---- Team: one shared folder, everyone's own Claude ----
+// Entirely additive: the section hides itself when the daemon doesn't speak team.* (older daemon)
+// and shows a single quiet "turn on" row until the user flips the mode. All actions are control
+// ops (panel-only, out of band); presence refreshes through the normal state:changed re-pull.
+let teamErr = ""; // last action error, shown inline until the next successful action
+
+/** Every member gets a stable colour derived from their deviceId — the same member is the same
+ *  colour on every machine and every visit, with no coordination. Greyed out while offline. */
+const TEAM_COLORS = ["#C8F250", "#6FB5FF", "#FF8AC2", "#FFC24B", "#6FE3D2", "#C9A6FF"];
+function memberColor(deviceId: string): string {
+  let h = 0;
+  for (const ch of deviceId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TEAM_COLORS[h % TEAM_COLORS.length]!;
+}
+
+async function teamAct(action: string, args?: unknown): Promise<boolean> {
+  if (!inExtension) return false; // design preview: buttons are inert
+  const r = await control(action, args);
+  teamErr = r?.ok ? "" : (r?.error || "something went wrong");
+  render(await load());
+  return !!r?.ok;
+}
+
+function renderTeam(data: PanelData) {
+  const sec = $("teamSec") as HTMLElement; const box = $("team"); box.textContent = "";
+  const t = data.team;
+  if (!t) { sec.hidden = true; return; } // daemon doesn't speak Team Mode — no dead UI
+  sec.hidden = false;
+  const card = el("div", "team");
+
+  if (!t.enabled) {
+    // The mode switch, off: one calm row, no ceremony.
+    const row = el("div", "trow");
+    const txt = el("div"); txt.style.minWidth = "0";
+    txt.append(el("div", "toff", "Team Mode is off. Share one folder with people you trust — every member works on it with their own Claude."));
+    row.append(txt);
+    const on = el("button", "tbtn", "Turn on");
+    on.onclick = () => void teamAct("team.setEnabled", { on: true });
+    row.append(on);
+    card.append(row);
+  } else if (t.role === "off") {
+    // Enabled, no team yet: host or join.
+    const showHost = expandedSections.has("team:host");
+    const showJoin = expandedSections.has("team:join");
+    if (!showHost && !showJoin) {
+      const split = el("div", "split");
+      const mk = (label: string, key: string) => {
+        const b = el("button", "tbtn", label); b.style.marginLeft = "0"; b.style.textAlign = "center";
+        b.onclick = () => { expandedSections.add(key); if (lastData) render(lastData); };
+        return b;
+      };
+      split.append(mk("Host a team", "team:host"), mk("Join with a code", "team:join"));
+      card.append(split);
+      const off = el("button", "disconnect", "Turn Team Mode off");
+      off.onclick = () => void teamAct("team.setEnabled", { on: false });
+      card.append(off);
+    } else if (showHost) {
+      const form = el("div", "tform");
+      const name = el("input") as HTMLInputElement; name.placeholder = "team name";
+      const folder = el("input") as HTMLInputElement; folder.placeholder = "folder to share (absolute path)";
+      const pick = el("button", "tbtn", "Choose folder…"); pick.style.marginLeft = "0";
+      pick.onclick = async () => {
+        if (!inExtension) return;
+        const r = await control("team.pickFolder");
+        if (r?.ok && r.path) folder.value = r.path;
+        else if (r && !r.ok) { teamErr = r.error || "no picker here — type the path"; if (lastData) render(lastData); }
+      };
+      const relayInput = el("input") as HTMLInputElement; relayInput.placeholder = "relay URL (optional — for teammates on other networks)";
+      const go = el("button", "go", "Host — start sharing this folder");
+      go.onclick = async () => {
+        if (!folder.value.trim()) { teamErr = "pick or type the folder to share"; if (lastData) render(lastData); return; }
+        const rl = relayInput.value.trim();
+        if (await teamAct("team.host", { folder: folder.value.trim(), teamName: name.value.trim() || undefined, lan: true, ...(rl ? { relay: rl } : {}) }))
+          expandedSections.delete("team:host");
+      };
+      form.append(name, folder, pick, relayInput, go, el("div", "hint", "Everything in this folder syncs to every member. Their Claude never becomes yours — each runs their own. Leave the relay blank for same-network teams; set it (e.g. wss://…) so people on other networks can join."));
+      card.append(form);
+    } else {
+      const form = el("div", "tform");
+      const code = el("input") as HTMLInputElement; code.placeholder = "paste the invite code";
+      const folder = el("input") as HTMLInputElement; folder.placeholder = "folder (optional — defaults to ~/Switchboard Teams/<team>)";
+      const go = el("button", "go", "Join team");
+      go.onclick = async () => {
+        if (await teamAct("team.join", { code: code.value, ...(folder.value.trim() ? { folder: folder.value.trim() } : {}) })) expandedSections.delete("team:join");
+      };
+      form.append(code, folder, go, el("div", "hint", "The team's folder appears under Switchboard Teams with the team's name — lend it to apps like any project."));
+      card.append(form);
+    }
+    if (showHost || showJoin) {
+      const back = el("button", "disconnect", "← Back");
+      back.onclick = () => { expandedSections.delete("team:host"); expandedSections.delete("team:join"); if (lastData) render(lastData); };
+      card.append(back);
+    }
+  } else {
+    // In a team: name, presence, invite (host), folder, leave.
+    const row = el("div", "trow");
+    const txt = el("div"); txt.style.minWidth = "0";
+    txt.append(el("div", "tname", t.teamName || "Team"));
+    const via = t.relay ? " · via relay" : "";
+    txt.append(el("div", "tmeta", (t.role === "host" ? (t.connected ? "you're hosting" : t.error ? `hosting failed — ${t.error}` : "starting…") : t.connected ? "connected" : "reconnecting…") + via));
+    row.append(txt);
+    const leave = el("button", "tbtn", t.role === "host" ? "Stop hosting" : "Leave");
+    leave.onclick = () => void teamAct("team.leave");
+    row.append(leave);
+    card.append(row);
+    const members = el("div", "members");
+    for (const m of t.members) {
+      const mr = el("div", "member");
+      const dot = el("i", "pd");
+      if (m.online) {
+        const c = memberColor(m.deviceId);
+        dot.style.background = c;
+        dot.style.boxShadow = `0 0 6px ${c}66`;
+      } // offline keeps the grey default — colour IS the presence signal
+      mr.append(dot);
+      mr.append(el("span", undefined, m.name));
+      if (m.you) mr.append(el("span", "yy", "you"));
+      members.append(mr);
+    }
+    card.append(members);
+    if (t.invite) {
+      const inv = el("div", "invite");
+      const c = el("code", undefined, t.invite);
+      const copy = el("button", "tbtn", "Copy invite"); copy.style.marginLeft = "0";
+      copy.onclick = () => { void navigator.clipboard?.writeText(t.invite!); copy.textContent = "Copied ✓"; setTimeout(() => { copy.textContent = "Copy invite"; }, 1200); };
+      inv.append(c, copy);
+      card.append(inv);
+      card.append(el("div", "hint", "The code is the key to the team — share it like a password."));
+    }
+    if (t.folder) card.append(el("div", "path", t.folder));
+
+    // Git backing — "the folder when live, the repo when apart".
+    if (t.git) {
+      const g = t.git;
+      const state = g.error ? `⚠ ${g.error}` : g.lastPushAt ? `pushed ${ago(g.lastPushAt)}` : g.enabled ? "syncing…" : "not active on this machine";
+      card.append(el("div", "hint", `repo: ${g.remote} · ${state}`));
+      if (!g.enabled) {
+        const en = el("button", "tbtn", "Back up to this repo from this machine");
+        en.style.marginLeft = "0";
+        en.onclick = () => void teamAct("team.setGitEnabled", { on: true });
+        card.append(en);
+        card.append(el("div", "hint", "Uses your own git sign-in. Everything in the team folder is committed and pushed."));
+      } else if (t.role === "host") {
+        const off = el("button", "disconnect", "Stop git backup");
+        off.onclick = () => void teamAct("team.setGit", {});
+        card.append(off);
+      } else {
+        const off = el("button", "disconnect", "Stop pushing from this machine");
+        off.onclick = () => void teamAct("team.setGitEnabled", { on: false });
+        card.append(off);
+      }
+    } else if (t.role === "host") {
+      if (!expandedSections.has("team:git")) {
+        const add = el("button", "tbtn", "Back up to a git repo…");
+        add.style.marginLeft = "0";
+        add.onclick = () => { expandedSections.add("team:git"); if (lastData) render(lastData); };
+        card.append(add);
+      } else {
+        const form = el("div", "tform");
+        const remote = el("input") as HTMLInputElement; remote.placeholder = "git@github.com:you/team-vault.git";
+        const go = el("button", "go", "Commit & push this folder to the repo");
+        go.onclick = async () => {
+          if (await teamAct("team.setGit", { remote: remote.value.trim() })) expandedSections.delete("team:git");
+        };
+        const back = el("button", "disconnect", "← Back");
+        back.onclick = () => { expandedSections.delete("team:git"); if (lastData) render(lastData); };
+        form.append(remote, go, el("div", "hint", "Everything in the team folder becomes commits in this repo — teammates sync through it when you're apart, and repo access doubles as membership."), back);
+        card.append(form);
+      }
+    }
+  }
+
+  if (teamErr) card.append(el("div", "terr", teamErr));
   box.append(card);
 }
 

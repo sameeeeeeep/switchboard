@@ -1,0 +1,15 @@
+{
+  // Switchboard team relay — a dumb, encrypted-frame forwarder. Deploy: `npx wrangler deploy`.
+  "name": "switchboard-team-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-01-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [
+      { "name": "TEAM_ROOM", "class_name": "TeamRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["TeamRoom"] }
+  ]
+}

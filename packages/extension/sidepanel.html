@@ -101,6 +101,31 @@
       .project.empty .name { color: var(--ink-sec); }
       .project.empty .mark { background: var(--raised-2); color: var(--ink-faint); }
 
+      /* ---- team (Team Mode: one shared folder, everyone's own Claude) ---- */
+      .team { border: 1px solid var(--edge); background: var(--panel); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 11px; }
+      .team .trow { display: flex; align-items: center; gap: 10px; }
+      .team .tname { font: 700 15px/1.15 var(--display); letter-spacing: -0.01em; }
+      .team .tmeta { font: 500 11.5px/1.3 var(--sans); color: var(--ink-dim); margin-top: 2px; }
+      .team .toff { font: 500 12.5px/1.45 var(--sans); color: var(--ink-dim); }
+      .team .tbtn { margin-left: auto; font: 600 12px/1 var(--sans); color: var(--ink-sec); background: var(--raised-2); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 11px; cursor: pointer; white-space: nowrap; }
+      .team .tbtn:hover { color: var(--ink); border-color: var(--ink-faint); }
+      .team .tbtn.primary { background: var(--lime); color: var(--page); border-color: transparent; font-weight: 700; }
+      .team .members { display: flex; flex-direction: column; gap: 6px; }
+      .team .member { display: flex; align-items: center; gap: 9px; font: 500 12.5px/1 var(--sans); color: var(--ink-sec); }
+      .team .member .pd { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+      /* online dots are coloured inline per member (stable colour from deviceId); grey = offline */
+      .team .member .yy { font: 500 10.5px/1 var(--mono); color: var(--ink-faint); }
+      .team .invite { display: flex; gap: 7px; align-items: center; }
+      .team .invite code { flex: 1; min-width: 0; font: 400 10.5px/1.4 var(--mono); color: var(--ink-dim); background: var(--inset); border: 1px solid var(--edge); border-radius: 9px; padding: 8px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .team .path { font: 500 11px/1.35 var(--mono); color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .team .tform { display: flex; flex-direction: column; gap: 8px; }
+      .team .tform input { background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 500 12.5px/1 var(--sans); padding: 11px; outline: none; }
+      .team .tform input:focus { border-color: color-mix(in srgb, var(--lime) 50%, var(--edge)); }
+      .team .hint { font: 500 11px/1.4 var(--sans); color: var(--ink-faint); }
+      .team .tform .go { background: var(--lime); color: var(--page); border: 0; border-radius: 10px; padding: 11px; font: 700 13px/1 var(--sans); cursor: pointer; }
+      .team .terr { color: var(--danger); font-size: 11.5px; min-height: 0; }
+      .team .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
       /* ---- connectors (friendly capability tiles) ---- */
       .connectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
       .conn { display: flex; flex-direction: column; gap: 7px; padding: 11px; border: 1px solid var(--edge); background: var(--panel); border-radius: 12px; }
@@ -317,6 +342,11 @@
         <div class="sec">
           <div class="head"><span class="eyebrow">Working on</span></div>
           <div id="project"></div>
+        </div>
+
+        <div class="sec" id="teamSec" hidden>
+          <div class="head"><span class="eyebrow">Team</span></div>
+          <div id="team"></div>
         </div>
 
         <div class="sec">

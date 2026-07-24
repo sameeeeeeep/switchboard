@@ -26,6 +26,10 @@ let lastDial = { openedButUnauthed: false, at: 0 };
 
 const inflight = new Map<string, { port: chrome.runtime.Port; method: string }>(); // page request id → port + method
 const pagePorts = new Set<chrome.runtime.Port>();            // all page ports (for events)
+/** Each page port's browser-verified origin — what ORIGIN-SCOPED events route by. Same privacy
+ *  rule that moved deltas off the fan-out: a daemon event stamped with an `origin` reaches only
+ *  that origin's pages, never every connected wrapp. */
+const pagePortOrigins = new Map<chrome.runtime.Port, string>();
 /** streamId → the page port that started it. Deltas route HERE, not to every page: sibling wrapps
  *  are separate origins with separate grants, and broadcasting let any page (window.claude.on is
  *  public API) read another origin's model output. Unknown streamId (worker evicted mid-stream,
@@ -133,7 +137,15 @@ function ensureSocket(): Promise<boolean> {
               try { panelPort?.postMessage({ type: "delta", payload: msg.payload }); } catch { /* panel gone */ }
               break;
             }
-            for (const p of pagePorts) { try { p.postMessage({ event: msg.event, payload: msg.payload }); } catch { /* gone */ } }
+            {
+              // An event stamped with an origin routes ONLY to that origin's pages (e.g. a team
+              // sync touching one app's folder). Unscoped events keep the legacy full fan-out.
+              const scope = typeof (msg as { origin?: unknown }).origin === "string" ? (msg as { origin: string }).origin : null;
+              for (const p of pagePorts) {
+                if (scope && pagePortOrigins.get(p) !== scope) continue;
+                try { p.postMessage({ event: msg.event, payload: msg.payload }); } catch { /* gone */ }
+              }
+            }
             // Nudge the side panel: a grant/pick/permission change means its view is stale, so
             // it re-pulls fresh state instead of needing a reopen.
             try { panelPort?.postMessage({ type: "state:changed", event: msg.event }); } catch { /* panel gone */ }
@@ -275,7 +287,11 @@ function control(action: string, args?: unknown): Promise<unknown> {
     if (!ok || !socket) { resolve({ ok: false, error: "sidekick not reachable" }); return; }
     const id = crypto.randomUUID();
     pendingControl.set(id, { resolve });
-    setTimeout(() => { if (pendingControl.delete(id)) resolve({ ok: false, error: "timeout" }); }, 15_000);
+    // Human-scale timeout for actions that block on a native OS dialog (the daemon's folder
+    // picker waits up to 180s) — everything else keeps the tight 15s. The daemon's 20s
+    // heartbeat keeps this worker alive for the duration.
+    const ms = action === "team.pickFolder" ? 190_000 : 15_000;
+    setTimeout(() => { if (pendingControl.delete(id)) resolve({ ok: false, error: "timeout" }); }, ms);
     socket.send(JSON.stringify({ type: "control", id, action, args }));
   });
 }
@@ -466,6 +482,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "relay-page") return;
   pagePorts.add(port);
   const origin = port.sender?.origin ?? (port.sender?.url ? new URL(port.sender.url).origin : "null");
+  pagePortOrigins.set(port, origin);
 
   port.onMessage.addListener(async (m: { id: string; method: string; params?: unknown }) => {
     // claude_health — the one method the background answers from its OWN state, before any daemon
@@ -508,6 +525,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onDisconnect.addListener(() => {
     pagePorts.delete(port);
+    pagePortOrigins.delete(port);
     for (const [id, e] of inflight) if (e.port === port) inflight.delete(id);
     for (const [sid, p] of streamPorts) if (p === port) streamPorts.delete(sid);
   });
