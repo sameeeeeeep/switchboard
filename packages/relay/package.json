@@ -1,0 +1,17 @@
+{
+  "name": "@relay/team-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Switchboard team relay — a Cloudflare Worker + Durable Object that store-and-forwards sealed team frames across networks. Holds no key, stores nothing.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.99.0"
+  }
+}
