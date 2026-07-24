@@ -17,6 +17,7 @@
     "try-team": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-team.mjs",
     "try-team-git": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-team-git.mjs",
     "try-team-relay": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-team-relay.mjs",
+    "try-cloud": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-cloud.mjs",
     "try-adgen": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-adgen.mjs",
     "try-imagegen": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-imagegen.mjs",
     "daemon:install": "npm run build -w @relay/sidekick && node packages/sidekick/scripts/install-daemon.mjs",

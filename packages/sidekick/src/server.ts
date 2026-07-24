@@ -23,7 +23,7 @@ import type {
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
-import { saveProfile } from "./config.js";
+import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
 import type { GrantStore } from "./security/grant-store.js";
 import type { BudgetLedger } from "./security/budgets.js";
@@ -485,6 +485,33 @@ export class Broker implements ConsentPrompter {
       }
       case "team.leave":
         return { ok: true, status: this.deps.team.leave() };
+      // ---- Hosted inference (OpenRouter) — the OPT-IN "cloud tokens" lane. Panel-only; a page can
+      // never set a key. Off by default; the panel badges hosted models as prompts-leave-the-machine. ----
+      case "cloud.status":
+        return {
+          ok: true,
+          enabled: this.deps.backends.hasHosted(),
+          hostedModels: this.deps.backends.hostedModels(),
+          models: await this.deps.backends.models(),
+        };
+      case "cloud.setKey": {
+        // The user pastes their own OpenRouter key (a credential — stored 0600, never leaves the
+        // daemon, never echoed back). Registering it opts them into the hosted lane at runtime.
+        const key = String(args?.openrouterKey ?? "").trim();
+        if (!key) return { ok: false, error: "an OpenRouter key is required" };
+        const saved = saveCloudConfig({ openrouterKey: key, baseUrl: args?.baseUrl ? String(args.baseUrl) : undefined, models: Array.isArray(args?.models) ? args.models.map(String) : undefined });
+        await this.deps.backends.setCloudBackend(saved);
+        this.deps.audit.record({ origin: "*", kind: "request", method: "cloud:enable", outcome: "ok" });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "cloud-changed" } });
+        return { ok: true, enabled: this.deps.backends.hasHosted(), hostedModels: this.deps.backends.hostedModels() };
+      }
+      case "cloud.clear": {
+        saveCloudConfig({ openrouterKey: undefined });
+        await this.deps.backends.setCloudBackend({});
+        this.deps.audit.record({ origin: "*", kind: "request", method: "cloud:disable", outcome: "ok" });
+        this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "cloud-changed" } });
+        return { ok: true, enabled: false };
+      }
       case "team.setGit": {
         // Host names the team repo (or clears it with a null/absent remote). The panel button
         // that triggers this states the consequence in full: "commit & push this folder".

@@ -15,6 +15,44 @@ import { execFileSync } from "node:child_process";
 export const RELAY_DIR = process.env.RELAY_DIR || join(homedir(), ".relay");
 const TOKEN_FILE = join(RELAY_DIR, "pairing-token");
 const PROFILE_FILE = join(RELAY_DIR, "profile.json");
+const CLOUD_FILE = join(RELAY_DIR, "cloud.json");
+
+/** The OPT-IN hosted-inference config (OpenRouter). Absent by default — Switchboard is BYO-Claude
+ *  and local-first; this only exists once the user provides their own OpenRouter key. The key is a
+ *  credential, so it lives beside the pairing token in ~/.relay (0600) and NEVER leaves the daemon. */
+export interface CloudConfig {
+  /** OpenRouter API key. Empty/absent ⇒ the hosted backend is not registered at all. */
+  openrouterKey?: string;
+  /** Optional base-URL override (the mock server in tests). */
+  baseUrl?: string;
+  /** Optional curated model list; defaults to the backend's built-in shortlist. */
+  models?: string[];
+}
+
+/** Load the hosted-inference config. Order: env (RELAY_OPENROUTER_KEY / _URL) > ~/.relay/cloud.json.
+ *  Returns {} (no key) when nothing is set, which keeps the hosted backend OFF. Never throws. */
+export function loadCloudConfig(): CloudConfig {
+  ensureDir();
+  let fromFile: CloudConfig = {};
+  try { if (existsSync(CLOUD_FILE)) fromFile = JSON.parse(readFileSync(CLOUD_FILE, "utf8")); } catch { /* ignore bad JSON */ }
+  const openrouterKey = process.env.RELAY_OPENROUTER_KEY || fromFile.openrouterKey || undefined;
+  const baseUrl = process.env.RELAY_OPENROUTER_URL || fromFile.baseUrl || undefined;
+  const models = fromFile.models && Array.isArray(fromFile.models) ? fromFile.models : undefined;
+  return { ...(openrouterKey ? { openrouterKey } : {}), ...(baseUrl ? { baseUrl } : {}), ...(models ? { models } : {}) };
+}
+
+/** Persist the hosted-inference config (panel-driven, out of band). Setting a key opts the user
+ *  into the hosted lane; clearing it (openrouterKey undefined) turns the hosted backend off. */
+export function saveCloudConfig(patch: Partial<CloudConfig>): CloudConfig {
+  ensureDir();
+  let existing: CloudConfig = {};
+  try { if (existsSync(CLOUD_FILE)) existing = JSON.parse(readFileSync(CLOUD_FILE, "utf8")); } catch { /* ignore */ }
+  const merged: CloudConfig = { ...existing, ...patch };
+  // An explicit undefined/empty key clears the whole config (opt back out).
+  if (!merged.openrouterKey) { try { if (existsSync(CLOUD_FILE)) writeFileSync(CLOUD_FILE, JSON.stringify({}, null, 2), { mode: 0o600 }); } catch { /* ignore */ } return {}; }
+  writeFileSync(CLOUD_FILE, JSON.stringify(merged, null, 2), { mode: 0o600 });
+  return loadCloudConfig();
+}
 
 /** The paired user's public identity — a display name (and optional avatar) any connected app can
  *  greet them with. This is the user's own machine, so it lives beside the token in ~/.relay. */

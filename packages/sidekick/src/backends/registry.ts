@@ -1,6 +1,8 @@
 import type { ModelBackend } from "./types.js";
 import { ClaudeCodeBackend } from "./claude-code.js";
 import { LocalOpenAIBackend } from "./local-openai.js";
+import { OpenRouterBackend } from "./openrouter.js";
+import { loadCloudConfig } from "../config.js";
 
 /**
  * Routes a model id to the backend that serves it. Claude Code is always registered; local
@@ -19,6 +21,12 @@ export class BackendRegistry {
     reg.register(new ClaudeCodeBackend());
     if (process.env.RELAY_LOCAL_OPENAI_URL) {
       reg.register(new LocalOpenAIBackend({ baseUrl: process.env.RELAY_LOCAL_OPENAI_URL, id: "ollama" }));
+    }
+    // OPT-IN hosted lane: only registered when the user has provided an OpenRouter key. Off by
+    // default — the daemon stays pure BYO-Claude/local until someone explicitly opts in.
+    const cloud = loadCloudConfig();
+    if (cloud.openrouterKey) {
+      reg.register(new OpenRouterBackend({ apiKey: cloud.openrouterKey, baseUrl: cloud.baseUrl, models: cloud.models }));
     }
     await reg.refreshModels();
     return reg;
@@ -50,6 +58,30 @@ export class BackendRegistry {
 
   async models(): Promise<string[]> {
     return [...this.modelToBackend.keys()];
+  }
+
+  /** Models served by HOSTED backends (prompts leave the machine) — the panel badges these so the
+   *  trust trade is never silent. Union across hosted backends, from the current model→backend map. */
+  hostedModels(): string[] {
+    const out: string[] = [];
+    for (const [model, b] of this.modelToBackend) if (b.hosted) out.push(model);
+    return out.sort();
+  }
+
+  /** Runtime opt-in/out of the hosted lane without a daemon restart (panel-driven). Removes any
+   *  existing hosted backend, registers a fresh one if a key is given, and rebuilds routing. */
+  async setCloudBackend(cfg: { openrouterKey?: string; baseUrl?: string; models?: string[] }): Promise<void> {
+    this.backends = this.backends.filter((b) => !b.hosted);
+    if (cfg.openrouterKey) {
+      const { OpenRouterBackend } = await import("./openrouter.js");
+      this.register(new OpenRouterBackend({ apiKey: cfg.openrouterKey, baseUrl: cfg.baseUrl, models: cfg.models }));
+    }
+    await this.refreshModels();
+  }
+
+  /** Whether a hosted backend is currently registered (has a key), for cloud.status. */
+  hasHosted(): boolean {
+    return this.backends.some((b) => b.hosted);
   }
 
   async onlineIds(): Promise<string[]> {
