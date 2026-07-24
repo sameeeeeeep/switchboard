@@ -22,7 +22,7 @@
     "daemon:install": "npm run build -w @relay/sidekick && node packages/sidekick/scripts/install-daemon.mjs",
     "daemon:uninstall": "node packages/sidekick/scripts/install-daemon.mjs --uninstall",
     "menubar:build": "bash packages/menubar/build.sh",
-    "menubar": "bash packages/menubar/build.sh && open packages/menubar/Relay.app",
+    "menubar": "bash packages/menubar/build.sh && open packages/menubar/Switchboard.app",
     "daemon:restart": "npm run build -w @relay/sidekick && launchctl kickstart -k gui/$(id -u)/com.relay.sidekick && echo restarted",
     "runner": "node examples/runner/serve.mjs"
   },

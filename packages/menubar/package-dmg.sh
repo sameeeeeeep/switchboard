@@ -19,7 +19,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"          # packages/menubar
 ROOT="$(cd "$HERE/../.." && pwd)"              # repo root
-STAGE="$HERE/build/dmg-staging/Relay.app"
+STAGE="$HERE/build/dmg-staging/Switchboard.app"
 RES="$STAGE/Contents/Resources"
 ESBUILD="$ROOT/node_modules/.bin/esbuild"
 SDK_DIR="$ROOT/node_modules/@anthropic-ai/claude-agent-sdk"
@@ -182,12 +182,12 @@ if [ "$NOTARIZE" = "1" ]; then
 fi
 
 # ---------- 12. the DMG — built from the stapled app, then signed itself ----------
-DMG="$HERE/build/Relay-$VERSION.dmg"
+DMG="$HERE/build/Switchboard-$VERSION.dmg"
 DMG_SRC="$(mktemp -d)"
 cp -R "$STAGE" "$DMG_SRC/"
 ln -s /Applications "$DMG_SRC/Applications"
 say "creating DMG…"
-hdiutil create -volname "Relay $VERSION" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" -quiet
+hdiutil create -volname "Switchboard $VERSION" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" -quiet
 rm -rf "$DMG_SRC"
 
 # hdiutil emits an UNSIGNED disk image. Without this the DMG itself fails Gatekeeper with

@@ -216,7 +216,7 @@ struct Panel: View {
         if model.working, let a = model.last { return "for \(hostOf(a.origin))" }
         if model.working { return "on your Claude" }
         if model.running { return "\(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s") banked · \(model.apps) app\(model.apps == 1 ? "" : "s") connected" }
-        if model.bundled && model.translocated { return "move Relay to /Applications, then reopen it" }
+        if model.bundled && model.translocated { return "move Switchboard to /Applications, then reopen it" }
         return "start the sidekick below"
     }
 
@@ -519,7 +519,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
             case .missing where hasBundledDaemon():
                 if isTranslocated() {
                     // Gatekeeper ran us from a randomized path; a plist would die on next login.
-                    toast("move Relay to /Applications, then reopen it")
+                    toast("move Switchboard to /Applications, then reopen it")
                 } else {
                     installAndStart(verb: "installed")
                 }
@@ -555,7 +555,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
     /// grants, contexts and audit log all survive byte-for-byte — only the plist changes hands.
     private func takeOverDaemon() {
         guard hasBundledDaemon(), !isTranslocated() else {
-            toast(isTranslocated() ? "move Relay to /Applications first" : "no bundled daemon in this build")
+            toast(isTranslocated() ? "move Switchboard to /Applications first" : "no bundled daemon in this build")
             return
         }
         hidePanel()
@@ -577,7 +577,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
     /// so a kickstart would just respawn the dead paths.
     private func repairDaemon() {
         guard hasBundledDaemon(), !isTranslocated() else {
-            toast(isTranslocated() ? "move Relay to /Applications first" : "no bundled daemon in this build")
+            toast(isTranslocated() ? "move Switchboard to /Applications first" : "no bundled daemon in this build")
             return
         }
         launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
