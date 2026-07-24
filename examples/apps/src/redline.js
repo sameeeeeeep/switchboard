@@ -10,6 +10,7 @@
 // Higgsfield. The operator holds no key and never sees the page or the edits.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountBankIt, listContexts, useContext, slugId } from "./store/bankit.js";
+import { collection, mountLive } from "./kit/livestore.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -77,6 +78,27 @@ function wireRelay(r) {
   // page's HTML in the NEW folder. The daemon broadcasts permissionsChanged for it — re-check where
   // storage points and reset the review state when the folder moved.
   r.on("permissionsChanged", () => { void syncProject(); });
+  // TEAM-READY (doctrine gate 7): a co-reviewer's comment (or your own edit in another window, or a
+  // git pull) lands the review files on disk and fires the storage-changed nudge. syncProject()
+  // early-returns when the folder is unchanged, so pull the current page's comments in separately —
+  // merge-guarded so it never wipes a comment you're mid-editing. Throttled by the kit.
+  mountLive(r, reloadReviewLive);
+}
+
+// Re-read THIS page's review and merge teammates' comments into the sidebar without clobbering any
+// comment currently being edited or mid-stream (activeId / busy / loading|writing stay local).
+async function reloadReviewLive() {
+  if (!relay || booting || !pageKey || isDraft) return;
+  let rev;
+  try { rev = await loadReview(); } catch { return; }
+  const keepLocal = new Map(
+    decisions.filter((c) => c && (c.id === activeId || busy.has(c.id) || c.decision?.loading || c.decision?.writing)).map((c) => [c.id, c]),
+  );
+  const merged = rev.comments.map((c) => keepLocal.get(c.id) || c);
+  for (const [id, c] of keepLocal) if (!merged.some((m) => m.id === id)) merged.push(c);
+  decisions = merged;
+  lastAuditAt = Math.max(lastAuditAt, rev.lastAuditAt || 0);
+  try { renderSide(); decorateFrame(); } catch { /* render is best-effort on a live nudge */ }
 }
 
 async function onReady() {
@@ -471,14 +493,37 @@ async function openPage(key) {
   if (!decisions.some((c) => c && !c.locked) && !lastAuditAt) void audit();
 }
 
-const reviewKey = () => "redline-" + slug(pageKey);
+// TEAM-READY storage (doctrine gate 7): review comments are a per-comment COLLECTION, not one
+// blob — so two reviewers redlining the same cut don't clobber each other's comment set (per-file
+// LWW merges them). Record id = "<pageslug>-<commentuid>" (slug is dash-safe, uid is dash-free, so
+// the last dash splits them). `lastAuditAt` is tiny per-page meta in its own record. Legacy blobs
+// (redline-<slug>) are migrated on first load, then removed. See kit/livestore.js.
+const comments = () => collection(relay, "rlc");
+const legacyKey = () => "redline-" + slug(pageKey);
+const metaKey = () => "redlinemeta-" + slug(pageKey);
+const recIdOf = (c) => slug(pageKey) + "-" + c.id;         // this page's namespace
+const pagePrefix = () => slug(pageKey) + "-";
 async function loadReview() {
   try {
-    const raw = await relay.storage.get(reviewKey());
-    const parsed = raw ? JSON.parse(raw) : null;
-    const arr = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.comments) ? parsed.comments : [];
-    const at = parsed && !Array.isArray(parsed) && Number(parsed.lastAuditAt) ? Number(parsed.lastAuditAt) : 0;
-    return { comments: arr.filter(Boolean).map(sanitizeComment), lastAuditAt: at };
+    // One-time migration: an old single-blob review becomes per-comment records, then the blob is dropped.
+    const legacy = await relay.storage.get(legacyKey()).catch(() => null);
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.comments) ? parsed.comments : []);
+        const col = comments();
+        for (const c of arr.filter(Boolean)) await col.put(slug(pageKey) + "-" + c.id, c);
+        if (parsed && !Array.isArray(parsed) && Number(parsed.lastAuditAt)) await relay.storage.set(metaKey(), JSON.stringify({ lastAuditAt: Number(parsed.lastAuditAt) }));
+      } catch { /* keep going — a bad legacy blob shouldn't block the page */ }
+      await relay.storage.delete(legacyKey()).catch(() => {});
+    }
+    const recs = await comments().all();
+    const mine = recs.filter((r) => r.id.startsWith(pagePrefix())).map((r) => { const { id: _drop, ...c } = r; return sanitizeComment(c); }).filter((c) => c && c.id);
+    let at = 0;
+    try { const m = await relay.storage.get(metaKey()); at = m ? Number(JSON.parse(m).lastAuditAt) || 0 : 0; } catch { at = 0; }
+    // Stable order: by comment number (the sidebar's reading order), like the old array.
+    mine.sort((a, b) => (a.num || 0) - (b.num || 0));
+    return { comments: mine, lastAuditAt: at };
   } catch { return { comments: [], lastAuditAt: 0 }; }
 }
 // A persisted decision can carry loading/writing:true (saved mid-stream by a textarea blur). Restored
@@ -496,7 +541,18 @@ function sanitizeComment(c) {
 // sidecar stays in memory too. Saving the draft (or locking an edit) is what writes both.
 async function saveReview() {
   if (!relay || isDraft) return;
-  try { await relay.storage.set(reviewKey(), JSON.stringify({ comments: decisions, lastAuditAt })); } catch { /* non-fatal */ }
+  try {
+    const col = comments();
+    const want = new Map(decisions.filter(Boolean).map((c) => [recIdOf(c), c]));
+    // Reconcile THIS page's records to the in-memory set: upsert current, delete removed. Other
+    // pages' and other reviewers' records are never touched — that's the whole point.
+    const have = (await col.all()).filter((r) => r.id.startsWith(pagePrefix())).map((r) => r.id);
+    await Promise.all([
+      ...[...want].map(([id, c]) => col.put(id, c)),
+      ...have.filter((id) => !want.has(id)).map((id) => col.remove(id)),
+    ]);
+    await relay.storage.set(metaKey(), JSON.stringify({ lastAuditAt })).catch(() => {});
+  } catch { /* non-fatal */ }
 }
 
 // ---------- the frame ----------

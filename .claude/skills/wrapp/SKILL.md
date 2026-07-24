@@ -65,6 +65,16 @@ source, so never pre-wire entries (this killed builds before):
    their own art direction — that exemption is explicit, everything else isn't.
 5. **One-go UX** — the pipeline auto-advances from the single input to the finished artifact; the
    user can steer or re-run at ANY point. Never form → button → output → next form.
+7. **Team-ready storage (free multiplayer)** — a wrapp bound to a Team Mode folder is collaborative
+   the instant it follows two rules, both handled by `kit/livestore.js` (already wired in the
+   template): (a) ACCUMULATED items (notes, tasks, a library, a gallery) are a `collection(relay,
+   name)` — one item = one file — NEVER an array in one growing blob, because sync is per-file
+   last-writer-wins and a shared blob makes two teammates clobber each other; a single ephemeral
+   RUN can stay a single blob. (b) Re-read on change via `mountLive(relay, reload)` — teammate
+   syncs, Obsidian saves, and git pulls all arrive as a `permissionsChanged` nudge. Do not hand-roll
+   the throttle/visibility/reentrancy loop; the kit is the sanctioned version (distilled from Bank).
+   Solo users pay nothing (no teammates ⇒ no nudges). A wrapp that keeps everything in one JSON blob
+   FAILS this gate.
 6. **The cold open (THE demo, THE selling moment)** — when a context is lent, the wrapp launches its
    FULL workflow on connect with ZERO input: no form, no prompt, no button. "Connect Switchboard, and
    something is already happening — on your stuff." The value is on screen before the user types a
@@ -90,7 +100,9 @@ source, so never pre-wire entries (this killed builds before):
 - **Palette is flat hex strings** (`data.palette: ["#4C6B2F", …]`) per `docs/CONTEXT-KINDS.md`; a
   new context kind's first producer must pin its shape there.
 - **Storage values are opaque strings** — always `JSON.stringify`/`parse`. `bind` prompts; get/set
-  in the private sandbox don't.
+  in the private sandbox don't. The layer appends `.json` to a non-literal key and strips it back in
+  `list()`, so a record key is `<name>-<id>` (NO `.json` — writing it yields `<name>-<id>.json.json`).
+  `kit/livestore.js`'s `collection()` handles this dialect; use it rather than hand-rolling keys.
 - **Rendering model/user HTML?** Sanitize + sandbox like `src/redline.js` (`sanitizedPreview`,
   `sandbox="allow-same-origin"`, `sanitizeSvg`). srcdoc is same-origin — unsanitized scripts could
   drive the app's grant.
