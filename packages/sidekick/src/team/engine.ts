@@ -144,6 +144,8 @@ export class TeamEngine {
   private cloudBackedUpAt = 0;
   private cloudRestored = 0;
   private cloudError: string | null = null;
+  /** The relay's reason for refusing THIS member (4xxx close) — shown instead of "reconnecting…". */
+  private memberError: string | null = null;
   private putsSinceSnapshot = 0;
   /** Rate-limits the {full}→snapshot reaction so a folder over the cap can't cause an upload storm. */
   private lastFullCompactAt = 0;
@@ -406,7 +408,7 @@ export class TeamEngine {
       connected: this.state.role === "host" ? this.hostListening : this.clientConnected,
       members,
       lastSyncAt: this.lastSyncAt || undefined,
-      error: this.state.role === "host" && this.hostError ? this.hostError : undefined,
+      error: this.state.role === "host" ? (this.hostError ?? undefined) : (this.memberError ?? undefined),
       cloud: this.state.relay ? {
         entitled: !!this.state.ent,
         ...(this.cloudBackedUpAt ? { backedUpAt: this.cloudBackedUpAt } : {}),
@@ -570,9 +572,7 @@ export class TeamEngine {
       t.on("store", (m) => this.onStoreReply(m));
       // The relay refused us (over-plan seats, or a free session ended) — surface it, don't spin.
       t.on("gate", ({ code, reason }: { code: number; reason: string }) => {
-        this.hostError = code === 4003
-          ? `this team's plan covers ${/seat-limit:(\d+)/.exec(reason)?.[1] ?? "fewer"} people — upgrade to add seats`
-          : "your free session ended — upgrade to keep syncing through the cloud";
+        this.hostError = gateMessage(code, reason);
         this.deps.onTeamChanged();
       });
       this.relayHost = t;
@@ -761,6 +761,7 @@ export class TeamEngine {
           case "welcome": {
             welcomed = true;
             this.clientConnected = true;
+            this.memberError = null; // connected ⇒ any prior refusal is stale
             this.reconnectDelay = RECONNECT_MIN_MS;
             // Two-way initial exchange: apply what the host has, send what we have.
             const theirs = (msg.summary && typeof msg.summary === "object" && !Array.isArray(msg.summary)) ? (msg.summary as IndexSummary) : {};
@@ -792,11 +793,23 @@ export class TeamEngine {
         try { ws.close(); } catch { /* gone */ }
       }
     });
-    ws.on("close", () => {
+    ws.on("close", (code, reasonBuf) => {
       if (this.client === session) { this.client = null; this.clientConnected = false; }
-      if (!welcomed) onFirstWelcome?.(new Error("the host refused the connection — the invite may be stale"));
+      // A 4xxx close is the RELAY refusing us (plan seats, expired/absent entitlement, an app too
+      // old to prove membership) — NOT a stale invite. Saying "the invite may be stale" here sent
+      // people to re-copy a code that was fine; surface the real reason instead, and keep it on the
+      // team status so the panel shows it rather than a silent "reconnecting…" forever.
+      const gated = code >= 4000 && code < 5000;
+      if (gated) {
+        this.memberError = gateMessage(code, String(reasonBuf || ""));
+        this.deps.audit("team:relay-refused", "denied", `${code} ${String(reasonBuf || "")}`.trim());
+      }
+      if (!welcomed) onFirstWelcome?.(new Error(gated ? this.memberError! : "the host refused the connection — the invite may be stale"));
       this.deps.onTeamChanged();
       if (!this.stopped && this.state?.role === "member" && this.enabled()) {
+        // Still retry (a plan can be upgraded, a seat can free up) but back off hard on a refusal so
+        // we aren't hammering a door that is deliberately shut.
+        if (gated) this.reconnectDelay = RECONNECT_MAX_MS;
         this.reconnectTimer = setTimeout(() => this.dial(), this.reconnectDelay);
         (this.reconnectTimer as NodeJS.Timeout).unref?.();
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_MS);
@@ -1031,12 +1044,35 @@ export class TeamEngine {
     this.cloudBackedUpAt = 0;
     this.cloudRestored = 0;
     this.cloudError = null;
+    this.memberError = null;
     this.putsSinceSnapshot = 0;
     this.lastFullCompactAt = 0;
     this.stopGit();
     this.sync = null;
     this.key = null;
   }
+}
+
+/**
+ * Turn a relay refusal (a 4xxx WebSocket close) into something a human can act on. Every code the
+ * relay can send must land here — an unmapped refusal shows as an endless "reconnecting…", which is
+ * the worst possible failure for a sync feature: the user can't tell broken from slow.
+ */
+function gateMessage(code: number, reason: string): string {
+  if (code === 4003) return `this team's plan covers ${/seat-limit:(\d+)/.exec(reason)?.[1] ?? "fewer"} people — upgrade to add seats`;
+  if (code === 4002) {
+    return /entitlement-expired/.test(reason)
+      ? "this team's plan expired — renew to keep cloud sync and backup"
+      : "your free session ended — upgrade to keep syncing through the cloud";
+  }
+  if (code === 4004) {
+    // Either this build predates the membership proof, or another connection already established
+    // this room with a different one. Both are actionable, and neither means "keep retrying".
+    return /host-needs-membership-proof/.test(reason)
+      ? "this app is too old to host a cloud team — update Switchboard to 0.2.1 or later"
+      : "the cloud relay didn't recognise this team — make sure everyone is using the current invite code";
+  }
+  return `the cloud relay refused this connection (${code}${reason ? ` ${reason}` : ""})`;
 }
 
 /** Where a joined team's folder lands when the member doesn't choose one: a VISIBLE, named
