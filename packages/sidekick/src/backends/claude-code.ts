@@ -158,8 +158,20 @@ export class ClaudeCodeBackend implements ModelBackend {
             ctx.emit({ type: "tool_result", call, result: { ok: !block.is_error, content } });
           }
         } else if (msg.type === "result") {
-          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string };
-          if (r.usage) { inputTokens = r.usage.input_tokens ?? 0; outputTokens = r.usage.output_tokens ?? 0; }
+          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string };
+          if (r.usage) {
+            // Cached input is STILL input: it is context the model processed and the account was
+            // billed for. Anthropic reports it in three separate buckets, and reading only
+            // `input_tokens` under-counted a measured real call by ~77× (451 reported vs 34,585
+            // actual — 2 uncached in, 15,184 cache-creation, 18,950 cache-read, 449 out).
+            // This number is not cosmetic: server.ts feeds it straight to gate.recordCompletion,
+            // so every per-origin tokens/day budget was that much too permissive, and the wrapp
+            // surfaces that show "tokens spent" were understating by two orders of magnitude.
+            inputTokens = (r.usage.input_tokens ?? 0)
+              + (r.usage.cache_creation_input_tokens ?? 0)
+              + (r.usage.cache_read_input_tokens ?? 0);
+            outputTokens = r.usage.output_tokens ?? 0;
+          }
           // The SDK reports failures IN the result message, not by throwing — an unread is_error
           // meant "not signed in" surfaced as a generic backend error (or worse, empty success).
           if (r.is_error || (r.subtype && r.subtype !== "success")) {

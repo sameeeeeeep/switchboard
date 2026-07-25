@@ -574,7 +574,11 @@ export class Broker implements ConsentPrompter {
       reason: requested.reason,
       models: { available: await this.deps.backends.models(), requested: requested.models ?? [] },
       tools: requestedTools,
-      budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
+      // 2M/day, raised from 200K when token accounting was corrected to include cached input
+      // (see backends/claude-code.ts). One real decision-sized call measures ~26K tokens, so the
+      // old default was ~7 calls/day — a wrapp that cold-opens would have burned a third of it
+      // before the user typed anything. The gate is meant to stop runaway origins, not ordinary use.
+      budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 2_000_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
       // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
       contextKinds: (requested.contextKinds ?? []).map((k) => String(k).trim()).filter(Boolean),
     };
