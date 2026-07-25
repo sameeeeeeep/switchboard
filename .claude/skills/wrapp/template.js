@@ -85,7 +85,18 @@ function wire(r) {
   // storage and re-renders; keep it idempotent.
   live = mountLive(r, reloadState);
 }
-async function onReady() { await syncContext(); await loadState(); render(); autostart(); }
+// onReady fires TWICE by design — once from mountConnect's onConnect and once from the
+// returning-user probe above, whichever wins the race. Hydrating from storage on BOTH passes is a
+// real (timing-dependent) bug: the second pass re-reads the run the first pass just saved, which
+// REPLACES the in-memory object the running pipeline holds a reference to. The pipeline then
+// completes into a detached orphan and the UI sits on a run that never finishes. Hydrate once.
+let hydrated = false;
+async function onReady() {
+  await syncContext();
+  if (!hydrated) { hydrated = true; await loadState(); }
+  render();
+  autostart();
+}
 /** Re-read everything this wrapp persists, then render. Called on every live nudge. For a wrapp
  *  that ACCUMULATES items (a library, notes, a task list), read the collection here (see `items`
  *  below) — never a single growing blob, or two teammates' edits clobber each other. */

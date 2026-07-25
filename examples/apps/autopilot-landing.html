@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Autopilot — Switchboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0A0B;--panel:#0C0C0E;--card:#141518;--line:#232327;--line-2:#2C2C31;
+  --ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;--faintest:#48484F;
+  --accent:#EDEDEA;--accent-ink:#0A0A0B;--accent-hover:#FFFFFF;--ok:#54B487;
+  --pro:#B8E04A;--pro-bg:rgba(184,224,74,.10);--pro-hair:rgba(184,224,74,.32);
+  --pop:#9FCB6E;--pop-2:#5E8B23;--pop-soft:rgba(159,203,110,0.14);--pop-line:rgba(159,203,110,0.34);
+  --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{width:1440px;background:radial-gradient(1200px 600px at 78% -8%, rgba(159,203,110,0.1), transparent 60%),var(--bg);color:var(--ink);font:16px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+svg{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:0 80px}
+/* store topbar — this page is a detail page in the Switchboard directory */
+.lp-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;border-bottom:1px solid var(--line)}
+.tb-side{display:flex;align-items:center;gap:14px;min-width:0}
+.tb-back{display:inline-flex;align-items:center;gap:7px;font:500 13px/1 var(--font-sans);color:var(--faint);
+  border:1px solid var(--line);border-radius:999px;padding:8px 15px 8px 12px;transition:color .14s,border-color .14s}
+.tb-back:hover{color:var(--ink);border-color:var(--line-2)}
+.tb-rule{width:1px;height:18px;background:var(--line)}
+.brandmark{display:flex;align-items:center;gap:10px}
+.sb-squircle{width:24px;height:24px;border-radius:8px;background:linear-gradient(160deg,#5CC08A,#3E9E6E);
+  display:grid;place-items:center;box-shadow:0 2px 10px -4px rgba(84,180,135,.6)}
+.sb-squircle svg{width:14px;height:14px}
+.sb-word{font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.sb-word span{color:var(--faint);font-weight:500}
+.vmark{width:16px;height:16px;display:inline-block;vertical-align:-3px;margin-left:2px}
+.byo-pill{font:500 12.5px/1 var(--font-sans);color:var(--ink-2);border:1px solid var(--line);border-radius:999px;
+  padding:8px 15px;display:inline-flex;align-items:center;gap:8px}
+.byo-pill i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(84,180,135,.22)}
+.tb-cta{background:var(--accent);color:var(--accent-ink);font:600 13.5px/1 var(--font-sans);letter-spacing:-.01em;
+  border-radius:999px;padding:11px 19px;display:inline-flex;align-items:center;gap:8px;transition:background .15s}
+.tb-cta:hover{background:var(--accent-hover)}
+.kick{display:inline-flex;align-items:center;gap:9px;font:600 13px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.kick .d{width:8px;height:8px;border-radius:50%;background:var(--pop)}
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:64px 0 40px;min-height:660px}
+h1{font-family:var(--font-display);font-weight:700;font-size:76px;line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;max-width:15ch}
+.sub{color:var(--ink-2);font-size:22px;line-height:1.5;margin:26px 0 0;max-width:40ch}
+.actions{display:flex;align-items:center;gap:18px;margin-top:36px}
+.btn{background:var(--pop);color:#0A0A0B;font-weight:600;font-size:17px;border-radius:999px;padding:16px 30px;display:inline-flex;align-items:center;gap:10px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.trust{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap}
+.chip{font:600 13px/1 var(--font-sans);color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+.chip .g{color:var(--pop)}
+.mock{position:relative}
+.mock .glow{position:absolute;inset:-8% -6% -14% -6%;background:radial-gradient(closest-side, rgba(159,203,110,0.18), transparent);filter:blur(10px)}
+.mock svg{position:relative;border-radius:22px}
+/* features */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:26px 0 90px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+.fcard .fi{width:40px;height:40px;border-radius:11px;background:var(--pop-soft);color:var(--pop);display:grid;place-items:center;margin-bottom:16px}
+.fcard .fi svg{width:20px;height:20px}
+.fcard h3{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}
+.fcard p{color:var(--ink-2);font-size:14.5px;line-height:1.55;margin:0}
+.num{font-family:var(--font-mono);color:var(--faint);font-size:13px;letter-spacing:.04em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* facts rail — category, dev-reported build cost, price */
+.facts{display:flex;align-items:stretch;margin-bottom:14px;background:var(--card);
+  border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.fact{flex:1;padding:16px 24px 18px;border-left:1px solid var(--line);min-width:0}
+.fact:first-child{border-left:0}
+.fact-k{font:600 9.5px/1 var(--font-sans);letter-spacing:.15em;text-transform:uppercase;color:var(--faintest)}
+.fact-v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;
+  font:500 14px/1.2 var(--font-sans);color:var(--ink);letter-spacing:-.005em}
+.fact-v .dot{width:7px;height:7px;border-radius:50%;background:var(--pop);flex:none}
+.fact-s{margin-top:6px;font:400 12px/1.3 var(--font-sans);color:var(--faint)}
+.devtag{font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--faintest);
+  border:1px solid var(--line-2);border-radius:5px;padding:2px 6px}
+/* bands */
+.band{padding:56px 0;border-top:1px solid var(--line)}
+.band-head{margin-bottom:30px}
+.kicker{font:600 10.5px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.band-title{font-family:var(--font-display);font-weight:600;letter-spacing:-.025em;font-size:28px;margin:12px 0 0}
+.band-title .m{color:var(--faint)}
+.band-note{margin:22px 0 0;font-size:13.5px;line-height:1.6;color:var(--faint);max-width:74ch}
+/* free / pro */
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.tiers.three{grid-template-columns:repeat(3,1fr)} /* modifier on the base grid, not a new vocabulary */
+.tier{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px 28px 30px}
+.tier.pro{border-color:var(--pro-hair)}
+.tier.here{border-color:var(--pop-line);background:linear-gradient(180deg,var(--pop-soft),var(--card))}
+.tier-top{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+.tier-h{font-family:var(--font-display);font-weight:600;font-size:19px;letter-spacing:-.02em;margin:0}
+.pro-chip{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.13em;color:var(--pro);
+  background:var(--pro-bg);border:1px solid var(--pro-hair);border-radius:5px;padding:4px 7px}
+.here-chip{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.13em;color:var(--pop);
+  background:var(--pop-soft);border:1px solid var(--pop-line);border-radius:5px;padding:4px 7px}
+.tier-sub{font-size:14px;line-height:1.55;color:var(--ink-2);margin:0 0 20px}
+.tier-ask{font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:-.015em;color:var(--ink);margin:0 0 8px}
+.tier-end{margin:18px 0 0;padding-top:15px;border-top:1px solid var(--line);font-size:13px;line-height:1.5;color:var(--faint)}
+.tier ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.tier li{display:flex;align-items:flex-start;gap:11px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.tier li svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--ok)}
+.tier.pro li svg{color:var(--pro)}
+.tier.here li svg{color:var(--pop)}
+/* closing cta + footer */
+.lp-cta{text-align:center;padding:70px 0 34px;border-top:1px solid var(--line)}
+.lp-cta h2{font-family:var(--font-display);font-weight:700;letter-spacing:-.03em;font-size:42px;margin:0 0 28px}
+.lp-cta .fine{margin-top:22px;font-size:13.5px;color:var(--faint)}
+footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:30px 0 44px;
+  border-top:1px solid var(--line);font-size:12.5px;color:var(--faint)}
+footer a{color:var(--ink-2);transition:color .14s}
+footer a:hover{color:var(--ink)}
+.foot-nav{display:flex;align-items:center;gap:16px}
+
+/* hero product shot — Autopilot's own cockpit: a drafted slate, the ripple it causes, and the
+   three ways a move is allowed to be staged. Doubles as the store thumbnail, so it holds real
+   option copy, real move states, and the one number the surface is allowed to show. */
+.shot{position:relative;background:var(--card);border:1.5px solid #2A2B30;border-radius:22px;overflow:hidden;
+  box-shadow:0 34px 64px -34px rgba(0,0,0,.92)}
+.shot-bar{display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #2A2B30}
+.shot-bar .tile{width:21px;height:21px;border-radius:6px;background:var(--pop-soft);color:var(--pop);
+  display:grid;place-items:center;flex:none}
+.shot-bar .tile svg{width:12px;height:12px}
+.shot-bar .st{font:600 13.5px/1 var(--font-sans);color:var(--ink);letter-spacing:-.01em}
+.shot-bar .sp{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-left:auto}
+.shot-body{padding:20px 20px 22px;display:flex;flex-direction:column;gap:14px}
+/* a decision: the options stay on the board, and the one a human picked wears the accent */
+.ap-dec{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px 15px}
+.ap-k{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;
+  font:700 9.5px/1 var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--pop)}
+.ap-k .ax{font:400 9.5px/1 var(--font-mono);letter-spacing:.04em;text-transform:none;color:var(--faintest)}
+.ap-opt{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.ap-opt .lab{flex:none;font-family:var(--font-mono);font-size:10px;color:var(--faint);width:64px;padding-top:2px}
+.ap-opt p{margin:0;font-size:13px;line-height:1.45;color:var(--ink-2)}
+.ap-opt.sel .lab{color:var(--pop)}
+.ap-opt.sel p{color:var(--ink);font-weight:500}
+/* the downstream card — redrafted because the voice above changed */
+.ap-dec.down{border-color:var(--pop-line)}
+.ap-ad{margin:11px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.ap-ad b{color:var(--ink);font-weight:600}
+/* moves, staged by how far the machine is allowed to go on its own */
+.ap-moves{display:flex;flex-direction:column;gap:7px}
+.ap-move{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);
+  border-radius:11px;padding:9px 12px}
+.ap-b{flex:none;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  border-radius:5px;padding:4px 7px}
+.ap-b.auto{color:var(--pop);background:var(--pop-soft);border:1px solid var(--pop-line)}
+.ap-b.appr{color:#E9C56B;background:rgba(233,197,107,.11);border:1px solid rgba(233,197,107,.32)}
+.ap-b.man{color:var(--ink-2);background:rgba(255,255,255,.04);border:1px solid var(--line-2)}
+.ap-move .t{font-size:12.5px;line-height:1.35;color:var(--ink);min-width:0}
+.ap-move .s{margin-left:auto;flex:none;font-family:var(--font-mono);font-size:10px;color:var(--faint)}
+/* the footer of the cockpit — tokens are real, revenue is not pretended */
+.ap-foot{display:flex;align-items:center;gap:12px;padding-top:13px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--faint)}
+.ap-foot .mono{color:var(--ink-2)}
+.ap-foot .na{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--faintest)}
+
+/* responsive — real destination page, not just a 1440px preview source */
+@media (max-width:1439px){
+  body{width:100%}
+  .page{width:100%;min-height:0;overflow:visible}
+}
+@media (max-width:1080px){
+  .wrap{padding:0 40px}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-top:40px}
+  h1,.display,.cta-h{font-size:clamp(38px,7vw,76px)}
+  .feat,.lp-steps,.tiers.three{grid-template-columns:1fr 1fr}
+  .sub{font-size:19px}
+}
+@media (max-width:760px){
+  .wrap{padding:0 22px}
+  /* decorative hero mocks are oversized inline SVG — let them scale instead of widening the page.
+     Icons keep their size because their own rules (.fi svg, .tile svg …) are more specific. */
+  svg{max-width:100%;height:auto}
+  .topbar,.tb-in,.tbin,.sbbar,.sbbar>.in,.nav,.lp-topbar,.foot-in,.lp-foot,footer,.wheel-head,.persona-top,.found-head,.cab-bar,.reading,.found,.hero-cta,.actions,.trust,.hero-chips{flex-wrap:wrap}
+  .topbar,.sbbar,.nav,.lp-topbar{height:auto}
+  .tb-in,.tbin,.sbbar>.in,.nav,.lp-topbar{height:auto;padding:12px 0;gap:10px}
+  .hero,.feat,.lp-steps,.step-grid,.tiers,.tiers.three,.pgrid,.plan-g,.p-rows,.plans .pgrid,.mock,
+  .wall,.tape,.findings,.apfeat,.apbody,.crow,.solo{grid-template-columns:1fr}
+  /* grid/flex children default to min-width:auto and refuse to shrink past min-content */
+  .lp-step,.fcard,.tier,.pcard,.pcol,.stat,.apcompare,.card{min-width:0}
+  h1,h2,h3,p,li{overflow-wrap:break-word}
+  .facts{flex-direction:column;grid-template-columns:1fr}
+  .fact{border-left:0;border-top:1px solid var(--line)}
+  .fact:first-child{border-top:0}
+  .sub,.hero-tag{font-size:18px}
+  .lp-cta h2,.cta-h,.plan-h{font-size:clamp(28px,7vw,42px)}
+  .band-title,.sec-title{font-size:23px}
+  .btn,.btn-primary,.btn-ghost{width:100%;justify-content:center}
+  .freeonly{flex-direction:column;gap:10px}
+}
+/* end responsive */
+</style></head>
+<body>
+<div class="wrap">
+  <header class="lp-topbar">
+    <div class="tb-side">
+      <a class="tb-back" href="./index.html">← All wrapps</a>
+      <span class="tb-rule"></span>
+      <div class="brandmark">
+        <span class="sb-squircle"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 11l8-4M8 13l8 4"/></svg></span>
+        <span class="sb-word">Switchboard <span>/ Autopilot</span></span>
+      </div>
+    </div>
+    <div class="tb-side">
+      <span class="byo-pill"><i></i> Runs on your own Claude</span>
+      <a class="tb-cta" href="./autopilot.html">Open Autopilot <span>→</span></a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="kick"><span class="d"></span>Brand &amp; content</span>
+      <h1>Run the company you already have.</h1>
+      <p class="sub">Lend it a brand, project or idea and it opens with a whole operating slate — voice, ad angle, channel, next move — before you type anything.</p>
+      <div class="actions">
+        <a class="btn" href="./autopilot.html">Open Autopilot<span>→</span></a>
+        <a class="btn ghost" href="#how">See how it works ↓</a>
+      </div>
+      <div class="trust">
+        <span class="chip"><span class="g">◆</span> Runs on your own Claude</span>
+        <span class="chip">Free core, forever</span>
+        <span class="chip">Your data stays yours</span>
+      </div>
+    </div>
+    <div class="mock"><span class="glow"></span>
+      <div class="shot">
+        <div class="shot-bar">
+          <span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 4.8-4.8 2.2 2.2-4.8Z"/></svg></span>
+          <span class="st">Autopilot — Firstlight</span>
+          <span class="sp">1 of 3 companies · drafted cold</span>
+        </div>
+        <div class="shot-body">
+          <div class="ap-dec">
+            <div class="ap-k">Voice <span class="ax">what the brand's relationship to you is</span></div>
+            <div class="ap-opt sel"><span class="lab">★ chosen</span><p>Trail-buddy warmth — earns the moment with you, never shames the shortcut.</p></div>
+            <div class="ap-opt"><span class="lab">dry</span><p>Spec-sheet minimalism — no adjective it can't measure.</p></div>
+            <div class="ap-opt"><span class="lab">deadpan</span><p>Flat, funny, anti-hype — undersells on purpose.</p></div>
+          </div>
+          <div class="ap-dec down">
+            <div class="ap-k">Ad angle <span class="ax">redrafted when you changed the voice</span></div>
+            <p class="ap-ad"><b>Real coffee. No kettle.</b> You're 40 minutes past the trailhead. There's no cafe up here — there's this. Tear, pour, look up.</p>
+          </div>
+          <div class="ap-moves">
+            <div class="ap-move"><span class="ap-b auto">auto</span><span class="t">Outreach to 32 outfitters, in the chosen voice</span><span class="s">drafted · nothing sent</span></div>
+            <div class="ap-move"><span class="ap-b appr">approve</span><span class="t">Ad set 01 — staged, spends money</span><span class="s">waiting on you</span></div>
+            <div class="ap-move"><span class="ap-b man">manual</span><span class="t">Call the co-packer about the 21-day lead</span><span class="s">only you can</span></div>
+          </div>
+          <div class="ap-foot"><span><span class="mono">1.2M</span> of <span class="mono">2M</span> tokens budgeted this week</span><span class="na">Revenue — not connected</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="facts">
+    <div class="fact">
+      <div class="fact-k">Category</div>
+      <div class="fact-v"><span class="dot"></span> Brand &amp; content</div>
+      <div class="fact-s">on the Switchboard shelf</div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Build cost</div>
+      <div class="fact-v"><span class="mono">420K</span> tokens · <span class="mono">3</span> updates</div>
+      <div class="fact-s"><span class="devtag">dev-reported</span></div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Price</div>
+      <div class="fact-v">Free core, forever</div>
+      <div class="fact-s">runs on your own Claude</div>
+    </div>
+  </div>
+
+  <section class="feat" id="how">
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 4.8-4.8 2.2 2.2-4.8Z"/></svg></div><div class="num">01</div><h3>Grounded in a context you lend it</h3><p>Point it at a brand, project or idea you already banked and it drafts the operating slate cold — voice, ad angle, channel, next move — with nothing typed in.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 4.8-4.8 2.2 2.2-4.8Z"/></svg></div><div class="num">02</div><h3>Every option is a card you choose</h3><p>Nothing is a suggestion you retype. Change the voice and the ad below visibly rewrites, because the slate is one connected draft — and every option you passed on stays on the board.</p></div>
+    <div class="fcard"><div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 4.8-4.8 2.2 2.2-4.8Z"/></svg></div><div class="num">03</div><h3>Nothing irreversible without you</h3><p>Every move is staged auto, approve or manual. Auto is what the machine can fully prepare at no risk; approve stages it and waits for your tap; manual is yours to do in the real world.</p></div>
+  </section>
+
+  <section class="band">
+    <div class="band-head">
+      <span class="kicker">Where it sits</span>
+      <h2 class="band-title">Three verbs, three wrapps. <span class="m">This is the one that doesn't finish.</span></h2>
+    </div>
+    <div class="tiers three">
+      <div class="tier">
+        <div class="tier-top"><h3 class="tier-h">ideabrain</h3></div>
+        <p class="tier-ask">Should this exist?</p>
+        <p class="tier-sub">Research, a playbook for your kind of idea, a deck. Ends in a thesis.</p>
+      </div>
+      <div class="tier">
+        <div class="tier-top"><h3 class="tier-h">brandbrain</h3></div>
+        <p class="tier-ask">What is it?</p>
+        <p class="tier-sub">Positioning, name, voice, palette, every decision locked. Ends in a brand.</p>
+      </div>
+      <div class="tier here">
+        <div class="tier-top"><h3 class="tier-h">Autopilot</h3><span class="here-chip">HERE</span></div>
+        <p class="tier-ask">Now run it.</p>
+        <p class="tier-sub">The operating slate, week after week. No end state, and several companies on one board.</p>
+      </div>
+    </div>
+    <p class="band-note">"Never terminates" means it has no finish screen, not that it works while you're away. There is no background loop and no schedule — Autopilot drafts when you open it, and picks up exactly where you left it. It reads a lent context; it does not go looking through your files for one.</p>
+  </section>
+
+  <section class="band">
+    <div class="band-head">
+      <span class="kicker">What it costs</span>
+      <h2 class="band-title">Free, and there is no second tier. <span class="m">The only budget is tokens, and they are already yours.</span></h2>
+    </div>
+    <div class="tiers">
+      <div class="tier">
+        <div class="tier-top"><h3 class="tier-h">Free — the complete core loop</h3></div>
+        <p class="tier-sub">The whole cockpit, every company, forever. Nothing in the loop is held back and there is no paid tier to upgrade to.</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Lend a brand, project or idea and get the slate drafted cold</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> As many companies on the board as you actually run</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Real options on every decision, and the downstream redraft when you switch</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Moves staged auto, approve or manual — you hold the go button</li>
+        </ul>
+      </div>
+      <div class="tier">
+        <div class="tier-top"><h3 class="tier-h">What a token budget is</h3></div>
+        <p class="tier-sub">Not a subscription. A token budget is capacity to work — you are deciding how much thinking the company gets this week, not paying a bill.</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> The tokens are the Claude quota you already pay for — we never hold a key</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Spend is broken down by where it went — drafting, deciding, redrafting</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg> Tokens are the only real number on the surface</li>
+        </ul>
+        <p class="tier-end">Revenue would need a connected store, so the cockpit says "not connected" instead of drawing a chart of numbers that don't exist.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-cta">
+    <h2>Give Autopilot your Claude.</h2>
+    <a class="btn" href="./autopilot.html">Open Autopilot<span>→</span></a>
+    <div class="fine">Free core, forever · every draft, decision and redraft runs on your own Claude</div>
+  </section>
+
+  <footer>
+    <span class="foot-nav"><a href="./index.html">← All wrapps</a></span>
+    <span>Switchboard · a wrapp that runs on your own Claude</span>
+    <span class="foot-nav"><a href="./autopilot.html">Open Autopilot →</a><a href="https://github.com/sameeeeeeep/switchboard">github.com/switchboard</a></span>
+  </footer>
+</div>
+</body></html>

@@ -35,6 +35,7 @@ export const G = {
   pen:    `<path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16Z"/><path d="M14 6l3 3"/>`,
   landing:`<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M8 13h8M8 16h5"/>`,
   huddle: `<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3Z"/>`,
+  compass:`<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 4.8-4.8 2.2 2.2-4.8Z"/>`,
   // ---- viral-wrapp factory glyphs (2026-07) ----
   pad:    `<rect x="2.5" y="8" width="19" height="9" rx="4.5"/><path d="M7 12.5h3M8.5 11v3"/><circle cx="15.5" cy="11.5" r="1.1"/><circle cx="17.5" cy="13.5" r="1.1"/>`,
   panel:  `<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M13 4v8M11 12v8"/>`,
@@ -61,6 +62,7 @@ export const GLYPHS = {
   hardware:   { fam: "blue",   glyph: G.box,    motif: "chart" },
   feature:    { fam: "blue",   glyph: G.spark,  motif: "chart" },
 
+  autopilot:  { fam: "green",  glyph: G.compass,motif: "build" },
   adpulse:    { fam: "gold",   glyph: G.chart,  motif: "chart" },
   adforge:    { fam: "gold",   glyph: G.spark,  motif: "spark" },
   shelf:      { fam: "gold",   glyph: G.box,    motif: "build" },
@@ -123,7 +125,7 @@ const TILE = {
   // validate-an-idea presets — deliberately spread across the wheel
   mkt: "#4C7EF3", capp: "#E93D82", saas: "#5B5BD6", retail: "#E5732B", hardware: "#7C8CA5", feature: "#2E9E6E",
   // founder stack
-  adpulse: "#3E63DD", adforge: "#EC6142", shelf: "#46A758", studio: "#D6409F", aplus: "#F5820A", batch: "#FF6B2C",
+  autopilot: "#2F8F4E", adpulse: "#3E63DD", adforge: "#EC6142", shelf: "#46A758", studio: "#D6409F", aplus: "#F5820A", batch: "#FF6B2C",
   take: "#2AA198", identity: "#8E4EC6", reel: "#7C3AED", marquee: "#6E56CF", huddle: "#0E9C8A",
   // after hours + play
   natal: "#5847C7", arcana: "#8B5CF6", redline: "#E5484D", cartridge: "#9A4EC6", cast: "#E5457E", prism: "#C13FAF", adgen: "#EC6142",

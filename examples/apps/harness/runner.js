@@ -8,6 +8,11 @@ const PROJECTS = ["switchboard", "nailinit"];
 
 // count() → number of "success" nodes; a positive count = the stage-1 pipeline rendered.
 const CFG = {
+  // Autopilot cold-opens the whole operating slate from the lent context. Success = decisions that
+  // actually carry generated options; a decision INHERITED from the context legitimately has none
+  // (that's the point — it isn't re-asked), so it counts as satisfied too. A bare row with "0
+  // options" is the failure this must catch, so don't just count rows.
+  autopilot: { name: "Autopilot", cat: "founder-stack", count: (d) => [...d.querySelectorAll(".card .row:not(.static)")].filter((r) => /\d+ options|Inherited/i.test(r.textContent || "")).length },
   adforge:   { name: "AdForge",   cat: "founder-stack", count: (d) => d.querySelectorAll("#cards button.card, #cards .card").length },
   adgen:     { name: "Adwall",    cat: "founder-stack", count: (d) => d.querySelectorAll("#wall .tile").length },
   aplus:     { name: "A-Plus",    cat: "founder-stack", count: (d) => d.querySelectorAll("#dir-grid button.dir, #dir-grid .dir").length },
@@ -46,7 +51,7 @@ const CFG = {
   anthem:    { name: "Anthem",    cat: "viral", count: (d) => d.querySelectorAll(".opt").length },
   dreamlog:  { name: "Dreamlog",  cat: "viral", count: (d) => d.querySelectorAll(".opt").length },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog"];
+const FULL_ORDER = ["autopilot", "adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);

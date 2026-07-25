@@ -19,6 +19,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 
 // The wrapps under test (id → html file). Cast/persona uses its OWN ?harness, handled separately.
 const WRAPPS = [
+  { id: "autopilot", html: "autopilot.html", cat: "founder-stack" },
   { id: "adforge", html: "adforge.html", cat: "founder-stack" },
   { id: "adgen", html: "adgen.html", cat: "founder-stack", name: "Adwall" },
   { id: "adpulse", html: "adpulse.html", cat: "founder-stack" },

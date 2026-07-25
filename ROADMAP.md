@@ -105,7 +105,66 @@ network egress) so a stranger's app can't exfiltrate your data — the basis for
 
 ## Next up
 
-### 0. Autopilot → a real wrapp (prototype landed, SDK not wired)
+### 0. ✅ Autopilot → a real wrapp — SHIPPED (`examples/apps/autopilot.{html,js}`)
+
+Ported to the house template and wired to real generation. `examples/autopilot/` is now the
+superseded prototype; the shipping wrapp is `examples/apps/autopilot.html` + `src/autopilot.js`.
+
+**Resolved first: separate wrapp, not a brandbrain studio.** The verb argument in the original
+entry was decorative — the separation had actually entered the record as a scope guard
+(`OVERNIGHT.md:5-8`, *"brandbrain works; it is not in scope"*), and a third studio was never
+evaluated. It was, and the conclusion holds for three better reasons: (1) brandbrain's studio
+engine is **finite by construction** (`seq.every(id => locks[id])`, `brand-studio.tsx:1347`) and
+has no concept of a decision that recurs — a never-terminating studio means replacing the control
+flow, which is the thing that makes studios cheap; (2) the cockpit is precisely the part that does
+**not** generalise (`compileTasks()` is a hand-written if-chain over brand-specific lock ids, and
+the `!active.path` gate already makes ideabrain projects unable to reach the OS at all); (3) the
+OS is explicitly one-brand-at-a-time (`command-centre.tsx:2525`), which contradicts a portfolio at
+the state level. Plus brandbrain isn't ported (§1), so "inside" would block Autopilot behind the
+most expensive unfinished item here.
+
+**Spec correction made during the build:** `contextKinds` is `["brand","project","idea"]`, not
+`["brand"]`. The original narrowed a wrapp explicitly meant to generalise past D2C back to the one
+D2C-shaped kind, and would have made Autopilot unable to consume an ideabrain output at all —
+breaking the idea→run graduation. `ideaToContext` carries the whole locked playbook keyed by
+decision id, which is richer than `brandToContext`'s five flattened strings.
+
+Done: 0a (house template) · 0b (real `relay.complete` generation, replacing seeded `buildOptions`)
+· 0c (inherit-don't-re-ask, with a take-it-back escape) · 0d (cold open) · 0e (tokens from the
+broker's real `usage`, estimates *labelled* as estimates) · 0f (`collection()`, one company = one
+file) · 0g (build entry, catalog, store card, landing, harness spec + provider routes).
+
+Also ported from brandbrain: the `auto | approve | manual` mode taxonomy (`lib/studio/os.ts:10-13`)
+— as a three-line concept, not code. It is what makes "autonomous" honest.
+
+Bugs found and fixed by verification (all would bite a live daemon, not just the harness):
+`onReady` legitimately fires twice (mountConnect + the returning-user probe), so the cold open had
+to become idempotent; `loadState` must **merge** rather than blind-replace `cos`, or a `mountLive`
+nudge detaches the object generation is writing into and the slate renders empty forever;
+`drafting` had to become a per-company Set (a global boolean makes drafting one company silently
+abandon the next — fatal for a portfolio app); an inherited decision has no options, so the
+upstream-constraint builder read `null` and silently dropped the lent voice out of every
+downstream prompt.
+
+**Storage is proven against a real daemon**, not just the harness:
+`examples/apps/proof/run-autopilot-storage.mjs` drives the actual `src/kit/livestore.js` against a
+throwaway daemon on a temp `RELAY_DIR` and reads the bytes on disk — 19/19: one company = one file,
+editing A never rewrites B (the claim Team Mode's per-file LWW rests on), torn records skipped,
+traversal/dotted ids refused, per-origin isolation. Live token measurement is still blocked (Claude
+Code isn't signed in on this Mac), so the catalog's token figure stays honestly dev-reported.
+
+**Side effect worth more than the wrapp: a catalog-wide race, fixed.** The harness's storage mock
+discarded every write — a deliberate 2026-07-18 choice to keep wrapps cold-opening as fresh users.
+It was also masking a live production bug. `onReady` fires twice (mountConnect + the returning-user
+probe); with storage that actually returns what you wrote, the second pass re-reads the run the
+first just saved and **replaces the in-memory object the running pipeline holds**, so the pipeline
+finishes into a detached orphan and the UI sits on a run that never completes. Backing the mock with
+a real per-page store turned reel/marquee/arcade red instantly. The fix — hydrate once — is now in
+all **21** wrapps carrying the template's `onReady` one-liner, and in
+`.claude/skills/wrapp/template.js` so new wrapps inherit it. (`cartridge.js` already had it; it was
+never propagated.) Harness baseline is now **70/70 with real storage**, up from 68 runs → 64/2/2.
+
+<details><summary>Original plan (superseded)</summary>
 
 `examples/autopilot/` holds a **working decision engine** with no model behind it. The state
 machine, locking, downstream ripple, persistence and token accounting are real; the option copy is
@@ -140,6 +199,8 @@ not duplicate it: brandbrain publishes `kind: "brand"` via `brandToContext`
 
 Known gaps in the prototype: zero SDK calls; only two seeded company kinds (d2c, saas); the
 "+ New company" button opens the token pane instead of seeding a company.
+
+</details>
 
 ### 1. brandbrain — full port (the immediate pickup)
 Turn the *real* `~/Documents/Projects/brandbrain` into the store's brandbrain (today's store card is

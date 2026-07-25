@@ -13,7 +13,7 @@ const SPEC_BY_ID = Object.fromEntries(SPECS.map((s) => [s.id, s]));
 
 // display order + names (mirrors the runner)
 const VIRAL = ["arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog"];
-const ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", ...VIRAL].filter((id) => RESULTS[id + ":" + PROJECT_IDS[0]]);
+const ORDER = ["autopilot", "adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", ...VIRAL].filter((id) => RESULTS[id + ":" + PROJECT_IDS[0]]);
 const NAMES = { adgen: "Adwall", imagegen: "Prism", chat: "betterchat", natal: "NATAL", cast: "Cast", arcade: "Arcade", yearbook: "Yearbook", toon: "Toon", storybook: "Storybook", petrait: "Petrait", emote: "Emote", inkling: "Inkling", roomify: "Roomify", thumbs: "Thumbs", meme: "Meme", roast: "Roast", rizz: "Rizz", anthem: "Anthem", dreamlog: "Dreamlog" };
 const CATS = {};
 for (const s of SPECS) CATS[s.id] = s.category;

@@ -21,7 +21,7 @@ export const CATEGORIES = [
 // id → category. Covers all 42 catalog ids (order matches the grid sections in index.html).
 export const CATEGORY_OF = {
   brandbrain: "Brand & content", bank: "Brand & content", redline: "Brand & content",
-  marquee: "Brand & content", chat: "Brand & content",
+  marquee: "Brand & content", chat: "Brand & content", autopilot: "Brand & content",
 
   ideabrain: "Validate an idea", mkt: "Validate an idea", capp: "Validate an idea",
   saas: "Validate an idea", retail: "Validate an idea", hardware: "Validate an idea",

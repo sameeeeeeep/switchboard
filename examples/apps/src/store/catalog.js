@@ -29,6 +29,8 @@ export const APPS = [
     tokens: 190_000, updates: 5, pro: null },
 
   // the founder stack
+  { id: "autopilot", name: "Autopilot", href: "./autopilot.html",
+    tokens: 420_000, updates: 3, pro: null },
   { id: "adpulse", name: "AdPulse", href: "https://adpulse.thelastprompt.ai",
     tokens: 1_400_000, updates: 22, pro: ["scheduled post-mortems", "multi-account rollups"] },
   { id: "adforge", name: "AdForge", href: "https://adforge.thelastprompt.ai",

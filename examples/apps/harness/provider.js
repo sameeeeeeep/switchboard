@@ -300,10 +300,44 @@
       "<body><canvas id=c width=360 height=560></canvas><script>var x=document.getElementById('c').getContext('2d');var t=0;function f(){t++;x.fillStyle='" + (palette[1] || "#0B0B0F") + "';x.fillRect(0,0,360,560);x.fillStyle='" + (palette[0] || "#5B8CFF") + "';x.fillRect(160,280+Math.sin(t/20)*80,40,40);x.fillStyle='#fff';x.font='20px system-ui';x.fillText('" + bname + "',20,40);requestAnimationFrame(f)}f();<\/script></body></html>";
   }
 
+  // autopilot — the operating slate. Every decision asks for the SAME envelope (a jsonArray of 3
+  // with exactly one `recommended`), so the mock only varies the per-decision fields. `lines` is
+  // voice-only and `cta` is angle-only; the wrapp renders each conditionally, so returning them
+  // everywhere would hide a real regression.
+  function autopilotSlate(kind) {
+    if (kind === "voice") return markRec([
+      { label: "Warm operator", text: "Talks like someone who has done the job, not sold the tool.", lines: [bname + " does the boring half, you keep the judgement.", "No dashboards you'll never open.", "You'll know what changed and why."] },
+      { label: "Dry and exact", text: "Spec-first — never an adjective it cannot measure.", lines: [P(0) + ", shipped to spec.", "Every claim on this page is a number.", "No hedging, no filler."] },
+      { label: "Deadpan", text: "Undersells on purpose and trusts you to get it.", lines: ["It's " + KW(0) + ". It's also good.", "We were surprised too.", "Tastes like you tried."] },
+    ]);
+    if (kind === "angle") return markRec([
+      { label: "Objection: trust", text: "Nothing sends without you", body: "Every move is staged and waits for your go — " + bname + " never acts on its own.", cta: "See it staged" },
+      { label: "Objection: effort", text: "Zero input to start", body: "Lend it what you already have and the slate is drafted before you type.", cta: "Start free" },
+      { label: "Objection: price", text: "Capacity, not a subscription", body: "You fund work in tokens and stop whenever you want.", cta: "See the maths" },
+    ]);
+    if (kind === "channel") return markRec([
+      { label: "Founder communities", text: "This buyer already asks these questions in public.", body: "One honest post a week; no budget, real replies." },
+      { label: "Paid search", text: "They search the problem by name before they search you.", body: "Ten exact-match terms, a small daily cap, one landing page." },
+      { label: "Partner newsletters", text: "Borrowed trust from someone they already read.", body: "Three lists, one swap each — costs a written intro, not money." },
+    ]);
+    return markRec([
+      { label: "New surface", text: P(0) + " as a standalone page", body: "It is the thing people already ask for by name." },
+      { label: "New segment", text: "A version for " + KW(1), body: "Same engine, a vocabulary they recognise." },
+      { label: "New format", text: "A weekly digest of what changed", body: "Turns one-off use into a habit." },
+    ]);
+  }
+
   // ---- routing table (first match wins) -------------------------------------------------------
   // Each route: [test(lc,prompt), producer] where producer returns a VALUE (stringified if object/
   // array) or a special {image:true}/{video:true} marker handled below.
   var ROUTES = [
+    // autopilot — one route per decision. Each `ask` string is unique in the corpus, so these can
+    // sit anywhere in the table; they're first only so a future generic "propose 3 options" route
+    // can never shadow the slate (the shadowing hazard documented on redline/natal below).
+    [function (lc, p) { return /3 distinct voices this company could speak in/i.test(p); }, function () { return autopilotSlate("voice"); }],
+    [function (lc, p) { return /3 ad angles\./i.test(p); }, function () { return autopilotSlate("angle"); }],
+    [function (lc, p) { return /3 places to run this angle/i.test(p); }, function () { return autopilotSlate("channel"); }],
+    [function (lc, p) { return /3 next moves that would widen the company/i.test(p); }, function () { return autopilotSlate("next"); }],
     // image / video generation (agentic) — check before text routes
     [function (lc, p, params) { return params.agentic && /generate_image|higgsfield|generate an image|image url|aspect_ratio|final image url|poll (the )?job|nano_banana/i.test(p); }, function (lc, p) { return { image: true, video: /video|reel|animate|motion|generate_video/i.test(lc) }; }],
     // redline audit — ORDER MATTERS: the audit asks for {find,replace} pairs and says "EXACT unique
@@ -494,12 +528,27 @@
   function storageOp(p) {
     p = p || {};
     switch (p.op) {
+      // REAL round-trip, still a fresh user. `set` used to discard and `get` always resolved null,
+      // so anything a wrapp persisted was invisible even to itself — which made per-record
+      // `collection()` storage (doctrine gate 7) untestable, and hid a live bug in Autopilot where
+      // a re-read detached the object generation was writing into. `store` is re-created on every
+      // iframe load (this whole file re-executes per run), so each run STILL starts as a fresh
+      // user with an empty store — the stage-1 cold-open contract above is untouched. What
+      // changes is only that a wrapp can now read back what it wrote during its own run.
       case "get":
-        if (PAGE && p.key === PAGE.key && !(p.key in store)) return { ok: true, value: PAGE.html };
+        if (p.key in store) return { ok: true, value: store[p.key] };
+        if (PAGE && p.key === PAGE.key) return { ok: true, value: PAGE.html };
         return { ok: true, value: null };
-      case "set": return { ok: true };
-      case "delete": return { ok: true };
-      case "list": return { ok: true, keys: seededKeys() };
+      case "set": store[p.key] = String(p.value == null ? "" : p.value); return { ok: true };
+      case "delete": delete store[p.key]; return { ok: true };
+      // seeded page key first (it exists on "disk" without ever being written), then anything the
+      // wrapp wrote this run. The daemon appends/strips `.json` itself, so client-visible keys are
+      // exactly what was passed to set() — no suffix emulation needed here.
+      case "list": {
+        var ks = seededKeys().slice();
+        for (var k in store) if (ks.indexOf(k) === -1) ks.push(k);
+        return { ok: true, keys: ks };
+      }
       // autoAssigned:false + a real folder so folder-bound wrapps (Redline) reach their model call.
       case "info": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
       case "bind": return { ok: true, info: { folder: p.path || BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
