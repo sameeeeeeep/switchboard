@@ -461,6 +461,32 @@
     return { origin: location.origin, mode: "trust", models: models, tools: tools, budgets: { maxTokensPerDay: 5000000, maxCallsPerMin: 240 }, contextKinds: scope.contextKinds || ["brand", "persona", "personal", "project", "idea", "note", "csv", "gsheet"], createdAt: t, updatedAt: t };
   }
   var GRANT = grant({});
+  // MIRROR THE DAEMON'S GATE. The stub used to answer ok:true for ANY tool name and ANY model —
+  // but the real daemon fails these closed (gate.ts: SCOPE_EXCEEDED for a tool outside the grant's
+  // allowlist, and for a model the origin wasn't granted). A mock that only ever succeeds converts
+  // a hard failure into a silent one; that is exactly how the colon-storage-key bug stayed green
+  // here for months. Same matching rules as security/gate.ts `matches` + grant-store `allowsModel`.
+  var MODEL_ALIASES = { "claude-sonnet-4-5": "sonnet", "claude-haiku-4-5": "haiku", "claude-opus-4-1": "opus" };
+  function canonModel(m) { return MODEL_ALIASES[m] || m; }
+  function denyTool(p) {
+    var name = (p && p.name) || "";
+    var ok = (GRANT.tools || []).some(function (t) {
+      return t.name === name || (t.name.slice(-1) === "*" && name.indexOf(t.name.slice(0, -1)) === 0);
+    });
+    if (ok) return null;
+    var msg = "tool " + JSON.stringify(name) + " not in this origin's allowlist — the real daemon returns SCOPE_EXCEEDED. Request it in the connect scope.";
+    console.error("[harness] " + msg);
+    return msg;
+  }
+  function denyModel(p) {
+    var m = p && p.model;
+    if (!m) return (GRANT.models || []).length ? null : "no models granted";
+    var want = canonModel(String(m));
+    if ((GRANT.models || []).some(function (g) { return canonModel(g) === want; })) return null;
+    var msg = "model " + JSON.stringify(String(m)) + " not granted — the real daemon returns SCOPE_EXCEEDED. Granted: " + JSON.stringify(GRANT.models);
+    console.error("[harness] " + msg);
+    return msg;
+  }
   function capabilities() { return { version: "0.1", methods: [], models: ["sonnet", "haiku", "opus"], backends: ["claude-code (harness)"], agentic: true, user: { name: "Sameep" }, local: { tts: false } }; }
   function facets() { return PROJECT ? [PROJECT.brand, PROJECT.persona, PROJECT.personal, PROJECT.project].filter(Boolean) : []; }
   var BOUND_FOLDER = "~/Projects/" + (PROJECT ? PROJECT.id : "x");
@@ -491,14 +517,26 @@
   // resolves null, so the stage-1 auto-run contract above is untouched.
   var PAGE = /[?&]nopage=1/.test(location.search) ? null : ((PROJECT && PROJECT.page) || null);
   function seededKeys() { return PAGE ? [PAGE.key] : []; }
+  // The real daemon constrains keys to plain filenames (protocol STORAGE_KEY_RE) because a key maps
+  // 1:1 to `<key>.json` on disk. The stub used to accept ANY key, which is precisely how a batch of
+  // wrapps shipped colon-namespaced keys ("adforge:state") that the daemon rejected 100% of the
+  // time: the harness went green while the daemon persistence tier was dead. Mirror the rule so a
+  // bad key fails HERE, at authoring time.
+  var KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+  function badKey(key) {
+    if (KEY_RE.test(String(key))) return null;
+    console.error("[harness] invalid storage key " + JSON.stringify(key) + " — the real daemon rejects this; the write would silently do nothing.");
+    return { ok: false, error: "invalid storage key: " + JSON.stringify(key) };
+  }
   function storageOp(p) {
     p = p || {};
     switch (p.op) {
       case "get":
+        if (badKey(p.key)) return badKey(p.key);
         if (PAGE && p.key === PAGE.key && !(p.key in store)) return { ok: true, value: PAGE.html };
         return { ok: true, value: null };
-      case "set": return { ok: true };
-      case "delete": return { ok: true };
+      case "set": return badKey(p.key) || { ok: true };
+      case "delete": return badKey(p.key) || { ok: true };
       case "list": return { ok: true, keys: seededKeys() };
       // autoAssigned:false + a real folder so folder-bound wrapps (Redline) reach their model call.
       case "info": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
@@ -523,9 +561,9 @@
             case "claude_context": return resolve(contextOp(params));
             case "claude_storage": return resolve(storageOp(params));
             case "claude_listTools": return resolve({ tools: (GRANT.tools || []).map(function (t) { return { name: t.name, description: t.name, access: t.access }; }) });
-            case "claude_callTool": return resolve({ ok: true, content: [{ type: "text", text: JSON.stringify({ url: imageUrlFor(JSON.stringify(params)) }) }] });
-            case "claude_complete": { var ds = respond(params); logCall("complete", params, ds); var text = ds.filter(function (d) { return d.type === "text"; }).map(function (d) { return d.text; }).join(""); return resolve({ text: text, model: "harness-sonnet", usage: { inputTokens: 400, outputTokens: 220 } }); }
-            case "claude_stream": { var id = "s" + (++streamSeq); runStream(id, params || {}); return resolve({ streamId: id }); }
+            case "claude_callTool": { var td = denyTool(params); if (td) return reject(new Error(td)); return resolve({ ok: true, content: [{ type: "text", text: JSON.stringify({ url: imageUrlFor(JSON.stringify(params)) }) }] }); }
+            case "claude_complete": { var md = denyModel(params); if (md) return reject(new Error(md)); var ds = respond(params); logCall("complete", params, ds); var text = ds.filter(function (d) { return d.type === "text"; }).map(function (d) { return d.text; }).join(""); return resolve({ text: text, model: "harness-sonnet", usage: { inputTokens: 400, outputTokens: 220 } }); }
+            case "claude_stream": { var sd = denyModel(params); if (sd) return reject(new Error(sd)); var id = "s" + (++streamSeq); runStream(id, params || {}); return resolve({ streamId: id }); }
             case "claude_cancel": return resolve({ ok: true });
             case "claude_speak": return reject(new Error("no local tts in harness"));
             case "claude_session": return resolve({ ok: true, text: "" });
