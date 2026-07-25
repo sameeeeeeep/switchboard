@@ -73,7 +73,17 @@ mountConnect($("chip-dock"), {
   render();
 })();
 function wire(r) { if (wired) return; wired = true; r.on("permissionsChanged", () => void syncContext()); }
-async function onReady() { await syncContext(); await loadState(); render(); autostart(); }
+// onReady fires TWICE by design — mountConnect's onConnect AND the returning-user probe,
+// whichever wins the race. Hydrating from storage on BOTH passes is a real (timing-dependent) bug:
+// the second pass re-reads the run the first pass just saved, REPLACING the in-memory object the
+// running pipeline still holds a reference to. The pipeline then finishes into a detached orphan and
+// the UI sits forever on a run that never completes. Hydrate once.
+let hydrated = false;
+async function onReady() {
+  await syncContext();
+  if (!hydrated) { hydrated = true; await loadState(); }
+  render(); autostart();
+}
 
 // CONTEXT-FIRST: the moment a context is lent, everything derives from it — options from
 // data.products, tone from data.voice, colors from data.palette (FLAT hex strings — see

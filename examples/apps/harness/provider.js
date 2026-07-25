@@ -534,10 +534,10 @@
       case "get":
         if (badKey(p.key)) return badKey(p.key);
         if (PAGE && p.key === PAGE.key && !(p.key in store)) return { ok: true, value: PAGE.html };
-        return { ok: true, value: null };
-      case "set": return badKey(p.key) || { ok: true };
-      case "delete": return badKey(p.key) || { ok: true };
-      case "list": return { ok: true, keys: seededKeys() };
+        return { ok: true, value: (p.key in store) ? store[p.key] : null };
+      case "set": if (badKey(p.key)) return badKey(p.key); store[p.key] = String(p.value == null ? "" : p.value); return { ok: true };
+      case "delete": if (badKey(p.key)) return badKey(p.key); delete store[p.key]; return { ok: true };
+      case "list": return { ok: true, keys: seededKeys().concat(Object.keys(store)) };
       // autoAssigned:false + a real folder so folder-bound wrapps (Redline) reach their model call.
       case "info": return { ok: true, info: { folder: BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
       case "bind": return { ok: true, info: { folder: p.path || BOUND_FOLDER, autoAssigned: false, count: Object.keys(store).length } };
