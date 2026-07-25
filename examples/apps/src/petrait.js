@@ -8,6 +8,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
+// styling the portrait cards below use to keep the model's pick out of the accent state.
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -230,7 +233,9 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Describe your pet in one line first.", true); return; }
-  state.run = { id: uid(), input, concepts: null, selectedId: null, steers: [], status: "", error: null };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is the court painter's own suggestion — it still
+  // carries the one-go auto-advance, but only `selectedId` (a human click) ever wears the accent.
+  state.run = { id: uid(), input, concepts: null, selectedId: null, draftedId: null, steers: [], status: "", error: null };
   await saveState(); render();
   await proposeConcepts();
 }
@@ -260,12 +265,15 @@ async function proposeConcepts(steer) {
       imageUrl: null, painting: false, imgError: null,
     }));
     if (!r.concepts.some((o) => o.recommended)) r.concepts[0].recommended = true;
-    r.selectedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    // Rule 5 — the painter may DRAFT, never LOCK. This still paints itself (the one-go), but the
+    // card stays neutral-dashed until a human picks it.
+    r.draftedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
-  // ONE-GO: auto-advance to the artifact by painting the recommended concept (unless it already hangs).
+  // ONE-GO: auto-advance to the artifact by painting the drafted concept (unless it already hangs).
   if (r.concepts && !r.error) {
-    const rec = r.concepts.find((o) => o.id === r.selectedId);
+    const rec = r.concepts.find((o) => o.id === r.draftedId);
     if (rec && !rec.imageUrl && !rec.painting) void paintPortrait(rec.id);
   }
 }
@@ -299,17 +307,41 @@ async function paintPortrait(id, opts = {}) {
   finally { c.painting = false; await saveState(); render(); }
 }
 
+// The escape hatch's other half: the sitter's own direction becomes a real card on the slate — a
+// human's pick from the moment it exists, so it wears the accent and paints immediately.
+async function paintOwnConcept(text) {
+  const r = state.run; if (!r || !r.concepts) return;
+  const words = String(text || "").trim(); if (!words) return;
+  const own = {
+    id: uid(),
+    label: words.slice(0, 60),
+    text: "your own direction",
+    imagePrompt: `A portrait of ${r.input}. ${words}. Keep the animal unmistakably itself — same species, markings and expression. No text, words or watermarks.`.slice(0, 700),
+    recommended: false,
+    imageUrl: null, painting: false, imgError: null,
+  };
+  r.concepts = [...r.concepts, own];
+  r.selectedId = own.id;
+  await saveState(); render();
+  await paintPortrait(own.id);
+}
+
 // ==== render ================================================================================
 // Portrait card: the house option atom, extended with a gilt-framed image, a paint/repaint action,
 // and per-card painting status + error. Clicking an unpainted card selects AND paints it (a
 // deliberate consent); the recommended one paints itself once via the one-go auto-advance.
-function portraitCards(concepts, selectedId, onPick, onPaint) {
+// Rule 5 — the accent means A HUMAN CHOSE. The painter's own pick is only a DRAFT: hairline-dashed
+// card, neutral tag (`.rec.k-draft` from the kit), never the gilt accent. Nothing but a click on a
+// card puts it in `.sel`.
+function portraitCards(concepts, selectedId, draftedId, onPick, onPaint) {
   const wrap = el("div", "opts");
   for (const c of concepts) {
-    const card = el("div", "opt" + (c.id === selectedId ? " sel" : ""));
+    const chosen = selectedId != null && c.id === selectedId;
+    const drafted = !chosen && draftedId != null && c.id === draftedId;
+    const card = el("div", "opt" + (chosen ? " sel" : "") + (drafted ? " k-drafted" : ""));
     card.onclick = () => onPick(c);
     card.append(el("div", "check", "✓"));
-    if (c.recommended) card.append(el("div", "rec", "recommended"));
+    if (c.recommended) card.append(el("div", "rec k-draft", "recommended"));
     card.append(el("div", "o-label", c.label));
     if (c.text) card.append(el("div", "o-text", c.text));
     if (c.imageUrl) {
@@ -371,10 +403,17 @@ function render() {
   if (r.concepts) {
     col.append(el("div", "kicker sect", "the concepts"));
     // Selecting an unpainted concept paints it (deliberate per-portrait consent); repaint via its button.
-    col.append(portraitCards(r.concepts, r.selectedId, (c) => {
-      r.selectedId = c.id; void saveState(); render();
+    col.append(portraitCards(r.concepts, r.selectedId, r.draftedId, (c) => {
+      r.selectedId = c.id; void saveState(); render();   // the ONLY route to the accent state
       if (!c.imageUrl && !c.painting) void paintPortrait(c.id);
     }, (id, o) => void paintPortrait(id, o)));
+    // Doctrine 4 — a slate without an exit is a cage. Sit the pet for a portrait of your own words.
+    col.append(escapeHatch({
+      label: "none of these — describe the portrait you'd want",
+      placeholder: "e.g. a sea captain on the deck in a storm, oil on canvas",
+      sendLabel: "paint that",
+      onSubmit: (t) => paintOwnConcept(t),
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

@@ -68,8 +68,10 @@
       #chips{display:flex;flex-wrap:wrap;gap:8px}
       .chip{border:1px solid var(--line);background:var(--panel-2);color:var(--paper);font:400 11.5px/1.45 var(--mono);padding:8px 12px;cursor:pointer;text-align:left;max-width:100%;transition:border-color .15s,color .15s}
       .chip:hover:not(:disabled){border-color:var(--line-bright)}
-      .chip.rec{border-color:var(--phosphor-dim);color:var(--phosphor)}
-      .chip.rec:hover:not(:disabled){border-color:var(--phosphor)}
+      /* A generated starter is a DRAFT, not a decision — hairline-dashed with a neutral tag.
+         Phosphor is the accent and stays reserved for what a human acts on (doctrine 5). */
+      .chip.rec{border-style:dashed;border-color:var(--line);color:var(--paper)}
+      .chip.rec .sug{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-right:8px}
       .chip.more{border-style:dashed;color:var(--phosphor-dim)}
       .chip.more:hover:not(:disabled){color:var(--phosphor)}
       .chip.sample{cursor:default;color:var(--muted)}

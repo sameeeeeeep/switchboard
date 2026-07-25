@@ -16,6 +16,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
+// modifier styles. DRAFTED (what the director bet on) is never CHOSEN (what a human clicked).
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -232,7 +235,9 @@ async function start(input, opts = {}) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Give it the video title first.", true); return; }
-  state.run = { id: uid(), input, fromContext: !!opts.fromContext, concepts: null, selectedId: null, steers: [], status: "", error: null, images: {} };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is Thumbs' own highest-CTR bet; only `selectedId`
+  // — set by a human clicking a card — ever wears the accent.
+  state.run = { id: uid(), input, fromContext: !!opts.fromContext, concepts: null, selectedId: null, draftedId: null, own: "", steers: [], status: "", error: null, images: {} };
   await saveState(); render();
   await proposeConcepts();
 }
@@ -249,6 +254,9 @@ async function proposeConcepts(steer) {
       `You are Thumbs, a YouTube thumbnail director who lives and dies by click-through rate.`,
       `The video title is: "${r.input}".`,
       d ? `The channel/brand this thumbnail is for — match its palette, audience and energy:\n${JSON.stringify(d).slice(0, 1800)}` : "",
+      // The escape hatch: the creator rejected the slate and said what they'd do instead. Their own
+      // words anchor the whole re-draft — they outrank every earlier steer.
+      r.own ? `The creator rejected the previous concepts and described what they want INSTEAD: "${r.own}". Anchor all three concepts on that; it outranks any earlier steering.` : "",
       r.steers.length ? `Steering notes (apply the LATEST hardest): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
       `Propose 3 DISTINCT thumbnail concepts — each a genuinely different visual bet on why someone clicks.`,
       `Return ONLY a JSON array — no prose, no code fences. Each element EXACTLY:`,
@@ -270,7 +278,9 @@ async function proposeConcepts(steer) {
       recommended: !!o.recommended,
     }));
     if (!r.concepts.some((o) => o.recommended)) r.concepts[0].recommended = true;
-    r.selectedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    // A fresh slate is a DRAFT, never a decision — the accent stays off until a human clicks.
+    r.draftedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    r.selectedId = null;
     r.images = {}; // fresh concepts → no stale renders
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
@@ -293,7 +303,6 @@ function buildThumbPrompt(c) {
 async function renderThumb(id) {
   const r = state.run; if (!r || !relay || renderingId) return;
   const c = (r.concepts || []).find((o) => o.id === id); if (!c) return;
-  r.selectedId = id;
   renderingId = id;
   r.images[id] = { url: r.images[id]?.url || null, status: "rendering on your Higgsfield…", error: null };
   render();
@@ -352,19 +361,42 @@ function render() {
     t.onclick = () => void proposeConcepts();
     col.append(t);
   }
-  if (r.concepts && !running) col.append(steerRow((s) => void proposeConcepts(s)));
+  if (r.concepts && !running) {
+    // Doctrine 4 — a slate of three bets is a menu, and a menu needs an exit.
+    col.append(escapeHatch({
+      label: "none of these — say what you'd do instead",
+      hint: "your own angle anchors a fresh set of three concepts.",
+      placeholder: "e.g. no face at all — just the empty bowl and a countdown",
+      sendLabel: "draft mine",
+      onSubmit: (t) => ownDirection(t),
+    }));
+    col.append(steerRow((s) => void proposeConcepts(s)));
+  }
   view.append(col);
+}
+
+// THE ESCAPE HATCH (doctrine 4) — "none of these". The creator's own words become the anchor of a
+// fresh slate rather than one more note appended to the old brief.
+async function ownDirection(text) {
+  const r = state.run; if (!r || running) return;
+  const t = String(text || "").trim(); if (!t) return;
+  r.own = t;
+  await saveState();
+  await proposeConcepts();
 }
 
 // One concept = the house .opt card + a 16:9 render slot and its own render button. The card body
 // is the stage-1 artifact; the render slot is stage 2, filled only on a click.
 function conceptCard(c) {
   const r = state.run;
+  // Rule 5 — the accent means A HUMAN CHOSE. Thumbs' own highest-CTR bet is a DRAFT: a dashed
+  // hairline and a neutral tag. Only `selectedId`, set by the click handlers below, lights a card.
   const sel = c.id === r.selectedId;
-  const card = el("div", "opt concept" + (sel ? " sel" : ""));
+  const drafted = !sel && c.id === r.draftedId;
+  const card = el("div", "opt concept" + (sel ? " sel" : "") + (drafted ? " k-drafted" : ""));
   card.onclick = () => { r.selectedId = c.id; render(); };
   card.append(el("div", "check", "✓"));
-  if (c.recommended) card.append(el("div", "rec", "highest CTR"));
+  if (c.recommended) card.append(el("div", "rec k-draft", "highest CTR"));
   card.append(el("div", "o-label", c.label));
 
   const overlay = el("div", "overlay");
@@ -388,7 +420,8 @@ function conceptCard(c) {
   const foot = el("div", "c-foot");
   const btn = el("button", (img && img.url) ? "act" : "primary sm", renderingId === c.id ? "rendering…" : (img && img.url) ? "↺ re-render" : "Render thumbnail");
   btn.disabled = !!renderingId;
-  btn.onclick = (e) => { e.stopPropagation(); void renderThumb(c.id); };
+  // Spending a credit on this concept IS a human picking it — the other route to the accent state.
+  btn.onclick = (e) => { e.stopPropagation(); r.selectedId = c.id; void renderThumb(c.id); };
   foot.append(btn);
   if (img && img.url) {
     const dl = el("a", "act dl", "⬇ save");
@@ -397,6 +430,7 @@ function conceptCard(c) {
     foot.append(dl);
   }
   card.append(foot);
+  if (sel) card.append(el("span", "k-by", "chosen by you"));
   return card;
 }
 render();

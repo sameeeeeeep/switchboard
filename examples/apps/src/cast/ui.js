@@ -11,12 +11,20 @@ export const el = (t, c, x) => { const n = document.createElement(t); if (c) n.c
 export const clear = (node) => { if (node) node.textContent = ""; return node; };
 
 // ---------- OptionCard: one component, every facet ----------
-// opts: { selected, onPick, pickLabel, dim }. Renders title/subtitle/body/bullets/chips/palette/meta,
-// each only if present. A recommended card gets the coral ring + badge; a selected card gets the
-// locked treatment.
+// opts: { selected, drafted, onPick, pickLabel, draftLabel, dim }. Renders
+// title/subtitle/body/bullets/chips/palette/meta, each only if present.
+//
+// THREE states, and DRAFTED is not the same thing as LOCKED (doctrine 5 — the brand accent may only
+// ever mark a decision a human made):
+//   recommended → the model's suggestion inside an un-decided slate (soft accent ring, as before)
+//   drafted     → Cast picked this one on autopilot. Dashed hairline, neutral "CAST'S PICK" tag, and
+//                 a "confirm" call to action. Deliberately NOT accent: nobody has chosen yet.
+//   selected    → a human locked it. Accent ring + "LOCKED ✓". The only accent-bearing state.
 export function optionCard(card, opts = {}) {
-  const c = el("button", "opt" + (card.recommended ? " rec" : "") + (opts.selected ? " sel" : ""));
-  if (card.recommended && !opts.selected) c.append(el("span", "rb", "RECOMMENDED"));
+  const drafted = !!opts.drafted && !opts.selected;
+  const c = el("button", "opt" + (card.recommended && !drafted ? " rec" : "") + (drafted ? " draft" : "") + (opts.selected ? " sel" : ""));
+  if (drafted) c.append(el("span", "rb draft", "CAST'S PICK"));
+  else if (card.recommended && !opts.selected) c.append(el("span", "rb", "RECOMMENDED"));
   if (opts.selected) c.append(el("span", "rb sel", "LOCKED ✓"));
   c.append(el("div", "nm", card.title));
   if (card.subtitle) c.append(el("div", "ni", card.subtitle));
@@ -25,16 +33,17 @@ export function optionCard(card, opts = {}) {
   if (card.palette?.length) { const p = el("div", "pal"); for (const s of card.palette) { const sw = el("span", "sw"); sw.style.background = s.hex; sw.title = s.name || s.hex; p.append(sw); } c.append(p); }
   if (card.chips?.length) { const row = el("div", "ochips"); for (const ch of card.chips) row.append(el("span", "oc", ch)); c.append(row); }
   if (card.meta?.length) { const m = el("div", "ometa"); for (const kv of card.meta) { const r = el("span"); r.append(el("b", null, kv.label + " "), document.createTextNode(kv.value)); m.append(r); } c.append(m); }
-  c.append(el("div", "use", opts.selected ? "Locked" : (opts.pickLabel || "Lock this →")));
+  c.append(el("div", "use", opts.selected ? "Locked" : drafted ? (opts.draftLabel || "Confirm this ✓") : (opts.pickLabel || "Lock this →")));
   if (opts.onPick) c.onclick = () => opts.onPick(card);
   return c;
 }
 
-// A grid of option cards for a facet, with a loading/empty state.
+// A grid of option cards for a facet, with a loading/empty state. `isDrafted` marks the card Cast
+// picked on autopilot — shown as a draft, never as a lock, until a human confirms it.
 export function optionGrid(cards, opts = {}) {
   const box = el("div", "opts");
   if (!cards?.length) { box.append(el("div", "empty-note", opts.empty || "No options yet.")); return box; }
-  for (const card of cards) box.append(optionCard(card, { ...opts, selected: opts.isSelected?.(card) }));
+  for (const card of cards) box.append(optionCard(card, { ...opts, selected: opts.isSelected?.(card), drafted: opts.isDrafted?.(card) }));
   return box;
 }
 

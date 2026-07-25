@@ -109,8 +109,13 @@
       /* the portrait grid — the viral payload */
       .yb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
       .yb-card { position: relative; border: 1px solid var(--edge); background: var(--inset); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s; }
-      .yb-card.rec { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 45%, var(--inset)); }
-      .yb-rec { position: absolute; right: 10px; top: 10px; z-index: 2; font: 500 8.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--page); background: var(--accent); border-radius: 999px; padding: 4px 8px; }
+      /* Doctrine 5 — the accent means A HUMAN CHOSE. The model's own favourite is a DRAFT: a dashed
+         hairline and a neutral tag, never the accent fill a picked card would wear. */
+      .yb-card.rec { border-color: var(--edge); border-style: dashed; background: var(--inset); }
+      .yb-rec { position: absolute; right: 10px; top: 10px; z-index: 2; font: 500 8.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); background: var(--page); border: 1px dashed var(--edge); border-radius: 999px; padding: 4px 8px; }
+      /* An era the HUMAN asked for. This is the one card that earns the accent. */
+      .yb-card.mine { border-color: var(--accent); border-style: solid; background: color-mix(in srgb, var(--accent-soft) 45%, var(--inset)); }
+      .yb-rec.mine { color: var(--page); background: var(--accent); border: 1px solid var(--accent); }
 
       /* the frame — foil-edged portrait, 4:5 */
       .yb-frame { position: relative; aspect-ratio: 4 / 5; border-radius: 9px; overflow: hidden; background: var(--inset); border: 1px solid var(--edge-soft); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }

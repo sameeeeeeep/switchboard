@@ -8,6 +8,8 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The shared "none of these — say what you'd do instead" exit (doctrine 4).
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -386,8 +388,11 @@ function paintActions(era) {
 }
 
 function eraCard(era) {
-  const card = el("div", "yb-card" + (era.recommended ? " rec" : ""));
-  if (era.recommended) card.append(el("div", "yb-rec", "our pick"));
+  // `recommended` is the model's DRAFT favourite, not a decision anyone made — it reads as a neutral
+  // dashed tag (see .yb-card.rec in the shell), never the accent. A human's own era is marked "yours".
+  const card = el("div", "yb-card" + (era.recommended ? " rec" : "") + (era.custom ? " mine" : ""));
+  if (era.custom) card.append(el("div", "yb-rec mine", "yours"));
+  else if (era.recommended) card.append(el("div", "yb-rec", "recommended"));
   const frame = el("div", "yb-frame"); frame.id = "yb-frame-" + era.id;
   fillFrame(frame, era);
   const meta = el("div", "yb-meta");
@@ -399,6 +404,24 @@ function eraCard(era) {
   // paint actions after the id is in the tree
   queueMicrotask(() => paintActions(era));
   return card;
+}
+
+// The escape hatch's payload: the human's own era, shot to the same spec as the generated ones. The
+// prompt is templated locally (no extra round-trip) so their words reach the camera unmediated.
+async function addOwnEra(text) {
+  const r = state.run; if (!r || !relay) return;
+  const line = String(text || "").trim(); if (!line) return;
+  const era = {
+    id: uid(),
+    label: line.length <= 60 ? line : line.slice(0, 57) + "…",
+    vibe: "your call",
+    imagePrompt: `A vintage yearbook HEADSHOT portrait of ${r.input}. The era and look: ${line}. Mottled studio backdrop, period-accurate film stock, lighting and faded colors, square-on, shoulders-up, no text, no captions, no logos, no watermarks.`.slice(0, 800),
+    recommended: false, custom: true,
+    imageUrl: null, imgStatus: "idle", imgError: null,
+  };
+  r.eras = [...(r.eras || []), era];
+  await saveState(); render();
+  await developPortrait(era, token());
 }
 
 // ==== render ================================================================================
@@ -446,6 +469,17 @@ function render() {
     const t = el("button", "act", "try again");
     t.onclick = () => void proposeEras();
     col.append(t);
+  }
+  // DOCTRINE 4 — the slate is three decades the model liked; the exit is the decade YOU want. Unlike
+  // the steer row (which re-rolls all three), this adds your era to the sheet and shoots it.
+  if (r.eras && !running) {
+    col.append(escapeHatch({
+      label: "none of these — name the era you actually want",
+      placeholder: "e.g. 1960s mod, thick eyeliner, black turtleneck",
+      hint: "It joins the sheet as your own portrait, shot to the same spec.",
+      sendLabel: "shoot mine",
+      onSubmit: (text) => { void addOwnEra(text); },
+    }));
   }
   if (r.eras && !running) col.append(steerRow((s) => void proposeEras(s)));
   view.append(col);

@@ -9,6 +9,10 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// Option cards come from the shared kit (src/kit/ui.js): DRAFTED (the angle Roast liked, and wrote
+// the first roast from) stays visually distinct from CHOSEN (a card a human clicked) so the accent
+// never paints a machine decision (doctrine 5), and the slate gets an escape hatch (doctrine 4).
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +154,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names, plus the drafted-vs-chosen distinction and the escape hatch).
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -225,7 +216,11 @@ async function start(input, fromContext) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Paste something to roast first.", true); return; }
-  state.run = { id: uid(), input, fromContext: !!fromContext, angles: null, selectedId: null, steers: [], roast: "", status: "", error: null };
+  // THREE ids, not one (doctrine 5). selectedId = the angle the roast is currently written FROM (the
+  // pipeline keeps auto-advancing on the recommendation, so the cold open still lands a full roast);
+  // draftedId = Roast's own pick, tagged neutrally; chosenId = a card a HUMAN clicked, and the only
+  // thing that ever wears the accent.
+  state.run = { id: uid(), input, fromContext: !!fromContext, angles: null, draftedId: null, selectedId: null, chosenId: null, steers: [], roast: "", status: "", error: null };
   await saveState(); render();
   await proposeAngles();
 }
@@ -245,22 +240,30 @@ async function proposeAngles() {
     if (!arr || !arr.length) throw new Error("no angles came back — try again");
     r.angles = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "The Angle").slice(0, 60), text: String(o.text || "").slice(0, 300), recommended: !!o.recommended }));
     if (!r.angles.some((o) => o.recommended)) r.angles[0].recommended = true;
-    r.selectedId = (r.angles.find((o) => o.recommended) || r.angles[0]).id;
+    // Roast may DRAFT the angle it likes and write from it — but drafting is not choosing. A fresh
+    // slate also drops any earlier pick: those cards no longer exist.
+    r.draftedId = (r.angles.find((o) => o.recommended) || r.angles[0]).id;
+    r.selectedId = r.draftedId;
+    r.chosenId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.angles && !r.error) await roastFrom(r.selectedId); // ONE-GO: auto-advance on the recommended angle
 }
 
-async function roastFrom(id, steer) {
+// `byHuman` is the ONLY route to the accent state — it is wired to a card click and to the escape
+// hatch, and to nothing else. Auto-advance and steering re-roast the same angle without claiming a
+// decision was made.
+async function roastFrom(id, steer, byHuman) {
   const r = state.run; if (!r || !relay || running) return;
   r.selectedId = id;
+  if (byHuman) r.chosenId = id;
   const angle = (r.angles || []).find((o) => o.id === id); if (!angle) return;
   if (steer) r.steers.push(steer);
   running = true; r.error = null; r.roast = ""; r.status = "loading the roast…"; render();
   try {
     const text = await streamText({
       prompt: [
-        `You are ${APP.name}, writing a comedy roast of the pasted text below, through this angle: "${angle.label} — ${angle.text}".`,
+        `You are ${APP.name}, writing a comedy roast of the pasted text below, through this angle: "${[angle.label, angle.text].filter(Boolean).join(" — ")}".`,
         `THE TARGET:\n"""${r.input.slice(0, 3000)}"""`,
         r.fromContext ? `(This is the user's OWN brand — roast the positioning and marketing choices, never the person.)` : "",
         r.steers.length ? `Steering (apply the latest): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
@@ -325,8 +328,26 @@ function render() {
   col.append(bar);
 
   if (r.angles) {
-    col.append(el("div", "kicker sect", "the angle"));
-    col.append(optionCards(r.angles, r.selectedId, (o) => void roastFrom(o.id)));
+    col.append(el("div", "kicker sect", r.chosenId ? "the angle" : "the angle — drafted, yours to change"));
+    col.append(optionCards({
+      options: r.angles,
+      chosenId: r.chosenId,     // accent — a human clicked, nothing else
+      draftedId: r.draftedId,   // neutral tag — Roast's pick, written from but not decided
+      onChoose: (o) => void roastFrom(o.id, null, true),
+      disabled: running,
+      // Rule 4 — three angles is a menu; this is the exit. Your own lens becomes the roast.
+      escape: {
+        label: "none of these — say the angle you'd roast from",
+        placeholder: "the lens you'd take (e.g. 'the buzzword buffet')…",
+        sendLabel: "use mine",
+        onSubmit: (text) => {
+          if (running) return;
+          const mine = { id: uid(), label: text.slice(0, 60), text: "", recommended: false, custom: true };
+          r.angles = [...r.angles, mine];
+          return roastFrom(mine.id, null, true);
+        },
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

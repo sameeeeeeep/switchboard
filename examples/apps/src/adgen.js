@@ -273,10 +273,15 @@ function renderEntry() {
 function reflect() {
   const busy = drafting || castingIdx >= 0;
   const on = !!relay;
+  // Once the wall has drafted itself the big lime CTA is a lie about what's left to do — it demotes
+  // to a quiet "redraft" (still there, still honest about replacing the wall), never disappears.
+  const hasWall = state.directions.length > 0;
+  const verb = hasWall ? "Redraft" : "Draft";
+  $("draft-brand").className = hasWall ? "btn" : "btn btn-primary btn-big";
   $("draft-brand").disabled = !on || busy;
-  $("draft-brand").textContent = drafting ? "Drafting…" : `Draft the wall for ${lent ? lent.name : "your brand"}`;
+  $("draft-brand").textContent = drafting ? "Drafting…" : `${verb} the wall for ${lent ? lent.name : "your brand"}`;
   $("draft-url").disabled = !on || busy;
-  $("draft-url").textContent = drafting ? "Drafting…" : "Draft the wall";
+  $("draft-url").textContent = drafting ? "Drafting…" : `${verb} the wall`;
   $("use-brand").disabled = !on || busy;
   $("switch-brand").disabled = busy;
   $("more").disabled = !on || busy;
@@ -612,9 +617,12 @@ function renderWall() {
     const prompt = el("div", "tprompt",
       dir.imagePrompt.length > 150 ? dir.imagePrompt.slice(0, 150) + "…" : dir.imagePrompt);
     const box = el("div", "timgbox");
-    box.style.aspectRatio = aspectOf(dir.format);
     const hint = el("div", "timghint");
     box.append(hint);
+    // A tile only takes its full aspect-ratio size once it holds a real creative. Until then it is
+    // a short aspect-labelled strip, so all six directions stay comparable on one screen.
+    if (dir.image) box.style.aspectRatio = aspectOf(dir.format);
+    else { box.classList.add("strip"); hint.append(el("span", "aspecttag", dir.format)); }
     if (dir.image) {
       const img = document.createElement("img");
       img.alt = dir.headline || "rendered ad creative";
@@ -632,7 +640,7 @@ function renderWall() {
       line.append(el("span", "dotlive"), document.createTextNode("rendering — approve if asked…"));
       hint.append(line);
     } else {
-      hint.textContent = "not rendered yet — one click, one Higgsfield credit";
+      hint.append(document.createTextNode("not rendered yet — one click, one Higgsfield credit"));
     }
     const foot = el("div", "tilefoot");
     const btn = el("button", dir.image ? "btn" : "btn btn-primary",
@@ -647,6 +655,11 @@ function renderWall() {
     tile.append(top, el("div", "theadline", dir.headline), prompt, box, foot);
     mount.append(tile);
   });
+  // One honest line of wall state — counted off the tiles themselves, never asserted.
+  const rendered = state.directions.filter((d) => d.image).length;
+  $("wallsum").textContent = state.directions.length
+    ? `${rendered} of ${state.directions.length} rendered · 1 credit each`
+    : "";
   $("wall-sec").hidden = state.directions.length === 0;
 }
 

@@ -343,7 +343,9 @@ function reflect() {
   $("rebrief").disabled = !on;
   $("reread").disabled = !on;
   $("sys-retry").disabled = busy;
-  document.querySelectorAll("#cuts .cut").forEach((b) => { b.disabled = !on; });
+  // the escape-hatch input rides with the cut buttons — renderCuts() paints the row while a read is
+  // still in flight, so anything it disables must be re-enabled here or it stays dead forever.
+  document.querySelectorAll("#cuts .cut, #cuts .cutown input").forEach((b) => { b.disabled = !on; });
   for (const id of ["conn-hint", "chart-hint"]) {
     const el = $(id);
     el.textContent = "";
@@ -463,7 +465,7 @@ function vetBrief(d) {
   }
   return d;
 }
-// Cuts tolerate absence entirely — the defaults keep the row alive, exactly one ★.
+// Cuts tolerate absence entirely — the defaults keep the row alive, exactly one suggestion.
 function normalizeCuts(raw) {
   let cuts = (Array.isArray(raw) ? raw : [])
     .filter((c) => c && typeof c.title === "string" && c.title.trim())
@@ -562,7 +564,7 @@ async function doBrief() {
   }
 }
 
-// Deeper cuts — the "generate more" affordance: 3 subject chips (one ★) after the pin, each a
+// Deeper cuts — the "generate more" affordance: 3 subject chips (one suggested) after the pin, each a
 // short streamed verdict; "another cut" lets the chart choose an uncut subject itself.
 async function doCut(title) {
   if (!relay) { sys("connect Switchboard (top right) first."); return; }
@@ -670,7 +672,7 @@ function renderReading(r) {
   // the pin
   $("pin-quote").textContent = String(d.pin || "");
 
-  // deeper cuts — options with one ★, delivered verdicts persisted and re-rendered
+  // deeper cuts — options with one suggestion, delivered verdicts persisted and re-rendered
   renderCuts(r);
 }
 function fillList(id, items) {
@@ -685,11 +687,15 @@ function renderCuts(r) {
   const row = $("cuts");
   row.textContent = "";
   const enabled = !!relay && !busy;
+  // Doctrine 5 — white (the accent) means a human asked for this cut. The chart's own "recommended"
+  // is a DRAFT: dashed hairline, neutral tag, no accent until someone actually takes it.
   cuts.forEach((c) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "cut" + (c.recommended ? " rec" : "");
-    b.textContent = (c.recommended ? "★ " : "") + c.title + (c.body ? " — again" : "");
+    const taken = !!c.body;
+    b.className = "cut" + (taken ? " taken" : c.recommended ? " rec" : "");
+    if (!taken && c.recommended) b.append(el("span", "sug", "suggested"));
+    b.append(document.createTextNode(c.title + (taken ? " — again" : "")));
     b.disabled = !enabled;
     b.addEventListener("click", () => doCut(c.title));
     row.append(b);
@@ -701,6 +707,33 @@ function renderCuts(r) {
   more.disabled = !enabled;
   more.addEventListener("click", () => doCut(null));
   row.append(more);
+
+  // Doctrine 4's other half — the escape hatch. Three offered subjects is a menu; this is the exit,
+  // so the querent can name the cut the chart never thought to offer. Same doCut() path.
+  const own = el("div", "cutown", ""); // el() stringifies a missing 3rd arg — pass "" explicitly
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.placeholder = "none of these — name your own cut";
+  inp.maxLength = 60;
+  inp.disabled = !enabled;
+  inp.setAttribute("aria-label", "name your own deeper cut");
+  const go = document.createElement("button");
+  go.type = "button";
+  go.className = "cut";
+  go.textContent = "cut it ▸";
+  go.disabled = !enabled;
+  const fire = () => {
+    const t = inp.value.trim();
+    // `enabled` is a snapshot from render time — renderCuts() paints while a read is still in
+    // flight, so it goes stale. reflect() keeps the button's disabled flag live; trust that.
+    if (!t || go.disabled) { inp.focus(); return; }
+    inp.value = "";
+    doCut(t);
+  };
+  go.addEventListener("click", fire);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fire(); } });
+  own.append(inp, go);
+  row.append(own);
 
   const secs = $("cut-secs");
   secs.textContent = "";

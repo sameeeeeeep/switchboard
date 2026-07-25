@@ -8,6 +8,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The shared decision atom. optionCards() keeps the accent for a human click and renders the
+// model's pick as a neutral DRAFT; its `escape` option is the way out of the menu. (doctrine 4 + 5)
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +153,9 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names the shell already styles), so DRAFTED (what Anthem proposed) and CHOSEN (what a human
+// clicked) are different states and only the second one wears the accent.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -222,7 +213,10 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Give it one line first — a person, a moment, a brand.", true); return; }
-  state.run = { id: uid(), input, concepts: null, selectedId: null, steers: [], song: "", status: "", error: null };
+  // selectedId = the concept the song is currently written FROM (may be a draft the pipeline
+  // auto-advanced on). chosenId = the concept a HUMAN clicked, and the only thing that lights a
+  // card up in the brand accent. They are deliberately not the same field. (doctrine 5)
+  state.run = { id: uid(), input, concepts: null, selectedId: null, draftedId: null, chosenId: null, steers: [], song: "", status: "", error: null };
   await saveState(); render();
   await proposeConcepts();
 }
@@ -247,7 +241,11 @@ async function proposeConcepts() {
       recommended: !!o.recommended,
     }));
     if (!r.concepts.some((o) => o.recommended)) r.concepts[0].recommended = true;
-    r.selectedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    // The model may DRAFT, never LOCK: the pipeline still auto-advances on this pick, but the card
+    // wears a neutral dashed "recommended" tag until a human actually clicks one. (doctrine 5)
+    r.draftedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    r.chosenId = null;
+    r.selectedId = r.draftedId;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.concepts && !r.error) await writeSong(r.selectedId); // ONE-GO: auto-advance on the recommendation
@@ -263,7 +261,9 @@ async function writeSong(id, steer) {
     const text = await streamText({
       prompt: [
         `You are ${APP.name}, a songwriter. Write a complete, ORIGINAL song about: "${r.input}".`,
-        `Chosen concept — Genre/style: ${c.label}. Mood: ${c.mood || "—"}. Central hook: ${c.hook || "—"}. Build the chorus around that hook.`,
+        c.custom
+          ? `The listener rejected the proposed concepts and described the song they want instead — follow it exactly: "${c.label}"`
+          : `Chosen concept — Genre/style: ${c.label}. Mood: ${c.mood || "—"}. Central hook: ${c.hook || "—"}. Build the chorus around that hook.`,
         brand ? `Context (make it specific and true to this — real details, its voice; never invent facts about it): ${JSON.stringify(brand.data).slice(0, 2000)}` : "",
         r.steers.length ? `Steering (apply the latest): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
         "Write 100% original lyrics — never quote or pastiche any existing song. Structure it fully with section labels.",
@@ -322,7 +322,27 @@ function render() {
 
   if (r.concepts) {
     col.append(el("div", "kicker sect", "the concept"));
-    col.append(optionCards(r.concepts, r.selectedId, (o) => void writeSong(o.id)));
+    col.append(optionCards({
+      options: r.concepts,
+      chosenId: r.chosenId,        // null until a human clicks — the accent never lands here first
+      draftedId: r.draftedId,      // what Anthem proposed, and what the song was auto-drafted from
+      chosenNote: "you chose this",
+      onChoose: (o) => { r.chosenId = o.id; void writeSong(o.id); },
+      // The way out of the menu: a songwriter's own idea beats three drafted ones. (doctrine 4)
+      escape: {
+        label: "none of these — say what you'd write instead",
+        hint: "your words go straight into the song",
+        placeholder: "e.g. a slow acoustic lullaby about leaving a city at 5am…",
+        sendLabel: "write this",
+        onSubmit: (text) => {
+          if (running) return;
+          const o = { id: uid(), label: text.slice(0, 200), hook: "", mood: "", text: "your own direction", recommended: false, custom: true };
+          r.concepts.push(o);
+          r.chosenId = o.id;
+          return writeSong(o.id);
+        },
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

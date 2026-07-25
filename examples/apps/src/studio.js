@@ -455,6 +455,9 @@ function renderLooks() {
     ? looks.concepts : null;
   if (have) {
     have.forEach((c, i) => mount.append(lookCard(c, i === 0)));
+    // Rule 4 — a drafted shoot list is a menu; this is its exit. What the person types becomes the
+    // art direction on the very next frame, on exactly the same path as a drafted look.
+    mount.append(ownLookCard());
     if (looksBusy) {
       note.hidden = false;
       note.textContent = "refreshing the list in the background — these are your last drafts.";
@@ -501,6 +504,39 @@ function lookCard(c, rec) {
   btn.addEventListener("click", () => shootLook(c));
   foot.append(asp, btn);
   card.append(head, scene, dir, foot);
+  return card;
+}
+
+// "None of these" — the human's own look, in the same row as the drafted ones. It lands in the
+// art-direction box (the one input the brief and every frame already read), drops the drafted scene
+// chip so nothing else is speaking for them, and leaves the shot one deliberate click away.
+function ownLookCard() {
+  const card = document.createElement("div");
+  card.className = "look own";
+  const head = document.createElement("div"); head.className = "look-prod"; head.append("None of these");
+  const dir = document.createElement("div"); dir.className = "look-dir";
+  dir.textContent = "Say what you'd shoot instead — it becomes the art direction for the next frame.";
+  const row = document.createElement("div"); row.className = "own-row";
+  const input = document.createElement("input");
+  input.type = "text"; input.maxLength = 200;
+  input.placeholder = "e.g. on wet slate, hard side light, steam";
+  const go = document.createElement("button");
+  go.type = "button"; go.className = "look-shoot"; go.textContent = "use mine";
+  const submit = () => {
+    const v = input.value.trim();
+    if (!v) { input.focus(); return; }
+    $("steer").value = v;
+    setup.steer = v;
+    setup.scene = -1;                        // their words are the scene now — no drafted chip lit
+    sceneChosen = setup.chosen = true;       // a human decided; the accent is theirs to spend
+    input.value = "";
+    renderChips(); saveSetup(); updateBrief();
+    $("steer").scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  go.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  row.append(input, go);
+  card.append(head, dir, row);
   return card;
 }
 
@@ -607,7 +643,11 @@ function renderChips() {
   SCENES.forEach((s, i) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "scn" + (i === setup.scene ? " on" : "");
+    // Rule 5 — the lime chip means A HUMAN CLICKED IT. Until someone does, the brand-derived pick
+    // still fills the brief (setup.scene is untouched) but reads as a dashed draft, not a decision.
+    const lit = i === setup.scene && sceneChosen;
+    const drafted = i === setup.scene && !sceneChosen;
+    b.className = "scn" + (lit ? " on" : "") + (drafted ? " drafted" : "");
     b.textContent = s.prompt;
     if (i === recScene) {
       const tag = document.createElement("span"); tag.className = "pick"; tag.textContent = "our pick"; b.append(tag);
@@ -620,9 +660,11 @@ function renderChips() {
     });
     mount.append(b);
   });
-  $("scene-note").textContent = brand
-    ? `our pick reads ${brand.name}'s voice and positioning — the other scenes are one click away.`
-    : "our pick is the safe default — lend a brand and it re-derives from the brand's voice.";
+  $("scene-note").textContent = sceneChosen
+    ? (brand ? `our pick reads ${brand.name}'s voice and positioning — the other scenes are one click away.` : "the other scenes are one click away.")
+    : (brand
+      ? `our pick reads ${brand.name}'s voice and positioning — it's a draft filling the brief until you click one.`
+      : "our pick is the safe default, drafted not chosen — click one to make it yours, or lend a brand and it re-derives.");
 }
 function renderAspects() {
   const mount = $("aspects");

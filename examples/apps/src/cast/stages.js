@@ -229,10 +229,13 @@ export function renderFoundation(root, ctx) {
 function facetCard(facet, ctx) {
   const a = ctx.account, fnd = a.foundation;
   const status = facetStatus(a, facet.id, ctx.loading);
+  // A lock Cast made on autopilot is a DRAFT, not a decision — it reads (and is labelled) as one
+  // everywhere until a human confirms it. Only `fnd.auto[facet.id]` being cleared makes it a lock.
+  const drafted = !!fnd.auto[facet.id] && !!fnd.locks[facet.id];
   const card = el("div", "card facet " + status);
   const head = el("div", "fhead");
   const title = el("div", "ft");
-  title.append(el("span", "fname", facet.title), el("span", "fstatus " + status, status));
+  title.append(el("span", "fname", facet.title), el("span", "fstatus " + (drafted ? "drafted" : status), drafted ? "drafted" : status));
   head.append(title);
   const lock = fnd.locks[facet.id];
   // regenerate control (only when its deps are ready)
@@ -261,15 +264,33 @@ function facetCard(facet, ctx) {
   }
   const picked = new Set([lock?.id, ...(fnd.more[facet.id] || []).map((c) => c.id)].filter(Boolean));
   const grid = optionGrid(cards, {
-    isSelected: (c) => picked.has(c.id),
+    // accent + LOCKED only for a human's own pick; Cast's autopilot pick stays a neutral draft.
+    isSelected: (c) => picked.has(c.id) && !drafted,
+    isDrafted: (c) => picked.has(c.id) && drafted,
     pickLabel: facet.select === "many" ? "Add pillar +" : "Lock this →",
+    draftLabel: facet.select === "many" ? "Drafted · tap to drop" : "Confirm this ✓",
     onPick: (c) => { relock(a, facet.id, c); ctx.save(); ctx.rerender(); },
   });
   card.append(grid);
   card.append(steerRow(facet, ctx, status));
-  if (lock && fnd.auto[facet.id]) card.append(el("div", "note", "✨ Cast locked the recommended direction — tap another card, steer, or write your own to overrule it."));
+  if (lock && drafted) card.append(draftBar(facet, ctx));
   if (facet.select === "many" && picked.size) card.append(el("div", "note", `${picked.size} pillar${picked.size === 1 ? "" : "s"} picked — lock 3-4 for a strong calendar.`));
   return card;
+}
+// The DRAFT bar: what autopilot produced, said plainly, with the one control that turns it into a
+// decision. Doctrine 5 — auto-generation may DRAFT but must never LOCK — so this is the ONLY route
+// from Cast's own pick to the accent/LOCKED state, and it is a human clicking a button. Confirming
+// keeps the same card and simply clears the auto flag, so the alternatives above stay on the board,
+// openable and re-choosable, either way.
+function draftBar(facet, ctx) {
+  const a = ctx.account, fnd = a.foundation;
+  const bar = el("div", "draftbar");
+  const t = el("div", "dbt");
+  t.append(el("b", null, "✨ Cast's pick — drafted, not locked."), document.createTextNode(" Confirm it, or pick another card above, steer the options, or write your own."));
+  const ok = el("button", "okbtn", facet.select === "many" ? "Confirm these ✓" : "Confirm this ✓");
+  ok.onclick = () => { delete fnd.auto[facet.id]; ctx.save(); ctx.rerender(); };
+  bar.append(t, ok);
+  return bar;
 }
 // brandbrain's "never a blank box", per facet: steer the regeneration with a note, or lock your own
 // words as the answer outright. The note persists on the account and threads into every regeneration
@@ -319,11 +340,13 @@ async function runFacet(facet, ctx) {
   } catch (e) { console.warn("[cast] facet generation failed:", facet.id, e); a.foundation.cards[facet.id] = a.foundation.cards[facet.id] || []; }
   ctx.loading.delete(facet.id); ctx.save(); ctx.rerender();
 }
-// Autopilot: the entry was ONE action, so Cast locks the recommended direction itself the moment the
-// options land (top 3 for select:many) and marks it auto. The human overrules by tapping another
-// card, steering, or writing their own — any manual lock clears the auto flag, and autopilot never
-// touches a facet the human locked. A steer on an auto-locked facet replaces the auto pick with the
-// new recommendation, cascading so downstream auto decisions re-run against it.
+// Autopilot: the entry was ONE action, so Cast DRAFTS the recommended direction itself the moment the
+// options land (top 3 for select:many) and marks it auto. `auto` is what makes it a draft and not a
+// decision: while it is set the card is painted neutral, the facet reads "drafted", and the draft bar
+// asks for a confirm — nothing Cast does on its own ever reaches the accent/LOCKED state. The human
+// resolves it by confirming, tapping another card, steering, or writing their own; any of those
+// clears the auto flag, and autopilot never touches a facet the human decided. A steer on a drafted
+// facet replaces the draft with the new recommendation, cascading so downstream drafts re-run.
 function autoLock(facet, ctx) {
   const a = ctx.account, fnd = a.foundation;
   const cards = fnd.cards[facet.id] || [];

@@ -123,12 +123,15 @@
         cursor: pointer; color: var(--ink); font: inherit; display: flex; flex-direction: column; gap: 9px;
         transition: border-color 0.15s, background 0.15s; }
       .dir:hover { border-color: var(--edge-soft); background: var(--raised); }
+      /* .hot = a human clicked this. .drafted = the model's suggestion — hairline only, no accent. */
       .dir.hot { border-color: var(--lime); background: var(--lime-soft); }
+      .dir.drafted { border-style: dashed; border-color: var(--edge-soft); }
       .dir-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .dir-name { font: 600 15px/1.25 var(--display); letter-spacing: -0.01em; }
-      .dtag { font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--lime);
-        border: 1px solid color-mix(in srgb, var(--lime) 45%, transparent); border-radius: 999px; padding: 4px 8px; }
-      .dtag.sel { color: var(--page); background: var(--lime); border-color: var(--lime); }
+      .dtag { font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim);
+        border: 1px solid var(--edge); border-radius: 999px; padding: 4px 8px; }
+      .dtag.draft { border-style: dashed; }
+      .dtag.sel { color: var(--page); background: var(--lime); border-color: var(--lime); border-style: solid; }
       .dir-hero { font: 500 13.5px/1.45 var(--sans); color: var(--ink-sec); }
       .dir-angle { margin: 0; font: 400 12.5px/1.55 var(--sans); color: var(--ink-dim); }
       .dir-chart { margin: auto 0 0; font: 400 11px/1.6 var(--mono); color: var(--ink-faint); }

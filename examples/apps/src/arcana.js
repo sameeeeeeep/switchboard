@@ -530,8 +530,11 @@ const GENERIC_QUESTIONS = [
   "What does this launch need from me?",
 ];
 
-// Question chips, derived locally from the querent — zero tokens. The first chip is the ★
-// recommended one; disconnected or context-less tables fall back to the four generics.
+// Question chips, derived locally from the querent — zero tokens. The first chip is the table's
+// SUGGESTION; disconnected or context-less tables fall back to the four generics.
+// Doctrine 5 — gold means a human chose. The suggested chip is drafted (dashed, neutral tag) and
+// only `chosenQ`, which nothing but a click below can set, lights a chip gold.
+let chosenQ = null;
 function renderChips() {
   const qs = [];
   if (querent?.company) qs.push(`What does ${querent.company} need from me right now?`);
@@ -547,16 +550,25 @@ function renderChips() {
   qs.forEach((t, i) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "chip" + (i === 0 ? " rec" : "");
-    b.textContent = (i === 0 ? "★ " : "") + t;
+    const chosen = chosenQ != null && t === chosenQ;
+    b.className = "chip" + (i === 0 && !chosen ? " rec" : "") + (chosen ? " sel" : "");
+    if (i === 0 && !chosen) b.append(Object.assign(document.createElement("span"), { className: "tagline", textContent: "suggested" }));
+    b.append(document.createTextNode(t));
     b.disabled = busy;
-    b.addEventListener("click", () => { if (busy) return; $("q").value = t; persist(); });
+    b.addEventListener("click", () => {
+      if (busy) return;
+      chosenQ = t;              // the ONLY route to the gold chip
+      $("q").value = t;
+      persist();
+      renderChips();
+    });
     box.append(b);
   });
-  // Prefill the ★ question — but never clobber a question the user typed themselves.
+  // Prefill the suggested question — draft text in an editable box, never a locked choice — and
+  // never clobber a question the user typed or clicked themselves.
   const qEl = $("q");
   const cur = qEl.value.trim();
-  if ((!cur || cur === DEFAULT_Q) && cur !== rec) qEl.value = rec;
+  if (!chosenQ && (!cur || cur === DEFAULT_Q) && cur !== rec) qEl.value = rec;
 }
 
 $("draw").addEventListener("click", () => { if (!busy) deal(drawSpread()); });

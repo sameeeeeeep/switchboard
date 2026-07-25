@@ -8,6 +8,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
+// modifier styles. DRAFTED (what the model sketched) is never CHOSEN (what a human clicked).
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -227,7 +230,9 @@ async function start(input, opts = {}) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Give it the one line — the idea and where it goes.", true); return; }
-  state.run = { id: uid(), input, fromBrand: !!opts.fromBrand, concepts: null, selectedId: null, steers: [], status: "", error: null };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is Inkling's own sketch — it still carries the
+  // one-go auto-render, but only `selectedId` (set by a human clicking a card) ever wears the accent.
+  state.run = { id: uid(), input, fromBrand: !!opts.fromBrand, concepts: null, selectedId: null, draftedId: null, own: "", steers: [], status: "", error: null };
   await saveState(); render();
   await proposeConcepts();
 }
@@ -239,6 +244,9 @@ async function proposeConcepts() {
     const arr = await askJsonArray([
       `You are ${APP.name}, a tattoo flash artist. The client's idea (and placement/size): "${r.input}".`,
       r.fromBrand && brand ? `This is derived from a brand — distil its identity into a wearable emblem, not a literal logo. Brand context: ${JSON.stringify(brand.data).slice(0, 1500)}` : "",
+      // The escape hatch: the client rejected the slate and said what they want instead. Their words
+      // outrank every earlier steer — anchor all three concepts on them.
+      r.own ? `The client rejected the previous concepts and described what they want INSTEAD: "${r.own}". Make that the anchor of all three concepts; it outranks any earlier steering.` : "",
       r.steers.length ? `Design steering to honour: ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
       `Propose exactly 3 distinct flash concepts, ONE in each of these styles: ${STYLES.join(", ")}.`,
       'Return ONLY a JSON array — no prose, no fences. Each element:',
@@ -255,12 +263,14 @@ async function proposeConcepts() {
       imageUrl: null, imgStatus: "", imgError: null,
     }));
     if (!r.concepts.some((o) => o.recommended)) r.concepts[0].recommended = true;
-    r.selectedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    // A fresh slate is a DRAFT, never a decision — the accent stays off until a human clicks.
+    r.draftedId = (r.concepts.find((o) => o.recommended) || r.concepts[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
-  // ONE-GO: as soon as the cards are on screen, auto-render the recommended flash (stage 2). Image
-  // generation is per-card and never gates the cards themselves.
-  if (r.concepts && !r.error) void renderFlash(r.selectedId);
+  // ONE-GO: as soon as the cards are on screen, auto-render the DRAFTED flash (stage 2). Image
+  // generation is per-card, never gates the cards, and never selects anything on the human's behalf.
+  if (r.concepts && !r.error) void renderFlash(r.draftedId);
 }
 
 // Stage 2 — render ONE concept's line art on the user's Higgsfield. Runs after the cards exist;
@@ -268,7 +278,6 @@ async function proposeConcepts() {
 async function renderFlash(id) {
   const r = state.run; if (!r || !relay) return;
   const c = (r.concepts || []).find((o) => o.id === id); if (!c) return;
-  r.selectedId = id;
   if (c.imgStatus === "rendering") { render(); return; }        // already in flight
   c.imgStatus = "rendering"; c.imgError = null; render();
   try {
@@ -278,6 +287,26 @@ async function renderFlash(id) {
     c.imageUrl = url; c.imgStatus = "done"; c.imgError = null;
   } catch (e) { c.imgStatus = "error"; c.imgError = msg(e); }
   await saveState(); render();
+}
+
+// The ONLY route to the accent state: a human clicked a card. Choosing also renders that concept's
+// flash if it hasn't been drawn yet, so picking is never a dead end.
+function chooseConcept(id) {
+  const r = state.run; if (!r) return;
+  r.selectedId = id;
+  void saveState(); render();
+  const c = (r.concepts || []).find((o) => o.id === id);
+  if (c && !c.imageUrl && c.imgStatus !== "rendering") void renderFlash(id);
+}
+
+// THE ESCAPE HATCH (doctrine 4) — "none of these". The client's own words become the anchor of a
+// fresh slate rather than one more note appended to the old brief.
+async function ownDirection(text) {
+  const r = state.run; if (!r || running) return;
+  const t = String(text || "").trim(); if (!t) return;
+  r.own = t;
+  await saveState();
+  await proposeConcepts();
 }
 
 // Build the line-art generation prompt: the concept's own imagePrompt, hardened with the style's
@@ -350,7 +379,16 @@ function render() {
   if (r.concepts && r.concepts.length) {
     col.append(el("div", "kicker sect", "the flash"));
     col.append(flashCards(r));
-    if (!running) col.append(steerRow((s) => void steerConcepts(s)));
+    if (!running) {
+      col.append(escapeHatch({
+        label: "none of these — say what you'd draw instead",
+        hint: "your own line becomes the anchor for a fresh set of three concepts.",
+        placeholder: "e.g. drop the moth — just a crescent and three small stars",
+        sendLabel: "draw mine",
+        onSubmit: (t) => ownDirection(t),
+      }));
+      col.append(steerRow((s) => void steerConcepts(s)));
+    }
   }
   view.append(col);
 }
@@ -361,12 +399,17 @@ function render() {
 function flashCards(r) {
   const wrap = el("div", "flash");
   for (const c of r.concepts) {
-    const card = el("div", "fcard" + (c.id === r.selectedId ? " sel" : ""));
-    card.onclick = () => { if (c.imgStatus !== "rendering") void renderFlash(c.id); };
+    // Rule 5 — the accent means A HUMAN CHOSE. Inkling's own pick is a DRAFT: a dashed hairline and
+    // a neutral tag. Nothing but `selectedId`, set by the click handler below, lights a card.
+    const chosen = c.id === r.selectedId;
+    const drafted = !chosen && c.id === r.draftedId;
+    const card = el("div", "fcard" + (chosen ? " sel" : "") + (drafted ? " drafted" : ""));
+    card.onclick = () => { if (c.imgStatus !== "rendering") chooseConcept(c.id); };
 
     const top = el("div", "ftop");
     top.append(el("span", "fstyle", c.style));
-    if (c.recommended) top.append(el("span", "frec", "recommended"));
+    if (c.recommended) top.append(el("span", "frec draft", "recommended"));
+    if (chosen) top.append(el("span", "frec", "picked"));
     card.append(top);
     card.append(el("div", "flabel", c.label));
     if (c.text) card.append(el("div", "ftext", c.text));
