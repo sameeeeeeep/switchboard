@@ -80,6 +80,21 @@ export function deriveTeamKey(secret: string, teamId: string): Buffer {
   return Buffer.from(hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.from("switchboard-team-v1", "utf8"), Buffer.from(teamId, "utf8"), 32));
 }
 
+/**
+ * ROOM AUTHENTICATOR for the relay — proves "I hold this team's invite secret" WITHOUT handing the
+ * relay anything that helps it read a frame. A different HKDF info label than deriveTeamKey means
+ * this token is cryptographically unrelated to the AES key: the relay can compare it, and can never
+ * derive the content key from it.
+ *
+ * Why it exists: the teamId is only a ROUTING id (it rides in the URL path, so it lands in server
+ * logs and any intermediary's). Without this, knowing a teamId was enough to claim `role=host` —
+ * evicting the real team — or to download the whole sealed backup. Membership, not knowledge of an
+ * id, is what the relay must check.
+ */
+export function deriveRoomAuth(secret: string, teamId: string): string {
+  return Buffer.from(hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.from("switchboard-room-auth-v1", "utf8"), Buffer.from(teamId, "utf8"), 32)).toString("base64url");
+}
+
 /** A sealed frame as it crosses the wire. `aad` (the connection's session id + sequence number)
  *  is authenticated but not encrypted — it's what makes a captured frame unreplayable elsewhere. */
 export interface SealedFrame {

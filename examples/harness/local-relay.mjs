@@ -21,7 +21,7 @@
 //   {snapshot:<b64 sealed>} → compact the whole log to this one entry (bounded storage)
 //   {fetch:<sinceSeq>}      → {log:[{seq,blob}…], head}
 import { WebSocketServer } from "ws";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const STORE_SECRET = process.env.RELAY_STORE_SECRET || "";
 /** Self-host escape: no secret configured, or explicitly opened ⇒ their infra, no gate at all. */
@@ -35,6 +35,8 @@ const TRIAL_SEATS = Number(process.env.RELAY_TRIAL_SEATS || 3);
 /** Close codes the daemon maps to human upgrade prompts (surfaced in TeamStatus.error). */
 export const CLOSE_TRIAL_OVER = 4002;
 export const CLOSE_SEAT_LIMIT = 4003;
+/** How long a superseded backup generation survives compaction. */
+const RETAIN_MS = Number(process.env.RELAY_STORE_RETAIN_MS || 24 * 3600 * 1000);
 
 /** Mint an entitlement for a Pro team. Billing issues these; only the HOST needs one.
  *  Token = `<teamId>.<expMs>.<maxSeats>.<sig>` where sig = HMAC(secret, "teamId.exp.maxSeats"). */
@@ -58,7 +60,7 @@ export function verifyEntitlement(token, teamId, secret) {
   const want = createHmac("sha256", secret).update(`${tid}.${exp}.${seats}`).digest("base64url");
   const a = Buffer.from(sig, "utf8"), b = Buffer.from(want, "utf8");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { maxSeats: Number(seats) };
+  return { maxSeats: Number(seats), exp: Number(exp) };
 }
 
 export function startLocalRelay(port, host = "127.0.0.1") {
@@ -66,15 +68,24 @@ export function startLocalRelay(port, host = "127.0.0.1") {
   // teamId -> { host, members, store, seats:Set<ws> }
   const rooms = new Map();
   let seq = 0;
-  const roomOf = (teamId) => { let r = rooms.get(teamId); if (!r) { r = { host: null, members: new Map(), store: null, seats: new Set() }; rooms.set(teamId, r); } return r; };
+  const roomOf = (teamId) => { let r = rooms.get(teamId); if (!r) { r = { host: null, members: new Map(), store: null, seats: new Set(), roomAuth: null }; rooms.set(teamId, r); } return r; };
   const storeOf = (room) => { if (!room.store) room.store = { log: [], bytes: 0, head: 0 }; return room.store; };
 
   /** Store frames, handled on any connection that proved entitlement. True = it was a store op. */
-  const handleStore = (ws, room, persistent, o) => {
+  const handleStore = (ws, room, persistent, entExp, o) => {
     if (typeof o.fetch === "number") {
+      // READ IS GATED TOO — otherwise any socket in the room could pull the whole sealed log
+      // (ciphertext, op counts, byte sizes, write timeline) and burn our egress.
+      if (!persistent) { try { ws.send(JSON.stringify({ denied: "fetch", reason: "no-entitlement" })); } catch {} return true; }
       const st = room.store;
       const log = st ? st.log.filter((e) => e.seq > (o.fetch | 0)) : [];
       try { ws.send(JSON.stringify({ log, head: st ? st.head : 0 })); } catch {}
+      return true;
+    }
+    // A token that expired AFTER connecting must not keep writing.
+    if ((typeof o.put === "string" || typeof o.snapshot === "string") && entExp && Date.now() > entExp) {
+      try { ws.send(JSON.stringify({ denied: typeof o.snapshot === "string" ? "snapshot" : "put", reason: "entitlement-expired" })); } catch {}
+      try { ws.close(CLOSE_TRIAL_OVER, "entitlement-expired"); } catch {}
       return true;
     }
     if (typeof o.put === "string") {
@@ -91,7 +102,10 @@ export function startLocalRelay(port, host = "127.0.0.1") {
       const st = storeOf(room);
       const size = Buffer.byteLength(o.snapshot, "utf8");
       if (size > MAX_STORE_BYTES) { try { ws.send(JSON.stringify({ full: true, head: st.head })); } catch {} return true; }
-      // The daemon (which CAN read) rolled the folder into one sealed snapshot — drop the prior log.
+      // The daemon (which CAN read) rolled the folder into one sealed snapshot. Compaction must
+      // never DESTROY the backup, so the superseded generation is retained (rotated at most once
+      // per window) — a run of snapshot frames can't leave the team with nothing recoverable.
+      if (Date.now() - (st.prevAt ?? 0) > RETAIN_MS && st.log.length) { st.prev = st.log; st.prevAt = Date.now(); }
       st.head += 1; st.log = [{ seq: st.head, blob: o.snapshot, snapshot: true }]; st.bytes = size;
       try { ws.send(JSON.stringify({ stored: st.head, compacted: true })); } catch {}
       return true;
@@ -103,22 +117,46 @@ export function startLocalRelay(port, host = "127.0.0.1") {
   wss.on("connection", (ws, req) => {
     ws.on("error", () => {});
     let m;
-    try { const u = new URL(req.url, "http://x"); m = { path: u.pathname, role: u.searchParams.get("role"), ent: u.searchParams.get("ent") }; } catch { ws.close(); return; }
+    try { const u = new URL(req.url, "http://x"); m = { path: u.pathname, role: u.searchParams.get("role"), ent: u.searchParams.get("ent"), ra: u.searchParams.get("ra") }; } catch { ws.close(); return; }
     const match = /^\/room\/([^/]+)$/.exec(m.path || "");
     if (!match) { ws.close(1008, "bad path"); return; }
     const teamId = decodeURIComponent(match[1]);
     const room = roomOf(teamId);
 
     // ---- the gate: self-host open · Pro entitlement · else free trial ----
-    const ent = STORE_OPEN ? { maxSeats: Infinity } : verifyEntitlement(m.ent, teamId, STORE_SECRET);
+    const ent = STORE_OPEN ? { maxSeats: Infinity, exp: 0 } : verifyEntitlement(m.ent, teamId, STORE_SECRET);
     const persistent = STORE_OPEN || !!ent;
     const maxSeats = ent?.maxSeats ?? TRIAL_SEATS;
 
-    // Seats = live connections in this room (host + members). Counting sockets ≠ reading content.
-    if (room.seats.size >= maxSeats) {
-      try { ws.close(CLOSE_SEAT_LIMIT, `seat-limit:${maxSeats}`); } catch {}
+    // ---- ROOM MEMBERSHIP (knowing the teamId is NOT membership) ----
+    // teamId is a routing id that shows up in URLs and logs. `ra` is HKDF'd from the invite secret
+    // under a label unrelated to the content key, so the relay can compare it but never decrypt.
+    // Trust-on-first-use; after that every socket must match, and an unproven socket may never host.
+    const raHash = m.ra ? createHash("sha256").update(String(m.ra)).digest("base64url") : null;
+    if (room.roomAuth) {
+      if (raHash !== room.roomAuth) { try { ws.close(4004, "not-a-member"); } catch {} return; }
+    } else if (raHash) {
+      room.roomAuth = raHash;
+    } else if (m.role === "host") {
+      try { ws.close(4004, "host-needs-membership-proof"); } catch {} return;
+    }
+
+    if (m.role === "host") {
+      // Reclaim FIRST, then count — else a reconnecting host is refused by the seat its own
+      // half-open socket still holds.
+      if (room.host) { try { room.host.close(); } catch {} }
+      for (const mws of room.members.values()) { try { mws.close(); } catch {} }
+      room.members.clear();
+    }
+
+    // Seats = live connections, capped by the ROOM's plan (the best any live socket proved), so an
+    // unentitled joiner can't shrink a paid team. Counting sockets ≠ reading content.
+    const roomSeats = Math.max(maxSeats, ...[...room.seats].map((w) => w.__maxSeats ?? 0));
+    if (room.seats.size >= roomSeats) {
+      try { ws.close(CLOSE_SEAT_LIMIT, `seat-limit:${roomSeats}`); } catch {}
       return;
     }
+    ws.__maxSeats = maxSeats;
     room.seats.add(ws);
 
     // Free trial: a time-boxed session, unlimited restarts. Entitled connections never expire.
@@ -130,15 +168,12 @@ export function startLocalRelay(port, host = "127.0.0.1") {
     const cleanup = () => { if (trial) clearTimeout(trial); room.seats.delete(ws); };
 
     if (m.role === "host") {
-      if (room.host) { try { room.host.close(); } catch {} }
-      for (const mws of room.members.values()) { try { mws.close(); } catch {} }
-      room.members.clear();
       room.host = ws;
       ws.on("message", (data, isBinary) => {
         if (isBinary) return;
         let o; try { o = JSON.parse(data.toString()); } catch { return; }
         if (!o) return;
-        if (handleStore(ws, room, persistent, o)) return;
+        if (handleStore(ws, room, persistent, ent?.exp ?? 0, o)) return;
         if (typeof o.c !== "string") return;
         const mws = room.members.get(o.c);
         if (o.close) { if (mws) { try { mws.close(); } catch {} room.members.delete(o.c); } }
@@ -157,7 +192,7 @@ export function startLocalRelay(port, host = "127.0.0.1") {
         if (isBinary) return;
         let o; try { o = JSON.parse(data.toString()); } catch { return; }
         if (!o) return;
-        if (handleStore(ws, room, persistent, o)) return;
+        if (handleStore(ws, room, persistent, ent?.exp ?? 0, o)) return;
         if (room.host && room.host.readyState === room.host.OPEN) { try { room.host.send(JSON.stringify({ c: connId, d: data.toString() })); } catch {} }
       });
       ws.on("close", () => { cleanup(); room.members.delete(connId); if (room.host && room.host.readyState === room.host.OPEN) { try { room.host.send(JSON.stringify({ c: connId, close: true })); } catch {} } });

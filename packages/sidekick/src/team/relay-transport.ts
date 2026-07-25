@@ -56,7 +56,9 @@ export class RelayHostTransport extends EventEmitter {
 
   /** `ent` is the team's Pro entitlement, if any — it unlocks the zero-knowledge store (and the
    *  plan's seat count) on OUR hosted relay. Absent ⇒ free sync only; a self-hosted relay ignores it. */
-  constructor(private base: string, private teamId: string, private ent?: string) { super(); }
+  /** `ra` proves team membership to the relay (HKDF of the invite secret under a label unrelated to
+   *  the content key) — without it, knowing a teamId would be enough to seize the host role. */
+  constructor(private base: string, private teamId: string, private ent?: string, private ra?: string) { super(); }
 
   start() { this.dial(); }
 
@@ -73,7 +75,9 @@ export class RelayHostTransport extends EventEmitter {
 
   private dial() {
     if (this.closed) return;
-    const url = `${this.base}/room/${encodeURIComponent(this.teamId)}?role=host` + (this.ent ? `&ent=${encodeURIComponent(this.ent)}` : "");
+    const url = `${this.base}/room/${encodeURIComponent(this.teamId)}?role=host`
+      + (this.ent ? `&ent=${encodeURIComponent(this.ent)}` : "")
+      + (this.ra ? `&ra=${encodeURIComponent(this.ra)}` : "");
     let ws: WebSocket;
     try { ws = new WebSocket(url, { maxPayload: MAX_FRAME_BYTES }); } catch (err) { this.scheduleReconnect(); return; }
     this.ws = ws;
@@ -136,6 +140,8 @@ export class RelayHostTransport extends EventEmitter {
 
 /** The URL a MEMBER dials for a relay-backed team. The relay makes this socket transparent — the
  *  member's existing dial() logic works unchanged once it uses this URL. */
-export function relayMemberUrl(base: string, teamId: string, ent?: string): string {
-  return `${base}/room/${encodeURIComponent(teamId)}?role=member` + (ent ? `&ent=${encodeURIComponent(ent)}` : "");
+export function relayMemberUrl(base: string, teamId: string, ent?: string, ra?: string): string {
+  return `${base}/room/${encodeURIComponent(teamId)}?role=member`
+    + (ent ? `&ent=${encodeURIComponent(ent)}` : "")
+    + (ra ? `&ra=${encodeURIComponent(ra)}` : "");
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -23,10 +23,25 @@ const CLOUD_FILE = join(RELAY_DIR, "cloud.json");
 export interface CloudConfig {
   /** OpenRouter API key. Empty/absent ⇒ the hosted backend is not registered at all. */
   openrouterKey?: string;
+  /** The user explicitly turned the hosted lane OFF in the panel. Beats an env key, so an opt-out
+   *  survives a restart instead of the env silently switching the lane back on. */
+  off?: boolean;
   /** Optional base-URL override (the mock server in tests). */
   baseUrl?: string;
   /** Optional curated model list; defaults to the backend's built-in shortlist. */
   models?: string[];
+}
+
+/** Write a credential file and ENFORCE 0600 every time. writeFileSync's `mode` applies only when
+ *  the file is CREATED, so an existing file keeps whatever mode it had — a key written into a
+ *  world-readable file would stay world-readable. chmod after the write closes that. */
+function writeCredential(path: string, body: string): void {
+  try {
+    writeFileSync(path, body, { mode: 0o600 });
+    chmodSync(path, 0o600);
+  } catch (err) {
+    console.error("[cloud] could not write config:", String(err).slice(0, 120));
+  }
 }
 
 /** Load the hosted-inference config. Order: env (RELAY_OPENROUTER_KEY / _URL) > ~/.relay/cloud.json.
@@ -35,7 +50,11 @@ export function loadCloudConfig(): CloudConfig {
   ensureDir();
   let fromFile: CloudConfig = {};
   try { if (existsSync(CLOUD_FILE)) fromFile = JSON.parse(readFileSync(CLOUD_FILE, "utf8")); } catch { /* ignore bad JSON */ }
-  const openrouterKey = process.env.RELAY_OPENROUTER_KEY || fromFile.openrouterKey || undefined;
+  // An explicit opt-out wins over everything: turning the lane off in the panel must STAY off
+  // across restarts even when RELAY_OPENROUTER_KEY is exported in the environment.
+  if (fromFile.off) return {};
+  // A key pasted in the panel beats the env, so the panel is always the last word.
+  const openrouterKey = fromFile.openrouterKey || process.env.RELAY_OPENROUTER_KEY || undefined;
   const baseUrl = process.env.RELAY_OPENROUTER_URL || fromFile.baseUrl || undefined;
   const models = fromFile.models && Array.isArray(fromFile.models) ? fromFile.models : undefined;
   return { ...(openrouterKey ? { openrouterKey } : {}), ...(baseUrl ? { baseUrl } : {}), ...(models ? { models } : {}) };
@@ -48,9 +67,10 @@ export function saveCloudConfig(patch: Partial<CloudConfig>): CloudConfig {
   let existing: CloudConfig = {};
   try { if (existsSync(CLOUD_FILE)) existing = JSON.parse(readFileSync(CLOUD_FILE, "utf8")); } catch { /* ignore */ }
   const merged: CloudConfig = { ...existing, ...patch };
-  // An explicit undefined/empty key clears the whole config (opt back out).
-  if (!merged.openrouterKey) { try { if (existsSync(CLOUD_FILE)) writeFileSync(CLOUD_FILE, JSON.stringify({}, null, 2), { mode: 0o600 }); } catch { /* ignore */ } return {}; }
-  writeFileSync(CLOUD_FILE, JSON.stringify(merged, null, 2), { mode: 0o600 });
+  // An explicit undefined/empty key is an OPT-OUT: record it durably (see loadCloudConfig) so an
+  // env key can't quietly re-enable the lane on the next boot.
+  if (!merged.openrouterKey) { writeCredential(CLOUD_FILE, JSON.stringify({ off: true }, null, 2)); return {}; }
+  writeCredential(CLOUD_FILE, JSON.stringify({ ...merged, off: false }, null, 2));
   return loadCloudConfig();
 }
 

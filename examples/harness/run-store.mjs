@@ -23,14 +23,16 @@ const TRIAL = Number(process.env.RELAY_TRIAL_MS);
 const { startLocalRelay, mintEntitlement, CLOSE_TRIAL_OVER, CLOSE_SEAT_LIMIT } = await import("./local-relay.mjs");
 const { WebSocket } = await import("ws");
 
+/** Stands in for deriveRoomAuth(secret, teamId) — proof of team membership, unrelated to the AES key. */
+const ROOM_AUTH = "test-room-auth-token";
 const hr = () => console.log("─".repeat(64));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function assert(c, m) { if (!c) throw new Error("assert failed: " + m); console.log("  ✓ " + m); }
 
 /** A raw relay client. Records replies and the close code/reason (the upgrade signal). */
-function client(url, teamId, ent, role = "member") {
+function client(url, teamId, ent, role = "member", ra = ROOM_AUTH) {
   return new Promise((resolve) => {
-    const q = `?role=${role}` + (ent ? `&ent=${encodeURIComponent(ent)}` : "");
+    const q = `?role=${role}` + (ent ? `&ent=${encodeURIComponent(ent)}` : "") + (ra ? `&ra=${encodeURIComponent(ra)}` : "");
     const ws = new WebSocket(`${url}/room/${teamId}${q}`);
     const replies = [];
     const api = {
@@ -59,7 +61,8 @@ async function main() {
   t.send({ fetch: 0 });
   await t.waitReplies(2);
   assert(t.replies.some((r) => r.denied === "put" && r.reason === "no-entitlement"), "an unentitled put is DENIED (randoms never cost us storage)");
-  assert(t.replies.some((r) => Array.isArray(r.log) && r.log.length === 0), "an unentitled fetch returns an empty log");
+  assert(t.replies.some((r) => r.denied === "fetch" && r.reason === "no-entitlement"), "an unentitled fetch is DENIED too — no ciphertext, no metadata, no egress on our dime");
+  assert(!t.replies.some((r) => Array.isArray(r.log)), "no log is ever handed to an unentitled socket");
 
   console.log("\n[2] the trial session expires with an upgrade signal");
   const closed = await t.waitClosed(TRIAL + 2500);
@@ -120,7 +123,28 @@ async function main() {
   c.close();
   relay.close();
 
-  console.log("\n[8] a self-hoster gets everything, ungated, on their own infra");
+  console.log("\n[8] knowing the teamId is NOT membership");
+  // Both holes the adversarial review found: seizing the host role, and reading the sealed backup,
+  // armed with nothing but a teamId (which travels in URLs and server logs).
+  const relay2 = startLocalRelay(8943);
+  const TEAM_D = "teamDDDDDD";
+  const entD = mintEntitlement(TEAM_D, SECRET, { maxSeats: 5 });
+  const realHost = await client(relay2.url, TEAM_D, entD, "host");           // registers the room auth
+  assert(!realHost.closed, "the real host (with membership proof) is admitted");
+  realHost.send({ put: Buffer.from("private-sealed-op").toString("base64") });
+  await realHost.waitReplies(1);
+
+  const hijacker = await client(relay2.url, TEAM_D, entD, "host", null);      // teamId + token, no proof
+  const hj = hijacker.closed ?? (await hijacker.waitClosed(1500));
+  assert(!!hj, "a host WITHOUT membership proof is refused — the room can't be seized");
+  assert(!realHost.closed, "…and the real host is never evicted by the attempt");
+
+  const peeper = await client(relay2.url, TEAM_D, entD, "member", "wrong-token");
+  const pk = peeper.closed ?? (await peeper.waitClosed(1500));
+  assert(!!pk, "a socket with the WRONG proof is refused (no sealed backup handed out)");
+  realHost.close(); relay2.close();
+
+  console.log("\n[9] a self-hoster gets everything, ungated, on their own infra");
   // A relay with no store secret = someone running it themselves; the gate doesn't apply.
   delete process.env.RELAY_STORE_SECRET;
   const mod = await import("./local-relay.mjs?selfhost=1");

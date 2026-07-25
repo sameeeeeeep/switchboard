@@ -51,9 +51,11 @@ export class BackendRegistry {
 
   backendFor(model: string | undefined): ModelBackend | null {
     if (model && this.modelToBackend.has(model)) return this.modelToBackend.get(model)!;
-    // Default: first backend whose LAST OBSERVED health was good. The old `backends[0] ?? null`
-    // made PROVIDER_UNAVAILABLE dead code — an offline Claude was still handed every request.
-    return this.backends.find((b) => this.lastHealthy.get(b.id) === true) ?? null;
+    // Default: first HEALTHY backend — but NEVER a hosted one. An omitted or unknown model id means
+    // "the user's own default", and resolving that to a hosted backend would send prompts off the
+    // machine without anyone opting in — the one thing this product must never do. Hosted backends
+    // are reachable ONLY by exact model match above.
+    return this.backends.find((b) => !b.hosted && this.lastHealthy.get(b.id) === true) ?? null;
   }
 
   async models(): Promise<string[]> {

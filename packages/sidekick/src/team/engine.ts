@@ -3,7 +3,7 @@ import { homedir, networkInterfaces } from "node:os";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
-import { decodeInvite, deriveTeamKey, encodeInvite, newTeamId, newTeamSecret, open, seal, type TeamInvite } from "./crypto.js";
+import { decodeInvite, deriveRoomAuth, deriveTeamKey, encodeInvite, newTeamId, newTeamSecret, open, seal, type TeamInvite } from "./crypto.js";
 import { GitBacking, type GitConfig } from "./git.js";
 import { FolderSync, type IndexSummary, type SyncOp } from "./sync.js";
 import { RelayHostTransport, relayMemberUrl } from "./relay-transport.js";
@@ -145,6 +145,8 @@ export class TeamEngine {
   private cloudRestored = 0;
   private cloudError: string | null = null;
   private putsSinceSnapshot = 0;
+  /** Rate-limits the {full}→snapshot reaction so a folder over the cap can't cause an upload storm. */
+  private lastFullCompactAt = 0;
   private hostListening = false;
   private hostError: string | null = null;
   private pendingHandshakes = 0;
@@ -319,6 +321,7 @@ export class TeamEngine {
    * invite code regenerates carrying it so teammates inherit the Pro session with no account.
    */
   setEntitlement(ent: string | null): TeamStatus {
+    if (!this.enabled()) throw new Error("Team Mode is off — enable it first"); // same guard as its siblings
     if (!this.state) throw new Error("no team");
     if (this.state.role !== "host") throw new Error("only the host holds the team's plan");
     const token = (ent ?? "").trim();
@@ -554,7 +557,7 @@ export class TeamEngine {
     if (st.relay) {
       // RELAY host: dial OUT to the relay and take a virtual socket per member. No listening port;
       // the relay is the reachable rendezvous. Same acceptPeer() path, same sealed handshake.
-      const t = new RelayHostTransport(st.relay, st.teamId, st.ent);
+      const t = new RelayHostTransport(st.relay, st.teamId, st.ent, deriveRoomAuth(st.secret, st.teamId));
       t.on("listening", () => {
         this.hostListening = true; this.hostError = null; this.deps.onTeamChanged();
         // Pro cloud backup: pull anything the store holds beyond what we've applied (this is what
@@ -728,7 +731,7 @@ export class TeamEngine {
     const st = this.state;
     // Relay-backed teams dial the relay (which makes the socket transparent to the host); direct
     // teams dial the host address. Everything after this line is identical either way.
-    const url = st.relay ? relayMemberUrl(st.relay, st.teamId, st.ent) : `ws://${st.hostAddr}:${st.hostPort}`;
+    const url = st.relay ? relayMemberUrl(st.relay, st.teamId, st.ent, deriveRoomAuth(st.secret, st.teamId)) : `ws://${st.hostAddr}:${st.hostPort}`;
     const ws = new WebSocket(url, { maxPayload: MAX_FRAME_BYTES });
     const session: Session = { ws, nonce: "", sendSeq: 0, recvSeq: 0 };
     this.client = session;
@@ -837,17 +840,22 @@ export class TeamEngine {
   private onStoreReply(m: any) {
     if (Array.isArray(m.log)) {
       let applied = 0;
+      // The cursor may ONLY advance over entries we actually opened. `m.head` is the relay's
+      // unauthenticated claim (store envelopes ride outside the seal), so trusting it would let a
+      // hostile or buggy relay skip us past real backup data we then never fetch again.
+      let cursor = this.state?.storeSeq ?? 0;
       for (const entry of m.log) {
-        if (!entry || typeof entry.blob !== "string") continue;
+        if (!entry || typeof entry.blob !== "string") break;
         try {
           const frame = JSON.parse(Buffer.from(entry.blob, "base64").toString("utf8"));
           const opened = open(this.key!, frame) as any; // only OUR key opens it — the relay never could
-          if (!opened || opened.kind !== "ops" || !Array.isArray(opened.ops)) continue;
+          if (!opened || opened.kind !== "ops" || !Array.isArray(opened.ops)) break;
           this.applyOps(opened.ops as SyncOp[], "cloud");
           applied += opened.ops.length;
-        } catch { /* a blob we can't open is not ours to apply */ }
+          if (typeof entry.seq === "number" && entry.seq > cursor) cursor = entry.seq;
+        } catch { break; /* stop at the first blob we can't open — never skip past it */ }
       }
-      if (typeof m.head === "number" && this.state) { this.state.storeSeq = m.head; this.persistState(); }
+      if (this.state && cursor !== this.state.storeSeq) { this.state.storeSeq = cursor; this.persistState(); }
       if (applied) {
         this.cloudRestored += applied;
         this.deps.audit("team:cloud-restore", "ok", `${applied} file(s) from the encrypted cloud backup`);
@@ -862,8 +870,23 @@ export class TeamEngine {
       this.cloudError = null;
       return;
     }
-    if (m.full) { this.cloudError = "cloud backup is full for this team — older history was dropped"; this.storeSnapshot(); this.deps.onTeamChanged(); return; }
-    if (m.denied) { this.cloudError = "cloud backup needs Pro — syncing live only"; this.deps.onTeamChanged(); return; }
+    if (m.full) {
+      // Compact ONCE per cooldown in response to {full}. Reacting to every {full} with a snapshot
+      // (which itself can come back {full} when the FOLDER exceeds the cap) is an infinite
+      // upload storm — expensive for us, pointless for the user.
+      this.cloudError = "cloud backup is full for this team — older history was dropped";
+      const now = Date.now();
+      if (now - this.lastFullCompactAt > 60_000) { this.lastFullCompactAt = now; this.storeSnapshot(); }
+      this.deps.onTeamChanged();
+      return;
+    }
+    if (m.denied) {
+      this.cloudError = m.reason === "entitlement-expired"
+        ? "your plan expired — the folder still syncs live, but it isn't being backed up"
+        : "cloud backup needs Pro — syncing live only";
+      this.deps.onTeamChanged();
+      return;
+    }
   }
 
   // ---- shared plumbing ----
@@ -1009,6 +1032,7 @@ export class TeamEngine {
     this.cloudRestored = 0;
     this.cloudError = null;
     this.putsSinceSnapshot = 0;
+    this.lastFullCompactAt = 0;
     this.stopGit();
     this.sync = null;
     this.key = null;

@@ -26,6 +26,32 @@ The daemon's `RelayHostTransport` / `relayMemberUrl` (in `packages/sidekick/src/
 directly. `examples/harness/local-relay.mjs` is a protocol-identical Node stand-in used by
 `npm run try-team-relay` to prove the path headless with no cloud.
 
+## What it is now
+
+Two jobs, one Worker + Durable Object (one DO per `teamId`):
+
+1. **Forward** the already-sealed frames between a team's daemons (the free, cross-network path).
+2. **Store** them, when a team presents a Pro entitlement — an append-only log of **ciphertext the
+   relay cannot read**, so an offline/rejoining member or a fresh device can catch up. Frames:
+   `{put:<b64>}` → `{stored:seq}` · `{snapshot:<b64>}` → compacts the log to one entry ·
+   `{fetch:<sinceSeq>}` → `{log:[…],head}`.
+
+**It hibernates.** The DO uses `state.acceptWebSocket()` + `webSocketMessage`/`webSocketClose` and
+`setWebSocketAutoResponse` for keepalives, so it's evicted from memory while sockets stay open and
+bills only for real frames — cost tracks editing, not open tabs. Consequently **no room state lives in
+instance fields**: roles/ids are socket tags + `serializeAttachment`, the log is DO storage, and the
+free-session deadline is an **alarm**.
+
+**The gate.** `STORE_SECRET` (a Wrangler secret) signs entitlements
+`<teamId>.<exp>.<maxSeats>.<HMAC>`; a valid one unlocks persistence and the plan's seats. Seats are
+enforced by **counting live sockets** — never by reading content — so members need no account. Unset
+`STORE_SECRET` (or `STORE_OPEN=1`) ⇒ **self-host mode: ungated and unlimited on your own account**.
+`TRIAL_MS=0` (default) leaves free sync unlimited; set it (e.g. `600000`) to time-box free sessions,
+which close with `4002 trial-over` (`4003 seat-limit:<n>` when over plan) for a real upgrade prompt.
+`MAX_STORE_BYTES` caps per-team storage.
+
+Design + pricing rationale: [`docs/CLOUD.md`](../../docs/CLOUD.md).
+
 ## Live
 
 A hosted instance runs at **`wss://switchboard-team-relay.switchboard-team.workers.dev`** — it's
