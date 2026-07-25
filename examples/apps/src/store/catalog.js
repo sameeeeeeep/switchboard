@@ -8,11 +8,11 @@
 export const APPS = [
   // featured
   { id: "brandbrain", name: "brandbrain", href: "https://brandbrain.thelastprompt.ai/build",
-    tokens: 4_800_000, updates: 61, pro: ["multi-brand portfolio", "competitor war-room refresh"] },
+    tokens: 4_800_000, updates: 61, pro: ["shared brand board", "encrypted cloud backup"] },
   { id: "ideabrain", name: "ideabrain", href: "https://brandbrain.thelastprompt.ai/build?studio=idea",
-    tokens: 3_400_000, updates: 42, pro: ["multi-thesis compare", "investor-grade deck packs"] },
+    tokens: 3_400_000, updates: 42, pro: ["shared thesis board", "encrypted cloud backup"] },
   { id: "bank", name: "Bank", href: "https://bank.thelastprompt.ai",
-    tokens: 2_900_000, updates: 38, pro: ["recurring extractors", "cross-vault syntheses"] },
+    tokens: 2_900_000, updates: 38, pro: ["shared vault", "encrypted cloud backup"] },
 
   // validate an idea (ideabrain templates — free-only presets)
   { id: "mkt", name: "Marketplace Validator", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=marketplace",
@@ -30,17 +30,17 @@ export const APPS = [
 
   // the founder stack
   { id: "autopilot", name: "Autopilot", href: "./autopilot.html",
-    tokens: 420_000, updates: 3, pro: null },
+    tokens: 420_000, updates: 3, pro: ["shared team board", "encrypted cloud backup"] },
   { id: "adpulse", name: "AdPulse", href: "https://adpulse.thelastprompt.ai",
-    tokens: 1_400_000, updates: 22, pro: ["scheduled post-mortems", "multi-account rollups"] },
+    tokens: 1_400_000, updates: 22, pro: ["shared account board", "encrypted cloud backup"] },
   { id: "adforge", name: "AdForge", href: "https://adforge.thelastprompt.ai",
-    tokens: 2_100_000, updates: 34, pro: ["multi-variant matrices", "competitor-reactive refresh"] },
+    tokens: 2_100_000, updates: 34, pro: ["shared ad board", "encrypted cloud backup"] },
   { id: "shelf", name: "Shelf", href: "https://shelf.thelastprompt.ai",
-    tokens: 860_000, updates: 14, pro: ["reorder automation", "supplier lead-time watch"] },
+    tokens: 860_000, updates: 14, pro: ["shared stock board", "encrypted cloud backup"] },
   { id: "studio", name: "Studio", href: "https://studio.thelastprompt.ai",
-    tokens: 940_000, updates: 16, pro: ["batch shot lists", "white-label exports"] },
+    tokens: 940_000, updates: 16, pro: ["shared shoot board", "encrypted cloud backup"] },
   { id: "aplus", name: "A-Plus", href: "https://aplus.thelastprompt.ai",
-    tokens: 1_100_000, updates: 18, pro: ["bulk listing runs", "variant A/B stacks"] },
+    tokens: 1_100_000, updates: 18, pro: ["shared listing board", "encrypted cloud backup"] },
   { id: "batch", name: "Batch", href: "https://batch.thelastprompt.ai",
     tokens: 340_000, updates: 3, pro: null },
   { id: "take", name: "Take", href: "https://take.thelastprompt.ai",
@@ -48,9 +48,9 @@ export const APPS = [
   { id: "identity", name: "Identity", href: "https://identity.thelastprompt.ai",
     tokens: 180_000, updates: 2, pro: null },
   { id: "reel", name: "Reel", href: "https://reel.thelastprompt.ai",
-    tokens: 260_000, updates: 2, pro: ["batch reels", "brand-kit auto-scenes"] },
+    tokens: 260_000, updates: 2, pro: ["shared reel board", "encrypted cloud backup"] },
   { id: "marquee", name: "Marquee", href: "https://marquee.thelastprompt.ai",
-    tokens: 300_000, updates: 2, pro: ["multi-page sites", "publish to a domain"] },
+    tokens: 300_000, updates: 2, pro: ["shared page board", "encrypted cloud backup"] },
   { id: "huddle", name: "Huddle", href: "https://huddle.thelastprompt.ai",
     tokens: 150_000, updates: 1, pro: null },
 
@@ -62,11 +62,11 @@ export const APPS = [
 
   // play & make
   { id: "redline", name: "Redline", href: "https://redline.thelastprompt.ai",
-    tokens: 1_700_000, updates: 26, pro: ["whole-site crawls", "scheduled re-reviews + diffs"] },
+    tokens: 1_700_000, updates: 26, pro: ["shared review board", "encrypted cloud backup"] },
   { id: "cartridge", name: "Cartridge", href: "https://cartridge.thelastprompt.ai",
     tokens: 720_000, updates: 12, pro: null },
   { id: "cast", name: "Cast", href: "https://cast.thelastprompt.ai",
-    tokens: 1_300_000, updates: 21, pro: ["multi-persona rosters", "reel batching"] },
+    tokens: 1_300_000, updates: 21, pro: ["shared persona roster", "encrypted cloud backup"] },
   { id: "prism", name: "Prism", href: "https://prism.thelastprompt.ai",
     tokens: 310_000, updates: 8, pro: null },
   { id: "adgen", name: "Adwall", href: "https://adgen.thelastprompt.ai",
