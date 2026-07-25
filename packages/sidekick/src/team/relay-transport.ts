@@ -83,10 +83,13 @@ export class RelayHostTransport extends EventEmitter {
     this.ws = ws;
     ws.on("open", () => this.emit("listening"));
     ws.on("error", () => { /* close handler reconnects */ });
-    // The relay refuses over-plan joins (4003) and ends free sessions (4002). Surface it as `gate`
-    // so the panel can show a real upgrade prompt instead of an endless silent reconnect.
+    // Surface EVERY relay refusal (any 4xxx application close) as `gate`, so the panel shows a real
+    // reason instead of an endless silent reconnect. Enumerating known codes was a bug: the relay
+    // also refuses with 4004 (host-needs-membership-proof / not-a-member), which fell through and
+    // left the user staring at "reconnecting…" forever. Unknown future codes now degrade to a
+    // generic-but-honest message rather than to silence.
     ws.on("close", (code, reason) => {
-      if (code === 4002 || code === 4003) this.emit("gate", { code, reason: String(reason || "") });
+      if (code >= 4000 && code < 5000) this.emit("gate", { code, reason: String(reason || "") });
     });
     ws.on("message", (data, isBinary) => {
       if (isBinary || (data as Buffer).length > MAX_FRAME_BYTES) return;
