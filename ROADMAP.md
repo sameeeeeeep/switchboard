@@ -164,9 +164,43 @@ field-level scoping (grant calendar but only free/busy).
 `local-openai` backend (Ollama / LM Studio via `/v1/chat/completions`) behind the same provider
 surface. Foundation stubbed in `packages/sidekick/src/backends/local-openai.ts`.
 
+### 11. Store redesign — the use-pack (**direction agreed, ready to build**)
+Replace the flat 27-card grid in `examples/apps/index.html` with a store that shows category-wise and
+routes a stranger to what's relevant. **Full brief: [`docs/STORE-REDESIGN.md`](docs/STORE-REDESIGN.md)
+— read it before touching the page; three design passes were rejected and the reasons are recorded
+there.** Signed-off wireframes (both states) are in `docs/store-wireframes/store-v3.html`.
+
+The shape, in one paragraph: the unit becomes a **use, not an app** — a horizontal pack of concrete
+jobs ("Draft this week's ads", "Find the spend that's being wasted") with the app as small print and a
+**precondition** as the third atom (`needs a URL`, `paste an export`), because for a tool that borrows
+your context the real blocker is what it costs you to start. Around it: five section *registers*
+(ACT / MAP / STORY / SCAN / YOURS), each surface encoding what you do there.
+
+Sequenced, because the first item is a data-model change and not a layout change:
+1. **Catalogue metadata.** An entry is only `{id,name,href,tokens,updates,pro}` and tags live in HTML
+   as `data-tags`. Add job, required input, and output kind — the pack cannot be honest without it.
+2. **Taxonomy → jobs.** Six job groups replace the eight shelf-nouns in `src/store/taxonomy.js`; any
+   group with fewer than three wrapps doesn't ship.
+3. **21, not 27.** ideabrain's six `?template=` entries collapse into one card with six doors.
+4. **Type scale.** Six steps with the 2× cliff (12/14/16/18 → 36 → 46), three weights. This — not the
+   typeface — is what "hierarchy is missing" actually was: 18 sizes today, 12 of them in a 6px band.
+5. **Retire the live-iframe thumbnails** for rows + real output stills. Contradicts `docs/DESIGN.md`,
+   which needs updating alongside.
+6. **Move `buildRecs()`/`buildActions()` to the top** of the returning state — the relevance engine
+   already works; its placement is the bug.
+
+Open decisions flagged in the brief: light vs dark (research says light, DESIGN.md locks dark),
+and real output stills to replace the placeholder art. Reuse `examples/apps/src/kit/ui.js` — it is
+already imported by 21 wrapps and exists because 18 byte-identical copies were found.
+
 ---
 
 ## Key decisions (context for a fresh thread)
+- **Store design (2026-07-26):** the unit on the store home is a **use, not an app**. Categories are
+  **jobs, not shelves**. The catalogue is **21 destinations, not 27** (ideabrain's six `?template=`
+  entries are one card with six doors). The telephone/switchboard framing is **positioning only —
+  never rendered literally** as page furniture. Full brief + rejected passes:
+  [`docs/STORE-REDESIGN.md`](docs/STORE-REDESIGN.md).
 - Provider global stays `window.claude`; product = Switchboard.
 - Gate is **out-of-band**; the model is never the security boundary. `canUseTool` in-process (the
   CLI's `--permission-prompt-tool` was removed; PreToolUse hooks don't enforce deny for MCP tools).

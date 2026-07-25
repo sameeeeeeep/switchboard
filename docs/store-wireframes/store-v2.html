@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>App store v2 — section registers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIVE SECTION REGISTERS. Each one is a different SURFACE, and the surface
+   tells you what kind of thing you're being asked to do. That is what stops a
+   heavy page reading as one undifferentiated wall. The type scale does NOT
+   change between them (12/14/16/18 → 36 → 46) — only the ground does.
+     ACT      solid ink slab, inverted        → you type / you press
+     MAP      tinted panel, ruled cells       → you choose a direction
+     STORY    full-bleed colour, editorial    → you read a pick
+     SCAN     plain white, hairlines only     → you skim a list
+     YOURS    warm tint + left accent edge    → this is about your stuff
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --f:"Inter",ui-sans-serif,system-ui,sans-serif; --m:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+  --bg:#fff; --ink:#0B0B0C; --ink-2:#6E6E73; --faint:#9A9AA0;
+  --line:#E8E8E9; --line-2:#D9D9DB;
+  --slab:#111113;                     /* ACT   */
+  --map:#F3F2EF;                      /* MAP   */
+  --yours:#FBF6EC; --yours-edge:#C88A2E;  /* YOURS */
+  --ok:#1F8A5B;
+}
+body.dark{
+  --bg:#0A0A0B; --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74;
+  --line:#232327; --line-2:#2C2C31;
+  --slab:#F0EFEC; --map:#141416; --yours:#17140E; --yours-edge:#C88A2E; --ok:#54B487;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:#111;font-family:var(--f);color:#eee;padding:20px}
+body.dark{background:#050506}
+.top{max-width:1560px;margin:0 auto 18px;display:flex;gap:20px;align-items:flex-start}
+.top h1{font:700 18px/1.3 var(--f);margin:0 0 6px}
+.top p{margin:0;font-size:13px;line-height:1.65;color:#9A9AA0;max-width:106ch}
+.tog{margin-left:auto;flex:none;background:#222;border:1px solid #3a3a3a;color:#eee;border-radius:8px;padding:9px 14px;font:600 12px var(--f);cursor:pointer}
+.legend{max-width:1560px;margin:0 auto 22px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.lg{border:1px solid #333;border-radius:8px;padding:9px 11px}
+.lg b{display:block;font:500 10.5px/1 var(--m);letter-spacing:.12em;color:#7CC142;margin-bottom:5px}
+.lg span{font-size:11.5px;color:#9A9AA0;line-height:1.5}
+.optrow{max-width:1560px;margin:0 auto 28px}
+.opthead b{display:block;font:700 13px/1.3 var(--m);letter-spacing:.1em;text-transform:uppercase;color:#7CC142}
+.opthead span{display:block;font-size:12.5px;line-height:1.6;color:#9A9AA0;margin:5px 0 10px;max-width:110ch}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.frame{border:1px solid #333;border-radius:10px;overflow:hidden;background:var(--bg)}
+.flabel{font:500 10.5px/1 var(--m);letter-spacing:.1em;text-transform:uppercase;color:#8a8a8a;padding:8px 10px;background:#1a1a1a;border-bottom:1px solid #333}
+.shell{overflow:hidden}
+.pg{width:760px;transform-origin:0 0;background:var(--bg);color:var(--ink);padding-bottom:0}
+
+/* chrome */
+.nav{display:flex;align-items:center;gap:12px;padding:13px 24px;border-bottom:1px solid var(--line)}
+.nav .lo{display:flex;align-items:center;gap:8px;font:600 15px var(--f)}
+.nav .lo i{width:19px;height:19px;border-radius:6px;background:var(--ink);display:block}
+.nav .sp{flex:1}
+.nav a{font:400 13px var(--f);color:var(--ink-2)}
+.nav .btn{font:600 13px var(--f);background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 14px}
+.pad{padding:0 24px}
+h1.t{font:700 46px/1.05 var(--f);letter-spacing:-.012em;margin:0}
+h2.s{font:600 36px/1.15 var(--f);letter-spacing:-.01em;margin:0}
+.sub{font:400 16px/1.55 var(--f);color:var(--ink-2);margin:12px 0 0;max-width:58ch}
+.kick{font:500 12px/1 var(--m);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+
+/* ── REGISTER: ACT — the solid slab. Nothing else on the page looks like this. ── */
+.act-slab{background:var(--slab);border-radius:18px;padding:26px 26px 24px;margin:26px 24px 0;
+  background-image:radial-gradient(120% 140% at 8% 0%, rgba(255,255,255,.10), transparent 55%)}
+body.dark .act-slab{background-image:radial-gradient(120% 140% at 8% 0%, rgba(0,0,0,.10), transparent 55%)}
+.act-slab .lab{font:500 11.5px/1 var(--m);letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.5);margin:0 0 13px}
+body.dark .act-slab .lab{color:rgba(0,0,0,.45)}
+.act-in{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);
+  border-radius:12px;padding:15px 16px}
+body.dark .act-in{background:rgba(0,0,0,.07);border-color:rgba(0,0,0,.12)}
+.act-in .ph{flex:1;font:400 17px var(--f);color:rgba(255,255,255,.62)}
+body.dark .act-in .ph{color:rgba(0,0,0,.5)}
+.act-in .go{font:600 13.5px var(--f);background:#fff;color:#111;border-radius:999px;padding:10px 17px}
+body.dark .act-in .go{background:#111;color:#fff}
+.act-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}
+.act-chips span{font:400 13px var(--f);color:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.2);
+  border-radius:999px;padding:7px 12px}
+body.dark .act-chips span{color:rgba(0,0,0,.72);border-color:rgba(0,0,0,.16)}
+.act-foot{font:400 12px var(--m);color:rgba(255,255,255,.42);margin:14px 0 0}
+body.dark .act-foot{color:rgba(0,0,0,.4)}
+
+/* ── REGISTER: MAP — tinted panel, ruled cells, edge-to-edge ── */
+.map{background:var(--map);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  margin-top:38px;padding:22px 24px 24px}
+.map .kick{margin-bottom:14px}
+.mapgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line-2);border:1px solid var(--line-2)}
+.mapcell{background:var(--map);padding:15px 16px}
+.mapcell .n{font:600 16px/1.3 var(--f);margin:0}
+.mapcell .c{font:400 12px var(--m);color:var(--faint);margin:6px 0 0}
+.mapcell.on{background:var(--bg)}
+
+/* ── REGISTER: STORY — full-bleed colour, editorial ── */
+.stories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px}
+.story{border-radius:14px;overflow:hidden;color:#14110c}
+.story .art{height:112px;display:flex;align-items:flex-end;padding:13px 15px}
+.story .art b{font:500 11px/1 var(--m);letter-spacing:.13em;text-transform:uppercase;color:rgba(0,0,0,.55)}
+.story .sb{padding:15px 16px 17px;background:var(--bg);color:var(--ink)}
+.story .sh{font:600 18px/1.3 var(--f);margin:0}
+.story .sp{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:6px 0 0}
+.story .sl{display:flex;gap:6px;margin:13px 0 0}
+.story .sl i{width:26px;height:26px;border-radius:8px;display:block}
+.story .by{font:400 12px var(--m);color:var(--faint);margin:11px 0 0}
+
+/* ── REGISTER: SCAN — plain, hairlines, nothing else ── */
+.scan{padding:0 24px;margin-top:34px}
+.row{display:flex;align-items:center;gap:13px;padding:14px 0;border-bottom:1px solid var(--line)}
+.row .ic{width:44px;height:44px;border-radius:11px;flex:none}
+.row .tx{flex:1;min-width:0}
+.row .nm{font:600 18px/1.25 var(--f);margin:0;display:flex;align-items:center;gap:8px}
+.row .vb{font:400 14px/1.45 var(--f);color:var(--ink-2);margin:3px 0 0}
+.row .at{font:400 12px var(--m);color:var(--faint);flex:none}
+.row .op{font:600 13px var(--f);border:1px solid var(--line-2);border-radius:999px;padding:7px 14px;flex:none}
+.doors{font:400 12px var(--m);color:var(--faint);margin:5px 0 0}
+.pin{font:500 11px/1 var(--m);letter-spacing:.05em;text-transform:uppercase;color:var(--ok);
+  border:1px solid var(--ok);border-radius:5px;padding:3px 6px}
+
+/* ── REGISTER: YOURS — warm tint + accent edge, unmistakably personal ── */
+.yours{background:var(--yours);border-left:3px solid var(--yours-edge);border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);margin-top:34px;padding:22px 24px 24px}
+.yours .kick{color:var(--yours-edge)}
+.yours h3{font:600 24px/1.25 var(--f);margin:0}
+.yours .why{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:6px 0 0}
+.act-line{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid rgba(0,0,0,.07)}
+body.dark .act-line{border-top-color:rgba(255,255,255,.07)}
+.act-line .q{flex:1;font:400 17px/1.35 var(--f)}
+.act-line .w{font:400 12px var(--m);color:var(--faint);flex:none}
+.act-line .run{font:600 13px var(--f);background:var(--ink);color:var(--bg);border-radius:999px;padding:7px 15px;flex:none}
+.priv{font:400 12px/1.6 var(--f);color:var(--faint);margin:14px 0 0}
+
+.endbar{padding:18px 24px 22px;border-top:1px solid var(--line);margin-top:34px;display:flex;align-items:center;gap:12px}
+.endbar .lk{font:600 14px var(--f);border-bottom:1px solid var(--line-2)}
+.endbar .nt{font:400 12.5px var(--f);color:var(--faint);margin-left:auto;text-align:right;max-width:52ch;line-height:1.55}
+</style></head>
+<body>
+
+<div class="top">
+  <div><h1>v2 — every section gets its own register</h1>
+  <p>Same content and the same type scale as before. What changed is the GROUND: five surfaces, each mapped to a kind of action, so a heavy page gives the eye landmarks instead of one undifferentiated wall of outlined boxes. The search is now a solid slab with a soft gradient — nothing else on the page looks like it, so there is never a question about where you act.</p></div>
+  <button class="tog" onclick="document.body.classList.toggle('dark')">Light / dark</button>
+</div>
+
+<div class="legend">
+  <div class="lg"><b>ACT</b><span>Solid ink slab, inverted, soft gradient. You type or press. Used once per screen.</span></div>
+  <div class="lg"><b>MAP</b><span>Tinted panel, ruled cells, edge-to-edge. You choose a direction.</span></div>
+  <div class="lg"><b>STORY</b><span>Full-bleed colour, editorial. You read a hand-made pick.</span></div>
+  <div class="lg"><b>SCAN</b><span>Plain, hairlines only. You skim a list. Deliberately the quietest.</span></div>
+  <div class="lg"><b>YOURS</b><span>Warm tint + accent edge. Only ever about the user's own stuff.</span></div>
+</div>
+
+<div id="out"></div>
+
+<script>
+const C={
+ brandbrain:["#3DA35D","brandbrain","Turn a live site into a brand system"],
+ ideabrain:["#4C7EF3","ideabrain","Pressure-test an idea before you build it"],
+ bank:["#12A594","Bank","Keep notes, tasks and links in plain .md you own"],
+ redline:["#4C7EF3","Redline","Read your landing page back to you, line by line"],
+ marquee:["#4C7EF3","Marquee","Generate a scrolling landing page from one line"],
+ adforge:["#EC6142","AdForge","Turn a URL into three Meta ad concepts"],
+ adpulse:["#E5922B","AdPulse","Turn last week's ad spend into what to cut"],
+ adwall:["#E93D82","Adwall","Get six ad directions at once from your brand"],
+ aplus:["#E5922B","A-Plus","Write Amazon A+ content in one pass"],
+ batch:["#E5922B","Batch","Draft all eight YC application answers"],
+ identity:["#8B5CF6","Identity","Compose an AI creator persona, facet by facet"],
+ prism:["#E93D82","Prism","Turn a prompt into an on-brand image"],
+ reel:["#E93D82","Reel","Script and render a launch reel in your browser"],
+ cast:["#E93D82","Cast","Keep an AI persona on-model across scenes"],
+ studio:["#E93D82","Studio","Shoot the product without a studio"],
+ shelf:["#E5922B","Shelf","Find the cash locked in your inventory"],
+ take:["#12A594","Take","Script it, then record it in the page"],
+ huddle:["#12A594","Huddle","Get on a working call with your own Claude"],
+ cartridge:["#8B5CF6","Cartridge","Describe a game and keep the .html"],
+ natal:["#8B5CF6","NATAL","Read your birth chart without the flattery"],
+ arcana:["#8B5CF6","Arcana","Pull three cards and get a blunt reading"],
+};
+const JOBS=[["Work out if it's worth building",3],["Name it and make it look like something",4],
+ ["Get it in front of people",5],["Sell the thing",3],["Run the week",3],["After hours",3]];
+const PH=["write this week's ads","review my landing page copy","validate this idea before I build it",
+ "make product shots without a studio","get my week into one list"];
+
+const row=(k,{at="free · your Claude",pin=false}={})=>`<div class="row">
+ <span class="ic" style="background:${C[k][0]}"></span><div class="tx">
+ <p class="nm">${C[k][1]}${pin?' <span class="pin">in your library</span>':''}</p>
+ <p class="vb">${C[k][2]}</p>${k==="ideabrain"?'<p class="doors">open it for — marketplace · consumer app · SaaS · retail · hardware · a feature</p>':''}
+ </div><span class="at">${at}</span><span class="op">Open</span></div>`;
+const story=(kk,h,p,ks,g)=>`<div class="story"><span class="art" style="background:${g}"><b>${kk}</b></span>
+ <div class="sb"><p class="sh">${h}</p><p class="sp">${p}</p>
+ <span class="sl">${ks.map(k=>`<i style="background:${C[k][0]}"></i>`).join("")}</span><p class="by">by Sameep</p></div></div>`;
+const mapband=(on=-1,kick="Or pick the job you're on")=>`<div class="map"><p class="kick">${kick}</p>
+ <div class="mapgrid">${JOBS.map(([n,c],i)=>`<div class="mapcell${i===on?' on':''}"><p class="n">${n}</p><p class="c">${c} apps</p></div>`).join("")}</div></div>`;
+const nav=(c)=>`<div class="nav"><span class="lo"><i></i>Switchboard</span><span class="sp"></span>
+ <a>All apps</a><a>How it works</a>${c?'<a>Your library</a><span class="btn">Aamras ▾</span>':'<span class="btn">Connect</span>'}</div>`;
+const G=["linear-gradient(135deg,#F0E3C8,#E3CFA4)","linear-gradient(135deg,#F0DCD4,#E0BCAC)",
+ "linear-gradient(135deg,#D9E2EE,#BCCBE0)","linear-gradient(135deg,#D7E8DE,#B6D2C4)"];
+
+/* ── OPTION 1 — ASK ── */
+const O1c=`${nav(0)}<div class="pad" style="padding-top:30px">
+ <h1 class="t">Small apps that run on the Claude you already pay for.</h1>
+ <p class="sub">No account. No API key. Nothing you type leaves your machine.</p></div>
+ <div class="act-slab"><p class="lab">Start here</p>
+  <div class="act-in"><span class="ph">What are you trying to get done?</span><span class="go">Find it</span></div>
+  <div class="act-chips">${PH.map(p=>`<span>${p}</span>`).join("")}</div>
+  <p class="act-foot">21 apps · free on your own Claude · no sign-up</p></div>
+ <div class="pad" style="margin-top:38px"><p class="kick">Or start from a kit</p>
+  <div class="stories">
+   ${story("New here","Five that need only a link","Point them at your site and they're useful straight away.",["bank","redline","brandbrain","adforge","take"],G[0])}
+   ${story("Running ads alone","Six for the whole funnel","Brief, write, render, then read the spend back.",["brandbrain","adforge","adwall","reel","adpulse","studio"],G[1])}
+   ${story("Friday afternoon","Four to finish today","Small enough to start and end before you log off.",["take","cartridge","arcana","natal"],G[2])}
+  </div></div>
+ ${mapband()}
+ <div class="endbar"><span class="lk">See all 21 apps →</span>
+  <span class="nt">Six of them are ideabrain opened to a different kind of idea. We count that as one.</span></div>`;
+
+const O1r=`${nav(1)}<div class="pad" style="padding-top:30px"><h1 class="t">What are you getting done today?</h1></div>
+ <div class="act-slab"><p class="lab">Ask your own Claude</p>
+  <div class="act-in"><span class="ph">Ask for anything — it routes to the app and fills it in</span><span class="go">Go</span></div>
+  <div class="act-chips">${PH.slice(0,4).map(p=>`<span>${p}</span>`).join("")}</div>
+  <p class="act-foot">runs on your Claude · nothing routed through us</p></div>
+ <div class="yours"><p class="kick">Because your library holds Aamras and relay</p>
+  <h3>Three things you could finish now</h3>
+  <p class="why">Worked out on this page from names only — nothing was sent anywhere.</p>
+  <div class="act-line"><span class="q">Generate this week's ads for Aamras</span><span class="w">AdForge</span><span class="run">Run</span></div>
+  <div class="act-line"><span class="q">Read relay's landing page back, line by line</span><span class="w">Redline</span><span class="run">Run</span></div>
+  <div class="act-line"><span class="q">Turn last week's Aamras spend into what to cut</span><span class="w">AdPulse</span><span class="run">Run</span></div>
+  <p class="priv">Names only, never the contents. Dismiss any of these and it won't come back.</p></div>
+ <div class="scan"><p class="kick">Where you were</p>${row("adforge",{at:"2 days ago",pin:true})}${row("bank",{at:"last week",pin:true})}</div>
+ ${mapband(2,"Everything else, by job")}
+ <div class="endbar"><span class="lk">See all 21 apps →</span></div>`;
+
+/* ── OPTION 3 — CURATE ── */
+const O3c=`${nav(0)}<div class="pad" style="padding-top:30px">
+ <h1 class="t">Small apps that run on the Claude you already pay for.</h1>
+ <p class="sub">No account. No API key. Nothing you type leaves your machine.</p>
+ <div class="stories" style="margin-top:24px">
+  ${story("Start here","Five that need only a link","Point them at your site and they're useful straight away.",["bank","redline","brandbrain","adforge","take"],G[0])}
+  ${story("Running ads alone","Six for the whole funnel","Brief, write, render, then read the spend back.",["brandbrain","adforge","adwall","reel","adpulse","studio"],G[1])}
+  ${story("Before you build","Three that argue with you","Cheaper to be wrong here than in code.",["ideabrain","redline","batch"],G[2])}
+ </div></div>
+ <div class="act-slab"><p class="lab">Know the job already?</p>
+  <div class="act-in"><span class="ph">Describe it — "write this week's ads"</span><span class="go">Find it</span></div>
+  <p class="act-foot">21 apps · free on your own Claude · no sign-up</p></div>
+ <div class="pad" style="margin-top:38px"><p class="kick">This week</p>
+  <h2 class="s">Marquee writes the page. Redline reads it back.</h2>
+  <p class="sub">Two apps that make one loop: generate a scrolling landing page from a line, then have your Claude mark it up like a document.</p></div>
+ <div class="scan" style="margin-top:16px">${row("marquee")}${row("redline")}</div>
+ ${mapband()}
+ <div class="endbar"><span class="lk">See all 21 apps →</span>
+  <span class="nt">Nothing here is ranked by installs or stars — no accounts, so we have neither. Picked by hand and signed.</span></div>`;
+
+const O3r=`${nav(1)}<div class="pad" style="padding-top:30px"><h1 class="t">Back to it.</h1></div>
+ <div class="yours"><p class="kick">Because your library holds Aamras, Haazma and relay</p>
+  <h3>Three things you could finish now</h3>
+  <p class="why">Worked out on this page from names only — nothing was sent anywhere.</p>
+  <div class="act-line"><span class="q">Generate this week's ads for Aamras</span><span class="w">AdForge</span><span class="run">Run</span></div>
+  <div class="act-line"><span class="q">Read relay's landing page back, line by line</span><span class="w">Redline</span><span class="run">Run</span></div>
+  <div class="act-line"><span class="q">Get Haazma's week into one list</span><span class="w">Bank</span><span class="run">Run</span></div>
+  <p class="priv">Names only, never the contents. Dismiss any of these and it won't come back.</p></div>
+ <div class="act-slab"><p class="lab">Or ask for something else</p>
+  <div class="act-in"><span class="ph">Ask for anything — it routes and fills it in</span><span class="go">Go</span></div></div>
+ <div class="pad" style="margin-top:38px"><p class="kick">Picked for what you're building</p>
+  <div class="stories">
+   ${story("You run ads","Four you haven't opened","The rest of the funnel you already started.",["adwall","reel","cast","studio"],G[1])}
+   ${story("You keep a vault","Three that read it","They borrow the folder, then hand it back.",["bank","huddle","take"],G[3])}
+   ${story("Friday afternoon","Four to finish today","Small enough to start and end before you log off.",["take","cartridge","arcana","natal"],G[2])}
+  </div></div>
+ ${mapband(2,"Everything else, by job")}
+ <div class="endbar"><span class="lk">See all 21 apps →</span></div>`;
+
+document.getElementById("out").innerHTML=[
+ ["Option 1 — ASK","The ACT slab is the first thing under the headline and it is the loudest object on the page: solid ink, soft gradient, inverted input, chips inside it. Kits come next as STORY, the job MAP closes the page as a quiet footer, and SCAN barely appears. Returning state keeps the slab but YOURS takes the position directly under it.",O1c,O1r],
+ ["Option 3 — CURATE","STORY leads — three signed kits in full-bleed colour before anything else — and the ACT slab sits UNDER them as the escape hatch for someone who already knows the job. 'This week' is a proper editorial spread at section scale, then MAP closes. Returning state promotes YOURS above everything, demotes the slab to a one-line utility, and re-cuts the kits against the library.",O3c,O3r],
+].map(([n,d,a,b])=>`<div class="optrow"><p class="opthead"><b>${n}</b><span>${d}</span></p><div class="pair">
+ <div class="frame"><div class="flabel">State A — first-time visitor · nothing connected</div><div class="shell" data-sh><div class="pg">${a}</div></div></div>
+ <div class="frame"><div class="flabel">State B — returning user · library has Aamras, Haazma, relay</div><div class="shell" data-sh><div class="pg">${b}</div></div></div>
+</div></div>`).join("");
+
+function fit(){document.querySelectorAll("[data-sh]").forEach(sh=>{const p=sh.querySelector(".pg"),s=sh.clientWidth/760;
+ p.style.transform=`scale(${s})`;sh.style.height=(p.scrollHeight*s)+"px";});}
+fit();addEventListener("resize",fit);document.fonts.ready.then(fit);
+</script>
+</body></html>

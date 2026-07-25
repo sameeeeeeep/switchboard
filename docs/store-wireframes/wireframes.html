@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wireframes — three directions, full page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --card:#131315; --card-2:#191A1D; --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --ok:#54B487; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:#050506;color:var(--ink);font-family:Inter,sans-serif;padding:22px}
+.head{max-width:1400px;margin:0 auto 18px}
+.head h1{font:700 19px/1.2 Inter,sans-serif;margin:0 0 6px}
+.head p{margin:0;color:var(--faint);font-size:13px;line-height:1.6;max-width:100ch}
+/* minmax(0,1fr) — plain 1fr resolves to the 1180px page's min-content and blows the columns out */
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:1400px;margin:0 auto;align-items:start}
+.col > .cap{margin:0 0 10px}
+.cap b{display:block;font:700 12px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ok)}
+.cap span{display:block;font-size:11.5px;color:var(--faint);line-height:1.55;margin-top:5px}
+/* each page is rendered at true 1180px then scaled to fit the column */
+.shell{width:100%;overflow:hidden;border:1px solid var(--line-2);border-radius:10px;background:var(--bg)}
+.page{width:1180px;transform-origin:0 0;background:var(--bg);padding:0 0 40px}
+.bar{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 22px}
+.bar i{display:block;height:9px;border-radius:3px;background:var(--card-2)}
+.body{padding:0 22px}
+.blk{background:var(--card);border:1px solid var(--line);border-radius:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tile .sh{display:block;height:74px}
+.tile .tb{display:flex;align-items:center;gap:7px;padding:8px 10px}
+.tile .dot{width:16px;height:16px;border-radius:5px;flex:none}
+.tile .nm{font-size:11px;font-weight:600}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
+.ln{height:8px;border-radius:3px;background:#1b1b1f;margin:7px 0}
+.ln.s{width:60%} .ln.m{width:82%}
+.sect{margin-top:46px}
+.hr{height:1px;background:var(--line);margin:0}
+.pill{display:inline-block;background:var(--accent);color:#0A0A0B;font-weight:600;border-radius:999px;padding:11px 18px;font-size:13px}
+.pillsq{border-radius:6px}
+.eyeb{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:6px 11px;background:var(--card);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.eyeb i{width:5px;height:5px;border-radius:50%;background:var(--ok)}
+
+/* ---- A: Directory ---- */
+.A{font-family:Inter,sans-serif}
+.A .hero{display:grid;grid-template-columns:100px minmax(0,1fr) 400px;gap:0 34px;align-items:start;padding-top:44px}
+.A .rail{border-top:2px solid var(--ink);padding-top:9px}
+.A .rail li{list-style:none;font:500 9.5px/1.95 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faintest)}
+.A .rail li.on{color:var(--ink)} .A .rail li b{color:var(--faint);font-weight:500;margin-right:7px}
+.A h1{font-family:Archivo,sans-serif;font-weight:800;font-size:60px;line-height:.95;letter-spacing:-.045em;margin:16px 0 0}
+.A h1 s{text-decoration:none;color:var(--faint)}
+.A .lead{font-size:15px;line-height:1.6;color:var(--ink-2);max-width:46ch;margin:18px 0 0}
+.A .meta{font:500 9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:13px 0 0}
+.A h2{font-family:Archivo,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.03em;margin:0}
+.A .k{font:500 9.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.A .sect{border-top:1px solid var(--line);padding-top:20px}
+.A h3{font-family:Archivo,sans-serif;font-weight:700;font-size:15px;letter-spacing:-.015em;margin:0 0 7px}
+
+/* ---- B: Masthead ---- */
+.B{font-family:Inter,sans-serif}
+.B .hero{padding-top:44px}
+.B h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:70px;line-height:.92;letter-spacing:-.035em;margin:18px 0 0;font-variation-settings:"opsz" 96}
+.B h1 s{text-decoration:none;color:var(--faint)}
+.B .rule{height:2px;background:var(--ink);margin:24px 0 0}
+.B .under{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:36px;margin-top:20px;align-items:start}
+.B .lead{font-size:15.5px;line-height:1.58;color:var(--ink-2);margin:0;max-width:44ch}
+.B .meta{font:500 11px/1 var(--mono);color:var(--faint);margin:12px 0 0}
+.B h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:33px;letter-spacing:-.03em;margin:0;font-variation-settings:"opsz" 48}
+.B .k{font:600 9.5px/1 Inter,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 9px}
+.B .slab{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:20px}
+.B .slab>div{background:var(--bg);padding:20px 18px}
+.B h3{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:17px;letter-spacing:-.02em;margin:0 0 9px}
+
+/* ---- C: Exchange ---- */
+.C{font-family:"Instrument Sans",sans-serif}
+.C .hero{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:36px;align-items:center;padding-top:44px}
+.C h1{font-family:var(--mono);font-weight:700;font-size:44px;line-height:1.06;letter-spacing:-.045em;margin:16px 0 0}
+.C h1 s{text-decoration:none;color:var(--faint)}
+.C .lead{font-size:15px;line-height:1.62;color:var(--ink-2);margin:18px 0 0;max-width:50ch}
+.C .meta{font:400 10.5px/1 var(--mono);color:var(--faint);margin:12px 0 0}
+.C h2{font-family:var(--mono);font-weight:700;font-size:23px;letter-spacing:-.035em;margin:0}
+.C .k{font:500 9.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.C .sect{border-top:1px solid var(--line);padding-top:22px}
+.C h3{font-family:var(--mono);font-weight:700;font-size:13.5px;letter-spacing:-.02em;margin:0 0 9px}
+.C .eyeb{color:var(--ok);border-color:rgba(84,180,135,.25);background:rgba(84,180,135,.07);font-family:var(--mono)}
+.C .pill{font-family:var(--mono);font-weight:700;border-radius:8px}
+
+/* ---- body face comparison ---- */
+.faces{max-width:1400px;margin:34px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.face{background:var(--bg);border:1px solid var(--line-2);border-radius:10px;padding:26px}
+.face h4{font:700 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ok);margin:0 0 14px}
+.face .t1{font-family:Archivo,sans-serif;font-weight:800;font-size:30px;letter-spacing:-.035em;margin:0 0 12px}
+.face p{margin:0 0 10px;font-size:15px;line-height:1.65;color:var(--ink-2)}
+.face .sm{font-size:13px;color:var(--faint);margin:0}
+.face.inter p,.face.inter .sm{font-family:Inter,sans-serif}
+.face.instr p,.face.instr .sm{font-family:"Instrument Sans",sans-serif}
+</style></head>
+<body>
+
+<div class="head">
+  <h1>Full-page wireframes — same content, three type &amp; layout systems</h1>
+  <p>Dark surfaces, cards and the live-preview tiles are identical in all three (that's the locked base). Only the type scale, the display face, and the page's structural grid change. Grey bars stand in for body copy so hierarchy is what you're judging.</p>
+</div>
+
+<div class="cols" id="cols"></div>
+
+<div class="head" style="margin-top:38px"><h1>Body / reading face</h1><p>Same paragraph, same size, same measure — Archivo display on top of each so you see the pairing, not the face alone.</p></div>
+<div class="faces">
+  <div class="face inter"><h4>1 — Inter (what all 42 landing pages use)</h4>
+    <p class="t1">Three things you do once.</p>
+    <p>Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Connect your own Claude once, and all 27 apps here run on that one connection.</p>
+    <p class="sm">Free. No account. Takes about two minutes. Your prompts go to your own provider under your own account, or to a local model and then nowhere at all.</p>
+  </div>
+  <div class="face instr"><h4>2 — Instrument Sans (your landing-page brand face)</h4>
+    <p class="t1">Three things you do once.</p>
+    <p>Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Connect your own Claude once, and all 27 apps here run on that one connection.</p>
+    <p class="sm">Free. No account. Takes about two minutes. Your prompts go to your own provider under your own account, or to a local model and then nowhere at all.</p>
+  </div>
+</div>
+
+<script>
+const TILES=[["#6AAF3A","brandbrain","linear-gradient(135deg,#1d3b2a,#0f1d15)"],["#EC6142","AdForge","linear-gradient(135deg,#3a2118,#1a100b)"],
+["#8B5CF6","Arcana","linear-gradient(135deg,#2a1f3d,#150f1f)"],["#12A594","Bank","linear-gradient(135deg,#12332f,#0a1a18)"],
+["#4C8DF6","Redline","linear-gradient(135deg,#16273d,#0b1420)"],["#E5922B","AdPulse","linear-gradient(135deg,#3a2c12,#1b1409)"],
+["#D6409F","Studio","linear-gradient(135deg,#3a1830,#1c0c17)"],["#12A594","Huddle","linear-gradient(135deg,#12332f,#0a1a18)"]];
+const tile=(t)=>`<div class="tile"><span class="sh" style="background:${t[2]}"></span><span class="tb"><span class="dot" style="background:${t[0]}"></span><span class="nm">${t[1]}</span></span></div>`;
+const tiles=(n)=>TILES.slice(0,n).map(tile).join("");
+const lines=(n)=>Array.from({length:n},(_,i)=>`<div class="ln ${i===n-1?'s':(i%2?'m':'')}"></div>`).join("");
+const blk=(h)=>`<div class="blk" style="height:${h}px"></div>`;
+
+const HERO_A=`<div class="hero">
+  <ul class="rail"><li class="on"><b>01</b>Index</li><li><b>02</b>Once</li><li><b>03</b>Apps</li><li><b>04</b>Setup</li><li><b>05</b>Limits</li><li><b>06</b>Price</li></ul>
+  <div><span class="eyeb"><i></i>Open source · your own Claude</span>
+    <h1>One connection.<br><s>Not one per app.</s></h1>
+    <p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained.</p>
+    <div style="margin-top:20px"><span class="pill">Connect Switchboard →</span></div>
+    <p class="meta">Free · no account · ~2 minutes</p></div>
+  <div class="g2">${tiles(4)}</div></div>`;
+
+const HERO_B=`<div class="hero"><span class="eyeb">Open source · runs on the Claude you already pay for</span>
+  <h1>One connection.<br><s>Not one per app.</s></h1><div class="rule"></div>
+  <div class="under"><div><p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained.</p>
+    <div style="margin-top:18px"><span class="pill pillsq">Connect Switchboard →</span></div><p class="meta">Free. No account. ~2 minutes.</p></div>
+  <div class="g2">${tiles(4)}</div></div></div>`;
+
+const HERO_C=`<div class="hero"><div><span class="eyeb">open source · your own claude</span>
+  <h1>One connection.<br><s>Not one per app.</s></h1>
+  <p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained.</p>
+  <div style="margin-top:18px"><span class="pill">Connect Switchboard →</span></div><p class="meta">free · no account · ~2 min</p></div>
+  <div class="g2">${tiles(4)}</div></div>`;
+
+function rest(kind){
+  const three = kind==="B"
+    ? `<div class="slab"><div><h3>One account</h3>${lines(3)}</div><div><h3>One subscription</h3>${lines(3)}</div><div><h3>One copy of context</h3>${lines(3)}</div></div>`
+    : `<div class="g3" style="margin-top:18px">${["One account","One subscription","One copy of context"].map(t=>`<div><h3>${t}</h3>${lines(3)}</div>`).join("")}</div>`;
+  const noes = kind==="B"
+    ? `<div class="slab"><div><h3>No key in the app</h3>${lines(2)}</div><div><h3>No account</h3>${lines(2)}</div><div><h3>No second bill</h3>${lines(2)}</div></div>`
+    : `<div class="g3" style="margin-top:18px">${["No key in the app","No account","No second bill"].map(t=>`<div><h3>${t}</h3>${lines(2)}</div>`).join("")}</div>`;
+  return `
+  <div class="sect"><p class="k">02 — what you set up once</p><h2>Three things you do once, not once per app.</h2>${three}</div>
+  <div class="sect"><p class="k">03 — the catalog</p><h2>27 apps, and every tile is the real thing.</h2>
+    <div class="g4" style="margin-top:18px">${tiles(8)}</div>
+    <div class="g4" style="margin-top:11px">${tiles(8)}</div></div>
+  <div class="sect"><p class="k">04 — getting set up</p><h2>Four steps, and it's yours.</h2>
+    <div class="g4" style="margin-top:18px">${blk(96)}${blk(96)}${blk(96)}${blk(96)}</div></div>
+  <div class="sect"><p class="k">05 — what never happens</p><h2>Five things this can't do to you.</h2>${noes}</div>
+  <div class="sect"><p class="k">06 — pricing</p><h2>Using your own AI is free.</h2>
+    <div style="margin-top:18px">${blk(120)}</div>
+    <div class="g2" style="margin-top:11px">${blk(90)}${blk(90)}</div></div>
+  <div class="sect" style="text-align:center;padding-top:52px"><h2 style="max-width:22ch;margin:0 auto">The app is replaceable. Your Claude and your files are not.</h2></div>`;
+}
+
+const DIRS=[
+  ["A","Directory","Archivo 800 · 60px · sticky mono index rail in the left gutter (it's the real table of contents). Steps 60/27/15/13/9.5.",HERO_A],
+  ["B","Masthead","Bricolage Grotesque 800 · 70px · hard 2px rule · hairline slab instead of rounded cards. Steps 70/33/15.5/13/9.5.",HERO_B],
+  ["C","Exchange","JetBrains Mono as the DISPLAY face + Instrument Sans body — your landing page's own language. Steps 44/23/15/13/9.5.",HERO_C],
+];
+document.getElementById("cols").innerHTML = DIRS.map(([k,name,desc,hero])=>`
+  <div class="col"><p class="cap"><b>${k} — ${name}</b><span>${desc}</span></p>
+    <div class="shell" data-shell><div class="page ${k}">
+      <div class="bar"><i style="width:86px"></i><i style="width:150px;margin-left:auto"></i><i style="width:60px"></i><i style="width:96px"></i></div>
+      <div class="body">${hero}${rest(k)}</div>
+    </div></div></div>`).join("");
+
+// scale each 1180px page down to its column, and size the shell to the scaled height
+function fit(){
+  document.querySelectorAll("[data-shell]").forEach(sh=>{
+    const pg=sh.querySelector(".page"), s=sh.clientWidth/1180;
+    pg.style.transform=`scale(${s})`;
+    sh.style.height=(pg.scrollHeight*s)+"px";
+  });
+}
+fit(); addEventListener("resize",fit); document.fonts.ready.then(fit);
+</script>
+</body></html>
