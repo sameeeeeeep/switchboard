@@ -923,14 +923,18 @@ function renderDirections() {
   g.textContent = "";
   mountBankOffer();
   if (!directions) return;
-  const hot = chosenIdx >= 0 ? chosenIdx : directions.findIndex((d) => d.recommended);
+  // Rule 5 — the lime state means A HUMAN CHOSE. The model's pick is only a DRAFT: it gets a
+  // hairline-dashed card and a neutral tag, never the accent. Nothing but chosenIdx lights a card.
+  const draftIdx = directions.findIndex((d) => d.recommended);
   directions.forEach((d, i) => {
-    const card = el("button", "dir" + (i === hot ? " hot" : ""));
+    const chosen = i === chosenIdx;
+    const drafted = !chosen && i === draftIdx;
+    const card = el("button", "dir" + (chosen ? " hot" : "") + (drafted ? " drafted" : ""));
     card.type = "button";
     const top = el("div", "dir-top");
     top.append(el("span", "dir-name", d.name));
-    if (d.recommended) top.append(el("span", "dtag", "recommended"));
-    if (i === chosenIdx) top.append(el("span", "dtag sel", "picked"));
+    if (d.recommended) top.append(el("span", "dtag draft", "recommended"));
+    if (chosen) top.append(el("span", "dtag sel", "picked"));
     card.append(top);
     if (d.heroHeadline) card.append(el("div", "dir-hero", "“" + d.heroHeadline + "”"));
     if (d.angle) card.append(el("p", "dir-angle", d.angle));

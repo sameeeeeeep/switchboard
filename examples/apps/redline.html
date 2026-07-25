@@ -141,6 +141,10 @@
       .opt .check { position: absolute; right: 11px; top: 11px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--edge); display: grid; place-items: center; color: transparent; font: 700 11px/1 var(--sans); }
       .opt.sel .check { border-color: var(--accent); background: var(--accent); color: var(--page); }
       .opt .rec { display: inline-block; font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 999px; padding: 3px 7px; margin-bottom: 7px; }
+      /* DRAFTED — Redline's own suggestion. Hairline-dashed, neutral ink: the accent is reserved
+         for the card a reviewer actually clicked (doctrine 5). */
+      .opt.drafted { border-style: dashed; }
+      .opt .rec.draft { color: var(--ink-dim); background: transparent; border: 1px dashed var(--edge); }
       .opt .o-label { font: 600 13.5px/1.3 var(--display); color: var(--ink); padding-right: 22px; }
       .opt .o-text { font: 400 13px/1.5 var(--sans); color: var(--ink-sec); margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
       .opt .o-svg { background: #fff; border-radius: 8px; padding: 8px; margin-top: 8px; overflow: auto; }

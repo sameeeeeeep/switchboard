@@ -1,0 +1,714 @@
+<title>Firstlight — a company that runs itself</title>
+<style>
+:root{
+  --page:#08090A; --card:#101214; --card2:#14171A; --rule:#1E2226; --rule2:#2A3037;
+  --ink:#ECEFEA; --dim:#98A09A; --faint:#646C68;
+  --lime:#C8F250; --ember:#E9954A; --fog:#CFD2C4; --run:#F3B94E; --ok:#5FD08A;
+  --violet:#A78BFA;
+  --disp:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--page);color:var(--ink);font-family:var(--disp);
+  -webkit-font-smoothing:antialiased;overflow:hidden;font-size:14px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.app{display:grid;grid-template-rows:52px 1fr 28px;height:100vh}
+
+/* ---------- top ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:26px;height:26px;border-radius:7px;flex:none;
+  background:radial-gradient(120% 120% at 30% 20%,#2f6b45,#0f2a1b);border:1px solid #2f6b48;
+  display:grid;place-items:center;font-weight:900;font-size:11px;color:#d8f5e4}
+.brand b{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);
+  box-shadow:0 0 0 0 #5fd08a;animation:pp 2.4s infinite;flex:none}
+@keyframes pp{0%{box-shadow:0 0 0 0 #5fd08a80}70%{box-shadow:0 0 0 7px #5fd08a00}
+  100%{box-shadow:0 0 0 0 #5fd08a00}}
+.top .r{margin-left:auto;display:flex;align-items:center;gap:14px}
+.tcount{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.03em}
+.tcount b{color:var(--ink);font-weight:600}
+.tbtn{font-size:12.5px;color:var(--dim);padding:6px 11px;border-radius:7px;
+  border:1px solid var(--rule2);transition:.14s}
+.tbtn:hover{color:var(--ink);border-color:var(--fog)}
+.tbtn.pri{background:var(--lime);color:#0b0d0a;border-color:var(--lime);font-weight:700}
+
+/* ---------- split ---------- */
+/* Pane is PROPORTIONAL, not a fixed 520px — at 1024px a fixed pane ate the
+   screen and collapsed the cockpit to two squashed columns. */
+.body{display:flex;overflow:hidden;--pw:clamp(320px,32vw,560px)}
+.deck{flex:1;min-width:0;overflow-y:auto;padding:16px 18px 40px}
+.grid{display:grid;gap:14px;align-items:start;
+  grid-template-columns:repeat(auto-fit,minmax(236px,1fr))}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.chead{font-family:var(--mono);font-size:10px;letter-spacing:.17em;color:var(--faint);padding:0 2px}
+.split{flex:none;width:0;background:var(--rule);position:relative;
+  transition:width .3s cubic-bezier(.2,.8,.2,1)}
+.body.open .split{width:1px}
+.split::after{content:"";position:absolute;top:0;bottom:0;left:-5px;right:-5px;cursor:col-resize}
+.body.open .split:hover,.split.drag{background:var(--fog)}
+.split.drag::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:3px;background:var(--lime)}
+.pane{flex:none;width:0;overflow:hidden;transition:width .34s cubic-bezier(.2,.8,.2,1)}
+.body.open .pane{width:var(--pw)}
+.body.dragging .pane,.body.dragging .split{transition:none}
+.body.dragging{user-select:none}
+.paneinner{width:var(--pw);height:100%;display:flex;flex-direction:column;
+  border-left:1px solid var(--rule);background:var(--page)}
+/* only genuinely small screens get the overlay — otherwise the cockpit keeps its shape */
+@media(max-width:720px){
+  .body.open .pane{position:fixed;inset:52px 0 28px;width:auto;z-index:30;background:var(--page)}
+  .body.open .paneinner{width:100%}}
+
+/* ---------- cards ---------- */
+.card{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:13px}
+.ct{font-size:13px;font-weight:650;letter-spacing:-.01em;margin:0 0 9px;
+  display:flex;align-items:center;gap:8px}
+.ct .more{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--faint);
+  font-weight:400}
+.row{display:block;width:100%;padding:9px 10px;border-radius:8px;transition:.13s;
+  border:1px solid transparent;position:relative}
+.row:hover{background:var(--card2);border-color:var(--rule2)}
+.row.on{background:var(--card2);border-color:var(--rule2)}
+.row.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;
+  border-radius:2px;background:var(--lime)}
+.rname{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+.rsub{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.45}
+.rmeta{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:5px;
+  display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.tag{font-family:var(--mono);font-size:9px;letter-spacing:.09em;padding:2px 6px;
+  border-radius:4px;text-transform:uppercase;font-weight:700}
+.t-run{color:var(--run);background:#f3b94e18}
+.t-pend{color:var(--violet);background:#a78bfa18}
+.t-done{color:var(--ok);background:#5fd08a18}
+.t-art{color:var(--faint);background:#ffffff08}
+.t-choose{color:#0b0d0a;background:var(--lime)}
+
+/* company */
+.idrow{display:flex;gap:11px;align-items:flex-start}
+.idlogo{width:38px;height:38px;border-radius:11px;flex:none;
+  background:radial-gradient(120% 120% at 30% 20%,#2f6b45,#0f2a1b);border:1px solid #2f6b48;
+  display:grid;place-items:center;font-weight:900;font-size:14px;color:#d8f5e4}
+.idrow h3{margin:0;font-size:15px;font-weight:800;letter-spacing:-.02em}
+.blurb{font-size:12px;color:var(--dim);line-height:1.5;margin:10px 0 0}
+.sitelink{font-family:var(--mono);font-size:11px;color:var(--lime);margin-top:8px;display:block}
+.thumb{margin-top:10px;border:1px solid var(--rule2);border-radius:9px;overflow:hidden;
+  transition:.15s;display:block;width:100%;padding:0}
+.thumb:hover{border-color:var(--fog)}
+.kv{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+  border-top:1px solid var(--rule)}
+.kv span{font-size:12px;color:var(--dim)}
+.kv b{font-size:13px;font-weight:700}
+.kv b.na{font-family:var(--mono);font-size:10px;color:var(--faint);font-weight:400}
+.fundbtn{width:100%;text-align:center;background:var(--lime);color:#0b0d0a;font-weight:750;
+  font-size:12.5px;padding:10px;border-radius:9px;margin-top:11px}
+.fundnote{font-family:var(--mono);font-size:9px;color:var(--faint);text-align:center;
+  margin-top:7px;letter-spacing:.04em}
+
+/* log */
+.log{font-family:var(--mono);font-size:11px;line-height:1.75}
+.log .l{display:flex;gap:6px;color:var(--dim);cursor:pointer;padding:1px 0;border-radius:3px}
+.log .l:hover{color:var(--ink)}
+.log .l .g{color:var(--ok);flex:none}
+.log .l.run{color:var(--ink)} .log .l.run .g{color:var(--lime)}
+.caret{display:inline-block;width:6px;height:11px;background:var(--lime);
+  vertical-align:-1px;animation:bl 1.1s steps(2) infinite}
+@keyframes bl{50%{opacity:0}}
+
+/* ads */
+.adcard{border:1px solid var(--rule2);border-radius:10px;overflow:hidden;transition:.15s;
+  background:#0c0e10;display:block;width:100%;padding:0}
+.adcard:hover{border-color:var(--fog)}
+.adtop{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.adav{width:22px;height:22px;border-radius:50%;flex:none;
+  background:radial-gradient(120% 120% at 30% 25%,#2b3a24,#12130F);border:1px solid var(--rule2);
+  display:grid;place-items:center;font-size:8px;font-weight:800;color:var(--lime)}
+.adtop .nm{font-size:11px;font-weight:650}
+.adtop .sp{font-family:var(--mono);font-size:8.5px;color:var(--faint)}
+.adfoot{padding:9px 10px;display:flex;align-items:center;gap:8px}
+.adfoot .h{font-size:11.5px;font-weight:700;line-height:1.25}
+.adfoot .b{margin-left:auto;font-size:10px;font-weight:700;background:var(--fog);color:#12130F;
+  padding:5px 9px;border-radius:5px;flex:none}
+.ghostbtn{width:100%;text-align:center;border:1px solid var(--rule2);border-radius:8px;
+  padding:9px;font-size:12px;color:var(--dim);margin-top:10px;transition:.14s}
+.ghostbtn:hover{border-color:var(--fog);color:var(--ink)}
+
+/* strategy */
+.fitem{padding:10px 0;border-top:1px solid var(--rule)}
+.fitem:first-child{border-top:0;padding-top:2px}
+.fmeta{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.fmeta b{font-size:11.5px;font-weight:750}
+.fmeta time{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.fbody{font-size:12.5px;color:var(--dim);line-height:1.55}
+.flink{color:var(--lime);text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:#c8f25055;cursor:pointer}
+.flink:hover{text-decoration-color:var(--lime)}
+
+/* scene */
+.adscene{position:relative;aspect-ratio:1/1;overflow:hidden;background:#070C16}
+.adscene svg.base{position:absolute;inset:0;width:100%;height:100%;display:block}
+.grain{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:overlay;opacity:.17;
+  pointer-events:none}
+.grain2{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:soft-light;opacity:.26;
+  pointer-events:none}
+.halation{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;
+  background:radial-gradient(38% 26% at 60% 56%,rgba(255,196,120,.5),rgba(233,120,60,.15) 45%,
+  transparent 72%);filter:blur(16px)}
+.gradeCool{position:absolute;inset:0;pointer-events:none;mix-blend-mode:soft-light;
+  background:linear-gradient(180deg,rgba(38,86,132,.5) 0%,rgba(38,86,132,.08) 42%,rgba(0,0,0,0) 58%)}
+.gradeWarm{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;
+  background:radial-gradient(56% 40% at 60% 54%,rgba(233,149,74,.26),transparent 72%)}
+.vig{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(126% 100% at 52% 40%,transparent 46%,rgba(5,7,9,.55) 100%)}
+.scrim{position:absolute;left:0;right:0;bottom:0;height:62%;pointer-events:none;
+  background:radial-gradient(78% 92% at 4% 104%,rgba(18,19,15,.92),rgba(18,19,15,.28) 58%,
+  transparent 76%),linear-gradient(180deg,transparent 0%,rgba(18,19,15,.24) 56%,rgba(18,19,15,.72) 100%)}
+.steam{position:absolute;left:66%;bottom:20.5%;width:23%;height:26%;opacity:.34;pointer-events:none}
+.steam path{stroke:#fff;stroke-width:7;fill:none;stroke-linecap:round;filter:blur(6px);
+  animation:rise 6s ease-in-out infinite}
+.steam path:nth-child(2){animation-delay:1.8s}
+.steam path:nth-child(3){animation-delay:3.4s}
+@keyframes rise{0%{opacity:0;transform:translateY(12px)}35%{opacity:.8}
+  100%{opacity:0;transform:translateY(-16px)}}
+.adcopy{position:absolute;left:0;right:0;bottom:0;padding:14px 12px 12px}
+.adcopy h3{margin:0;font-weight:800;letter-spacing:-.035em;color:#fff;line-height:1.05;
+  text-wrap:balance;font-size:20px}
+
+/* tin */
+.tin{position:relative;width:var(--tw,148px);height:calc(var(--tw,148px)*1.32);flex:none}
+.tin-body{position:absolute;inset:0;top:11%;overflow:hidden;
+  border-radius:50% 50% 50% 50% / 0 0 13% 13%;
+  background:linear-gradient(90deg,rgba(233,149,74,.40) 0%,rgba(233,149,74,.13) 4%,rgba(233,149,74,0) 16%),
+    linear-gradient(180deg,rgba(233,149,74,.10) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,.42) 82%,rgba(0,0,0,.72) 100%),
+    linear-gradient(90deg,#060704 0%,#0B0C07 4%,#14150C 9%,#24251A 17%,#35361F 24%,#43442A 30%,
+      #4A4B31 34%,#3F402A 39%,#2D2E1E 48%,#1F2015 58%,#131408 70%,#0A0B05 82%,#050603 92%,
+      #12130B 96%,#2A2B1F 99%,#3A3B2C 100%);
+  box-shadow:inset 0 12px 18px -10px rgba(0,0,0,.9),inset 0 -16px 24px -14px rgba(0,0,0,.9)}
+.tin-print{position:absolute;left:0;right:0;top:32%;text-align:center;user-select:none}
+.tin-mark{font-size:calc(var(--tw,148px)*.098);font-weight:640;letter-spacing:.2em;
+  color:rgba(214,218,203,.62);text-shadow:0 1px 0 rgba(0,0,0,.72),0 -1px 0 rgba(233,236,222,.09)}
+.tin-sub{font-family:var(--mono);font-size:calc(var(--tw,148px)*.048);letter-spacing:.16em;
+  color:rgba(160,166,146,.6);margin-top:5px}
+.tin-rule{width:52%;height:1px;margin:8px auto 0;
+  background:linear-gradient(90deg,transparent,rgba(200,242,80,.55),transparent)}
+.tin-shade{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(9,11,8,.97) 0%,rgba(9,11,8,.70) 8%,rgba(9,11,8,.20) 20%,
+    rgba(9,11,8,0) 34%,rgba(9,11,8,0) 68%,rgba(9,11,8,.26) 80%,rgba(9,11,8,.78) 91%,rgba(9,11,8,.98) 100%)}
+.tin-lid{position:absolute;left:0;top:0;width:100%;height:22%;border-radius:50%;
+  background:linear-gradient(96deg,rgba(233,149,74,.34) 0%,rgba(233,149,74,0) 22%),
+    radial-gradient(66% 150% at 38% 4%,#4E5038 0%,#34351F 26%,#1D1E14 58%,#0C0D07 100%);
+  box-shadow:0 4px 10px rgba(0,0,0,.55)}
+.tin-lid::after{content:"";position:absolute;inset:0;border-radius:50%;
+  border:1px solid rgba(224,228,208,.5);
+  -webkit-mask:linear-gradient(148deg,#000 0 26%,rgba(0,0,0,.35) 42%,transparent 58%);
+  mask:linear-gradient(148deg,#000 0 26%,rgba(0,0,0,.35) 42%,transparent 58%)}
+.tin-floor{position:absolute;left:-6%;right:-6%;bottom:-5%;height:11%;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(0,0,0,.72),transparent 70%);filter:blur(6px)}
+
+/* pane */
+.phead{display:flex;align-items:center;gap:9px;padding:11px 14px;
+  border-bottom:1px solid var(--rule);flex:none}
+.pkind{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;color:var(--faint);
+  border:1px solid var(--rule2);padding:2.5px 7px;border-radius:4px;flex:none}
+.ptitle{font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.pmeta{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--faint);flex:none}
+.pbtn{width:24px;height:24px;border-radius:5px;display:grid;place-items:center;
+  color:var(--faint);flex:none;transition:.14s}
+.pbtn:hover{background:var(--card2);color:var(--ink)}
+.pbtn svg{width:13px;height:13px;stroke:currentColor;stroke-width:1.7;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.pbody{flex:1;overflow-y:auto;padding:16px;animation:fade .26s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.sec{font-family:var(--mono);font-size:9px;letter-spacing:.13em;color:var(--faint);margin:20px 0 9px}
+.sec:first-child{margin-top:0}
+.docpage{background:#f7f6f1;color:#14150f;border-radius:9px;padding:20px 22px;font-size:12.5px;
+  line-height:1.65}
+.docpage h4{margin:0 0 4px;font-size:17px;letter-spacing:-.02em}
+.docpage .meta{font-family:var(--mono);font-size:9px;color:#7a7c70;letter-spacing:.08em;
+  margin-bottom:14px}
+.docpage p{margin:0 0 10px}
+.docpage ul{margin:0 0 10px;padding-left:17px}
+.docpage li{margin-bottom:4px}
+.docpage .quote{border-left:2px solid #c8b86a;padding-left:11px;color:#4a4b40;font-style:italic}
+.vline{font-size:17px;font-weight:600;letter-spacing:-.02em;line-height:1.35;padding-left:12px;
+  border-left:2px solid var(--lime);margin-bottom:12px;text-wrap:balance}
+.ghost{border:1px solid var(--rule);border-radius:8px;padding:10px 11px;margin-bottom:7px;
+  opacity:.6;transition:.16s;cursor:pointer}
+.ghost:hover{opacity:1;border-color:var(--rule2)}
+.ghost .gl{font-size:12.5px;font-weight:700}
+.ghost .gs{font-size:11.5px;color:var(--dim);margin-top:4px;font-style:italic;line-height:1.45}
+.ghost .sw{font-family:var(--mono);font-size:8.5px;color:var(--faint);margin-top:6px}
+.pal{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.sw{border-radius:7px;overflow:hidden;border:1px solid var(--rule2)}
+.sw .c{height:58px;display:block}
+.sw .m{padding:6px 7px;background:var(--card)}
+.sw .m .n{font-size:9.5px;font-weight:650;line-height:1.2}
+.sw .m .h{font-family:var(--mono);font-size:8px;color:var(--faint);margin-top:2px}
+.specs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.spec{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--card)}
+.spec .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;color:var(--faint)}
+.spec .v{font-size:12.5px;font-weight:650;margin-top:3px}
+.browser{border:1px solid var(--rule2);border-radius:9px;overflow:hidden}
+.bchrome{display:flex;align-items:center;gap:7px;padding:7px 9px;background:var(--card2);
+  border-bottom:1px solid var(--rule)}
+.bdots{display:flex;gap:4px}
+.bdots i{width:7px;height:7px;border-radius:50%;background:var(--rule2)}
+.burl{flex:1;background:var(--page);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;
+  font-family:var(--mono);font-size:8.5px;color:var(--dim)}
+.site{background:#12130F;color:#EFEFE8}
+.sitehero{position:relative;padding:22px 18px 20px;overflow:hidden;
+  background:linear-gradient(#12130F,#191b14)}
+.sitewm{font-size:11px;font-weight:800;letter-spacing:.2em;color:#CFD2C4}
+.siteh1{font-size:25px;font-weight:800;letter-spacing:-.035em;line-height:1.05;margin:16px 0 0;
+  max-width:12ch;text-wrap:balance}
+.sitesub{font-size:11px;color:#a9ae9c;margin-top:8px;max-width:32ch;line-height:1.5}
+.sitebuy{display:flex;align-items:center;gap:9px;margin-top:14px}
+.sitebtn{background:var(--lime);color:#12130F;font-size:11px;font-weight:800;padding:8px 14px;
+  border-radius:6px}
+.siteprice{font-family:var(--mono);font-size:10.5px;color:#CFD2C4}
+.sitetin{position:absolute;right:14px;bottom:12px}
+.sitebenefits{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #262a1e}
+.ben{padding:11px 10px;border-right:1px solid #262a1e}
+.ben:last-child{border-right:0}
+.ben .bn{font-size:10px;font-weight:700}
+.ben .bd{font-size:9px;color:#8d9382;margin-top:3px;line-height:1.4}
+.notconn{border:1px dashed var(--rule2);border-radius:9px;padding:20px 16px;text-align:center}
+.notconn .t{font-size:13.5px;font-weight:700}
+.notconn .s{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:8px;line-height:1.7}
+.tierbox{border:1px solid var(--rule);border-radius:9px;padding:11px;margin-top:12px}
+.tiers{display:grid;gap:7px;margin-top:10px}
+.tier{border:1px solid var(--rule2);border-radius:7px;padding:9px 10px;cursor:pointer;
+  transition:.14s;display:flex;align-items:center;gap:10px}
+.tier:hover{border-color:var(--fog)}
+.tier.on{border-color:var(--lime)}
+.tier .tl{font-size:12px;font-weight:700;width:56px;flex:none}
+.tier .ta{font-family:var(--mono);font-size:11.5px;width:70px;flex:none}
+.tier .tp{font-family:var(--mono);font-size:9px;color:var(--faint);line-height:1.45}
+.optrow{border:1px solid var(--rule2);border-radius:8px;padding:11px;margin-bottom:8px;
+  transition:.14s;position:relative;display:block;width:100%}
+.optrow:hover{border-color:var(--fog);background:var(--card2)}
+.optrow .rec{position:absolute;top:-1px;right:10px;font-family:var(--mono);font-size:8px;
+  letter-spacing:.11em;color:#0b0d0a;background:var(--lime);padding:2px 6px;border-radius:0 0 4px 4px}
+.optrow .ol{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;color:var(--faint)}
+.optrow .on2{font-size:14px;font-weight:750;letter-spacing:-.02em;margin-top:4px}
+.optrow .op{font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.45}
+.optrow.own{border-style:dashed}
+.optrow.own .on2{font-size:12px;color:var(--dim);font-weight:600}
+.foot{display:flex;align-items:center;gap:9px;padding:0 18px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.03em}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;
+  animation-iteration-count:1!important}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">F</div>
+      <div><b>Firstlight</b>
+        <div class="status"><span class="pulse"></span><span>Sourcing the second run</span></div></div>
+    </div>
+    <div class="r">
+      <span class="tcount"><b>2</b> PRODUCTS · <b>1</b> RANGE · <b>24</b> LOCKED</span>
+      <button class="tbtn" data-open="money">Fund runway</button>
+      <button class="tbtn pri" data-open="next">+ New move</button>
+    </div>
+  </header>
+
+  <div class="body" id="body">
+    <main class="deck"><div class="grid" id="grid"></div></main>
+    <div class="split" id="split" title="drag to resize"></div>
+    <section class="pane">
+      <div class="paneinner">
+        <div class="phead">
+          <span class="pkind" id="pkind">PREVIEW</span>
+          <span class="ptitle" id="ptitle">nothing open</span>
+          <span class="pmeta" id="pmeta"></span>
+          <button class="pbtn" id="pwide" title="widen">
+            <svg viewBox="0 0 24 24"><path d="M15 4h5v5M20 4l-7 7M9 20H4v-5M4 20l7-7"/></svg></button>
+          <button class="pbtn" id="pclose" title="close">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="pbody" id="pbody"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="foot"><span>example company · every tile opens the real artifact · no store connected, so no revenue is invented</span></div>
+</div>
+
+<script>
+const PALETTE=[["Basecamp Black","#12130F"],["Firstlight Lime","#C8F250"],
+  ["Dawn Ember","#E9954A"],["Cold Brew Umber","#3B2A1E"],["Trail Fog","#CFD2C4"]];
+const VOICE={label:"Warm coach",
+  desc:"Trail-buddy warmth — earns the moment with you, never shames the shortcut, always points you back to the view.",
+  lines:["Tear it, pour it, look up. The view's better with real coffee in your hands.",
+    "You carried it all the way up here — take the extra minute. This one's yours.",
+    "A shortcut isn't a compromise. It's how you get another hour of trail."],
+  alts:[["Dry & clinical","Single origin. Freeze-dried at altitude. Full cup in 90 seconds, no kettle in the equation."],
+    ["Deadpan","It's instant coffee. It's also good. We were surprised too."],
+    ["Trail-poet","The valley is still asleep. You are not. Neither is this."]]};
+const ADS=[
+  {angle:"problem-led",head:"Real coffee. No kettle.",cta:"Shop Firstlight",
+   body:"You're 40 minutes past the trailhead. There's no cafe up here — there's this. Tear, pour, look up."},
+  {angle:"social-proof",head:"40,000 mornings off-grid can't be wrong.",cta:"Get the tin",
+   body:"The van crowd stopped packing a French press. This is why. Single-origin, in a sachet that survives a backpack."},
+  {angle:"aspirational",head:"Wake up somewhere better.",cta:"Start your mornings off-grid",
+   body:"No power. No signal. No kettle. Just a tin, a torn sachet, and the whole valley waking up with you."}];
+const TASKS=[
+  {id:"t1",n:"Source the Lastlight run",s:"run",m:"running · 2m ago",
+   d:"Comparing 3 co-packers for the cacao + decaf spec. Verdant quoted 21d lead.",doc:"d3"},
+  {id:"t2",n:"Ad set 01 — staged",s:"pend",m:"needs you",
+   d:"3 creatives built on the locked palette and voice. Waiting on your go.",doc:"d2"},
+  {id:"t3",n:"Outreach to 32 outfitters",s:"pend",m:"needs you",
+   d:"Drafted in the Warm coach voice. Nothing has been sent.",doc:"d1"},
+  {id:"t4",n:"Weekly range review",s:"rec",m:"next Monday 09:00",
+   d:"Re-reads signals and proposes the next product move.",doc:"d4"}];
+const DOCS=[{id:"d1",n:"Brand Book",t:"ARTIFACT",k:"brandbook"},
+  {id:"d2",n:"Ad Set 01 — 3 creatives",t:"ARTIFACT",k:"adset"},
+  {id:"d3",n:"Supplier Brief — Verdant",t:"ARTIFACT",k:"supplier"},
+  {id:"d4",n:"Range Plan — Trail",t:"ARTIFACT",k:"rangeplan"},
+  {id:"d5",n:"Operating Log",t:"DAILY",k:"logdoc"}];
+const MOVES=[
+  {label:"NEW DAYPART — the other end of the day",name:"Firstlight Lastlight",rec:true,
+   price:"$21 / 12 sachets",
+   pitch:"The sun's going and nobody wants to move. Tear it, pour it, stay out a little longer."},
+  {label:"NEW FORMAT — same coffee, colder water",name:"Firstlight Coldsnap",price:"$22 / 12 sachets",
+   pitch:"Cold water, cold hands, still real coffee — shake it in the bottle you're already carrying."},
+  {label:"NEW ORIGIN — scarcity as a rhythm",name:"Firstlight High Camp",price:"$34 / capped run",
+   pitch:"One farm, one harvest, one run of tins. When it's gone, we go find the next ridge."}];
+const LOG=[["Brand, name & voice locked","done","voice"],["Storefront built & published","done","storefront"],
+  ["Payments connected","done","storefront"],["Ad set 01 rendered on the locked palette","done","ad"],
+  ["Supplier brief sent to 3 co-packers","done","doc:d3"],
+  ["Comparing co-packer quotes for Lastlight","run","doc:d3"],
+  ["Drafting outreach to 32 outfitters","run","doc:d1"]];
+const FEED=[
+  {t:"09:12",b:`Storefront is live and the first ad set is built. I rendered all three angles on the locked palette — the <span class="flink" data-open="ad">trail-morning creative</span> is my pick, it leads on the objection people actually have.`},
+  {t:"09:40",b:`Wrote the <span class="flink" data-doc="d3">supplier brief</span> and sent it to three co-packers for the Lastlight spec. Verdant came back first at 21 days.`},
+  {t:"10:05",b:`I'd widen the range next. Three approaches in <span class="flink" data-open="next">next moves</span> — I recommend the evening daypart; reorder cadence says people drink us at home, not just on trail.`}];
+
+let _sid=0;
+function sceneSVG(){const u='s'+(++_sid);return `<svg class="base" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice"><defs>
+<linearGradient id="sky-${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070C16"/>
+<stop offset=".18" stop-color="#132038"/><stop offset=".34" stop-color="#1E3350"/>
+<stop offset=".48" stop-color="#40415A"/><stop offset=".60" stop-color="#7A4A47"/>
+<stop offset=".70" stop-color="#C4703C"/><stop offset=".78" stop-color="#E9954A"/>
+<stop offset=".84" stop-color="#FFD79B"/><stop offset="1" stop-color="#FFE9C4"/></linearGradient>
+<linearGradient id="rim-${u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E9954A" stop-opacity=".04"/>
+<stop offset=".28" stop-color="#E9954A" stop-opacity=".34"/><stop offset=".51" stop-color="#FFE7BE" stop-opacity="1"/>
+<stop offset=".74" stop-color="#FFC582" stop-opacity=".62"/><stop offset="1" stop-color="#E9954A" stop-opacity=".12"/></linearGradient>
+<radialGradient id="sun-${u}"><stop offset="0" stop-color="#FFF3D6"/>
+<stop offset=".4" stop-color="#FFC97E" stop-opacity=".7"/><stop offset="1" stop-color="#E9954A" stop-opacity="0"/></radialGradient>
+<filter id="bf-${u}"><feGaussianBlur stdDeviation="7"/></filter>
+<filter id="bs-${u}"><feGaussianBlur stdDeviation="2.6"/></filter>
+<filter id="bm-${u}"><feGaussianBlur stdDeviation="1.3"/></filter>
+<filter id="bg-${u}"><feGaussianBlur stdDeviation="22"/></filter></defs>
+<rect width="1000" height="1000" fill="url(#sky-${u})"/>
+<g fill="#fff"><circle cx="120" cy="70" r="1.8" opacity=".55"/><circle cx="300" cy="42" r="1.4" opacity=".42"/>
+<circle cx="480" cy="96" r="1.6" opacity=".34"/><circle cx="700" cy="58" r="1.5" opacity=".28"/>
+<circle cx="860" cy="120" r="1.7" opacity=".2"/><circle cx="210" cy="160" r="1.3" opacity=".22"/></g>
+<ellipse cx="512" cy="616" rx="300" ry="150" fill="url(#sun-${u})" filter="url(#bf-${u})"/>
+<circle cx="512" cy="606" r="30" fill="#FFF6E2" filter="url(#bf-${u})" opacity=".9"/>
+<path d="M0,600 L90,556 L170,588 L260,530 L340,572 L430,516 L520,560 L610,520 L700,566 L790,530 L880,572 L1000,540 L1000,700 L0,700Z" fill="#5B7391" opacity=".34" filter="url(#bs-${u})"/>
+<rect x="0" y="560" width="1000" height="120" fill="url(#sun-${u})" opacity=".5" style="mix-blend-mode:screen"/>
+<path d="M0,676 L110,634 L200,664 L300,608 L400,650 L500,600 L600,646 L700,606 L800,652 L900,616 L1000,650 L1000,800 L0,800Z" fill="#28323C" opacity=".9" filter="url(#bm-${u})"/>
+<ellipse cx="300" cy="712" rx="330" ry="46" fill="#E9B37A" opacity=".3" filter="url(#bg-${u})" style="mix-blend-mode:screen"/>
+<ellipse cx="760" cy="726" rx="290" ry="40" fill="#E9954A" opacity=".26" filter="url(#bg-${u})" style="mix-blend-mode:screen"/>
+<path d="M-4,764 L60,742 L130,756 C200,704 250,664 310,648 C370,634 420,654 470,694 L540,734 L610,716 L690,756 L770,738 L860,776 L940,756 L1004,784" fill="none" stroke="url(#rim-${u})" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" opacity=".8" stroke-dasharray="132 22 54 40 186 18 76 52 148 26 96 34"/>
+<path d="M-4,1010 L-4,768 L60,746 L130,760 C200,708 250,668 310,652 C370,638 420,658 470,698 L540,738 L610,720 L690,760 L770,742 L860,780 L940,760 L1004,788 L1004,1010 Z" fill="#0D110F"/>
+<path d="M310,652 C370,638 420,658 470,698 L430,790 L330,760 Z" fill="#141A16" opacity=".45"/>
+<g transform="translate(672,772)"><ellipse cx="104" cy="214" rx="104" ry="18" fill="#000" opacity=".55"/>
+<path d="M26,34 L36,196 Q40,214 104,214 Q168,214 172,196 L182,34 Z" fill="#0F1310"/>
+<path d="M172,66 q52,6 50,52 q-2,44 -52,44" fill="none" stroke="#0F1310" stroke-width="21" stroke-linecap="round"/>
+<ellipse cx="104" cy="34" rx="80" ry="21" fill="#0A0D0A"/>
+<ellipse cx="104" cy="34" rx="80" ry="21" fill="none" stroke="#141814" stroke-width="7"/>
+<ellipse cx="104" cy="36" rx="66" ry="16" fill="#2A1A10"/>
+<ellipse cx="104" cy="35" rx="66" ry="16" fill="url(#sun-${u})" opacity=".55"/>
+<path d="M26,34 L36,196" fill="none" stroke="#FFD9A0" stroke-width="3.4" opacity=".55" stroke-linecap="round"/>
+<path d="M40,20 A80,21 0 0,1 150,18" fill="none" stroke="#FFE7BE" stroke-width="2.4" opacity=".6" stroke-linecap="round"/></g></svg>`;}
+const FINISH=`<svg class="grain"><filter id="ga"><feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="4" stitchTiles="stitch" seed="9"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#ga)"/></svg>
+<svg class="grain2"><filter id="gb"><feTurbulence type="fractalNoise" baseFrequency="2.4" numOctaves="2" stitchTiles="stitch" seed="3"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#gb)"/></svg>
+<div class="gradeCool"></div><div class="gradeWarm"></div><div class="halation"></div><div class="vig"></div><div class="scrim"></div>`;
+const STEAM=`<svg class="steam" viewBox="0 0 100 140" preserveAspectRatio="none"><path d="M28,132 C18,100 46,86 32,54 C22,32 40,18 36,4"/><path d="M54,136 C44,104 72,90 58,58 C48,36 66,22 62,8"/><path d="M78,132 C68,102 92,88 80,60 C72,40 86,26 84,12"/></svg>`;
+const tinHTML=(w=148)=>`<div class="tin" style="--tw:${w}px"><div class="tin-body"><div class="tin-print"><div class="tin-mark">FIRSTLIGHT</div><div class="tin-sub">SINGLE ORIGIN · 40g</div><div class="tin-rule"></div></div><div class="tin-shade"></div></div><div class="tin-lid"></div><div class="tin-floor"></div></div>`;
+const adScene=(a,fs)=>`<div class="adscene">${sceneSVG()}${STEAM}${FINISH}<div class="adcopy"><h3${fs?` style="font-size:${fs}px"`:''}>${a.head}</h3></div></div>`;
+
+const S={adIdx:0,tier:1,logN:5,taskId:"t1",docId:"d1"};
+
+function deck(){
+  const a=ADS[S.adIdx];
+  document.getElementById('grid').innerHTML=`
+  <div class="col"><div class="chead">COMPANY</div>
+    <div class="card">
+      <div class="idrow"><div class="idlogo">F</div>
+        <div><h3>Firstlight</h3>
+          <div class="status" style="margin-top:2px"><span class="pulse"></span>Sourcing the second run</div></div></div>
+      <p class="blurb">Specialty-grade single-origin instant coffee for people who camp, hike and live out of a van.</p>
+      <a class="sitelink" data-open="storefront">firstlight.co ↗</a>
+      <button class="thumb" data-open="storefront"><div class="site" style="pointer-events:none">
+        <div class="sitehero" style="padding:13px 11px 11px">
+          <div class="sitewm" style="font-size:8.5px">FIRSTLIGHT</div>
+          <div class="siteh1" style="font-size:15px;margin-top:8px">Real coffee.<br>No kettle.</div>
+          <div class="sitebuy" style="margin-top:9px">
+            <span class="sitebtn" style="font-size:8.5px;padding:5px 9px">Add to bag</span>
+            <span class="siteprice" style="font-size:8.5px">$28</span></div>
+          <div class="sitetin" style="right:7px;bottom:5px">${tinHTML(50)}</div></div></div></button>
+      <div style="margin-top:11px">
+        <div class="kv"><span>Revenue</span><b class="na">— not connected</b></div>
+        <div class="kv"><span>Orders</span><b class="na">— not connected</b></div>
+        <div class="kv"><span>Products live</span><b>2</b></div></div>
+      <button class="fundbtn" data-open="money">Fund this company</button>
+      <div class="fundnote">the only tap that spends</div>
+    </div>
+    <div class="card"><div class="ct">Identity<span class="more">4 locked</span></div>
+      <button class="row" data-open="identity"><div class="rname">Palette &amp; wordmark</div>
+        <div class="rmeta">${PALETTE.map(p=>`<i style="width:13px;height:13px;border-radius:3px;background:${p[1]};display:inline-block"></i>`).join('')}</div></button>
+      <button class="row" data-open="voice"><div class="rname">Voice · Warm coach</div>
+        <div class="rsub">“Tear it, pour it, look up.”</div></button>
+      <button class="row" data-open="product"><div class="rname">Trail Tin · $28</div>
+        <div class="rsub">40g single origin — the hero SKU</div></button>
+      <button class="row" data-open="market"><div class="rname">Market position</div>
+        <div class="rsub">Specialty taste × built for outdoors</div></button>
+    </div></div>
+
+  <div class="col"><div class="chead">OPERATIONS</div>
+    <div class="card"><div class="ct">Live operating log<span class="more">autonomous</span></div>
+      <div class="log" id="log"></div></div>
+    <div class="card"><div class="ct">Tasks<span class="more">${TASKS.length}</span></div>
+      ${TASKS.map(t=>`<button class="row" data-task="${t.id}"><div class="rname">${t.n}</div>
+        <div class="rsub">${t.d}</div>
+        <div class="rmeta"><span class="tag ${t.s==='run'?'t-run':t.s==='rec'?'t-art':'t-pend'}">${t.s==='run'?'Running':t.s==='rec'?'Recurring':'Needs you'}</span>${t.m}</div></button>`).join('')}
+    </div>
+    <div class="card"><div class="ct">Documents<span class="more">${DOCS.length}</span></div>
+      ${DOCS.map(d=>`<button class="row" data-doc="${d.id}">
+        <div class="rname">${d.n}<span class="tag t-art" style="margin-left:auto">${d.t}</span></div></button>`).join('')}
+    </div></div>
+
+  <div class="col"><div class="chead">GROWTH</div>
+    <div class="card"><div class="ct">Ads<span class="more">3 staged</span></div>
+      <button class="adcard" data-open="ad">
+        <div class="adtop"><div class="adav">F</div>
+          <div><div class="nm">Firstlight</div><div class="sp mono">Sponsored</div></div></div>
+        ${adScene(a,14)}
+        <div class="adfoot"><div class="h">${a.head}</div><div class="b">${a.cta}</div></div></button>
+      <div class="rmeta" style="margin:9px 2px 0"><span class="tag t-pend">Staged</span>nothing sends until you fund it</div>
+      <button class="ghostbtn" data-open="money">Fund the ad set →</button></div>
+    <div class="card"><div class="ct">Channels</div>
+      <button class="row" data-open="channels"><div class="rname">Specialty wholesale</div>
+        <div class="rsub">REI &amp; independents</div>
+        <div class="rmeta"><span class="tag t-pend">Proposed</span>3 approaches</div></button>
+      <button class="row" data-open="storefront"><div class="rname">Direct — firstlight.co</div>
+        <div class="rmeta"><span class="tag t-done">Live</span>payments connected</div></button></div>
+    <div class="card"><div class="ct">Social</div>
+      <button class="row" data-doc="d1"><div class="rname">Post draft</div>
+        <div class="rsub">“Tear it, pour it, look up. The view's better with real coffee in your hands.”</div>
+        <div class="rmeta"><span class="tag t-pend">Draft</span>in your voice</div></button></div></div>
+
+  <div class="col"><div class="chead">STRATEGY</div>
+    <div class="card"><div class="ct">What it decided<span class="more">today</span></div>
+      ${FEED.map(f=>`<div class="fitem"><div class="fmeta"><span class="pulse" style="animation:none"></span><b>Firstlight</b><time>${f.t}</time></div><div class="fbody">${f.b}</div></div>`).join('')}</div>
+    <div class="card"><div class="ct">Next move<span class="more">3 approaches</span></div>
+      <button class="row" data-open="next"><div class="rname">Widen the range</div>
+        <div class="rsub">Three ways to grow — one recommended, or say your own.</div>
+        <div class="rmeta"><span class="tag t-choose">Choose</span>inherits 18 decisions</div></button>
+      <button class="row" data-open="channels"><div class="rname">Open a channel</div>
+        <div class="rsub">One lock fans out a listing per product.</div>
+        <div class="rmeta"><span class="tag t-pend">Proposed</span>3 approaches</div></button></div></div>`;
+  renderLog();
+}
+function renderLog(){
+  const el=document.getElementById('log'); if(!el)return;
+  el.innerHTML=LOG.slice(0,S.logN).map(([t,s,tgt])=>{
+    const isDoc=tgt.startsWith('doc:');
+    return `<div class="l ${s==='run'?'run':''}" ${isDoc?`data-doc="${tgt.slice(4)}"`:`data-open="${tgt}"`}>
+      <span class="g">${s==='run'?'⟳':'✓'}</span><span>${t}${s==='run'?' <span class="caret"></span>':''}</span></div>`;
+  }).join('');
+}
+
+const DOCBODY={
+ brandbook:`<h4>Firstlight — Brand Book</h4><div class="meta">ARTIFACT · GENERATED · 6 PAGES</div>
+  <p><b>Positioning.</b> Specialty-grade coffee that holds up where a kettle can't go — the anti-gas-station morning.</p>
+  <p><b>Audience.</b> 28–40, own the gear, refuse the sludge, will pay for the morning to be good.</p>
+  <p><b>Voice — Warm coach.</b> Trail-buddy warmth. Earns the moment with you, never shames the shortcut.</p>
+  <div class="quote">"A shortcut isn't a compromise. It's how you get another hour of trail."</div>
+  <p><b>Never.</b> No kettle-shaming. No fake testimonials. No discounting below $18.</p>`,
+ adset:`<h4>Ad Set 01 — 3 creatives</h4><div class="meta">ARTIFACT · STAGED · NOT SENT</div>
+  <p>Three angles on the locked palette and the Warm coach voice, each answering a different objection.</p>
+  <ul><li><b>Problem-led</b> — "Real coffee. No kettle."</li>
+  <li><b>Social-proof</b> — "40,000 mornings off-grid can't be wrong."</li>
+  <li><b>Aspirational</b> — "Wake up somewhere better."</li></ul>
+  <p>Nothing publishes until the ad set is funded.</p>`,
+ supplier:`<h4>Supplier Brief — Verdant Supply</h4><div class="meta">ARTIFACT · SENT TO 3 CO-PACKERS</div>
+  <p><b>Spec.</b> Freeze-dried single origin, 3.5g sachet, cold-soluble in under 90 seconds.</p>
+  <ul><li>MOQ 5,000 units</li><li>Lead time 21 days</li><li>Unit cost $1.14</li></ul>
+  <p>Route: component sourcing + co-pack. Inherited by every product in the Trail range.</p>`,
+ rangeplan:`<h4>Range Plan — Trail</h4><div class="meta">ARTIFACT · 2 LIVE · 1 PROPOSED</div>
+  <p>The range is organised by <b>format</b>: the tin is the hero, the sachet is the trial and the trail unit.</p>
+  <ul><li><b>Trail Tin</b> — $28 · 40g · live</li><li><b>Sachet 6-pack</b> — $16 · live</li>
+  <li><b>Lastlight</b> — $21 · proposed, evening daypart</li></ul>`,
+ logdoc:`<h4>Operating Log</h4><div class="meta">DAILY · AUTO-WRITTEN</div>
+  <p>Everything the company did today, in order.</p><ul>${LOG.map(l=>`<li>${l[0]}</li>`).join('')}</ul>
+  <p>Two items are staged and waiting on you. Nothing irreversible has happened.</p>`};
+
+const SURF={
+ ad(){const a=ADS[S.adIdx];return `
+  <div style="max-width:400px;margin:0 auto;border:1px solid var(--rule2);border-radius:10px;overflow:hidden;background:#0c0e10">
+   <div class="adtop"><div class="adav">F</div><div><div class="nm">Firstlight</div>
+     <div class="sp mono">Sponsored</div></div></div>${adScene(a)}
+   <div style="padding:11px"><div style="font-size:12px;color:var(--dim);line-height:1.5">${a.body}</div>
+    <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+     <span style="background:var(--fog);color:#12130F;font-size:11px;font-weight:750;padding:6px 12px;border-radius:5px">${a.cta}</span>
+     <span class="mono" style="font-size:9px;color:var(--faint)">firstlight.co</span></div></div></div>
+  <div class="mono" style="max-width:400px;margin:11px auto 0;font-size:9px;color:var(--ember)">● staged as draft — nothing sends until you fund it</div>
+  <div style="display:flex;gap:6px;max-width:400px;margin:12px auto 0">
+   ${ADS.map((x,i)=>`<button style="flex:1;border:1px solid ${i===S.adIdx?'var(--fog)':'var(--rule2)'};border-radius:6px;padding:7px 5px;font-family:var(--mono);font-size:8px;letter-spacing:.05em;color:${i===S.adIdx?'var(--ink)':'var(--faint)'};text-align:center" data-ad="${i}">${x.angle.toUpperCase()}</button>`).join('')}</div>`},
+ voice(){return `<div style="font-size:30px;font-weight:800;letter-spacing:-.04em">${VOICE.label}</div>
+  <div style="font-size:12.5px;color:var(--dim);margin-top:7px;line-height:1.55">${VOICE.desc}</div>
+  <div class="sec">THE REAL LINES</div>${VOICE.lines.map(l=>`<div class="vline">${l}</div>`).join('')}
+  <div class="sec">3 ALTERNATIVES YOU PASSED ON</div>
+  ${VOICE.alts.map(([l,s])=>`<div class="ghost"><div class="gl">${l}</div><div class="gs">“${s}”</div>
+    <div class="sw">switch to this →</div></div>`).join('')}`},
+ identity(){return `<div class="sec">PALETTE</div><div class="pal">
+  ${PALETTE.map(p=>`<div class="sw"><span class="c" style="background:${p[1]}"></span>
+   <div class="m"><div class="n">${p[0]}</div><div class="h mono">${p[1]}</div></div></div>`).join('')}</div>
+  <div class="sec">WORDMARK · 1 OF 4 LOCKED</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+   <div style="border:1px solid var(--lime);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card)">
+    <div style="font-size:17px;font-weight:800;letter-spacing:-.03em">FIRSTLIGHT</div>
+    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">LOCKED</div></div>
+   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
+    <div style="font-family:Georgia,serif;font-size:17px">Firstlight</div>
+    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">SERIF</div></div>
+   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
+    <div style="font-size:12px;letter-spacing:.22em;font-weight:600">FIRSTLIGHT</div>
+    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">WIDE</div></div>
+   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
+    <div style="font-size:14px;font-weight:800;line-height:.92">FIRST<br>LIGHT</div>
+    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">STACKED</div></div></div>`},
+ product(){return `<div style="display:flex;align-items:flex-end;justify-content:center;padding:22px 10px 26px;background:radial-gradient(70% 90% at 50% 18%,#1b212b,transparent 70%);border:1px solid var(--rule);border-radius:10px">${tinHTML(150)}</div>
+  <div class="specs" style="margin-top:14px">
+   <div class="spec"><div class="k">FORMAT</div><div class="v">Tin + sachet</div></div>
+   <div class="spec"><div class="k">PRICE</div><div class="v">$28 · 40g</div></div>
+   <div class="spec"><div class="k">RANGE</div><div class="v">Trail</div></div>
+   <div class="spec"><div class="k">STATUS</div><div class="v">Live</div></div></div>
+  <div class="sec">WHY IT'S ON-BRAND FOR FREE</div>
+  <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.75">the packshot references the company moodboard — it was not art-directed for this product.<br>every product after this renders on-brand without anyone deciding it should.</div>`},
+ storefront(){return `<div class="browser"><div class="bchrome"><div class="bdots"><i></i><i></i><i></i></div>
+   <div class="burl">firstlight.co</div></div><div class="site"><div class="sitehero">
+   <div class="sitewm">FIRSTLIGHT</div><h1 class="siteh1">Real coffee. No kettle.</h1>
+   <div class="sitesub">Specialty-grade single origin, freeze-dried into a sachet that survives a backpack.</div>
+   <div class="sitebuy"><span class="sitebtn">Add to bag</span><span class="siteprice">$28 · 40g tin</span></div>
+   <div class="sitetin">${tinHTML(84)}</div></div>
+   <div class="sitebenefits"><div class="ben"><div class="bn">90 seconds</div><div class="bd">Cold or hot water.</div></div>
+   <div class="ben"><div class="bn">42 grams</div><div class="bd">Lighter than your mug.</div></div>
+   <div class="ben"><div class="bn">One farm</div><div class="bd">Traceable to the lot.</div></div></div></div></div>
+  <div class="mono" style="font-size:9px;color:var(--faint);margin-top:10px">● live · restyles automatically when the palette or voice changes</div>`},
+ market(){const R=[["Nescafé",10,12],["Starbucks Via",30,20],["Mount Hagen",44,30],["Alpine Start",46,64],["Voilà",74,32],["Swift Cup",82,24]];
+  return `<div style="border:1px solid var(--rule);border-radius:10px;padding:13px;background:var(--card)">
+  <svg viewBox="0 0 400 250" style="width:100%;display:block">
+  <rect x="30" y="14" width="340" height="200" fill="#0b0e11" stroke="#1E2226"/>
+  <rect x="200" y="14" width="170" height="100" fill="#C8F250" opacity=".05"/>
+  <line x1="30" y1="114" x2="370" y2="114" stroke="#1E2226"/><line x1="200" y1="14" x2="200" y2="214" stroke="#1E2226"/>
+  ${R.map(([n,x,y])=>`<circle cx="${x*3.4+30}" cy="${(100-y)*2.1+14}" r="4" fill="#CFD2C4" opacity=".6"/><text x="${x*3.4+37}" y="${(100-y)*2.1+17}" font-size="9" fill="#98A09A" font-family="ui-monospace,monospace">${n}</text>`).join('')}
+  <circle cx="295" cy="56" r="7" fill="#C8F250"/><circle cx="295" cy="56" r="14" fill="none" stroke="#C8F250" opacity=".35"/>
+  <text x="306" y="59" font-size="10" fill="#C8F250" font-weight="700" font-family="system-ui">FIRSTLIGHT</text>
+  <text x="30" y="234" font-size="8" fill="#646C68" font-family="ui-monospace,monospace">← TASTES INSTANT</text>
+  <text x="272" y="234" font-size="8" fill="#646C68" font-family="ui-monospace,monospace">TASTES SPECIALTY →</text></svg>
+  <div class="mono" style="font-size:9px;color:var(--faint);margin-top:8px">the tinted corner is the gap · specialty taste, built for outdoors, nobody defending it</div></div>`},
+ next(){return `<div class="mono" style="font-size:9px;color:var(--faint);letter-spacing:.1em">AXIS: WHAT WIDENS — OCCASION, FORMAT, OR ORIGIN</div>
+  <div style="margin-top:12px">${MOVES.map((m,i)=>`<button class="optrow" data-move="${i}">
+   ${m.rec?'<span class="rec">RECOMMENDED</span>':''}<div class="ol">${m.label}</div>
+   <div class="on2">${m.name}</div><div class="op">${m.pitch}</div>
+   <div class="mono" style="font-size:9px;color:var(--faint);margin-top:6px">${m.price} · 2 own decisions · 18 inherited</div></button>`).join('')}
+  <button class="optrow own"><div class="on2">none of these — say what you'd do instead</div>
+   <div class="op">the model builds the artifact around your answer.</div></button></div>`},
+ channels(){const C=[["Specialty wholesale — REI & independents",1,"Put the tin on the shelf people walk past the day before a trip.","Confers the buyer's endorsement. Slower, lower margin."],
+   ["Amazon — the search shelf",0,"Own the query before a competitor rents it.","Highest-intent shelf — but a price-comparison surface that erodes the premium."],
+   ["The Standing Order — subscription",0,"The people who already reorder stop having to remember.","Full DTC margin, customer stays ours. Only grows as fast as the base."]];
+  return `<div class="mono" style="font-size:9px;color:var(--faint);letter-spacing:.1em">AXIS: WHAT YOU TRADE AWAY</div>
+  <div style="margin-top:12px">${C.map(([n,r,p,t])=>`<button class="optrow">${r?'<span class="rec">RECOMMENDED</span>':''}
+   <div class="on2" style="font-size:13px">${n}</div><div class="op">${p}</div>
+   <div class="op" style="color:var(--faint);font-size:11px">${t}</div></button>`).join('')}
+  <button class="optrow own"><div class="on2">none of these — say what you'd do instead</div></button></div>`},
+ money(){const T=[["Test","$300/mo","~1,400 reach · ~22 orders"],["Push","$900/mo","~5,200 reach · ~85 orders"],["Send it","$2,500/mo","~16,000 reach · ~260 orders"]];
+  return `<div class="notconn"><div class="t">No store connected</div>
+   <div class="s">this is where real orders and ad performance would render.<br>we will not draw a chart of numbers that do not exist.</div></div>
+  <div class="tierbox"><div style="display:flex;align-items:baseline;gap:8px">
+   <span style="font-size:12.5px;font-weight:700">Fund the ad set</span>
+   <span class="mono" style="font-size:8.5px;color:var(--ember);border:1px solid var(--ember);padding:1.5px 5px;border-radius:3px">PROJECTION</span></div>
+   <div class="mono" style="font-size:9px;color:var(--faint);margin-top:5px">modelled from category benchmarks · not a forecast of your results</div>
+   <div class="tiers">${T.map((t,i)=>`<div class="tier ${i===S.tier?'on':''}" data-tier="${i}">
+    <span class="tl">${t[0]}</span><span class="ta">${t[1]}</span><span class="tp">${t[2]}</span></div>`).join('')}</div>
+   <div class="mono" style="font-size:9px;color:var(--ember);margin-top:10px">● committing stages the campaign for your own final confirmation. it never silently moves money.</div></div>`},
+ task(){const t=TASKS.find(x=>x.id===S.taskId)||TASKS[0];
+  return `<div style="font-size:19px;font-weight:750;letter-spacing:-.02em">${t.n}</div>
+   <div style="font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.55">${t.d}</div>
+   <div class="sec">STATUS</div><div class="rmeta"><span class="tag ${t.s==='run'?'t-run':t.s==='rec'?'t-art':'t-pend'}">${t.s==='run'?'Running':t.s==='rec'?'Recurring':'Needs you'}</span>${t.m}</div>
+   <div class="sec">WHAT IT PRODUCED</div>
+   <button class="row" data-doc="${t.doc}"><div class="rname">${(DOCS.find(d=>d.id===t.doc)||{}).n}</div>
+    <div class="rsub">open the artifact →</div></button>
+   <div class="sec">CONTROL</div>
+   <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.75">${t.s==='pend'?'staged and waiting on you — nothing has been sent.':'running on its own — pause it any time.'}</div>`},
+ doc(){const d=DOCS.find(x=>x.id===S.docId)||DOCS[0];return `<div class="docpage">${DOCBODY[d.k]||''}</div>`}};
+
+const META={ad:["AD CREATIVE","the trail morning"],voice:["VOICE","Warm coach"],
+ identity:["IDENTITY","palette & wordmark"],product:["PRODUCT","Trail Tin"],
+ storefront:["STOREFRONT","firstlight.co"],market:["MARKET","specialty × outdoors"],
+ next:["NEXT MOVE","widen the range"],channels:["CHANNEL","3 approaches"],
+ money:["MONEY","fund the ad set"],task:["TASK",""],doc:["DOCUMENT",""]};
+
+const BODY=()=>document.getElementById('body');
+function open(kind,meta){
+  const [k,t]=META[kind]||["PREVIEW",""];
+  document.getElementById('pkind').textContent=k;
+  document.getElementById('ptitle').textContent=
+    kind==='task'?((TASKS.find(x=>x.id===S.taskId)||{}).n||t)
+    :kind==='doc'?((DOCS.find(x=>x.id===S.docId)||{}).n||t):t;
+  document.getElementById('pmeta').textContent=meta||"";
+  const b=document.getElementById('pbody');
+  b.style.animation='none'; void b.offsetWidth; b.style.animation='';
+  b.innerHTML=SURF[kind]();
+  BODY().classList.add('open');
+}
+function closePane(){BODY().classList.remove('open');}
+(function(){
+  const body=BODY(), sp=document.getElementById('split');
+  const setW=px=>body.style.setProperty('--pw',
+    Math.round(Math.min(Math.max(px,380),window.innerWidth-420))+'px');
+  let on=false;
+  sp.addEventListener('pointerdown',e=>{if(!body.classList.contains('open'))return;
+    on=true;sp.setPointerCapture(e.pointerId);sp.classList.add('drag');body.classList.add('dragging');});
+  sp.addEventListener('pointermove',e=>{if(on)setW(window.innerWidth-e.clientX);});
+  const end=e=>{if(!on)return;on=false;try{sp.releasePointerCapture(e.pointerId)}catch(_){}
+    sp.classList.remove('drag');body.classList.remove('dragging');};
+  sp.addEventListener('pointerup',end);sp.addEventListener('pointercancel',end);
+  sp.addEventListener('dblclick',()=>setW(520));
+  document.getElementById('pclose').onclick=closePane;
+  document.getElementById('pwide').onclick=()=>{
+    const cur=parseInt(getComputedStyle(body).getPropertyValue('--pw'))||520;
+    setW(cur>window.innerWidth*.5?520:window.innerWidth-460);};
+  addEventListener('keydown',e=>{if(e.key==='Escape')closePane();});
+})();
+function mark(el){document.querySelectorAll('.row.on').forEach(r=>r.classList.remove('on'));
+  if(el&&el.classList.contains('row'))el.classList.add('on');}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-task]');
+  if(t){S.taskId=t.dataset.task;open('task');mark(t);return;}
+  const d=e.target.closest('[data-doc]');
+  if(d){S.docId=d.dataset.doc;open('doc');mark(d);return;}
+  const a=e.target.closest('[data-ad]');
+  if(a){S.adIdx=+a.dataset.ad;open('ad');deck();return;}
+  const ti=e.target.closest('[data-tier]');
+  if(ti){S.tier=+ti.dataset.tier;open('money');return;}
+  const m=e.target.closest('[data-move]');
+  if(m){open('product',MOVES[+m.dataset.move].name);return;}
+  const o=e.target.closest('[data-open]');
+  if(o){open(o.dataset.open);mark(o);return;}
+});
+deck();
+open('ad','staged · not sent');
+setInterval(()=>{if(S.logN<LOG.length){S.logN++;renderLog();}},4200);
+</script>

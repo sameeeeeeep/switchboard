@@ -73,9 +73,21 @@
       .cuts { display: flex; flex-wrap: wrap; gap: 10px; }
       .cut { background: transparent; border: 1px solid var(--hair-soft); border-radius: 0; color: var(--dim); font: 500 10px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; padding: 12px 16px; cursor: pointer; transition: border-color 0.12s, color 0.12s, background 0.12s; }
       .cut:hover:not(:disabled) { border-color: #fff; color: #fff; }
-      .cut.rec { border-color: #fff; color: var(--ink); }
-      .cut.rec:hover:not(:disabled) { background: #fff; color: #000; }
+      /* The chart's own pick is a DRAFT — hairline-dashed, with a neutral tag. White is the accent
+         and belongs to .cut.taken: a cut a human actually asked for (doctrine 5). */
+      .cut.rec { border-style: dashed; border-color: var(--hair-soft); color: var(--dim); }
+      .cut.rec .sug { color: var(--faint); margin-right: 9px; }
+      .cut.taken { border-color: #fff; color: var(--ink); }
+      .cut.taken:hover:not(:disabled) { background: #fff; color: #000; }
       .cut.more { border-style: dashed; }
+      /* the escape hatch — name a cut nobody offered */
+      .cutown { display: flex; align-items: stretch; }
+      .cutown input {
+        background: transparent; border: 1px dashed var(--hair-soft); border-right: 0; color: var(--ink);
+        font: 500 10px/1 var(--mono); letter-spacing: 0.16em; padding: 12px 14px; outline: none; width: 336px; max-width: 100%;
+      }
+      .cutown input::placeholder { color: var(--faint); letter-spacing: 0.16em; text-transform: uppercase; }
+      .cutown input:focus { border-color: var(--hair); }
       .cut:disabled { border-color: var(--hair-soft); color: var(--faint); cursor: not-allowed; }
       .cutsec { max-width: 62ch; border-top: 1px solid var(--hair-soft); margin-top: 30px; padding-top: 20px; }
       .cutsec .ctitle { font: 500 10px/1 var(--mono); letter-spacing: 0.3em; color: var(--dim); text-transform: uppercase; margin: 0 0 12px; }

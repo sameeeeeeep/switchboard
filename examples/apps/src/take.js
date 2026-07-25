@@ -7,6 +7,9 @@
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountRecorder } from "./kit/recorder.js";
+// The shared decision atoms: option slates that keep DRAFTED (the machine's pick) visually distinct
+// from CHOSEN (a human clicked), plus the escape hatch. See kit/ui.js.
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -154,21 +157,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards come from kit/ui.js (imported above) — same class names and pixels, but the accent
+// state is reachable ONLY through a click, and the model's pick renders as a neutral drafted tag.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -260,20 +250,23 @@ async function loadPremises(steer) {
   finally {
     premLoading = false; await saveState(); render();
     // The ★ is a call, not a decoration: it details itself into a full script with zero clicks.
+    // But opening it on its own is a DRAFT, not a decision — `auto` keeps that premise card out of
+    // the accent state until a human confirms it (rule 5).
     const rec = (state.premises || []).find((o) => o.recommended);
-    if (rec && !state.run && !running) void start(rec);
+    if (rec && !state.run && !running) void start(rec, { auto: true });
   }
 }
 
-async function start(premise) {
+async function start(premise, opts) {
   if (!relay) return;
   if (running) { toast("Still drafting that one — one sec."); return; }
   const label = String(premise?.label || "").trim();
   if (!label) { toast("Pick a take, or describe one.", true); return; }
   destroyRecorder();
   state.run = {
-    id: uid(), premiseId: premise.id || null, input: label, brief: String(premise.text || ""),
-    mode: "screen", options: null, selectedId: null, steers: [], status: "", error: null,
+    id: uid(), premiseId: premise.id || null, auto: !!(opts && opts.auto),
+    input: label, brief: String(premise.text || ""),
+    mode: "screen", options: null, selectedId: null, draftedId: null, steers: [], status: "", error: null,
   };
   await saveState(); render();
   await draftScript();
@@ -297,7 +290,10 @@ async function draftScript(steer) {
     if (!arr || !arr.length) throw new Error("no scripts came back — try again");
     r.options = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Angle").slice(0, 60), text: String(o.text || "").trim(), recommended: !!o.recommended }));
     if (!r.options.some((o) => o.recommended)) r.options[0].recommended = true;
-    r.selectedId = (r.options.find((o) => o.recommended) || r.options[0]).id;
+    // Rule 5 — the accent means A HUMAN CHOSE. The model's pick is only DRAFTED: it carries a
+    // neutral tag and nothing else. `selectedId` stays null until someone clicks a card.
+    r.draftedId = (r.options.find((o) => o.recommended) || r.options[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
 }
@@ -306,7 +302,7 @@ async function draftScript(steer) {
 async function setMode(key) {
   const r = state.run; if (!r || running || r.mode === key) return;
   destroyRecorder();
-  r.mode = key; r.options = null; r.selectedId = null; r.steers = [];
+  r.mode = key; r.options = null; r.selectedId = null; r.draftedId = null; r.steers = [];
   await saveState(); render();
   await draftScript();
 }
@@ -343,7 +339,19 @@ function render() {
     const t = el("button", "act", "try again"); t.onclick = () => void loadPremises(); view.append(t);
   }
   if (state.premises && state.premises.length) {
-    view.append(optionCards(state.premises, r ? r.premiseId : null, (o) => { void start(o); }));
+    const draftedPremise = state.premises.find((o) => o.recommended) || null;
+    view.append(optionCards({
+      options: state.premises,
+      // A premise Take opened by itself stays DRAFTED; only a click puts a card in the accent state.
+      chosenId: r && !r.auto ? r.premiseId : null,
+      draftedId: draftedPremise ? draftedPremise.id : null,
+      onChoose: (o) => {
+        // Clicking the one Take already opened is a CONFIRM, not a restart — same card, same script,
+        // it just stops being a draft (the cast/stages draft-bar grammar).
+        if (r && r.auto && r.premiseId === o.id) { r.auto = false; void saveState(); render(); return; }
+        void start(o);
+      },
+    }));
   }
 
   // The ONE free-text box: a steer on an already-populated board, never a gate in front of it.
@@ -364,7 +372,8 @@ function render() {
   const bar = el("div", "runbar");
   bar.style.marginTop = "26px";
   bar.append(el("span", "kicker", "recording"), el("span", "run-input", r.input));
-  const cp = el("button", "act", "copy script"); cp.onclick = () => void copyScript(); cp.disabled = !r.options;
+  // Nothing chosen = nothing to copy. Honest disabled beats copying a script nobody picked (rule 7).
+  const cp = el("button", "act", "copy script"); cp.onclick = () => void copyScript(); cp.disabled = !r.options || !r.selectedId;
   const nu = el("button", "act", "× clear"); nu.onclick = () => { destroyRecorder(); state.run = null; void saveState(); render(); };
   bar.append(cp, nu);
   view.append(bar);
@@ -387,7 +396,20 @@ function render() {
 
   if (r.options) {
     view.append(el("div", "kicker sect", "the script"));
-    view.append(optionCards(r.options, r.selectedId, (o) => { r.selectedId = o.id; void saveState(); render(); }));
+    view.append(optionCards({
+      options: r.options,
+      chosenId: r.selectedId || null,
+      draftedId: r.draftedId || (r.options.find((o) => o.recommended) || {}).id || null,
+      disabled: running,
+      onChoose: (o) => { r.selectedId = o.id; void saveState(); render(); },
+      // Doctrine 4 — a slate without an exit is a cage. Your own angle re-scripts from your words.
+      escape: {
+        label: "none of these — say the angle you'd take",
+        placeholder: "e.g. no talking — just show the bug, then the fix",
+        sendLabel: "script that",
+        onSubmit: (t) => draftScript(t),
+      },
+    }));
     if (!running) view.append(steerRow((s) => { running = true; render(); void draftScript(s).finally(() => { running = false; render(); }); }));
 
     // the shared kit recorder — mounted ONCE into a cached host, re-appended each render so a live

@@ -104,10 +104,14 @@
       @media (max-width: 640px) { .pd-grid { grid-template-columns: 1fr; } }
       .pitch { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 9px; transition: border-color .12s, transform .12s; }
       .pitch:hover { border-color: var(--line-hot); transform: translateY(-2px); }
-      .pitch.star { border-color: var(--gold); box-shadow: 0 0 26px rgba(255,197,50,.10); }
+      /* DRAFTED — the model's ★ pick. A suggestion, not a decision: hairline dash, plain badge.
+         The gold is reserved for the pitch a human actually forged. (doctrine 5) */
+      .pitch.drafted { border-style: dashed; border-color: var(--line-hot); }
+      .pitch.chosen { border-color: var(--gold); box-shadow: 0 0 26px rgba(255,197,50,.10); }
       .pbadges { display: flex; gap: 7px; flex-wrap: wrap; }
       .pb { font: 400 8px/1 var(--pix); letter-spacing: .08em; border-radius: 6px; padding: 5px 7px; }
-      .pb.rec { background: var(--gold); color: #241500; box-shadow: 0 0 14px rgba(255,197,50,.35); }
+      .pb.rec { border: 1px dashed var(--line-hot); color: var(--ink-dim); }
+      .pb.mine { background: var(--gold); color: #241500; box-shadow: 0 0 14px rgba(255,197,50,.35); }
       .pb.you { border: 1px solid var(--cyan); color: var(--cyan); }
       .pitch .pt { font: 400 11px/1.5 var(--pix); color: var(--magenta); text-shadow: 0 0 12px rgba(255,46,151,.35); }
       .pitch .pi { font: 450 13.5px/1.5 var(--body); color: var(--ink); }
@@ -116,6 +120,14 @@
       .ptags .tag { font: 500 11px/1 var(--mono); color: var(--ink-faint); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; }
       .pitch .forge { margin-top: auto; background: var(--magenta-soft); border: 1px solid var(--magenta); color: #ffd7ea; border-radius: 10px; padding: 11px 0; cursor: pointer; font: 400 9px/1 var(--pix); letter-spacing: .06em; }
       .pitch .forge:hover { background: var(--magenta); color: #14040d; box-shadow: 0 0 22px rgba(255,46,151,.35); }
+      /* THE ESCAPE HATCH — four pitches is a menu; this is the door out of it. (doctrine 4) */
+      .pitch.esc { grid-column: 1 / -1; border-style: dashed; }
+      .pitch.esc:hover { transform: none; }
+      .pitch.esc .pt { color: var(--ink-dim); text-shadow: none; }
+      .pitch.esc .escrow { display: flex; gap: 9px; flex-wrap: wrap; }
+      .pitch.esc .escrow input { flex: 1; min-width: 180px; background: var(--void); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); font: 450 13.5px/1.5 var(--body); padding: 10px 12px; outline: none; }
+      .pitch.esc .escrow input:focus { border-color: var(--line-hot); }
+      .pitch.esc .forge { margin-top: 0; flex: none; padding: 11px 16px; }
       .pitch.skel { min-height: 158px; border-style: dashed; position: relative; overflow: hidden; }
       .pitch.skel::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(167,155,200,.07) 50%, transparent 70%); animation: shine 1.4s infinite; }
       @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }

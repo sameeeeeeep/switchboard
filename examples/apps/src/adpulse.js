@@ -4,6 +4,7 @@
 // fallback below it. The CSV parses ENTIRELY in the tab (instant stat tape, zero AI), then your OWN
 // Claude reads the numbers and returns a structured diagnosis. No backend, no upload.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { escapeHatch } from "./kit/ui.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -19,6 +20,9 @@ let origSource = "";    // where the CURRENT data originally came from ("live"/"
 let savedAt = 0;        // epoch ms the current data was ingested (restored across sessions)
 let report = null;      // last diagnosis JSON
 let reportFor = null;   // provenance: { csvSig, brand } the report was generated against
+// The one action the FOUNDER committed to (by title). The model's ordering only ever DRAFTS a first
+// move; this — set exclusively by a click — is the only thing that lights it lime. (doctrine 5)
+let doing = null;
 let analysing = false;
 let runSeq = 0;         // per-run token: a cancelled diagnosis's late deltas can't touch the UI
 let pulling = false;
@@ -724,6 +728,7 @@ async function analyse() {
     if (m) { try { data = JSON.parse(m[0]); } catch { /* handled below */ } }
     if (!data) throw new Error("the model didn't return clean JSON — hit ↻ RETRY, it usually lands on the second pass.");
     report = normalize(data);
+    doing = null; // a fresh slate of moves invalidates the old claim — never inherit an accent
     // provenance: what this verdict was judged on — including WHOSE numbers, so a demo readout
     // can never be mistaken for the user's account.
     reportFor = { csvSig: csvSig(), brand: brand?.name ?? null, source: srcLabel };
@@ -887,21 +892,49 @@ function renderReport() {
 
   const acts = $("actions"); acts.textContent = "";
   if (report.actions.length) {
+    // The model orders most-urgent-first, so row 01 is its SUGGESTED first move — a draft, tagged
+    // plainly and left neutral. Lime arrives only when the founder clicks a row and says "this one
+    // is mine". (doctrine 5 — auto-generation may draft, never lock.)
     report.actions.forEach((a, i) => {
-      const row = document.createElement("div"); row.className = "action";
-      if (i === 0) row.classList.add("rec"); // most-urgent-first ordering → the top one is THE move
+      const mine = doing != null && doing === a.title;
+      const drafted = !mine && i === 0;
+      const row = document.createElement("div");
+      row.className = "action" + (mine ? " mine" : "") + (drafted ? " drafted" : "");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-pressed", mine ? "true" : "false");
       const idx = document.createElement("div"); idx.className = "idx"; idx.textContent = String(i + 1).padStart(2, "0");
       const body = document.createElement("div"); body.className = "body";
       const t = document.createElement("span"); t.className = "t"; t.textContent = a.title;
       body.append(t,
         tagEl(a.impact === "high" ? "hi" : "med", "impact " + a.impact),
         tagEl(a.effort === "low" ? "lo" : a.effort === "high" ? "hard" : "dim", "effort " + a.effort));
-      if (i === 0) body.append(tagEl("star", "★ do this first"));
+      if (drafted) body.append(tagEl("draft", "recommended first"));
+      if (mine) body.append(tagEl("star", "★ your call — doing this first"));
       const d = document.createElement("div"); d.className = "d"; d.textContent = a.detail;
       body.append(d);
+      // Toggle: clicking the row you already claimed hands the decision back.
+      const claim = () => { doing = mine ? null : a.title; persist(); renderReport(); };
+      row.addEventListener("click", claim);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); claim(); } });
       row.append(idx, body);
       acts.append(row);
     });
+    // The escape hatch (doctrine 4): a generated slate of moves is a menu, and a menu with no exit
+    // is a cage. What they type becomes the diagnosis focus and re-runs it on their own terms.
+    acts.append(escapeHatch({
+      label: "none of these — say what you'd do instead",
+      hint: "your words become the analysis focus and the diagnosis re-runs against them",
+      placeholder: "e.g. consolidate the prospecting campaigns into one and re-test the hook…",
+      sendLabel: "re-run on this",
+      onSubmit: (text) => {
+        $("focus-in").value = text;
+        syncChips();
+        doing = null;
+        persist();
+        return analyse();
+      },
+    }));
   } else acts.append(noneCard("no actions returned — re-run the diagnosis"));
 
   const vbox = $("verdicts"); vbox.textContent = "";
@@ -940,6 +973,8 @@ function persist() {
       focus: $("focus-in").value,
       report,
       reportFor,                // provenance so a restored report can be checked against restored data
+      doing,                    // the move the founder claimed — a human decision, so it survives
+
       at: savedAt || Date.now(), // when the DATA was ingested — not when the focus last changed
     }));
   } catch { /* storage full or blocked — non-fatal */ }
@@ -951,6 +986,7 @@ function persist() {
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* fresh visit */ }
   if (saved?.report) report = saved.report ? normalize(saved.report) : null;
   reportFor = saved?.reportFor && typeof saved.reportFor === "object" ? saved.reportFor : null;
+  doing = typeof saved?.doing === "string" ? saved.doing : null;
   origSource = typeof saved?.origSource === "string" ? saved.origSource : "";
   savedAt = Number(saved?.at) || 0; // restore BEFORE ingest so loadData/persist keep the real age
   $("focus-in").value = saved?.focus || "Find wasted spend";

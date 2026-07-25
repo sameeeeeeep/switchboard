@@ -420,11 +420,17 @@ function renderPitches(pitches) {
   $("pitch-err").hidden = true;
   const grid = $("pitch-grid");
   grid.textContent = "";
+  // The gold ring means A HUMAN FORGED THIS. The model's ★ only ever reaches `drafted` — it is a
+  // recommendation on a dashed card, and no code path but the FORGE click writes `forged`.
+  const forged = pitchState && pitchState.forged;
   pitches.forEach((p) => {
-    const el = div("pitch" + (p.recommended ? " star" : ""));
-    if (p.recommended || p.starring) {
+    const mine = !!forged && forged === p.title;
+    const drafted = !mine && p.recommended;
+    const el = div("pitch" + (mine ? " chosen" : "") + (drafted ? " drafted" : ""));
+    if (mine || drafted || p.starring) {
       const badges = div("pbadges");
-      if (p.recommended) badges.append(span("pb rec", "★ RECOMMENDED"));
+      if (mine) badges.append(span("pb mine", "▶ YOU PICKED THIS"));
+      else if (drafted) badges.append(span("pb rec", "RECOMMENDED"));
       if (p.starring) badges.append(span("pb you", "STARRING YOU"));
       el.append(badges);
     }
@@ -438,12 +444,47 @@ function renderPitches(pitches) {
     btn.className = "forge";
     btn.textContent = "▶ FORGE THIS";
     btn.addEventListener("click", () => {
+      // The ONE line that lights a card gold — wired to a click and nothing else.
+      if (pitchState) { pitchState.forged = p.title; persist(PITCH_KEY, pitchState); }
       applyPreset(p);
+      renderPitches(pitches);
       runStream(buildPrompt(), { fresh: true });
     });
     el.append(btn);
     grid.append(el);
   });
+  grid.append(escapePitch(pitches));
+}
+
+// "None of these" — the player's own idea, straight into the same forge. A deck of four generated
+// pitches without this is a menu with no exit. (doctrine 4)
+function escapePitch(pitches) {
+  const el = div("pitch esc");
+  el.append(div("pt", "NONE OF THESE"), div("pi", "Say what you'd play instead — it goes into the forge exactly as you write it."));
+  const row = div("escrow");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "e.g. a one-button game about parallel parking a submarine…";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "forge";
+  btn.textContent = "▶ FORGE MINE";
+  const submit = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    // Their words are the idea; genre/vibe stay wherever the console already is, so the escape
+    // never quietly re-decides anything else for them.
+    if (pitchState) { pitchState.forged = null; persist(PITCH_KEY, pitchState); }
+    $("f-idea").value = text;
+    persistForm();
+    renderPitches(pitches);
+    runStream(buildPrompt(), { fresh: true });
+  };
+  btn.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  row.append(input, btn);
+  el.append(row);
+  return el;
 }
 
 // The ★ pitch prefills the console so a full forge is ONE click — but never over a draft the

@@ -470,6 +470,17 @@ function conceptRenderPrompt(c) {
   return bits.join(". ");
 }
 
+// Rule 5 — phosphor means A HUMAN CHOSE. The ★ concept is only what Prism would shoot FIRST, so it
+// gets a dashed hairline and a neutral tag; the accent lands only when someone renders a card or
+// takes it into the studio. Purely visual: it moves no state and burns nothing.
+function markChosenCard(card) {
+  const mount = $("concepts");
+  mount.querySelectorAll(".concept.chosen").forEach((n) => { n.classList.remove("chosen"); n.querySelector(".cby")?.remove(); });
+  if (!card) return;
+  card.classList.add("chosen");
+  card.append(el("div", "cby", "chosen by you"));
+}
+
 function renderConcepts() {
   const mount = $("concepts");
   mount.textContent = "";
@@ -484,10 +495,11 @@ function renderConcepts() {
     const foot = el("div", "cfoot");
     const btn = el("button", "rbtn", "Render image");
     btn.type = "button";
-    btn.addEventListener("click", () => { void renderShot(conceptRenderPrompt(c), c.aspect, null, btn); });
+    btn.addEventListener("click", () => { markChosenCard(card); void renderShot(conceptRenderPrompt(c), c.aspect, null, btn); });
     const use = el("button", "cuse", "edit in studio");
     use.type = "button";
     use.addEventListener("click", () => {
+      markChosenCard(card);
       $("prompt").value = c.imagePrompt;
       state.extra = c.imagePrompt;
       $("aspect").value = c.aspect;
@@ -500,8 +512,39 @@ function renderConcepts() {
     card.append(top, el("div", "ctitle", c.title), prev, foot);
     mount.append(card);
   });
+  // Rule 4 — six drafted shots are a menu; without an exit it's a cage. Whatever the person types
+  // becomes the live studio prompt, so their own shot renders on exactly the same path as the ★.
+  if (state.concepts.length) mount.append(ownShotCard());
   $("concepts-sec").hidden = !(state.concepts.length || drafting || (relay && brand));
   reflect();
+}
+
+function ownShotCard() {
+  const card = el("div", "escape");
+  card.append(el("div", "et", "None of these"));
+  card.append(el("div", "eh", "Describe the shot you'd take instead — it goes straight into the studio prompt below and renders on the same path."));
+  const row = el("div", "erow");
+  const input = el("input");
+  input.type = "text";
+  input.placeholder = "e.g. the pack half-open on a wet slate counter, hard side light…";
+  const go = el("button", "rbtn", "Use mine");
+  go.type = "button";
+  const submit = () => {
+    const v = input.value.trim();
+    if (!v) { input.focus(); return; }
+    markChosenCard(null); // the human's own words are the choice — no drafted card wears the accent
+    $("prompt").value = v;
+    state.extra = v;
+    save();
+    input.value = "";
+    $("studio-sec").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("prompt").focus();
+  };
+  go.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  row.append(input, go);
+  card.append(row);
+  return card;
 }
 
 // Prefill the pickers and the textarea placeholder from the ★ concept — never clobber typed text.

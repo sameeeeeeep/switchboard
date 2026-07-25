@@ -9,6 +9,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The shared decision atoms: the accent means A HUMAN CHOSE (doctrine 5), and every slate has an
+// exit for the answer the model never offered (doctrine 4).
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +153,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards now come from ./kit/ui.js — same class names, but a card can only reach the accent
+// `.sel` state through a human click, and the slate carries its own escape hatch.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -219,7 +209,9 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Give it the one line first.", true); return; }
-  state.run = { id: uid(), input, treatments: null, selectedId: null, steers: [], status: "", error: null };
+  // draftedId = what the model recommended (drives the free storyboard reveal — no token cost).
+  // chosenId  = what a HUMAN clicked (drives the accent). Only the second one is a decision.
+  state.run = { id: uid(), input, treatments: null, selectedId: null, draftedId: null, chosenId: null, steers: [], status: "", error: null };
   await saveState(); render();
   await proposeTreatments();
 }
@@ -252,12 +244,22 @@ async function proposeTreatments(steer) {
     })).filter((t) => t.panels.length);
     if (!r.treatments.length) throw new Error("the storyboard came back empty — try again");
     if (!r.treatments.some((t) => t.recommended)) r.treatments[0].recommended = true;
-    r.selectedId = (r.treatments.find((t) => t.recommended) || r.treatments[0]).id; // ONE-GO: reveal the recommended storyboard, no image call
+    // ONE-GO: reveal the recommended storyboard, no image call. It is a DRAFT, so it reveals but does
+    // NOT light the card — a fresh slate also clears any stale pick, which no longer means anything.
+    r.draftedId = (r.treatments.find((t) => t.recommended) || r.treatments[0]).id;
+    r.chosenId = null;
+    r.selectedId = r.draftedId;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
 }
 
-function selectedTreatment() { const r = state.run; return r && (r.treatments || []).find((t) => t.id === r.selectedId); }
+// Which strip is on screen: the human's pick if they made one, otherwise the model's draft. The
+// trailing `selectedId` keeps runs saved by the previous build from losing their storyboard.
+function selectedTreatment() {
+  const r = state.run; if (!r) return undefined;
+  const id = r.chosenId || r.draftedId || r.selectedId;
+  return (r.treatments || []).find((t) => t.id === id);
+}
 
 // Build the text-to-image prompt for ONE panel — the art style + the LOCKED character description
 // (so the lead stays identical strip-wide) + this panel's action.
@@ -335,7 +337,27 @@ function render() {
       text: [t.style, t.panels.map((p, i) => `${i + 1}. ${p.caption || p.art}`).join("\n")].filter(Boolean).join("\n\n"),
       recommended: t.recommended,
     }));
-    col.append(optionCards(opts, r.selectedId, (o) => { if (busyDrawing) { toast("finish inking the current panel first.", true); return; } r.selectedId = o.id; void saveState(); render(); }));
+    col.append(optionCards({
+      options: opts,
+      chosenId: r.chosenId,     // accent — a human clicked
+      draftedId: r.draftedId,   // neutral dashed tag — the model's suggestion
+      chosenNote: "your treatment",
+      onChoose: (o) => {
+        if (busyDrawing) { toast("finish inking the current panel first.", true); return; }
+        r.chosenId = o.id; r.selectedId = o.id; void saveState(); render();
+      },
+      // DOCTRINE 4 — three styles the model liked is a menu; this is the way out of it.
+      escape: {
+        label: "none of these — say how you'd draw it instead",
+        placeholder: "e.g. scratchy 90s zine, two colors, hand-lettered",
+        hint: "Toon re-storyboards around your direction instead of these three.",
+        sendLabel: "storyboard mine",
+        onSubmit: (text) => {
+          if (busyDrawing) { toast("finish inking the current panel first.", true); return; }
+          return proposeTreatments(`Discard the previous three treatments — the reader wants this instead: "${text}". Build every treatment around that direction.`);
+        },
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

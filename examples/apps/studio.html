@@ -72,12 +72,16 @@
         text-align: left; transition: border-color .12s, color .12s, background .12s;
       }
       .pchip:hover, .scn:hover { border-color: var(--edge-soft); color: var(--ink-sec); }
+      /* .on = A HUMAN CLICKED THIS. .drafted = derived from the brand — a hairline, never the lime,
+         however much of the brief it is already filling in. */
       .pchip.on, .scn.on { background: var(--lime-soft); border-color: var(--lime); color: var(--ink); }
+      .scn.drafted { border-color: var(--edge); border-style: dashed; color: var(--ink-sec); }
       .scn .pick {
         display: inline-block; margin-left: 8px; font: 500 9px/1 var(--mono); letter-spacing: .12em;
-        text-transform: uppercase; color: var(--page); background: var(--lime); border-radius: 999px;
-        padding: 3px 7px; vertical-align: 1px;
+        text-transform: uppercase; color: var(--ink-dim); background: none; border: 1px dashed var(--edge);
+        border-radius: 999px; padding: 3px 7px; vertical-align: 1px;
       }
+      .scn.on .pick { color: var(--page); background: var(--lime); border-color: var(--lime); border-style: solid; }
 
       .linkbtn {
         background: none; border: none; padding: 0 0 2px; cursor: pointer;
@@ -98,14 +102,23 @@
         padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; transition: border-color .12s;
       }
       .look:hover { border-color: var(--edge); }
-      .look.star { border-color: color-mix(in srgb, var(--lime) 45%, var(--edge)); }
+      /* the ★ card is the one the art director would shoot first — a draft, so a dashed hairline
+         and a neutral tag; the lime belongs to whatever a human actually acts on. */
+      .look.star { border-color: var(--edge); border-style: dashed; }
+      .look.own { border-style: dashed; }
+      .look.own .own-row { display: flex; gap: 8px; margin-top: 4px; }
+      .look.own .own-row input {
+        flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--edge); border-radius: 9px;
+        color: var(--ink); font: 400 12.5px/1.4 var(--sans); padding: 9px 11px; outline: none;
+      }
+      .look.own .own-row input:focus { border-color: var(--edge-soft); }
       .look-prod {
         font: 600 13px/1.3 var(--display); letter-spacing: -0.01em; color: var(--ink);
         display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       }
       .look-prod .pick {
         font: 500 9px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-        color: var(--page); background: var(--lime); border-radius: 999px; padding: 3px 7px;
+        color: var(--ink-dim); background: none; border: 1px dashed var(--edge); border-radius: 999px; padding: 3px 7px;
       }
       .look-scene { font: 500 12.5px/1.5 var(--sans); color: var(--ink-sec); }
       .look-dir { font: 400 11.5px/1.55 var(--sans); color: var(--ink-dim); flex: 1; }

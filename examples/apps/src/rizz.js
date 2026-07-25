@@ -8,6 +8,10 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// Option cards come from the shared kit (src/kit/ui.js): DRAFTED (the strategy Rizz liked, and wrote
+// the first lines from) stays visually distinct from CHOSEN (a card a human clicked) so the accent
+// never paints a machine decision (doctrine 5), and the slate gets an escape hatch (doctrine 4).
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -149,21 +153,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names, plus the drafted-vs-chosen distinction and the escape hatch).
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -236,7 +227,11 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Paste the situation first — their bio, their last message, or the vibe.", true); return; }
-  state.run = { id: uid(), input, mode: "openers", strategies: null, selectedId: null, steers: [], draft: "", lines: null, status: "", error: null };
+  // THREE ids, not one (doctrine 5). selectedId = the strategy the lines are currently written FROM
+  // (the pipeline keeps auto-advancing on the recommendation, so the cold open still lands lines);
+  // draftedId = Rizz's own pick, tagged neutrally; chosenId = a card a HUMAN clicked, and the only
+  // thing that ever wears the accent.
+  state.run = { id: uid(), input, mode: "openers", strategies: null, draftedId: null, selectedId: null, chosenId: null, steers: [], draft: "", lines: null, status: "", error: null };
   await saveState(); render();
   await proposeStrategies();
 }
@@ -257,15 +252,23 @@ async function proposeStrategies() {
     if (!arr || !arr.length) throw new Error("no read came back — try again");
     r.strategies = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Vibe").slice(0, 40), text: String(o.text || "").slice(0, 240), recommended: !!o.recommended }));
     if (!r.strategies.some((o) => o.recommended)) r.strategies[0].recommended = true;
-    r.selectedId = (r.strategies.find((o) => o.recommended) || r.strategies[0]).id;
+    // Rizz may DRAFT the play it likes and write from it — but drafting is not choosing. A fresh
+    // slate also drops any earlier pick: those cards no longer exist.
+    r.draftedId = (r.strategies.find((o) => o.recommended) || r.strategies[0]).id;
+    r.selectedId = r.draftedId;
+    r.chosenId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.strategies && !r.error) await draftLines(r.selectedId); // ONE-GO: auto-advance on the recommendation
 }
 
-async function draftLines(id, steer) {
+// `byHuman` is the ONLY route to the accent state — it is wired to a card click and to the escape
+// hatch, and to nothing else. Auto-advance and steering redraft the same play without claiming a
+// decision was made.
+async function draftLines(id, steer, byHuman) {
   const r = state.run; if (!r || !relay || running) return;
   r.selectedId = id;
+  if (byHuman) r.chosenId = id;
   const strat = (r.strategies || []).find((o) => o.id === id); if (!strat) return;
   const mode = MODES.find((m) => m.key === r.mode) || MODES[0];
   if (steer) r.steers.push(steer);
@@ -297,7 +300,7 @@ async function draftLines(id, steer) {
 // Switching the task (openers / reply / bio) reshapes stage 2 — re-read the room and redraft.
 async function setMode(key) {
   const r = state.run; if (!r || running || r.mode === key) return;
-  r.mode = key; r.strategies = null; r.selectedId = null; r.steers = []; r.draft = ""; r.lines = null;
+  r.mode = key; r.strategies = null; r.draftedId = null; r.selectedId = null; r.chosenId = null; r.steers = []; r.draft = ""; r.lines = null;
   await saveState(); render();
   await proposeStrategies();
 }
@@ -358,8 +361,26 @@ function render() {
   col.append(modeRow);
 
   if (r.strategies) {
-    col.append(el("div", "kicker sect", "the play"));
-    col.append(optionCards(r.strategies, r.selectedId, (o) => void draftLines(o.id)));
+    col.append(el("div", "kicker sect", r.chosenId ? "the play" : "the play — drafted, yours to change"));
+    col.append(optionCards({
+      options: r.strategies,
+      chosenId: r.chosenId,     // accent — a human clicked, nothing else
+      draftedId: r.draftedId,   // neutral tag — Rizz's pick, written from but not decided
+      onChoose: (o) => void draftLines(o.id, null, true),
+      disabled: running,
+      // Rule 4 — three plays is a menu; this is the exit. Your own read becomes the vibe.
+      escape: {
+        label: "none of these — say how you'd play it",
+        placeholder: "the vibe you actually want to send…",
+        sendLabel: "use mine",
+        onSubmit: (text) => {
+          if (running) return;
+          const mine = { id: uid(), label: "Yours", text, recommended: false, custom: true };
+          r.strategies = [...r.strategies, mine];
+          return draftLines(mine.id, null, true);
+        },
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

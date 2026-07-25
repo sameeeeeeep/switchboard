@@ -9,6 +9,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The shared decision atom. optionCards() keeps the accent for a human click and renders the
+// model's pick as a neutral DRAFT; its `escape` option is the way out of the menu. (doctrine 4 + 5)
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +153,9 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names the shell already styles), so DRAFTED (the lens Dreamlog suggested) and CHOSEN (the lens a
+// human clicked) are different states and only the second one wears the accent.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -219,6 +210,13 @@ const LENSES = [
     teaser: "a wink of folklore and fortune" },
 ];
 
+// A lens is either one of the three fixed houses above, or the one the dreamer wrote themselves via
+// the escape hatch — in which case their own words ARE the lens. (doctrine 4)
+function flavorFor(lens) {
+  if (lens?.custom) return { name: "the dreamer's own lens", look: `Read the dream exactly the way the dreamer asked for it: "${lens.look}". Stay warm, curious and non-clinical.` };
+  return LENSES.find((l) => l.key === lens?.key) || LENSES[0];
+}
+
 const SAMPLE_DREAM = "I was back in my childhood house but every door opened onto the ocean, and I kept looking for a room that wasn't there.";
 let running = false;
 
@@ -237,7 +235,10 @@ async function start(input, { seeded = false } = {}) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Tell it the dream first.", true); return; }
-  state.run = { id: uid(), input, seeded, lenses: null, selectedId: null, steers: [], reading: "", image: null, status: "", error: null };
+  // selectedId = the lens the reading is currently written THROUGH (may be a draft the pipeline
+  // auto-advanced on). chosenId = the lens a HUMAN clicked, and the only thing that lights a card
+  // up in the brand accent. They are deliberately not the same field. (doctrine 5)
+  state.run = { id: uid(), input, seeded, lenses: null, selectedId: null, draftedId: null, chosenId: null, steers: [], reading: "", image: null, status: "", error: null };
   await saveState(); render();
   await proposeLenses();
 }
@@ -261,7 +262,11 @@ async function proposeLenses() {
       return { id: uid(), key: l.key, label: l.name, text: String(o.text || l.teaser).slice(0, 300), recommended: !!o.recommended };
     });
     if (!r.lenses.some((o) => o.recommended)) r.lenses[0].recommended = true;
-    r.selectedId = (r.lenses.find((o) => o.recommended) || r.lenses[0]).id;
+    // The model may DRAFT, never LOCK: the pipeline still auto-advances on this lens, but the card
+    // wears a neutral dashed "recommended" tag until a human actually clicks one. (doctrine 5)
+    r.draftedId = (r.lenses.find((o) => o.recommended) || r.lenses[0]).id;
+    r.chosenId = null;
+    r.selectedId = r.draftedId;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.lenses && !r.error) await interpret(r.selectedId); // ONE-GO: auto-advance on the recommendation
@@ -271,7 +276,7 @@ async function interpret(id, steer) {
   const r = state.run; if (!r || !relay || running) return;
   r.selectedId = id;
   const lens = (r.lenses || []).find((o) => o.id === id);
-  const flavor = LENSES.find((l) => l.key === lens?.key) || LENSES[0];
+  const flavor = flavorFor(lens);
   if (!lens) return;
   if (steer) r.steers.push(steer);
   running = true; r.error = null; r.reading = ""; r.status = "interpreting…"; render();
@@ -301,7 +306,7 @@ async function conjureImage() {
   await saveState(); render();
   try {
     const lens = (r.lenses || []).find((o) => o.id === r.selectedId);
-    const flavor = LENSES.find((l) => l.key === lens?.key) || LENSES[0];
+    const flavor = flavorFor(lens);
     const prompt = `A surreal, dreamlike scene: ${r.input}. Ethereal, painterly, soft uncanny light, ${flavor.name === "Playful omens" ? "whimsical and folkloric" : "quiet and symbolic"}, no text, no watermark.`;
     const url = await genImage(prompt);
     if (!url) throw new Error("the dreamscape didn't come through — try again");
@@ -355,7 +360,28 @@ function render() {
 
   if (r.lenses) {
     col.append(el("div", "kicker sect", "the lens"));
-    col.append(optionCards(r.lenses, r.selectedId, (o) => { r.image = null; void interpret(o.id); }));
+    col.append(optionCards({
+      options: r.lenses,
+      chosenId: r.chosenId,        // null until a human clicks — the accent never lands here first
+      draftedId: r.draftedId,      // the lens Dreamlog suggested, and read the dream through
+      chosenNote: "you chose this",
+      onChoose: (o) => { r.chosenId = o.id; r.image = null; void interpret(o.id); },
+      // The way out of the menu: the dreamer knows how they want the dream read. (doctrine 4)
+      escape: {
+        label: "none of these — say how you'd like it read",
+        hint: "your words become the lens",
+        placeholder: "e.g. read it as a message from the house I grew up in…",
+        sendLabel: "read it this way",
+        onSubmit: (text) => {
+          if (running) return;
+          const o = { id: uid(), key: "custom", label: text.slice(0, 200), look: text, text: "your own lens", recommended: false, custom: true };
+          r.lenses.push(o);
+          r.chosenId = o.id;
+          r.image = null;
+          return interpret(o.id);
+        },
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {

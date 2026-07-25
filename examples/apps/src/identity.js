@@ -7,6 +7,7 @@
 //
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -149,21 +150,9 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards + the escape hatch come from the shared kit (src/kit/ui.js): drafted (what the model
+// proposed) and chosen (what a human clicked) are different states there, and only a click can reach
+// the accent one.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -216,7 +205,10 @@ const FACETS = [
   { key: "pillars", title: "What they post", deps: ["person", "audience"],
     guide: 'The recurring content pillars. label = the pillar in 2-4 words; text = one sentence on the format/angle of that pillar. Three distinct pillars this person could post forever.' },
 ];
-const mkFacets = () => Object.fromEntries(FACETS.map((f) => [f.key, { options: null, selectedId: null, steers: [], error: null }]));
+// DRAFTED vs CHOSEN (doctrine 5). `draftedId` is what the model proposed — it may steer the rest of
+// the pipeline, but it never wears the accent and never counts as a decision. `selectedId` is only
+// ever written by a human click (a card, the escape hatch, or the confirm bar).
+const mkFacets = () => Object.fromEntries(FACETS.map((f) => [f.key, { options: null, draftedId: null, selectedId: null, steers: [], error: null }]));
 
 let running = false;
 let published = null; // { id, name } once published
@@ -228,10 +220,15 @@ function autostart() {
   if (brand) { const seed = "an on-camera creator for " + brand.name + (brand.data?.positioning ? " — " + brand.data.positioning : ""); void start(seed); }
 }
 
+// pick() = what the HUMAN chose (null until they click). draft() = what the model proposed.
+// standing() = whichever is live for CONDITIONING the next facet — the draft steers generation
+// exactly as before, it just doesn't get to look like a decision.
 function pick(key) { const f = state.run.facets[key]; return (f.options || []).find((o) => o.id === f.selectedId) || null; }
+function draft(key) { const f = state.run.facets[key]; return (f.options || []).find((o) => o.id === f.draftedId) || null; }
+function standing(key) { return pick(key) || draft(key); }
 function digestSoFar(upto) {
   const parts = [];
-  for (const f of FACETS) { if (f.key === upto) break; const p = pick(f.key); if (p) parts.push(`${f.title}: ${p.label} — ${p.text}`); }
+  for (const f of FACETS) { if (f.key === upto) break; const p = standing(f.key); if (p) parts.push(`${f.title}: ${p.label} — ${p.text}`); }
   return parts.join("\n");
 }
 
@@ -255,8 +252,8 @@ async function draftAll() {
     await draftFacet(f.key);
   }
   running = false; r.status = "";
-  // name the persona from the picked person, for the published context
-  const person = pick("person"); if (person && !r.name) r.name = person.label;
+  // name the persona from the standing person, for the published context
+  const person = standing("person"); if (person && !r.name) r.name = person.label;
   await saveState(); render();
 }
 
@@ -280,7 +277,11 @@ async function draftFacet(key, steer) {
     if (!arr || !arr.length) throw new Error("nothing came back — try again");
     fs.options = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Option").slice(0, 60), text: String(o.text || "").trim(), recommended: !!o.recommended }));
     if (!fs.options.some((o) => o.recommended)) fs.options[0].recommended = true;
-    fs.selectedId = (fs.options.find((o) => o.recommended) || fs.options[0]).id;
+    // Rule 5 — a redraft may DRAFT, never LOCK. The recommendation seeds draftedId (which still
+    // conditions the facets below it); selectedId stays empty until a human clicks, and a fresh
+    // slate clears any earlier pick, since those cards no longer exist.
+    fs.draftedId = (fs.options.find((o) => o.recommended) || fs.options[0]).id;
+    fs.selectedId = null;
   } catch (e) { fs.error = msg(e); }
   await saveState(); render();
 }
@@ -361,6 +362,27 @@ function render() {
 
   if (r.status) view.append(researching(r.status));
 
+  // THE DRAFT BAR (doctrine 5, cast/stages.js draftBar). Identity drafts all five facets on its own,
+  // but a draft is not a decision: publishing stays closed until a human owns every facet. This is
+  // the one-click way to own them all at once — still a human clicking, never the pipeline.
+  const pending = FACETS.filter((f) => r.facets[f.key].options && !r.facets[f.key].selectedId);
+  if (!running && pending.length) {
+    const bar = el("div", "q-card");
+    bar.append(el("span", "q-num", "drafted, not decided"));
+    bar.append(el("div", "q-text", `Identity suggested ${pending.length} of ${FACETS.length} facet${pending.length === 1 ? "" : "s"}. Pick your own card in any of them, write your own, or take all the suggestions as they stand.`));
+    const ok = el("button", "act", `Take the suggestions (${pending.length}) ✓`);
+    ok.onclick = () => {
+      for (const f of pending) {
+        const fs = r.facets[f.key];
+        fs.selectedId = fs.draftedId;
+        if (f.key === "person") { const p = pick("person"); if (p) r.name = p.label; }
+      }
+      void saveState(); render();
+    };
+    bar.append(ok);
+    view.append(bar);
+  }
+
   for (const f of FACETS) view.append(facetCard(f));
 
   if (published) {
@@ -374,6 +396,13 @@ function render() {
   }
 }
 
+function choose(spec, o) {
+  const r = state.run, fs = r.facets[spec.key];
+  fs.selectedId = o.id;
+  if (spec.key === "person") r.name = o.label;
+  void saveState(); render();
+}
+
 function facetCard(spec) {
   const r = state.run;
   const fs = r.facets[spec.key];
@@ -382,7 +411,25 @@ function facetCard(spec) {
   const p = pick(spec.key);
   if (p) card.append(el("span", "stale-chip", "picked: " + p.label));
   if (fs.options) {
-    card.append(optionCards(fs.options, fs.selectedId, (o) => { fs.selectedId = o.id; if (spec.key === "person") r.name = o.label; void saveState(); render(); }));
+    card.append(optionCards({
+      options: fs.options,
+      chosenId: fs.selectedId,       // accent — a human clicked, nothing else
+      draftedId: fs.draftedId,       // neutral dashed tag — the model's suggestion
+      onChoose: (o) => choose(spec, o),
+      chosenNote: "chosen by you",
+      // Rule 4 — the slate is a menu, and a menu needs an exit. Your own words become the answer
+      // for this facet and thread into every facet below it (digestSoFar reads the standing pick).
+      escape: {
+        label: "none of these — say what you'd do instead",
+        placeholder: spec.key === "person" ? "name the person and who they are…" : "describe it in your own words…",
+        sendLabel: "use mine",
+        onSubmit: (text) => {
+          const mine = { id: uid(), label: text.slice(0, 60), text, recommended: false, custom: true };
+          fs.options = [...fs.options, mine];
+          choose(spec, mine);
+        },
+      },
+    }));
     if (!running) card.append(steerRow((s) => void steerFacet(spec.key, s)));
   } else if (fs.error) {
     card.append(el("div", "err", fs.error));

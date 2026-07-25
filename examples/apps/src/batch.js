@@ -10,6 +10,7 @@
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountRecorder } from "./kit/recorder.js";
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -151,21 +152,9 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards + the escape hatch come from the shared kit (src/kit/ui.js): drafted (what the model
+// proposed) and chosen (what a human clicked) are different states there, and only a click can reach
+// the accent one.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -242,7 +231,10 @@ const VIDEOS = [
   { key: "demo", title: "Product demo video", sub: "up to 3 minutes · screen — the real product doing the core loop", mode: "screen", maxSeconds: 180, fileName: "demo-video.webm",
     guide: "A shot list for a ≤3-minute screen demo: 5–8 beats, each = what is on screen + the one spoken line over it. Show the real product's core loop end to end; no slides, no invented features." },
 ];
-const mkVideos = () => Object.fromEntries(VIDEOS.map((v) => [v.key, { options: null, selectedId: null, steers: [], stale: false, error: null }]));
+// THREE states, not two (doctrine 5). draftedId = what Batch proposed — it still grounds the rest of
+// the pipeline, but it is neutral ink and never a decision. selectedId = a human clicked this card
+// (the accent). lockedId = a human committed it as the spine. Nothing but a click writes the last two.
+const mkVideos = () => Object.fromEntries(VIDEOS.map((v) => [v.key, { options: null, draftedId: null, selectedId: null, steers: [], stale: false, error: null }]));
 const recHosts = {}; // key → { host, handle } — kept OUT of render() so re-renders never kill a live stream
 function destroyRecorders() { for (const k of Object.keys(recHosts)) { try { recHosts[k].handle.destroy(); } catch { /* gone */ } delete recHosts[k]; } }
 
@@ -271,7 +263,7 @@ async function start(brief) {
   if (!relay || running) return;
   brief = String(brief || "").trim();
   if (!brief) { toast("One line on what you're building first.", true); return; }
-  state.run = { id: uid(), brief, status: "", answers: QUESTIONS.map((s) => ({ n: s.n, options: null, selectedId: null, lockedId: null, steers: [], stale: false, staleReason: null, error: null })), videos: mkVideos() };
+  state.run = { id: uid(), brief, status: "", answers: QUESTIONS.map((s) => ({ n: s.n, options: null, draftedId: null, selectedId: null, lockedId: null, steers: [], stale: false, staleReason: null, error: null })), videos: mkVideos() };
   await saveState(); render();
   await draftAll();
 }
@@ -301,7 +293,7 @@ async function draftAll() {
 // the picked application answers become ground truth for the video scripts — compose, don't re-ask
 function pickedDigest() {
   const r = state.run;
-  return r.answers.filter((a) => a.options).map((a) => `Q${a.n}: ${selectedText(a)}`).join("\n").slice(0, 4000);
+  return r.answers.filter((a) => a.options).map((a) => `Q${a.n}: ${standingText(a)}`).join("\n").slice(0, 4000);
 }
 
 // THE BRANCH: the founder's locked picks, as ground truth for drafting any OTHER question. This is
@@ -337,7 +329,10 @@ async function draftVideo(key, steer) {
     if (!arr || !arr.length) throw new Error("no scripts came back — try again");
     vs.options = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Angle").slice(0, 60), text: String(o.text || "").trim(), recommended: !!o.recommended }));
     if (!vs.options.some((o) => o.recommended)) vs.options[0].recommended = true;
-    vs.selectedId = (vs.options.find((o) => o.recommended) || vs.options[0]).id;
+    // Rule 5 — the recommendation is a DRAFT. It gets a neutral tag, never the accent, and a fresh
+    // slate clears any earlier pick because those cards no longer exist.
+    vs.draftedId = (vs.options.find((o) => o.recommended) || vs.options[0]).id;
+    vs.selectedId = null;
     vs.stale = false;
   } catch (e) { vs.error = msg(e); }
   await saveState(); render();
@@ -370,7 +365,10 @@ async function draftOne(n, steer) {
     if (!arr || !arr.length) throw new Error("no drafts came back — try again");
     a.options = arr.slice(0, 3).map((o) => ({ id: uid(), label: String(o.label || "Angle").slice(0, 60), text: String(o.text || "").trim(), recommended: !!o.recommended }));
     if (!a.options.some((o) => o.recommended)) a.options[0].recommended = true;
-    a.selectedId = (a.options.find((o) => o.recommended) || a.options[0]).id;
+    // Rule 5 — Batch may DRAFT the angle it likes, but selecting is a human act. draftedId still
+    // grounds the export and the video scripts; only a click lights a card up.
+    a.draftedId = (a.options.find((o) => o.recommended) || a.options[0]).id;
+    a.selectedId = null;
     // a redraft replaces the very text they committed to, so the lock can't survive it — re-picking
     // re-locks (and re-cascades). Silently keeping the lock would put text they never chose into
     // every other question's ground truth.
@@ -465,7 +463,9 @@ function unlockAnswer(a) {
 
 // the label carries the state, exactly as the board does
 function lockLabel(a) {
-  if (!a.selectedId) return "Lock it in";
+  // nothing selected = nothing to lock. Say so, rather than showing a dead primary button: the
+  // drafted card is a suggestion, and the founder still has to pick one (or write their own).
+  if (!a.selectedId) return "Pick one to lock it in";
   if (a.lockedId && a.lockedId === a.selectedId) return "Keep this pick";
   if (a.lockedId) return "Change pick";
   return "Lock it in";
@@ -493,7 +493,13 @@ function editIdea(next) {
 }
 
 // ---- export (carved from ideabrain's ycMarkdown — same honesty framing) ----
-function selectedText(a) { const o = (a.options || []).find((x) => x.id === a.selectedId); return o ? o.text : ""; }
+// The text STANDING for this question: what the founder selected, or — until they've selected —
+// what Batch drafted. This is what the export and the video scripts read, so the pipeline and the
+// download are exactly as complete as they were before; only the ACCENT waits for a human.
+function standingText(a) {
+  const o = (a.options || []).find((x) => x.id === a.selectedId) || (a.options || []).find((x) => x.id === a.draftedId);
+  return o ? o.text : "";
+}
 // the LOCKED text — what the founder actually committed to, and the only thing that conditions
 // other questions. A hovering selection must never leak into another answer's ground truth.
 function lockedText(a) { const o = (a.options || []).find((x) => x.id === a.lockedId); return o ? o.text : ""; }
@@ -508,7 +514,7 @@ function applicationMd() {
   ];
   for (const a of r.answers) {
     L.push(`## ${a.n}. ${QUESTIONS[a.n - 1].q}`, "");
-    const t = selectedText(a);
+    const t = standingText(a);
     L.push(t || "_(not drafted yet)_", "");
     if (a.stale) L.push(`> Note: ${a.staleReason === "picks" ? "your picks on other questions moved after this was drafted" : "the idea changed after this was drafted"} — redraft it in Batch.`, "");
   }
@@ -604,7 +610,24 @@ function videoCard(spec) {
   if (vs.stale) card.append(el("span", "stale-chip", staleLabel(vs)));
   card.append(el("div", "q-text", spec.sub));
   if (vs.options) {
-    card.append(optionCards(vs.options, vs.selectedId, (o) => { vs.selectedId = o.id; void saveState(); render(); }));
+    card.append(optionCards({
+      options: vs.options,
+      chosenId: vs.selectedId,     // accent — a human clicked, nothing else
+      draftedId: vs.draftedId,     // neutral tag — Batch's suggestion
+      onChoose: (o) => { vs.selectedId = o.id; void saveState(); render(); },
+      // Rule 4 — a slate of scripts is a menu; this is the exit. Your own beats become the script.
+      escape: {
+        label: "none of these — say what you'd do instead",
+        placeholder: "your own beats, one per line…",
+        sendLabel: "use mine",
+        onSubmit: (text) => {
+          const mine = { id: uid(), label: "Yours", text, recommended: false, custom: true };
+          vs.options = [...vs.options, mine];
+          vs.selectedId = mine.id;
+          void saveState(); render();
+        },
+      },
+    }));
     if (!running) card.append(steerRow((s) => void steerVideo(spec.key, s)));
     // The recorder is a shared wrapp-kit element with LIVE MediaStream state — it must NOT be torn
     // down and rebuilt on every render (that would kill a recording mid-take). Mount it once into a
@@ -664,14 +687,29 @@ function questionCard(a) {
   if (a.stale) card.append(el("span", "stale-chip", staleLabel(a)));
   card.append(el("div", "q-text", spec.q));
   if (a.options) {
-    const wrap = optionCards(a.options, a.selectedId, (o) => selectAnswer(a, o));
-    if (a.n === 1) {
+    const wrap = optionCards({
+      options: a.options,
+      chosenId: a.selectedId,      // accent — a human clicked, nothing else
+      draftedId: a.draftedId,      // neutral tag — Batch's angle, not the founder's decision
+      onChoose: (o) => selectAnswer(a, o),
+      chosenNote: a.lockedId === a.selectedId && a.lockedId ? "locked in by you" : "chosen by you",
       // the 50-char limit is the whole game on Q1 — show the count on every option
-      [...wrap.children].forEach((optEl, i) => {
-        const o = a.options[i]; if (!o) return;
-        optEl.querySelector(".o-label")?.append(el("span", "charcount" + (o.text.length > 50 ? " over" : ""), o.text.length + " chars"));
-      });
-    }
+      decorate: a.n === 1
+        ? (optEl, o) => optEl.querySelector(".o-label")?.append(el("span", "charcount" + (o.text.length > 50 ? " over" : ""), o.text.length + " chars"))
+        : null,
+      // Rule 4 — the founder's own answer is always allowed, and it selects like any other card
+      // (so the same deliberate "Lock it in" beat still applies to it).
+      escape: {
+        label: "none of these — write your own answer",
+        placeholder: a.n === 1 ? "your one-liner, 50 characters or fewer…" : "answer it in your own words…",
+        sendLabel: "use mine",
+        onSubmit: (text) => {
+          const mine = { id: uid(), label: "Yours", text, recommended: false, custom: true };
+          a.options = [...a.options, mine];
+          selectAnswer(a, mine);
+        },
+      },
+    });
     card.append(wrap);
     if (!running) {
       if (confirmingN === a.n) {

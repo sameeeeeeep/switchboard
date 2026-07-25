@@ -1511,7 +1511,9 @@ $("run-scripts").addEventListener("click", () => {
 // ---------- audit: ONE upfront pass over the WHOLE page (true brandbrain style) ----------
 // The AI reads the full source once and pins its findings — AI-slop copy, pointless meta-text,
 // dead sections — as comments with the note pre-filled AND, where the fix survives validation,
-// a ready recommended option: open the card and Lock & write is already loaded. Steer regenerates.
+// a DRAFTED fix: open the card and the suggested edit is already there, tagged as a suggestion and
+// one click from being written. It is never pre-selected — the audit proposes, the reviewer decides
+// (doctrine 5). Steer regenerates.
 // Runs AUTOMATICALLY the first time a page opens with nothing pinned (the proactive first batch);
 // the ✦ Audit button is the "generate more" re-run.
 let auditing = false;
@@ -1548,7 +1550,9 @@ async function audit() {
     const find = typeof f.find === "string" && f.find.length >= 8 ? f.find : null;
     if (find && f.replace != null && currentHtml.includes(find)) {
       const opt = { id: uid(), label: String(f.label || "Suggested fix").slice(0, 40), text: String(f.preview || "").trim() || stripTags(String(f.replace)).trim().slice(0, 220) || "(removed)", edit: { find, replace: String(f.replace) }, recommended: true };
-      c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], selectedId: opt.id, steers: [], markdown: "", find, summary: c.note, preseeded: true };
+      // Rule 5 — the audit found this on its own, so its fix is DRAFTED, never chosen. It carries a
+      // neutral tag and Lock & write stays closed until the reviewer clicks the card.
+      c.decision = { kind: "edit", lockable: true, loading: false, status: "", options: [opt], draftedId: opt.id, selectedId: null, steers: [], markdown: "", find, summary: c.note, preseeded: true };
     }
     decisions.push(c); added++;
     return true;
@@ -1773,7 +1777,7 @@ async function respond(c, steer) {
   if (!c.note && !steer) { toast("Type what you'd like changed, then send.", true); return; }
   busy.add(c.id);
   const steers = [...((c.decision && c.decision.steers) || []), ...(steer ? [steer] : [])];
-  c.decision = { kind: null, lockable: false, loading: true, status: "reading the page…", options: [], selectedId: null, steers, markdown: "", find: null, summary: "" };
+  c.decision = { kind: null, lockable: false, loading: true, status: "reading the page…", options: [], draftedId: null, selectedId: null, steers, markdown: "", find: null, summary: "" };
   renderSide();
   try {
     const route = await askJson([
@@ -1808,8 +1812,10 @@ async function respond(c, steer) {
       c.decision.kind = "reply"; c.decision.lockable = false;
       c.decision.markdown = route.markdown;
     }
+    // Rule 5 — the model's recommendation is a DRAFT. It gets the neutral tag; the accent and the
+    // Lock & write button both wait for the reviewer to click a card.
     const rec = c.decision.options.find((o) => o.recommended) || c.decision.options[0];
-    if (rec) c.decision.selectedId = rec.id;
+    if (rec) { c.decision.draftedId = rec.id; c.decision.selectedId = null; }
   } catch (e) {
     c.decision.error = msg(e);
   } finally {
@@ -2044,11 +2050,18 @@ function decisionCard(c) {
 
 function optionSet(c, d) {
   const wrap = el("div", "opts");
+  // Rule 5 — the accent means A HUMAN CHOSE. Redline's own suggestion is DRAFTED: a hairline-dashed
+  // card with a neutral tag. `.sel` (and Lock & write with it) comes from a click and nothing else.
+  const draftedId = d.draftedId != null ? d.draftedId : null;
   for (const o of d.options) {
-    const card = el("div", "opt" + (o.id === d.selectedId ? " sel" : ""));
+    const chosen = o.id === d.selectedId;
+    const drafted = !chosen && o.id === draftedId;
+    const card = el("div", "opt" + (chosen ? " sel" : "") + (drafted ? " drafted" : ""));
     card.onclick = () => { d.selectedId = o.id; d.lockError = null; saveReview(); renderSide(); };
     const chk = el("div", "check", "✓"); card.append(chk);
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
+    // "recommended" always means the MACHINE suggested it, so it is always neutral ink — the accent
+    // is reserved for the card the reviewer clicked.
+    if (o.recommended) card.append(el("div", "rec draft", "recommended"));
     card.append(el("div", "o-label", o.label));
     if (o.text) card.append(el("div", "o-text", o.text));
     if (o.svg) { const s = el("div", "o-svg"); s.innerHTML = sanitizeSvg(o.svg); card.append(s); }
@@ -2086,7 +2099,9 @@ function decisionFoot(c, d) {
   }
   const foot = el("div", "dec-foot");
   const opt = d.options.find((o) => o.id === d.selectedId);
-  const lock = el("button", "lock"); lock.append(lockIcon(), el("span", null, "Lock & write"));
+  // Nothing picked = nothing to write, and the button says why rather than sitting there dead: the
+  // drafted card above is a suggestion, and writing to the real file is the reviewer's call.
+  const lock = el("button", "lock"); lock.append(lockIcon(), el("span", null, opt ? "Lock & write" : "Pick one to write it"));
   lock.disabled = !opt;
   lock.onclick = () => lockDecision(c);
   const discard = el("button", "discard", "Discard"); discard.onclick = () => { c.decision = null; saveReview(); renderSide(); };

@@ -12,6 +12,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// Option cards come from the shared kit (src/kit/ui.js) so DRAFTED (what the model proposed) is
+// visually distinct from CHOSEN (a human clicked), and the slate carries an escape hatch.
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -153,21 +156,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names, same pixels) so the accent can only ever be reached by a human click.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -229,7 +219,10 @@ async function start(input) {
   input = String(input || "").trim();
   if (!input) { toast("Give it a story idea and a hero first.", true); return; }
   illusRun++; // any prior illustration pass is now stale
-  state.run = { id: uid(), input, books: null, selectedId: null, steers: [], book: null, status: "", error: null };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is what the model proposed — it drives the one-go
+  // auto-advance but never wears the accent. `selectedId` is a human's click, and nothing else.
+  // `bookId` is simply which concept the pages on screen were written from.
+  state.run = { id: uid(), input, books: null, selectedId: null, draftedId: null, bookId: null, steers: [], book: null, status: "", error: null };
   await saveState(); render();
   await proposeBooks();
 }
@@ -256,17 +249,22 @@ async function proposeBooks() {
       recommended: !!o.recommended,
     }));
     if (!r.books.some((o) => o.recommended)) r.books[0].recommended = true;
-    r.selectedId = (r.books.find((o) => o.recommended) || r.books[0]).id;
+    // Rule 5 — the model's pick is a DRAFT: it gets a neutral dashed tag and still carries the
+    // one-go auto-advance, but the accent stays off until someone clicks.
+    r.draftedId = (r.books.find((o) => o.recommended) || r.books[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
-  if (r.books && !r.error) await writeBook(r.selectedId); // ONE-GO: auto-advance on the recommended concept
+  if (r.books && !r.error) await writeBook(r.draftedId); // ONE-GO: auto-advance on the drafted concept
 }
 
 // STAGE 2a — write the pages (one text turn: title + a locked art style + a locked hero + page lines).
-async function writeBook(id, steer) {
+// `human` is true only when a person clicked a card (or wrote their own) — the ONLY route to accent.
+async function writeBook(id, steer, human) {
   const r = state.run; if (!r || !relay || running) return;
-  r.selectedId = id;
   const concept = (r.books || []).find((o) => o.id === id); if (!concept) return;
+  r.bookId = id;
+  if (human) r.selectedId = id;
   if (steer) r.steers.push(steer);
   illusRun++; // supersede any illustration pass already running on an older book
   running = true; r.error = null; r.book = null; r.status = "writing the pages…"; render();
@@ -300,6 +298,16 @@ async function writeBook(id, steer) {
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.book && !r.error) await illustrateBook(); // STAGE 2b — the pages are on screen; draw them now
+}
+
+// The escape hatch's other half: the reader's own concept becomes a real card on the slate (so it is
+// choosable, steerable and re-writable like any other) and is written immediately — as a human pick.
+async function writeOwnBook(text) {
+  const r = state.run; if (!r || !r.books) return;
+  const own = { id: uid(), label: String(text || "").slice(0, 70), text: String(text || "").slice(0, 240), age: "", recommended: false };
+  r.books = [...r.books, own];
+  await saveState();
+  await writeBook(own.id, null, true);
 }
 
 // STAGE 2b — illustrate every page on the user's Higgsfield, one page at a time, in the locked style.
@@ -376,17 +384,27 @@ function render() {
 
   if (r.books) {
     col.append(el("div", "kicker sect", "pick a book"));
-    col.append(optionCards(
-      r.books.map((b) => ({ id: b.id, label: b.label, text: b.age ? `${b.text}\n${b.age}` : b.text, recommended: b.recommended })),
-      r.selectedId,
-      (o) => void writeBook(o.id),
-    ));
+    col.append(optionCards({
+      options: r.books.map((b) => ({ id: b.id, label: b.label, text: b.age ? `${b.text}\n${b.age}` : b.text, recommended: b.recommended })),
+      chosenId: r.selectedId || null,   // accent — a human clicked, nothing else
+      draftedId: r.draftedId || null,   // neutral dashed tag — the model's suggestion
+      chosenNote: "your book",
+      disabled: running,
+      onChoose: (o) => void writeBook(o.id, null, true),
+      // Doctrine 4 — a slate without an exit is a cage. Your own book, in your words.
+      escape: {
+        label: "none of these — describe the book you want instead",
+        placeholder: "e.g. a bedtime story where the hero never leaves her room",
+        sendLabel: "write that",
+        onSubmit: (t) => writeOwnBook(t),
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {
     col.append(el("div", "err", r.error));
     const t = el("button", "act", "try again");
-    t.onclick = () => (r.books ? void writeBook(r.selectedId) : void proposeBooks());
+    t.onclick = () => (r.books ? void writeBook(r.bookId || r.draftedId) : void proposeBooks());
     col.append(t);
   }
 
@@ -413,7 +431,7 @@ function render() {
     book.pages.forEach((p, i) => pages.append(pageEl(book, p, i)));
     col.append(pages);
 
-    if (!running) col.append(steerRow((s) => void writeBook(r.selectedId, s)));
+    if (!running) col.append(steerRow((s) => void writeBook(r.bookId || r.draftedId, s)));
   }
 
   view.append(col);

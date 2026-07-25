@@ -185,7 +185,7 @@
       .none { font: 400 11.5px/1.6 var(--mono); color: var(--ink-faint); border: 1px dashed var(--edge); border-radius: 14px; padding: 14px; text-align: center; }
 
       .actions { margin-top: 6px; }
-      .action { display: flex; gap: 14px; padding: 13px 4px; border-bottom: 1px solid var(--edge-soft); align-items: baseline; }
+      .action { display: flex; gap: 14px; padding: 13px 4px; border-bottom: 1px solid var(--edge-soft); align-items: baseline; cursor: pointer; }
       .action:last-child { border-bottom: 0; }
       .action .idx { flex: none; font: 500 13px/1.5 var(--mono); color: var(--lime); width: 24px; }
       .action .body { flex: 1; min-width: 0; }
@@ -198,7 +198,12 @@
       .tag.hard { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--panel)); }
       .tag.dim { color: var(--ink-dim); background: var(--raised); }
       .tag.star { color: var(--page); background: var(--lime); }
-      .action.rec { background: color-mix(in srgb, var(--lime) 5%, transparent); border-left: 2px solid var(--lime); padding-left: 12px; border-radius: 0 10px 10px 0; }
+      /* DRAFTED — the model ordered these most-urgent-first, so #1 is its suggestion. A suggestion
+         is not a decision: hairline dash + neutral tag, never the lime. (doctrine 5) */
+      .tag.draft { color: var(--ink-dim); background: transparent; border: 1px dashed var(--edge); }
+      .action.drafted { border-left: 2px dashed var(--edge); padding-left: 12px; }
+      /* CHOSEN — only a click puts a row here. Lime = a human committed to this move. */
+      .action.mine { background: color-mix(in srgb, var(--lime) 5%, transparent); border-left: 2px solid var(--lime); padding-left: 12px; border-radius: 0 10px 10px 0; }
       .vtag { display: inline-block; font: 500 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; padding: 5px 9px; }
       .vtag.scale { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
       .vtag.keep { color: var(--ink-sec); background: var(--raised); }

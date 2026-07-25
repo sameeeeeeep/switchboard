@@ -8,6 +8,10 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// Option cards come from the shared kit (src/kit/ui.js) so DRAFTED (the concept Meme liked) is
+// visually distinct from CHOSEN (a card a human clicked) — the accent is never worn by a machine
+// decision (doctrine 5) — and so the slate carries an escape hatch (doctrine 4).
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +154,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names, plus the drafted-vs-chosen distinction and the escape hatch).
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -235,7 +226,10 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Give it a topic first.", true); return; }
-  state.run = { id: uid(), input, concepts: null, selectedId: null, steers: [], status: "", error: null };
+  // THREE ids, not one (doctrine 5): draftedId = the concept Meme liked (it still gets drawn, so the
+  // cold open keeps its value on screen); selectedId = the card a HUMAN clicked, and the only thing
+  // that ever wears the accent.
+  state.run = { id: uid(), input, concepts: null, draftedId: null, selectedId: null, steers: [], status: "", error: null };
   await saveState(); render();
   await proposeConcepts();
 }
@@ -266,7 +260,10 @@ async function proposeConcepts(steer) {
       return { id: uid(), format: f.name, captions: caps, recommended: !!o.recommended };
     });
     if (!r.concepts.some((c) => c.recommended)) r.concepts[0].recommended = true;
-    r.selectedId = (r.concepts.find((c) => c.recommended) || r.concepts[0]).id;
+    // Meme may DRAFT the concept it likes — it gets drawn below — but drafting is not choosing.
+    // A fresh batch also drops any earlier pick: those cards no longer exist.
+    r.draftedId = (r.concepts.find((c) => c.recommended) || r.concepts[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
 }
@@ -460,15 +457,24 @@ function render() {
 
   if (r.concepts) {
     col.append(el("div", "kicker sect", "the concepts"));
-    col.append(optionCards(
-      r.concepts.map((c) => ({
+    col.append(optionCards({
+      options: r.concepts.map((c) => ({
         id: c.id, label: fmtLabel(c.format),
         text: c.captions.filter(Boolean).join("  •  ") || "(no captions)",
         recommended: c.recommended,
       })),
-      r.selectedId,
-      (o) => pickConcept(o.id),
-    ));
+      chosenId: r.selectedId,   // accent — a human clicked, nothing else
+      draftedId: r.draftedId,   // neutral tag — Meme's pick, drawn below but not decided
+      onChoose: (o) => pickConcept(o.id),
+      disabled: running,
+      // Rule 4 — three concepts is a menu; this is the exit. Your own direction re-writes the batch.
+      escape: {
+        label: "none of these — say what you'd meme instead",
+        placeholder: "the joke, format or angle you actually want…",
+        sendLabel: "use mine",
+        onSubmit: (text) => proposeConcepts(text),
+      },
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {
@@ -477,9 +483,12 @@ function render() {
     t.onclick = () => void proposeConcepts();
     col.append(t);
   }
-  const sel = r.concepts && r.concepts.find((c) => c.id === r.selectedId);
+  // What gets DRAWN falls back to the drafted concept, so the cold open still lands a finished meme
+  // with zero clicks — it is just labelled as a draft until someone actually picks a card.
+  const chosen = r.concepts && r.concepts.find((c) => c.id === r.selectedId);
+  const sel = chosen || (r.concepts && r.concepts.find((c) => c.id === r.draftedId));
   if (sel && !r.status) {
-    col.append(el("div", "kicker sect", "the meme"));
+    col.append(el("div", "kicker sect", chosen ? "the meme" : "the meme — drafted from the recommended concept"));
     col.append(memeCard(sel));
     if (!running) col.append(steerRow((s) => void proposeConcepts(s)));
   }

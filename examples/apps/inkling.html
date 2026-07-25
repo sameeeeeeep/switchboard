@@ -112,6 +112,10 @@
       .fcard .ftop { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
       .fcard .fstyle { font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); border: 1px solid var(--edge); border-radius: 999px; padding: 4px 8px; }
       .fcard .frec { font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 999px; padding: 4px 8px; }
+      /* DRAFTED — Inkling's own suggestion. Neutral ink on a dashed hairline, never the accent: the
+         accent is reserved for a card a human clicked (doctrine 5). */
+      .fcard .frec.draft { color: var(--ink-dim); background: transparent; border: 1px dashed var(--edge); }
+      .fcard.drafted { border-style: dashed; }
       .fcard .flabel { font: 600 14px/1.25 var(--display); color: var(--ink); }
       .fcard .ftext { font: 400 12.5px/1.5 var(--sans); color: var(--ink-sec); }
       /* the flash line-art plate — white so the ink reads like real flash */

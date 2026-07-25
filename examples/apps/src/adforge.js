@@ -142,6 +142,7 @@ async function syncFromRelayStorage() {
   Object.assign(state, parsed);
   coerceState();
   try { localStorage.setItem(STORE_KEY, raw); } catch { /* cache refresh only */ }
+  resetExpanded(); // a different slate arrived from the origin store — open indices no longer mean anything
   $("f-url").value = state.url;
   $("steer").value = state.steer;
   renderEntry();
@@ -628,6 +629,7 @@ async function forgeRun(opts = {}) {
     state.picked = -1;
     state.images = {};
     state.sample = false;
+    resetExpanded(); // a new slate — stale open cards would belong to concepts that no longer exist
     save();
     liveLine.textContent = "drafting concepts… done";
     logLine("three concepts out of the fire — pick one below.", "good");
@@ -758,6 +760,7 @@ $("sample").addEventListener("click", () => {
   state.images = {};
   state.sample = true;
   state.source = "url";
+  resetExpanded();
   save();
   hideError();
   clearLog();
@@ -829,29 +832,60 @@ function mountBankOffer(mount) {
   });
 }
 
+// READ IS FREE, COMMITTING COSTS. Clicking a card only EXPANDS it — the full primary text,
+// headline and description, in place, with as many cards open at once as the user wants for a
+// side-by-side read. Nothing is wiped and no render fires. The destructive, credit-spending step
+// (pick() resets state.images and casts the creative) lives behind the explicit "Cast this
+// creative" button that appears inside the open card. Comparing options must never cost a render.
+const expanded = new Set();
+function resetExpanded() { expanded.clear(); }
+function toggleCard(i) {
+  if (expanded.has(i)) expanded.delete(i); else expanded.add(i);
+  renderConcepts();
+}
+
 function renderConcepts() {
   renderBrandline();
   const mount = $("cards");
   mount.textContent = "";
   state.concepts.forEach((c, i) => {
-    const card = el("button", "card" + (i === state.picked ? " picked" : ""));
-    card.type = "button";
+    const open = expanded.has(i);
+    const isPicked = i === state.picked;
+    const card = el("div", "card" + (isPicked ? " picked" : "") + (open ? " open" : ""));
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-expanded", open ? "true" : "false");
+    card.tabIndex = 0;
     const top = el("div", "cardtop");
     top.append(el("span", "anglechip", c.angle));
     if (c.recommended) top.append(el("span", "recflag", "RECOMMENDED"));
-    const prev = el("div", "copyprev");
-    const flat = c.primaryText.replace(/\s+/g, " ").trim();
-    prev.textContent = flat.slice(0, 150) + (flat.length > 150 ? "…" : "");
+    const prev = el("div", "copyprev" + (open ? " full" : ""));
+    if (open) {
+      prev.textContent = c.primaryText; // the whole thing — the card is what the reader came for
+    } else {
+      const flat = c.primaryText.replace(/\s+/g, " ").trim();
+      prev.textContent = flat.slice(0, 150) + (flat.length > 150 ? "…" : "");
+    }
     const foot = el("div", "cardfoot");
     foot.append(el("span", "fh", c.headline), el("span", "fc", c.cta + " →"));
-    card.append(
-      top,
-      el("div", "hook", c.hook),
-      prev,
-      foot,
-      el("div", "picktag", i === state.picked ? "SELECTED" : "PICK THIS CONCEPT"),
-    );
-    card.addEventListener("click", () => pick(i));
+    card.append(top, el("div", "hook", c.hook), prev, foot);
+    if (open) {
+      if (c.description) card.append(el("div", "carddesc", c.description));
+      if (!isPicked) {
+        const act = el("button", "castbtn", "Cast this creative");
+        act.type = "button";
+        act.addEventListener("click", (e) => { e.stopPropagation(); pick(i); });
+        card.append(act);
+        card.append(el("div", "castnote", state.picked >= 0
+          ? "renders on your Claude — replaces the creative in the studio below"
+          : "renders on your Claude — the only step here that spends anything"));
+      }
+    }
+    card.append(el("div", "picktag", isPicked ? "SELECTED" : (open ? "CLICK TO COLLAPSE" : "CLICK TO READ IN FULL")));
+    card.addEventListener("click", (e) => { if (!e.target.closest(".castbtn")) toggleCard(i); });
+    card.addEventListener("keydown", (e) => {
+      if (e.target !== card) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCard(i); }
+    });
     mount.append(card);
   });
 }
@@ -864,6 +898,7 @@ function pick(i) {
   if (forging || casting) return;
   state.picked = i;
   state.images = {}; // new concept → new creative
+  expanded.add(i);   // the committed concept stays open — its full copy is what the studio renders
   save();
   renderConcepts();
   renderStudio();

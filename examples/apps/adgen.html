@@ -115,7 +115,10 @@
       .brandline b { color: var(--ink-sec); font-weight: 500; }
       .srcchip { font: 500 9.5px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
         border-radius: 999px; padding: 4px 9px; background: var(--raised); color: var(--ink-dim); }
-      #wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .wallsum { font: 400 11.5px/1 var(--mono); color: var(--ink-faint); margin-right: auto; }
+      /* align-items:start is load-bearing: a tile only grows to full size once it holds a real
+         creative, so an unrendered neighbour never inherits a rendered tile's height. */
+      #wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
       .tile { background: var(--panel); border: 1px solid var(--edge); border-radius: 15px;
         padding: 16px; display: flex; flex-direction: column; gap: 0;
         transition: border-color 0.13s, background 0.13s; }
@@ -136,6 +139,13 @@
       .timghint { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
         padding: 14px; color: var(--ink-faint); font: 400 12px/1.5 var(--mono); }
       .timghint.bad { color: var(--danger); }
+      /* UNRENDERED = a short aspect-labelled strip, not a big empty picture frame. Six tiles then
+         fit one screen, which is the whole point of a wall you compare side by side. */
+      .timgbox.strip { display: flex; align-items: center; justify-content: center; min-height: 34px; }
+      .timgbox.strip .timghint { position: static; display: flex; align-items: center;
+        justify-content: center; gap: 8px; padding: 9px 11px; font-size: 11px; }
+      .aspecttag { flex: none; font: 500 9.5px/1 var(--mono); letter-spacing: 0.1em;
+        color: var(--ink-dim); border: 1px solid var(--edge); border-radius: 4px; padding: 3px 5px; }
       .castline { display: flex; align-items: center; justify-content: center; gap: 8px; }
       .tilefoot { display: flex; gap: 8px; margin-top: 12px; }
       .tilefoot .btn { flex: 1; text-align: center; padding: 10px 0; }
@@ -218,6 +228,7 @@
       <section id="wall-sec" hidden>
         <div class="sechead">
           <p class="kicker"><span class="num">02</span> · the wall — render the ones worth money</p>
+          <span class="wallsum" id="wallsum"></span>
           <button class="btn btn-sm" id="more" type="button">Draft 6 more</button>
         </div>
         <div class="brandline" id="brandline"></div>

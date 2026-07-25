@@ -7,6 +7,9 @@
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountSpeaker } from "./kit/speaker.js";
+// The shared decision atoms. optionCards() keeps the accent for a human click and renders the
+// model's ★ as a neutral DRAFT; escapeHatch() is the way out of the menu. (doctrine 4 + 5)
+import { optionCards, escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -164,21 +167,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// optionCards now comes from ./kit/ui.js — same class names, same positional signature, but the
+// ★ suggestion renders as a neutral DRAFT instead of wearing the brand accent.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -223,7 +213,9 @@ let startersTried = false;          // one proactive opener pass per page life �
 let speaker = null;                 // kit/speaker handle
 let camStream = null;               // live getUserMedia stream (presence, NOT recorded)
 const SESSION_ID = "huddle-" + uid(); // one warm session for the whole page session
-let session = { folder: null, files: [], turns: [], starters: null, starterError: null, camOn: false, voiceOn: true, status: "", error: null };
+// chosenStarterId is written by ONE line of code — the opener card's click handler. Huddle asks the
+// ★ opener on its own, and that autonomous ask must stay a DRAFT: it never lights a card. (rule 5)
+let session = { folder: null, files: [], turns: [], starters: null, starterError: null, chosenStarterId: null, camOn: false, voiceOn: true, status: "", error: null };
 
 let opened = false;
 function autostart() { void openCall(); }
@@ -295,6 +287,7 @@ async function loadStarters(steer) {
     let seen = false;
     for (const o of opts) { if (o.recommended) { if (seen) o.recommended = false; else seen = true; } }
     session.starters = opts;
+    session.chosenStarterId = null; // a new slate means the old pick no longer refers to anything
   } catch (e) { session.starterError = msg(e); }
   finally {
     startersLoading = false; render();
@@ -382,7 +375,21 @@ function render() {
     const t = el("button", "act", "try again"); t.onclick = () => void loadStarters(); view.append(t);
   }
   if (session.starters && session.starters.length) {
-    view.append(optionCards(session.starters, null, (o) => { if (!running) void ask(o.label); }));
+    view.append(optionCards({
+      options: session.starters,
+      chosenId: session.chosenStarterId,   // null until a human clicks — the ★ never lands here
+      chosenNote: "you opened on this",
+      disabled: running,
+      onChoose: (o) => { if (running) return; session.chosenStarterId = o.id; void ask(o.label); },
+      // The way out of the menu: the founder's own opener beats four drafted ones. (doctrine 4)
+      escape: {
+        label: "none of these — say what you'd rather open on",
+        hint: "asked as-is, on the same call",
+        placeholder: "e.g. I need to decide whether to cut the free tier this week…",
+        sendLabel: "open on this",
+        onSubmit: (text) => { if (running) return; session.chosenStarterId = null; void ask(text); },
+      },
+    }));
   }
 
   // transcript

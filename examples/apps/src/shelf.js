@@ -13,6 +13,7 @@
 // the board is on screen before the user types anything. Pasting stays available and always wins:
 // the moment the user edits the sheet it becomes source "user" and Shelf never overwrites it.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { escapeHatch } from "./kit/ui.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -31,6 +32,9 @@ let rows = [];
 let brand = null; // the lent brand context (normalized), or null
 let plans = [];
 let selectedPlan = null;
+// Rule 5's receipt: did a HUMAN pick the plan on deck, or is it still the model's draft? Only true
+// lights the accent, and only true is persisted as a decision — so a restore never inherits one.
+let pickedByHuman = false;
 let autoTriaged = false; // one proactive triage per page life — chip onConnect + the probe both funnel here
 let lastRendered = null; // the board result currently on screen (stale-marking on brand switch reads it)
 // WHERE THE SHEET ON DECK CAME FROM. "user" is sacred — Shelf never overwrites a sheet the person
@@ -438,7 +442,7 @@ async function syncFromRelayStorage() {
   try { lastObj = JSON.parse(last || "null"); } catch { /* corrupt — skip */ }
   try { playObj = JSON.parse(play || "null"); } catch { /* corrupt — skip */ }
   if (lastObj && lastObj.data && $("board").hidden) {
-    renderBoard(lastObj, { selectedTitle: playObj?.planTitle || null });
+    renderBoard(lastObj, { selectedTitle: (playObj?.by === "human" && playObj.planTitle) || null });
     if (playObj?.playbook && selectedPlan && selectedPlan.title === playObj.planTitle) renderPlaybook(playObj.playbook);
   }
 }
@@ -722,6 +726,7 @@ function normPlans(v) {
 function renderPlans(ps, selectedTitle) {
   plans = ps;
   selectedPlan = null;
+  pickedByHuman = false;
   const grid = $("plangrid");
   grid.textContent = "";
   $("plans-wrap").hidden = !ps.length;
@@ -737,18 +742,42 @@ function renderPlans(ps, selectedTitle) {
       p.moves.forEach((m) => ul.append(el("li", null, m)));
       card.append(ul);
     }
-    // The lit card IS the selection: with no explicit pick the recommended plan is selected,
-    // not merely highlighted — callers (fresh triage, auto-triage) can refine it immediately.
-    const chosen = selectedTitle ? p.title === selectedTitle : p.recommended;
-    if (chosen) { card.classList.add("lit"); selectedPlan = p; }
+    // Rule 5 — the LIT (lime) state means A HUMAN CLICKED THIS. The model's ★ still seeds the
+    // worksheet with zero clicks (pipeline unchanged: selectedPlan is set either way), but it wears
+    // a hairline-dashed "drafted" card, never the accent. Only a restored human pick, or a click
+    // below, lights one.
+    const chosen = !!selectedTitle && p.title === selectedTitle;
+    const drafted = !selectedTitle && p.recommended;
+    if (chosen) { card.classList.add("lit"); card.append(el("span", "pby", "chosen by you")); selectedPlan = p; pickedByHuman = true; }
+    else if (drafted) { card.classList.add("drafted"); card.append(el("span", "pby", "drafted — click to choose")); selectedPlan = p; }
     card.addEventListener("click", () => {
-      grid.querySelectorAll(".plancard").forEach((c) => c.classList.remove("lit"));
+      grid.querySelectorAll(".plancard").forEach((c) => { c.classList.remove("lit"); c.classList.remove("drafted"); });
+      grid.querySelectorAll(".pby").forEach((n) => n.remove());
       card.classList.add("lit");
+      card.append(el("span", "pby", "chosen by you"));
       selectedPlan = p;
+      pickedByHuman = true;
       runRefine();
     });
     grid.append(card);
   });
+  // Rule 4 — a slate of generated plans is a menu, and a menu without an exit is a cage. The
+  // owner's own week goes straight into the same worksheet run, no regeneration round-trip.
+  if (ps.length) {
+    grid.append(escapeHatch({
+      label: "none of these — say what you'd run instead",
+      placeholder: "e.g. clear the dead stock, hold all reorders until payday…",
+      hint: "your own one-week plan, detailed into the same worksheet",
+      sendLabel: "detail this →",
+      onSubmit: (text) => {
+        grid.querySelectorAll(".plancard").forEach((c) => { c.classList.remove("lit"); c.classList.remove("drafted"); });
+        grid.querySelectorAll(".pby").forEach((n) => n.remove());
+        selectedPlan = { title: text, angle: "the owner's own plan", moves: [] };
+        pickedByHuman = true;
+        runRefine();
+      },
+    }));
+  }
 }
 
 function buildRefinePrompt(plan) {
@@ -800,7 +829,9 @@ async function runRefine() {
     try { pb = JSON.parse(raw); }
     catch { throw new Error("the worksheet came back smudged (bad JSON) — retry"); }
     renderPlaybook(pb);
-    persist(K_PLAY, JSON.stringify({ planTitle: selectedPlan.title, playbook: pb, at: Date.now() }));
+    // `by` is the receipt a restore reads: a worksheet the ★ detailed on its own must not come back
+    // wearing the accent, because nobody ever chose it.
+    persist(K_PLAY, JSON.stringify({ planTitle: selectedPlan.title, by: pickedByHuman ? "human" : "draft", playbook: pb, at: Date.now() }));
   } catch (err) {
     if (myRun === refineSeq) {
       $("play-err").hidden = false;
@@ -890,7 +921,7 @@ function renderBoard(result, opts = {}) {
   renderSteerChips();
   reparse(false);
   if (savedLast && savedLast.data) {
-    renderBoard(savedLast, { selectedTitle: savedPlay?.planTitle || null });
+    renderBoard(savedLast, { selectedTitle: (savedPlay?.by === "human" && savedPlay.planTitle) || null });
     if (savedPlay?.playbook && selectedPlan && selectedPlan.title === savedPlay.planTitle) renderPlaybook(savedPlay.playbook);
   }
 })();

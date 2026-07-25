@@ -9,6 +9,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
+// modifier styles. DRAFTED (what the model pitched) is never CHOSEN (what a human clicked).
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -244,7 +247,9 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Tell it the room and the vibe first.", true); return; }
-  state.run = { id: uid(), input, dirs: null, selectedId: null, steers: [], status: "", error: null };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is Roomify's own pitch — it still carries the one-go
+  // auto-repaint, but only `selectedId` (a human clicking a card) ever wears the accent.
+  state.run = { id: uid(), input, dirs: null, selectedId: null, draftedId: null, own: "", steers: [], status: "", error: null };
   await saveState(); render();
   await proposeDirections();
 }
@@ -259,6 +264,9 @@ async function proposeDirections(steer) {
     const arr = await askJsonArray([
       `You are ${APP.name}, an interior designer. The space + vibe brief is: "${r.input}".`,
       brand ? `Lent brand context — let its personality and palette flavour the directions: ${JSON.stringify(brand.data).slice(0, 1600)}` : "",
+      // The escape hatch: the client rejected the slate and said what they want instead. Their words
+      // anchor the whole re-pitch — they outrank every earlier steer.
+      r.own ? `The client rejected the previous directions and described what they want INSTEAD: "${r.own}". Anchor all three directions on that; it outranks any earlier steering.` : "",
       r.steers.length ? `Apply this steering, latest wins: ${r.steers.map((s) => `"${s}"`).join(" → ")}.` : "",
       "Pitch exactly 3 DISTINCT restyle directions for the SAME room (keep its layout, windows and proportions plausible — restyle, don't rebuild).",
       "Return ONLY a JSON array — no prose, no fences. Each element:",
@@ -274,11 +282,14 @@ async function proposeDirections(steer) {
       imageUrl: null, imgStatus: "", imgError: null,
     }));
     if (!r.dirs.some((o) => o.recommended)) r.dirs[0].recommended = true;
-    r.selectedId = (r.dirs.find((o) => o.recommended) || r.dirs[0]).id;
+    // A fresh pitch is a DRAFT, never a decision — the accent stays off until a human clicks.
+    r.draftedId = (r.dirs.find((o) => o.recommended) || r.dirs[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
-  // ONE-GO: the cards are on screen — NOW auto-repaint the recommended room (stage 2, separate call).
-  if (r.dirs && !r.error) { const rec = r.dirs.find((o) => o.recommended); if (rec && !rec.imageUrl) await restyle(rec.id); }
+  // ONE-GO: the cards are on screen — NOW auto-repaint the DRAFTED room (stage 2, separate call).
+  // Repainting shows what the draft looks like; it does not choose it on the human's behalf.
+  if (r.dirs && !r.error) { const rec = r.dirs.find((o) => o.id === r.draftedId); if (rec && !rec.imageUrl) await restyle(rec.id); }
 }
 
 // STAGE 2 — repaint ONE room on the user's Higgsfield. Per-card, one consent at a time. A failure
@@ -291,7 +302,6 @@ async function restyle(id) {
   const r = state.run; if (!r || !relay) return;
   const dir = (r.dirs || []).find((o) => o.id === id); if (!dir) return;
   if (painting) { toast("One room at a time — the current render is still developing.", true); return; }
-  r.selectedId = id;
   painting = true; dir.imgError = null; dir.imgStatus = dir.imageUrl ? "repainting…" : "repainting your room…"; render();
   try {
     const url = await genImage(roomPrompt(dir));
@@ -344,9 +354,19 @@ function render() {
   if (r.dirs) {
     col.append(el("div", "kicker sect", "three directions · restyle any one"));
     const wrap = el("div", "opts");
-    for (const d of r.dirs) wrap.append(dirCard(d, d.id === r.selectedId));
+    for (const d of r.dirs) wrap.append(dirCard(d, d.id === r.selectedId, d.id === r.draftedId));
     col.append(wrap);
-    if (!running) col.append(steerRow((s) => void proposeDirections(s)));
+    if (!running) {
+      // Doctrine 4 — a slate of three is a menu, and a menu needs an exit.
+      col.append(escapeHatch({
+        label: "none of these — say what you'd do instead",
+        hint: "your own direction anchors a fresh pitch of three.",
+        placeholder: "e.g. forget the wood — dark plaster walls and one brass floor lamp",
+        sendLabel: "pitch mine",
+        onSubmit: (t) => ownDirection(t),
+      }));
+      col.append(steerRow((s) => void proposeDirections(s)));
+    }
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {
@@ -358,12 +378,25 @@ function render() {
   view.append(col);
 }
 
+// THE ESCAPE HATCH (doctrine 4) — "none of these". The human's own words become the anchor of a
+// fresh pitch rather than one more note appended to the old brief.
+async function ownDirection(text) {
+  const r = state.run; if (!r || running) return;
+  const t = String(text || "").trim(); if (!t) return;
+  r.own = t;
+  await saveState();
+  await proposeDirections();
+}
+
 // One direction card = the house option-card atom + a 16:9 render slot and its stage-2 controls.
-function dirCard(d, selected) {
-  const card = el("div", "opt" + (selected ? " sel" : ""));
+// Rule 5 — the accent means A HUMAN CHOSE. Roomify's own pitch is a DRAFT: a dashed hairline and a
+// neutral tag. Only `selectedId`, set by the click handlers below, ever lights a card.
+function dirCard(d, selected, drafted) {
+  const isDraft = drafted && !selected;
+  const card = el("div", "opt" + (selected ? " sel" : "") + (isDraft ? " k-drafted" : ""));
   card.onclick = (e) => { if (e.target.closest("button, a")) return; state.run.selectedId = d.id; render(); };
   card.append(el("div", "check", "✓"));
-  if (d.recommended) card.append(el("div", "rec", "recommended"));
+  if (d.recommended) card.append(el("div", "rec k-draft", "recommended"));
   card.append(el("div", "o-label", d.label));
   if (d.text) card.append(el("div", "o-text", d.text));
 
@@ -384,12 +417,14 @@ function dirCard(d, selected) {
   const rowc = el("div", "dir-row");
   const btn = el("button", "dir-btn" + (d.imageUrl ? " ghost" : ""), d.imgStatus ? "repainting…" : d.imageUrl ? "↻ restyle again" : "Restyle this room");
   btn.disabled = painting;
-  btn.onclick = () => void restyle(d.id);
+  // Hitting restyle IS a human picking this direction — the one other route to the accent state.
+  btn.onclick = () => { state.run.selectedId = d.id; void restyle(d.id); };
   rowc.append(btn);
   if (d.imgError) { const s = el("span", "dir-stat bad", d.imgError); rowc.append(s); }
   if (d.imageUrl) { const a = el("a", "dir-dl", "⬇ download"); a.href = d.imageUrl; a.target = "_blank"; a.rel = "noopener"; rowc.append(a); }
   slot.append(rowc);
   card.append(slot);
+  if (selected) card.append(el("span", "k-by", "chosen by you"));
   return card;
 }
 
@@ -398,7 +433,7 @@ function sampleCards() {
   const wrap = el("div", "opts");
   for (const s of SAMPLE_DIRS) {
     const card = el("div", "opt");
-    if (s.recommended) card.append(el("div", "rec", "recommended"));
+    if (s.recommended) card.append(el("div", "rec k-draft", "recommended"));
     card.append(el("div", "o-label", s.label));
     card.append(el("div", "o-text", s.text));
     wrap.append(card);

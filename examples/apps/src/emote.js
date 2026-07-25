@@ -9,6 +9,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
+// styling the pack cards below use to keep the model's pick out of the accent state.
+import { escapeHatch } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -227,7 +230,10 @@ async function start(input) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input) { toast("Describe your character in one line first.", true); return; }
-  state.run = { id: uid(), input, packs: null, selectedId: null, steers: [], stickers: {}, status: "", error: null };
+  // DRAFTED vs CHOSEN (doctrine 5). `draftedId` is the art director's own pick — it still carries the
+  // one-go auto-advance, but only `selectedId` (a human click) wears the accent. `activeId` is simply
+  // whose sticker grid is on screen, which the draft is allowed to set.
+  state.run = { id: uid(), input, packs: null, selectedId: null, draftedId: null, activeId: null, steers: [], stickers: {}, status: "", error: null };
   await saveState(); render();
   await proposePacks();
 }
@@ -253,10 +259,13 @@ async function proposePacks() {
       recommended: !!o.recommended,
     }));
     if (!r.packs.some((p) => p.recommended)) r.packs[0].recommended = true;
-    r.selectedId = (r.packs.find((p) => p.recommended) || r.packs[0]).id;
+    // Rule 5 — a proposal may DRAFT, never LOCK. This pack still die-cuts itself, but its card stays
+    // neutral-dashed until a human clicks one.
+    r.draftedId = (r.packs.find((p) => p.recommended) || r.packs[0]).id;
+    r.selectedId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
-  if (r.packs && !r.error) void makePack(r.selectedId); // ONE-GO: auto-advance to die-cutting the recommendation
+  if (r.packs && !r.error) void makePack(r.draftedId); // ONE-GO: auto-advance to die-cutting the draft
 }
 
 function coerceEmotes(v) {
@@ -270,7 +279,7 @@ function coerceEmotes(v) {
 // Pick a pack: if its stickers aren't drawn yet, die-cut them. Already-drawn packs just re-show.
 function pickPack(id) {
   const r = state.run; if (!r) return;
-  r.selectedId = id; void saveState(); render();
+  r.selectedId = id; r.activeId = id; void saveState(); render();  // the ONLY route to the accent
   const done = (r.stickers[id] || []).some((s) => s && s.status === "done");
   if (!done) void makePack(id);
 }
@@ -282,6 +291,7 @@ async function makePack(id, { steer } = {}) {
   const r = state.run; if (!r || !relay) return;
   const pack = (r.packs || []).find((p) => p.id === id); if (!pack) return;
   if (steer) r.steers.push(steer);
+  r.activeId = id;                                // whose grid is on screen — not a decision
   const run = ++genToken;
   r.error = null;
   r.stickers[id] = pack.emotes.map((emote) => ({ emote, status: "queued", url: "", error: null }));
@@ -333,6 +343,27 @@ async function genSticker(pack, emote) {
   return url;
 }
 
+// The escape hatch's other half: the human's own art direction becomes a real pack on the slate — a
+// human's pick from the moment it exists, so it wears the accent and die-cuts immediately. The emote
+// list is carried over from the pack already on screen (the emotions belong to the character, not the
+// style); with no pack to carry from, the house fallback set stands in.
+async function makeOwnPack(text) {
+  const r = state.run; if (!r || !r.packs) return;
+  const words = String(text || "").trim(); if (!words) return;
+  const from = (r.packs || []).find((p) => p.id === (r.activeId || r.draftedId));
+  const own = {
+    id: uid(),
+    label: words.slice(0, 48),
+    style: words.slice(0, 240),
+    emotes: coerceEmotes(from ? from.emotes : FALLBACK_EMOTES),
+    recommended: false,
+  };
+  r.packs = [...r.packs, own];
+  r.selectedId = own.id;
+  await saveState(); render();
+  await makePack(own.id);
+}
+
 // ==== render ================================================================================
 function render() {
   const hero = $("hero"), view = $("view");
@@ -368,18 +399,25 @@ function render() {
 
   if (r.packs) {
     col.append(el("div", "kicker sect", "the pack style"));
-    col.append(packCards(r.packs, r.selectedId, (p) => pickPack(p.id)));
+    col.append(packCards(r.packs, r.selectedId, r.draftedId, (p) => pickPack(p.id)));
+    // Doctrine 4 — a slate without an exit is a cage. Die-cut a style nobody offered you.
+    col.append(escapeHatch({
+      label: "none of these — say the style you'd want",
+      placeholder: "e.g. scratchy ballpoint doodle on lined paper",
+      sendLabel: "cut that pack",
+      onSubmit: (t) => makeOwnPack(t),
+    }));
   }
   if (r.status) col.append(researching(r.status));
   if (r.error) {
     col.append(el("div", "err", r.error));
     const t = el("button", "act", "try again");
-    t.onclick = () => (r.packs ? void makePack(r.selectedId) : void proposePacks());
+    t.onclick = () => (r.packs ? void makePack(r.activeId || r.draftedId) : void proposePacks());
     col.append(t);
   }
 
   // STAGE 2 — the sticker grid for the selected pack (the artifact).
-  const pack = (r.packs || []).find((p) => p.id === r.selectedId);
+  const pack = (r.packs || []).find((p) => p.id === (r.activeId || r.draftedId));
   const cells = pack ? r.stickers[pack.id] : null;
   if (pack && cells) {
     const done = cells.filter((c) => c.status === "done").length;
@@ -396,13 +434,17 @@ function render() {
 
 // Pack option cards — the house .opt atom, extended with an emote-chip row so the card shows the
 // six emotes it will die-cut. Keeps class "opt" so the option-card contract (and harness) hold.
-function packCards(packs, selectedId, onPick) {
+// Rule 5 — the accent means A HUMAN CHOSE. The art director's pick is only a DRAFT: hairline-dashed
+// card, neutral tag (`.rec.k-draft` from the kit), never the accent.
+function packCards(packs, selectedId, draftedId, onPick) {
   const wrap = el("div", "opts");
   for (const p of packs) {
-    const card = el("div", "opt" + (p.id === selectedId ? " sel" : ""));
+    const chosen = selectedId != null && p.id === selectedId;
+    const drafted = !chosen && draftedId != null && p.id === draftedId;
+    const card = el("div", "opt" + (chosen ? " sel" : "") + (drafted ? " k-drafted" : ""));
     card.onclick = () => onPick(p);
     card.append(el("div", "check", "✓"));
-    if (p.recommended) card.append(el("div", "rec", "recommended"));
+    if (p.recommended) card.append(el("div", "rec k-draft", "recommended"));
     card.append(el("div", "o-label", p.label));
     if (p.style) card.append(el("div", "o-text", p.style));
     const row = el("div", "emote-row");

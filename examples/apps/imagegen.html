@@ -68,13 +68,25 @@
       .concepts{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:16px}
       .concept{border:1px solid var(--line);background:var(--panel);padding:16px;display:flex;flex-direction:column;transition:border-color .15s}
       .concept:hover{border-color:var(--line-bright)}
-      .concept.rec{border-color:var(--phosphor-dim)}
+      /* .rec = the model DRAFTED this shot first — a hairline and a neutral tag, never phosphor.
+         .chosen = a human acted on the card (rendered it, or took it into the studio). */
+      .concept.rec{border-color:var(--line-bright);border-style:dashed}
+      .concept.chosen{border-style:solid;border-color:var(--phosphor)}
       .ctop{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-      .recflag{font:700 9px/1 var(--mono);letter-spacing:.14em;color:var(--void);background:var(--phosphor);padding:4px 7px}
+      .recflag{font:700 9px/1 var(--mono);letter-spacing:.14em;color:var(--muted);background:none;border:1px dashed var(--line-bright);padding:3px 6px}
+      .cby{font:400 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-top:10px}
+      .concept.chosen .cby{color:var(--phosphor)}
+      /* the escape hatch — the human's own shot, in the same slate as the drafted ones */
+      .escape{border:1px dashed var(--line-bright);background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:9px}
+      .escape .et{font-family:var(--dot);font-weight:900;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+      .escape .eh{font:400 12px/1.6 var(--sans);color:var(--faint);flex:1}
+      .escape .erow{display:flex;gap:8px}
+      .escape input{flex:1;min-width:0;background:var(--void);border:1px solid var(--line);color:var(--paper);font:400 12px/1.5 var(--sans);padding:9px 11px;outline:none}
+      .escape input:focus{border-color:var(--line-bright)}
       .cchip{font:400 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:4px 8px}
       .cchip.dim{color:var(--faint)}
       .ctitle{font-family:var(--dot);font-weight:900;font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:var(--paper);margin:12px 0 8px}
-      .concept.rec .ctitle{color:var(--phosphor)}
+      .concept.chosen .ctitle{color:var(--phosphor)}
       .cprev{font:400 12px/1.65 var(--sans);color:var(--muted);flex:1;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
       .cfoot{display:flex;align-items:center;gap:12px;border-top:1px dashed var(--line);margin-top:14px;padding-top:12px}
       .rbtn{font:700 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;background:var(--phosphor);color:var(--void);border:0;padding:10px 14px;cursor:pointer}

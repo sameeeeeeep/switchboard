@@ -3,8 +3,9 @@
 // grant exists (fresh chip connect OR page load with a persisted grant) the app greets you by
 // name, restores your threads from relay.storage instantly, pulls the lent context (or
 // auto-selects the best one from your library), and generates a batch of context-grounded
-// starter prompts — one ★ recommended, with a "more like these" regenerate chip. The composer is
-// the single free-text input; every turn streams with a stop button and persists.
+// starter prompts — one marked "suggested" (drafted, never wearing the accent), with a "more like
+// these" regenerate chip. The composer is the single free-text input — and the standing escape
+// hatch from the slate; every turn streams with a stop button and persists.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 
 const $ = (id) => document.getElementById(id);
@@ -113,7 +114,7 @@ function normalizeSuggestions(arr) {
     else if (it && typeof it.text === "string" && it.text.trim()) out.push({ text: it.text.trim().slice(0, 120), recommended: !!it.recommended });
     if (out.length >= 5) break;
   }
-  let seen = false; // exactly one ★
+  let seen = false; // exactly one suggestion
   for (const i of out) { if (i.recommended) { if (seen) i.recommended = false; seen = true; } }
   if (out.length && !seen) out[0].recommended = true;
   return out;
@@ -272,8 +273,11 @@ function renderChips(items, opts = {}) {
   const box = $("chips");
   box.textContent = "";
   for (const it of items) {
-    const b = mk("button", "chip" + (it.recommended ? " rec" : "") + (opts.sample ? " sample" : ""),
-      (it.recommended ? "★ " : "") + it.text);
+    // Doctrine 5 — phosphor means a human acted. The model's pick is a DRAFT: dashed hairline and
+    // a neutral "suggested" tag, never the accent, until someone actually sends it.
+    const b = mk("button", "chip" + (it.recommended ? " rec" : "") + (opts.sample ? " sample" : ""));
+    if (it.recommended) b.append(mk("span", "sug", "suggested"));
+    b.append(document.createTextNode(it.text));
     b.type = "button";
     if (opts.sample) { b.disabled = false; b.onclick = () => {}; b.tabIndex = -1; }
     else b.onclick = () => { if (!busy) { $("prompt").value = it.text; void send(it.text); } };

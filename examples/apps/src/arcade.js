@@ -8,6 +8,9 @@
 // House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// The shared decision atoms: a slate where the accent means A HUMAN CHOSE, and the model's pick is
+// only ever a neutral DRAFT (doctrine 5), plus the "none of these" exit (doctrine 4).
+import { optionCards } from "./kit/ui.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -150,21 +153,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended. opts: [{ id, label, text?, imageUrl?, recommended? }]
-function optionCards(opts, selectedId, onPick) {
-  const wrap = el("div", "opts");
-  for (const o of opts) {
-    const card = el("div", "opt" + (o.id === selectedId ? " sel" : ""));
-    card.onclick = () => onPick(o);
-    card.append(el("div", "check", "✓"));
-    if (o.recommended) card.append(el("div", "rec", "recommended"));
-    card.append(el("div", "o-label", o.label));
-    if (o.text) card.append(el("div", "o-text", o.text));
-    if (o.imageUrl) { const img = el("img", "o-img"); img.src = o.imageUrl; img.alt = o.label; card.append(img); }
-    wrap.append(card);
-  }
-  return wrap;
-}
+// Option cards now come from ./kit/ui.js — same class names and the same positional signature the
+// local copy had, but a card can only reach the accent `.sel` state through a human click.
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -258,7 +248,9 @@ async function start(input, { fromContext = false } = {}) {
   if (!relay || running) return;
   input = String(input || "").trim();
   if (!input && !fromContext) { toast("Give it one line — the game idea.", true); return; }
-  state.run = { id: uid(), input, fromContext, pitches: null, selectedId: null, steers: [], html: "", title: "", status: "", error: null };
+  // selectedId = what is being BUILT (pipeline state). chosenId = what a HUMAN clicked (accent state).
+  // They start life apart on purpose: the one-go pipeline may build a draft, but only a click lights it.
+  state.run = { id: uid(), input, fromContext, pitches: null, selectedId: null, draftedId: null, chosenId: null, steers: [], html: "", title: "", status: "", error: null };
   await saveState(); render();
   await proposePitches();
 }
@@ -284,20 +276,51 @@ async function proposePitches() {
       recommended: !!o.recommended,
     }));
     if (!r.pitches.some((o) => o.recommended)) r.pitches[0].recommended = true;
-    r.selectedId = (r.pitches.find((o) => o.recommended) || r.pitches[0]).id;
+    // The model's pick is a DRAFT. It seeds what gets built (the pipeline still runs itself), but it
+    // never seeds chosenId — so nothing wears the accent until a human clicks a card.
+    r.draftedId = (r.pitches.find((o) => o.recommended) || r.pitches[0]).id;
+    r.selectedId = r.draftedId;
+    r.chosenId = null;
   } catch (e) { r.error = msg(e); }
   finally { running = false; r.status = ""; await saveState(); render(); }
   if (r.pitches && !r.error) await buildFrom(r.selectedId); // ONE-GO: auto-build the recommended pitch
 }
 
 // Option cards carry genre + twist under the pitch line — so the pick reads like a real game concept.
-function pitchCards(pitches, selectedId, onPick) {
-  return optionCards(pitches.map((p) => ({
-    id: p.id,
-    label: p.label,
-    text: p.text + (p.twist ? "\n\ntwist: " + p.twist : "") + "\n\n" + p.genre,
-    recommended: p.recommended,
-  })), selectedId, onPick);
+// `chosenId` (a click) is the ONLY thing that paints a card; `draftedId` (the model's recommendation)
+// gets the neutral dashed tag. The escape hatch is the fourth option: your own idea, in your words.
+function pitchCards(r, onPick) {
+  return optionCards({
+    options: r.pitches.map((p) => ({
+      id: p.id,
+      label: p.label,
+      text: p.text + (p.twist ? "\n\ntwist: " + p.twist : "") + "\n\n" + p.genre,
+      recommended: p.recommended,
+    })),
+    chosenId: r.chosenId,
+    draftedId: r.draftedId,
+    onChoose: onPick,
+    chosenNote: "your pick",
+    escape: {
+      label: "none of these — describe the game you actually want",
+      placeholder: "e.g. a courier bee racing a thunderstorm…",
+      hint: "Your line becomes the concept, and Arcade builds it instead.",
+      sendLabel: "build mine",
+      onSubmit: (text) => { void buildOwn(text); },
+    },
+  });
+}
+
+// The escape hatch's payload: the human's own line becomes a real pitch on the slate (so it can be
+// re-picked and steered like any other), and it is chosen — a human typed it, so the accent is earned.
+async function buildOwn(text) {
+  const r = state.run; if (!r || running) return;
+  const line = String(text || "").trim(); if (!line) return;
+  const own = { id: uid(), label: line.length <= 40 ? line : line.slice(0, 37) + "…", genre: "arcade", text: line, twist: "", recommended: false, custom: true };
+  r.pitches = [own, ...(r.pitches || [])];
+  r.chosenId = own.id;
+  await saveState();
+  await buildFrom(own.id);
 }
 
 function extractHtml(text) {
@@ -402,7 +425,8 @@ function render() {
 
   if (r.pitches) {
     col.append(el("div", "kicker sect", "pick a concept"));
-    col.append(pitchCards(r.pitches, r.selectedId, (o) => void buildFrom(o.id)));
+    // A click is the one and only route to the accent state.
+    col.append(pitchCards(r, (o) => { r.chosenId = o.id; void saveState(); void buildFrom(o.id); }));
   }
   if (r.status) { const w = researching(r.status); const live = w.querySelector("span"); if (live) live.id = "build-status"; col.append(w); }
   if (r.error) {
