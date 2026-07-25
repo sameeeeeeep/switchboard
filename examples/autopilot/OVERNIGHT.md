@@ -130,3 +130,49 @@ now auto-persist under `~/.claude/projects/.../workflows/scripts/` — use those
 false-green fixed; rollout + YC angles relaunched; CHANGES.md written.
 **Next up:** when the rollout lands → full harness re-run → fold results into CHANGES.md → confirm
 YC-ANGLES.md written. Then the work is done.
+
+---
+
+# Handoff — where a fresh thread picks this up
+
+**Status:** the wrapp UX work is DONE and merged (`wrapp-ux-v1`). Autopilot is a working
+prototype, not yet a wrapp. Full plan in `ROADMAP.md` → "Next up → 0. Autopilot → a real wrapp".
+
+## What Autopilot is
+
+A portfolio cockpit that OPERATES companies. One at-a-glance view — Company / Operations / Growth
+/ Strategy — where every decision is a real lockable slate, choosing ripples downstream, and it is
+funded with tokens rather than money.
+
+Distinct from brandbrain by verb: ideabrain = *should this exist*, brandbrain = *what is it*,
+autopilot = *run it*. The first two terminate; autopilot never does. It should consume
+brandbrain's published `brand` context, not duplicate its engine.
+
+## Try it
+
+    open examples/autopilot/index.html
+
+No build. Click **Voice → Deadpan** and watch the ad headline change behind you — that is the
+dependency ripple. Then **"none of these"** to write your own option, and the company switcher to
+swap between a D2C brand and a software company.
+
+## The source
+
+    examples/autopilot/src/engine.js   the decision primitive, ripple, tokens, persistence
+    examples/autopilot/src/ui.js       cockpit + preview pane rendering
+    examples/autopilot/src/scene.js    the CSS/SVG ad scene and product tin
+    examples/autopilot/index.html      all three concatenated (what you open)
+
+`index.html` is currently the concatenation of the three `src/` files plus the CSS shell. That is
+fine for a prototype and WRONG for a wrapp — step 0a replaces it with the house template.
+
+## Two bugs worth not reintroducing
+
+1. `buildOptions()` keyed the recommended ad off each voice's own `rec` flag, so the coach angle
+   was always recommended no matter what you picked. The graph looked connected and was not. It
+   must key off the **chosen** upstream option.
+2. `Object.assign({log: []}, cfg)` let the seed's `log` array through, mixing raw arrays with log
+   objects and rendering blank rows. Initialise `co.log` **after** the assign.
+
+Both were found by scripting a real click and reading state back — not by looking at screenshots.
+Do that when changing the engine.

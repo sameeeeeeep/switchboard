@@ -105,6 +105,42 @@ network egress) so a stranger's app can't exfiltrate your data — the basis for
 
 ## Next up
 
+### 0. Autopilot → a real wrapp (prototype landed, SDK not wired)
+
+`examples/autopilot/` holds a **working decision engine** with no model behind it. The state
+machine, locking, downstream ripple, persistence and token accounting are real; the option copy is
+seeded. Open `examples/autopilot/index.html` directly — no build step.
+
+**Why it is a separate wrapp, not a brandbrain mode.** Three verbs:
+*ideabrain* asks **should this exist** (ends in a thesis + deck), *brandbrain* asks **what is it**
+(ends in `brand.json`), *autopilot* **runs it** — never terminates, N companies at once. brandbrain
+already contains the cockpit (its OS / `command-centre` has the runbook and auto/approve/manual
+modes) but buries it behind a 20-decision wizard. Autopilot is that cockpit promoted to the front
+door, generalised past D2C, plus a portfolio and a token model. It should **consume** brandbrain,
+not duplicate it: brandbrain publishes `kind: "brand"` via `brandToContext`
+(`docs/CONTEXT-KINDS.md`), autopilot reads it with `context.active()`.
+
+- **0a.** Port to the house template (`.claude/skills/wrapp/template.{html,js}`) — copy, don't
+  retype; the plumbing encodes the stream contract, timeouts, context sync and storage.
+  `id: "autopilot"`, `usesContext: "single"`, `scope.contextKinds: ["brand"]`.
+- **0b.** Wire real generation: replace the seeded `buildOptions()` in `src/engine.js` with
+  `askJson()` calls. The engine's decision/lock/ripple layer needs no change — that is the whole
+  point of having built it first.
+- **0c.** Inherit rather than re-ask. When a brand is lent, voice / palette / positioning come from
+  the context and render as **inherited** (viewable, not re-decidable). Autopilot's own decisions
+  are the operating ones: ad angle, next move, channel. With no brand lent, one line seeds a
+  company and voice becomes a real decision again.
+- **0d.** Cold open: on connect with a lent brand, draft the operating slate with zero input.
+- **0e.** Tokens as the funding unit. Tokens are the **only honest number** on the surface —
+  revenue needs a connected store, so it says "not connected" rather than drawing a fake chart.
+  Ties into `docs/TOKENS.md`; a token budget is capacity to work, not a subscription.
+- **0f.** Storage must satisfy the team-ready gate: companies are a `collection(relay, …)`
+  (one company = one file) via `kit/livestore.js`, never one growing JSON blob.
+- **0g.** Then: build entry, catalog entry, store card, harness coverage.
+
+Known gaps in the prototype: zero SDK calls; only two seeded company kinds (d2c, saas); the
+"+ New company" button opens the token pane instead of seeding a company.
+
 ### 1. brandbrain — full port (the immediate pickup)
 Turn the *real* `~/Documents/Projects/brandbrain` into the store's brandbrain (today's store card is
 a one-route demo). It's a **port, not a rewrite** — assessed portable: 7 pages (client shells, no

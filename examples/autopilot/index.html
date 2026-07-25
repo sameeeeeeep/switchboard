@@ -1,4 +1,4 @@
-<title>Firstlight — a company that runs itself</title>
+<title>Autopilot — companies that run themselves</title>
 <style>
 :root{
   --page:#08090A; --card:#101214; --card2:#14171A; --rule:#1E2226; --rule2:#2A3037;
@@ -19,6 +19,27 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-a
 
 /* ---------- top ---------- */
 .top{display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid var(--rule)}
+/* Autopilot chrome: the product is the runner, the company is the tenant. */
+.ap{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--faint);
+  flex:none;padding-right:14px;border-right:1px solid var(--rule)}
+.cosw{display:flex;gap:6px;align-items:center;overflow-x:auto}
+.cotab{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:8px;
+  border:1px solid transparent;transition:.14s;flex:none}
+.cotab:hover{background:var(--card)}
+.cotab.on{background:var(--card);border-color:var(--rule2)}
+.cotab .cl{width:22px;height:22px;border-radius:6px;flex:none;display:grid;
+  place-items:center;font-weight:900;font-size:10px}
+.cotab .cn{font-size:12.5px;font-weight:700;letter-spacing:-.01em;line-height:1.15}
+.cotab .ck{font-family:var(--mono);font-size:8.5px;color:var(--faint);letter-spacing:.08em}
+.cotab.add{color:var(--faint);font-size:12px;padding:7px 11px;border:1px dashed var(--rule2)}
+.cotab.add:hover{color:var(--ink);border-color:var(--fog)}
+/* the one number we can show honestly — we actually meter it */
+.tokmeter{display:flex;flex-direction:column;gap:3px;min-width:150px;cursor:pointer}
+.tokmeter .tl{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:9.5px;color:var(--faint);letter-spacing:.03em}
+.tokmeter .tl b{color:var(--ink);font-weight:600}
+.tokbar{height:4px;border-radius:3px;background:var(--rule);overflow:hidden;display:flex}
+.tokbar i{display:block;height:100%}
 .brand{display:flex;align-items:center;gap:10px}
 .logo{width:26px;height:26px;border-radius:7px;flex:none;
   background:radial-gradient(120% 120% at 30% 20%,#2f6b45,#0f2a1b);border:1px solid #2f6b48;
@@ -302,18 +323,49 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-a
   font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.03em}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;
   animation-iteration-count:1!important}}
+/* ---- interactive slate: drafted vs CHOSEN, structurally distinct ---- */
+.optrow.drafted{border-style:dashed}
+.optrow.chosen{border-color:var(--lime);background:#c8f2500d}
+.optrow .rec.draft{background:transparent;border:1px dashed var(--rule2);color:var(--faint);
+  border-radius:0 0 4px 4px}
+.optrow .rec.live{background:var(--lime);color:#0b0d0a}
+.draftnote{font-family:var(--mono);font-size:8.5px;color:var(--faint);margin-top:7px;
+  letter-spacing:.04em}
+.olines{margin-top:8px;display:grid;gap:5px}
+.oline{font-size:11.5px;color:var(--dim);font-style:italic;line-height:1.45;
+  padding-left:9px;border-left:1px solid var(--rule2)}
+.optrow.chosen .oline{border-left-color:var(--lime)}
+.oad{margin-top:9px;padding:8px 9px;border:1px solid var(--rule);border-radius:6px;
+  background:var(--page)}
+.oad b{display:block;font-size:12px;letter-spacing:-.01em}
+.oad span{display:block;font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.45}
+.hatchrow{display:flex;gap:6px;margin-top:9px}
+.hatchrow input{flex:1;background:var(--page);border:1px solid var(--rule2);border-radius:6px;
+  padding:7px 9px;color:var(--ink);font:inherit;font-size:11.5px}
+.hatchrow input:focus{outline:none;border-color:var(--lime)}
+.hatchgo{background:var(--lime);color:#0b0d0a;font-size:11px;font-weight:750;padding:7px 11px;
+  border-radius:6px;flex:none}
+.unbtn{margin-top:12px;width:100%;text-align:center;border:1px solid var(--rule2);
+  border-radius:8px;padding:8px;font-size:11.5px;color:var(--faint);transition:.14s}
+.unbtn:hover{border-color:var(--fog);color:var(--ink)}
+/* ---- tokens ---- */
+.tokbig{text-align:center;padding:18px 10px 14px;border:1px solid var(--rule);border-radius:10px;
+  background:var(--card)}
+.tokn{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;color:var(--lime)}
+.toklab{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:5px}
+.tokrow{display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--rule)}
+.tokrow .tk{width:9px;height:9px;border-radius:3px;flex:none}
+.tokrow .tn{flex:1;font-size:12px;color:var(--dim)}
+.tokrow .tv{font-size:11px;color:var(--ink)}
 </style>
 
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <div class="logo">F</div>
-      <div><b>Firstlight</b>
-        <div class="status"><span class="pulse"></span><span>Sourcing the second run</span></div></div>
-    </div>
+    <div class="ap">AUTOPILOT</div>
+    <div class="cosw" id="cosw"></div>
     <div class="r">
-      <span class="tcount"><b>2</b> PRODUCTS · <b>1</b> RANGE · <b>24</b> LOCKED</span>
-      <button class="tbtn" data-open="money">Fund runway</button>
+      <div class="tokmeter" id="tokmeter"></div>
+      <button class="tbtn" data-open="tokens">Feed it tokens</button>
       <button class="tbtn pri" data-open="next">+ New move</button>
     </div>
   </header>
@@ -340,56 +392,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-a
   <div class="foot"><span>example company · every tile opens the real artifact · no store connected, so no revenue is invented</span></div>
 </div>
 
-<script>
-const PALETTE=[["Basecamp Black","#12130F"],["Firstlight Lime","#C8F250"],
-  ["Dawn Ember","#E9954A"],["Cold Brew Umber","#3B2A1E"],["Trail Fog","#CFD2C4"]];
-const VOICE={label:"Warm coach",
-  desc:"Trail-buddy warmth — earns the moment with you, never shames the shortcut, always points you back to the view.",
-  lines:["Tear it, pour it, look up. The view's better with real coffee in your hands.",
-    "You carried it all the way up here — take the extra minute. This one's yours.",
-    "A shortcut isn't a compromise. It's how you get another hour of trail."],
-  alts:[["Dry & clinical","Single origin. Freeze-dried at altitude. Full cup in 90 seconds, no kettle in the equation."],
-    ["Deadpan","It's instant coffee. It's also good. We were surprised too."],
-    ["Trail-poet","The valley is still asleep. You are not. Neither is this."]]};
-const ADS=[
-  {angle:"problem-led",head:"Real coffee. No kettle.",cta:"Shop Firstlight",
-   body:"You're 40 minutes past the trailhead. There's no cafe up here — there's this. Tear, pour, look up."},
-  {angle:"social-proof",head:"40,000 mornings off-grid can't be wrong.",cta:"Get the tin",
-   body:"The van crowd stopped packing a French press. This is why. Single-origin, in a sachet that survives a backpack."},
-  {angle:"aspirational",head:"Wake up somewhere better.",cta:"Start your mornings off-grid",
-   body:"No power. No signal. No kettle. Just a tin, a torn sachet, and the whole valley waking up with you."}];
-const TASKS=[
-  {id:"t1",n:"Source the Lastlight run",s:"run",m:"running · 2m ago",
-   d:"Comparing 3 co-packers for the cacao + decaf spec. Verdant quoted 21d lead.",doc:"d3"},
-  {id:"t2",n:"Ad set 01 — staged",s:"pend",m:"needs you",
-   d:"3 creatives built on the locked palette and voice. Waiting on your go.",doc:"d2"},
-  {id:"t3",n:"Outreach to 32 outfitters",s:"pend",m:"needs you",
-   d:"Drafted in the Warm coach voice. Nothing has been sent.",doc:"d1"},
-  {id:"t4",n:"Weekly range review",s:"rec",m:"next Monday 09:00",
-   d:"Re-reads signals and proposes the next product move.",doc:"d4"}];
-const DOCS=[{id:"d1",n:"Brand Book",t:"ARTIFACT",k:"brandbook"},
-  {id:"d2",n:"Ad Set 01 — 3 creatives",t:"ARTIFACT",k:"adset"},
-  {id:"d3",n:"Supplier Brief — Verdant",t:"ARTIFACT",k:"supplier"},
-  {id:"d4",n:"Range Plan — Trail",t:"ARTIFACT",k:"rangeplan"},
-  {id:"d5",n:"Operating Log",t:"DAILY",k:"logdoc"}];
-const MOVES=[
-  {label:"NEW DAYPART — the other end of the day",name:"Firstlight Lastlight",rec:true,
-   price:"$21 / 12 sachets",
-   pitch:"The sun's going and nobody wants to move. Tear it, pour it, stay out a little longer."},
-  {label:"NEW FORMAT — same coffee, colder water",name:"Firstlight Coldsnap",price:"$22 / 12 sachets",
-   pitch:"Cold water, cold hands, still real coffee — shake it in the bottle you're already carrying."},
-  {label:"NEW ORIGIN — scarcity as a rhythm",name:"Firstlight High Camp",price:"$34 / capped run",
-   pitch:"One farm, one harvest, one run of tins. When it's gone, we go find the next ridge."}];
-const LOG=[["Brand, name & voice locked","done","voice"],["Storefront built & published","done","storefront"],
-  ["Payments connected","done","storefront"],["Ad set 01 rendered on the locked palette","done","ad"],
-  ["Supplier brief sent to 3 co-packers","done","doc:d3"],
-  ["Comparing co-packer quotes for Lastlight","run","doc:d3"],
-  ["Drafting outreach to 32 outfitters","run","doc:d1"]];
-const FEED=[
-  {t:"09:12",b:`Storefront is live and the first ad set is built. I rendered all three angles on the locked palette — the <span class="flink" data-open="ad">trail-morning creative</span> is my pick, it leads on the objection people actually have.`},
-  {t:"09:40",b:`Wrote the <span class="flink" data-doc="d3">supplier brief</span> and sent it to three co-packers for the Lastlight spec. Verdant came back first at 21 days.`},
-  {t:"10:05",b:`I'd widen the range next. Three approaches in <span class="flink" data-open="next">next moves</span> — I recommend the evening daypart; reorder cadence says people drink us at home, not just on trail.`}];
 
+<script>
 let _sid=0;
 function sceneSVG(){const u='s'+(++_sid);return `<svg class="base" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice"><defs>
 <linearGradient id="sky-${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070C16"/>
@@ -436,279 +440,658 @@ const STEAM=`<svg class="steam" viewBox="0 0 100 140" preserveAspectRatio="none"
 const tinHTML=(w=148)=>`<div class="tin" style="--tw:${w}px"><div class="tin-body"><div class="tin-print"><div class="tin-mark">FIRSTLIGHT</div><div class="tin-sub">SINGLE ORIGIN · 40g</div><div class="tin-rule"></div></div><div class="tin-shade"></div></div><div class="tin-lid"></div><div class="tin-floor"></div></div>`;
 const adScene=(a,fs)=>`<div class="adscene">${sceneSVG()}${STEAM}${FINISH}<div class="adcopy"><h3${fs?` style="font-size:${fs}px"`:''}>${a.head}</h3></div></div>`;
 
-const S={adIdx:0,tier:1,logN:5,taskId:"t1",docId:"d1"};
 
-function deck(){
-  const a=ADS[S.adIdx];
-  document.getElementById('grid').innerHTML=`
+/* ============================================================================
+   AUTOPILOT — the decision engine.
+
+   This is the part the mock was missing. Every visible thing on the cockpit is
+   derived from DECISIONS. A decision holds its options, which one the machine
+   drafted, and which one a HUMAN chose. Nothing else may write the chosen id.
+
+   Doctrine, enforced structurally:
+     - draft(d)   sets draftedId. It can never set chosenId.
+     - choose(d)  is the ONLY path to chosenId, and only a click calls it.
+     - changing an upstream decision marks dependents STALE and re-drafts them,
+       so a voice change visibly rewrites the ad copy downstream.
+     - every option a human passed on stays on the board, re-choosable forever.
+   ========================================================================= */
+
+const LS = "autopilot:v1";
+
+/* ---------- helpers ---------- */
+const uid = (p) => p + "_" + Math.abs(hash(p + Object.keys(ST.co || {}).length + Date.now() % 1e6)).toString(36);
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+const fmtTok = (n) => n >= 1e6 ? (n / 1e6).toFixed(n < 1e7 ? 1 : 0) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
+const now = () => new Date().toTimeString().slice(0, 8);
+
+/* ---------- the decision primitive ---------- */
+function decision(id, label, axis, options, deps) {
+  return { id, label, axis, options: options.slice(), deps: deps || [],
+           draftedId: null, chosenId: null, chosenAt: null, stale: false };
+}
+/** machine drafts — NEVER touches chosenId. */
+function draft(d) {
+  const rec = d.options.find((o) => o.rec) || d.options[0];
+  d.draftedId = rec ? rec.id : null;
+  d.stale = false;
+  return d;
+}
+/** the ONLY route to the accent state. Wired to a click and nothing else. */
+function choose(co, d, optId) {
+  d.chosenId = optId;
+  d.chosenAt = now();
+  d.stale = false;
+  spend(co, 1200 + Math.floor(Math.abs(hash(optId)) % 900), "decide");
+  rippleFrom(co, d.id);
+  save();
+}
+function unchoose(co, d) { d.chosenId = null; d.chosenAt = null; rippleFrom(co, d.id); save(); }
+/** the escape hatch creates a REAL option, indistinguishable downstream. */
+function ownOption(co, d, text) {
+  const o = { id: uid("own"), label: text.slice(0, 60), text: "", own: true };
+  d.options.push(o);
+  choose(co, d, o.id);
+  logLine(co, "you wrote your own " + d.label.toLowerCase(), "done", d.id);
+  return o;
+}
+const optOf = (d) => d.options.find((o) => o.id === d.chosenId) || null;
+const shownOf = (d) => optOf(d) || d.options.find((o) => o.id === d.draftedId) || d.options[0];
+const isChosen = (d, o) => d.chosenId === o.id;
+const isDrafted = (d, o) => !d.chosenId && d.draftedId === o.id;
+
+/** upstream changed → dependents go stale and re-draft. This is what makes it
+    feel connected rather than a set of unrelated cards. */
+function rippleFrom(co, changedId) {
+  let touched = 0;
+  for (const d of Object.values(co.decisions)) {
+    if (!d.deps.includes(changedId)) continue;
+    d.options = buildOptions(co, d.id);
+    draft(d);
+    d.stale = true;   // AFTER draft() — draft clears the flag, so order matters
+    if (d.chosenId && !d.options.some((o) => o.id === d.chosenId)) d.chosenId = null;
+    touched++;
+    touched += rippleFrom(co, d.id);
+  }
+  if (touched) logLine(co, "restreamed " + touched + " downstream of " + changedId, "run", changedId);
+  return touched;
+}
+
+/* ---------- tokens: the one number we can show honestly ---------- */
+function spend(co, n, area) {
+  co.tokens.spent += n;
+  co.tokens.by[area] = (co.tokens.by[area] || 0) + n;
+}
+function logLine(co, text, state, target) {
+  co.log.unshift({ t: text, s: state, target, at: now() });
+  co.log = co.log.slice(0, 14);
+}
+
+/* ============================================================================
+   CONTENT — two companies of DIFFERENT kinds, to prove the shape generalises.
+   The company layer (name/voice/identity) is shared machinery; only the
+   operations and growth artifacts differ by kind.
+   ========================================================================= */
+
+const VOICE_SETS = {
+  d2c: [
+    { id: "v-coach", rec: true, label: "Warm coach",
+      text: "Trail-buddy warmth — earns the moment with you, never shames the shortcut.",
+      lines: ["Tear it, pour it, look up. The view's better with real coffee in your hands.",
+              "You carried it all the way up here — take the extra minute. This one's yours.",
+              "A shortcut isn't a compromise. It's how you get another hour of trail."],
+      ad: { head: "Real coffee. No kettle.", body: "You're 40 minutes past the trailhead. There's no cafe up here — there's this. Tear, pour, look up.", cta: "Shop Firstlight" } },
+    { id: "v-clinical", label: "Dry & clinical",
+      text: "Spec-sheet minimalism — precise, product-first, no adjective it can't measure.",
+      lines: ["Single origin. Freeze-dried at altitude. Full cup in 90 seconds, no kettle in the equation.",
+              "One sachet, 200ml, complete extraction — lighter than your spare socks.",
+              "Cold-soluble to 4°C. Same extraction, no heat required."],
+      ad: { head: "90 seconds. No kettle.", body: "Single origin, freeze-dried at altitude. 3.5g sachet, complete extraction in cold or hot water.", cta: "See the spec" } },
+    { id: "v-deadpan", label: "Deadpan",
+      text: "Flat, funny, anti-hype — undersells on purpose and trusts you to get the joke.",
+      lines: ["It's instant coffee. It's also good. We were surprised too.",
+              "No kettle, no grinder, no excuse for bad decisions before sunrise.",
+              "Tastes like you tried. You didn't."],
+      ad: { head: "It's instant. It's also good.", body: "We were as surprised as you'll be. Single origin, in a sachet that survives a backpack.", cta: "Try it anyway" } },
+  ],
+  saas: [
+    { id: "v-peer", rec: true, label: "Straight-talking peer",
+      text: "Talks to owners like an operator who's done the job — no vendor gloss.",
+      lines: ["Your reviews don't answer themselves. Now they nearly do.",
+              "Every reply sounds like you, because it's built from how you already write.",
+              "Nothing sends without you reading it first."],
+      ad: { head: "Reply to every review, faster.", body: "Turns a week of reviews into on-brand, ready-to-paste drafts. You approve; nothing auto-sends.", cta: "Draft my replies" } },
+    { id: "v-clinic", label: "Compliance-first",
+      text: "Careful and precise — leads with the risk it removes, never overpromises.",
+      lines: ["Drafts written to avoid confirming any patient relationship.",
+              "Every reply is reviewed by you before it leaves.",
+              "Built for regulated categories, not general retail."],
+      ad: { head: "HIPAA-careful review replies.", body: "Drafts that never confirm a patient relationship. You review every one before it posts.", cta: "See a sample reply" } },
+    { id: "v-warm", label: "Warm concierge",
+      text: "Friendly and reassuring — positions the tool as relief, not software.",
+      lines: ["Reviews piling up? Take the evening off.",
+              "We'll draft. You'll skim. Done before your coffee's cold.",
+              "It sounds like you because it learned from you."],
+      ad: { head: "Take the evening off.", body: "Your reviews get on-brand drafts while you're closed. Skim, approve, done.", cta: "Start free" } },
+  ],
+};
+
+function buildOptions(co, id) {
+  if (id === "voice") return VOICE_SETS[co.kind];
+  if (id === "ad") {
+    // The visible ripple: the recommended AD follows the voice the human actually
+    // chose. Keying `rec` off each voice's own flag (the first bug here) meant the
+    // coach angle was always recommended no matter what you picked, so choosing a
+    // voice changed nothing downstream and the graph looked fake.
+    const v0 = optOf(co.decisions.voice) || shownOf(co.decisions.voice);
+    return VOICE_SETS[co.kind].map((v) => ({
+      id: "ad-" + v.id, rec: v.id === (v0 && v0.id), label: v.label + " angle",
+      text: v.ad.head, ad: v.ad,
+    }));
+  }
+  if (id === "next") return co.kind === "d2c" ? [
+    { id: "n-lastlight", rec: true, label: "NEW DAYPART", text: "Firstlight Lastlight — $21 / 12 sachets",
+      body: "The sun's going and nobody wants to move. Tear it, pour it, stay out a little longer." },
+    { id: "n-coldsnap", label: "NEW FORMAT", text: "Firstlight Coldsnap — $22 / 12 sachets",
+      body: "Cold water, cold hands, still real coffee — shake it in the bottle you're already carrying." },
+    { id: "n-highcamp", label: "NEW ORIGIN", text: "Firstlight High Camp — $34, capped run",
+      body: "One farm, one harvest, one run of tins. When it's gone, we go find the next ridge." },
+  ] : [
+    { id: "n-tiers", rec: true, label: "NEW PLAN", text: "Team tier — $79/mo, 5 seats",
+      body: "Multi-location owners are the ones replying most. Give them seats and shared voice settings." },
+    { id: "n-widget", label: "NEW SURFACE", text: "On-site review widget",
+      body: "Collect reviews where the visit ends, not days later by email." },
+    { id: "n-api", label: "NEW CHANNEL", text: "Booking-platform integration",
+      body: "Meet reviews where they land instead of asking owners to paste them in." },
+  ];
+  return [];
+}
+
+function makeCompany(cfg) {
+  const co = Object.assign({ tokens: { spent: 0, budget: 2_000_000, by: {} } }, cfg);
+  co.log = [];   // MUST come after the assign — cfg.log is the seed array, and letting it
+                 // through leaves raw arrays mixed with log objects (renders as blank rows)
+  co.decisions = {
+    voice: decision("voice", "Voice", "WHAT THE BRAND'S RELATIONSHIP TO YOU IS", VOICE_SETS[co.kind], []),
+    ad:    decision("ad", "Ad angle", "WHAT THE AD IS ACTUALLY ABOUT", [], ["voice"]),
+    next:  decision("next", "Next move", co.kind === "d2c" ? "WHAT WIDENS — OCCASION, FORMAT, OR ORIGIN" : "WHERE THE NEXT REVENUE COMES FROM", [], []),
+  };
+  co.decisions.ad.options = buildOptions(co, "ad");
+  co.decisions.next.options = buildOptions(co, "next");
+  Object.values(co.decisions).forEach(draft);
+  spend(co, cfg.seedTokens || 240000, "found");
+  cfg.log.forEach((l) => logLine(co, l[0], l[1], l[2]));
+  return co;
+}
+
+const SEED = {
+  firstlight: {
+    id: "firstlight", name: "Firstlight", kind: "d2c", kindLabel: "D2C BRAND",
+    glyph: "F", color: "#2f6b45", ink: "#d8f5e4",
+    doing: "Sourcing the second run",
+    blurb: "Specialty-grade single-origin instant coffee for people who camp, hike and live out of a van.",
+    site: "firstlight.co", price: "$28 · 40g tin", seedTokens: 380000,
+    stat: [["Products live", "2"], ["Range", "Trail"]],
+    tasks: [
+      { id: "t1", n: "Source the Lastlight run", s: "run", m: "84k tokens · 2m ago", d: "Comparing 3 co-packers for the cacao + decaf spec. Verdant quoted 21d lead.", doc: "d3" },
+      { id: "t2", n: "Ad set 01 — staged", s: "pend", m: "needs you", d: "3 creatives built on the locked palette and voice. Waiting on your go.", doc: "d2" },
+      { id: "t3", n: "Outreach to 32 outfitters", s: "pend", m: "needs you", d: "Drafted in your voice. Nothing has been sent.", doc: "d1" },
+    ],
+    docs: [["d1", "Brand Book", "ARTIFACT"], ["d2", "Ad Set 01", "ARTIFACT"], ["d3", "Supplier Brief", "ARTIFACT"], ["d4", "Range Plan", "ARTIFACT"]],
+    log: [["Brand, name & voice drafted", "done", "voice"], ["Storefront built & published", "done", "storefront"],
+          ["Payments connected", "done", "storefront"], ["Ad set rendered on the locked palette", "done", "ad"],
+          ["Comparing co-packer quotes", "run", "next"]],
+  },
+  replydex: {
+    id: "replydex", name: "Replydex", kind: "saas", kindLabel: "SOFTWARE",
+    glyph: "R", color: "#2b4a7a", ink: "#dbe8ff",
+    doing: "Writing this week's reply drafts",
+    blurb: "Turns a med-spa's Google reviews into on-brand, HIPAA-careful reply drafts — ready to paste.",
+    site: "replydex.app", price: "$39 · reply pack", seedTokens: 210000,
+    stat: [["Accounts", "0"], ["Plan", "Reply pack"]],
+    tasks: [
+      { id: "t1", n: "Draft this week's 41 replies", s: "run", m: "126k tokens · running", d: "Reading new reviews and drafting each in the locked voice. Nothing posts.", doc: "d2" },
+      { id: "t2", n: "Landing page tighten", s: "pend", m: "needs you", d: "Sharpened CTA and the $39 value at each decision point. Staged, not live.", doc: "d1" },
+      { id: "t3", n: "Outreach to 40 med-spas", s: "pend", m: "needs you", d: "Personalised from real published addresses only — no scraped contact forms.", doc: "d3" },
+    ],
+    docs: [["d1", "Positioning Doc", "ARTIFACT"], ["d2", "Reply Style Guide", "ARTIFACT"], ["d3", "Outreach List", "ARTIFACT"], ["d4", "Pricing Rationale", "ARTIFACT"]],
+    log: [["Product thesis & voice drafted", "done", "voice"], ["Landing page shipped", "done", "storefront"],
+          ["Stripe connected", "done", "storefront"], ["Ad angles written", "done", "ad"],
+          ["Drafting 41 replies", "run", "next"]],
+  },
+};
+
+/* ---------- global state + persistence ---------- */
+let ST = { active: "firstlight", co: {} };
+function save() { try { localStorage.setItem(LS, JSON.stringify(serialise())); } catch (e) {} }
+function serialise() {
+  const out = { active: ST.active, co: {} };
+  for (const [k, c] of Object.entries(ST.co)) {
+    out.co[k] = { tokens: c.tokens, log: c.log, d: {} };
+    for (const [id, d] of Object.entries(c.decisions))
+      out.co[k].d[id] = { chosenId: d.chosenId, chosenAt: d.chosenAt,
+                          own: d.options.filter((o) => o.own) };
+  }
+  return out;
+}
+function boot() {
+  ST = { active: "firstlight", co: {} };
+  for (const [k, cfg] of Object.entries(SEED)) ST.co[k] = makeCompany(cfg);
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS) || "null");
+    if (raw && raw.co) {
+      ST.active = raw.active || ST.active;
+      for (const [k, saved] of Object.entries(raw.co)) {
+        const c = ST.co[k]; if (!c) continue;
+        if (saved.tokens) c.tokens = saved.tokens;
+        if (saved.log && saved.log.length) c.log = saved.log;
+        for (const [id, sd] of Object.entries(saved.d || {})) {
+          const d = c.decisions[id]; if (!d) continue;
+          (sd.own || []).forEach((o) => { if (!d.options.some((x) => x.id === o.id)) d.options.push(o); });
+          if (sd.chosenId && d.options.some((o) => o.id === sd.chosenId)) {
+            d.chosenId = sd.chosenId; d.chosenAt = sd.chosenAt;
+          }
+        }
+      }
+      // rebuild dependents so a restored voice choice still drives the ad
+      for (const c of Object.values(ST.co)) rippleFrom(c, "voice");
+      for (const c of Object.values(ST.co))
+        for (const [id, sd] of Object.entries((raw.co[c.id] || {}).d || {}))
+          if (sd.chosenId && c.decisions[id] && c.decisions[id].options.some((o) => o.id === sd.chosenId))
+            { c.decisions[id].chosenId = sd.chosenId; c.decisions[id].chosenAt = sd.chosenAt; }
+    }
+  } catch (e) {}
+}
+const CO = () => ST.co[ST.active];
+function resetAll() { try { localStorage.removeItem(LS); } catch (e) {} boot(); }
+
+/* ============================================================================
+   AUTOPILOT — the cockpit UI. Everything here is DERIVED from the engine's
+   decisions; nothing stores its own copy of a choice.
+   ========================================================================= */
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- top chrome ---------- */
+function renderTop() {
+  $("cosw").innerHTML = Object.values(ST.co).map((c) => `
+    <button class="cotab ${c.id === ST.active ? "on" : ""}" data-co="${c.id}">
+      <span class="cl" style="background:${c.color};color:${c.ink}">${c.glyph}</span>
+      <span><span class="cn">${esc(c.name)}</span><br><span class="ck">${c.kindLabel}</span></span>
+    </button>`).join("") +
+    `<button class="cotab add" data-newco="1">+ New company</button>`;
+
+  const c = CO(), pct = Math.min(100, (c.tokens.spent / c.tokens.budget) * 100);
+  const areas = [["decide", "#C8F250"], ["found", "#5FD08A"], ["run", "#E9954A"], ["make", "#A78BFA"]];
+  $("tokmeter").innerHTML = `
+    <div class="tl"><span>TOKENS THIS WEEK</span><b>${fmtTok(c.tokens.spent)} / ${fmtTok(c.tokens.budget)}</b></div>
+    <div class="tokbar">${areas.map(([k, col]) => {
+      const w = ((c.tokens.by[k] || 0) / c.tokens.budget) * 100;
+      return w > 0.2 ? `<i style="width:${w}%;background:${col}"></i>` : "";
+    }).join("")}</div>`;
+}
+
+/* ---------- the deck ---------- */
+function renderDeck() {
+  const c = CO(), D = c.decisions;
+  const voice = shownOf(D.voice), ad = shownOf(D.ad), next = shownOf(D.next);
+  const pend = c.tasks.filter((t) => t.s === "pend").length;
+
+  $("grid").innerHTML = `
   <div class="col"><div class="chead">COMPANY</div>
     <div class="card">
-      <div class="idrow"><div class="idlogo">F</div>
-        <div><h3>Firstlight</h3>
-          <div class="status" style="margin-top:2px"><span class="pulse"></span>Sourcing the second run</div></div></div>
-      <p class="blurb">Specialty-grade single-origin instant coffee for people who camp, hike and live out of a van.</p>
-      <a class="sitelink" data-open="storefront">firstlight.co ↗</a>
-      <button class="thumb" data-open="storefront"><div class="site" style="pointer-events:none">
-        <div class="sitehero" style="padding:13px 11px 11px">
-          <div class="sitewm" style="font-size:8.5px">FIRSTLIGHT</div>
-          <div class="siteh1" style="font-size:15px;margin-top:8px">Real coffee.<br>No kettle.</div>
-          <div class="sitebuy" style="margin-top:9px">
-            <span class="sitebtn" style="font-size:8.5px;padding:5px 9px">Add to bag</span>
-            <span class="siteprice" style="font-size:8.5px">$28</span></div>
-          <div class="sitetin" style="right:7px;bottom:5px">${tinHTML(50)}</div></div></div></button>
+      <div class="idrow"><div class="idlogo" style="background:${c.color};color:${c.ink}">${c.glyph}</div>
+        <div><h3>${esc(c.name)}</h3>
+          <div class="status" style="margin-top:2px"><span class="pulse"></span>${esc(c.doing)}</div></div></div>
+      <p class="blurb">${esc(c.blurb)}</p>
+      <a class="sitelink" data-open="storefront">${c.site} ↗</a>
       <div style="margin-top:11px">
+        ${c.stat.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join("")}
         <div class="kv"><span>Revenue</span><b class="na">— not connected</b></div>
-        <div class="kv"><span>Orders</span><b class="na">— not connected</b></div>
-        <div class="kv"><span>Products live</span><b>2</b></div></div>
-      <button class="fundbtn" data-open="money">Fund this company</button>
-      <div class="fundnote">the only tap that spends</div>
+      </div>
+      <button class="fundbtn" data-open="tokens">Feed it tokens</button>
+      <div class="fundnote">tokens are work — not a subscription</div>
     </div>
-    <div class="card"><div class="ct">Identity<span class="more">4 locked</span></div>
-      <button class="row" data-open="identity"><div class="rname">Palette &amp; wordmark</div>
-        <div class="rmeta">${PALETTE.map(p=>`<i style="width:13px;height:13px;border-radius:3px;background:${p[1]};display:inline-block"></i>`).join('')}</div></button>
-      <button class="row" data-open="voice"><div class="rname">Voice · Warm coach</div>
-        <div class="rsub">“Tear it, pour it, look up.”</div></button>
-      <button class="row" data-open="product"><div class="rname">Trail Tin · $28</div>
-        <div class="rsub">40g single origin — the hero SKU</div></button>
-      <button class="row" data-open="market"><div class="rname">Market position</div>
-        <div class="rsub">Specialty taste × built for outdoors</div></button>
+    <div class="card"><div class="ct">Decisions<span class="more">${Object.values(D).filter((d) => d.chosenId).length} of ${Object.keys(D).length} yours</span></div>
+      ${Object.values(D).map((d) => decRow(d)).join("")}
     </div></div>
 
   <div class="col"><div class="chead">OPERATIONS</div>
     <div class="card"><div class="ct">Live operating log<span class="more">autonomous</span></div>
-      <div class="log" id="log"></div></div>
-    <div class="card"><div class="ct">Tasks<span class="more">${TASKS.length}</span></div>
-      ${TASKS.map(t=>`<button class="row" data-task="${t.id}"><div class="rname">${t.n}</div>
-        <div class="rsub">${t.d}</div>
-        <div class="rmeta"><span class="tag ${t.s==='run'?'t-run':t.s==='rec'?'t-art':'t-pend'}">${t.s==='run'?'Running':t.s==='rec'?'Recurring':'Needs you'}</span>${t.m}</div></button>`).join('')}
-    </div>
-    <div class="card"><div class="ct">Documents<span class="more">${DOCS.length}</span></div>
-      ${DOCS.map(d=>`<button class="row" data-doc="${d.id}">
-        <div class="rname">${d.n}<span class="tag t-art" style="margin-left:auto">${d.t}</span></div></button>`).join('')}
-    </div></div>
+      <div class="log">${c.log.slice(0, 7).map((l) => `
+        <div class="l ${l.s === "run" ? "run" : ""}" ${l.target ? `data-open="${l.target}"` : ""}>
+          <span class="g">${l.s === "run" ? "⟳" : "✓"}</span>
+          <span>${esc(l.t)}${l.s === "run" ? ' <span class="caret"></span>' : ""}</span></div>`).join("")}</div></div>
+    <div class="card"><div class="ct">Tasks<span class="more">${pend} need you</span></div>
+      ${c.tasks.map((t) => `<button class="row" data-task="${t.id}">
+        <div class="rname">${esc(t.n)}</div><div class="rsub">${esc(t.d)}</div>
+        <div class="rmeta"><span class="tag ${t.s === "run" ? "t-run" : "t-pend"}">${t.s === "run" ? "Running" : "Needs you"}</span>${esc(t.m)}</div>
+      </button>`).join("")}</div>
+    <div class="card"><div class="ct">Documents<span class="more">${c.docs.length}</span></div>
+      ${c.docs.map(([id, n, t]) => `<button class="row" data-doc="${id}">
+        <div class="rname">${esc(n)}<span class="tag t-art" style="margin-left:auto">${t}</span></div></button>`).join("")}</div></div>
 
   <div class="col"><div class="chead">GROWTH</div>
-    <div class="card"><div class="ct">Ads<span class="more">3 staged</span></div>
+    <div class="card"><div class="ct">Ads<span class="more">${D.ad.chosenId ? "angle chosen" : "3 drafted"}</span></div>
       <button class="adcard" data-open="ad">
-        <div class="adtop"><div class="adav">F</div>
-          <div><div class="nm">Firstlight</div><div class="sp mono">Sponsored</div></div></div>
-        ${adScene(a,14)}
-        <div class="adfoot"><div class="h">${a.head}</div><div class="b">${a.cta}</div></div></button>
-      <div class="rmeta" style="margin:9px 2px 0"><span class="tag t-pend">Staged</span>nothing sends until you fund it</div>
-      <button class="ghostbtn" data-open="money">Fund the ad set →</button></div>
-    <div class="card"><div class="ct">Channels</div>
-      <button class="row" data-open="channels"><div class="rname">Specialty wholesale</div>
-        <div class="rsub">REI &amp; independents</div>
-        <div class="rmeta"><span class="tag t-pend">Proposed</span>3 approaches</div></button>
-      <button class="row" data-open="storefront"><div class="rname">Direct — firstlight.co</div>
-        <div class="rmeta"><span class="tag t-done">Live</span>payments connected</div></button></div>
-    <div class="card"><div class="ct">Social</div>
-      <button class="row" data-doc="d1"><div class="rname">Post draft</div>
-        <div class="rsub">“Tear it, pour it, look up. The view's better with real coffee in your hands.”</div>
-        <div class="rmeta"><span class="tag t-pend">Draft</span>in your voice</div></button></div></div>
+        <div class="adtop"><div class="adav">${c.glyph}</div>
+          <div><div class="nm">${esc(c.name)}</div><div class="sp mono">Sponsored</div></div></div>
+        ${adVisual(c, ad, 14)}
+        <div class="adfoot"><div class="h">${esc(ad.ad.head)}</div><div class="b">${esc(ad.ad.cta)}</div></div></button>
+      <div class="rmeta" style="margin:9px 2px 0">
+        <span class="tag ${D.ad.chosenId ? "t-done" : "t-pend"}">${D.ad.chosenId ? "Chosen" : "Drafted"}</span>
+        ${D.ad.chosenId ? "locked by you at " + D.ad.chosenAt : "nothing sends until you pick"}</div>
+      <button class="ghostbtn" data-open="ad">${D.ad.chosenId ? "Change the angle →" : "Pick an angle →"}</button></div>
+    <div class="card"><div class="ct">Voice<span class="more">${D.voice.chosenId ? "yours" : "drafted"}</span></div>
+      <button class="row" data-open="voice">
+        <div class="rname">${esc(voice.label)}</div>
+        <div class="rsub">“${esc(voice.lines[0])}”</div>
+        <div class="rmeta">${stateTag(D.voice)}${D.voice.chosenId ? "chosen " + D.voice.chosenAt : "tap to choose"}</div>
+      </button></div></div>
 
   <div class="col"><div class="chead">STRATEGY</div>
     <div class="card"><div class="ct">What it decided<span class="more">today</span></div>
-      ${FEED.map(f=>`<div class="fitem"><div class="fmeta"><span class="pulse" style="animation:none"></span><b>Firstlight</b><time>${f.t}</time></div><div class="fbody">${f.b}</div></div>`).join('')}</div>
-    <div class="card"><div class="ct">Next move<span class="more">3 approaches</span></div>
-      <button class="row" data-open="next"><div class="rname">Widen the range</div>
-        <div class="rsub">Three ways to grow — one recommended, or say your own.</div>
-        <div class="rmeta"><span class="tag t-choose">Choose</span>inherits 18 decisions</div></button>
-      <button class="row" data-open="channels"><div class="rname">Open a channel</div>
-        <div class="rsub">One lock fans out a listing per product.</div>
-        <div class="rmeta"><span class="tag t-pend">Proposed</span>3 approaches</div></button></div></div>`;
-  renderLog();
-}
-function renderLog(){
-  const el=document.getElementById('log'); if(!el)return;
-  el.innerHTML=LOG.slice(0,S.logN).map(([t,s,tgt])=>{
-    const isDoc=tgt.startsWith('doc:');
-    return `<div class="l ${s==='run'?'run':''}" ${isDoc?`data-doc="${tgt.slice(4)}"`:`data-open="${tgt}"`}>
-      <span class="g">${s==='run'?'⟳':'✓'}</span><span>${t}${s==='run'?' <span class="caret"></span>':''}</span></div>`;
-  }).join('');
+      <div class="fitem"><div class="fmeta"><span class="pulse" style="animation:none"></span><b>${esc(c.name)}</b><time>${now().slice(0,5)}</time></div>
+        <div class="fbody">Voice is <span class="flink" data-open="voice">${esc(voice.label)}</span>${D.voice.chosenId ? " — your pick" : ", my draft"}. Every ad, page and outreach line below inherits it.</div></div>
+      <div class="fitem"><div class="fmeta"><span class="pulse" style="animation:none"></span><b>${esc(c.name)}</b><time>${now().slice(0,5)}</time></div>
+        <div class="fbody">${D.ad.chosenId ? "Running the " : "I'd run the "}<span class="flink" data-open="ad">${esc(ad.label.replace(" angle",""))}</span> angle — it answers the objection people actually have.</div></div>
+      <div class="fitem"><div class="fmeta"><span class="pulse" style="animation:none"></span><b>${esc(c.name)}</b><time>${now().slice(0,5)}</time></div>
+        <div class="fbody">${pend} thing${pend === 1 ? "" : "s"} staged and waiting on you. Nothing irreversible has happened.</div></div>
+    </div>
+    <div class="card"><div class="ct">Next move<span class="more">${D.next.options.length} approaches</span></div>
+      <button class="row" data-open="next">
+        <div class="rname">${esc(next.text)}</div>
+        <div class="rsub">${esc(next.body || "")}</div>
+        <div class="rmeta">${stateTag(D.next)}${D.next.chosenId ? "chosen " + D.next.chosenAt : "choose one, or write your own"}</div>
+      </button></div></div>`;
 }
 
-const DOCBODY={
- brandbook:`<h4>Firstlight — Brand Book</h4><div class="meta">ARTIFACT · GENERATED · 6 PAGES</div>
-  <p><b>Positioning.</b> Specialty-grade coffee that holds up where a kettle can't go — the anti-gas-station morning.</p>
-  <p><b>Audience.</b> 28–40, own the gear, refuse the sludge, will pay for the morning to be good.</p>
-  <p><b>Voice — Warm coach.</b> Trail-buddy warmth. Earns the moment with you, never shames the shortcut.</p>
-  <div class="quote">"A shortcut isn't a compromise. It's how you get another hour of trail."</div>
-  <p><b>Never.</b> No kettle-shaming. No fake testimonials. No discounting below $18.</p>`,
- adset:`<h4>Ad Set 01 — 3 creatives</h4><div class="meta">ARTIFACT · STAGED · NOT SENT</div>
-  <p>Three angles on the locked palette and the Warm coach voice, each answering a different objection.</p>
-  <ul><li><b>Problem-led</b> — "Real coffee. No kettle."</li>
-  <li><b>Social-proof</b> — "40,000 mornings off-grid can't be wrong."</li>
-  <li><b>Aspirational</b> — "Wake up somewhere better."</li></ul>
-  <p>Nothing publishes until the ad set is funded.</p>`,
- supplier:`<h4>Supplier Brief — Verdant Supply</h4><div class="meta">ARTIFACT · SENT TO 3 CO-PACKERS</div>
-  <p><b>Spec.</b> Freeze-dried single origin, 3.5g sachet, cold-soluble in under 90 seconds.</p>
-  <ul><li>MOQ 5,000 units</li><li>Lead time 21 days</li><li>Unit cost $1.14</li></ul>
-  <p>Route: component sourcing + co-pack. Inherited by every product in the Trail range.</p>`,
- rangeplan:`<h4>Range Plan — Trail</h4><div class="meta">ARTIFACT · 2 LIVE · 1 PROPOSED</div>
-  <p>The range is organised by <b>format</b>: the tin is the hero, the sachet is the trial and the trail unit.</p>
-  <ul><li><b>Trail Tin</b> — $28 · 40g · live</li><li><b>Sachet 6-pack</b> — $16 · live</li>
-  <li><b>Lastlight</b> — $21 · proposed, evening daypart</li></ul>`,
- logdoc:`<h4>Operating Log</h4><div class="meta">DAILY · AUTO-WRITTEN</div>
-  <p>Everything the company did today, in order.</p><ul>${LOG.map(l=>`<li>${l[0]}</li>`).join('')}</ul>
-  <p>Two items are staged and waiting on you. Nothing irreversible has happened.</p>`};
+const stateTag = (d) => d.chosenId
+  ? `<span class="tag t-done">Yours</span>`
+  : d.stale ? `<span class="tag t-run">Restreamed</span>` : `<span class="tag t-pend">Drafted</span>`;
 
-const SURF={
- ad(){const a=ADS[S.adIdx];return `
-  <div style="max-width:400px;margin:0 auto;border:1px solid var(--rule2);border-radius:10px;overflow:hidden;background:#0c0e10">
-   <div class="adtop"><div class="adav">F</div><div><div class="nm">Firstlight</div>
-     <div class="sp mono">Sponsored</div></div></div>${adScene(a)}
-   <div style="padding:11px"><div style="font-size:12px;color:var(--dim);line-height:1.5">${a.body}</div>
-    <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
-     <span style="background:var(--fog);color:#12130F;font-size:11px;font-weight:750;padding:6px 12px;border-radius:5px">${a.cta}</span>
-     <span class="mono" style="font-size:9px;color:var(--faint)">firstlight.co</span></div></div></div>
-  <div class="mono" style="max-width:400px;margin:11px auto 0;font-size:9px;color:var(--ember)">● staged as draft — nothing sends until you fund it</div>
-  <div style="display:flex;gap:6px;max-width:400px;margin:12px auto 0">
-   ${ADS.map((x,i)=>`<button style="flex:1;border:1px solid ${i===S.adIdx?'var(--fog)':'var(--rule2)'};border-radius:6px;padding:7px 5px;font-family:var(--mono);font-size:8px;letter-spacing:.05em;color:${i===S.adIdx?'var(--ink)':'var(--faint)'};text-align:center" data-ad="${i}">${x.angle.toUpperCase()}</button>`).join('')}</div>`},
- voice(){return `<div style="font-size:30px;font-weight:800;letter-spacing:-.04em">${VOICE.label}</div>
-  <div style="font-size:12.5px;color:var(--dim);margin-top:7px;line-height:1.55">${VOICE.desc}</div>
-  <div class="sec">THE REAL LINES</div>${VOICE.lines.map(l=>`<div class="vline">${l}</div>`).join('')}
-  <div class="sec">3 ALTERNATIVES YOU PASSED ON</div>
-  ${VOICE.alts.map(([l,s])=>`<div class="ghost"><div class="gl">${l}</div><div class="gs">“${s}”</div>
-    <div class="sw">switch to this →</div></div>`).join('')}`},
- identity(){return `<div class="sec">PALETTE</div><div class="pal">
-  ${PALETTE.map(p=>`<div class="sw"><span class="c" style="background:${p[1]}"></span>
-   <div class="m"><div class="n">${p[0]}</div><div class="h mono">${p[1]}</div></div></div>`).join('')}</div>
-  <div class="sec">WORDMARK · 1 OF 4 LOCKED</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
-   <div style="border:1px solid var(--lime);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card)">
-    <div style="font-size:17px;font-weight:800;letter-spacing:-.03em">FIRSTLIGHT</div>
-    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">LOCKED</div></div>
-   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
-    <div style="font-family:Georgia,serif;font-size:17px">Firstlight</div>
-    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">SERIF</div></div>
-   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
-    <div style="font-size:12px;letter-spacing:.22em;font-weight:600">FIRSTLIGHT</div>
-    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">WIDE</div></div>
-   <div style="border:1px solid var(--rule2);border-radius:8px;padding:20px 12px;text-align:center;background:var(--card);opacity:.6">
-    <div style="font-size:14px;font-weight:800;line-height:.92">FIRST<br>LIGHT</div>
-    <div class="mono" style="font-size:8px;color:var(--faint);margin-top:8px">STACKED</div></div></div>`},
- product(){return `<div style="display:flex;align-items:flex-end;justify-content:center;padding:22px 10px 26px;background:radial-gradient(70% 90% at 50% 18%,#1b212b,transparent 70%);border:1px solid var(--rule);border-radius:10px">${tinHTML(150)}</div>
-  <div class="specs" style="margin-top:14px">
-   <div class="spec"><div class="k">FORMAT</div><div class="v">Tin + sachet</div></div>
-   <div class="spec"><div class="k">PRICE</div><div class="v">$28 · 40g</div></div>
-   <div class="spec"><div class="k">RANGE</div><div class="v">Trail</div></div>
-   <div class="spec"><div class="k">STATUS</div><div class="v">Live</div></div></div>
-  <div class="sec">WHY IT'S ON-BRAND FOR FREE</div>
-  <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.75">the packshot references the company moodboard — it was not art-directed for this product.<br>every product after this renders on-brand without anyone deciding it should.</div>`},
- storefront(){return `<div class="browser"><div class="bchrome"><div class="bdots"><i></i><i></i><i></i></div>
-   <div class="burl">firstlight.co</div></div><div class="site"><div class="sitehero">
-   <div class="sitewm">FIRSTLIGHT</div><h1 class="siteh1">Real coffee. No kettle.</h1>
-   <div class="sitesub">Specialty-grade single origin, freeze-dried into a sachet that survives a backpack.</div>
-   <div class="sitebuy"><span class="sitebtn">Add to bag</span><span class="siteprice">$28 · 40g tin</span></div>
-   <div class="sitetin">${tinHTML(84)}</div></div>
-   <div class="sitebenefits"><div class="ben"><div class="bn">90 seconds</div><div class="bd">Cold or hot water.</div></div>
-   <div class="ben"><div class="bn">42 grams</div><div class="bd">Lighter than your mug.</div></div>
-   <div class="ben"><div class="bn">One farm</div><div class="bd">Traceable to the lot.</div></div></div></div></div>
-  <div class="mono" style="font-size:9px;color:var(--faint);margin-top:10px">● live · restyles automatically when the palette or voice changes</div>`},
- market(){const R=[["Nescafé",10,12],["Starbucks Via",30,20],["Mount Hagen",44,30],["Alpine Start",46,64],["Voilà",74,32],["Swift Cup",82,24]];
-  return `<div style="border:1px solid var(--rule);border-radius:10px;padding:13px;background:var(--card)">
-  <svg viewBox="0 0 400 250" style="width:100%;display:block">
-  <rect x="30" y="14" width="340" height="200" fill="#0b0e11" stroke="#1E2226"/>
-  <rect x="200" y="14" width="170" height="100" fill="#C8F250" opacity=".05"/>
-  <line x1="30" y1="114" x2="370" y2="114" stroke="#1E2226"/><line x1="200" y1="14" x2="200" y2="214" stroke="#1E2226"/>
-  ${R.map(([n,x,y])=>`<circle cx="${x*3.4+30}" cy="${(100-y)*2.1+14}" r="4" fill="#CFD2C4" opacity=".6"/><text x="${x*3.4+37}" y="${(100-y)*2.1+17}" font-size="9" fill="#98A09A" font-family="ui-monospace,monospace">${n}</text>`).join('')}
-  <circle cx="295" cy="56" r="7" fill="#C8F250"/><circle cx="295" cy="56" r="14" fill="none" stroke="#C8F250" opacity=".35"/>
-  <text x="306" y="59" font-size="10" fill="#C8F250" font-weight="700" font-family="system-ui">FIRSTLIGHT</text>
-  <text x="30" y="234" font-size="8" fill="#646C68" font-family="ui-monospace,monospace">← TASTES INSTANT</text>
-  <text x="272" y="234" font-size="8" fill="#646C68" font-family="ui-monospace,monospace">TASTES SPECIALTY →</text></svg>
-  <div class="mono" style="font-size:9px;color:var(--faint);margin-top:8px">the tinted corner is the gap · specialty taste, built for outdoors, nobody defending it</div></div>`},
- next(){return `<div class="mono" style="font-size:9px;color:var(--faint);letter-spacing:.1em">AXIS: WHAT WIDENS — OCCASION, FORMAT, OR ORIGIN</div>
-  <div style="margin-top:12px">${MOVES.map((m,i)=>`<button class="optrow" data-move="${i}">
-   ${m.rec?'<span class="rec">RECOMMENDED</span>':''}<div class="ol">${m.label}</div>
-   <div class="on2">${m.name}</div><div class="op">${m.pitch}</div>
-   <div class="mono" style="font-size:9px;color:var(--faint);margin-top:6px">${m.price} · 2 own decisions · 18 inherited</div></button>`).join('')}
-  <button class="optrow own"><div class="on2">none of these — say what you'd do instead</div>
-   <div class="op">the model builds the artifact around your answer.</div></button></div>`},
- channels(){const C=[["Specialty wholesale — REI & independents",1,"Put the tin on the shelf people walk past the day before a trip.","Confers the buyer's endorsement. Slower, lower margin."],
-   ["Amazon — the search shelf",0,"Own the query before a competitor rents it.","Highest-intent shelf — but a price-comparison surface that erodes the premium."],
-   ["The Standing Order — subscription",0,"The people who already reorder stop having to remember.","Full DTC margin, customer stays ours. Only grows as fast as the base."]];
-  return `<div class="mono" style="font-size:9px;color:var(--faint);letter-spacing:.1em">AXIS: WHAT YOU TRADE AWAY</div>
-  <div style="margin-top:12px">${C.map(([n,r,p,t])=>`<button class="optrow">${r?'<span class="rec">RECOMMENDED</span>':''}
-   <div class="on2" style="font-size:13px">${n}</div><div class="op">${p}</div>
-   <div class="op" style="color:var(--faint);font-size:11px">${t}</div></button>`).join('')}
-  <button class="optrow own"><div class="on2">none of these — say what you'd do instead</div></button></div>`},
- money(){const T=[["Test","$300/mo","~1,400 reach · ~22 orders"],["Push","$900/mo","~5,200 reach · ~85 orders"],["Send it","$2,500/mo","~16,000 reach · ~260 orders"]];
-  return `<div class="notconn"><div class="t">No store connected</div>
-   <div class="s">this is where real orders and ad performance would render.<br>we will not draw a chart of numbers that do not exist.</div></div>
-  <div class="tierbox"><div style="display:flex;align-items:baseline;gap:8px">
-   <span style="font-size:12.5px;font-weight:700">Fund the ad set</span>
-   <span class="mono" style="font-size:8.5px;color:var(--ember);border:1px solid var(--ember);padding:1.5px 5px;border-radius:3px">PROJECTION</span></div>
-   <div class="mono" style="font-size:9px;color:var(--faint);margin-top:5px">modelled from category benchmarks · not a forecast of your results</div>
-   <div class="tiers">${T.map((t,i)=>`<div class="tier ${i===S.tier?'on':''}" data-tier="${i}">
-    <span class="tl">${t[0]}</span><span class="ta">${t[1]}</span><span class="tp">${t[2]}</span></div>`).join('')}</div>
-   <div class="mono" style="font-size:9px;color:var(--ember);margin-top:10px">● committing stages the campaign for your own final confirmation. it never silently moves money.</div></div>`},
- task(){const t=TASKS.find(x=>x.id===S.taskId)||TASKS[0];
-  return `<div style="font-size:19px;font-weight:750;letter-spacing:-.02em">${t.n}</div>
-   <div style="font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.55">${t.d}</div>
-   <div class="sec">STATUS</div><div class="rmeta"><span class="tag ${t.s==='run'?'t-run':t.s==='rec'?'t-art':'t-pend'}">${t.s==='run'?'Running':t.s==='rec'?'Recurring':'Needs you'}</span>${t.m}</div>
-   <div class="sec">WHAT IT PRODUCED</div>
-   <button class="row" data-doc="${t.doc}"><div class="rname">${(DOCS.find(d=>d.id===t.doc)||{}).n}</div>
-    <div class="rsub">open the artifact →</div></button>
-   <div class="sec">CONTROL</div>
-   <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.75">${t.s==='pend'?'staged and waiting on you — nothing has been sent.':'running on its own — pause it any time.'}</div>`},
- doc(){const d=DOCS.find(x=>x.id===S.docId)||DOCS[0];return `<div class="docpage">${DOCBODY[d.k]||''}</div>`}};
-
-const META={ad:["AD CREATIVE","the trail morning"],voice:["VOICE","Warm coach"],
- identity:["IDENTITY","palette & wordmark"],product:["PRODUCT","Trail Tin"],
- storefront:["STOREFRONT","firstlight.co"],market:["MARKET","specialty × outdoors"],
- next:["NEXT MOVE","widen the range"],channels:["CHANNEL","3 approaches"],
- money:["MONEY","fund the ad set"],task:["TASK",""],doc:["DOCUMENT",""]};
-
-const BODY=()=>document.getElementById('body');
-function open(kind,meta){
-  const [k,t]=META[kind]||["PREVIEW",""];
-  document.getElementById('pkind').textContent=k;
-  document.getElementById('ptitle').textContent=
-    kind==='task'?((TASKS.find(x=>x.id===S.taskId)||{}).n||t)
-    :kind==='doc'?((DOCS.find(x=>x.id===S.docId)||{}).n||t):t;
-  document.getElementById('pmeta').textContent=meta||"";
-  const b=document.getElementById('pbody');
-  b.style.animation='none'; void b.offsetWidth; b.style.animation='';
-  b.innerHTML=SURF[kind]();
-  BODY().classList.add('open');
+function decRow(d) {
+  const o = shownOf(d);
+  return `<button class="row" data-open="${d.id}">
+    <div class="rname">${esc(d.label)} · ${esc(o.label)}</div>
+    <div class="rmeta">${stateTag(d)}${d.chosenId ? "locked " + d.chosenAt : d.options.length + " options"}</div>
+  </button>`;
 }
-function closePane(){BODY().classList.remove('open');}
-(function(){
-  const body=BODY(), sp=document.getElementById('split');
-  const setW=px=>body.style.setProperty('--pw',
-    Math.round(Math.min(Math.max(px,380),window.innerWidth-420))+'px');
-  let on=false;
-  sp.addEventListener('pointerdown',e=>{if(!body.classList.contains('open'))return;
-    on=true;sp.setPointerCapture(e.pointerId);sp.classList.add('drag');body.classList.add('dragging');});
-  sp.addEventListener('pointermove',e=>{if(on)setW(window.innerWidth-e.clientX);});
-  const end=e=>{if(!on)return;on=false;try{sp.releasePointerCapture(e.pointerId)}catch(_){}
-    sp.classList.remove('drag');body.classList.remove('dragging');};
-  sp.addEventListener('pointerup',end);sp.addEventListener('pointercancel',end);
-  sp.addEventListener('dblclick',()=>setW(520));
-  document.getElementById('pclose').onclick=closePane;
-  document.getElementById('pwide').onclick=()=>{
-    const cur=parseInt(getComputedStyle(body).getPropertyValue('--pw'))||520;
-    setW(cur>window.innerWidth*.5?520:window.innerWidth-460);};
-  addEventListener('keydown',e=>{if(e.key==='Escape')closePane();});
-})();
-function mark(el){document.querySelectorAll('.row.on').forEach(r=>r.classList.remove('on'));
-  if(el&&el.classList.contains('row'))el.classList.add('on');}
-document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-task]');
-  if(t){S.taskId=t.dataset.task;open('task');mark(t);return;}
-  const d=e.target.closest('[data-doc]');
-  if(d){S.docId=d.dataset.doc;open('doc');mark(d);return;}
-  const a=e.target.closest('[data-ad]');
-  if(a){S.adIdx=+a.dataset.ad;open('ad');deck();return;}
-  const ti=e.target.closest('[data-tier]');
-  if(ti){S.tier=+ti.dataset.tier;open('money');return;}
-  const m=e.target.closest('[data-move]');
-  if(m){open('product',MOVES[+m.dataset.move].name);return;}
-  const o=e.target.closest('[data-open]');
-  if(o){open(o.dataset.open);mark(o);return;}
+
+/* ---------- ad visual: D2C gets the photographic scene, SaaS a product shot ---------- */
+function adVisual(c, adOpt, fs) {
+  if (c.kind === "d2c") return `<div class="adscene">${sceneSVG()}${STEAM}${FINISH}
+    <div class="adcopy"><h3${fs ? ` style="font-size:${fs}px"` : ""}>${esc(adOpt.ad.head)}</h3></div></div>`;
+  return `<div class="adscene" style="background:linear-gradient(160deg,#101826,#1b2740 60%,#243352)">
+    ${uiMock()}
+    <div class="adcopy"><h3${fs ? ` style="font-size:${fs}px"` : ""}>${esc(adOpt.ad.head)}</h3></div></div>`;
+}
+/* a believable product screenshot, composed — no external image */
+function uiMock() {
+  return `<div style="position:absolute;inset:14% 10% 32% 10%;background:#0d1117;border:1px solid #2a3442;
+      border-radius:9px;overflow:hidden;box-shadow:0 20px 50px -20px #000">
+    <div style="display:flex;gap:5px;padding:8px 10px;border-bottom:1px solid #1e2836;align-items:center">
+      <i style="width:7px;height:7px;border-radius:50%;background:#2a3442"></i>
+      <i style="width:7px;height:7px;border-radius:50%;background:#2a3442"></i>
+      <span style="margin-left:6px;font-family:var(--mono);font-size:7px;color:#5b6a7d">replydex — 41 new reviews</span></div>
+    ${[["★★★★★","Answered in your voice.",1],["★★★★☆","Draft ready — 2 lines.",0],["★★★★★","Approved · pasted.",0]]
+      .map(([st,tx,hot],i)=>`<div style="display:flex;gap:8px;padding:7px 10px;border-bottom:1px solid #161f2b;align-items:center">
+        <span style="font-size:7px;color:#e9b34a">${st}</span>
+        <span style="flex:1;font-size:8px;color:${hot?"#dbe8ff":"#7d8b9e"}">${tx}</span>
+        <span style="font-size:6.5px;font-family:var(--mono);padding:2px 5px;border-radius:3px;
+          background:${hot?"#C8F250":"#1e2836"};color:${hot?"#0b0d0a":"#5b6a7d"}">${hot?"DRAFT":"DONE"}</span></div>`).join("")}
+  </div>`;
+}
+
+/* ---------- the preview pane ---------- */
+const PANE_META = {
+  voice: ["VOICE", "how it talks"], ad: ["AD CREATIVE", "the angle"],
+  next: ["NEXT MOVE", "what widens"], tokens: ["TOKENS", "what work costs"],
+  storefront: ["STOREFRONT", ""], task: ["TASK", ""], doc: ["DOCUMENT", ""],
+};
+
+function openPane(kind, arg) {
+  const c = CO();
+  const [k, t] = PANE_META[kind] || ["PREVIEW", ""];
+  $("pkind").textContent = k;
+  $("ptitle").textContent = kind === "task" ? (c.tasks.find((x) => x.id === arg) || {}).n || t
+    : kind === "doc" ? ((c.docs.find((d) => d[0] === arg) || [])[1] || t)
+    : kind === "storefront" ? c.site : t;
+  $("pmeta").textContent = "";
+  const b = $("pbody");
+  b.style.animation = "none"; void b.offsetWidth; b.style.animation = "";
+  b.innerHTML = paneBody(kind, arg);
+  $("body").classList.add("open");
+  ST.pane = { kind, arg };
+}
+
+function paneBody(kind, arg) {
+  const c = CO(), D = c.decisions;
+  if (D[kind]) return slate(c, D[kind]);
+  if (kind === "tokens") return tokensPane(c);
+  if (kind === "task") return taskPane(c, arg);
+  if (kind === "doc") return docPane(c, arg);
+  if (kind === "storefront") return storefrontPane(c);
+  return "";
+}
+
+/* THE SLATE — this is the thing that was missing. Options you can actually
+   choose, a lock that records who chose it, alternatives that survive, and a
+   working escape hatch. */
+function slate(c, d) {
+  const chosen = optOf(d);
+  return `
+    <div class="mono" style="font-size:9px;color:var(--faint);letter-spacing:.1em">AXIS: ${d.axis}</div>
+    ${d.stale ? `<div class="mono" style="font-size:9.5px;color:var(--run);margin-top:8px">
+       ● restreamed — an upstream decision changed, so these were rewritten</div>` : ""}
+    <div style="margin-top:12px">
+      ${d.options.map((o) => optionCard(d, o)).join("")}
+      <div class="optrow own" id="hatch">
+        <div class="on2">none of these — say what you'd do instead</div>
+        <div class="op">it becomes a real option, indistinguishable from the drafted ones.</div>
+        <div class="hatchrow" id="hatchrow" style="display:none">
+          <input id="hatchin" placeholder="describe what you'd do…" />
+          <button class="hatchgo" id="hatchgo">use this</button>
+        </div>
+      </div>
+    </div>
+    ${chosen ? `<div class="sec">YOUR PICK</div>
+      <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.7">
+        locked at ${d.chosenAt} · by you<br>
+        ${d.id === "voice" ? "every ad, page and outreach line below is written in this voice." : ""}
+        ${d.id === "ad" ? "this creative is staged as a draft. nothing sends until you fund it." : ""}
+      </div>
+      <button class="unbtn" data-unchoose="${d.id}">unlock — go back to drafted</button>` : ""}`;
+}
+
+function optionCard(d, o) {
+  const chosen = isChosen(d, o), drafted = isDrafted(d, o);
+  const lines = o.lines ? `<div class="olines">${o.lines.map((l) => `<div class="oline">“${esc(l)}”</div>`).join("")}</div>` : "";
+  const adprev = o.ad ? `<div class="oad"><b>${esc(o.ad.head)}</b><span>${esc(o.ad.body)}</span></div>` : "";
+  return `<button class="optrow ${chosen ? "chosen" : ""} ${drafted ? "drafted" : ""}" data-pick="${d.id}|${o.id}">
+    ${o.rec && !chosen ? '<span class="rec draft">RECOMMENDED</span>' : ""}
+    ${chosen ? '<span class="rec live">✓ CHOSEN BY YOU</span>' : ""}
+    <div class="ol">${esc(o.label)}</div>
+    <div class="on2">${esc(o.text || o.label)}</div>
+    ${o.body ? `<div class="op">${esc(o.body)}</div>` : ""}
+    ${o.text && !o.body && !o.lines && !o.ad ? "" : ""}
+    ${lines}${adprev}
+    ${drafted ? '<div class="draftnote">drafted by autopilot · tap to make it yours</div>' : ""}
+  </button>`;
+}
+
+function tokensPane(c) {
+  const T = [["Trickle", 500_000, "keeps one thing moving at a time"],
+             ["Steady", 2_000_000, "a full week of drafting, staging and revising"],
+             ["Push", 5_000_000, "it works ahead of you — expect more staged than you can read"]];
+  const areas = [["found", "Founding decisions", "#5FD08A"], ["decide", "Your choices", "#C8F250"],
+                 ["run", "Running work", "#E9954A"], ["make", "Making things", "#A78BFA"]];
+  return `
+  <div class="tokbig">
+    <div class="tokn">${fmtTok(c.tokens.spent)}</div>
+    <div class="toklab">tokens spent · ${fmtTok(c.tokens.budget)} budgeted this week</div>
+  </div>
+  <div class="sec">WHERE THEY WENT</div>
+  ${areas.map(([k, n, col]) => {
+    const v = c.tokens.by[k] || 0;
+    return `<div class="tokrow"><span class="tk" style="background:${col}"></span>
+      <span class="tn">${n}</span><span class="tv mono">${fmtTok(v)}</span></div>`;
+  }).join("")}
+  <div class="sec">FEED IT MORE</div>
+  <div class="tiers">${T.map(([n, v, note]) => `
+    <div class="tier ${v === c.tokens.budget ? "on" : ""}" data-budget="${v}">
+      <span class="tl">${n}</span><span class="ta">${fmtTok(v)}/wk</span>
+      <span class="tp">${note}</span></div>`).join("")}</div>
+  <div class="mono" style="font-size:9px;color:var(--faint);margin-top:14px;line-height:1.8">
+    you are not buying a subscription. you are giving the company capacity to work.<br>
+    it runs as fast as you feed it, and stops when you stop.
+  </div>
+  <div class="mono" style="font-size:9px;color:var(--ember);margin-top:10px;line-height:1.7">
+    ● tokens are the only number here that is real. revenue needs a connected store,<br>
+    so it says “not connected” instead of drawing a chart of numbers that don't exist.
+  </div>`;
+}
+
+function taskPane(c, id) {
+  const t = c.tasks.find((x) => x.id === id) || c.tasks[0];
+  return `<div style="font-size:19px;font-weight:750;letter-spacing:-.02em">${esc(t.n)}</div>
+    <div style="font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.55">${esc(t.d)}</div>
+    <div class="sec">STATUS</div>
+    <div class="rmeta"><span class="tag ${t.s === "run" ? "t-run" : "t-pend"}">${t.s === "run" ? "Running" : "Needs you"}</span>${esc(t.m)}</div>
+    <div class="sec">WHAT IT PRODUCED</div>
+    <button class="row" data-doc="${t.doc}"><div class="rname">${esc((c.docs.find((d) => d[0] === t.doc) || [])[1] || "artifact")}</div>
+      <div class="rsub">open the artifact →</div></button>
+    <div class="sec">CONTROL</div>
+    <div class="mono" style="font-size:9.5px;color:var(--faint);line-height:1.75">
+      ${t.s === "pend" ? "staged and waiting on you — nothing has been sent." : "running on its own — pause it any time."}</div>`;
+}
+
+function docPane(c, id) {
+  const V = shownOf(c.decisions.voice);
+  const doc = c.docs.find((d) => d[0] === id) || c.docs[0];
+  const body = c.kind === "d2c" ? {
+    d1: `<p><b>Positioning.</b> Specialty-grade coffee that holds up where a kettle can't go.</p>
+         <p><b>Voice — ${esc(V.label)}.</b> ${esc(V.text)}</p>
+         <div class="quote">“${esc(V.lines[0])}”</div>
+         <p><b>Never.</b> No kettle-shaming. No fake testimonials. No discounting below $18.</p>`,
+    d2: `<p>Three angles on the locked palette, each answering a different objection.</p>
+         <ul>${VOICE_SETS.d2c.map((v) => `<li><b>${esc(v.label)}</b> — “${esc(v.ad.head)}”</li>`).join("")}</ul>
+         <p>Nothing publishes until the ad set is funded.</p>`,
+    d3: `<p><b>Spec.</b> Freeze-dried single origin, 3.5g sachet, cold-soluble under 90 seconds.</p>
+         <ul><li>MOQ 5,000 units</li><li>Lead time 21 days</li><li>Unit cost $1.14</li></ul>`,
+    d4: `<p>Organised by <b>format</b>: the tin is the hero, the sachet is the trail unit.</p>
+         <ul><li><b>Trail Tin</b> — $28 · live</li><li><b>Sachet 6-pack</b> — $16 · live</li></ul>`,
+  } : {
+    d1: `<p><b>Who it's for.</b> Single- and multi-location med-spas drowning in Google reviews.</p>
+         <p><b>Voice — ${esc(V.label)}.</b> ${esc(V.text)}</p>
+         <div class="quote">“${esc(V.lines[0])}”</div>
+         <p><b>Never.</b> Never confirm a patient relationship. Never auto-send.</p>`,
+    d2: `<p>How a reply gets written, in ${esc(V.label)}:</p>
+         <ul>${V.lines.map((l) => `<li>“${esc(l)}”</li>`).join("")}</ul>
+         <p>Every draft is held for the owner to read. Nothing posts on its own.</p>`,
+    d3: `<p>40 med-spa decision-makers, from published addresses only.</p>
+         <ul><li>No scraped contact forms</li><li>Personalised from the practice's own reviews</li>
+         <li>Held as drafts — nothing sent</li></ul>`,
+    d4: `<p><b>$39 reply pack.</b> Priced against the hour an owner spends replying, not against software.</p>`,
+  };
+  return `<div class="docpage"><h4>${esc(doc[1])}</h4>
+    <div class="meta">ARTIFACT · WRITTEN IN ${esc(V.label).toUpperCase()}</div>
+    ${body[doc[0]] || "<p>—</p>"}</div>`;
+}
+
+function storefrontPane(c) {
+  const V = shownOf(c.decisions.voice);
+  if (c.kind === "d2c") return `<div class="browser"><div class="bchrome">
+    <div class="bdots"><i></i><i></i><i></i></div><div class="burl">${c.site}</div></div>
+    <div class="site"><div class="sitehero"><div class="sitewm">FIRSTLIGHT</div>
+      <h1 class="siteh1">${esc(shownOf(c.decisions.ad).ad.head)}</h1>
+      <div class="sitesub">${esc(V.lines[0])}</div>
+      <div class="sitebuy"><span class="sitebtn">Add to bag</span><span class="siteprice">${c.price}</span></div>
+      <div class="sitetin">${tinHTML(84)}</div></div>
+    <div class="sitebenefits">
+      <div class="ben"><div class="bn">90 seconds</div><div class="bd">Cold or hot water.</div></div>
+      <div class="ben"><div class="bn">42 grams</div><div class="bd">Lighter than your mug.</div></div>
+      <div class="ben"><div class="bn">One farm</div><div class="bd">Traceable to the lot.</div></div></div></div></div>
+    <div class="mono" style="font-size:9px;color:var(--faint);margin-top:10px">● live · restyles when the voice changes</div>`;
+  return `<div class="browser"><div class="bchrome">
+    <div class="bdots"><i></i><i></i><i></i></div><div class="burl">${c.site}</div></div>
+    <div class="site"><div class="sitehero"><div class="sitewm">REPLYDEX</div>
+      <h1 class="siteh1">${esc(shownOf(c.decisions.ad).ad.head)}</h1>
+      <div class="sitesub">${esc(V.lines[0])}</div>
+      <div class="sitebuy"><span class="sitebtn">Draft my replies</span><span class="siteprice">${c.price}</span></div></div>
+    <div class="sitebenefits">
+      <div class="ben"><div class="bn">In your voice</div><div class="bd">Learned from how you already write.</div></div>
+      <div class="ben"><div class="bn">Nothing auto-sends</div><div class="bd">You approve every reply.</div></div>
+      <div class="ben"><div class="bn">Paste-ready</div><div class="bd">One doc, done before coffee.</div></div></div></div></div>
+    <div class="mono" style="font-size:9px;color:var(--faint);margin-top:10px">● live · restyles when the voice changes</div>`;
+}
+
+/* ---------- render + events ---------- */
+function render() {
+  renderTop(); renderDeck();
+  if (ST.pane) { const b = $("pbody"); b.innerHTML = paneBody(ST.pane.kind, ST.pane.arg); }
+}
+
+document.addEventListener("click", (e) => {
+  const co = e.target.closest("[data-co]");
+  if (co) { ST.active = co.dataset.co; ST.pane = null; $("body").classList.remove("open"); save(); render(); return; }
+  if (e.target.closest("[data-newco]")) { openPane("tokens"); return; }
+
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    const [did, oid] = pick.dataset.pick.split("|");
+    const c = CO(), d = c.decisions[did];
+    if (d.chosenId === oid) return;           // already yours
+    choose(c, d, oid);
+    logLine(c, "you chose " + shownOf(d).label + " for " + d.label.toLowerCase(), "done", did);
+    render(); return;
+  }
+  const un = e.target.closest("[data-unchoose]");
+  if (un) { const c = CO(); unchoose(c, c.decisions[un.dataset.unchoose]); render(); return; }
+
+  if (e.target.closest("#hatch") && !e.target.closest("#hatchrow")) {
+    const r = $("hatchrow"); if (r) { r.style.display = "flex"; $("hatchin").focus(); } return;
+  }
+  if (e.target.closest("#hatchgo")) {
+    const v = $("hatchin").value.trim(); if (!v) return;
+    const c = CO(), d = c.decisions[ST.pane.kind];
+    ownOption(c, d, v); render(); return;
+  }
+  const bud = e.target.closest("[data-budget]");
+  if (bud) { CO().tokens.budget = +bud.dataset.budget; save(); render(); return; }
+
+  const task = e.target.closest("[data-task]");
+  if (task) { openPane("task", task.dataset.task); return; }
+  const doc = e.target.closest("[data-doc]");
+  if (doc) { openPane("doc", doc.dataset.doc); return; }
+  const op = e.target.closest("[data-open]");
+  if (op) { openPane(op.dataset.open); return; }
 });
-deck();
-open('ad','staged · not sent');
-setInterval(()=>{if(S.logN<LOG.length){S.logN++;renderLog();}},4200);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "hatchin") { $("hatchgo").click(); }
+  if (e.key === "Escape") { ST.pane = null; $("body").classList.remove("open"); }
+});
+
+/* pane resize */
+(function () {
+  const body = $("body"), sp = $("split");
+  const setW = (px) => body.style.setProperty("--pw",
+    Math.round(Math.min(Math.max(px, 380), window.innerWidth - 420)) + "px");
+  let on = false;
+  sp.addEventListener("pointerdown", (e) => { if (!body.classList.contains("open")) return;
+    on = true; sp.setPointerCapture(e.pointerId); sp.classList.add("drag"); body.classList.add("dragging"); });
+  sp.addEventListener("pointermove", (e) => { if (on) setW(window.innerWidth - e.clientX); });
+  const end = (e) => { if (!on) return; on = false; try { sp.releasePointerCapture(e.pointerId); } catch (_) {}
+    sp.classList.remove("drag"); body.classList.remove("dragging"); };
+  sp.addEventListener("pointerup", end); sp.addEventListener("pointercancel", end);
+  sp.addEventListener("dblclick", () => setW(520));
+  $("pclose").onclick = () => { ST.pane = null; body.classList.remove("open"); };
+  $("pwide").onclick = () => { const cur = parseInt(getComputedStyle(body).getPropertyValue("--pw")) || 520;
+    setW(cur > window.innerWidth * .5 ? 520 : window.innerWidth - 460); };
+})();
+
+boot();
+render();
+openPane("voice");
+
 </script>
