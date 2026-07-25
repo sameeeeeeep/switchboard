@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Store v4 — the OS direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* v4 EXTENDS v3's vocabulary — same tokens, same registers, same type scale. Everything new here
+   is a modifier on a base class (.pack, .yours, .row, .map, .slab), never a parallel system.
+   That was rejection #2 and it applies to wireframes too. */
+:root{
+  --f:"Inter",ui-sans-serif,system-ui,sans-serif; --m:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+  --bg:#fff; --ink:#0B0B0C; --ink-2:#6E6E73; --faint:#9A9AA0;
+  --line:#E8E8E9; --line-2:#D9D9DB; --slab:#111113; --map:#F3F2EF;
+  --yours:#FBF6EC; --edge:#C88A2E; --ok:#1F8A5B; --warn:#B4740F; --hold:#7A7A80;
+}
+body.dark{--bg:#0A0A0B;--ink:#F4F4F2;--ink-2:#A2A2A8;--faint:#6C6C74;--line:#232327;--line-2:#2C2C31;
+  --slab:#F0EFEC;--map:#141416;--yours:#17140E;--ok:#54B487;--warn:#E0A63C;--hold:#8A8A92}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:#111;font-family:var(--f);color:#eee;padding:20px}
+body.dark{background:#050506}
+.top{max-width:2100px;margin:0 auto 16px;display:flex;gap:20px;align-items:flex-start}
+.top h1{font:700 18px/1.3 var(--f);margin:0 0 6px}
+.top p{margin:0 0 6px;font-size:13px;line-height:1.65;color:#9A9AA0;max-width:120ch}
+.top b{color:#ddd}
+.tog{margin-left:auto;flex:none;background:#222;border:1px solid #3a3a3a;color:#eee;border-radius:8px;padding:9px 14px;font:600 12px var(--f);cursor:pointer}
+.trio{max-width:2100px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.frame{border:1px solid #333;border-radius:10px;overflow:hidden;background:var(--bg)}
+.flabel{font:500 10.5px/1 var(--m);letter-spacing:.1em;text-transform:uppercase;color:#8a8a8a;padding:8px 10px;background:#1a1a1a;border-bottom:1px solid #333}
+.flabel b{color:#C8F250;font-weight:500}
+.shell{overflow:hidden} .pg{width:780px;transform-origin:0 0;background:var(--bg);color:var(--ink)}
+
+/* ── SYSTEM BAR — an OS says what it is working on, always, in the chrome ───── */
+.nav{display:flex;align-items:center;gap:12px;padding:13px 24px;border-bottom:1px solid var(--line)}
+.nav .lo{display:flex;align-items:center;gap:8px;font:600 15px var(--f)}
+.nav .lo i{width:19px;height:19px;border-radius:6px;background:var(--ink);display:block}
+.nav .sp{flex:1} .nav a{font:400 13px var(--f);color:var(--ink-2)}
+.nav .btn{font:600 13px var(--f);background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 14px}
+/* the working-on selector: the OS equivalent of a menu-bar document title */
+.on{display:flex;align-items:center;gap:9px;background:var(--map);border:1px solid var(--line);
+  border-radius:999px;padding:6px 13px 6px 7px}
+.on i{width:22px;height:22px;border-radius:7px;display:block;flex:none}
+.on b{font:600 13px var(--f)} .on s{text-decoration:none;font:400 12px var(--m);color:var(--faint)}
+/* capacity gauge — tokens read as a system resource, like a battery, not a price */
+.cap{display:flex;align-items:center;gap:9px}
+.cap .bar{width:64px;height:6px;border-radius:3px;background:var(--line);overflow:hidden;display:block}
+.cap .bar i{display:block;height:100%;background:var(--ok)}
+.cap s{text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
+
+.pad{padding:0 24px}
+h1.t{font:700 46px/1.05 var(--f);letter-spacing:-.012em;margin:0;max-width:19ch}
+h2.s{font:600 36px/1.15 var(--f);letter-spacing:-.01em;margin:0}
+.sub{font:400 16px/1.55 var(--f);color:var(--ink-2);margin:14px 0 0;max-width:56ch}
+.kick{font:500 12px/1 var(--m);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:0}
+.khead{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.khead .more{margin-left:auto;font:500 12.5px var(--f);color:var(--ink-2)}
+
+/* ── YOURS register, load-bearing ──────────────────────────────────────────────
+   In v3 this held recommendations. In v4 it holds THE DESK: the object you are
+   working on and everything staged against it. Personalisation stays visually
+   inseparable from the privacy line inside it. */
+.yours{background:var(--yours);border-left:3px solid var(--edge);border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);padding:20px 24px 22px}
+.yours .kick{color:var(--edge)}
+.yours h3{font:600 36px/1.1 var(--f);letter-spacing:-.01em;margin:9px 0 0}
+.yours .why{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:8px 0 0;max-width:60ch}
+.objmeta{display:flex;gap:18px;margin:15px 0 0;flex-wrap:wrap}
+.objmeta span{font:400 12px var(--m);color:var(--faint)}
+.objmeta b{font-weight:500;color:var(--ink-2)}
+
+/* THE QUEUE — the one genuinely new component. Everything staged, across every
+   wrapp, in one list. This is what makes it an OS rather than a shelf: apps do
+   the work, the system holds the go button. */
+.q{margin-top:18px;border-top:1px solid rgba(0,0,0,.08)}
+body.dark .q{border-top-color:rgba(255,255,255,.08)}
+.qi{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid rgba(0,0,0,.07)}
+body.dark .qi{border-bottom-color:rgba(255,255,255,.07)}
+.qi .md{font:500 10.5px/1 var(--m);letter-spacing:.09em;text-transform:uppercase;border-radius:5px;
+  padding:5px 8px;flex:none;border:1px solid transparent}
+.md.a{color:var(--ok);background:rgba(31,138,91,.10);border-color:rgba(31,138,91,.28)}
+.md.p{color:var(--warn);background:rgba(180,116,15,.11);border-color:rgba(180,116,15,.30)}
+.md.m{color:var(--hold);background:rgba(0,0,0,.05);border-color:var(--line-2)}
+body.dark .md.m{background:rgba(255,255,255,.05)}
+.qi .qt{flex:1;min-width:0}
+.qi .qn{font:400 17px/1.35 var(--f);margin:0}
+.qi .qw{font:400 12px var(--m);color:var(--faint);margin:4px 0 0}
+.qi .act{font:600 13px var(--f);background:var(--ink);color:var(--bg);border-radius:999px;padding:7px 15px;flex:none}
+.qi .act.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-2)}
+.priv{font:400 12px/1.6 var(--f);color:var(--faint);margin:14px 0 0}
+
+/* SCAN — quietest surface. In flight, and the long tail. */
+.scan{padding:0 24px;margin-top:30px}
+.row{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}
+.row .ic{width:42px;height:42px;border-radius:11px;flex:none}
+.row .tx{flex:1;min-width:0}
+.row .nm{font:600 18px/1.25 var(--f);margin:0}
+.row .vb{font:400 14px/1.45 var(--f);color:var(--ink-2);margin:3px 0 0}
+.row .at{font:400 12px var(--m);color:var(--faint)}
+.row .op{font:600 13px var(--f);border:1px solid var(--line-2);border-radius:999px;padding:7px 14px}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;
+  box-shadow:0 0 0 3px rgba(31,138,91,.18)}
+
+/* PACK — unchanged from v3, but scoped to the object rather than to a stranger */
+.pack{margin-top:26px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:var(--map);padding:20px 0 22px}
+.pack .khead{padding:0 24px}
+.pk{display:flex;gap:12px;padding:0 24px;overflow-x:auto}
+.use{flex:none;width:232px;background:var(--bg);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.use .art{height:96px;display:block}
+.use .ub{padding:13px 14px 14px}
+.use .uj{font:600 17px/1.3 var(--f);margin:0;letter-spacing:-.005em}
+.use .um{display:flex;align-items:center;gap:8px;margin:11px 0 0}
+.use .um i{width:20px;height:20px;border-radius:6px;flex:none;display:block}
+.use .um b{font:500 13px var(--f);color:var(--ink-2)}
+.use .um s{margin-left:auto;text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
+.pk::-webkit-scrollbar{height:0}
+.packfoot{padding:14px 24px 0;font:400 12.5px/1.6 var(--f);color:var(--faint)}
+
+/* ACT — once per screen */
+.slab{background:var(--slab);border-radius:16px;padding:20px;margin:30px 24px 0;
+  background-image:radial-gradient(120% 140% at 6% 0%, rgba(255,255,255,.09), transparent 55%)}
+body.dark .slab{background-image:radial-gradient(120% 140% at 6% 0%, rgba(0,0,0,.09), transparent 55%)}
+.slab .lb{font:500 11.5px/1 var(--m);letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.5);margin:0 0 12px}
+body.dark .slab .lb{color:rgba(0,0,0,.45)}
+.slin{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);border-radius:11px;padding:14px 15px}
+body.dark .slin{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.12)}
+.slin .ph{flex:1;font:400 16px var(--f);color:rgba(255,255,255,.6)}
+body.dark .slin .ph{color:rgba(0,0,0,.5)}
+.slin .go{font:600 13px var(--f);background:#fff;color:#111;border-radius:999px;padding:9px 16px}
+body.dark .slin .go{background:#111;color:#fff}
+.slfoot{font:400 12px var(--m);color:rgba(255,255,255,.42);margin:12px 0 0}
+body.dark .slfoot{color:rgba(0,0,0,.4)}
+
+/* MAP */
+.map{background:var(--map);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:34px;padding:20px 24px 22px}
+.mg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line-2);border:1px solid var(--line-2)}
+.mc{background:var(--map);padding:14px 15px} .mc.on2{background:var(--bg)}
+.mc .n{font:600 16px/1.3 var(--f);margin:0} .mc .c{font:400 12px var(--m);color:var(--faint);margin:6px 0 0}
+.endbar{padding:18px 24px 24px;border-top:1px solid var(--line);margin-top:32px;display:flex;gap:12px;align-items:center}
+.endbar .lk{font:600 14px var(--f);border-bottom:1px solid var(--line-2)}
+.endbar .nt{margin-left:auto;font:400 12.5px/1.55 var(--f);color:var(--faint);max-width:50ch;text-align:right}
+
+/* the pointer — the conversion event, and the cold state's centrepiece */
+.point{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+.pt{border:1px solid var(--line);border-radius:13px;padding:16px 15px 17px;background:var(--bg)}
+.pt .ph2{font:600 18px/1.25 var(--f);margin:0}
+.pt .pd{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:6px 0 0}
+.pt .pm{font:400 11.5px var(--m);color:var(--faint);margin:11px 0 0;display:block}
+</style></head>
+<body class="dark">
+
+<div class="top">
+  <div><h1>v4 — the OS direction</h1>
+  <p><b>v3 is a store you shop in. v4 is a desk your work sits on.</b> Same tokens, same five registers, same type scale — the change is what occupies the top of the page. The catalogue does not disappear; it recedes to the bottom, because in an OS you do not browse the Applications folder, you work on your stuff.</p>
+  <p><b>The one new component is THE QUEUE.</b> Every wrapp stages work and nothing irreversible happens without you — that is already true, per wrapp, invisibly. The OS's job is to collect it: everything staged across every app, in one list, each tagged <i>auto</i> / <i>needs you</i> / <i>yours</i>. It promotes Autopilot's mode taxonomy from a wrapp detail to a system concept, and it is the demo line: <b>"five things are staged across four apps. Not one of them happened without me."</b></p></div>
+  <button class="tog" onclick="document.body.classList.toggle('dark')">Light / dark</button>
+</div>
+
+<div class="trio" id="out"></div>
+
+<script>
+const C={
+ brandbrain:["#3DA35D","brandbrain"], ideabrain:["#4C7EF3","ideabrain"], bank:["#12A594","Bank"],
+ redline:["#4C7EF3","Redline"], marquee:["#4C7EF3","Marquee"], adforge:["#EC6142","AdForge"],
+ adpulse:["#E5922B","AdPulse"], autopilot:["#2F8F4E","Autopilot"], aplus:["#E5922B","A-Plus"],
+ batch:["#E5922B","Batch"], prism:["#E93D82","Prism"], reel:["#E93D82","Reel"],
+ studio:["#E93D82","Studio"], shelf:["#E5922B","Shelf"], take:["#12A594","Take"]};
+
+const USES=[
+ ["Draft this week's ads","adforge","about 3 min","linear-gradient(135deg,#F2DCD2,#E2B9A6)"],
+ ["Find the spend that's being wasted","adpulse","paste an export","linear-gradient(135deg,#F1E3C6,#DFC894)"],
+ ["Mark up my landing page like a doc","redline","needs a URL","linear-gradient(135deg,#DCE4F0,#BECDE4)"],
+ ["Build a brand from a site that exists","brandbrain","about 10 min","linear-gradient(135deg,#DCEBD8,#B9D6B0)"],
+ ["Run the week for a company","autopilot","lend it a context","linear-gradient(135deg,#D8E8DC,#AECFB8)"],
+ ["Shoot the product without a studio","studio","upload one photo","linear-gradient(135deg,#F0DAE6,#DEB3CB)"],
+ ["Get the whole week into one list","bank","reads a folder","linear-gradient(135deg,#D6E8E4,#B0D0C9)"],
+ ["Argue with an idea before I build it","ideabrain","about 8 min","linear-gradient(135deg,#DDE0F0,#BCC2E2)"]];
+
+const JOBS=[["Work out if it's worth building",3],["Name it and design it",4],["Get it in front of people",5],
+ ["Sell the thing",3],["Run the week",4],["After hours",3]];
+
+const use=([j,k,meta,g])=>`<div class="use"><span class="art" style="background:${g}"></span><div class="ub">
+ <p class="uj">${j}</p><span class="um"><i style="background:${C[k][0]}"></i><b>${C[k][1]}</b><s>${meta}</s></span></div></div>`;
+const pack=(list,kick,more,foot)=>`<div class="pack"><div class="khead"><p class="kick">${kick}</p>
+ <span class="more">${more}</span></div><div class="pk">${list.map(use).join("")}</div>
+ ${foot?`<p class="packfoot">${foot}</p>`:""}</div>`;
+const mapband=(kick)=>`<div class="map"><p class="kick" style="margin-bottom:13px">${kick}</p>
+ <div class="mg">${JOBS.map(([n,c])=>`<div class="mc"><p class="n">${n}</p><p class="c">${c} apps</p></div>`).join("")}</div></div>`;
+
+/* the system bar. `obj` = what the OS is working on; null before anything is banked. */
+const nav=(obj,cap)=>`<div class="nav"><span class="lo"><i></i>Switchboard</span>
+ ${obj?`<span class="on"><i style="background:${obj[1]}"></i><b>${obj[0]}</b><s>${obj[2]}</s></span>`:""}
+ <span class="sp"></span>
+ ${cap?`<span class="cap"><span class="bar"><i style="width:${cap}%"></i></span><s>${cap}% capacity</s></span>`:""}
+ ${obj?'<a>All apps</a>':'<a>All apps</a><a>How it works</a><span class="btn">Connect</span>'}</div>`;
+
+/* THE QUEUE — mode is the same taxonomy Autopilot ships: auto / needs you / yours. */
+const qi=(mode,what,who,when,cta)=>`<div class="qi">
+ <span class="md ${mode[0]}">${mode[1]}</span>
+ <span class="qt"><p class="qn">${what}</p><p class="qw">${C[who][1]} · ${when}</p></span>
+ <span class="act${mode[0]==='a'?' ghost':''}">${cta}</span></div>`;
+const AUTO=["a","auto"], NEEDS=["p","needs you"], MINE=["m","yours"];
+
+const row=(k,vb,at,live)=>`<div class="row">${live?'<span class="pulse"></span>':''}
+ <span class="ic" style="background:${C[k][0]}"></span>
+ <div class="tx"><p class="nm">${C[k][1]}</p><p class="vb">${vb}</p></div>
+ <span class="at">${at}</span><span class="op">Open</span></div>`;
+
+/* ── STATE A — nothing connected. An OS with nothing in it is a weak OS, so the
+      cold state leads with the pointer (the conversion event) and shows the pack
+      underneath as evidence of what the desk will hold. ── */
+const A=`${nav(null,0)}<div class="pad" style="padding-top:32px">
+ <h1 class="t">Your companies, and everything staged against them.</h1>
+ <p class="sub">Point it at something you already have — a site, a repo, a folder — and it reads it once, on your own Claude. Nothing is uploaded and nothing is sent to us.</p>
+ <div class="point">
+  <div class="pt"><p class="ph2">A website</p><p class="pd">Reads the live page for palette, products and voice.</p><span class="pm">paste a URL</span></div>
+  <div class="pt"><p class="ph2">A repo</p><p class="pd">README, roadmap and open tasks become a project.</p><span class="pm">github link</span></div>
+  <div class="pt"><p class="ph2">A folder</p><p class="pd">Stays on disk. The apps read it where it is.</p><span class="pm">pick a folder</span></div>
+ </div></div>
+ ${pack(USES,"What you'll be able to do with it","8 of 22 shown →","Every app is free and runs on the Claude subscription you already pay for.")}
+ ${mapband("Or browse by what you're doing")}
+ <div class="endbar"><span class="lk">See all 22 apps →</span>
+  <span class="nt">Six of these are ideabrain opened to a different kind of idea, so we count it once.</span></div>`;
+
+/* ── STATE B — connected, library empty. The conversion event: do NOT show
+      recommendations to an empty shelf. The pointer takes their position. ── */
+const B=`${nav(null,4)}<div class="pad" style="padding-top:32px">
+ <h1 class="t">Connected. Nothing on the desk yet.</h1>
+ <p class="sub">Switchboard is running and the apps can reach your Claude. They just have nothing to work on — give it one thing and the whole desk fills in.</p>
+ <div class="point">
+  <div class="pt"><p class="ph2">A website</p><p class="pd">Reads the live page for palette, products and voice.</p><span class="pm">paste a URL</span></div>
+  <div class="pt"><p class="ph2">A repo</p><p class="pd">README, roadmap and open tasks become a project.</p><span class="pm">github link</span></div>
+  <div class="pt"><p class="ph2">A folder</p><p class="pd">Stays on disk. The apps read it where it is.</p><span class="pm">pick a folder</span></div>
+ </div></div>
+ <div class="slab"><p class="lb">Or just say what you're working on</p>
+  <div class="slin"><span class="ph">"a home fragrance brand called Aamras"</span><span class="go">Start it</span></div>
+  <p class="slfoot">one line is enough · nothing is sent anywhere</p></div>
+ ${pack(USES.slice(0,6),"Ready when you are","","Nothing here can run until something is on the desk.")}
+ <div class="endbar"><span class="lk">See all 22 apps →</span></div>`;
+
+/* ── STATE C — the OS proper. THE money shot for a demo. ── */
+const D=`${nav(["Aamras","#C8842E","brand"],62)}
+ <div class="yours" style="margin-top:0;border-top:0">
+  <p class="kick">On the desk</p>
+  <h3>Aamras</h3>
+  <p class="why">Indian maximalist home fragrance, made in small batches. Five apps have worked on this; twelve things came out of it.</p>
+  <div class="objmeta"><span><b>12</b> artifacts</span><span><b>5</b> apps</span><span><b>3</b> decisions locked</span><span>last touched <b>2h ago</b></span></div>
+
+  <div class="q">
+   ${qi(NEEDS,"Run “No kettle” on paid search","autopilot","staged 20m ago · spends money","Review")}
+   ${qi(NEEDS,"Ad set 01 — three creatives, nothing published","adforge","staged 2h ago","Review")}
+   ${qi(NEEDS,"Five edits pinned on the landing page","redline","staged yesterday","Review")}
+   ${qi(AUTO,"This week's notes turned into eight tasks","bank","done · reversible","Look")}
+   ${qi(MINE,"Call the co-packer about the 21-day lead","autopilot","only you can do this","Mark done")}
+  </div>
+  <p class="priv">Everything above was prepared on your machine, on your own Claude. Nothing was sent to us, and nothing on this list has happened — the ones marked <b>needs you</b> are waiting on the button.</p>
+ </div>
+
+ <div class="scan"><div class="khead"><p class="kick">Running now</p><span class="more">2</span></div>
+  ${row("autopilot","Redrafting the channel after you changed the angle","126k tokens",1)}
+  ${row("studio","Rendering four packshots on your Higgsfield","3 of 4",1)}
+ </div>
+
+ ${pack([USES[1],USES[5],USES[2],USES[6],USES[0],USES[3]],"Next for Aamras","reorder →",
+   "Ordered by what's already banked. Nothing here has been opened yet.")}
+
+ <div class="slab"><p class="lb">Or ask for something else</p>
+  <div class="slin"><span class="ph">Ask for anything — it routes and fills it in</span><span class="go">Go</span></div>
+  <p class="slfoot">runs on your Claude · nothing routed through us</p></div>
+
+ ${mapband("Everything else, by what you're doing")}
+ <div class="endbar"><span class="lk">See all 22 apps →</span>
+  <span class="nt">Switch the desk from the bar at the top — each company keeps its own queue.</span></div>`;
+
+document.getElementById("out").innerHTML=`
+ <div class="frame"><div class="flabel">State A — first visit · nothing connected</div>
+  <div class="shell" data-sh><div class="pg">${A}</div></div></div>
+ <div class="frame"><div class="flabel">State B — connected · library EMPTY (the conversion event)</div>
+  <div class="shell" data-sh><div class="pg">${B}</div></div></div>
+ <div class="frame"><div class="flabel">State C — <b>the OS. this is the demo.</b></div>
+  <div class="shell" data-sh><div class="pg">${D}</div></div></div>`;
+function fit(){document.querySelectorAll("[data-sh]").forEach(sh=>{const p=sh.querySelector(".pg"),s=sh.clientWidth/780;
+ p.style.transform=`scale(${s})`;sh.style.height=(p.scrollHeight*s)+"px";});}
+fit();addEventListener("resize",fit);document.fonts.ready.then(fit);
+</script>
+</body></html>
