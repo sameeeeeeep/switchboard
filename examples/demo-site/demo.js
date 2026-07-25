@@ -24,6 +24,17 @@ var Relay = class {
   permissions() {
     return this.provider.request({ method: "claude_permissions" });
   }
+  /** The setup-ladder snapshot (reachable/paired/connected), answered by the EXTENSION from its
+   *  own state — never the daemon — so it resolves fast (<1s) in every degraded state, including
+   *  the ones where every other method would hang. Resolves null when the extension is too old to
+   *  know `claude_health` (or its worker is unreachable): callers MUST treat null as "unknown"
+   *  and fall back to probing permissions() exactly as before — that skew guard is load-bearing
+   *  while store users run an older extension against newer app bundles. */
+  health() {
+    const answer = this.provider.request({ method: "claude_health" }).catch(() => null);
+    const timer = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
+    return Promise.race([answer, timer]);
+  }
   /** The paired user's public identity (name/avatar), or null if unavailable. Convenience over
    *  capabilities().user — what the connect chip greets with ("Hi Sameep"). */
   identity() {
@@ -100,7 +111,12 @@ var Relay = class {
       list: () => req({ op: "list" }).then((r) => r.keys ?? []),
       info: () => req({ op: "info" }).then((r) => r.info),
       /** Point this app's store at a real folder (triggers a path-consent click). */
-      bind: (path) => req({ op: "bind", path }).then((r) => r.info)
+      bind: (path) => req({ op: "bind", path }).then((r) => r.info),
+      /** Open a NATIVE folder chooser on the daemon's machine (macOS today). The user picking a
+       *  folder in an OS dialog that names this origin IS the path consent, so a successful pick
+       *  comes back already bound. Resolves undefined on cancel or when no native picker exists —
+       *  keep a typed-path `bind` as the fallback UI. */
+      pick: (reason) => req({ op: "pick", reason }).then((r) => r.info).catch(() => void 0)
     };
   }
   /**
