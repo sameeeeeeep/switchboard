@@ -29,7 +29,7 @@
 // pages popping against the near-black chrome (the Toolfolio look), with zero screenshot step.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { APPS, APP_BY_ID, fmtTok } from "./store/catalog.js";
-import { FAM, famOf, glyphSvg, glyphTile, thumbArt } from "./store/glyphs.js";
+import { FAM, famOf, glyphSvg, glyphTile, thumbArt, tileColor } from "./store/glyphs.js";
 import {
   CATEGORIES, CATEGORY_BLURB, categoryOf, categoryFam, categoryGlyphSvg, categoryCounts,
 } from "./store/taxonomy.js";
@@ -69,7 +69,9 @@ const demoTasks = isDemo && !isDemoEmpty;
 
 // The newest arrivals — the founder-mandated icons list. Curated newest-first (the in-page ./ wrapps
 // are the latest builds); each row carries the wrapp glyph + a category one-liner.
-const RECENTLY_ADDED = ["huddle", "reel", "identity", "take", "batch", "marquee", "redline", "chat"];
+// Ids must exist in APPS — renderRecent() silently skips unknown ones, so a stale entry
+// here ships a list whose length quietly lies. ("chat" lived here until it left the catalog.)
+const RECENTLY_ADDED = ["huddle", "reel", "identity", "take", "batch", "marquee", "redline"];
 
 // ---------- WHAT'S NEXT / TASKS — the intent bar + the one shared task list ----------
 // The store writes tasks into the SAME file + dialect Bank writes (bank.js:29,75-89,760-777), so a
@@ -246,6 +248,7 @@ function renderCats() {
   box.textContent = "";
   const counts = categoryCounts(APPS);
   for (const cat of CATEGORIES) {
+    if (!(counts[cat] || 0)) continue;   // an empty shelf is not a category worth advertising
     const f = categoryFam(cat);
     const row = mk("button", "cat-row");
     row.type = "button";
@@ -429,36 +432,61 @@ function decorateCards() {
 }
 
 // ========================================================================================
-// FEATURED CAROUSEL
+// THE BOARD — counts, the designation strip, and the hero patch bay
 // ========================================================================================
-function initFeatured() {
-  const slides = [...document.querySelectorAll("#featured .featured")];
-  const dotBox = $("featured-dots");
-  if (!slides.length) return;
-  let fi = 0, timer = null;
-  dotBox.textContent = "";
-  const dots = slides.map((_, i) => {
-    const d = mk("button", "fdot");
-    d.type = "button";
-    d.setAttribute("aria-label", `Featured ${i + 1}`);
-    d.onclick = () => { show(i); restart(); };
-    dotBox.append(d);
-    return d;
-  });
-  function show(i) {
-    fi = (i + slides.length) % slides.length;
-    slides.forEach((sl, k) => sl.classList.toggle("on", k === fi));
-    dots.forEach((d, k) => d.classList.toggle("on", k === fi));
+// Every count on the page renders from APPS. Hardcoding one rots the day the 28th app lands.
+function renderBoardCounts() {
+  const n = String(APPS.length);
+  for (const id of ["board-count", "toll-count", "hero-count"]) {
+    const el = $(id); if (el) el.textContent = n;
   }
-  function restart() {
-    if (timer) clearInterval(timer);
-    timer = setInterval(() => show(fi + 1), 6500);
-  }
-  $("featured").addEventListener("mouseenter", () => timer && clearInterval(timer));
-  $("featured").addEventListener("mouseleave", restart);
-  show(0);
-  restart();
 }
+
+// The hero's right column: four real apps, previewed live. Same makeThumb() the catalog uses,
+// so the first screen shows the product instead of describing it. Chosen for visual variety
+// across families rather than curated by hand — ids are checked so a catalog edit can't 404.
+const HERO_ART = ["brandbrain", "adforge", "arcana", "bank"];
+function renderHeroArt() {
+  const box = $("hero-art");
+  if (!box) return;
+  box.textContent = "";
+  for (const id of HERO_ART) {
+    const app = APP_BY_ID[id];
+    if (!app) continue;
+    const a = mk("a");
+    a.href = detailHref(app.id);
+    a.title = app.name;
+    a.dataset.app = app.id;
+    const cap = mk("span", "cap");
+    cap.append(glyphTile(app.id, 22), mk("span", "nm", app.name));
+    a.append(makeThumb(app, true), cap);
+    box.append(a);
+  }
+}
+
+// The designation strip over the board — same scroll-to-section behaviour as the sidebar
+// category rows, so there is still exactly one primary action on the page.
+function renderBoardStrip() {
+  const box = $("board-strip");
+  if (!box) return;
+  const counts = categoryCounts(APPS);
+  box.textContent = "";
+  for (const cat of CATEGORIES) {
+    const n = counts[cat] || 0;
+    if (!n) continue;                                   // never advertise an empty position
+    const b = mk("button");
+    b.type = "button";
+    b.append(document.createTextNode(cat), mk("span", "n", String(n)));
+    b.onclick = () => {
+      [...box.children].forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      [...document.querySelectorAll("#store .sec-h")].find((x) => x.dataset.cat === cat)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    box.append(b);
+  }
+}
+
 
 // ========================================================================================
 // RECENTLY ADDED — the icons list (founder-mandated glyphs)
@@ -555,7 +583,7 @@ function movePoint(toDash) {
   // Insert before #next-sec (What's next), not #review-sec — on an empty-library first run #next-sec is
   // the first dash section, so setup must land ahead of IT to stay the front door.
   if (toDash) $("dash").insertBefore(s, $("next-sec"));
-  else $("hero").insertBefore(s, $("way-sec"));
+  else $("call-sec").appendChild(s);   // disconnected home: under the four steps, collapsed
 }
 
 // ========================================================================================
@@ -732,6 +760,7 @@ function onDisconnected() {
 
 function showDash() {
   $("hero").hidden = true;
+  if ($("pitch")) $("pitch").hidden = true;   // the pitch is for strangers, not for your dashboard
   $("dash").hidden = false;
   $("wallet-chip").hidden = false;
   $("dock").hidden = false;
@@ -746,6 +775,7 @@ function hideDash() {
   $("dash-body").classList.remove("on"); // next connect fades a true statement in, not a stale one
   promotedAction = null;
   $("hero").hidden = false;
+  if ($("pitch")) $("pitch").hidden = false;
   $("wallet-chip").hidden = true;
   $("dock").hidden = true;
   document.body.classList.remove("plan-pro", "is-demo");
@@ -1019,12 +1049,11 @@ function renderTaskOS() {
   }
 }
 function reviewCard(it) {
-  const f = famOf(it.app);
   return `<div class="rv"><div class="pv"><svg viewBox="0 0 300 74" preserveAspectRatio="none">${it.pv}</svg></div><div class="b">` +
     `<div class="top"><span class="bav" style="background:${it.base}">${it.brand[0]}</span><span class="bname">${it.brand}</span>` +
     `<span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg></span></div>` +
     `<div class="nm">${it.title}</div>` +
-    `<div class="foot"><span class="wtag"><span class="wi" style="background:${f.soft};color:${f.ink}">${glyphSvg(it.app)}</span>${it.name}</span>` +
+    `<div class="foot"><span class="wtag"><span class="wi" style="background:${tileColor(it.app)};color:#fff">${glyphSvg(it.app)}</span>${it.name}</span>` +
     `<button class="rvbtn" type="button">${it.btn}</button></div></div></div>`;
 }
 
@@ -1037,10 +1066,9 @@ function renderDock() {
   if (!ids.length) ids = DOCK_FALLBACK.filter((id) => APP_BY_ID[id]);
   for (const id of ids) {
     const app = APP_BY_ID[id];
-    const f = famOf(id);
     const a = mk("a", "di");
     a.href = app.href; a.dataset.app = id; a.title = app.name;
-    a.style.background = f.soft; a.style.color = f.ink;
+    a.style.background = tileColor(id); a.style.color = "#fff";
     a.innerHTML = glyphSvg(id);
     box.append(a);
   }
@@ -1379,8 +1407,8 @@ function launchAnchor(wrappId, text, label) {
   const base = app.href;
   a.href = base + (base.includes("?") ? "&" : "?") + "task=" + encodeURIComponent(text);
   a.dataset.app = wrappId;
-  const wi = mk("span", "nt-wi"); const f = famOf(wrappId);
-  wi.style.background = f.soft; wi.style.color = f.ink; wi.innerHTML = glyphSvg(wrappId);
+  const wi = mk("span", "nt-wi");
+  wi.style.background = tileColor(wrappId); wi.style.color = "#fff"; wi.innerHTML = glyphSvg(wrappId);
   a.append(wi, document.createTextNode(label), Object.assign(document.createElement("span"), { textContent: "→" }));
   return a;
 }
@@ -1790,6 +1818,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 $("hero-connect").onclick = () => clickConnect();
+if ($("toll-connect")) $("toll-connect").onclick = () => clickConnect();
 $("projects-new").onclick = () => point.open();
 
 // the two intent bars — connected (routes + saves to tasks.md) and the lighter pre-connect echo
@@ -1809,7 +1838,9 @@ point.mount();
 renderNav();
 renderCats();
 decorateCards();
-initFeatured();
 renderRecent();
+renderBoardCounts();
+renderBoardStrip();
+renderHeroArt();
 sortCards("trending");
 applyFilters();
