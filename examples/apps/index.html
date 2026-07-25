@@ -9,7 +9,9 @@
     <script>/*CAPHELPER*/(function(){try{var id=new URLSearchParams(location.search).get('cap');if(!id)return;var st=document.createElement('style');st.textContent='.content>section:not(#'+id+'){display:none!important}';document.head.appendChild(st);}catch(e){}})();</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       :root{
         /* surfaces — near-black page, sidebar a hair darker, cards a hair lighter */
@@ -23,8 +25,8 @@
         /* semantics — used SPARINGLY (a tick, a live dot, a sim badge) */
         --verify:#4C8DF6; --ok:#54B487; --sim:#C8A24B; --sim-bg:rgba(200,162,75,.12);
         /* type */
-        --font-display:"Space Grotesk","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-        --font-sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        --font-display:"Switzer","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        --font-sans:"Switzer","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
         --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
         /* radii */
         --r:14px; --r-sm:10px; --r-xs:7px; --r-lg:20px; --r-pill:999px; --r-thumb:12px;
@@ -136,7 +138,7 @@
       /* shared zone header */
       .zone{display:flex;align-items:baseline;gap:11px;margin:34px 0 15px;flex-wrap:wrap}
       .zone .z{font:600 10.5px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
-      .zone h2{margin:0;font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.02em}
+      .zone h2{margin:0;font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:-.025em}
       .zone .s{font-size:13px;color:var(--ink-2)}
       .zone .all{margin-left:auto;font-size:13px;color:var(--ink);font-weight:600;border-bottom:1px solid var(--line-2);padding-bottom:1px}
       .zone .all:hover{color:var(--accent-hover)}
@@ -197,7 +199,8 @@
       .coming p{margin:0;color:var(--ink-2);font-size:13px;line-height:1.6;max-width:64ch}
       .coming .tag{display:inline-block;margin-top:9px;font:600 10px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--verify);background:rgba(76,141,246,.1);border-radius:6px;padding:5px 8px}
 
-      .projs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+      /* auto-fit so real project counts (4, 5, 7…) never strand a lone orphan on a second row */
+      .projs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
       .proj{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;transition:transform .14s,border-color .14s;display:block;box-shadow:var(--shadow)}
       .proj:hover{transform:translateY(-3px);border-color:var(--line-2)}
       .proj .ph{height:64px;display:flex;align-items:flex-end;padding:12px 14px}
@@ -293,7 +296,7 @@
       .trow-n .nt-open .nt-wi{width:18px;height:18px;border-radius:5px;flex:none;display:grid;place-items:center}
       .trow-n .nt-open .nt-wi svg{width:11px;height:11px}
       /* the lighter pre-connect echo in the hero */
-      .next-pre{max-width:560px;margin:0 0 26px}
+      .next-pre{max-width:560px;margin:24px 0 26px}
       .next-pre .pt-inrow{margin-top:0}
       .next-pre .next-suggest{margin-top:12px;max-width:560px}
 
@@ -331,9 +334,11 @@
       #hero{padding:52px 0 4px}
       .eyebrow{display:inline-flex;align-items:center;gap:8px;font:600 11px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 13px}
       .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
-      .hero-h{font-family:var(--font-display);font-size:clamp(38px,6vw,64px);font-weight:700;letter-spacing:-.035em;line-height:1.02;margin:20px 0 0;max-width:16ch}
+      /* Two sentences, not six words — the measure and scale are set so the whole hero
+         (statement → sub → CTA → greeting bar → the board) still lands in one screen. */
+      .hero-h{font-family:var(--font-display);font-size:clamp(27px,3.1vw,40px);font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:18px 0 0;max-width:27ch}
       .hero-h .hl{color:var(--ink-2)}
-      .hero-sub{color:var(--ink-2);max-width:56ch;margin:18px 0 24px;font-size:16px;line-height:1.55}
+      .hero-sub{color:var(--ink-2);max-width:64ch;margin:18px 0 24px;font-size:15px;line-height:1.62}
       .hero-sub b{color:var(--ink);font-weight:600}
       .hero-cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--r-pill);padding:13px 20px;font:600 14px/1 var(--font-sans);cursor:pointer}
       .hero-cta:hover{background:var(--accent-hover)}
@@ -398,7 +403,7 @@
 
       /* ============================ STORE GRID ============================ */
       .sec-h{display:flex;align-items:baseline;gap:11px;margin:38px 0 15px;flex-wrap:wrap;scroll-margin-top:76px}
-      .sec-h h3{margin:0;font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.02em}
+      .sec-h h3{margin:0;font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.025em}
       .sec-h span{font-size:13px;color:var(--ink-2)}
       .sec-h .sh-c{margin-left:auto;font:500 11px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums}
       .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
@@ -408,8 +413,8 @@
       .card .ic{width:34px;height:34px;border-radius:var(--r-sm);flex:none;margin-top:1px}
       .card .ic svg{width:56%;height:56%}
       .card .txt{min-width:0;flex:1}
-      .card h4{margin:0;font-family:var(--font-display);font-size:14.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
-      .card p{margin:3px 0 0;font-size:11.5px;color:var(--ink-2);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .card h4{margin:0;font-family:var(--font-display);font-size:15.5px;font-weight:600;letter-spacing:-.015em;display:flex;align-items:center;gap:6px}
+      .card p{margin:5px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .cat-line{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
       .cat-tag{display:inline-block;font:600 9px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:4px 7px}
       .pro-pill{font:600 8.5px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:5px;padding:4px 7px}
@@ -598,6 +603,55 @@
       }
       @media(prefers-reduced-motion:reduce){.pt-scan::after{animation:none;width:100%}.pt-tile:hover,.pt-card:hover,.pt-app:hover{transform:none}}
 
+      /* ---- additions that COMPOSE with the base system (no new visual vocabulary) ---- */
+      .hero-micro{margin:12px 0 0;font:500 11.5px/1 var(--font-mono);color:var(--faint);letter-spacing:.02em}
+      /* hero: copy left, live app previews right — the same shape the detail pages already use */
+      .hero-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,500px);gap:46px;align-items:center}
+      .hero-copy{min-width:0}
+      .hero-art{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
+      .hero-art a{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+        overflow:hidden;box-shadow:var(--shadow);transition:transform .14s,border-color .14s}
+      .hero-art a:hover{transform:translateY(-3px);border-color:var(--line-2)}
+      .hero-art .thumb{border-radius:0}
+      .hero-art .cap{display:flex;align-items:center;gap:8px;padding:9px 11px}
+      .hero-art .cap .ic{width:22px;height:22px;border-radius:7px;flex:none}
+      .hero-art .cap .ic svg{width:56%;height:56%}
+      .hero-art .cap .nm{font-family:var(--font-display);font-size:12.5px;font-weight:600;letter-spacing:-.01em;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      @media(max-width:1180px){
+        .hero-row{grid-template-columns:minmax(0,1fr);gap:34px}
+        .hero-art{grid-template-columns:repeat(4,1fr)}
+      }
+      @media(max-width:640px){ .hero-art{grid-template-columns:1fr 1fr} }
+      /* the why cards reuse .card/.grid; only the old/new contrast pair is new */
+      .why-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .card.why{cursor:default}
+      .card.why:hover{transform:none;box-shadow:var(--shadow);border-color:var(--line)}
+      .card.why .body{padding:18px 20px 20px}
+      .card.why h4{font-size:15px;margin-bottom:10px}
+      .w-old{color:var(--faint)!important;-webkit-line-clamp:unset!important;display:block!important;font-size:12.5px!important;line-height:1.6!important}
+      .w-new{color:var(--ink-2)!important;-webkit-line-clamp:unset!important;display:block!important;font-size:12.5px!important;line-height:1.6!important;margin-top:9px!important}
+      /* the five noes reuse .recs/.rec */
+      .noes{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .noes .rec{cursor:default}
+      .noes .rec:hover{transform:none;border-color:var(--line)}
+      /* pricing reuses .side-card / .account-rail; free is deliberately the wider one */
+      .toll-free .sc-big{color:var(--ok)}
+      .toll-doors{margin-top:14px}
+      /* the closing line */
+      .closeline{border-top:1px solid var(--line);padding:88px 0 76px;text-align:center}
+      .closeline .q{font-family:var(--font-display);font-weight:700;letter-spacing:-.03em;
+        font-size:clamp(21px,2.6vw,30px);color:var(--ink);margin:0 auto;max-width:24ch;line-height:1.2}
+      .closeline .attr{margin:16px 0 0;font:500 11px/1 var(--font-mono);color:var(--faint);letter-spacing:.04em}
+      .closeline .attr a{color:var(--faint);border-bottom:1px solid var(--line-2)}
+      .closeline .attr a:hover{color:var(--ink-2)}
+
+      @media(max-width:900px){
+        .why-grid{grid-template-columns:minmax(0,1fr)}
+        .noes{grid-template-columns:minmax(0,1fr)}
+        .flags{grid-template-columns:minmax(0,1fr)}
+      }
+
       /* ============================ RESPONSIVE ============================ */
       /* The fixed 230px sidebar shrinks the main column, so topbar breakpoints are keyed to the
          EFFECTIVE width (viewport − sidebar). Non-essential chrome sheds first, then the redundant
@@ -634,6 +688,10 @@
         .dhero{padding-top:34px}
         .dhero-cta{width:100%;justify-content:center}
         #dash .zone{margin-top:44px}
+        /* the greeting bar stacks — side by side the input truncates mid-word */
+        .pt-inrow{flex-direction:column;align-items:stretch}
+        .pt-inrow .pt-go{width:100%;text-align:center}
+        .hero-cta{width:100%;justify-content:center}
       }
       @media(prefers-reduced-motion:reduce){*{transition:none!important}.proj:hover,.card:hover,.act:hover,.rec:hover,.step:hover,.dock .di:hover{transform:none}}
     </style>
@@ -769,78 +827,82 @@
 
         <!-- ===================== HERO + ONBOARDING (disconnected only) ===================== -->
         <section id="hero">
-          <p class="eyebrow"><span class="dot"></span>Wrapp store · runs on your own AI</p>
-          <h1 class="hero-h">A home for your work, and the apps that <span class="hl">move it forward.</span></h1>
-          <p class="hero-sub">Connect Switchboard and this page becomes <b>your</b> dashboard — your projects, what's next, and the wrapp for each job. Every app runs on <b>your</b> Claude and <b>your</b> tools; the operator never holds a key or sees your data.</p>
-          <button class="hero-cta" id="hero-connect" type="button"><span>Connect Switchboard</span><span>→</span></button>
+          <!-- Copy left, real product right — the same hero shape every {id}-landing.html uses.
+               The right column is the store's own signature component (.thumb: a live, scaled
+               iframe of the real app page), so the first screen shows actual apps instead of
+               describing them, and the page's first colour arrives above the fold. -->
+          <div class="hero-row">
+            <div class="hero-copy">
+              <p class="eyebrow"><span class="dot"></span>Open source · runs on the Claude you already pay for</p>
+              <h1 class="hero-h">One connection. <span class="hl">Not one per app.</span></h1>
+              <p class="hero-sub">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Switchboard sits in between: you connect your own Claude <b>once</b>, and all <span id="hero-count">27</span> apps here run on that one connection. Nothing you type reaches a server of ours.</p>
+              <button class="hero-cta" id="hero-connect" type="button"><span>Connect Switchboard</span><span>→</span></button>
+              <p class="hero-micro">Free. No account. Takes about two minutes.</p>
 
-          <!-- LIGHTER pre-connect intent bar — a synchronous keyword scorer routes a described task to a
-               detail page. No list, no write until you connect. -->
-          <div class="next-pre" id="next-pre">
-            <div class="pt-inrow">
-              <input class="pt-input" id="next-pre-input" type="text" autocomplete="off" spellcheck="false" placeholder="Know the job but not the tool? Describe the task">
-              <button class="pt-go" id="next-pre-go" type="button">Find the wrapp ▸</button>
-            </div>
-            <div class="next-suggest" id="next-pre-suggest" hidden></div>
-          </div>
-
-          <!-- FIRST-PROJECT SETUP. Two homes for one section: here inside #hero while disconnected,
-               and moved to the top of #dash (before #next-sec) once connected. home.js does the
-               move; point.js owns everything inside #pt-stage. -->
-          <section id="point-sec" hidden>
-            <div class="zone" id="pt-zone">
-              <span class="z">Set up</span>
-              <h2>Point at it and it's yours</h2>
-              <span class="s">One link or one folder. Your Claude reads it, you confirm what it found, and every app below can borrow it.</span>
-              <button class="all" id="pt-collapse" type="button" style="background:none;border:0;cursor:pointer;font:inherit">hide</button>
-            </div>
-            <button class="pt-bar" id="pt-bar" type="button" hidden>+ Point at a site, repo, or folder</button>
-            <div class="pt-body" id="pt-body">
-              <div class="pt-reconnect" id="pt-reconnect" hidden>
-                <p>This page was connected before it could read for you. Re-approve once to let your Claude read what you point at.</p>
-                <button class="pt-go" id="pt-reconnect-go" type="button">Re-approve ▸</button>
+              <!-- Pre-connect intent bar — same synchronous keyword scorer and routing as before. -->
+              <div class="next-pre" id="next-pre">
+                <div class="pt-inrow">
+                  <input class="pt-input" id="next-pre-input" type="text" autocomplete="off" spellcheck="false" placeholder="Know the job but not the tool? Describe the task">
+                  <button class="pt-go" id="next-pre-go" type="button">Find the app ▸</button>
+                </div>
+                <div class="next-suggest" id="next-pre-suggest" hidden></div>
               </div>
-              <div id="pt-stage"></div>
+            </div>
+            <div class="hero-art" id="hero-art"></div>
+          </div>
+
+          <!-- ===================== WHY IT'S DIFFERENT =====================
+               Same .zone → .grid → .card rhythm as the catalog below it. No new vocabulary. -->
+          <section id="why-sec">
+            <div class="zone" style="margin-top:56px"><span class="z">One connection</span><h2>Three things you set up once, instead of once per app.</h2><span class="s">what every other AI app makes you repeat — and what happens here instead</span></div>
+            <div class="grid why-grid">
+              <div class="card why"><span class="body"><span class="txt">
+                <h4>One account</h4>
+                <p class="w-old">Everywhere else: every app is another signup, another password, another company holding a login.</p>
+                <p class="w-new">Here: no account with us, and none with any app. You bring the Claude account you already have.</p>
+              </span></span></div>
+              <div class="card why"><span class="body"><span class="txt">
+                <h4>One subscription</h4>
+                <p class="w-old">Everywhere else: their model, their key, their markup — a second bill stacked on the AI you already pay for.</p>
+                <p class="w-new">Here: your Claude is already paid for and sitting idle. Apps spend that quota, and we never touch the transaction.</p>
+              </span></span></div>
+              <div class="card why"><span class="body"><span class="txt">
+                <h4>One copy of your context</h4>
+                <p class="w-old">Everywhere else: each app learns your business from scratch, so you explain it again for the third time.</p>
+                <p class="w-new">Here: your context lives in a folder on your machine. You lend it to an app for one job, and it hands it back.</p>
+              </span></span></div>
             </div>
           </section>
-
-          <section id="way-sec">
-            <div class="zone" style="margin-top:40px"><span class="z">Getting set up</span><h2>The way</h2><span class="s">four steps — the page knows where you are</span></div>
-            <div class="way" id="way"></div>
-          </section>
         </section>
 
-        <!-- ===================== FEATURED CAROUSEL (always visible) ===================== -->
-        <section id="featured-sec">
-          <div class="zone"><span class="z">Featured</span><h2>Editor's picks</h2><span class="s">the flagships — each runs on your own Claude</span></div>
-          <div id="featured">
-            <a class="featured" href="https://brandbrain.thelastprompt.ai/build" data-app="brandbrain" data-tags="brand builder consumer launch positioning" target="_blank" rel="noreferrer">
-              <span class="feat-l"><span class="fk">Featured wrapp</span>
-                <span class="txt"><h2>brandbrain</h2>
-                <p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p></span>
-              </span>
+        <!-- ===================== THE BOARD — one act, four strata =====================
+             Replaces three competing modules (the rotating carousel, a separate "recently
+             added" section, and the bare catalog). The carousel is CUT: a rotating
+             hero-scale advert directly above a wall of live previews is the store arguing
+             with itself. The three flagships survive as a row that is all visible at once. -->
+        <section id="board-sec">
+          <div class="zone"><span class="z">The board</span><h2><span id="board-count">27</span> wrapps, and every tile is the real thing.</h2><span class="s">Not screenshots. Each tile is that wrapp's own page, rendered live inside this one. Open one and it runs on your Claude.</span></div>
+          <p class="bprecise">To be exact: each tile is the app's real landing page loading live in this page. It is a live preview of a real app, not the app doing your work — that starts when you open one.</p>
+          <p class="bprecise">Every wrapp on the board today is built by us. Third-party wrapps will run inside an isolated runner that cannot phone home — that runner is designed and not yet built, which is exactly why the board is first-party today.</p>
+
+          <div class="bstrip" id="board-strip"></div>
+          <p class="bnote">Six of these are ideabrain opened to one kind of idea, not six separate apps. They get their own tile because they are their own front door, and we say it here because you would work it out in three clicks anyway.</p>
+
+          <p class="bkick">The first three cords</p>
+          <div class="flags">
+            <a class="card" data-app="brandbrain" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>brandbrain</h4><p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p></span></span>
             </a>
-            <a class="featured" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-app="ideabrain" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" target="_blank" rel="noreferrer">
-              <span class="feat-l"><span class="fk">Featured wrapp</span>
-                <span class="txt"><h2>ideabrain</h2>
-                <p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p></span>
-              </span>
+            <a class="card" data-app="ideabrain" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>ideabrain</h4><p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p></span></span>
             </a>
-            <a class="featured" href="https://bank.thelastprompt.ai" data-app="bank" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" target="_blank" rel="noreferrer">
-              <span class="feat-l"><span class="fk">Featured wrapp</span>
-                <span class="txt"><h2>Bank</h2>
-                <p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p></span>
-              </span>
+            <a class="card" data-app="bank" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" target="_blank" rel="noreferrer">
+              <span class="body"><span class="txt"><h4>Bank</h4><p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p></span></span>
             </a>
           </div>
-          <div id="featured-dots"></div>
-        </section>
 
-        <!-- ===================== RECENTLY ADDED (icons list) ===================== -->
-        <section id="recent-sec">
-          <div class="zone"><span class="z">Fresh</span><h2>Recently added</h2><span class="s">the newest wrapps on the shelf</span></div>
+          <p class="bkick">Newest on the board</p>
           <div id="recent-list"></div>
-        </section>
 
         <!-- ===================== ALL WRAPPS GRID ===================== -->
         <section id="store">
@@ -956,14 +1018,113 @@
           </div>
 
           <div id="no-hits" class="lib-empty" hidden>Nothing matches — try a shorter search.</div>
+        </section><!-- /#store -->
+        </section><!-- /#board-sec -->
 
-          <footer>
-            Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
-            your machine enforces. Open source at
-            <a href="https://github.com/sameeeeeeep/switchboard" target="_blank" rel="noreferrer">github.com/sameeeeeeep/switchboard</a>
-            — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
-          </footer>
-        </section>
+        <!-- ===================== THE PITCH (disconnected only) =====================
+             Toggled with #hero by showDash()/hideDash(). Keeping it out of #hero is only
+             a DOM-order necessity — the board has to sit between the walls and the call. -->
+        <section id="pitch">
+
+          <!-- ---------- getting set up: the four steps + the setup block ---------- -->
+          <section id="call-sec">
+            <div class="zone" style="margin-top:64px"><span class="z">Getting set up</span><h2>Four steps, and it's yours.</h2><span class="s">the page keeps track of which one you're on</span></div>
+            <div class="way" id="way"></div>
+
+            <!-- FIRST-PROJECT SETUP. Two homes for one section: here inside #call-sec while
+                 disconnected (collapsed — disconnected it cannot do anything), and moved to the
+                 top of #dash (before #next-sec) once connected. home.js does the move;
+                 point.js owns everything inside #pt-stage. -->
+            <section id="point-sec" hidden>
+              <div class="zone" id="pt-zone">
+                <span class="z">Set up</span>
+                <h2>Point at it and it's yours</h2>
+                <span class="s">One link or one folder. Your Claude reads it, you confirm what it found, and every app below can borrow it.</span>
+                <button class="all" id="pt-collapse" type="button" style="background:none;border:0;cursor:pointer;font:inherit">hide</button>
+              </div>
+              <button class="pt-bar" id="pt-bar" type="button" hidden>+ Point at a site, repo, or folder</button>
+              <div class="pt-body" id="pt-body">
+                <div class="pt-reconnect" id="pt-reconnect" hidden>
+                  <p>This page was connected before it could read for you. Re-approve once to let your Claude read what you point at.</p>
+                  <button class="pt-go" id="pt-reconnect-go" type="button">Re-approve ▸</button>
+                </div>
+                <div id="pt-stage"></div>
+              </div>
+            </section>
+          </section>
+
+          <!-- ---------- the five noes ---------- -->
+          <section id="silence-sec">
+            <div class="zone" style="margin-top:64px"><span class="z">What never happens</span><h2>Five things this can't do to you.</h2><span class="s">written the way we can defend them, not the way that sounds best</span></div>
+            <div class="recs noes">
+              <div class="rec"><h5>No key in the app</h5><span class="why">An app never sees a credential, and neither do we. An app is static files; the credential and the connection live in the daemon on your machine.</span></div>
+              <div class="rec"><h5>No account</h5><span class="why">None with us, and none with any app. You install once and bring the Claude account you already have.</span></div>
+              <div class="rec"><h5>No second bill</h5><span class="why">No API key, no markup, no charge from us for inference. Apps spend the plan quota you already pay for. The daemon does meter each app's usage locally so you can set a budget — that meter reports to you and to nobody else.</span></div>
+              <div class="rec"><h5>No one in the middle</h5><span class="why">Nothing is shared with an app's developer, with us, or with anyone in between. Your prompts go to your own model provider under your own account, or to a local model and then nowhere at all.</span></div>
+              <div class="rec"><h5>No silent hands</h5><span class="why">Nothing writes, sends, or spends without a click that no page and no model output can forge.</span></div>
+            </div>
+            <p class="lib-foot">Every one of those is a constraint you can read in the source, not a promise you have to take from us. One more thing we'd rather say than have you find: where an app's work is stored is yours to choose. Bind an app to a folder you own, or leave it unbound and it gets a folder inside the daemon's own state directory — still your disk, still your machine, never our server.</p>
+          </section>
+
+          <!-- ---------- team mode ---------- -->
+          <section id="team-sec">
+            <div class="zone" style="margin-top:64px"><span class="z">More than one line · shipped</span><h2>N people. N Claudes. One folder.</h2><span class="s">Each teammate keeps their own AI. Only files move.</span></div>
+            <div class="side-card">
+              <div class="sc-k">Shipped <span class="sim" style="color:var(--ok);background:rgba(84,180,135,.1);border-color:rgba(84,180,135,.3)">off until you turn it on</span></div>
+              <p class="sc-copy">Multiplayer everywhere else means everyone shares one model on someone else's machine — and that machine reads every document on it. Team Mode is the inverse. Each member keeps their own Claude, their own approvals, their own machine. What syncs is files: the same folder, in the same plain .md your vault already speaks. One member hosts, the others join by pasting one invite code. Every frame is sealed before it leaves the machine, and the relay that carries it between networks never holds the key, opens nothing, and stores nothing. It's MIT like everything else — a hosted one is running today and prefilled when you host, or you can self-host it.</p>
+              <p class="sc-foot">You will not watch a teammate's Claude type. There's no shared stream, no per-member attribution inside apps, and no roles yet. Concurrent edits merge file by file, last write wins — right for notes and tasks, wrong for two people typing in one paragraph. Your teammate's Claude never becomes yours; inference never changes hands. And a teammate can never answer a consent prompt on your machine.</p>
+            </div>
+          </section>
+
+          <!-- ---------- pricing ---------- -->
+          <section id="toll-sec">
+            <div class="zone" style="margin-top:64px"><span class="z">Pricing</span><h2>Using your own AI is free. That's the design, not a trial.</h2><span class="s">everything here runs on the Claude you already pay for — or a model on your own machine — at no charge from us</span></div>
+            <div class="side-card toll-free">
+              <div class="sc-k">Your own AI</div>
+              <div class="sc-big">Free</div>
+              <p class="sc-copy">All <span id="toll-count">27</span> apps, the whole loop, end to end. No watermark, no artificial delay, no export of your own work held back, and no consent or safety feature ever behind a plan. Your context and your files are yours on every tier, because they never left your machine to begin with.</p>
+              <p class="sc-foot">Your own Claude or a local model — the loop is identical either way. Open source, MIT: read the broker or run your own copy. The only meter is the local one, so you can set a budget per app; it reports to you and to nobody else.</p>
+              <button class="sc-btn" id="toll-connect" type="button" style="margin-top:16px">Connect Switchboard →</button>
+            </div>
+            <div class="account-rail toll-doors">
+              <div class="side-card">
+                <div class="sc-k">No AI set up yet? <span class="sim">simulated</span></div>
+                <div class="sc-big num">Token packs</div>
+                <p class="sc-copy">If you have no Claude and no local model yet, a token pack covers the work until you bring your own. Buy once; packs never expire. The moment you connect your own Claude they stop being spent.</p>
+                <p class="sc-foot">Said plainly: checkout here is a labelled simulation today — no card, no charge, no payment rails, no hosted pool behind it. Never required; connecting your own Claude is always the shorter path.</p>
+              </div>
+              <div class="side-card">
+                <div class="sc-k">A team? <span class="sim" style="color:var(--ok);background:rgba(84,180,135,.1);border-color:rgba(84,180,135,.3)">free today</span></div>
+                <div class="sc-big num">Open source</div>
+                <p class="sc-copy">Team Mode is free and MIT, and you can self-host the relay right now. A hosted relay carries a team across networks without anyone running infrastructure; one is running today and prefilled when you host.</p>
+                <p class="sc-foot">Free while we harden it. If that ever changes it would be the second and last thing we charge for — and it still would never hold your key, your files, or the ability to read a frame it carries.</p>
+              </div>
+            </div>
+            <p class="lib-foot">Neither of those is a wall. Nothing here makes bringing your own AI the second-class path — that's not a promise invented for a landing page, it's written down with the rest of the rules in <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/TOKENS.md" target="_blank" rel="noreferrer" style="color:var(--ink-2);border-bottom:1px solid var(--line-2)">TOKENS.md</a>.</p>
+          </section>
+
+          <!-- ---------- files: direction, not built ---------- -->
+          <section id="folder-sec">
+            <div class="zone" style="margin-top:64px"><span class="z">What's next · not built yet</span><h2>Your files, given a face.</h2><span class="s">the direction we're working toward — shown here as a plan, not a feature</span></div>
+            <div class="lib-empty">
+              <p style="margin:0 0 12px">Today an app can borrow a folder and read it, once you approve it. What we want next is for the daemon to render that folder — a live view of the real files, never a copy. You'd look at your files the way you look at a page: add something, remove something, and you've edited the real file, though the app never touched your disk.</p>
+              <p style="margin:0;color:var(--faint)">The honest hard parts: one source of truth means watching the disk and writing back through to it; every format needs a viewer; write-back has to be faithful or it's worse than nothing; and the trust boundary gets wider, not narrower — the part we're slowest about on purpose. <b style="color:var(--sim);font-weight:600">None of this is built.</b> It's the direction, and we'd rather show you the plan than pretend it's already wired.</p>
+            </div>
+          </section>
+
+          <!-- ---------- the closing line ---------- -->
+          <div class="closeline">
+            <p class="q">The app is replaceable. Your Claude, your files and your machine are not.</p>
+            <p class="attr">that's the whole idea — <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/MANIFESTO.md" target="_blank" rel="noreferrer">read the manifesto</a></p>
+          </div>
+        </section><!-- /#pitch -->
+
+        <footer>
+          Switchboard is the consent broker that makes this possible: apps ask, you grant, the daemon on
+          your machine enforces. Open source at
+          <a href="https://github.com/sameeeeeeep/switchboard" target="_blank" rel="noreferrer">github.com/sameeeeeeep/switchboard</a>
+          — or <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md" target="_blank" rel="noreferrer">build a wrapp</a> of your own.
+        </footer>
       </div>
     </div>
 

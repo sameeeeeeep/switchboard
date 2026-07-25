@@ -112,14 +112,34 @@ export function glyphSvg(id) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${entry(id).glyph}</svg>`;
 }
 
-/** A rounded, category-tinted tile with the wrapp glyph — the icon used on store cards & the dock. */
+// Per-app ICON colour — a saturated, distinct hue so the store band reads as a field of real app
+// icons (App-Store / Raycast style), not the old wall of near-white category tiles. Colours are
+// tuned to be distinct *within* a visible cluster — most importantly the seven "Validate an idea"
+// presets, which used to share one blue and previewed as duplicates. Parked / one-off ids fall back
+// to a saturated version of their category family.
+const FAM_TILE = { gold: "#E5922B", green: "#3DA35D", pink: "#E93D82", blue: "#4C7EF3", teal: "#12A594", violet: "#8B5CF6" };
+const TILE = {
+  brandbrain: "#3DA35D", ideabrain: "#F2A03D", bank: "#12A594",
+  // validate-an-idea presets — deliberately spread across the wheel
+  mkt: "#4C7EF3", capp: "#E93D82", saas: "#5B5BD6", retail: "#E5732B", hardware: "#7C8CA5", feature: "#2E9E6E",
+  // founder stack
+  adpulse: "#3E63DD", adforge: "#EC6142", shelf: "#46A758", studio: "#D6409F", aplus: "#F5820A", batch: "#FF6B2C",
+  take: "#2AA198", identity: "#8E4EC6", reel: "#7C3AED", marquee: "#6E56CF", huddle: "#0E9C8A",
+  // after hours + play
+  natal: "#5847C7", arcana: "#8B5CF6", redline: "#E5484D", cartridge: "#9A4EC6", cast: "#E5457E", prism: "#C13FAF", adgen: "#EC6142",
+};
+/** The saturated icon colour for a catalog id (per-app, with a family fallback). */
+export function tileColor(id) { return TILE[id] || FAM_TILE[entry(id).fam] || "#12A594"; }
+
+/** A rounded app-icon tile: saturated per-app fill + white glyph + soft top-light. Cards, dock, list. */
 export function glyphTile(id, size = 34) {
-  const f = famOf(id);
+  const c = tileColor(id);
   const s = document.createElement("span");
   s.className = "ic";
-  s.style.background = f.soft;
-  s.style.color = f.ink;
   s.style.width = s.style.height = size + "px";
+  s.style.background = `linear-gradient(155deg, color-mix(in srgb, ${c} 76%, #fff 24%), ${c} 74%)`;
+  s.style.color = "#fff";
+  s.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.34), inset 0 0 0 1px rgba(255,255,255,.10), 0 3px 8px -3px rgba(0,0,0,.6)";
   s.innerHTML = glyphSvg(id);
   return s;
 }
