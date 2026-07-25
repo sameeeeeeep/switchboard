@@ -135,9 +135,38 @@ via `RELAY_URL=wss://switchboard-team-relay.switchboard-team.workers.dev npm run
 - **Tailscale (free) / self-hosted Headscale**: stable addresses anywhere; the LIVE direct
   channel works over it unchanged — the invite just embeds the Tailscale address.
 
+## Cloud backup — the folder survives everyone going offline (Pro)
+
+Peer-to-peer sync only works while somebody is online. The optional **cloud backup** closes that gap
+and stays zero-knowledge: the daemon uploads *the same AES-256-GCM-sealed payloads the wire already
+carries*, so the relay stores ciphertext it cannot open (it holds no team key). What it buys:
+
+- the team folder survives **everyone** being offline;
+- a brand-new machine rebuilds it from the invite code alone — `team.restore(code)` re-hosts the same
+  team identity and replays the encrypted log;
+- an offline member catches up on reconnect instead of waiting for a peer.
+
+With backup on, the honest phrasing shifts from "nothing leaves your machine" to **"nothing *readable*
+leaves your machine"** — and key loss is unrecoverable, by us too. Cost is bounded by design: the
+entitlement gate (nobody who merely knows the URL can write to our disk), a per-team byte cap, and
+snapshot compaction that keeps storage ≈ the folder rather than its whole edit history. The relay's
+Durable Object **hibernates**, so idle teams cost nothing.
+
+**Access is membership, not knowledge of a `teamId`.** That id is only a routing key — it travels in
+URLs and therefore in server logs — so every relay connection also proves membership with a token
+HKDF'd from the invite secret under a label unrelated to the content key (the relay can compare it,
+never decrypt with it). Without that, knowing an id would have been enough to seize a room or pull the
+whole sealed backup; both are refused now, and reads are gated exactly like writes.
+
+Free stays free: LAN teams and self-hosted relays never touch the gate. See [CLOUD.md](CLOUD.md) for
+the entitlement format, the seat model (counted by live sockets — members still need no account), the
+trial, and the full cost controls. Proof: `npm run try-team-cloud` kills the only daemon in the team
+and restores the folder byte-for-byte on a fresh one.
+
 Deliberately not yet:
-- **Relay hardening for a public hosted default** — hibernation to drop idle-room cost, per-IP
-  room caps / abuse controls. The frames are unreadable regardless; self-hosting works today.
+- **Member-side store catch-up** — the host does the fetch/put today; members catch up via the host
+  or a restore. Enough for backup/restore; the symmetric path is next.
+- **Billing** — Stripe → entitlement minting. The gate already enforces it.
 - **Per-member attribution surfaced in apps** ("done by Sameep's Claude, approved 14:02") —
   git commits already carry it; surfacing it in wrapps is UI.
 - **Token-level co-streaming** (watching a teammate's Claude draft live). File-granularity

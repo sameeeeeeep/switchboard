@@ -38,6 +38,10 @@ export interface BackendRunContext {
 export interface ModelBackend {
   /** Stable id used in model routing + capabilities, e.g. "claude-code", "ollama". */
   id: string;
+  /** True for a HOSTED backend that routes prompts through a third party (e.g. OpenRouter) — the
+   *  opposite of BYO-local. The daemon surfaces this so the panel can badge the trust trade
+   *  honestly ("prompts routed through a provider") and never default to it. Absent = local/BYO. */
+  hosted?: boolean;
   /** Model ids this backend can currently serve. */
   listModels(): Promise<string[]>;
   /** True if the backend is reachable right now (CLI present / local server up). */

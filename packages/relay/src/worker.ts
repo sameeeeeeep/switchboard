@@ -5,30 +5,59 @@
  * outbound connections always traverse NAT, so no port-forwarding and no LAN requirement.
  *
  * THE RELAY CANNOT READ A BYTE. It never holds the team key (HKDF of the invite secret) — every
- * frame it moves is AES-256-GCM sealed by the daemons. It keeps no history: rooms are pure
- * in-memory socket bookkeeping inside a per-team Durable Object. A mailman, not a landlord.
+ * frame it moves is AES-256-GCM sealed by the daemons. Persistence stores that same ciphertext.
+ * A mailman, not a landlord.
+ *
+ * ── COST: HIBERNATION IS MANDATORY ────────────────────────────────────────────────────────────
+ * Durable Objects bill for the wall-clock time they are AWAKE. A relay whose rooms sit awake
+ * holding idle-but-connected sockets would bill 24/7 for teams that aren't even editing. So this
+ * uses the WebSocket **Hibernation API**: `state.acceptWebSocket()` lets the DO be evicted from
+ * memory while sockets stay open, waking only when a real frame arrives, and
+ * `setWebSocketAutoResponse()` answers keepalive pings WITHOUT waking it at all. Cost therefore
+ * tracks actual editing, not open tabs. Because the DO can be evicted, NO room state may live in
+ * instance fields — roles/ids live in socket TAGS + `serializeAttachment`, and the op-log lives in
+ * DO storage. Trial expiry uses an ALARM so it survives hibernation too.
+ *
+ * ── THE COMMERCIAL GATE ("your infra = free, our cloud = Pro") ─────────────────────────────────
+ *   • Self-host (their own Cloudflare): no STORE_SECRET, or STORE_OPEN=1 ⇒ ungated, unlimited.
+ *   • Pro: a valid, team-scoped entitlement (`<teamId>.<exp>.<maxSeats>.<HMAC>`) ⇒ full session,
+ *     persistence, and that plan's seat count.
+ *   • Otherwise a FREE TRIAL: TRIAL_MS of live sync (unlimited restarts), no persistence, a small
+ *     seat cap; then the socket closes with a code the daemon turns into an upgrade prompt.
+ *   • SEATS are enforced by COUNTING LIVE SOCKETS — never by reading sealed content — so members
+ *     still need no account. Only the host subscribes.
  *
  * Wire contract (matches the daemon's RelayHostTransport / relayMemberUrl):
- *   /room/<teamId>?role=host    — the room host. Receives {c,join}/{c,close}/{c,d} envelopes and
- *                                 sends {c,d:<frame>} to address one member by relay-assigned connId.
- *   /room/<teamId>?role=member  — a joiner. Bare sealed frames in/out; the DO wraps toward the host.
- *
- * One Durable Object instance per teamId (idFromName), so all of a team's sockets share one room
- * with no cross-team leakage. Uses the standard accept()/addEventListener API — a relay room holds
- * live sockets for the session's duration, which is exactly what a forwarding hub should do.
+ *   /room/<teamId>?role=host    — receives {c,join}/{c,close}/{c,d} envelopes; sends {c,d:<frame>}
+ *   /room/<teamId>?role=member  — bare sealed frames in/out; the DO wraps toward the host
+ * Store frames (either role, Pro only):
+ *   {put:<b64 sealed>} → {stored:seq}|{full:true}|{denied}   {snapshot:<b64>} → {stored,compacted}
+ *   {fetch:<sinceSeq>} → {log:[{seq,blob}…],head}
  */
 
 export interface Env {
   TEAM_ROOM: DurableObjectNamespace;
+  /** HMAC secret that signs entitlements (a Wrangler secret). Unset ⇒ self-host, ungated. */
+  STORE_SECRET?: string;
+  /** "1" ⇒ ungated (a self-hoster running this on their own account). */
+  STORE_OPEN?: string;
+  TRIAL_MS?: string;
+  TRIAL_SEATS?: string;
+  MAX_STORE_BYTES?: string;
+  /** How long a superseded backup generation survives compaction (default 24h). */
+  STORE_RETAIN_MS?: string;
 }
 
 const ROOM_RE = /^\/room\/([^/]+)$/;
+/** Close codes the daemon maps to human upgrade prompts. */
+const CLOSE_TRIAL_OVER = 4002;
+const CLOSE_SEAT_LIMIT = 4003;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/health") {
-      return new Response("switchboard team relay — sealed frames only, nothing stored", { status: 200 });
+      return new Response("switchboard team relay — sealed frames only, nothing readable stored", { status: 200 });
     }
     const m = ROOM_RE.exec(url.pathname);
     if (!m) return new Response("not found", { status: 404 });
@@ -42,60 +71,297 @@ export default {
   },
 };
 
-/** One team's forwarding room. Holds the host socket + a connId→socket map of members. */
-export class TeamRoom {
-  private host: WebSocket | null = null;
-  private members = new Map<string, WebSocket>();
-  private seq = 0;
+/** Per-socket metadata that must survive hibernation (instance fields do not). */
+interface SockMeta {
+  role: "host" | "member";
+  connId: string;
+  /** Pro/self-host ⇒ may use the store and never expires. */
+  persistent: boolean;
+  /** Epoch ms when a free-trial socket must close; 0 for entitled/self-host. */
+  trialEndsAt: number;
+  /** The entitlement's own expiry, re-checked on every WRITE — a long-lived socket must not keep
+   *  writing on a token that expired after it connected. 0 = no expiry (self-host). */
+  entExp: number;
+  /** This socket's plan seat count, so the room caps on the PLAN, not on whoever arrived last. */
+  maxSeats: number;
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  constructor(_state: DurableObjectState, _env: Env) {}
+/** One team's room: forwarding + (Pro) a zero-knowledge op-log. Hibernation-safe throughout. */
+export class TeamRoom {
+  constructor(private state: DurableObjectState, private env: Env) {
+    // Keepalive pings are auto-answered WITHOUT waking the DO — the single biggest cost lever.
+    try {
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    } catch { /* older runtime: harmless */ }
+  }
+
+  private get open(): boolean {
+    return this.env.STORE_OPEN === "1" || !this.env.STORE_SECRET;
+  }
+  /** Free-session length. 0/absent ⇒ NO time limit: live sync stays free and unlimited while
+   *  storage remains Pro-gated. That's the pre-billing posture (cost-safe: forwarding is cheap and
+   *  hibernates; only persistence costs real money). Set TRIAL_MS=600000 to switch sync to Pro. */
+  private get trialMs(): number {
+    return Number(this.env.TRIAL_MS ?? 0);
+  }
+  private get trialSeats(): number {
+    return Number(this.env.TRIAL_SEATS ?? 3);
+  }
+  private get maxBytes(): number {
+    return Number(this.env.MAX_STORE_BYTES ?? 8 * 1024 * 1024);
+  }
+  /** How long a superseded backup generation is kept before compaction may rotate it again. */
+  private get retainMs(): number {
+    return Number(this.env.STORE_RETAIN_MS ?? 24 * 60 * 60 * 1000);
+  }
 
   async fetch(request: Request): Promise<Response> {
-    const role = new URL(request.url).searchParams.get("role");
+    const url = new URL(request.url);
+    const role = url.searchParams.get("role") === "host" ? "host" : "member";
+    const teamId = decodeURIComponent(ROOM_RE.exec(url.pathname)![1]);
+
+    // ---- the gate ----
+    const ent = this.open ? { maxSeats: Number.MAX_SAFE_INTEGER, exp: 0 } : await verifyEntitlement(url.searchParams.get("ent"), teamId, this.env.STORE_SECRET!);
+    const persistent = this.open || !!ent;
+    const maxSeats = ent?.maxSeats ?? this.trialSeats;
+
+    // ---- ROOM MEMBERSHIP (not merely knowing the teamId) ----
+    // The teamId is a routing id that appears in URLs and logs, so it cannot be the authorization
+    // boundary: without this check, anyone who saw one could claim `role=host` (evicting the real
+    // team) or read the whole sealed backup. `ra` is HKDF'd from the invite secret under a label
+    // unrelated to the content key — we can compare it, never decrypt with it. Trust-on-first-use:
+    // the first party to present one fixes the room's authenticator.
+    const ra = url.searchParams.get("ra");
+    const raHash = ra ? await sha256b64(ra) : null;
+    const known = await this.state.storage.get<string>("roomAuth");
+    if (known) {
+      if (raHash !== known) {
+        // Wrong or missing proof — not this team. Say nothing more than "no".
+        return new Response("not a member of this room", { status: 403 });
+      }
+    } else if (raHash) {
+      await this.state.storage.put("roomAuth", raHash);
+    } else if (role === "host") {
+      // Never let an unproven socket become the room's host — that's the hijack.
+      return new Response("host role requires team membership proof", { status: 403 });
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    this.accept(server, role === "host" ? "host" : "member");
+
+    const meta: SockMeta = {
+      role,
+      connId: "m" + Math.random().toString(36).slice(2, 10),
+      persistent,
+      // 0 = never expires (entitled, self-host, or the pre-billing "sync is free" posture).
+      trialEndsAt: persistent || this.trialMs <= 0 ? 0 : Date.now() + this.trialMs,
+      entExp: ent?.exp ?? 0,
+      maxSeats,
+    };
+
+    if (role === "host") {
+      // A new host RECLAIMS the room — the old host and its members are dropped — so it must be
+      // replaced BEFORE counting seats, or a reconnecting host would be refused by the seat its own
+      // half-open socket still occupies.
+      for (const old of this.state.getWebSockets("host")) { try { old.close(1000, "replaced"); } catch { /* gone */ } }
+      for (const mws of this.state.getWebSockets("member")) { try { mws.close(1000, "host-changed"); } catch { /* gone */ } }
+    }
+
+    // Seats = live sockets in this room, capped by the ROOM's plan (the highest seat count any live
+    // socket proved), so an unentitled joiner can't shrink a paid team's capacity. Counting sockets
+    // never reads sealed content. The refusal must be a WS close (a client can't read a code or
+    // reason from a rejected HTTP handshake), so accept first, then close with 4003.
+    const live = this.state.getWebSockets();
+    const roomSeats = Math.max(maxSeats, ...live.map((w) => (w.deserializeAttachment() as SockMeta | null)?.maxSeats ?? 0));
+    if (live.length >= roomSeats) {
+      this.state.acceptWebSocket(server, ["overflow"]);
+      try { server.close(CLOSE_SEAT_LIMIT, `seat-limit:${roomSeats}`); } catch { /* gone */ }
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // HIBERNATION ACCEPT (not ws.accept()): the DO may now be evicted while this socket stays open.
+    // Tags are how we find sockets again after eviction; the attachment carries the rest.
+    this.state.acceptWebSocket(server, [role, meta.connId]);
+    server.serializeAttachment(meta);
+
+    if (role === "member") {
+      // A member may use the store with NO host online (that's the point of persistence), so a
+      // hostless member is NOT refused — only live forwarding needs a host.
+      const host = this.state.getWebSockets("host")[0];
+      if (host) { try { host.send(JSON.stringify({ c: meta.connId, join: true })); } catch { /* gone */ } }
+    }
+
+    // Free-trial deadline via ALARM so it fires even if the DO hibernates in the meantime.
+    if (meta.trialEndsAt > 0) await this.armTrialAlarm(meta.trialEndsAt);
+
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private accept(ws: WebSocket, role: "host" | "member") {
-    ws.accept();
-    if (role === "host") {
-      if (this.host) { try { this.host.close(); } catch { /* gone */ } }
-      for (const mws of this.members.values()) { try { mws.close(); } catch { /* gone */ } } // stale members redial to the new host
-      this.members.clear();
-      this.host = ws;
-      ws.addEventListener("message", (e) => {
-        if (typeof e.data !== "string") return;
-        let o: any;
-        try { o = JSON.parse(e.data); } catch { return; }
-        if (!o || typeof o.c !== "string") return;
-        const mws = this.members.get(o.c);
-        if (o.close) { if (mws) { try { mws.close(); } catch { /* gone */ } this.members.delete(o.c); } }
-        else if (typeof o.d === "string" && mws) { try { mws.send(o.d); } catch { /* gone */ } }
-      });
-      ws.addEventListener("close", () => {
-        if (this.host === ws) {
-          this.host = null;
-          for (const mws of this.members.values()) { try { mws.close(); } catch { /* gone */ } }
-          this.members.clear();
-        }
-      });
-    } else {
-      if (!this.host) { try { ws.close(1013, "no host"); } catch { /* gone */ } return; }
-      const connId = "m" + (++this.seq);
-      this.members.set(connId, ws);
-      try { this.host.send(JSON.stringify({ c: connId, join: true })); } catch { /* gone */ }
-      ws.addEventListener("message", (e) => {
-        if (typeof e.data !== "string") return;
-        if (this.host) { try { this.host.send(JSON.stringify({ c: connId, d: e.data })); } catch { /* gone */ } }
-      });
-      ws.addEventListener("close", () => {
-        this.members.delete(connId);
-        if (this.host) { try { this.host.send(JSON.stringify({ c: connId, close: true })); } catch { /* gone */ } }
-      });
-    }
+  /** Wake just once, at the earliest pending trial deadline. */
+  private async armTrialAlarm(at: number) {
+    const existing = await this.state.storage.getAlarm();
+    if (existing === null || at < existing) await this.state.storage.setAlarm(at);
   }
+
+  /** Close expired trial sockets; re-arm for the next one. Entitled sockets are untouched. */
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    let next = Infinity;
+    for (const ws of this.state.getWebSockets()) {
+      const meta = ws.deserializeAttachment() as SockMeta | null;
+      if (!meta || meta.persistent || !meta.trialEndsAt) continue;
+      if (meta.trialEndsAt <= now) { try { ws.close(CLOSE_TRIAL_OVER, "trial-over"); } catch { /* gone */ } }
+      else next = Math.min(next, meta.trialEndsAt);
+    }
+    if (next !== Infinity) await this.state.storage.setAlarm(next);
+  }
+
+  /** Hibernation message handler — replaces addEventListener("message"). */
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    if (typeof message !== "string") return;
+    const meta = ws.deserializeAttachment() as SockMeta | null;
+    if (!meta) return;
+    let o: any;
+    try { o = JSON.parse(message); } catch { return; }
+    if (!o) return;
+
+    // Store frames first (Pro only) — they are not forwarding frames.
+    if (await this.handleStore(ws, meta, o)) return;
+
+    if (meta.role === "host") {
+      if (typeof o.c !== "string") return;
+      const target = this.state.getWebSockets(o.c)[0];
+      if (o.close) { if (target) { try { target.close(1000, "host-closed"); } catch { /* gone */ } } }
+      else if (typeof o.d === "string" && target) { try { target.send(o.d); } catch { /* gone */ } }
+      return;
+    }
+    // member → host, wrapped with this member's connId
+    const host = this.state.getWebSockets("host")[0];
+    if (host) { try { host.send(JSON.stringify({ c: meta.connId, d: message })); } catch { /* gone */ } }
+  }
+
+  /** Hibernation close handler. */
+  async webSocketClose(ws: WebSocket, _code: number, _reason: string, _clean: boolean): Promise<void> {
+    const meta = ws.deserializeAttachment() as SockMeta | null;
+    if (!meta) return;
+    if (meta.role === "host") {
+      // Host gone: drop the members so they redial (and land on the next host).
+      for (const mws of this.state.getWebSockets("member")) { try { mws.close(1000, "host-gone"); } catch { /* gone */ } }
+      return;
+    }
+    const host = this.state.getWebSockets("host")[0];
+    if (host) { try { host.send(JSON.stringify({ c: meta.connId, close: true })); } catch { /* gone */ } }
+  }
+
+  async webSocketError(ws: WebSocket): Promise<void> {
+    try { ws.close(1011, "error"); } catch { /* gone */ }
+  }
+
+  // ---- the zero-knowledge op-log (Pro) ----
+  // Stored as `log:<paddedSeq>` → sealed b64 string. The DO never opens a blob; `head`/`bytes` are
+  // plain counters. Compaction (a daemon-supplied sealed snapshot) drops the whole prior log, so
+  // storage ≈ the folder's size rather than its entire edit history.
+
+  private async handleStore(ws: WebSocket, meta: SockMeta, o: any): Promise<boolean> {
+    if (typeof o.fetch === "number") {
+      // READ IS GATED TOO. Without this, any socket in the room could pull the entire sealed log —
+      // ciphertext, op counts, batch sizes and the write timeline — plus unbounded egress on our
+      // bill. The write path already denied; the read path must match it.
+      if (!meta.persistent) {
+        try { ws.send(JSON.stringify({ denied: "fetch", reason: "no-entitlement" })); } catch { /* gone */ }
+        return true;
+      }
+      const since = o.fetch | 0;
+      const head = (await this.state.storage.get<number>("head")) ?? 0;
+      const log: Array<{ seq: number; blob: string }> = [];
+      if (head > since) {
+        const entries = await this.state.storage.list<string>({ prefix: "log:", start: `log:${pad(since + 1)}` });
+        for (const [k, blob] of entries) log.push({ seq: Number(k.slice(4)), blob });
+      }
+      try { ws.send(JSON.stringify({ log, head })); } catch { /* gone */ }
+      return true;
+    }
+    if (typeof o.put === "string" || typeof o.snapshot === "string") {
+      const isSnap = typeof o.snapshot === "string";
+      const blob: string = isSnap ? o.snapshot : o.put;
+      if (!meta.persistent) {
+        try { ws.send(JSON.stringify({ denied: isSnap ? "snapshot" : "put", reason: "no-entitlement" })); } catch { /* gone */ }
+        return true;
+      }
+      // Re-check the token's own expiry on every WRITE: a socket that connected while the plan was
+      // valid must not keep writing for free after it lapsed. Close so the reconnect re-verifies.
+      if (meta.entExp && Date.now() > meta.entExp) {
+        try { ws.send(JSON.stringify({ denied: isSnap ? "snapshot" : "put", reason: "entitlement-expired" })); } catch { /* gone */ }
+        try { ws.close(CLOSE_TRIAL_OVER, "entitlement-expired"); } catch { /* gone */ }
+        return true;
+      }
+      const size = blob.length; // b64 ASCII ⇒ length is the byte count
+      const head = (await this.state.storage.get<number>("head")) ?? 0;
+      const bytes = (await this.state.storage.get<number>("bytes")) ?? 0;
+      if (size > this.maxBytes || (!isSnap && bytes + size > this.maxBytes)) {
+        try { ws.send(JSON.stringify({ full: true, head })); } catch { /* gone */ }
+        return true;
+      }
+      const seq = head + 1;
+      if (isSnap) {
+        // Compaction: the daemon (which CAN read) rolled the folder into one sealed snapshot, so the
+        // prior log is redundant. But compaction must never be able to DESTROY the backup: we keep
+        // the previous generation under `prev:` and rotate it at most once per retention window, so
+        // a run of snapshot frames (a buggy or hostile client) can't leave the team with nothing
+        // recoverable. `fetch` still returns only the current generation.
+        const rotatedAt = (await this.state.storage.get<number>("prevAt")) ?? 0;
+        const current = await this.state.storage.list<string>({ prefix: "log:" });
+        if (Date.now() - rotatedAt > this.retainMs && current.size) {
+          const oldPrev = await this.state.storage.list<string>({ prefix: "prev:" });
+          if (oldPrev.size) await this.state.storage.delete([...oldPrev.keys()]);
+          const carry: Record<string, string> = {};
+          for (const [k, v] of current) carry["prev:" + k.slice(4)] = v;
+          await this.state.storage.put(carry);
+          await this.state.storage.put("prevAt", Date.now());
+        }
+        if (current.size) await this.state.storage.delete([...current.keys()]);
+        await this.state.storage.put({ [`log:${pad(seq)}`]: blob, head: seq, bytes: size });
+        try { ws.send(JSON.stringify({ stored: seq, compacted: true })); } catch { /* gone */ }
+        return true;
+      }
+      await this.state.storage.put({ [`log:${pad(seq)}`]: blob, head: seq, bytes: bytes + size });
+      try { ws.send(JSON.stringify({ stored: seq })); } catch { /* gone */ }
+      return true;
+    }
+    return false;
+  }
+}
+
+/** Zero-padded so storage.list() prefix ordering is numeric. */
+function pad(n: number): string {
+  return String(n).padStart(12, "0");
+}
+
+/** Verify `<teamId>.<expMs>.<maxSeats>.<HMAC-SHA256 base64url>` — team-scoped and expiring, so a
+ *  token can't be lifted to another team or replayed forever. Gates SERVICE, reveals no content. */
+async function verifyEntitlement(token: string | null, teamId: string, secret: string): Promise<{ maxSeats: number; exp: number } | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4) return null;
+  const [tid, exp, seats, sig] = parts;
+  if (tid !== teamId) return null;
+  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
+  if (!/^\d+$/.test(seats)) return null;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${tid}.${exp}.${seats}`));
+  if (b64url(mac) !== sig) return null;
+  return { maxSeats: Number(seats), exp: Number(exp) };
+}
+
+/** Hash of the room authenticator — we store only this, never the token itself. */
+async function sha256b64(s: string): Promise<string> {
+  return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+}
+
+function b64url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

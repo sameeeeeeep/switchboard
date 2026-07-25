@@ -25,6 +25,12 @@ export interface TeamInvite {
    *  relay instead of connecting directly — the cross-network path. The relay only ever moves
    *  sealed frames it can't open (a mailman, not a landlord), so this never weakens the trust model. */
   relay?: string;
+  /** Optional Pro ENTITLEMENT for this team on OUR hosted relay (`<teamId>.<exp>.<seats>.<sig>`).
+   *  It rides in the invite because it is TEAM-scoped service capability, exactly like the secret:
+   *  the host subscribes, and every member presents it so the whole team gets the Pro session and
+   *  counts against the plan's seats. Members still create no account. Useless for any other team,
+   *  and it unlocks SERVICE only — it can never decrypt a frame. */
+  ent?: string;
 }
 
 const INVITE_PREFIX = "swb1.";
@@ -50,7 +56,12 @@ export function decodeInvite(code: string): TeamInvite | null {
     // Relay is optional and must be a ws/wss URL if present — anything else is dropped, never trusted.
     let relay: string | undefined;
     if (typeof obj.relay === "string" && /^wss?:\/\/[^\s]+$/.test(obj.relay) && obj.relay.length <= 300) relay = obj.relay.replace(/\/+$/, "");
-    return relay ? { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name, relay } : { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name };
+    // Entitlement: shape-checked only (the relay is the authority — it verifies the HMAC). A junk
+    // value costs nothing: the relay simply treats the connection as un-entitled.
+    let ent: string | undefined;
+    if (typeof obj.ent === "string" && /^[A-Za-z0-9_.-]{16,400}$/.test(obj.ent)) ent = obj.ent;
+    const base = { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name };
+    return { ...base, ...(relay ? { relay } : {}), ...(ent ? { ent } : {}) };
   } catch {
     return null;
   }
@@ -67,6 +78,21 @@ export function newTeamSecret(): string {
 /** One key per team: HKDF-SHA256(secret, salt="switchboard-team-v1", info=teamId) → 32 bytes. */
 export function deriveTeamKey(secret: string, teamId: string): Buffer {
   return Buffer.from(hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.from("switchboard-team-v1", "utf8"), Buffer.from(teamId, "utf8"), 32));
+}
+
+/**
+ * ROOM AUTHENTICATOR for the relay — proves "I hold this team's invite secret" WITHOUT handing the
+ * relay anything that helps it read a frame. A different HKDF info label than deriveTeamKey means
+ * this token is cryptographically unrelated to the AES key: the relay can compare it, and can never
+ * derive the content key from it.
+ *
+ * Why it exists: the teamId is only a ROUTING id (it rides in the URL path, so it lands in server
+ * logs and any intermediary's). Without this, knowing a teamId was enough to claim `role=host` —
+ * evicting the real team — or to download the whole sealed backup. Membership, not knowledge of an
+ * id, is what the relay must check.
+ */
+export function deriveRoomAuth(secret: string, teamId: string): string {
+  return Buffer.from(hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.from("switchboard-room-auth-v1", "utf8"), Buffer.from(teamId, "utf8"), 32)).toString("base64url");
 }
 
 /** A sealed frame as it crosses the wire. `aad` (the connection's session id + sequence number)

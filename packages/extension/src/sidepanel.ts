@@ -23,8 +23,13 @@ interface AuditEntry { ts: number; origin: string; method?: string; toolName?: s
 interface ContextMeta { id: string; name: string; kind?: string; publishedBy?: string; updatedAt: number; swatches?: string[]; sourceKind?: "csv" | "gsheet"; rowCount?: number; folder?: string }
 interface TeamMember { deviceId: string; name: string; online: boolean; lastSeen: number; you?: boolean }
 interface TeamGit { remote: string; branch: string; enabled: boolean; lastPushAt?: number; lastPullAt?: number; error?: string }
-interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamName?: string; folder?: string; invite?: string; connected?: boolean; members: TeamMember[]; error?: string; git?: TeamGit; relay?: string }
-interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; }
+/** Pro cloud backup on the hosted relay — zero-knowledge (the server holds only ciphertext). */
+interface TeamCloud { entitled: boolean; backedUpAt?: number; restoredFiles?: number; seq?: number; error?: string }
+interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamName?: string; folder?: string; invite?: string; connected?: boolean; members: TeamMember[]; error?: string; git?: TeamGit; relay?: string; cloud?: TeamCloud }
+/** Hosted-inference state (the OPT-IN lane). `hostedModels` are the ids whose prompts would leave
+ *  the machine — the panel badges them so the trade is never silent. */
+interface CloudStatus { enabled: boolean; hostedModels: string[]; models?: string[] }
+interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
@@ -47,11 +52,15 @@ function openWrapp(url: string) {
 
 const MOCK: PanelData = {
   paired: true, reachable: true,
+  // Cloud preview: the opt-in hosted lane, on, with its honest badge.
+  cloud: { enabled: true, hostedModels: ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4"], models: ["sonnet", "openai/gpt-4o-mini"] },
   // Team Mode preview: hosting a small team, one teammate offline — every state the section draws.
   team: {
     enabled: true, role: "host", teamName: "Aamras studio", folder: "/Users/you/Projects/aamras/.data", connected: true,
     invite: "swb1.eyJob3N0IjoiMTkyLjE2OC4xLjIxIiwicG9ydCI6ODc5MH0",
     git: { remote: "git@github.com:aamras/studio-vault.git", branch: "main", enabled: true, lastPushAt: Date.now() - 180_000 },
+    relay: "wss://switchboard-team-relay.switchboard-team.workers.dev",
+    cloud: { entitled: true, backedUpAt: Date.now() - 42_000, seq: 137 },
     members: [
       { deviceId: "you", name: "Sameep", online: true, lastSeen: Date.now(), you: true },
       { deviceId: "m2", name: "Ira", online: true, lastSeen: Date.now() - 20_000 },
@@ -158,8 +167,10 @@ async function load(): Promise<PanelData> {
   // An older daemon answers team.status with {ok:false, error:"unknown control action…"} —
   // null hides the section entirely, so the panel stays compatible in both directions.
   const t = await control("team.status");
+  const cl = await control("cloud.status");
   return {
     paired: true, reachable: true,
+    cloud: cl?.ok ? { enabled: !!cl.enabled, hostedModels: cl.hostedModels ?? [], models: cl.models ?? [] } : null,
     grants: (g?.grants ?? []).map((x: any) => ({ ...x, pending: x.pending ?? null })),
     audit: a?.entries ?? [],
     contexts: c?.contexts ?? [],
@@ -167,6 +178,19 @@ async function load(): Promise<PanelData> {
     selections: c?.selections ?? [],
     team: t?.ok ? (t.status as TeamStatus) : null,
   };
+}
+
+/** THE HONEST BADGE. Switchboard's promise is "nothing leaves your machine" — true for BYO-Claude
+ *  and local models, and NOT true for the opt-in hosted lane. Every place a model is named, say
+ *  which one it is, in the user's words, never in ours. */
+function trustBadge(model: string | null | undefined, cloud: CloudStatus | null | undefined): HTMLElement {
+  const hosted = !!model && !!cloud?.hostedModels?.includes(model);
+  const el2 = el("span", "tbadge" + (hosted ? " hosted" : " local"));
+  el2.textContent = hosted ? "routed through a provider" : "nothing leaves your machine";
+  el2.title = hosted
+    ? "This model runs on Switchboard cloud: your prompts are sent to a hosted provider (your own OpenRouter key)."
+    : "This model runs on your own machine or your own Claude subscription. Prompts never leave.";
+  return el2;
 }
 
 function lastSeen(origin: string, audit: AuditEntry[]): number { for (const e of audit) if (e.origin === origin) return e.ts; return 0; }
@@ -221,6 +245,7 @@ function render(data: PanelData) {
   void renderCurrentSite(data);
   void renderProject(data);
   renderTeam(data);
+  renderCloud(data);
   renderConnectors(data);
   renderApps(data);
   renderWrapps(data);
@@ -369,6 +394,73 @@ async function teamAct(action: string, args?: unknown): Promise<boolean> {
   teamErr = r?.ok ? "" : (r?.error || "something went wrong");
   render(await load());
   return !!r?.ok;
+}
+
+/**
+ * The Cloud section — the two OPT-IN paid lanes, stated plainly. Hidden entirely when the daemon
+ * doesn't speak them (older build) so there's never dead UI, and blank by default: Switchboard is
+ * local-first, and this section only ever describes what the user has deliberately turned on.
+ */
+function renderCloud(data: PanelData) {
+  const sec = $("cloudSec") as HTMLElement; const box = $("cloud"); box.textContent = "";
+  const c = data.cloud;
+  const teamCloud = data.team?.cloud;
+  if (!c && !teamCloud) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const card = el("div", "team");
+
+  // ---- hosted inference (your own OpenRouter key) ----
+  if (c) {
+    const row = el("div", "trow");
+    const txt = el("div"); txt.style.minWidth = "0";
+    txt.append(el("div", "tname", "Hosted models"));
+    txt.append(el("div", "tmeta", c.enabled
+      ? `${c.hostedModels.length} model${c.hostedModels.length === 1 ? "" : "s"} available · prompts routed through a provider`
+      : "off — everything runs on your own Claude or a local model"));
+    row.append(txt);
+    card.append(row);
+    if (c.enabled) {
+      card.append(trustBadge(c.hostedModels[0], c));
+      const off = el("button", "disconnect", "Turn off hosted models");
+      off.onclick = () => void teamAct("cloud.clear");
+      card.append(off);
+    } else if (!expandedSections.has("cloud:key")) {
+      const add = el("button", "tbtn", "Use hosted models…");
+      add.style.marginLeft = "0";
+      add.onclick = () => { expandedSections.add("cloud:key"); if (lastData) render(lastData); };
+      card.append(add);
+    } else {
+      const form = el("div", "tform");
+      const key = el("input") as HTMLInputElement;
+      key.type = "password"; key.placeholder = "your OpenRouter key (sk-or-…)";
+      const go = el("button", "go", "Turn on hosted models");
+      go.onclick = async () => { if (await teamAct("cloud.setKey", { openrouterKey: key.value.trim() })) expandedSections.delete("cloud:key"); };
+      const back = el("button", "disconnect", "← Back");
+      back.onclick = () => { expandedSections.delete("cloud:key"); if (lastData) render(lastData); };
+      form.append(key, go, el("div", "hint", "Your key stays on this machine. Apps still can't see it — the daemon calls the provider. Prompts you send to a hosted model DO leave your computer; your own Claude and local models are unaffected."), back);
+      card.append(form);
+    }
+  }
+
+  // ---- team cloud backup (Pro, zero-knowledge) ----
+  if (teamCloud) {
+    card.append(el("div", "tsep"));
+    const row = el("div", "trow");
+    const txt = el("div"); txt.style.minWidth = "0";
+    txt.append(el("div", "tname", "Team backup"));
+    txt.append(el("div", "tmeta", teamCloud.error
+      ? `⚠ ${teamCloud.error}`
+      : teamCloud.entitled
+        ? (teamCloud.backedUpAt ? `backed up ${ago(teamCloud.backedUpAt)} · encrypted, we can't read it` : "on — waiting for the first change")
+        : "off — your folder syncs live but isn't stored anywhere"));
+    row.append(txt);
+    card.append(row);
+    if (teamCloud.restoredFiles) card.append(el("div", "hint", `Restored ${teamCloud.restoredFiles} file${teamCloud.restoredFiles === 1 ? "" : "s"} from the encrypted backup.`));
+    if (!teamCloud.entitled) card.append(el("div", "hint", "With backup on, your team's folder survives everyone being offline, and a new machine can restore it from the invite code. It's stored encrypted — the server only ever holds ciphertext."));
+  }
+
+  if (teamErr) card.append(el("div", "terr", teamErr));
+  box.append(card);
 }
 
 function renderTeam(data: PanelData) {

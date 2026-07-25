@@ -54,23 +54,50 @@ export class RelayHostTransport extends EventEmitter {
   private closed = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
-  constructor(private base: string, private teamId: string) { super(); }
+  /** `ent` is the team's Pro entitlement, if any — it unlocks the zero-knowledge store (and the
+   *  plan's seat count) on OUR hosted relay. Absent ⇒ free sync only; a self-hosted relay ignores it. */
+  /** `ra` proves team membership to the relay (HKDF of the invite secret under a label unrelated to
+   *  the content key) — without it, knowing a teamId would be enough to seize the host role. */
+  constructor(private base: string, private teamId: string, private ent?: string, private ra?: string) { super(); }
 
   start() { this.dial(); }
 
+  /** Send a store frame ({put}/{fetch}/{snapshot}) on the SAME socket as forwarding. It doesn't
+   *  collide with sealed frames: the relay only treats a frame as a store op when it carries one of
+   *  those keys, and sealed frames never do — so this costs no extra socket (and no extra seat). */
+  sendStore(o: unknown): boolean {
+    try {
+      if (this.ws?.readyState !== OPEN) return false;
+      this.ws.send(JSON.stringify(o));
+      return true;
+    } catch { return false; }
+  }
+
   private dial() {
     if (this.closed) return;
-    const url = `${this.base}/room/${encodeURIComponent(this.teamId)}?role=host`;
+    const url = `${this.base}/room/${encodeURIComponent(this.teamId)}?role=host`
+      + (this.ent ? `&ent=${encodeURIComponent(this.ent)}` : "")
+      + (this.ra ? `&ra=${encodeURIComponent(this.ra)}` : "");
     let ws: WebSocket;
     try { ws = new WebSocket(url, { maxPayload: MAX_FRAME_BYTES }); } catch (err) { this.scheduleReconnect(); return; }
     this.ws = ws;
     ws.on("open", () => this.emit("listening"));
     ws.on("error", () => { /* close handler reconnects */ });
+    // The relay refuses over-plan joins (4003) and ends free sessions (4002). Surface it as `gate`
+    // so the panel can show a real upgrade prompt instead of an endless silent reconnect.
+    ws.on("close", (code, reason) => {
+      if (code === 4002 || code === 4003) this.emit("gate", { code, reason: String(reason || "") });
+    });
     ws.on("message", (data, isBinary) => {
       if (isBinary || (data as Buffer).length > MAX_FRAME_BYTES) return;
       let m: any;
       try { m = JSON.parse(data.toString()); } catch { return; }
-      if (!m || typeof m.c !== "string") return;
+      if (!m) return;
+      // Store replies carry no connId — hand them to the store client.
+      if (typeof m.c !== "string") {
+        if (Array.isArray(m.log) || typeof m.stored === "number" || m.full || m.denied) this.emit("store", m);
+        return;
+      }
       if (m.join) {
         if (!this.peers.has(m.c)) { const vs = new VirtualSocket(m.c, (o) => this.up(o)); this.peers.set(m.c, vs); this.emit("peer", vs); }
       } else if (m.close) {
@@ -113,6 +140,8 @@ export class RelayHostTransport extends EventEmitter {
 
 /** The URL a MEMBER dials for a relay-backed team. The relay makes this socket transparent — the
  *  member's existing dial() logic works unchanged once it uses this URL. */
-export function relayMemberUrl(base: string, teamId: string): string {
-  return `${base}/room/${encodeURIComponent(teamId)}?role=member`;
+export function relayMemberUrl(base: string, teamId: string, ent?: string, ra?: string): string {
+  return `${base}/room/${encodeURIComponent(teamId)}?role=member`
+    + (ent ? `&ent=${encodeURIComponent(ent)}` : "")
+    + (ra ? `&ra=${encodeURIComponent(ra)}` : "");
 }

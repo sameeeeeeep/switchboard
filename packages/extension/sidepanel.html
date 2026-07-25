@@ -112,6 +112,11 @@
       .team .tbtn.primary { background: var(--lime); color: var(--page); border-color: transparent; font-weight: 700; }
       .team .members { display: flex; flex-direction: column; gap: 6px; }
       .team .member { display: flex; align-items: center; gap: 9px; font: 500 12.5px/1 var(--sans); color: var(--ink-sec); }
+      .team .tsep { height: 1px; background: var(--edge-soft); margin: 14px 0; }
+      /* the honest trust badge — local vs hosted, stated in the user's words */
+      .tbadge { display: inline-block; align-self: flex-start; width: fit-content; margin: 8px 0 2px; font-size: 10px; font-weight: 600; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+      .tbadge.local { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+      .tbadge.hosted { color: #FFC24B; background: color-mix(in srgb, #FFC24B 13%, transparent); }
       .team .member .pd { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
       /* online dots are coloured inline per member (stable colour from deviceId); grey = offline */
       .team .member .yy { font: 500 10.5px/1 var(--mono); color: var(--ink-faint); }
@@ -347,6 +352,11 @@
         <div class="sec" id="teamSec" hidden>
           <div class="head"><span class="eyebrow">Team</span></div>
           <div id="team"></div>
+        </div>
+
+        <div class="sec" id="cloudSec" hidden>
+          <div class="head"><span class="eyebrow">Cloud</span></div>
+          <div id="cloud"></div>
         </div>
 
         <div class="sec">
