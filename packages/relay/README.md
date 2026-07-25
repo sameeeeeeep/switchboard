@@ -52,6 +52,23 @@ which close with `4002 trial-over` (`4003 seat-limit:<n>` when over plan) for a 
 
 Design + pricing rationale: [`docs/CLOUD.md`](../../docs/CLOUD.md).
 
+## What it is now
+
+Two jobs, both zero-knowledge:
+
+1. **Forwarding** (free) — moves already-sealed frames between a team's daemons across networks.
+2. **Persistence** (Pro) — keeps a per-team append log of those same sealed blobs so a folder
+   survives everyone going offline and a fresh device can restore it.
+
+It holds no team key and cannot open a byte of either. **Hibernation is mandatory** (`acceptWebSocket`
++ `setWebSocketAutoResponse`), so idle connected teams cost ~nothing and billing tracks real editing.
+
+**Access is by membership, not by knowing a `teamId`** (which travels in URLs and logs): every
+connection presents `ra`, HKDF'd from the invite secret under a label unrelated to the content key.
+Trust-on-first-use per room; afterwards every socket must match, and an unproven socket may never
+take the `host` role. Reads (`fetch`) are gated exactly like writes. See
+[docs/CLOUD.md](../../docs/CLOUD.md) for the full model and threat notes.
+
 ## Live
 
 A hosted instance runs at **`wss://switchboard-team-relay.switchboard-team.workers.dev`** — it's
