@@ -7,9 +7,13 @@ import {
   mountBankIt, mountBorrowOffer, clearBorrowOffer, findBankedForUrl, useContext, listContexts,
   hostOf, slugId,
 } from "./store/bankit.js";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
-const STORE_KEY = "aplus:v2";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const STORE_KEY = "aplus-v2";
+migrateLocalKey("aplus:v2", STORE_KEY);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 // The one sample line — visibly labeled, replaced the moment a real brand context exists. It
 // survives a brandless connect on purpose: a connected page must never degrade into a blank form.

@@ -9,10 +9,14 @@ import {
   mountBankIt, mountBorrowOffer, clearBorrowOffer, findBankedForUrl, useContext, listContexts,
   hostOf, slugId,
 } from "./store/bankit.js";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const STORE_KEY = "adforge:state";
+// Namespaced with "-", not ":" — a key is a filename on the daemon side, and colons are outside the
+// legal alphabet (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const STORE_KEY = "adforge-state";
+migrateLocalKey("adforge:state", STORE_KEY);
 const SAMPLE_URL = "https://www.allbirds.com";
 
 const ANGLE_IDEAS = ["UGC hook", "Problem → agitate → solve", "Founder story", "Offer-led urgency"];

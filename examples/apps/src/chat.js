@@ -7,10 +7,14 @@
 // these" regenerate chip. The composer is the single free-text input — and the standing escape
 // hatch from the slate; every turn streams with a stop button and persists.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const STORE_KEY = "betterchat:v1";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const STORE_KEY = "betterchat-v1";
+migrateLocalKey("betterchat:v1", STORE_KEY);
 const STREAM_TIMEOUT_MS = 180000; // a wedged daemon surfaces as an error, never an eternal cursor
 // Kind priority when auto-selecting from the library: the person first, then what they're building.
 const KIND_PRIORITY = ["personal", "project", "brand", "note", "csv", "gsheet"];

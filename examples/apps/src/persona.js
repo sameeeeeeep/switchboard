@@ -11,7 +11,7 @@
 // cast/gen.js (generation) and cast/stages.js (the six renderers).
 import { mountConnect, whenRelayReady } from "@relay/sdk";
 import { STAGE_IDS } from "./cast/spec.js";
-import { blankAccount, loadAccounts, persist, migrate, reachableStage, newId, personaName, safeParse } from "./cast/state.js";
+import { blankAccount, loadAccounts, persist, migrate, reachableStage, newId, personaName, safeParse, ACCOUNT_PREFIX } from "./cast/state.js";
 import { renderStage, groundInBackground } from "./cast/stages.js";
 import { $, el, clear, renderStepper } from "./cast/ui.js";
 import { svgTile } from "./cast/gen.js";
@@ -235,7 +235,7 @@ function mockRelay() {
   // one fully-seeded account so the whole pipeline is explorable end to end (?fresh skips it)
   if (!FRESH) {
     const seed = migrate({ id: "maya", name: "Maya Chen", niche: "sustainable skincare", vibe: "warm, plain-spoken, reads every label", story: "ex-lab chemist in Lisbon, small-batch serums", look: { referenceImage: svgTile("Maya", "#FF5A3C", "#FFB05A") }, wardrobe: [{ id: "w1", name: "Linen blazer", referenceImage: svgTile("Linen", "#E8DCC8", "#C9B89A") }], locations: [{ id: "l1", name: "Sunlit bathroom", referenceImage: svgTile("Bathroom", "#BFE3E0", "#7FBFB8") }], cast: [] });
-    store.set("account:" + seed.id, JSON.stringify(seed));
+    store.set(ACCOUNT_PREFIX + seed.id, JSON.stringify(seed));
   }
   return {
     __mock: true,

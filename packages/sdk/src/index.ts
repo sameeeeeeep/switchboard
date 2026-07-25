@@ -1,6 +1,8 @@
 import {
   PROVIDER_GLOBAL,
   BYOPErrorCode,
+  isValidStorageKey,
+  STORAGE_KEY_RE,
   type BYOPMethod,
   type ParamsOf,
   type ResultOf,
@@ -47,6 +49,31 @@ export interface RelayNotInstalled {
   installed: false;
   /** Where to send the user to install the sidekick + extension. */
   installUrl: string;
+}
+
+/** Keys already warned about, so a bad key inside a render loop logs once instead of every frame. */
+const warnedStorageKeys = new Set<string>();
+
+/**
+ * A malformed storage key is an AUTHORING bug, not a runtime condition: the daemon rejects it every
+ * time, and because apps (rightly) treat storage failures as "not connected yet" and swallow them,
+ * the write silently no-ops forever. That combination hid a real bug for a long time — a batch of
+ * wrapps namespaced keys with `:` (`adforge:state`), which is outside the alphabet, so their daemon
+ * persistence tier never once worked while the localStorage tier made it look fine.
+ *
+ * So: shout at the console. We deliberately do NOT throw — every call site already wraps storage in
+ * try/catch, so throwing would just be swallowed too, and would risk breaking an app over what is a
+ * developer-facing diagnostic. The request still goes to the daemon and still rejects, unchanged.
+ */
+function warnBadStorageKey(key: string): void {
+  if (isValidStorageKey(key) || warnedStorageKeys.has(key)) return;
+  warnedStorageKeys.add(key);
+  const suggestion = String(key).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "key";
+  console.warn(
+    `[relay.storage] invalid key ${JSON.stringify(key)} — this write/read WILL be rejected by the daemon and silently do nothing.\n` +
+    `  Keys map 1:1 to files (<key>.json) in this origin's folder, so they must match ${STORAGE_KEY_RE}.\n` +
+    `  ":" is not allowed (illegal on NTFS; "a:b" is Alternate Data Stream syntax on Windows). Try ${JSON.stringify(suggestion)}.`,
+  );
 }
 
 export class Relay {
@@ -158,10 +185,11 @@ export class Relay {
    */
   get storage() {
     const req = (params: StorageRequest) => this.provider.request({ method: "claude_storage", params });
+    const k = (key: string) => { warnBadStorageKey(key); return key; };
     return {
-      get: (key: string): Promise<string | null> => req({ op: "get", key }).then((r) => r.value ?? null),
-      set: (key: string, value: string): Promise<void> => req({ op: "set", key, value }).then(() => undefined),
-      delete: (key: string): Promise<boolean> => req({ op: "delete", key }).then((r) => r.ok),
+      get: (key: string): Promise<string | null> => req({ op: "get", key: k(key) }).then((r) => r.value ?? null),
+      set: (key: string, value: string): Promise<void> => req({ op: "set", key: k(key), value }).then(() => undefined),
+      delete: (key: string): Promise<boolean> => req({ op: "delete", key: k(key) }).then((r) => r.ok),
       list: (): Promise<string[]> => req({ op: "list" }).then((r) => r.keys ?? []),
       info: (): Promise<StorageInfo | undefined> => req({ op: "info" }).then((r) => r.info),
       /** Point this app's store at a real folder (triggers a path-consent click). */

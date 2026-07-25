@@ -2,9 +2,13 @@
 // from a real 22-card major arcana (drawn CLIENT-SIDE — the spread is theirs), and their OWN
 // Claude reads the spread through Switchboard. The app ships only the table; no keys, no backend.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
-const KEY = "arcana:reading:v1";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const KEY = "arcana-reading-v1";
+migrateLocalKey("arcana:reading:v1", KEY);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 const DEFAULT_Q = "What am I not seeing?";
 const POSITIONS = ["past", "present", "future"];

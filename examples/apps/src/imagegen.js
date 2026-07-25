@@ -7,10 +7,14 @@
 // (one ★ recommended) as a cheap text-only stream. Renders stay one-click-per-image: each spends
 // Higgsfield credits behind a per-action consent, never auto-fired.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const STORE_KEY = "prism:workspace";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const STORE_KEY = "prism-workspace";
+migrateLocalKey("prism:workspace", STORE_KEY);
 const CONNECTOR = "mcp__claude_ai_Higgsfield__*";        // the user's inherited claude.ai connector
 const GEN = "generate_image";
 const URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;

@@ -6,7 +6,7 @@
 // yields its URL as text, which gen.js's extractUrl/extractVideoUrl pick up unchanged. So this
 // exercises the production render path end to end — the only thing swapped is who answers the call.
 // Boot it with ?harness on persona.html. Every URL below is real Higgsfield output.
-import { blankAccount, newId } from "./state.js";
+import { blankAccount, newId, ACCOUNT_PREFIX } from "./state.js";
 
 // ---- the real asset pool (Higgsfield, kling3_0_turbo + soul_2, cooking-creator "Nadia") ----
 const CDN = "https://d8j0ntlcm91z4.cloudfront.net/user_3C7vRtLEK6Ytdo6wiVn6PQba1if/";
@@ -91,7 +91,7 @@ function seedAccount() {
 export function harnessRelay() {
   const store = new Map();
   const a = seedAccount();
-  store.set("account:" + a.id, JSON.stringify(a));
+  store.set(ACCOUNT_PREFIX + a.id, JSON.stringify(a));
   return {
     __harness: true,
     identity: async () => ({ name: "Sameep" }),

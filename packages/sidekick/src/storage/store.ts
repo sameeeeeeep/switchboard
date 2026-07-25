@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import type { StorageInfo } from "@relay/protocol";
+import { STORAGE_KEY_RE, type StorageInfo } from "@relay/protocol";
 
 /**
  * Per-origin on-disk key/value store — the persistence half of the "self-contained backend".
@@ -26,8 +26,11 @@ export interface StorageBinding {
 }
 
 /** Keys map 1:1 to `<key>.json` files, so they must be plain filenames — no separators, no dots
- *  leading a traversal. Allow a conservative filename alphabet only. */
-const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+ *  leading a traversal. Allow a conservative filename alphabet only. The regex lives in
+ *  @relay/protocol so the SDK can warn on the exact same rule the daemon enforces here — they used
+ *  to be one copy each, and the SDK's copy was "no check at all", which is how a whole generation of
+ *  colon-namespaced wrapp keys silently no-opped. */
+const KEY_RE = STORAGE_KEY_RE;
 
 /** LITERAL dialects: a key ending in one of these extensions maps to that exact file on disk,
  *  instead of the classic `<key>.json`. `.md` came first (a bound folder doubles as an Obsidian

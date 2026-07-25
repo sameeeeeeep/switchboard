@@ -5,11 +5,16 @@
 // prefills the intake, and — when a complete birth profile exists — reads the sky with zero
 // clicks. A returning soul whose calendar day changed gets today's brief automatically.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const PROFILE_KEY = "natal:profile";
-const READING_KEY = "natal:reading";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon keys are migrated out of localStorage below.
+const PROFILE_KEY = "natal-profile";
+const READING_KEY = "natal-reading";
+migrateLocalKey("natal:profile", PROFILE_KEY);
+migrateLocalKey("natal:reading", READING_KEY);
 
 let relay = null;
 let notInstalled = false;

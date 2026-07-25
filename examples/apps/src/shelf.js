@@ -14,14 +14,21 @@
 // the moment the user edits the sheet it becomes source "user" and Shelf never overwrites it.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { escapeHatch } from "./kit/ui.js";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const K_CSV = "shelf:csv";
-const K_STEER = "shelf:steer";
-const K_LAST = "shelf:last";
-const K_PLAY = "shelf:playbook";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon keys are migrated out of localStorage below.
+const K_CSV = "shelf-csv";
+const K_STEER = "shelf-steer";
+const K_LAST = "shelf-last";
+const K_PLAY = "shelf-playbook";
+migrateLocalKey("shelf:csv", K_CSV);
+migrateLocalKey("shelf:steer", K_STEER);
+migrateLocalKey("shelf:last", K_LAST);
+migrateLocalKey("shelf:playbook", K_PLAY);
 
 let relay = null;
 let installed = true; // optimistic until the probe says otherwise

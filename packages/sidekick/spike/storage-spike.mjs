@@ -49,6 +49,18 @@ check("rejects absolute-ish key", rejects("/etc/passwd"));
 check("rejects empty key", rejects(""));
 check("rejects dotfile-escape key", rejects("..%2f"));
 
+// 3b. COLON KEYS — the regression that shipped. A batch of wrapps namespaced keys with ":"
+// ("adforge:state", "account:<id>", "studio:shotlist:<brand>"). Every one is outside the alphabet,
+// so every daemon write threw StorageKeyError — and since every wrapp call site swallows storage
+// failures as "not connected yet", their daemon persistence tier silently never worked while the
+// localStorage tier kept the apps looking healthy. Keys are "-"-namespaced now; pin both directions.
+check("rejects colon-namespaced key", rejects("adforge:state"));
+check("rejects multi-colon key", rejects("arcana:reading:v1"));
+check("rejects key with a space", rejects("studio-shotlist-Acme Co")); // interpolated names need slugging too
+const accepts = (key) => { try { store.set(A, key, "{}"); return store.get(A, key) === "{}"; } catch { return false; } };
+check("accepts the dash-namespaced replacements", ["adforge-state", "prism-workspace", "studio-sheet", "cartridge-pitches", "arcana-reading-v1", "account-a_x1y2z3"].every(accepts));
+for (const k of ["adforge-state", "prism-workspace", "studio-sheet", "cartridge-pitches", "arcana-reading-v1", "account-a_x1y2z3"]) store.delete(A, k);
+
 // 4. auto-assign ------------------------------------------------------------
 const infoA = store.info(A);
 check("auto-assigned by default", infoA.autoAssigned === true);

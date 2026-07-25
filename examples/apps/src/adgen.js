@@ -13,10 +13,14 @@ import {
   mountBankIt, mountBorrowOffer, clearBorrowOffer, findBankedForUrl, useContext, listContexts,
   hostOf, slugId,
 } from "./store/bankit.js";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const STORE_KEY = "adgen:state";
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon key is migrated out of localStorage below.
+const STORE_KEY = "adgen-state";
+migrateLocalKey("adgen:state", STORE_KEY);
 const SAMPLE_URL = "https://www.allbirds.com";
 const FORMATS = ["1:1", "9:16", "16:9"];
 // Same harvest regex family as adforge/cast — image URLs come back either as bare links or JSON fields.

@@ -5,10 +5,14 @@
 // Claude reads the numbers and returns a structured diagnosis. No backend, no upload.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { escapeHatch } from "./kit/ui.js";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const STORE_KEY = "adpulse:v1";
+// localStorage-only today, so the colon never actually broke anything here — renamed anyway so the
+// key is already daemon-legal if this ever grows a relay.storage tier (see kit/storekey.js).
+const STORE_KEY = "adpulse-v1";
+migrateLocalKey("adpulse:v1", STORE_KEY);
 
 let relay = null;
 let notInstalled = false;
@@ -537,7 +541,8 @@ feed.addEventListener("drop", (e) => {
 // connector as a wildcard; the window renders it as "<Name> connector (all tools)" and re-prompts
 // because the existing grant doesn't cover it. (3) PULL: an agentic turn that must answer in the
 // SAME CSV dialect the paste path parses — one pipeline, two feeds.
-const PREFIX_KEY = "adpulse:meta-prefix";
+const PREFIX_KEY = "adpulse-meta-prefix"; // "-" not ":" — see STORE_KEY above
+migrateLocalKey("adpulse:meta-prefix", PREFIX_KEY);
 
 const PULL_PROMPT = [
   "You are connected to the user's own Meta ads tools (MCP tool names containing things like ads_get_ad_accounts, ads_insights_*). Pull their live campaign performance:",

@@ -110,6 +110,11 @@ async function syncContext() {
 //         const items = collection(relay, APP.id + "-item");   // files: <id>-item-<uid>.json
 //         await items.put(uid(), { title, body, at: Date.now() });
 //         const all = await items.all();   // [{ id, ... }] — read this in reloadState()
+// KEYS ARE FILENAMES: a key maps to `<key>.json` on disk, so it must match
+// /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/. Namespace with "-" (APP.id + "-state"), NEVER ":" — a colon
+// is rejected outright (and is Alternate Data Stream syntax on Windows), and because the catch below
+// swallows it, the write would silently do nothing forever. Slug anything interpolated: spaces are
+// illegal too — see examples/apps/src/kit/storekey.js `keySegment`.
 let state = { run: null };
 async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } }
 async function saveState() { try { await relay.storage.set(APP.id + "-state", JSON.stringify(state)); } catch { /* non-fatal */ } }

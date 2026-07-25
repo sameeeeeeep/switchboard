@@ -20,13 +20,32 @@
  * appear as records with zero migration.
  */
 
+/**
+ * The canonical record-key alphabet, shared by the daemon (which enforces it) and the SDK (which
+ * warns on it). Keys map 1:1 to files inside the origin's folder, so a key must be a plain
+ * filename: no separators, nothing that could lead a traversal, and nothing a real filesystem
+ * would refuse.
+ *
+ * NOTE FOR APP AUTHORS — `:` IS NOT IN THIS ALPHABET. Namespace with `-` or `.` instead
+ * (`adforge-state`, not `adforge:state`). Colons are illegal in NTFS filenames, and on Windows
+ * `folder\app:state.json` is Alternate Data Stream syntax — it would write a hidden stream rather
+ * than a file, which `list()` could never see. Since a bound folder is frequently a REAL user
+ * directory (an Obsidian vault, a project's source), keys have to be names those tools can show.
+ */
+export const STORAGE_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/** True when `key` is a legal record key. Kept next to STORAGE_KEY_RE so both tiers test identically. */
+export function isValidStorageKey(key: unknown): key is string {
+  return typeof key === "string" && STORAGE_KEY_RE.test(key);
+}
+
 /** The operation a claude_storage request performs. */
 export type StorageOp = "get" | "set" | "list" | "delete" | "bind" | "info" | "pick";
 
 export interface StorageRequest {
   op: StorageOp;
   /** Record key for get/set/delete. Namespaced within the origin's folder as `<key>.json`.
-   *  Constrained to `[A-Za-z0-9._-]` (no separators / traversal). */
+   *  Must match {@link STORAGE_KEY_RE} — `[A-Za-z0-9._-]`, no separators / traversal, NO colon. */
   key?: string;
   /** Value to persist for `set` (opaque string; apps typically store JSON). */
   value?: string;

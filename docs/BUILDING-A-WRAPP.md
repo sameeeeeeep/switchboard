@@ -200,6 +200,31 @@ await relay.storage.bind("~/Documents/Projects/brandbrain/.data");
 // existing files in that folder now appear as records — zero migration
 ```
 
+**Keys are filenames.** A key maps 1:1 to `<folder>/<key>.json`, so it must match
+`/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`. Namespace with `-`, never `:`
+
+```js
+await relay.storage.set("adforge-state", json);   // ✅
+await relay.storage.set("adforge:state", json);   // ❌ rejected — write silently does nothing
+```
+
+A colon is not just stylistically wrong: it's illegal in NTFS filenames, and on Windows
+`folder\app:state.json` is Alternate Data Stream syntax, so it would write a hidden stream that
+`list()` could never see. Since a bound folder is often a real user directory (an Obsidian vault, a
+project's source), keys have to be names those tools can display.
+
+This bites harder than it looks. The daemon rejects a bad key every time, and the usual pattern —
+`relay.storage.set(k, v).catch(() => {})`, because storage failures normally just mean "not connected
+yet" — swallows the rejection. A batch of wrapps shipped colon keys and their daemon persistence tier
+silently never worked, while their localStorage tier kept everything looking healthy. The SDK now
+`console.warn`s on a bad key; watch for it. **Slug anything interpolated** — a brand name carries
+spaces, which are illegal too (`examples/apps/src/kit/storekey.js` has `keySegment`).
+
+Note `.json` is not a literal extension: a key of `"brief.json"` lands on disk as `brief.json.json`.
+Drop the suffix (`"brief"`) unless you want a literal file — `.md`, `.html`, `.css`, `.js`, `.svg`,
+`.txt`, `.csv` and friends DO map to that exact filename, which is how a bound folder doubles as a
+real Obsidian vault or project source.
+
 ### Context — portable, cross-app knowledge
 
 Publish a reusable context (a brand, a persona, a project); read the one the **user chose** to lend

@@ -3,8 +3,15 @@
 // carrying its locks, generated option cards, base assets, calendar, scripts and shots on itself so
 // the whole thing survives a reload or a switch (brandbrain's "cards live on the brand" trick).
 // Cast still holds no data of its own — every Account lives in the user's own claude_storage under
-// "account:<id>", and the locked persona is published as a shareable CONTEXT for other wrapps.
+// "account-<id>", and the locked persona is published as a shareable CONTEXT for other wrapps.
+//
+// The prefix separator is "-", NOT ":". A storage key is a filename daemon-side (`<key>.json`), and
+// ":" is outside the legal alphabet — this prefix used to be "account:", so every persist() threw
+// StorageKeyError into the catch below and Cast never once saved an Account to disk. See
+// ../kit/storekey.js.
 import { STAGE_IDS, FACET_IDS, FACETS, facetAt, cardSummary } from "./spec.js";
+
+export const ACCOUNT_PREFIX = "account-";
 
 export const newId = () => "a_" + Math.random().toString(36).slice(2, 9);
 export const safeParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
@@ -30,7 +37,7 @@ export function blankAccount() {
 // ---------- storage (the user's claude_storage — Cast's private DB) ----------
 export async function loadAccounts(relay) {
   try {
-    const keys = (await relay.storage.list()).filter((k) => k.startsWith("account:"));
+    const keys = (await relay.storage.list()).filter((k) => k.startsWith(ACCOUNT_PREFIX));
     const raw = await Promise.all(keys.map((k) => relay.storage.get(k)));
     return raw.map(safeParse).filter(Boolean).map(migrate).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch { return []; }
@@ -39,7 +46,7 @@ export async function loadAccounts(relay) {
 export async function persist(relay, a) {
   a.updatedAt = Date.now();
   try {
-    await relay.storage.set("account:" + a.id, JSON.stringify(a));
+    await relay.storage.set(ACCOUNT_PREFIX + a.id, JSON.stringify(a));
     // Publish the locked persona as a shareable context so other wrapps (UGC, ads, shorts) can run
     // on it — but only once there's a real face and a locked person to stand behind.
     if (a.assets?.face?.approved && a.foundation?.locks?.persona) {

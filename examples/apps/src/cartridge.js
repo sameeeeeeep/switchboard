@@ -4,16 +4,23 @@
 // allow-scripts only) — it can NEVER touch window.claude; the airgap holds even for code the
 // user's own model just wrote.
 import { whenRelayReady, mountConnect, BYOPErrorCode } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 
 // State roams via relay.storage and is mirrored to localStorage, so an unconnected visit still
 // restores instantly and a connected one adopts whichever side is newer.
-const CART_KEY = "cartridge:cart";      // { at, cart }
-const SHELF_KEY = "cartridge:shelf";    // { at, items: [cart...] } (legacy: raw array)
-const FORM_KEY = "cartridge:form";      // { at, idea, twist, genre, vibe, diff }
-const PITCH_KEY = "cartridge:pitches";  // { at, pitches: [...] }
+// Namespaced with "-", not ":" — a key is a filename daemon-side, and colons are outside the legal
+// alphabet (see kit/storekey.js). The old colon keys are migrated out of localStorage below.
+const CART_KEY = "cartridge-cart";      // { at, cart }
+const SHELF_KEY = "cartridge-shelf";    // { at, items: [cart...] } (legacy: raw array)
+const FORM_KEY = "cartridge-form";      // { at, idea, twist, genre, vibe, diff }
+const PITCH_KEY = "cartridge-pitches";  // { at, pitches: [...] }
+migrateLocalKey("cartridge:cart", CART_KEY);
+migrateLocalKey("cartridge:shelf", SHELF_KEY);
+migrateLocalKey("cartridge:form", FORM_KEY);
+migrateLocalKey("cartridge:pitches", PITCH_KEY);
 const PITCH_TTL = 24 * 60 * 60 * 1000;  // pitches younger than this are reused on load
 
 let relay = null;

@@ -7,13 +7,21 @@
 // proven media_upload → put_blob → media_confirm reference dance). Zero keys, zero backend;
 // the Higgsfield frame itself stays click-gated: 1 generation = 1 consent.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey, keySegment } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
-const SHEET_KEY = "studio:sheet";
-const PRODUCT_KEY = "studio:product";
-const SETUP_KEY = "studio:setup";
-const SHOTLIST_PREFIX = "studio:shotlist:"; // + brand name — each brand keeps its own drafted list
+// "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
+// (see kit/storekey.js). The old colon keys are migrated out of localStorage below.
+const SHEET_KEY = "studio-sheet";
+const PRODUCT_KEY = "studio-product";
+const SETUP_KEY = "studio-setup";
+// + a SLUGGED brand name. The brand name is interpolated, so it needs folding into the key alphabet
+// on its own account: "Acme Co" has a space, which is just as illegal as the colon it replaced.
+const SHOTLIST_PREFIX = "studio-shotlist-";
+migrateLocalKey("studio:sheet", SHEET_KEY);
+migrateLocalKey("studio:product", PRODUCT_KEY);
+migrateLocalKey("studio:setup", SETUP_KEY);
 const SHOTLIST_TTL = 24 * 3600 * 1000;      // a cached list younger than this never re-burns tokens
 
 let relay = null;
@@ -356,7 +364,9 @@ function renderBrand() {
 // ---------- today's shoot list: a brand-specific batch of concrete options, generated the
 // moment the brand lands (relay.complete on sonnet — non-agentic, so no tool consent fires),
 // cached per brand in BOTH stores, restored instantly, refreshed only when stale or on demand.
-const shotlistKey = (name) => SHOTLIST_PREFIX + name;
+// keySegment folds the brand name into the legal key alphabet — brand names carry spaces, "&", "/"
+// and the like, none of which can appear in a filename-shaped storage key.
+const shotlistKey = (name) => SHOTLIST_PREFIX + keySegment(name);
 
 function shotListPrompt() {
   const b = brand;
@@ -403,6 +413,9 @@ async function generateShotList(force = false) {
   // Instant restore: daemon copy first (it travels and survives cleared storage), then localStorage.
   if (!looks || looks.brand !== name) {
     let cached = null;
+    // This brand's list used to live under "studio:shotlist:<name>"; carry it over so a returning
+    // user's cached list isn't re-drafted (a needless token burn) just because the key changed.
+    migrateLocalKey("studio:shotlist:" + name, shotlistKey(name));
     const remote = await storGet(shotlistKey(name));
     if (remote != null) { try { cached = JSON.parse(remote); } catch { cached = null; } }
     if (!cached) cached = loadJson(shotlistKey(name), null);

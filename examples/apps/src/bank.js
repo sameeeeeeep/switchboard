@@ -5,6 +5,7 @@
 // here, and notes banked here open in Obsidian). Ask-the-brain runs on your Claude with your notes
 // inlined — the operator stores nothing and knows nothing.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+import { migrateLocalKey } from "./kit/storekey.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -27,8 +28,12 @@ let sampleActive = false;    // pre-connect sample brain is on screen (never mix
 const expandedNotes = new Set(); // note keys currently expanded to full view
 let editingKey = null;           // note key currently in edit mode
 const TASKS_KEY = "tasks.md"; // the board's own file — SHARED with the Bank connector (packages/bank-mcp)
-const BRIEF_KEY = "brief.json";     // {date, brief[], recommended} — today's auto-brief, cached
-const ASK_LAST_KEY = "ask-last.json"; // {q, text, at} — last answer, restored on return
+// No `.json` suffix on these two. `.json` is NOT a LITERAL extension daemon-side (only .md/.html/
+// .css/… are), so a key of "brief.json" got the standard `<key>.json` treatment and landed on disk
+// as `brief.json.json`. It round-tripped fine, but this folder is routinely the user's real Obsidian
+// vault — stray double-extension files in it are litter. migrateJsonRecords() cleans the old ones up.
+const BRIEF_KEY = "brief";      // {date, brief[], recommended} — today's auto-brief, cached
+const ASK_LAST_KEY = "ask-last"; // {q, text, at} — last answer, restored on return
 const SYNC_STAMP_KEY = "sync-stamp";  // yyyy-mm-dd of the last consent-free daily project pull
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -43,7 +48,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 // The projects-only half needs NO new grant, so it also auto-runs once a day after boot.
 const SYNC_KEY = "n-synced-todos.md";
 const SYNC_TITLE = "Synced to-dos";
-const PREFIX_CACHE = "bank:channel-prefixes";
+// localStorage-only, so the colon never broke anything here — renamed anyway so the key is already
+// daemon-legal if this ever grows a relay.storage tier (see kit/storekey.js).
+const PREFIX_CACHE = "bank-channel-prefixes";
+migrateLocalKey("bank:channel-prefixes", PREFIX_CACHE);
 const CHANNELS = [
   { key: "gmail", label: "Gmail", tools: "search_threads, get_thread, list_labels", what: "unresolved threads that need a reply or an action FROM you — skip newsletters, receipts, notifications" },
   { key: "whatsapp", label: "WhatsApp", tools: "chat / message reading tools", what: "messages where someone is asking you to do something or owes you a follow-up" },
@@ -148,6 +156,24 @@ function subscribeLive() {
   try { relay.on("permissionsChanged", () => void bootThrottled()); } catch { /* older provider */ }
 }
 
+// One-time cleanup for the pre-rename records. BRIEF_KEY/ASK_LAST_KEY used to carry a ".json"
+// suffix, which — because ".json" isn't a LITERAL extension — the daemon suffixed AGAIN, leaving
+// `brief.json.json` / `ask-last.json.json` sitting in what is often the user's real Obsidian vault.
+// Carry the value across to the clean key and delete the old record. Both are regenerating caches,
+// so a failure here costs nothing; the point is not leaving litter in a folder the user owns.
+async function migrateJsonRecords(keys) {
+  for (const [oldKey, newKey] of [["brief.json", BRIEF_KEY], ["ask-last.json", ASK_LAST_KEY]]) {
+    if (!keys.includes(oldKey)) continue;
+    try {
+      if (!(await relay.storage.get(newKey).catch(() => null))) {
+        const old = await relay.storage.get(oldKey);
+        if (old) await relay.storage.set(newKey, old);
+      }
+      await relay.storage.delete(oldKey);
+    } catch { /* stays put; retried next boot */ }
+  }
+}
+
 // Reentrancy guard: the chip's onConnect and the load-with-grant probe both boot on a warm load —
 // share one in-flight read instead of racing two full vault reads + renders.
 let bootP = null;
@@ -169,6 +195,7 @@ async function doBoot() {
     ]);
     contexts = metas || [];
     identityName = who?.name || identityName;
+    void migrateJsonRecords(keys || []); // fire-and-forget: never delays the vault render
     const mdKeys = (keys || []).filter((k) => k.endsWith(".md"));
     const bodies = await Promise.all(mdKeys.map((k) => relay.storage.get(k).catch(() => null)));
     sampleActive = false;
