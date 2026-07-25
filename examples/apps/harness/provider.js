@@ -124,7 +124,18 @@
     return {
       heroHeadline: P(0) + ", made for " + audience, heroSub: positioning,
       features: [0, 1, 2, 3].map(function (i) { return { emoji: ["✨", "⚡", "🌿", "🔁"][i], title: (styles[i % styles.length] || "quality"), body: P(i) + " — " + voice }; }),
-      comparison: { ourName: bname, otherName: "Generic brand", rows: [{ feature: "made for " + audience, ours: "yes", other: "no" }, { feature: "voice", ours: voice, other: "flat" }] },
+      // SHAPE asks for exactly 5 rows and allows true/false/short-string cells — give all three so
+      // the check/dash/value rendering is actually exercised, not just the string path.
+      comparison: {
+        ourName: bname, otherName: "Generic brand",
+        rows: [
+          { feature: "made for " + String(audience).split(",")[0], ours: true, other: false },
+          { feature: "voice", ours: String(voice).slice(0, 40), other: "flat" },
+          { feature: String(keywords[0] || "core promise"), ours: true, other: false },
+          { feature: "works with " + String(products[0] || "your stack"), ours: true, other: false },
+          { feature: "lock-in", ours: "none", other: "yes" },
+        ],
+      },
       brandStory: { headline: "Why we built " + bname, body: positioning + " " + voice },
       faqs: [{ q: "Is it worth it?", a: "For " + audience + ", yes." }, { q: "How fast?", a: "Fast." }],
       searchTerms: keywords.concat(products.map(function (p) { return String(p).toLowerCase(); })).slice(0, 10),
@@ -320,10 +331,20 @@
     // shelf
     [function (lc, p) { return /weeks_of_cover|cashlockedindead|deadweight|reordernow|classify every sku/i.test(p); }, function () { return shelfTriage(); }],
     [function (lc, p) { return /week-one worksheet|the owner picked this one-week plan|turn the picked plan/i.test(p); }, function () { return shelfRefine(); }],
-    // a-plus
-    [function (lc, p) { return /enhanced brand content|comparison chart argues|planning an a\+|the comparison chart argues/i.test(p); }, function () { return aplusDirections(); }],
-    [function (lc, p) { return /writing a complete a\+|renders as a green check|ban the words/i.test(p); }, function () { return aplusStack(); }],
+    // a-plus — ORDER MATTERS, and the tests must NOT key on "Enhanced Brand Content": that phrase is
+    // in BOTH buildDirectionsPrompt ("planning an A+ (Enhanced Brand Content) module stack") and
+    // buildStackPrompt ("writing a complete A+ (Enhanced Brand Content) module stack"), so a route
+    // matching it shadowed stage 2 — the stack call got {directions:[…]} back, normalizeStack threw
+    // INCOMPLETE, and stage 2 was never actually exercised. Each route now matches only text unique
+    // to its own prompt, most-specific first:
+    //   module regen  → "You already wrote this A+ stack" (buildModulePrompt)
+    //   full stack    → "writing a complete A+" / "renders as a green check" / "Ban the words"
+    //   directions    → "planning an A+" / DIR_SHAPE's "the comparison chart argues"
+    // (Careful: directionBrief() puts "the comparison chart must argue:" inside the STACK prompt —
+    //  "argues" vs "must argue" is what keeps those two apart.)
     [function (lc, p) { return /you already wrote this a\+|rewrite only the/i.test(p); }, function () { return aplusStack(); }],
+    [function (lc, p) { return /writing a complete a\+|renders as a green check|ban the words/i.test(p); }, function () { return aplusStack(); }],
+    [function (lc, p) { return /planning an a\+|comparison chart argues/i.test(p); }, function () { return aplusDirections(); }],
     // adwall (adgen)
     [function (lc, p) { return /adwall|exactly 6 items[\s\S]*direction|directions[\s\S]*format/i.test(p); }, function () { return adDirections(6); }],
     // prism (imagegen)
