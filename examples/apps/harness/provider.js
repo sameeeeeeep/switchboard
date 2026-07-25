@@ -487,10 +487,26 @@
   }
 
   // ---- grant / capabilities / context / storage ----------------------------------------------
+  // ---- REFUSAL MODES ------------------------------------------------------------------------
+  // The harness used to only ever say yes: grant() approved everything asked for, health was
+  // always green, and every tool call succeeded. So the entire class of "the user said no" was
+  // untested across the catalogue — despite the wrapp skill explicitly warning that a wrapp must
+  // "read the returned grant and handle partial approval". Opt in per run; default is unchanged,
+  // so the happy-path sweep still behaves exactly as before.
+  //   ?refuse=partial   the user unticks things — only the FIRST tool and FIRST model survive
+  //   ?refuse=tools     every tool is unticked; models still granted
+  //   ?refuse=connect   the user closes the consent card
+  //   ?refuse=asleep    daemon installed but not reachable
+  //   ?refuse=toolcall  grant is full, but every tool INVOCATION fails at run time
+  var REFUSE = (/[?&]refuse=([a-z]+)/.exec(location.search) || [])[1] || "";
+
   function grant(scope) {
     scope = scope || {};
     var models = (scope.models && scope.models.length) ? scope.models : ["sonnet", "haiku", "opus"];
     var tools = (scope.tools || []).map(function (t) { return { name: t, access: /write|create|send|post|generate|put|delete|update|upload|commit|push/i.test(t) ? "write" : "read" }; });
+    // a real consent card lets the user untick individual rows before approving
+    if (REFUSE === "partial") { models = models.slice(0, 1); tools = tools.slice(0, 1); }
+    else if (REFUSE === "tools") { tools = []; }
     var t = Date.now();
     return { origin: location.origin, mode: "trust", models: models, tools: tools, budgets: { maxTokensPerDay: 5000000, maxCallsPerMin: 240 }, contextKinds: scope.contextKinds || ["brand", "persona", "personal", "project", "idea", "note", "csv", "gsheet"], createdAt: t, updatedAt: t };
   }
@@ -563,16 +579,29 @@
       var method = args.method, params = args.params;
       return new Promise(function (resolve, reject) {
         try {
+          // A sleeping daemon does not politely report itself unhealthy on an otherwise working
+          // socket — the socket is what is gone. Flipping only claude_health let wrapps sail past
+          // it (Autopilot drafted a full slate against a "not running" daemon), which tested
+          // nothing. Everything except the health/capability probes must fail at the transport.
+          if (REFUSE === "asleep" && method !== "claude_health" && method !== "claude_capabilities") {
+            return reject(Object.assign(new Error("Could not reach the Switchboard daemon"), { code: "DAEMON_UNREACHABLE" }));
+          }
           switch (method) {
             case "claude_capabilities": return resolve(capabilities());
-            case "claude_connect": { var g = grant(params); GRANT = g; setTimeout(function () { emit("connect", g); }, 0); return resolve(g); }
+            case "claude_connect": {
+              if (REFUSE === "connect") return reject(Object.assign(new Error("User declined"), { code: "USER_DENIED" }));
+              var g = grant(params); GRANT = g; setTimeout(function () { emit("connect", g); }, 0); return resolve(g); }
             case "claude_disconnect": return resolve({ ok: true });
             case "claude_permissions": return resolve(GRANT);
-            case "claude_health": return resolve({ installed: true, reachable: true, paired: true, connected: true });
+            case "claude_health": return resolve(REFUSE === "asleep"
+              ? { installed: true, reachable: false, paired: false, connected: false, reason: "daemon not running" }
+              : { installed: true, reachable: true, paired: true, connected: true });
             case "claude_context": return resolve(contextOp(params));
             case "claude_storage": return resolve(storageOp(params));
             case "claude_listTools": return resolve({ tools: (GRANT.tools || []).map(function (t) { return { name: t.name, description: t.name, access: t.access }; }) });
-            case "claude_callTool": return resolve({ ok: true, content: [{ type: "text", text: JSON.stringify({ url: imageUrlFor(JSON.stringify(params)) }) }] });
+            case "claude_callTool":
+              if (REFUSE === "toolcall") return resolve({ ok: false, error: "tool failed: upstream connector returned 502" });
+              return resolve({ ok: true, content: [{ type: "text", text: JSON.stringify({ url: imageUrlFor(JSON.stringify(params)) }) }] });
             case "claude_complete": { var ds = respond(params); logCall("complete", params, ds); var text = ds.filter(function (d) { return d.type === "text"; }).map(function (d) { return d.text; }).join(""); return resolve({ text: text, model: "harness-sonnet", usage: { inputTokens: 400, outputTokens: 220 } }); }
             case "claude_stream": { var id = "s" + (++streamSeq); runStream(id, params || {}); return resolve({ streamId: id }); }
             case "claude_cancel": return resolve({ ok: true });
