@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Three directions — type & hierarchy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0B; --panel:#0C0C0E; --card:#131315; --card-2:#191A1D;
+  --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --faintest:#48484F;
+  --accent:#EDEDEA; --ok:#54B487;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:#050506;color:var(--ink);font-family:Inter,sans-serif}
+.lab{max-width:1180px;margin:0 auto;padding:34px 28px 10px}
+.lab h6{font:700 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ok);margin:0 0 6px}
+.lab p{margin:0;color:var(--faint);font-size:13px;line-height:1.6;max-width:80ch}
+.frame{background:var(--bg);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:16px 0 44px}
+.inner{max-width:1180px;margin:0 auto;padding:64px 28px 72px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tile .sh{height:96px;display:block}
+.tile .tb{padding:10px 12px;display:flex;align-items:center;gap:9px}
+.tile .dot{width:20px;height:20px;border-radius:6px;flex:none}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:7px 13px;background:var(--card)}
+.eyebrow i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:block}
+
+/* ============ A — DIRECTORY / INDEX ============ */
+/* Archivo 800 very tight for display; JetBrains Mono as a STRUCTURAL left rail that is
+   actually the page index. The catalog IS a directory, so the rail encodes something true. */
+.A{font-family:Inter,sans-serif}
+.A .grid{display:grid;grid-template-columns:112px minmax(0,1fr) minmax(0,440px);gap:0 40px;align-items:start}
+.A .rail{position:sticky;top:20px;border-top:2px solid var(--ink);padding-top:10px}
+.A .rail li{list-style:none;font:500 10.5px/1.9 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faintest)}
+.A .rail li.on{color:var(--ink)}
+.A .rail li b{color:var(--faint);font-weight:500;margin-right:8px}
+.A .eyebrow{font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+.A h1{font-family:Archivo,sans-serif;font-weight:800;font-size:70px;line-height:.95;letter-spacing:-.045em;margin:22px 0 0}
+.A h1 span{color:var(--faint)}
+.A .lead{font-size:17px;line-height:1.6;color:var(--ink-2);max-width:52ch;margin:22px 0 0}
+.A .cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#0A0A0B;border:0;border-radius:999px;
+  padding:14px 22px;font:600 14px/1 Inter,sans-serif;margin:26px 0 0;cursor:pointer}
+.A .meta{font:500 10.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:16px 0 0}
+.A h2{font-family:Archivo,sans-serif;font-weight:800;font-size:30px;letter-spacing:-.03em;margin:0}
+.A .sec{margin-top:76px;border-top:1px solid var(--line);padding-top:22px}
+.A .k{font:500 10.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.A .three{display:grid;grid-template-columns:repeat(3,1fr);gap:34px;margin-top:26px}
+.A .three h3{font-family:Archivo,sans-serif;font-weight:700;font-size:17px;letter-spacing:-.015em;margin:0 0 8px}
+.A .three .old{color:var(--faintest);font-size:13.5px;line-height:1.6;margin:0}
+.A .three .new{color:var(--ink-2);font-size:13.5px;line-height:1.6;margin:8px 0 0}
+.A .num{font:500 10.5px/1 var(--mono);color:var(--faintest);display:block;margin-bottom:10px}
+
+/* ============ B — MASTHEAD ============ */
+/* Bricolage Grotesque: a display face with genuine quirk (variable optical size). Huge
+   masthead, a hard rule under it, asymmetric column. Confident, editorial, not templated. */
+.B{font-family:Inter,sans-serif}
+.B .eyebrow{font:600 10.5px/1 Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.B h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:82px;line-height:.92;
+  letter-spacing:-.035em;margin:26px 0 0;font-variation-settings:"opsz" 96}
+.B h1 em{font-style:normal;color:var(--faint)}
+.B .rule{height:2px;background:var(--ink);margin:30px 0 0}
+.B .under{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:44px;margin-top:22px;align-items:start}
+.B .lead{font-size:18px;line-height:1.55;color:var(--ink-2);margin:0;max-width:46ch}
+.B .cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#0A0A0B;border:0;border-radius:6px;
+  padding:15px 24px;font:600 15px/1 Inter,sans-serif;margin:24px 0 0;cursor:pointer}
+.B .fine{font:500 12px/1 var(--mono);color:var(--faint);margin:14px 0 0}
+.B .sec{margin-top:84px}
+.B h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:38px;letter-spacing:-.03em;margin:0;
+  font-variation-settings:"opsz" 48}
+.B .k{font:600 10.5px/1 Inter,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.B .three{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);margin-top:30px;border:1px solid var(--line)}
+.B .three>div{background:var(--bg);padding:26px 24px}
+.B .three h3{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:20px;letter-spacing:-.02em;margin:0 0 12px}
+.B .three .old{color:var(--faintest);font-size:14px;line-height:1.6;margin:0}
+.B .three .new{color:var(--ink);font-size:14px;line-height:1.6;margin:10px 0 0}
+
+/* ============ C — TERMINAL / THE BRAND'S OWN LANDING LANGUAGE ============ */
+/* JetBrains Mono carries the DISPLAY, not just the captions — the switchboard/exchange
+   vernacular. Instrument Sans for reading. Denser, technical, unmistakable. */
+.C{font-family:"Instrument Sans",sans-serif}
+.C .eyebrow{font:500 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ok);
+  background:rgba(84,180,135,.08);border-color:rgba(84,180,135,.25)}
+.C h1{font-family:var(--mono);font-weight:700;font-size:52px;line-height:1.05;letter-spacing:-.045em;margin:24px 0 0;max-width:20ch}
+.C h1 span{color:var(--faint)}
+.C .lead{font-size:17px;line-height:1.62;color:var(--ink-2);max-width:56ch;margin:24px 0 0}
+.C .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,440px);gap:46px;align-items:center}
+.C .cta{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:#0A0A0B;border:0;border-radius:8px;
+  padding:14px 22px;font:700 13.5px/1 var(--mono);letter-spacing:-.01em;margin:26px 0 0;cursor:pointer}
+.C .fine{font:400 11.5px/1 var(--mono);color:var(--faint);margin:14px 0 0}
+.C .sec{margin-top:80px;border-top:1px solid var(--line);padding-top:26px}
+.C h2{font-family:var(--mono);font-weight:700;font-size:26px;letter-spacing:-.035em;margin:0}
+.C .k{font:500 10.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.C .three{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:28px}
+.C .three>div{border:1px solid var(--line);border-radius:10px;padding:20px;background:var(--card)}
+.C .three h3{font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:-.02em;margin:0 0 12px}
+.C .three .old{color:var(--faintest);font-size:13.5px;line-height:1.6;margin:0}
+.C .three .new{color:var(--ink-2);font-size:13.5px;line-height:1.6;margin:9px 0 0}
+</style></head>
+<body>
+
+<!-- ================= A ================= -->
+<div class="lab"><h6>Direction A — Directory</h6>
+<p>Archivo 800 at 70px, very tight. A sticky <b>mono index rail</b> in the left gutter that is the page's real table of contents — the catalog IS a directory, so the rail encodes something true rather than decorating. Five type steps: 70 / 30 / 17 / 13.5 / 10.5.</p></div>
+<div class="frame"><div class="inner A">
+  <div class="grid">
+    <ul class="rail">
+      <li class="on"><b>01</b>Index</li><li><b>02</b>Once</li><li><b>03</b>Apps</li>
+      <li><b>04</b>Setup</li><li><b>05</b>Limits</li><li><b>06</b>Price</li>
+    </ul>
+    <div>
+      <span class="eyebrow"><i></i>Open source · your own Claude</span>
+      <h1>One connection.<br><span>Not one per app.</span></h1>
+      <p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Connect your Claude once; all 27 apps run on it.</p>
+      <button class="cta">Connect Switchboard →</button>
+      <p class="meta">Free · no account · ~2 minutes</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#1d3b2a,#0f1d15)"></span><span class="tb"><span class="dot" style="background:#6AAF3A"></span><b style="font-size:12.5px">brandbrain</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#3a2118,#1a100b)"></span><span class="tb"><span class="dot" style="background:#EC6142"></span><b style="font-size:12.5px">AdForge</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#2a1f3d,#150f1f)"></span><span class="tb"><span class="dot" style="background:#8B5CF6"></span><b style="font-size:12.5px">Arcana</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#12332f,#0a1a18)"></span><span class="tb"><span class="dot" style="background:#12A594"></span><b style="font-size:12.5px">Bank</b></span></div>
+    </div>
+  </div>
+  <div class="sec" style="grid-column:1/-1">
+    <p class="k">02 — What you set up once</p>
+    <h2>Three things you do once, not once per app.</h2>
+    <div class="three">
+      <div><span class="num">01</span><h3>One account</h3><p class="old">Everywhere else: another signup, another password, another company holding a login.</p><p class="new">Here: none with us, none with any app. Bring the Claude you already have.</p></div>
+      <div><span class="num">02</span><h3>One subscription</h3><p class="old">Everywhere else: their key, their markup — a second bill on the AI you already pay for.</p><p class="new">Here: apps spend the quota you already own. We never touch the transaction.</p></div>
+      <div><span class="num">03</span><h3>One copy of context</h3><p class="old">Everywhere else: explain your business again, for the third time.</p><p class="new">Here: it lives in a folder on your machine. Lent per job, handed back.</p></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ================= B ================= -->
+<div class="lab"><h6>Direction B — Masthead</h6>
+<p>Bricolage Grotesque 800 at 82px — a display face with real quirk, not a default grotesque. A hard 2px rule under the masthead, then an asymmetric column. The three-up becomes a hairline-divided slab, no rounded cards. Steps: 82 / 38 / 18 / 14 / 10.5.</p></div>
+<div class="frame"><div class="inner B">
+  <span class="eyebrow">Open source · runs on the Claude you already pay for</span>
+  <h1>One connection.<br><em>Not one per app.</em></h1>
+  <div class="rule"></div>
+  <div class="under">
+    <div>
+      <p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Connect your own Claude once, and all 27 apps here run on that one connection.</p>
+      <button class="cta">Connect Switchboard →</button>
+      <p class="fine">Free. No account. Takes about two minutes.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#1d3b2a,#0f1d15)"></span><span class="tb"><span class="dot" style="background:#6AAF3A"></span><b style="font-size:12.5px">brandbrain</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#3a2118,#1a100b)"></span><span class="tb"><span class="dot" style="background:#EC6142"></span><b style="font-size:12.5px">AdForge</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#2a1f3d,#150f1f)"></span><span class="tb"><span class="dot" style="background:#8B5CF6"></span><b style="font-size:12.5px">Arcana</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#12332f,#0a1a18)"></span><span class="tb"><span class="dot" style="background:#12A594"></span><b style="font-size:12.5px">Bank</b></span></div>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="k">What you set up once</p>
+    <h2>Three things you do once, not once per app.</h2>
+    <div class="three">
+      <div><h3>One account</h3><p class="old">Everywhere else: another signup, another password, another company holding a login.</p><p class="new">Here: none with us, none with any app. Bring the Claude you already have.</p></div>
+      <div><h3>One subscription</h3><p class="old">Everywhere else: their key, their markup — a second bill on the AI you already pay for.</p><p class="new">Here: apps spend the quota you already own. We never touch the transaction.</p></div>
+      <div><h3>One copy of context</h3><p class="old">Everywhere else: explain your business again, for the third time.</p><p class="new">Here: it lives in a folder on your machine. Lent per job, handed back.</p></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ================= C ================= -->
+<div class="lab"><h6>Direction C — Exchange (the brand's own landing language)</h6>
+<p>JetBrains Mono carries the <b>display</b>, not just the captions — the switchboard/exchange vernacular, and it's already the brand's landing typeface. Instrument Sans for reading. Denser and unmistakably technical. Steps: 52 / 26 / 17 / 13.5 / 10.5.</p></div>
+<div class="frame"><div class="inner C">
+  <div class="row">
+    <div>
+      <span class="eyebrow">open source · your own claude</span>
+      <h1>One connection.<br><span>Not one per app.</span></h1>
+      <p class="lead">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Connect your own Claude once, and all 27 apps here run on that one connection.</p>
+      <button class="cta">Connect Switchboard →</button>
+      <p class="fine">free · no account · ~2 min</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#1d3b2a,#0f1d15)"></span><span class="tb"><span class="dot" style="background:#6AAF3A"></span><b style="font-size:12.5px">brandbrain</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#3a2118,#1a100b)"></span><span class="tb"><span class="dot" style="background:#EC6142"></span><b style="font-size:12.5px">AdForge</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#2a1f3d,#150f1f)"></span><span class="tb"><span class="dot" style="background:#8B5CF6"></span><b style="font-size:12.5px">Arcana</b></span></div>
+      <div class="tile"><span class="sh" style="background:linear-gradient(135deg,#12332f,#0a1a18)"></span><span class="tb"><span class="dot" style="background:#12A594"></span><b style="font-size:12.5px">Bank</b></span></div>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="k">what you set up once</p>
+    <h2>Three things you do once, not once per app.</h2>
+    <div class="three">
+      <div><h3>one account</h3><p class="old">Everywhere else: another signup, another password, another company holding a login.</p><p class="new">Here: none with us, none with any app. Bring the Claude you already have.</p></div>
+      <div><h3>one subscription</h3><p class="old">Everywhere else: their key, their markup — a second bill on the AI you already pay for.</p><p class="new">Here: apps spend the quota you already own. We never touch the transaction.</p></div>
+      <div><h3>one copy of context</h3><p class="old">Everywhere else: explain your business again, for the third time.</p><p class="new">Here: it lives in a folder on your machine. Lent per job, handed back.</p></div>
+    </div>
+  </div>
+</div></div>
+
+</body></html>

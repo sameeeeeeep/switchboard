@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>App store — three options × two states</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────────────────────
+   TYPE SCALE — Setapp's six steps with the 2x cliff. 12/14/16/18 inside an item,
+   then nothing until 36 (section) and 46 (page title). This deletes 12 of the 18
+   sizes the current store declares. Three weights only: 400 body, 500 meta,
+   600 names + section titles. 700 is reserved for the page title alone.
+   Tracking inverted per Mobbin: +0.2px under 16, 0 at 16–18, -0.01em at 36/46.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root{
+  --f:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --m:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+  /* light (research recommendation) */
+  --bg:#FFFFFF; --bg-2:#FAFAFA; --card:#FFFFFF; --line:#E8E8E9; --line-2:#D9D9DB;
+  --ink:#0B0B0C; --ink-2:#6E6E73; --faint:#9A9AA0; --accent:#0B0B0C; --accent-ink:#fff;
+  --ok:#1F8A5B; --pop:#F2F1EE;
+}
+body.dark{
+  --bg:#0A0A0B; --bg-2:#0C0C0E; --card:#131315; --line:#232327; --line-2:#2C2C31;
+  --ink:#F4F4F2; --ink-2:#A2A2A8; --faint:#6C6C74; --accent:#EDEDEA; --accent-ink:#0A0A0B;
+  --ok:#54B487; --pop:#191A1D;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:#111;font-family:var(--f);color:#eee;padding:20px}
+body.dark{background:#050506}
+.top{max-width:1560px;margin:0 auto 20px;display:flex;align-items:flex-start;gap:20px}
+.top h1{font:700 18px/1.3 var(--f);margin:0 0 6px}
+.top p{margin:0;font-size:13px;line-height:1.6;color:#9A9AA0;max-width:104ch}
+.tog{margin-left:auto;flex:none;background:#222;border:1px solid #3a3a3a;color:#eee;border-radius:8px;
+  padding:9px 14px;font:600 12px var(--f);cursor:pointer}
+.optrow{max-width:1560px;margin:0 auto 28px}
+.opthead{margin:0 0 10px}
+.opthead b{display:block;font:700 13px/1.3 var(--m);letter-spacing:.1em;text-transform:uppercase;color:#7CC142}
+.opthead span{display:block;font-size:12.5px;line-height:1.6;color:#9A9AA0;margin-top:5px;max-width:110ch}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.frame{border:1px solid #333;border-radius:10px;overflow:hidden;background:var(--bg)}
+.flabel{font:500 10.5px/1 var(--m);letter-spacing:.1em;text-transform:uppercase;color:#8a8a8a;
+  padding:8px 10px;background:#1a1a1a;border-bottom:1px solid #333}
+.shell{overflow:hidden}
+.pg{width:760px;transform-origin:0 0;background:var(--bg);color:var(--ink);padding-bottom:26px}
+
+/* ── shared page chrome ── */
+.nav{display:flex;align-items:center;gap:12px;padding:13px 22px;border-bottom:1px solid var(--line)}
+.nav .lg{display:flex;align-items:center;gap:8px;font:600 15px var(--f)}
+.nav .lg i{width:19px;height:19px;border-radius:6px;background:var(--ink);display:block}
+.nav .sp{flex:1}
+.nav a{font:400 13px var(--f);color:var(--ink-2);text-decoration:none}
+.nav .btn{font:600 13px var(--f);background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:8px 14px}
+.wrap{padding:26px 22px 0}
+
+h1.t{font:700 46px/1.05 var(--f);letter-spacing:-.01em;margin:0}
+h2.s{font:600 36px/1.15 var(--f);letter-spacing:-.01em;margin:0}
+.sub{font:400 16px/1.55 var(--f);color:var(--ink-2);margin:12px 0 0;max-width:60ch}
+.kick{font:500 12px/1 var(--m);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.sec{margin-top:40px}
+.hr{height:1px;background:var(--line);margin:0}
+
+/* intent bar */
+.ask{display:flex;align-items:center;gap:10px;border:1px solid var(--line-2);border-radius:999px;
+  padding:15px 20px;margin-top:20px;background:var(--card)}
+.ask .ph{font:400 16px var(--f);color:var(--faint);flex:1}
+.ask .go{font:600 13px var(--f);background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:9px 15px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:7px 12px;font:400 13px var(--f);color:var(--ink-2);background:var(--card)}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:500}
+
+/* job band */
+.jobs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-top:16px}
+.job{background:var(--bg);padding:15px 16px}
+.job .n{font:600 16px/1.3 var(--f);margin:0}
+.job .c{font:400 12px var(--m);color:var(--faint);margin:6px 0 0}
+.job.hot{background:var(--pop)}
+
+/* rows — 76px, Raycast/Setapp recipe: 44px glyph, name 18/600, verb line 14/400, one meta atom */
+.rows{margin-top:14px}
+.row{display:flex;align-items:center;gap:13px;padding:14px 4px;border-bottom:1px solid var(--line)}
+.row .ic{width:44px;height:44px;border-radius:11px;flex:none}
+.row .tx{min-width:0;flex:1}
+.row .nm{font:600 18px/1.25 var(--f);margin:0;display:flex;align-items:center;gap:7px}
+.row .vb{font:400 14px/1.45 var(--f);color:var(--ink-2);margin:3px 0 0}
+.row .at{font:400 12px var(--m);color:var(--faint);flex:none;letter-spacing:.2px}
+.row .open{font:600 13px var(--f);border:1px solid var(--line-2);border-radius:999px;padding:7px 14px;flex:none}
+.doors{font:400 12px var(--m);color:var(--faint);margin:5px 0 0}
+
+/* kit card — App Store Today: kicker, headline, counted promise, items inline */
+.kits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px}
+.kit{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.kit .art{height:96px;display:block}
+.kit .kb{padding:14px 15px}
+.kit .kk{font:500 11px/1 var(--m);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.kit .kh{font:600 18px/1.3 var(--f);margin:8px 0 0}
+.kit .kp{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:6px 0 0}
+.kit .kl{display:flex;gap:6px;margin:12px 0 0}
+.kit .kl i{width:26px;height:26px;border-radius:7px;display:block}
+.kit .by{font:400 12px var(--m);color:var(--faint);margin:10px 0 0}
+
+/* reason row (returning) */
+.reason{border:1px solid var(--line);border-radius:12px;padding:17px 18px;background:var(--card);margin-top:16px}
+.reason .rh{font:600 18px/1.3 var(--f);margin:0}
+.reason .rw{font:400 14px/1.5 var(--f);color:var(--ink-2);margin:5px 0 0}
+.acts{margin-top:13px}
+.act{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--line)}
+.act .q{font:400 16px/1.35 var(--f);flex:1}
+.act .w{font:400 12px var(--m);color:var(--faint);flex:none}
+.act .run{font:600 13px var(--f);border:1px solid var(--line-2);border-radius:999px;padding:6px 13px;flex:none}
+.privacy{font:400 12px/1.6 var(--f);color:var(--faint);margin:12px 0 0}
+.pin{display:inline-block;font:500 11px/1 var(--m);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ok);border:1px solid var(--ok);border-radius:5px;padding:3px 6px}
+.foot{font:400 13px/1.6 var(--f);color:var(--faint);margin-top:26px;padding-top:16px;border-top:1px solid var(--line)}
+.allrow{display:flex;align-items:center;gap:10px;margin-top:16px}
+.allrow .lk{font:600 14px var(--f);border-bottom:1px solid var(--line-2)}
+</style></head>
+<body>
+
+<div class="top">
+  <div>
+    <h1>App store — three options, two states each</h1>
+    <p>Same catalogue, same copy discipline, three different theses about what the first screen is FOR. Type scale is identical in all three (Setapp's six steps with the 2× cliff: 12/14/16/18 → 36 → 46, three weights, no sizes in between). Rows replace posters and there are no iframes anywhere — Setapp ships 366 apps and Raycast 1,500+ with zero screenshots. ideabrain is one card with six doors, not six cards, which is what takes the shelf from "27" to 21 real destinations.</p>
+  </div>
+  <button class="tog" onclick="document.body.classList.toggle('dark')">Light / dark</button>
+</div>
+
+<div id="out"></div>
+
+<script>
+/* ── real catalogue, verb-first one-liners in Raycast's grammar ── */
+const C={
+ brandbrain:["#3DA35D","brandbrain","Turn a live site into a brand system"],
+ ideabrain:["#4C7EF3","ideabrain","Pressure-test an idea before you build it"],
+ bank:["#12A594","Bank","Keep notes, tasks and links in plain .md you own"],
+ redline:["#4C7EF3","Redline","Read your landing page back to you, line by line"],
+ marquee:["#4C7EF3","Marquee","Generate a scrolling landing page from one line"],
+ adforge:["#EC6142","AdForge","Turn a URL into three Meta ad concepts"],
+ adpulse:["#E5922B","AdPulse","Turn last week's ad spend into what to cut"],
+ adwall:["#E93D82","Adwall","Get six ad directions at once from your brand"],
+ aplus:["#E5922B","A-Plus","Write Amazon A+ content in one pass"],
+ batch:["#E5922B","Batch","Draft all eight YC application answers"],
+ identity:["#8B5CF6","Identity","Compose an AI creator persona, facet by facet"],
+ prism:["#E93D82","Prism","Turn a prompt into an on-brand image"],
+ reel:["#E93D82","Reel","Script and render a launch reel in your browser"],
+ cast:["#E93D82","Cast","Keep an AI persona on-model across scenes"],
+ studio:["#E93D82","Studio","Shoot the product without a studio"],
+ shelf:["#E5922B","Shelf","Find the cash locked in your inventory"],
+ take:["#12A594","Take","Script it, then record it in the page"],
+ huddle:["#12A594","Huddle","Get on a working call with your own Claude"],
+ cartridge:["#8B5CF6","Cartridge","Describe a game and keep the .html"],
+ natal:["#8B5CF6","NATAL","Read your birth chart without the flattery"],
+ arcana:["#8B5CF6","Arcana","Pull three cards and get a blunt reading"],
+};
+/* six JOB groups — named as something a founder says out loud, min 3 each */
+const JOBS=[
+ ["Work out if it's worth building",["ideabrain","redline","batch"]],
+ ["Name it and make it look like something",["brandbrain","identity","prism","marquee"]],
+ ["Get it in front of people",["adforge","adpulse","adwall","reel","cast"]],
+ ["Sell the thing",["aplus","studio","shelf"]],
+ ["Run the week",["bank","huddle","take"]],
+ ["After hours",["natal","arcana","cartridge"]],
+];
+const PHRASES=["write this week's ads","review my landing page copy","validate this idea before I build it",
+ "make product shots without a studio","get my week into one list","turn my repo into a brief"];
+
+const ic=(k,s=44)=>`<span class="ic" style="width:${s}px;height:${s}px;background:${C[k][0]}"></span>`;
+const row=(k,{atom="free · your Claude",open=true,doors=false,pin=false}={})=>`
+ <div class="row">${ic(k)}<div class="tx">
+   <p class="nm">${C[k][1]}${pin?' <span class="pin">in your library</span>':''}</p>
+   <p class="vb">${C[k][2]}</p>
+   ${doors?'<p class="doors">open it for — marketplace · consumer app · SaaS · retail · hardware · a feature</p>':''}
+ </div><span class="at">${atom}</span>${open?'<span class="open">Open</span>':''}</div>`;
+const rows=(ks,o={})=>`<div class="rows">${ks.map(k=>row(k,{...o,doors:k==="ideabrain"})).join("")}</div>`;
+const jobband=(hot=-1)=>`<div class="jobs">${JOBS.map(([n,ks],i)=>
+  `<div class="job${i===hot?' hot':''}"><p class="n">${n}</p><p class="c">${ks.length} apps</p></div>`).join("")}</div>`;
+const chips=(on=-1)=>`<div class="chips">${PHRASES.map((p,i)=>`<span class="chip${i===on?' on':''}">${p}</span>`).join("")}</div>`;
+const kit=(kk,kh,kp,ks,art)=>`<div class="kit"><span class="art" style="background:${art}"></span><div class="kb">
+  <p class="kk">${kk}</p><p class="kh">${kh}</p><p class="kp">${kp}</p>
+  <span class="kl">${ks.map(k=>`<i style="background:${C[k][0]}"></i>`).join("")}</span>
+  <p class="by">by Sameep</p></div></div>`;
+const nav=(connected)=>`<div class="nav"><span class="lg"><i></i>Switchboard</span><span class="sp"></span>
+  <a>All apps</a><a>How it works</a>${connected?'<a>Your library</a><span class="btn">Aamras ▾</span>':'<span class="btn">Connect</span>'}</div>`;
+
+/* ═══════════ OPTION 1 — ASK. One question leads; browsing is secondary. ═══════════ */
+const O1_cold=`${nav(0)}<div class="wrap">
+ <h1 class="t">Small apps that run on the Claude you already pay for.</h1>
+ <p class="sub">No account. No API key. Nothing you type leaves your machine.</p>
+ <div class="ask"><span class="ph">What are you trying to get done?</span><span class="go">Find it</span></div>
+ ${chips()}
+ <div class="sec"><p class="kick">Or start from a kit</p>
+  <div class="kits">
+   ${kit("NEW HERE","Start with these five","The five that need nothing but a link to get going.",["bank","redline","brandbrain","adforge","take"],"linear(135deg,#EDE7DA,#DED5C4)".replace("linear","linear-gradient"))}
+   ${kit("RUNNING ADS ALONE","Six for the whole funnel","Brief, write, render, then read the spend back.",["brandbrain","adforge","adwall","reel","adpulse","studio"],"linear-gradient(135deg,#E8DCD6,#D8C6BB)")}
+   ${kit("FRIDAY AFTERNOON","Four you can finish today","Small enough to start and end before you log off.",["take","cartridge","arcana","natal"],"linear-gradient(135deg,#DDE2EA,#C8D1DE)")}
+  </div></div>
+ <div class="allrow"><span class="lk">Browse all 21 apps by job →</span></div>
+ <p class="foot">21 apps, all free on your own Claude. Six of them are ideabrain opened to a different kind of idea — we count that as one.</p>
+</div>`;
+
+const O1_ret=`${nav(1)}<div class="wrap">
+ <h1 class="t">What are you getting done today?</h1>
+ <div class="ask"><span class="ph">Ask for anything — it routes to the app and fills it in</span><span class="go">Go</span></div>
+ ${chips()}
+ <div class="sec"><p class="kick">Because your library holds Aamras and relay</p>
+  <div class="reason"><p class="rh">Three things you could finish now</p>
+   <p class="rw">Worked out on this page from names only — nothing was sent anywhere.</p>
+   <div class="acts">
+    <div class="act"><span class="q">Generate this week's ads for Aamras</span><span class="w">AdForge</span><span class="run">Run</span></div>
+    <div class="act"><span class="q">Read relay's landing page back, line by line</span><span class="w">Redline</span><span class="run">Run</span></div>
+    <div class="act"><span class="q">Turn last week's Aamras spend into what to cut</span><span class="w">AdPulse</span><span class="run">Run</span></div>
+   </div>
+   <p class="privacy">Names only, never the contents. Dismiss any of these and it won't come back.</p>
+  </div></div>
+ <div class="sec"><p class="kick">Where you were</p>${rows(["adforge","bank"],{atom:"2 days ago",open:true})}</div>
+ <div class="allrow"><span class="lk">Browse all 21 apps by job →</span></div>
+</div>`;
+
+/* ═══════════ OPTION 2 — SHELF. The whole vocabulary, then the whole shelf. ═══════════ */
+const O2_cold=`${nav(0)}<div class="wrap">
+ <h1 class="t">Small apps that run on the Claude you already pay for.</h1>
+ <p class="sub">No account. No API key. Nothing you type leaves your machine. Pick the job you're on.</p>
+ ${jobband()}
+ <div class="ask" style="margin-top:14px"><span class="ph">Or describe the task — "write this week's ads"</span><span class="go">Find it</span></div>
+ <div class="sec"><h2 class="s">Get it in front of people</h2>${rows(JOBS[2][1])}</div>
+ <div class="sec"><h2 class="s">Work out if it's worth building</h2>${rows(JOBS[0][1])}</div>
+ <p class="foot">Every job has at least three apps — if a filter would return one, it isn't a job. 21 apps in total, all free on your own Claude.</p>
+</div>`;
+
+const O2_ret=`${nav(1)}<div class="wrap">
+ <h1 class="t">Pick the job you're on.</h1>
+ <p class="sub">Reordered for what your library holds — Aamras, Haazma, relay.</p>
+ ${jobband(2)}
+ <div class="ask" style="margin-top:14px"><span class="ph">Or ask for anything — it routes and fills it in</span><span class="go">Go</span></div>
+ <div class="sec"><p class="kick">Get it in front of people · because you banked Aamras</p>
+  ${rows(["adforge","adpulse"],{atom:"free · your Claude",pin:true})}
+  ${rows(["adwall","reel"],{atom:"not tried yet"})}
+  <p class="privacy">Ordered on this page from the names in your library — nothing was sent anywhere.</p>
+ </div>
+ <div class="sec"><h2 class="s">Run the week</h2>${rows(JOBS[4][1])}</div>
+</div>`;
+
+/* ═══════════ OPTION 3 — CURATE. Editorial front door; the shelf is page two. ═══════════ */
+const O3_cold=`${nav(0)}<div class="wrap">
+ <h1 class="t">Small apps that run on the Claude you already pay for.</h1>
+ <p class="sub">No account. No API key. Nothing you type leaves your machine.</p>
+ <div class="sec" style="margin-top:26px"><div class="kits">
+   ${kit("START HERE","Five that need only a link","Point them at your site and they're already useful.",["bank","redline","brandbrain","adforge","take"],"linear-gradient(135deg,#EDE7DA,#DDD2BF)")}
+   ${kit("RUNNING ADS ALONE","Six for the whole funnel","Brief, write, render, then read the spend back.",["brandbrain","adforge","adwall","reel","adpulse","studio"],"linear-gradient(135deg,#E8DCD6,#D6C2B6)")}
+   ${kit("BEFORE YOU BUILD","Three that argue with you","Cheaper to be wrong here than in code.",["ideabrain","redline","batch"],"linear-gradient(135deg,#DDE2EA,#C4CEDD)")}
+ </div></div>
+ <div class="sec"><h2 class="s">This week</h2>
+  <p class="sub" style="margin-top:8px">Marquee writes a scrolling landing page from one line — then Redline reads it back to you.</p>
+  ${rows(["marquee","redline"])}</div>
+ <div class="sec"><p class="kick">Everything else</p>${jobband()}</div>
+ <div class="allrow"><span class="lk">See all 21 apps →</span></div>
+ <p class="foot">Nothing here is ranked by installs or stars — we don't have accounts, so we don't have either. These are picked by hand and signed.</p>
+</div>`;
+
+const O3_ret=`${nav(1)}<div class="wrap">
+ <h1 class="t">Back to it.</h1>
+ <p class="sub">Because your library holds Aamras, Haazma and relay.</p>
+ <div class="reason"><p class="rh">Three things you could finish now</p>
+  <p class="rw">Worked out on this page from names only — nothing was sent anywhere.</p>
+  <div class="acts">
+   <div class="act"><span class="q">Generate this week's ads for Aamras</span><span class="w">AdForge</span><span class="run">Run</span></div>
+   <div class="act"><span class="q">Read relay's landing page back, line by line</span><span class="w">Redline</span><span class="run">Run</span></div>
+   <div class="act"><span class="q">Get Haazma's week into one list</span><span class="w">Bank</span><span class="run">Run</span></div>
+  </div></div>
+ <div class="sec"><p class="kick">Picked for what you're building</p><div class="kits">
+   ${kit("YOU RUN ADS","Four you haven't opened","The rest of the funnel you already started.",["adwall","reel","cast","studio"],"linear-gradient(135deg,#E8DCD6,#D6C2B6)")}
+   ${kit("YOU KEEP A VAULT","Three that read it","They borrow the folder, then hand it back.",["bank","huddle","take"],"linear-gradient(135deg,#DCE6E2,#C2D3CC)")}
+   ${kit("FRIDAY AFTERNOON","Four to finish today","Small enough to start and end before you log off.",["take","cartridge","arcana","natal"],"linear-gradient(135deg,#DDE2EA,#C4CEDD)")}
+ </div></div>
+ <div class="allrow"><span class="lk">See all 21 apps →</span></div>
+</div>`;
+
+const OPTS=[
+ ["Option 1 — ASK","The first screen is one question. Routing beats browsing: the intent bar plus six task phrases IS the navigation, and the shelf is a link. Strongest for a stranger who knows their job but not our vocabulary; weakest for someone who wants to see what exists. Returning state swaps the phrase-matcher for the live router that already exists in home.js.",O1_cold,O1_ret],
+ ["Option 2 — SHELF","The whole vocabulary first: six job groups with counts, above anything else, then the shelf as rows grouped by job. Mobbin's axis band cut from four axes to one because we have 21 destinations, not 621,000 screens. Most honest about what's here; least opinionated. Returning state reorders the groups by what the library holds and pins apps already in use.",O2_cold,O2_ret],
+ ["Option 3 — CURATE","At low N, curation IS the architecture — the App Store Today model. Named, signed kits carry the front door; the job band is a footer and the full shelf is page two. Most designed and most opinionated; costs real editorial upkeep, and every kit has a human name on it because with no ratings and no installs an author is the only honest trust device we have.",O3_cold,O3_ret],
+];
+
+document.getElementById("out").innerHTML = OPTS.map(([n,d,cold,ret])=>`
+ <div class="optrow"><p class="opthead"><b>${n}</b><span>${d}</span></p>
+  <div class="pair">
+   <div class="frame"><div class="flabel">State A — first-time visitor · nothing connected</div>
+     <div class="shell" data-sh><div class="pg">${cold}</div></div></div>
+   <div class="frame"><div class="flabel">State B — returning user · library has Aamras, Haazma, relay</div>
+     <div class="shell" data-sh><div class="pg">${ret}</div></div></div>
+  </div></div>`).join("");
+
+function fit(){document.querySelectorAll("[data-sh]").forEach(sh=>{
+  const p=sh.querySelector(".pg"), s=sh.clientWidth/760;
+  p.style.transform=`scale(${s})`; sh.style.height=(p.scrollHeight*s)+"px";});}
+fit(); addEventListener("resize",fit); document.fonts.ready.then(fit);
+</script>
+</body></html>
