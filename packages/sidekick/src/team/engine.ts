@@ -38,6 +38,10 @@ interface PersistedTeam {
   lan?: boolean;
   hostAddr?: string;
   hostPort?: number;
+  /** Pro ENTITLEMENT for the hosted relay (team-scoped; unlocks the zero-knowledge store + seats). */
+  ent?: string;
+  /** Highest store sequence this device has already applied — so a reconnect fetches only the tail. */
+  storeSeq?: number;
   /** Team-level git backing (host-authored, learned by members over the sealed channel). */
   git?: GitConfig;
   /** THIS member's opt-in to push/pull with their own git auth. Never implied by the team. */
@@ -72,6 +76,8 @@ export interface TeamStatus {
   git?: { remote: string; branch: string; enabled: boolean; lastPushAt?: number; lastPullAt?: number; error?: string };
   /** Relay base URL when the team syncs cross-network through one; absent = direct LAN. */
   relay?: string;
+  /** Hosted-relay cloud backup (Pro). `entitled` = a valid entitlement was presented for this team. */
+  cloud?: { entitled: boolean; backedUpAt?: number; restoredFiles?: number; seq?: number; error?: string };
 }
 
 export interface TeamEngineDeps {
@@ -134,6 +140,11 @@ export class TeamEngine {
 
   private wss: WebSocketServer | null = null; // host role, direct LAN
   private relayHost: RelayHostTransport | null = null; // host role, via relay
+  /** Pro cloud-backup bookkeeping (hosted relay's zero-knowledge store). */
+  private cloudBackedUpAt = 0;
+  private cloudRestored = 0;
+  private cloudError: string | null = null;
+  private putsSinceSnapshot = 0;
   private hostListening = false;
   private hostError: string | null = null;
   private pendingHandshakes = 0;
@@ -237,7 +248,7 @@ export class TeamEngine {
   // ---- control-channel verbs (panel-only; the Broker routes team.* actions here) ----
 
   /** Create a team around a local folder and start listening. Returns the invite code. */
-  host(opts: { folder: string; teamName?: string; lan?: boolean; port?: number; relay?: string }): { invite: string; status: TeamStatus } {
+  host(opts: { folder: string; teamName?: string; lan?: boolean; port?: number; relay?: string; ent?: string }): { invite: string; status: TeamStatus } {
     if (!this.enabled()) throw new Error("Team Mode is off — enable it first");
     this.teardownNetwork();
     const teamId = newTeamId();
@@ -253,6 +264,7 @@ export class TeamEngine {
       folder: resolve(expandTilde(opts.folder)),
       port: opts.port && Number.isInteger(opts.port) ? opts.port : 8790,
       lan: !!opts.lan,
+      ...(opts.ent ? { ent: opts.ent } : {}),
       ...(relay ? { relay } : {}),
     };
     this.persistState();
@@ -280,6 +292,7 @@ export class TeamEngine {
       hostAddr: invite.host,
       hostPort: invite.port,
       ...(invite.relay ? { relay: invite.relay } : {}),
+      ...(invite.ent ? { ent: invite.ent } : {}),
     };
     this.persistState();
     try {
@@ -294,6 +307,64 @@ export class TeamEngine {
       throw err;
     }
     this.deps.audit(`team:join`, "ok", `${invite.name} @ ${invite.host}:${invite.port}`);
+    this.deps.onTeamChanged();
+    return this.status();
+  }
+
+  /**
+   * Attach (or clear) this team's Pro ENTITLEMENT. Real flow: the user subscribes, the panel asks
+   * billing for a token scoped to THIS teamId, and stores it here — so the token can be team-scoped
+   * even though the team is created before the subscription is applied to it. Re-hosts so the relay
+   * connection is re-made with the entitlement (unlocking the store + the plan's seats), and the
+   * invite code regenerates carrying it so teammates inherit the Pro session with no account.
+   */
+  setEntitlement(ent: string | null): TeamStatus {
+    if (!this.state) throw new Error("no team");
+    if (this.state.role !== "host") throw new Error("only the host holds the team's plan");
+    const token = (ent ?? "").trim();
+    this.state.ent = token || undefined;
+    this.state.storeSeq = 0; // a new plan means re-reading whatever the store holds for us
+    this.persistState();
+    this.deps.audit(token ? "team:entitle" : "team:disentitle", "ok", this.state.teamName);
+    if (this.state.relay) {
+      // Reconnect so the relay sees the entitlement on the query string.
+      this.teardownNetwork();
+      this.startHosting();
+    }
+    this.deps.onTeamChanged();
+    return this.status();
+  }
+
+  /**
+   * RESTORE (Pro) — rebuild a team's folder on THIS machine from the encrypted cloud backup, using
+   * only the invite code. Unlike join(), it doesn't need any teammate to be online: it re-hosts the
+   * SAME team identity (teamId + secret from the code, so the same key opens the stored blobs) and
+   * replays the store. This is the "everyone was offline" / "new laptop" path — and it stays
+   * zero-knowledge, because only this code's secret can decrypt what the relay handed back.
+   */
+  async restore(code: string, opts?: { folder?: string }): Promise<TeamStatus> {
+    if (!this.enabled()) throw new Error("Team Mode is off — enable it first");
+    const invite = decodeInvite(code);
+    if (!invite) throw new Error("invalid invite code");
+    if (!invite.relay) throw new Error("this team has no cloud backup — it syncs directly");
+    if (!invite.ent) throw new Error("cloud backup needs Pro — this invite carries no entitlement");
+    this.teardownNetwork();
+    this.dropSyncIndex(invite.teamId); // a restore starts from the stored truth, not a stale index
+    const folder = resolve(expandTilde((opts?.folder ?? "").trim() || defaultJoinFolder(invite.name, invite.teamId)));
+    this.state = {
+      role: "host", // we become the team's rendezvous; teammates rejoin with the same code
+      teamId: invite.teamId,
+      teamName: invite.name,
+      secret: invite.secret,
+      folder,
+      relay: invite.relay,
+      ent: invite.ent,
+      storeSeq: 0, // replay the whole log
+      lan: false,
+    };
+    this.persistState();
+    this.startHosting(); // 'listening' triggers storeFetch(), which applies the backup
+    this.deps.audit("team:restore", "ok", `${invite.name} → ${folder}`);
     this.deps.onTeamChanged();
     return this.status();
   }
@@ -333,6 +404,13 @@ export class TeamEngine {
       members,
       lastSyncAt: this.lastSyncAt || undefined,
       error: this.state.role === "host" && this.hostError ? this.hostError : undefined,
+      cloud: this.state.relay ? {
+        entitled: !!this.state.ent,
+        ...(this.cloudBackedUpAt ? { backedUpAt: this.cloudBackedUpAt } : {}),
+        ...(this.cloudRestored ? { restoredFiles: this.cloudRestored } : {}),
+        ...(this.state.storeSeq ? { seq: this.state.storeSeq } : {}),
+        ...(this.cloudError ? { error: this.cloudError } : {}),
+      } : undefined,
       git: this.state.git ? {
         remote: this.state.git.remote,
         branch: this.state.git.branch,
@@ -460,6 +538,9 @@ export class TeamEngine {
       secret: this.state.secret,
       name: this.state.teamName,
       ...(this.state.relay ? { relay: this.state.relay } : {}),
+      // Members present the same entitlement so the WHOLE team gets the Pro session and counts
+      // against the plan's seats — while still creating no account of their own.
+      ...(this.state.ent ? { ent: this.state.ent } : {}),
     };
     return encodeInvite(invite);
   }
@@ -473,10 +554,24 @@ export class TeamEngine {
     if (st.relay) {
       // RELAY host: dial OUT to the relay and take a virtual socket per member. No listening port;
       // the relay is the reachable rendezvous. Same acceptPeer() path, same sealed handshake.
-      const t = new RelayHostTransport(st.relay, st.teamId);
-      t.on("listening", () => { this.hostListening = true; this.hostError = null; this.deps.onTeamChanged(); });
+      const t = new RelayHostTransport(st.relay, st.teamId, st.ent);
+      t.on("listening", () => {
+        this.hostListening = true; this.hostError = null; this.deps.onTeamChanged();
+        // Pro cloud backup: pull anything the store holds beyond what we've applied (this is what
+        // makes a fresh device — or a team whose peers are all offline — able to catch up), then
+        // start backing our own writes up.
+        if (st.ent) this.storeFetch();
+      });
       t.on("down", () => { this.hostListening = false; this.deps.onTeamChanged(); });
       t.on("peer", (ws) => this.acceptPeer(ws as any));
+      t.on("store", (m) => this.onStoreReply(m));
+      // The relay refused us (over-plan seats, or a free session ended) — surface it, don't spin.
+      t.on("gate", ({ code, reason }: { code: number; reason: string }) => {
+        this.hostError = code === 4003
+          ? `this team's plan covers ${/seat-limit:(\d+)/.exec(reason)?.[1] ?? "fewer"} people — upgrade to add seats`
+          : "your free session ended — upgrade to keep syncing through the cloud";
+        this.deps.onTeamChanged();
+      });
       this.relayHost = t;
       t.start();
       console.error(`[team] hosting "${st.teamName}" via relay ${st.relay} (sealed frames only)`);
@@ -633,7 +728,7 @@ export class TeamEngine {
     const st = this.state;
     // Relay-backed teams dial the relay (which makes the socket transparent to the host); direct
     // teams dial the host address. Everything after this line is identical either way.
-    const url = st.relay ? relayMemberUrl(st.relay, st.teamId) : `ws://${st.hostAddr}:${st.hostPort}`;
+    const url = st.relay ? relayMemberUrl(st.relay, st.teamId, st.ent) : `ws://${st.hostAddr}:${st.hostPort}`;
     const ws = new WebSocket(url, { maxPayload: MAX_FRAME_BYTES });
     const session: Session = { ws, nonce: "", sendSeq: 0, recvSeq: 0 };
     this.client = session;
@@ -706,6 +801,71 @@ export class TeamEngine {
     });
   }
 
+  // ---- Pro cloud backup: the hosted relay's ZERO-KNOWLEDGE store ----
+  // We upload the same AES-256-GCM-sealed payloads the wire already carries, so the relay stores
+  // ciphertext it cannot open. This is what makes the folder survive EVERYONE being offline, and
+  // lets a fresh device rebuild it from the invite code alone. Snapshots keep our storage bill
+  // proportional to the folder, not to its entire edit history.
+
+  /** How many op-batches to upload before compacting the log into one folder snapshot. */
+  private static readonly SNAPSHOT_EVERY = 20;
+
+  /** Ask the store for everything past what we've already applied. */
+  private storeFetch() {
+    const since = this.state?.storeSeq ?? 0;
+    this.relayHost?.sendStore({ fetch: since });
+  }
+
+  /** Upload one sealed batch of ops (fire-and-forget; the relay acks with {stored:seq}). */
+  private storeBackup(ops: SyncOp[]) {
+    if (!this.state?.ent || !this.key || !this.relayHost || !ops.length) return;
+    const blob = Buffer.from(JSON.stringify(seal(this.key, { kind: "ops", ops })), "utf8").toString("base64");
+    if (!this.relayHost.sendStore({ put: blob })) return;
+    this.putsSinceSnapshot += 1;
+    if (this.putsSinceSnapshot >= TeamEngine.SNAPSHOT_EVERY) this.storeSnapshot();
+  }
+
+  /** Compact: seal the folder's CURRENT full state and replace the whole stored log with it. */
+  private storeSnapshot() {
+    if (!this.state?.ent || !this.key || !this.relayHost || !this.sync) return;
+    const ops = this.sync.opsFor({}); // every live file, as if a peer knew nothing
+    const blob = Buffer.from(JSON.stringify(seal(this.key, { kind: "ops", ops })), "utf8").toString("base64");
+    if (this.relayHost.sendStore({ snapshot: blob })) this.putsSinceSnapshot = 0;
+  }
+
+  /** Handle the relay's store replies. Applying a fetched log is the RESTORE path. */
+  private onStoreReply(m: any) {
+    if (Array.isArray(m.log)) {
+      let applied = 0;
+      for (const entry of m.log) {
+        if (!entry || typeof entry.blob !== "string") continue;
+        try {
+          const frame = JSON.parse(Buffer.from(entry.blob, "base64").toString("utf8"));
+          const opened = open(this.key!, frame) as any; // only OUR key opens it — the relay never could
+          if (!opened || opened.kind !== "ops" || !Array.isArray(opened.ops)) continue;
+          this.applyOps(opened.ops as SyncOp[], "cloud");
+          applied += opened.ops.length;
+        } catch { /* a blob we can't open is not ours to apply */ }
+      }
+      if (typeof m.head === "number" && this.state) { this.state.storeSeq = m.head; this.persistState(); }
+      if (applied) {
+        this.cloudRestored += applied;
+        this.deps.audit("team:cloud-restore", "ok", `${applied} file(s) from the encrypted cloud backup`);
+      }
+      this.cloudError = null;
+      this.deps.onTeamChanged();
+      return;
+    }
+    if (typeof m.stored === "number") {
+      this.cloudBackedUpAt = Date.now();
+      if (this.state) { this.state.storeSeq = m.stored; this.persistState(); }
+      this.cloudError = null;
+      return;
+    }
+    if (m.full) { this.cloudError = "cloud backup is full for this team — older history was dropped"; this.storeSnapshot(); this.deps.onTeamChanged(); return; }
+    if (m.denied) { this.cloudError = "cloud backup needs Pro — syncing live only"; this.deps.onTeamChanged(); return; }
+  }
+
   // ---- shared plumbing ----
 
   /** A member learning the team's repo from the host (welcome or a live "git" frame). This
@@ -744,6 +904,9 @@ export class TeamEngine {
       if (!ops.length) return;
       this.lastSyncAt = Date.now();
       this.broadcastOps(ops);
+      // Pro: back the same sealed payload up to the hosted store, so the folder survives everyone
+      // going offline and a new device can restore it.
+      this.storeBackup(ops);
     }, SCAN_MS);
     this.scanTimer.unref?.();
   }
@@ -842,6 +1005,10 @@ export class TeamEngine {
     this.hostError = null;
     this.pendingHandshakes = 0;
     this.retryQueue.clear();
+    this.cloudBackedUpAt = 0;
+    this.cloudRestored = 0;
+    this.cloudError = null;
+    this.putsSinceSnapshot = 0;
     this.stopGit();
     this.sync = null;
     this.key = null;

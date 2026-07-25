@@ -485,6 +485,24 @@ export class Broker implements ConsentPrompter {
       }
       case "team.leave":
         return { ok: true, status: this.deps.team.leave() };
+      case "team.setEntitlement": {
+        // Panel-only: attach the Pro token billing issued for this team (or clear it).
+        try {
+          return { ok: true, status: this.deps.team.setEntitlement(args?.ent ? String(args.ent) : null) };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 200) };
+        }
+      }
+      case "team.restore": {
+        // Pro: rebuild a team folder on this machine from the encrypted cloud backup + invite code,
+        // with no teammate online. Only this code's secret can open what the relay returns.
+        try {
+          const status = await this.deps.team.restore(String(args?.code ?? ""), { folder: args?.folder ? String(args.folder) : undefined });
+          return { ok: true, status };
+        } catch (err) {
+          return { ok: false, error: String((err as Error)?.message || err).slice(0, 200) };
+        }
+      }
       // ---- Hosted inference (OpenRouter) — the OPT-IN "cloud tokens" lane. Panel-only; a page can
       // never set a key. Off by default; the panel badges hosted models as prompts-leave-the-machine. ----
       case "cloud.status":

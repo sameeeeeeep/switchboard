@@ -25,6 +25,12 @@ export interface TeamInvite {
    *  relay instead of connecting directly — the cross-network path. The relay only ever moves
    *  sealed frames it can't open (a mailman, not a landlord), so this never weakens the trust model. */
   relay?: string;
+  /** Optional Pro ENTITLEMENT for this team on OUR hosted relay (`<teamId>.<exp>.<seats>.<sig>`).
+   *  It rides in the invite because it is TEAM-scoped service capability, exactly like the secret:
+   *  the host subscribes, and every member presents it so the whole team gets the Pro session and
+   *  counts against the plan's seats. Members still create no account. Useless for any other team,
+   *  and it unlocks SERVICE only — it can never decrypt a frame. */
+  ent?: string;
 }
 
 const INVITE_PREFIX = "swb1.";
@@ -50,7 +56,12 @@ export function decodeInvite(code: string): TeamInvite | null {
     // Relay is optional and must be a ws/wss URL if present — anything else is dropped, never trusted.
     let relay: string | undefined;
     if (typeof obj.relay === "string" && /^wss?:\/\/[^\s]+$/.test(obj.relay) && obj.relay.length <= 300) relay = obj.relay.replace(/\/+$/, "");
-    return relay ? { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name, relay } : { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name };
+    // Entitlement: shape-checked only (the relay is the authority — it verifies the HMAC). A junk
+    // value costs nothing: the relay simply treats the connection as un-entitled.
+    let ent: string | undefined;
+    if (typeof obj.ent === "string" && /^[A-Za-z0-9_.-]{16,400}$/.test(obj.ent)) ent = obj.ent;
+    const base = { host: obj.host, port, teamId: obj.teamId, secret: obj.secret, name };
+    return { ...base, ...(relay ? { relay } : {}), ...(ent ? { ent } : {}) };
   } catch {
     return null;
   }
