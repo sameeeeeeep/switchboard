@@ -521,6 +521,7 @@ const LANE_MATCH = {
   inbox: /gmail|mail|email|send_message|outreach/i,
   ads: /\bad(s|_|-)|campaign|adset|boost/i,
   site: /deploy|publish|website|pages|vercel|netlify/i,
+  payments: /stripe|payment|checkout|charge|invoice|billing/i,
 };
 async function toolForLane(lane) {
   const names = await discoverTools();
@@ -552,6 +553,7 @@ async function runMove(co, move) {
     if (move.postId) { const p = co.posts.find((x) => x.id === move.postId); if (p) { p.state = "posted"; p.ref = res?.ref || res?.id || null; } }
     if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "sent"; m.ref = res?.ref || res?.id || null; } }
     if (move.lane === "site" && co.site) { co.site.live = true; co.site.url = res?.url || ("https://" + co.site.host); }
+    if (move.lane === "payments" && co.product) { co.product.live = true; co.metrics.revenue = co.metrics.revenue ?? 0; }
     toast("Done — " + move.n);
   } catch (e) {
     logLine(co, "“" + move.n + "” didn't go through — " + msg(e), "run", null);
@@ -696,6 +698,33 @@ async function genSite(co) {
   await saveCo(co); render();
 }
 
+// ---- the product + the money path: what the company sells, and how it charges. The offer is
+// drafted from context (reversible). Setting up payments to actually charge is an approve-class
+// move behind a payments connector — Autopilot NEVER charges on its own, and revenue only ever
+// shows a real number the connector reported, never a fabricated one.
+async function genProduct(co) {
+  if (co.product && co.product.busy) return;
+  co.product = { ...(co.product || {}), busy: true };
+  logLine(co, "shaping the product…", "run", null); render();
+  const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
+  const prompt = [
+    "You are defining the first paid offer for " + co.name + ".",
+    groundingBlock(co),
+    angle ? "It should line up with the angle you're running: " + (angle.label || "") : "",
+    "Propose ONE concrete first product to sell — a specific named offer at a specific price. Return JSON: {\"name\":<the offer, 2-5 words>, \"price\":<a realistic number in USD>, \"blurb\":<one sentence on exactly what the buyer gets>}. Never invent a result, a testimonial, or a customer count.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const { text, tokens, estimated } = await completeCounted(prompt, 400);
+    spend(co, tokens, "product", estimated);
+    let p = { name: co.name + " — first offer", price: 0, blurb: "" };
+    const j = text.indexOf("{");
+    if (j !== -1) { try { const o = JSON.parse(text.slice(j, text.lastIndexOf("}") + 1)); p = { name: String(o.name || p.name).slice(0, 60), price: Math.max(0, Math.round(Number(o.price) || 0)), blurb: String(o.blurb || "").slice(0, 160) }; } catch {} }
+    co.product = { ...p, drafted: true, live: false, at: clock() };
+    logLine(co, "drafted the product — " + p.name + (p.price ? " · $" + p.price : ""), "done", null);
+  } catch (e) { co.product.busy = false; logLine(co, "couldn't shape the product — " + msg(e), "run", null); }
+  await saveCo(co); render();
+}
+
 // ==== autonomy: the company advances itself ==================================================
 // The honest boundary: turning autopilot ON authorizes the CEO to do everything REVERSIBLE without
 // you — decide the open slate, draft posts and outreach, plan, report. It NEVER auto-sends: anything
@@ -757,6 +786,7 @@ async function autoTick(co) {
   const open = SPEC.map((s) => co.decisions[s.id]).find((d) => d && !d.chosenId && !d.inherited && d.options.length && !d.busy);
   if (open) { await autoChoose(co, open); co.auto.at = Date.now(); return; }
   const beats = [
+    async () => { if (!co.product || !co.product.drafted) { await genProduct(co); return true; } return false; },
     async () => { if (!co.site || !co.site.drafted) { await genSite(co); return true; } return false; },
     async () => { if (co.posts.length < 3) { await genPost(co, { lane: "social" }); return true; } return false; },
     async () => { if (co.inbox.length < 2) { await genOutreach(co, { lane: "inbox" }); return true; } return false; },
@@ -932,6 +962,8 @@ function companyCol(co) {
   idc.append(el("div", "fundnote", "runway is capacity to work on your own Claude — not a subscription, no key ever leaves you"));
   c.append(idc);
 
+  c.append(productCard(co));
+
   const stillInherited = Object.entries(co.inherited || {}).filter(([k]) => !(co.overridden || []).includes(k));
   if (stillInherited.length) {
     const ic = el("div", "card");
@@ -945,6 +977,36 @@ function companyCol(co) {
     }
     ic.append(el("div", "fundnote", "came from the brandbrain / ideabrain context you lent — Autopilot doesn't ask again"));
     c.append(ic);
+  }
+  return c;
+}
+
+/** the offer + its money path. Drafting is reversible; charging is a gated approve move. */
+function productCard(co) {
+  const c = el("div", "card");
+  const p = co.product;
+  c.append(cardTitle("Product", p && p.live ? "payments on" : p && p.drafted ? "drafted" : "the money path"));
+  if (p && p.drafted) {
+    const box = el("div", "prod");
+    const top = el("div", "prodtop");
+    top.append(el("div", "prodname", p.name));
+    if (p.price) top.append(el("div", "prodprice", "$" + p.price));
+    box.append(top);
+    if (p.blurb) box.append(el("div", "prodblurb", p.blurb));
+    c.append(box);
+    if (p.live) {
+      c.append(el("div", "fundnote", "payments connected — the revenue line above fills only when a real sale lands"));
+    } else {
+      const b = el("button", "growbtn", "Set up payments");
+      b.onclick = () => void runMove(co, { mode: "approve", lane: "payments", n: "Set up payments for " + p.name, args: { name: p.name, price: p.price } });
+      c.append(b);
+      c.append(el("div", "fundnote", "a gated move — needs a payments connector and your go. Autopilot never charges on its own."));
+    }
+  } else {
+    c.append(el("div", "empty", "No product yet. Autopilot shapes one from your context and the angle you're running."));
+    const b = el("button", "growbtn ghost", p && p.busy ? "shaping…" : "Draft a product");
+    b.onclick = () => void genProduct(co);
+    c.append(b);
   }
   return c;
 }
