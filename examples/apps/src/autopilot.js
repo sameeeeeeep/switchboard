@@ -1794,20 +1794,30 @@ function tokenMeter(co) {
 }
 
 function tokensPane(body, co) {
+  // Acoco's "Fund this company with real runway" — its shape, our honest substance: the runway is
+  // the CEO's working capacity on YOUR own Claude (a token budget), not a subscription we bill.
+  body.append(el("h3", "ptitle", "Fund this company with real runway"));
+  body.append(el("div", "fundsub", "Works while you sleep — runway is your CEO's working money, spent on your own Claude."));
+
+  const left = Math.max(0, co.tokens.budget - co.tokens.spent);
   const big = el("div", "tokbig");
-  big.append(el("div", "tokn", fmtTok(co.tokens.spent)));
-  big.append(el("div", "toklab", "tokens spent · " + fmtTok(co.tokens.budget) + " budgeted this week"));
+  big.append(el("div", "tokn", fmtTok(left)));
+  big.append(el("div", "toklab", "runway left · " + fmtTok(co.tokens.spent) + " of " + fmtTok(co.tokens.budget) + " used this week"));
   body.append(big);
+  const PER_OP = 26000; // a decision or a draft measures ~26k tokens (see the storage proof)
+  body.append(el("div", "fundest", "≈ " + Math.round(left / PER_OP) + " more moves of runway — a decision or a draft is about " + fmtTok(PER_OP) + " tokens"));
 
-  body.append(el("div", "sec", "WHERE THEY WENT"));
-  for (const [k, n, col] of [["draft", "Drafting the slate", "#C8F250"], ["restream", "Rewriting downstream", "#E9954A"]]) {
-    const r = el("div", "tokrow");
-    const tk = el("span", "tk"); tk.style.background = col;
-    r.append(tk, el("span", "tn", n), el("span", "tv", fmtTok(co.tokens.by[k] || 0)));
-    body.append(r);
-  }
+  body.append(el("div", "sec", "WHAT THE RUNWAY BUYS"));
+  const inc = el("div", "includes");
+  for (const t of [
+    "Runs on your own Claude — no key ever leaves you",
+    "The whole operating loop: decide, draft, stage, report",
+    "The site / wrapp and any connectors you wire",
+    "Auto top-up keeps it working when the week runs low",
+  ]) { const r = el("div", "incl"); r.append(el("span", "incheck", "✓"), el("span", null, t)); inc.append(r); }
+  body.append(inc);
 
-  body.append(el("div", "sec", "FEED IT MORE"));
+  body.append(el("div", "sec", "CHOOSE THE RUNWAY"));
   const tiers = el("div", "tiers");
   for (const [n, v, note] of [
     ["Trickle", 500_000, "keeps one thing moving at a time"],
@@ -1821,12 +1831,20 @@ function tokensPane(body, co) {
   }
   body.append(tiers);
 
+  // auto top-up — a real toggle: keep operating past the weekly budget (uses more of your Claude)
+  const atRow = el("div", "cthead"); atRow.style.marginTop = "12px";
+  atRow.append(el("span", "fundsub", "Auto top-up — keep going when runway runs low"));
+  const at = el("button", "toggle" + (co.autoTopup ? " on" : ""), co.autoTopup ? "On" : "Off");
+  at.onclick = async () => { co.autoTopup = !co.autoTopup; await saveCo(co); render(); };
+  atRow.append(at);
+  body.append(atRow);
+
   body.append(el("div", "honest",
-    "You are not buying a subscription. A token budget is capacity to work — it runs as fast as you feed it, and stops when you stop."));
+    "Not a subscription. Runway is capacity to work — it runs as fast as you fund it, on your own Claude, and stops when you stop."));
   body.append(el("div", "honest ember",
     co.tokens.estimated
-      ? "● Some of these are ESTIMATES. Your backend didn't report usage for every call, so those were counted at ~4 characters per token and marked rather than quietly rounded."
-      : "● Tokens are the only real number here. They come from the broker's own usage counts. Revenue needs a connected store, so it says “not connected” rather than drawing a chart of numbers that don't exist."));
+      ? "● Some of these are ESTIMATES — your backend didn't report usage for every call, so they're counted at ~4 characters per token and marked, not quietly rounded."
+      : "● Tokens are the only real number here — from the broker's own usage counts. Revenue/usage stay “not connected” rather than drawing numbers that don't exist."));
 }
 
 
