@@ -43,6 +43,11 @@ button{font-family:inherit;cursor:pointer}
 .meta .sp{flex:1}
 .meta .tog{background:transparent;border:1px solid var(--edge);color:var(--dim);
   border-radius:999px;padding:7px 14px;font:500 12.5px var(--s)}
+/* both themes ship. The bar carries the control, so it reads as a preference
+   the user owns rather than a house opinion they have to live with. */
+.theme{display:flex;gap:1px;background:var(--edge);border:1px solid var(--edge);border-radius:8px;overflow:hidden}
+.theme button{border:0;background:var(--panel);color:var(--faint);padding:5px 9px;font:500 11px var(--m)}
+.theme button[aria-pressed="true"]{background:var(--raised);color:var(--ink)}
 
 /* ── SYSTEM BAR — an OS states what it is working on, in the chrome, always ─ */
 .wrap{max-width:1180px;margin:0 auto;padding:0 40px}
@@ -60,6 +65,8 @@ button{font-family:inherit;cursor:pointer}
 .desk b{font:600 14px var(--s)} .desk s{text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
 .sys .sp{flex:1}
 .sys a{font:400 14px var(--s);color:var(--dim);text-decoration:none}
+.sys a.pill{color:#0A0C10}
+body.light .sys a.pill{color:#fff}
 /* capacity, not price — tokens read as a system resource */
 .cap{display:flex;align-items:center;gap:10px}
 .cap .g{width:74px;height:5px;border-radius:3px;background:var(--raised);overflow:hidden;display:block;
@@ -200,6 +207,36 @@ body.light .qfoot{border-top-color:rgba(0,0,0,.07)}
 .mc .n{font:600 18px/1.3 var(--s);margin:0}
 .mc .c{font:400 12px var(--m);color:var(--faint);margin:7px 0 0}
 
+/* ── FIRST VISIT — for someone who has never heard of Switchboard ─────────
+   Jobs first, at full size. No product name in the headline, no "wrapp", no
+   "lend a context", no BYO. The model gets explained once the job is chosen,
+   at the moment it is finally worth knowing. */
+.jobs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:30px}
+@media (max-width:860px){.jobs{grid-template-columns:1fr}}
+.job{display:flex;align-items:center;gap:16px;color:var(--ink);background:var(--panel);border:1px solid var(--edge);
+  border-radius:15px;padding:18px 20px;text-align:left;width:100%}
+.job:hover{border-color:var(--lime-line)}
+.job .sw2{width:34px;height:34px;border-radius:10px;flex:none}
+.job .tx{flex:1;min-width:0}
+.job .t{font:600 18px/1.3 var(--s);margin:0}
+.job .m{font:400 12px var(--m);color:var(--faint);margin:4px 0 0}
+.job .ar{color:var(--faint);font-size:18px}
+.how{display:flex;gap:34px;margin-top:40px;padding-top:26px;border-top:1px solid var(--edge-soft);flex-wrap:wrap}
+.how div{flex:1;min-width:190px}
+.how b{display:block;font:600 15px var(--s);margin-bottom:5px}
+.how p{margin:0;font:400 14px/1.5 var(--s);color:var(--dim)}
+
+/* the moment a stranger picks a job — the only place setup is ever mentioned */
+.pick{background:var(--panel);border:1px solid var(--edge);border-radius:20px;padding:28px 30px 26px;margin-top:26px}
+.pick h2{font:600 36px/1.1 var(--d);letter-spacing:-.02em;margin:0}
+.io{display:flex;gap:40px;margin:22px 0 0;flex-wrap:wrap}
+.io div{min-width:150px}
+.io b{display:block;font:500 11.5px/1 var(--m);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.io p{margin:0;font:500 17px var(--s)}
+.setup{display:flex;align-items:center;gap:16px;margin-top:26px;padding-top:22px;border-top:1px solid var(--edge-soft)}
+.setup .n{font:400 14px/1.5 var(--s);color:var(--dim);flex:1;min-width:0}
+.setup .n b{color:var(--ink);font-weight:600}
+
 /* ── the pointer — the conversion event ─────────────────────────────────── */
 .pts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:26px}
 .pt{background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:20px 19px 21px}
@@ -228,9 +265,13 @@ body.light .qfoot{border-top-color:rgba(0,0,0,.07)}
     <button data-s="os" aria-pressed="true">The OS</button>
     <button data-s="empty" aria-pressed="false">Connected, empty</button>
     <button data-s="cold" aria-pressed="false">First visit</button>
+    <button data-s="pick" aria-pressed="false">Picked a job</button>
   </div>
   <span class="sp"></span>
-  <button class="tog" onclick="document.body.classList.toggle('light')">Light / dark</button>
+  <span class="theme" id="theme">
+  <button data-t="dark" aria-pressed="true">Dark</button>
+  <button data-t="light" aria-pressed="false">Light</button>
+ </span>
 </div>
 
 <main id="app"></main>
@@ -289,7 +330,7 @@ const DESKS=[
  {name:"Aamras", kind:"brand", chip:"#C8842E", cap:62,
   tintA:"rgba(200,68,107,.13)", tintB:"rgba(244,160,0,.10)",
   sw:["#8B1A1A","#F4A000","#C0446B","#F4ECE2","#2B2B2B"],
-  line:"Indian maximalist home fragrance, made in small batches. Five apps have worked on this one.",
+  line:"Indian maximalist home fragrance, in small batches.",
   facts:[["12","artifacts"],["5","apps"],["3","decisions locked"],["2h ago","last touched",1]],
   q:[["hold","Run “No kettle” on paid search","autopilot","staged 20m ago · <em>spends money</em>","Review"],
      ["hold","Ad set 01 — three creatives, nothing published","adforge","staged 2h ago · <em>faces the public</em>","Review"],
@@ -302,7 +343,7 @@ const DESKS=[
  {name:"Switchboard", kind:"project", chip:"#3DA35D", cap:34,
   tintA:"rgba(200,242,80,.10)", tintB:"rgba(18,165,148,.10)",
   sw:["#C8F250","#12A594","#2B3440","#E8EDF4","#0A0C10"],
-  line:"The broker that lends your Claude to any page. This one is a repo, not a brand — so the desk fills with release work instead of campaigns.",
+  line:"A repo, not a brand — so the desk fills with release work.",
   facts:[["31","artifacts"],["4","apps"],["8","open tasks"],["20m ago","last touched",1]],
   q:[["hold","Publish the 0.2.1 release notes","marquee","staged 1h ago · <em>faces the public</em>","Review"],
      ["hold","Nine edits pinned on the install page","redline","staged 3h ago · <em>rewrites the page</em>","Review"],
@@ -314,10 +355,10 @@ const DESKS=[
  {name:"Haazma", kind:"idea", chip:"#4C7EF3", cap:8,
   tintA:"rgba(76,126,243,.11)", tintB:"rgba(139,92,246,.09)",
   sw:["#4C7EF3","#8B5CF6","#DDE0F0","#1B1B2A"],
-  line:"Three days old. Nothing is built and nothing is decided, so most of the desk is still empty — which is the honest state, not a broken one.",
+  line:"Three days old. Nothing decided yet.",
   facts:[["3","artifacts"],["2","apps"],["0","decisions locked"],["yesterday","last touched",1]],
   q:[], empty:["Nothing is waiting on you.",
-      "Two apps are still reading. When one of them prepares something it can't undo by itself, it will stop here and ask."],
+      "Two apps are still reading. When one prepares something it can't undo, it stops here."],
   run:[["ideabrain","Researching who else has tried this","running"]],
   uses:[6,5,3,2,0,1]},
 ];
@@ -334,10 +375,9 @@ const desk=(i)=>{const d=DESKS[i];return `${sys(i,d.cap)}
 <div class="deck">
  <section class="queue">
   <div class="qhead"><h2>Waiting on you</h2><span class="n">${d.q.filter(x=>x[0]==="hold").length} of ${d.q.length}</span></div>
-  <p class="qsub">Everything the apps prepared and then stopped, because the next step spends money, faces the public, or can't be undone.</p>
   ${d.q.length?d.q.map(x=>qi(...x)).join("")
     :`<div class="qempty"><p>${d.empty[0]}</p><s>${d.empty[1]}</s></div>`}
-  ${d.q.length?`<p class="qfoot">All of it was prepared on your machine, on your own Claude. <b>Nothing on this list has happened.</b> The ones with a break in the line stopped there on purpose — that gap is you.</p>`:""}
+  ${d.q.length?`<p class="qfoot"><b>Nothing here has happened.</b> A break in the line is where it stopped for you.</p>`:""}
  </section>
 
  <aside class="rail">
@@ -352,13 +392,13 @@ const desk=(i)=>{const d=DESKS[i];return `${sys(i,d.cap)}
    <div class="h"><p class="kick">Capacity</p></div>
    <div class="gnums"><b>${d.cap}<span style="font-size:20px">%</span></b><s>of this week's budget</s></div>
    <div class="gauge"><i style="width:${d.cap}%"></i></div>
-   <p class="gfoot">A budget is how much thinking this desk gets — not a bill. It runs on the Claude you already pay for.</p>
+   <p class="gfoot">Runs on the Claude you already pay for.</p>
   </div>
   <div class="card">
    <div class="h"><p class="kick">Lent to this desk</p></div>
    <div class="mini"><span class="ic" style="background:${d.chip}"></span>
     <span class="tx"><p class="nm">${d.name}</p><p class="vb">${d.kind} · ${d.facts[1][0]} apps can read it</p></span></div>
-   <p class="gfoot">Only what you lend. Revoke any app from the panel and it stops reading immediately.</p>
+   <p class="gfoot">Revoke any app from the panel.</p>
   </div>
  </aside>
 </div>
@@ -373,7 +413,7 @@ ${pack(d.uses.map(i=>USES[i]),"Next for "+d.name,"ordered by what's already bank
 
 ${map("Everything else, by what you're doing")}
 <div class="end"><a class="lk" href="#">See all 22 apps →</a>
- <span class="nt">Three desks. Each keeps its own queue, its own budget and its own colours.</span></div>`;};
+</div>`;};
 
 const EMPTY=`${sys(null,4)}
 <section class="obj">
@@ -392,27 +432,62 @@ ${pack(USES.slice(0,6),"What it'll be able to do","nothing here can run until so
 
 const COLD=`${sys(null,null)}
 <section class="obj">
- <p class="kick">Switchboard</p>
- <h1>Your companies, and everything staged against them.</h1>
- <p class="line">Twenty-two apps that work on the same few things you already have. They run on the Claude subscription you already pay for — no new account, no second bill, and nothing you type reaches a server of ours.</p>
- ${pts()}
+ <h1>What do you want done?</h1>
+ <p class="line">Twenty-two small apps. They run on the AI subscription you already pay for, so there is nothing to buy.</p>
+ <div class="jobs">${[0,4,2,1,5,3].map(i=>{const[j,k,m]=USES[i];
+   return `<button class="job" data-job="${i}"><span class="sw2" style="background:${C[k][0]}"></span>
+     <span class="tx"><p class="t">${j}</p><p class="m">${m}</p></span><span class="ar">→</span></button>`;}).join("")}</div>
+ <div class="how">
+  <div><b>The apps run in your browser.</b><p>Nothing is installed per app.</p></div>
+  <div><b>The AI runs on your machine.</b><p>Your own Claude, your own key.</p></div>
+  <div><b>We are only the wire.</b><p>We never see your work, and we never see the AI.</p></div>
+ </div>
 </section>
-${pack(USES,"What you'll be able to do with it","8 of 22 shown →")}
-${map("Or browse by what you're doing")}
-<div class="end"><a class="lk" href="#">See all 22 apps →</a>
- <span class="nt">Six of these are ideabrain opened onto a different kind of idea, so it counts once.</span></div>`;
+<div class="end"><a class="lk" href="#">See all 22 →</a></div>`;
+
+/* THE CONVERSION MOMENT. A stranger picked a job. This is the only screen that
+   mentions setup, and it arrives after they know what they are getting. */
+const PICK=(i)=>{const[j,k,m]=USES[i];return `${sys(null,null)}
+<section class="obj" style="padding-bottom:0">
+ <a class="lk" href="#" style="font:500 13px var(--s);color:var(--dim)">← Everything else</a>
+ <div class="pick">
+  <p class="kick">${C[k][1]}</p>
+  <h2>${j}</h2>
+  <div class="io">
+   <div><b>It needs</b><p>${m}</p></div>
+   <div><b>You get</b><p>${["a spend read-out","four product shots","a marked-up page","this week in one list","three ad drafts","a brand you can use"][[0,1,2,3,4,5].indexOf(i)] || "a finished draft"}</p></div>
+   <div><b>It costs</b><p>Nothing</p></div>
+  </div>
+  <div class="setup">
+   <p class="n"><b>One thing first.</b> Switchboard connects this page to the Claude on your machine. One minute, once — every app after this just works.</p>
+   <a class="pill" href="#">Get Switchboard</a>
+  </div>
+ </div>
+</section>
+<div class="how" style="max-width:1180px;margin:34px auto 0;padding:26px 40px 0">
+ <div><b>Why it is free.</b><p>You already pay for the AI. We add nothing to that bill.</p></div>
+ <div><b>Where your work goes.</b><p>Nowhere. It stays on your machine.</p></div>
+ <div><b>What we can see.</b><p>Nothing. We hold no key and store no data.</p></div>
+</div>
+<div class="end"><a class="lk" href="#">See all 22 →</a></div>`;};
 
 const app=document.getElementById("app");
-let cur="os", di=0;
+let cur="os", di=0, ji=0;
 function show(k,keep){cur=k;
- const html = k==="os" ? desk(di) : k==="empty" ? EMPTY : COLD;
+ const html = k==="os" ? desk(di) : k==="empty" ? EMPTY : k==="pick" ? PICK(ji) : COLD;
  app.innerHTML=`<div class="wrap">${html}</div>`;
  document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.s===k)));
  if(!keep) scrollTo(0,0);}
 document.getElementById("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)show(b.dataset.s);});
 /* switching desks keeps your scroll position — it is a switch, not a navigation */
-app.addEventListener("click",e=>{const b=e.target.closest("[data-desk]");
- if(b){di=+b.dataset.desk;const y=scrollY;show("os",1);scrollTo(0,y);}});
+app.addEventListener("click",e=>{
+ const b=e.target.closest("[data-desk]");
+ if(b){di=+b.dataset.desk;const y=scrollY;show("os",1);scrollTo(0,y);return;}
+ const j=e.target.closest("[data-job]");
+ if(j){ji=+j.dataset.job;show("pick");}});
+document.getElementById("theme").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+ document.body.classList.toggle("light",b.dataset.t==="light");
+ document.querySelectorAll("#theme button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));});
 show("os");
 </script>
 </body></html>
