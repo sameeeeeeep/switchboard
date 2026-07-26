@@ -50,8 +50,12 @@ button{font-family:inherit;cursor:pointer}
 .mark{display:flex;align-items:center;gap:10px;font:600 17px/1 var(--d);letter-spacing:-.02em}
 .mark i{width:22px;height:22px;border-radius:7px;background:var(--lime);display:block;
   box-shadow:0 0 18px rgba(200,242,80,.35)}
-.desk{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--edge);
-  border-radius:999px;padding:5px 14px 5px 6px}
+.desks{display:flex;align-items:center;gap:7px}
+.desk{display:flex;align-items:center;gap:9px;background:transparent;border:1px solid transparent;
+  border-radius:999px;padding:5px 14px 5px 6px;color:var(--dim)}
+.desk:hover{border-color:var(--edge-soft)}
+.desk[aria-pressed="true"]{background:var(--panel);border-color:var(--edge);color:var(--ink)}
+.desk[aria-pressed="true"] s{color:var(--faint)}
 .desk i{width:24px;height:24px;border-radius:8px;display:block;flex:none}
 .desk b{font:600 14px var(--s)} .desk s{text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
 .sys .sp{flex:1}
@@ -122,6 +126,10 @@ body.light .qi.hold::after{box-shadow:0 0 0 4px var(--yours)}
   border-radius:999px;padding:9px 18px}
 body.light .qi .go:not(.q){color:#fff}
 .qi .go.q{background:transparent;color:var(--ink-2);border:1px solid var(--edge)}
+.qempty{padding:26px 0 8px;border-top:1px solid rgba(255,255,255,.055)}
+body.light .qempty{border-top-color:rgba(0,0,0,.06)}
+.qempty p{margin:0;font:400 17px/1.5 var(--s);color:var(--ink-2);max-width:52ch}
+.qempty s{display:block;text-decoration:none;font:400 13px/1.6 var(--s);color:var(--faint);margin:9px 0 0;max-width:56ch}
 .qfoot{margin:20px 0 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);
   font:400 13px/1.6 var(--s);color:var(--dim);max-width:70ch}
 body.light .qfoot{border-top-color:rgba(0,0,0,.07)}
@@ -256,12 +264,14 @@ const pts=()=>`<div class="pts">
  <div class="pt"><h3>A website</h3><p>Reads the live page for its palette, products and voice.</p><s>paste a URL</s></div>
  <div class="pt"><h3>A repo</h3><p>The README, roadmap and open tasks become a project.</p><s>a github link</s></div>
  <div class="pt"><h3>A folder</h3><p>Stays on disk. The apps read it where it already is.</p><s>pick a folder</s></div></div>`;
-const sys=(desk,cap)=>`<div class="sys">
+const sys=(deskIdx,cap)=>`<div class="sys">
  <span class="mark"><i></i>Switchboard</span>
- ${desk?`<span class="desk"><i style="background:${desk[1]}"></i><b>${desk[0]}</b><s>${desk[2]}</s></span>`:""}
+ ${deskIdx==null?"":`<span class="desks">${DESKS.map((d,i)=>
+   `<button class="desk" aria-pressed="${i===deskIdx}" data-desk="${i}">
+     <i style="background:${d.chip}"></i><b>${d.name}</b><s>${d.kind}</s></button>`).join("")}</span>`}
  <span class="sp"></span>
  ${cap!=null?`<span class="cap"><span class="g"><i style="width:${cap}%"></i></span><s>${cap}% capacity</s></span>`:""}
- <a href="#">All apps</a>${desk?"":'<a href="#">How it works</a><a class="pill" href="#">Connect</a>'}</div>`;
+ <a href="#">All apps</a>${deskIdx==null?'<a href="#">How it works</a><a class="pill" href="#">Connect</a>':""}</div>`;
 const row=(k,vb,at,live)=>`<div class="row">${live?'<span class="live"></span>':""}
  <span class="ic" style="background:${C[k][0]}"></span>
  <div class="tx"><p class="nm">${C[k][1]}</p><p class="vb">${vb}</p></div>
@@ -271,54 +281,89 @@ const qi=(mode,t,who,w,cta,quiet)=>`<div class="qi ${mode}">
  <span class="tx"><p class="t">${t}</p><p class="w">${C[who][1]} · ${w}</p></span>
  <button class="go${quiet?" q":""}">${cta}</button></div>`;
 
-const OS=`${sys(["Aamras","#C8842E","brand"],62)}
-<section class="obj" style="--tint-a:rgba(200,68,107,.13);--tint-b:rgba(244,160,0,.10)">
+/* ═══ THE DESKS — three companies of three DIFFERENT kinds. Switching one is the
+   demo: the palette, the queue, the running work and the capacity all change,
+   because all of it is derived from the context, not from us. Haazma is
+   deliberately near-empty — a page that is full on every screenshot is lying. */
+const DESKS=[
+ {name:"Aamras", kind:"brand", chip:"#C8842E", cap:62,
+  tintA:"rgba(200,68,107,.13)", tintB:"rgba(244,160,0,.10)",
+  sw:["#8B1A1A","#F4A000","#C0446B","#F4ECE2","#2B2B2B"],
+  line:"Indian maximalist home fragrance, made in small batches. Five apps have worked on this one.",
+  facts:[["12","artifacts"],["5","apps"],["3","decisions locked"],["2h ago","last touched",1]],
+  q:[["hold","Run “No kettle” on paid search","autopilot","staged 20m ago · <em>spends money</em>","Review"],
+     ["hold","Ad set 01 — three creatives, nothing published","adforge","staged 2h ago · <em>faces the public</em>","Review"],
+     ["hold","Five edits pinned on the landing page","redline","staged yesterday · <em>rewrites the page</em>","Review"],
+     ["auto","This week's notes turned into eight tasks","bank","done · reversible, so it just ran","Look",1],
+     ["mine","Call the co-packer about the 21-day lead","autopilot","only you can do this one","Mark done",1]],
+  run:[["autopilot","Redrafting the channel","126k"],["studio","Four packshots","3 of 4"]],
+  uses:[0,1,2,3,4,5]},
+
+ {name:"Switchboard", kind:"project", chip:"#3DA35D", cap:34,
+  tintA:"rgba(200,242,80,.10)", tintB:"rgba(18,165,148,.10)",
+  sw:["#C8F250","#12A594","#2B3440","#E8EDF4","#0A0C10"],
+  line:"The broker that lends your Claude to any page. This one is a repo, not a brand — so the desk fills with release work instead of campaigns.",
+  facts:[["31","artifacts"],["4","apps"],["8","open tasks"],["20m ago","last touched",1]],
+  q:[["hold","Publish the 0.2.1 release notes","marquee","staged 1h ago · <em>faces the public</em>","Review"],
+     ["hold","Nine edits pinned on the install page","redline","staged 3h ago · <em>rewrites the page</em>","Review"],
+     ["auto","This week's commits summarised into the changelog","bank","done · reversible, so it just ran","Look",1],
+     ["mine","Sign the DMG with the Apple certificate","autopilot","only you have the key","Mark done",1]],
+  run:[["bank","Indexing 240 files","running"]],
+  uses:[2,3,6,5,4,0]},
+
+ {name:"Haazma", kind:"idea", chip:"#4C7EF3", cap:8,
+  tintA:"rgba(76,126,243,.11)", tintB:"rgba(139,92,246,.09)",
+  sw:["#4C7EF3","#8B5CF6","#DDE0F0","#1B1B2A"],
+  line:"Three days old. Nothing is built and nothing is decided, so most of the desk is still empty — which is the honest state, not a broken one.",
+  facts:[["3","artifacts"],["2","apps"],["0","decisions locked"],["yesterday","last touched",1]],
+  q:[], empty:["Nothing is waiting on you.",
+      "Two apps are still reading. When one of them prepares something it can't undo by itself, it will stop here and ask."],
+  run:[["ideabrain","Researching who else has tried this","running"]],
+  uses:[6,5,3,2,0,1]},
+];
+
+const desk=(i)=>{const d=DESKS[i];return `${sys(i,d.cap)}
+<section class="obj" style="--tint-a:${d.tintA};--tint-b:${d.tintB}">
  <p class="kick">On the desk</p>
- <h1>Aamras</h1>
- <p class="line">Indian maximalist home fragrance, made in small batches. Five apps have worked on this one.</p>
- <div class="sw">${["#8B1A1A","#F4A000","#C0446B","#F4ECE2","#2B2B2B"].map(c=>`<i style="background:${c}"></i>`).join("")}</div>
- <div class="facts"><span><b>12</b> artifacts</span><span><b>5</b> apps</span>
-  <span><b>3</b> decisions locked</span><span>last touched <b>2h ago</b></span></div>
+ <h1>${d.name}</h1>
+ <p class="line">${d.line}</p>
+ <div class="sw">${d.sw.map(c=>`<i style="background:${c}"></i>`).join("")}</div>
+ <div class="facts">${d.facts.map(([a,b,r])=>r?`<span>${b} <b>${a}</b></span>`:`<span><b>${a}</b> ${b}</span>`).join("")}</div>
 </section>
 
 <div class="deck">
  <section class="queue">
-  <div class="qhead"><h2>Waiting on you</h2><span class="n">3 of 5</span></div>
-  <p class="qsub">Everything five apps prepared and then stopped, because the next step spends money, faces the public, or can't be undone.</p>
-  ${qi("hold","Run \u201cNo kettle\u201d on paid search","autopilot","staged 20m ago · <em>spends money</em>","Review")}
-  ${qi("hold","Ad set 01 — three creatives, nothing published","adforge","staged 2h ago · <em>faces the public</em>","Review")}
-  ${qi("hold","Five edits pinned on the landing page","redline","staged yesterday · <em>rewrites the page</em>","Review")}
-  ${qi("auto","This week's notes turned into eight tasks","bank","done · reversible, so it just ran","Look",1)}
-  ${qi("mine","Call the co-packer about the 21-day lead","autopilot","only you can do this one","Mark done",1)}
-  <p class="qfoot">All of it was prepared on your machine, on your own Claude. <b>Nothing on this list has happened.</b> The three with a break in the line stopped there on purpose — that gap is you.</p>
+  <div class="qhead"><h2>Waiting on you</h2><span class="n">${d.q.filter(x=>x[0]==="hold").length} of ${d.q.length}</span></div>
+  <p class="qsub">Everything the apps prepared and then stopped, because the next step spends money, faces the public, or can't be undone.</p>
+  ${d.q.length?d.q.map(x=>qi(...x)).join("")
+    :`<div class="qempty"><p>${d.empty[0]}</p><s>${d.empty[1]}</s></div>`}
+  ${d.q.length?`<p class="qfoot">All of it was prepared on your machine, on your own Claude. <b>Nothing on this list has happened.</b> The ones with a break in the line stopped there on purpose — that gap is you.</p>`:""}
  </section>
 
  <aside class="rail">
   <div class="card">
-   <div class="h"><p class="kick">Running now</p><span class="n">2</span></div>
-   <div class="mini"><span class="live"></span><span class="ic" style="background:${C.autopilot[0]}"></span>
-    <span class="tx"><p class="nm">Autopilot</p><p class="vb">Redrafting the channel</p></span><span class="at">126k</span></div>
-   <div class="mini"><span class="live"></span><span class="ic" style="background:${C.studio[0]}"></span>
-    <span class="tx"><p class="nm">Studio</p><p class="vb">Four packshots</p></span><span class="at">3 of 4</span></div>
+   <div class="h"><p class="kick">Running now</p><span class="n">${d.run.length}</span></div>
+   ${d.run.map(([k,vb,at])=>`<div class="mini"><span class="live"></span>
+     <span class="ic" style="background:${C[k][0]}"></span>
+     <span class="tx"><p class="nm">${C[k][1]}</p><p class="vb">${vb}</p></span>
+     <span class="at">${at}</span></div>`).join("")}
   </div>
-
   <div class="card">
    <div class="h"><p class="kick">Capacity</p></div>
-   <div class="gnums"><b>62<span style="font-size:20px">%</span></b><s>of this week's budget</s></div>
-   <div class="gauge"><i style="width:62%"></i></div>
-   <p class="gfoot">A budget is how much thinking the desk gets this week — not a bill. It runs on the Claude you already pay for.</p>
+   <div class="gnums"><b>${d.cap}<span style="font-size:20px">%</span></b><s>of this week's budget</s></div>
+   <div class="gauge"><i style="width:${d.cap}%"></i></div>
+   <p class="gfoot">A budget is how much thinking this desk gets — not a bill. It runs on the Claude you already pay for.</p>
   </div>
-
   <div class="card">
    <div class="h"><p class="kick">Lent to this desk</p></div>
-   <div class="mini"><span class="ic" style="background:#C8842E"></span>
-    <span class="tx"><p class="nm">Aamras</p><p class="vb">brand · 5 apps can read it</p></span></div>
+   <div class="mini"><span class="ic" style="background:${d.chip}"></span>
+    <span class="tx"><p class="nm">${d.name}</p><p class="vb">${d.kind} · ${d.facts[1][0]} apps can read it</p></span></div>
    <p class="gfoot">Only what you lend. Revoke any app from the panel and it stops reading immediately.</p>
   </div>
  </aside>
 </div>
 
-${pack([USES[0],USES[1],USES[2],USES[3],USES[4],USES[5]],"Next for Aamras","ordered by what's already banked")}
+${pack(d.uses.map(i=>USES[i]),"Next for "+d.name,"ordered by what's already banked")}
 
 <section class="act">
  <p class="lb">Or ask for something else</p>
@@ -328,7 +373,7 @@ ${pack([USES[0],USES[1],USES[2],USES[3],USES[4],USES[5]],"Next for Aamras","orde
 
 ${map("Everything else, by what you're doing")}
 <div class="end"><a class="lk" href="#">See all 22 apps →</a>
- <span class="nt">Switch desks from the bar at the top. Each company keeps its own queue.</span></div>`;
+ <span class="nt">Three desks. Each keeps its own queue, its own budget and its own colours.</span></div>`;};
 
 const EMPTY=`${sys(null,4)}
 <section class="obj">
@@ -357,12 +402,17 @@ ${map("Or browse by what you're doing")}
 <div class="end"><a class="lk" href="#">See all 22 apps →</a>
  <span class="nt">Six of these are ideabrain opened onto a different kind of idea, so it counts once.</span></div>`;
 
-const S={os:OS,empty:EMPTY,cold:COLD};
 const app=document.getElementById("app");
-function show(k){app.innerHTML=`<div class="wrap">${S[k]}</div>`;
+let cur="os", di=0;
+function show(k,keep){cur=k;
+ const html = k==="os" ? desk(di) : k==="empty" ? EMPTY : COLD;
+ app.innerHTML=`<div class="wrap">${html}</div>`;
  document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.s===k)));
- scrollTo(0,0);}
+ if(!keep) scrollTo(0,0);}
 document.getElementById("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)show(b.dataset.s);});
+/* switching desks keeps your scroll position — it is a switch, not a navigation */
+app.addEventListener("click",e=>{const b=e.target.closest("[data-desk]");
+ if(b){di=+b.dataset.desk;const y=scrollY;show("os",1);scrollTo(0,y);}});
 show("os");
 </script>
 </body></html>
