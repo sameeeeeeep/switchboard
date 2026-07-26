@@ -402,6 +402,12 @@ function newCompany(cfg) {
     inbox: [],        // outreach drafts: { id, to, subject, body, state, at, ref }
     chat: [],         // CEO thread: { id, who: ceo|you, text, at }
     autotweet: false, // when true, a generated post stages instead of sitting as a silent draft
+    // AUTONOMY: off by default. Turning it on IS the authorizing human act — thereafter the CEO
+    // advances the company on its own for everything REVERSIBLE (deciding, drafting, planning).
+    // Anything that leaves the machine still stages for the daemon's per-action consent; autonomy
+    // never widens to irreversible sends. `cursor` remembers what the loop did last so it advances
+    // instead of repeating.
+    auto: { on: false, cursor: 0, at: 0 },
     log: [], decisions: {}, at: Date.now(),
   };
   for (const s of SPEC) co.decisions[s.id] = decision(s);
@@ -649,6 +655,77 @@ async function genOutreach(co, move) {
   await saveCo(co); render();
 }
 
+// ==== autonomy: the company advances itself ==================================================
+// The honest boundary: turning autopilot ON authorizes the CEO to do everything REVERSIBLE without
+// you — decide the open slate, draft posts and outreach, plan, report. It NEVER auto-sends: anything
+// that leaves the machine still stages for the daemon's per-action consent. One beat per tick, slow
+// enough to read — a company that moves faster than you can follow is one you've stopped trusting.
+const ticking = new Set();
+let autoTimer = null;
+const AUTO_MS = 9000;
+const anyAuto = () => cos.some((c) => c.auto && c.auto.on);
+function ensureAutoLoop() {
+  if (relay && anyAuto() && !autoTimer) autoTimer = setInterval(() => void tickAll(), AUTO_MS);
+  if ((!relay || !anyAuto()) && autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+}
+async function tickAll() {
+  if (!relay) return;
+  for (const co of cos) {
+    if (!co.auto || !co.auto.on || ticking.has(co.id) || drafting.has(co.id)) continue;
+    ticking.add(co.id);
+    try { await autoTick(co); } catch (e) { logLine(co, "autopilot hit a snag — " + msg(e), "run", null); await saveCo(co); render(); }
+    finally { ticking.delete(co.id); }
+  }
+}
+/** the CEO decides, under the autonomy you granted by turning autopilot on. Reversible — every pick
+ *  stays unlockable exactly like a human choice, and is logged as the CEO's, not yours. */
+async function autoChoose(co, d) {
+  const rec = d.options.find((o) => o.rec) || d.options[0];
+  if (!rec) return false;
+  d.chosenId = rec.id; d.chosenAt = clock(); d.stale = false;
+  logLine(co, "CEO chose " + rec.label + " for " + d.label.toLowerCase(), "done", d.id);
+  const stale = markStale(co, d.id);
+  await saveCo(co); render();
+  if (stale.length) await restream(co, stale);
+  return true;
+}
+/** a short proactive status the CEO posts to the thread on its own — not a reply, no fake "you". */
+async function ceoProactive(co) {
+  const chosen = SPEC.map((s) => { const o = optOf(co.decisions[s.id]); return o ? s.label + ": " + o.label : null; }).filter(Boolean);
+  const prompt = [
+    "You are the operating CEO of " + co.name + ", running it while the founder is away.",
+    groundingBlock(co),
+    chosen.length ? "Decided so far:\n" + chosen.join("\n") : "",
+    "Post a SHORT proactive status (1-2 sentences, first person) on what you just moved on and what's next. Never invent a metric, customer, price, or result.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const { text, tokens, estimated } = await completeCounted(prompt, 300);
+    spend(co, tokens, "ceo", estimated);
+    co.chat.push({ id: uid(), who: "ceo", text: text.trim(), at: clock() });
+  } catch { /* a missed status is not worth a toast */ }
+  await saveCo(co); render();
+}
+/** ONE next action per tick — watchable, reversible, never a send. */
+async function autoTick(co) {
+  if (co.tokens.spent >= co.tokens.budget) {
+    co.auto.on = false; ensureAutoLoop();
+    logLine(co, "autopilot paused — out of runway this week. Fund more to keep it moving.", "run", null);
+    toast(co.name + " paused — out of runway. Fund it to continue.");
+    await saveCo(co); render(); return;
+  }
+  const open = SPEC.map((s) => co.decisions[s.id]).find((d) => d && !d.chosenId && !d.inherited && d.options.length && !d.busy);
+  if (open) { await autoChoose(co, open); co.auto.at = Date.now(); return; }
+  const beats = [
+    async () => { if (co.posts.length < 3) { await genPost(co, { lane: "social" }); return true; } return false; },
+    async () => { if (co.inbox.length < 2) { await genOutreach(co, { lane: "inbox" }); return true; } return false; },
+    async () => { await ceoProactive(co); return true; },
+  ];
+  for (let i = 0; i < beats.length; i++) {
+    if (await beats[(co.auto.cursor + i) % beats.length]()) { co.auto.cursor = (co.auto.cursor + i + 1) % beats.length; co.auto.at = Date.now(); return; }
+  }
+  co.auto.at = Date.now();
+}
+
 // ---- the cold open ---------------------------------------------------------------------------
 let coldOpened = false;
 function autostart() {
@@ -686,6 +763,20 @@ function render() {
 
   view.append(cockpit(co));
   renderPane(co);
+  ensureAutoLoop();   // resume/settle the autonomous loop to match current auto-on state
+}
+
+/** the master switch — turning it on IS the authorizing act; the CEO advances everything reversible
+ *  from here, and the operating log tells you each move as it happens. */
+function autoToggle(co) {
+  const b = el("button", "autobtn" + (co.auto && co.auto.on ? " on" : ""));
+  b.append(el("span", "autodot"), el("span", "autolab", co.auto && co.auto.on ? "Autopilot on" : "Autopilot off"));
+  b.onclick = async () => {
+    co.auto.on = !co.auto.on;
+    logLine(co, co.auto.on ? "you handed " + co.name + " to autopilot — the CEO takes it from here" : "you took the wheel back — autopilot paused", "run", null);
+    await saveCo(co); render(); ensureAutoLoop();
+  };
+  return b;
 }
 
 function startBox() {
@@ -748,7 +839,7 @@ function cockpit(co) {
   const add = el("button", "cotab add", "+ New company");
   add.onclick = () => { creating = true; pane = null; render(); };
   tabs.append(add);
-  top.append(tabs, tokenMeter(co));
+  top.append(tabs, co ? autoToggle(co) : el("span"), tokenMeter(co));
   wrap.append(top);
 
   if (!co) return wrap;

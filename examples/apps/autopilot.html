@@ -264,6 +264,15 @@
       .chatrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 9px; color: var(--ink); font: 400 12.5px/1.4 var(--sans); padding: 10px 11px; outline: none; }
       .chatrow input:focus { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
       .chatsend { font: 600 14px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 9px; padding: 0 14px; cursor: pointer; flex: none; }
+
+      /* the master autopilot switch */
+      .autobtn { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 8px 14px; cursor: pointer; color: var(--ink-sec); transition: border-color .15s, color .15s, background .15s; }
+      .autobtn:hover { border-color: var(--ink-faint); }
+      .autobtn .autodot { width: 8px; height: 8px; border-radius: 999px; background: var(--ink-faint); flex: none; }
+      .autobtn .autolab { font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+      .autobtn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel)); color: var(--accent); }
+      .autobtn.on .autodot { background: var(--accent); box-shadow: 0 0 0 0 rgba(200,242,80,.6); animation: autopulse 1.6s ease-out infinite; }
+      @keyframes autopulse { 0% { box-shadow: 0 0 0 0 rgba(200,242,80,.55); } 70% { box-shadow: 0 0 0 7px rgba(200,242,80,0); } 100% { box-shadow: 0 0 0 0 rgba(200,242,80,0); } }
     </style>
   </head>
   <body>
