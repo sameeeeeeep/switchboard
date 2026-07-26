@@ -785,6 +785,33 @@ async function tickAll() {
     finally { ticking.delete(co.id); }
   }
 }
+/** LAND ON THE OS FIRST — the fast-track. Draft the slate if needed, then let the CEO choose the
+ *  recommended option at every open decision (in SPEC order so dependents see their upstream pick),
+ *  and hand it to autopilot. You land in a running cockpit with the whole route decided and moves
+ *  staged — then steer by re-choosing anything. This is "AI runs it; you pick the direction." */
+async function runTheRoute(co) {
+  if (!co) return;
+  const anyDrafted = Object.values(co.decisions).some((d) => d.options.length || d.inherited);
+  if (!anyDrafted) await draftSlate(co);
+  for (const s of SPEC) {
+    const d = co.decisions[s.id];
+    if (!d || d.inherited || d.chosenId || !d.options.length) continue;
+    await autoChoose(co, d);
+  }
+  if (co.auto) co.auto.on = true;
+  logLine(co, "AI ran the route — the slate's decided and autopilot has it. Steer by re-choosing anything.", "run", null);
+  await saveCo(co); render(); ensureAutoLoop();
+}
+/** Start box → land straight in a running cockpit: seed from context or the one-liner, then run it. */
+async function letAiRunIt() {
+  const input = document.querySelector(".bindrow input");
+  const v = input ? input.value.trim() : "";
+  if (v) await seedFromLine(v, seedKind);
+  else if (brand) await seedFromContext();
+  else return;
+  await runTheRoute(CO());
+}
+
 /** the CEO decides, under the autonomy you granted by turning autopilot on. Reversible — every pick
  *  stays unlockable exactly like a human choice, and is logged as the CEO's, not yours. */
 async function autoChoose(co, d) {
@@ -1007,9 +1034,17 @@ function startBox() {
   btn.onclick = () => { if (brand && !input.value.trim()) void seedFromContext(); else go(); };
   row.append(input, btn);
   box.append(row);
+
+  // THE FAST-TRACK — land on the OS first. One tap: the AI drafts the whole route, picks the
+  // recommended call at every fork, hands it to autopilot, and drops you in a running cockpit. You
+  // steer by re-choosing. "Decide it yourself" is still right there (the Start button + each fork).
+  const fast = el("button", "runit");
+  fast.append(el("span", "bolt", "⚡"), el("span", null, "Let AI run it — land on the OS"));
+  fast.onclick = () => void letAiRunIt();
+  box.append(fast);
   box.append(el("div", "hint", brand
-    ? "Lend a different context in the Switchboard panel and it picks that up instead."
-    : "Or lend Autopilot a brand, project, idea or wrapp in the Switchboard panel — it drafts the whole slate with no input at all."));
+    ? "“Let AI run it” decides the whole route for you and starts operating; “Pick it up” drops you into the slate to decide each call yourself."
+    : "“Let AI run it” decides the whole route and starts operating; “Start it” drops you in to decide each call yourself. Or lend a brand, project, idea or wrapp in the Switchboard panel."));
   // never a one-way door: if there's already a portfolio behind this, you can always go back to it
   if (creating && cos.length) {
     const back = el("button", "act", "← back to " + (CO()?.name || "the board"));

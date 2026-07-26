@@ -53,6 +53,10 @@
       .kindopt .kn { font: 600 13px/1 var(--display); color: var(--ink); text-transform: capitalize; }
       .kindopt .kd { font: 400 10.5px/1.4 var(--mono); color: var(--ink-faint); }
       .kindopt.on .kn { color: var(--accent); }
+      .runit { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; margin-top: 12px; font: 600 14px/1 var(--display); letter-spacing: -.01em; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff), var(--accent)); color: var(--page); border: 0; border-radius: 12px; padding: 15px; cursor: pointer; box-shadow: 0 0 24px -6px rgba(200,242,80,.5); transition: filter .15s, transform .05s; }
+      .runit:hover { filter: brightness(1.06); }
+      .runit:active { transform: translateY(1px); }
+      .runit .bolt { font-size: 15px; }
       .bindrow { display: flex; gap: 8px; }
       .bindrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 400 13px/1.4 var(--sans); padding: 12px 13px; outline: none; }
       .bindrow input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
