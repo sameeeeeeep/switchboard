@@ -1154,10 +1154,10 @@ function companyCol(co) {
   c.append(idc);
 
   c.append(productCard(co));
-  // the supply spine — only for physical (sales) ventures. It's the thing a software company can't
-  // copy: pooled MOQ + co-pack + fulfilment + merchant-of-record. Software ventures get the token
-  // game in this slot instead (see productCard's usage branch).
+  // the middle box, by kind: a physical venture shows the SUPPLY SPINE (the moat software can't
+  // copy); a software venture shows the TOKEN GAME (fuel it with your own tokens, watch it level up).
   if (kindCfg(co).econ === "sales") { c.append(supplyCard(co)); c.append(morCard()); }
+  else c.append(gameCard(co));
 
   const stillInherited = Object.entries(co.inherited || {}).filter(([k]) => !(co.overridden || []).includes(k));
   if (stillInherited.length) {
@@ -1261,6 +1261,54 @@ function morCard() {
   head.append(el("span", "morshield", "◈"), el("span", null, "MERCHANT OF RECORD"));
   c.append(head);
   c.append(el("div", "morbody", "Switchboard is the entity of record — tax, returns and compliance sit with the platform. You own and direct the brand."));
+  return c;
+}
+
+/** The milestone ladder a software venture climbs. Honest: the build milestones flip on real state
+ *  (decided, shipped); the money milestones stay LOCKED ("needs a connector") until a real usage
+ *  meter reports — never a fabricated user or dollar. */
+function gameMilestones(co) {
+  const decided = Object.values(co.decisions).filter((d) => d.chosenId || d.inherited).length;
+  return [
+    { label: "Company decided · " + decided + "/" + SPEC.length, done: decided >= SPEC.length },
+    { label: co.site && co.site.live ? "Shipped · " + co.site.host : "Ship the wrapp" + (co.site && co.site.drafted ? " · drafted" : ""), done: !!(co.site && co.site.live), staged: !!(co.site && co.site.drafted) },
+    { label: "First user", done: (co.metrics.uses || 0) > 0, locked: co.metrics.uses == null },
+    { label: "First rev-share $", done: (co.metrics.payout || 0) > 0, locked: co.metrics.payout == null },
+  ];
+}
+/** THE TOKEN GAME (software ventures) — fuel it with your own tokens, watch it level up. The fuel is
+ *  real (the broker's token budget); the levels are real progress; the money wins stay honestly
+ *  locked until a usage meter is wired. Feeding it opens the runway dial (Trickle / Steady / Push). */
+function gameCard(co) {
+  const c = el("div", "card game");
+  const ms = gameMilestones(co);
+  const level = ms.filter((m) => m.done).length;
+  const NAMES = ["Seed", "Sprout", "Traction", "Scaling", "Live"];
+  c.append(cardTitle("Grow", "level " + level + " · " + NAMES[Math.min(level, 4)]));
+  c.append(el("div", "gamenote", "Feed it your own tokens and it builds itself toward launch — pour a trickle and it moves one beat at a time, pour a tank and it works ahead of you."));
+
+  // fuel gauge — real token budget
+  const fuel = el("div", "fuel");
+  const fh = el("div", "fuelhead");
+  fh.append(el("span", null, "⛽ Fuel · your tokens"), el("b", null, fmtTok(co.tokens.spent) + " / " + fmtTok(co.tokens.budget)));
+  fuel.append(fh);
+  const bar = el("div", "fuelbar"); const i = el("i"); i.style.width = Math.min(100, (co.tokens.spent / co.tokens.budget) * 100) + "%"; bar.append(i); fuel.append(bar);
+  c.append(fuel);
+  const feed = el("button", "growbtn", "⛽ Feed it more fuel");
+  feed.onclick = () => { pane = { kind: "tokens" }; render(); };
+  c.append(feed);
+
+  // milestone ladder — the game board
+  const ladder = el("div", "ladder");
+  for (const m of ms) {
+    const r = el("div", "mile" + (m.done ? " done" : m.staged ? " staged" : m.locked ? " locked" : ""));
+    r.append(el("span", "mdot", m.done ? "✓" : ""), el("span", "mlab", m.label));
+    if (m.locked) r.append(el("span", "mtag", "needs a meter"));
+    else if (m.staged) r.append(el("span", "mtag", "staged"));
+    ladder.append(r);
+  }
+  c.append(ladder);
+  c.append(el("div", "fundnote", "The money wins light up only from a real usage meter — never a made-up user or dollar."));
   return c;
 }
 

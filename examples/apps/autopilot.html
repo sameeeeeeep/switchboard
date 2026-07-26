@@ -244,6 +244,24 @@
       .morshield { font-size: 12px; }
       .morbody { font: 400 12px/1.55 var(--sans); color: var(--ink-sec); margin-top: 8px; }
 
+      /* COMPANY · the token game (software ventures) */
+      .card.game { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+      .gamenote { font: 400 12px/1.55 var(--sans); color: var(--ink-sec); margin-bottom: 12px; }
+      .fuel { margin-bottom: 10px; }
+      .fuelhead { display: flex; justify-content: space-between; align-items: baseline; font: 500 11px/1 var(--mono); color: var(--ink-sec); }
+      .fuelhead b { color: var(--accent); font-weight: 500; }
+      .fuelbar { height: 8px; border-radius: 4px; background: var(--inset); border: 1px solid var(--edge-soft); overflow: hidden; margin-top: 7px; }
+      .fuelbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--warn), var(--accent)); }
+      .ladder { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+      .mile { display: flex; align-items: center; gap: 9px; font: 400 12px/1.4 var(--sans); color: var(--ink-dim); }
+      .mile .mdot { width: 17px; height: 17px; border-radius: 999px; display: grid; place-items: center; font: 700 9px/1 var(--sans); background: var(--inset); border: 1px solid var(--edge); color: var(--page); flex: none; }
+      .mile.done { color: var(--ink); }
+      .mile.done .mdot { background: var(--accent); border-color: var(--accent); }
+      .mile.staged .mdot { border-color: var(--warn); }
+      .mile .mlab { flex: 1; }
+      .mile .mtag { font: 500 8.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--edge); border-radius: 999px; padding: 3px 7px; flex: none; }
+      .mile.staged .mtag { color: var(--warn); border-color: rgba(245,158,11,.3); }
+
       /* OPERATIONS · tasks */
       .task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--edge-soft); }
       .task:first-of-type { border-top: 0; }
