@@ -1154,6 +1154,10 @@ function companyCol(co) {
   c.append(idc);
 
   c.append(productCard(co));
+  // the supply spine — only for physical (sales) ventures. It's the thing a software company can't
+  // copy: pooled MOQ + co-pack + fulfilment + merchant-of-record. Software ventures get the token
+  // game in this slot instead (see productCard's usage branch).
+  if (kindCfg(co).econ === "sales") { c.append(supplyCard(co)); c.append(morCard()); }
 
   const stillInherited = Object.entries(co.inherited || {}).filter(([k]) => !(co.overridden || []).includes(k));
   if (stillInherited.length) {
@@ -1216,6 +1220,47 @@ function productCard(co) {
     b.onclick = () => void genProduct(co);
     c.append(b);
   }
+  return c;
+}
+
+/** THE SUPPLY SPINE (physical ventures) — the thing a software company can't copy. The STRUCTURE is
+ *  real (pooled MOQ across brands → co-pack → fulfil → ship); the live inventory numbers stay "not
+ *  connected" until a real fulfilment provider reports them, never faked. What makes "or twenty
+ *  brands" cheap: your small run rides the platform's pooled minimum. */
+function supplyCard(co) {
+  const c = el("div", "card");
+  c.append(cardTitle("Supply", "the spine software can't copy"));
+  c.append(el("div", "supplynote", "We hold the supply. Your small run rides the platform's pooled minimum — so it gets a real run's price."));
+  const stages = el("div", "spine");
+  for (const [name, on] of [["Sourced", true], ["Co-pack", true], ["Fulfil", false], ["Ship", false]]) {
+    const s = el("div", "spinestage" + (on ? " on" : ""));
+    s.append(el("span", "sdot"), el("span", "sname", name));
+    stages.append(s);
+  }
+  c.append(stages);
+  // the pooled-MOQ value prop — the modeled fill of the shared run this venture joins
+  const pool = el("div", "pool");
+  const ph = el("div", "poolhead");
+  ph.append(el("span", null, "Shared MOQ pool"), el("b", null, "modeled"));
+  pool.append(ph);
+  const bar = el("div", "poolbar"); const fill = el("i"); fill.style.width = "64%"; bar.append(fill); pool.append(bar);
+  pool.append(el("div", "poolnote", "Pooled across brands on the platform — your run alone would miss the minimum. Shared spine → your price."));
+  c.append(pool);
+  const kv = el("div", "kvs");
+  kv.append(kvRow("Fulfilment", "— connect a 3PL", true));
+  kv.append(kvRow("On hand", "— not connected", true));
+  c.append(kv);
+  c.append(el("div", "fundnote", "The spine is real; live inventory fills in once you connect a fulfilment provider — never a made-up count."));
+  return c;
+}
+/** MERCHANT OF RECORD — a structural property of a platform brand: Switchboard carries the boring,
+ *  ops-killing burden (tax, returns, compliance) so a solo operator doesn't have to. */
+function morCard() {
+  const c = el("div", "card mor");
+  const head = el("div", "morhead");
+  head.append(el("span", "morshield", "◈"), el("span", null, "MERCHANT OF RECORD"));
+  c.append(head);
+  c.append(el("div", "morbody", "Switchboard is the entity of record — tax, returns and compliance sit with the platform. You own and direct the brand."));
   return c;
 }
 

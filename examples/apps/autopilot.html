@@ -225,6 +225,25 @@
       .prodprice { font: 700 14px/1 var(--display); color: var(--accent); flex: none; }
       .prodblurb { font: 400 11.5px/1.5 var(--sans); color: var(--ink-dim); margin-top: 6px; }
 
+      /* COMPANY · the supply spine (physical ventures) */
+      .supplynote { font: 400 12px/1.55 var(--sans); color: var(--ink-sec); margin-bottom: 12px; }
+      .spine { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+      .spinestage { display: flex; align-items: center; gap: 5px; flex: 1; font: 500 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+      .spinestage .sdot { width: 8px; height: 8px; border-radius: 999px; background: var(--edge); border: 1px solid var(--ink-faint); flex: none; }
+      .spinestage.on { color: var(--ok); }
+      .spinestage.on .sdot { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 6px rgba(61,214,140,.5); }
+      .pool { background: var(--inset); border: 1px solid var(--edge-soft); border-radius: 10px; padding: 11px; margin-bottom: 10px; }
+      .poolhead { display: flex; justify-content: space-between; align-items: baseline; font: 500 11px/1 var(--sans); color: var(--ink-sec); }
+      .poolhead b { font: 500 8.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+      .poolbar { height: 6px; border-radius: 3px; background: var(--panel); border: 1px solid var(--edge-soft); overflow: hidden; margin: 8px 0; }
+      .poolbar i { display: block; height: 100%; background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 6px, color-mix(in srgb, var(--accent) 70%, var(--page)) 6px, color-mix(in srgb, var(--accent) 70%, var(--page)) 12px); }
+      .poolnote { font: 400 10.5px/1.5 var(--sans); color: var(--ink-dim); }
+      /* COMPANY · merchant of record */
+      .card.mor { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); border-color: rgba(61,214,140,.25); }
+      .morhead { display: flex; align-items: center; gap: 7px; font: 500 9.5px/1 var(--mono); letter-spacing: .14em; color: var(--ok); }
+      .morshield { font-size: 12px; }
+      .morbody { font: 400 12px/1.55 var(--sans); color: var(--ink-sec); margin-top: 8px; }
+
       /* OPERATIONS · tasks */
       .task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--edge-soft); }
       .task:first-of-type { border-top: 0; }
