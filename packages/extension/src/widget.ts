@@ -19,7 +19,7 @@ const HOST_ID = "relay-switchboard-widget";
 const HIDE_KEY = (h: string) => `relayWidgetHidden:${h}`;
 const COLLAPSED_KEY = "relayWidgetCollapsed";
 
-interface WidgetState { paired: boolean; reachable: boolean; connected?: boolean; mode?: string | null; lentName?: string | null; tokensToday?: number }
+interface WidgetState { paired: boolean; reachable: boolean; installedHere?: boolean; connected?: boolean; mode?: string | null; lentName?: string | null; tokensToday?: number }
 
 const GLYPH = `<span style="width:16px;height:16px;border-radius:5px;background:#C8F250;box-shadow:0 0 12px rgba(200,242,80,.45);display:inline-block;position:relative;flex:none">
   <span style="position:absolute;inset:5px 5px auto auto;width:4px;height:4px;border-radius:50%;background:#0A0C10"></span></span>`;
@@ -88,7 +88,7 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
   const rerender = (c: boolean) => { setCollapsed(c); render(root, view, host, c); };
   const connected = view.kind === "status" && !!view.state.connected;
   // Mini ladder colours: asleep is AMBER (nothing is broken), everything else keeps its meaning.
-  const asleep = view.kind === "status" && view.state.paired && !view.state.reachable;
+  const asleep = view.kind === "status" && !view.state.reachable && (view.state.paired || !!view.state.installedHere);
   const dotColor = view.kind === "alts" ? "#6E7C90" : asleep ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
 
   if (collapsed) {
@@ -138,7 +138,7 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
     stat.className = "stat";
     stat.innerHTML = `<span class="dot" style="background:${dotColor}"></span><span></span>`;
     (stat.querySelector("span:last-child") as HTMLElement).textContent =
-      asleep ? "Sidekick asleep — open the Relay app"
+      asleep ? "Sidekick asleep — open the Switchboard app"
       : unpaired ? "Almost there — pair Switchboard"
       : connected ? "Connected — running on your Claude" : "Switchboard ready — connect on this page";
     bd.appendChild(stat);
@@ -186,12 +186,13 @@ async function main() {
   if (alts.length) {
     view = { kind: "alts", alts };              // a competitor site → the "use a wrapp instead" pitch
   } else {
-    // A wrapp / work site → the live status card, but the widget never nags on a fresh install:
-    // not paired AND not reachable (nothing set up at all) stays absent — the chip owns first-run.
-    // Paired-but-asleep and reachable-but-unpaired DO show: the user has started setup, so the
-    // widget's one next action helps rather than nags.
+    // A wrapp / work site → the live status card, but the widget never nags on a TRUE fresh install:
+    // nothing paired, nothing reachable, and the app has never been seen on this machine stays
+    // absent — the chip owns first-run. Every rung above that DOES show (app-here-but-asleep,
+    // paired-but-asleep, reachable-but-unpaired): the user has started setup, so the widget's one
+    // next action helps rather than nags.
     const state = (await send({ type: "widgetState" })) as WidgetState | undefined;
-    if (!state || (!state.paired && !state.reachable)) return;
+    if (!state || (!state.paired && !state.reachable && !state.installedHere)) return;
     view = { kind: "status", state };
   }
 

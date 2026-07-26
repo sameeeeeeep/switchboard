@@ -1,4 +1,4 @@
-# Daemon distribution — the Relay DMG
+# Daemon distribution — the Switchboard DMG
 
 How Switchboard's daemon ships to people who don't have a dev checkout: one DMG, one drag,
 one click. Built by `packages/menubar/package-dmg.sh` (run it from anywhere; it resolves the
@@ -7,13 +7,13 @@ work exactly as before.
 
 ## 1. What ships in the DMG
 
-`Relay-0.1.3.dmg` (~111 MB) contains `Relay.app` and an `/Applications` symlink. The app
+`Switchboard-<ver>.dmg` (~111 MB) contains `Switchboard.app` and an `/Applications` symlink. The app
 carries its whole runtime — a fresh Mac needs no Node, no npm, no checkout:
 
 ```
-Relay.app/Contents/
-  MacOS/Relay                      the menubar app (swiftc, single file)
-  Info.plist                       version 0.1.3
+Switchboard.app/Contents/
+  MacOS/Relay                      the menubar app (swiftc, single file; executable name is still Relay)
+  Info.plist                       app version (CFBundleShortVersionString)
   Resources/
     Relay.icns                     app icon (reused from the extension's mark)
     node                           Node v20.19.0, arm64, copied verbatim (Node.js signature intact)
@@ -41,17 +41,17 @@ What does NOT ship: no API keys, no tokens, no state. Everything user-specific l
   spawn the *system* `claude` (found via `~/.local/bin`, `/opt/homebrew/bin`,
   `/usr/local/bin`, or `CLAUDE_CLI`), so `claude` should be installed and logged in.
   Note the two binaries can drift in version; the bundled one is pinned by the agent-sdk.
-- **Chrome + the Switchboard extension 0.1.3** — from the Chrome Web Store, or
+- **Chrome + the Switchboard extension** — from the Chrome Web Store, or
   `switchboard-extension.zip` loaded unpacked for development.
 - **macOS 13+ on Apple Silicon.** The DMG is arm64-only for now (universal2 is future work).
 
 ## 3. Install
 
-1. Open the DMG, drag **Relay** onto the **Applications** symlink. This is not cosmetic:
+1. Open the DMG, drag **Switchboard** onto the **Applications** symlink. This is not cosmetic:
    Gatekeeper *translocates* quarantined apps run from Downloads to a randomized read-only
    path, and a LaunchAgent written from there would die on next login. The app detects
    translocation and refuses to install the daemon until it lives in `/Applications`.
-2. Open Relay (see §4 for the Gatekeeper hoop), click the menubar mark, click **start**.
+2. Open Switchboard (see §4 for the Gatekeeper hoop), click the menubar mark, click **start**.
    The app writes `~/Library/LaunchAgents/com.relay.sidekick.plist` pointing into its own
    bundle (`RunAtLoad` + `KeepAlive`, logs to `~/.relay/sidekick.log`, PATH pre-set so the
    system `claude` and npx-based MCP servers work under launchd) and bootstraps it.
@@ -68,12 +68,12 @@ stapled notarization ticket, so this holds offline too.
 Verify any build before shipping it:
 
 ```sh
-spctl -a -t open --context context:primary-signature -vv packages/menubar/build/Relay-0.1.3.dmg
+spctl -a -t open --context context:primary-signature -vv packages/menubar/build/Switchboard-<ver>.dmg
 # → accepted / source=Notarized Developer ID
 ```
 
 Translocation still applies, and is unrelated to signing: an app left in Downloads runs from
-a randomized read-only path, so the popover keeps saying "move Relay to /Applications, then
+a randomized read-only path, so the popover keeps saying "move Switchboard to /Applications, then
 reopen it" instead of starting. That is the §3 guard doing its job, not a Gatekeeper problem.
 
 ## 5. Taking over from a dev install
@@ -131,15 +131,21 @@ DMG is cut. It is what catches a mis-signed node — keep it.
 **Live since 0.1.3.** The DMG is a **GitHub Release asset** — 111 MB is over GitHub's 100 MB
 per-file repo limit, so it cannot be committed to a Pages repo.
 
-The asset is named **`Relay.dmg`, unversioned on purpose**. The landing page links to
-`releases/latest/download/Relay.dmg`, which keeps working across releases; a versioned filename
+The asset is named **`Switchboard.dmg`, unversioned on purpose**. The landing page links to
+`releases/latest/download/Switchboard.dmg`, which keeps working across releases; a versioned filename
 would 404 the moment the next tag ships. The version lives in the release tag and notes, so
 rename the built DMG before uploading:
 
 ```sh
-cp packages/menubar/build/Relay-<ver>.dmg /tmp/Relay.dmg
-gh release create v<ver> /tmp/Relay.dmg switchboard-extension.zip --title "Switchboard v<ver>"
+cp packages/menubar/build/Switchboard-<ver>.dmg /tmp/Switchboard.dmg
+gh release create v<ver> /tmp/Switchboard.dmg switchboard-extension.zip --title "Switchboard v<ver>"
 ```
+
+> **The asset name is load-bearing and is hardcoded in three places** — `RELAY_DMG_URL` in
+> `packages/sdk/src/connect-chip.ts`, this section, and `docs/PORTING-AND-DEPLOY.md`. It was
+> `Relay.dmg` up to v0.2.0 and was renamed at v0.2.1; the chip kept the old name and **every
+> install click 404'd** until 2026-07-26. If you rename it again, grep for the old name and verify
+> with `gh release view --repo sameeeeeeep/switchboard --json assets`.
 
 `switchboard-extension.zip` stays on the release for development installs, but the landing page
 no longer offers it — the [Chrome Web Store listing][cws] is the single path for the extension.
@@ -156,7 +162,7 @@ One release train, three artifacts, one number — currently **0.1.3**:
 
 | artifact | where the version lives |
 |---|---|
-| Relay.app | `packages/menubar/Info.plist` → `CFBundleShortVersionString` (bump `CFBundleVersion` too) |
+| Switchboard.app | `packages/menubar/Info.plist` → `CFBundleShortVersionString` (bump `CFBundleVersion` too) |
 | extension | `packages/extension/manifest.json` |
 | npm | `@thelastprompt/switchboard` (`packages/sidekick/scripts/build-npm.mjs` dist) |
 

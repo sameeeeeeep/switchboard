@@ -58,9 +58,9 @@ async function getToken(): Promise<string | null> {
   return pairingToken ?? null;
 }
 
-/** Sticky "the Relay app exists on this machine" bit: set the first time a dial ever reaches a
+/** Sticky "the Switchboard app exists on this machine" bit: set the first time a dial ever reaches a
  *  daemon (or a token is stored) and never unset by mere unreachability. Lets health distinguish
- *  "never installed the app" (→ 'Get Relay for Mac') from "app asleep" (→ 'wake it') — the two
+ *  "never installed the app" (→ 'Get Switchboard for Mac') from "app asleep" (→ 'wake it') — the two
  *  states the ladder previously collapsed, sending never-installed users to wake a ghost. */
 async function everReached(): Promise<boolean> {
   const { relaySeen } = await chrome.storage.local.get("relaySeen");
@@ -108,7 +108,7 @@ function ensureSocket(): Promise<boolean> {
         switch (msg.type) {
           case "auth_ok":
             authed = true;
-            markReached(); // a daemon answered — the Relay app exists on this machine
+            markReached(); // a daemon answered — the Switchboard app exists on this machine
             lastDial = { openedButUnauthed: false, at: Date.now() }; // accepted pairing — clear any stale rejection
             clearTimeout(timer); finish(true);
             void broadcastHealth(); // the ladder moved up — pages/panel upgrade live
@@ -166,7 +166,7 @@ function ensureSocket(): Promise<boolean> {
         // DRAIN, don't orphan. Every awaited request and open stream dies with this socket; left
         // alone they hang into inject.ts's 130s backstop with zero feedback. Fail them NOW with
         // the same classified 4900 the fast-fail path uses, so wrapps render an honest error.
-        const gone = { code: 4900, message: "your sidekick disconnected mid-request — open the Relay app", data: { reason: "unreachable" as const } };
+        const gone = { code: 4900, message: "your sidekick disconnected mid-request — open the Switchboard app", data: { reason: "unreachable" as const } };
         for (const [id, entry] of inflight) { try { entry.port.postMessage({ id, error: gone }); } catch { /* gone */ } }
         inflight.clear();
         for (const [sid, port] of streamPorts) {
@@ -305,7 +305,7 @@ function updateBadge() {
   try {
     chrome.action.setBadgeText({ text: n ? String(n) : "" });
     chrome.action.setBadgeBackgroundColor({ color: "#C8F250" });
-    chrome.action.setTitle({ title: n ? "Relay — approval waiting (click to open)" : "Relay" });
+    chrome.action.setTitle({ title: n ? "Switchboard — approval waiting (click to open)" : "Switchboard" });
   } catch { /* ignore */ }
 }
 
@@ -396,7 +396,10 @@ async function widgetState(sender: chrome.runtime.MessageSender): Promise<Record
     // No token: probe anyway, so the widget can tell "sidekick asleep" from "pair now".
     reachable = await probeReachable();
   }
-  if (!reachable || !paired) return { paired, reachable, connected: false };
+  // installedHere lets the widget stay SILENT on a true fresh install (the chip owns first-run) while
+  // still showing "asleep" to someone who has the app but hasn't started it.
+  const installedHere = reachable || !!token || (await everReached());
+  if (!reachable || !paired) return { paired, reachable, connected: false, installedHere };
   const grant = await grantFor(origin);
   let lentName: string | null = null;
   if (grant) {
@@ -428,8 +431,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // without one we bare-probe, so the panel can tell "unpaired" (show pairing) from "unreachable"
         // (show the get-the-sidekick card). `tokenRejected` = the daemon answered but refused OUR token —
         // the panel must say "token didn't match", never "isn't running", when it is running.
+        // `installedHere` separates "never downloaded the app" from "app is here, just asleep" —
+        // WITHOUT it the panel showed "Get the sidekick" to people who already had it (they had simply
+        // never paired, so there was no token to infer from). Same derivation as baseHealth().
         const reachable = token ? await ensureSocket() : await probeReachable();
-        sendResponse({ paired: !!token, reachable, tokenRejected: !!token && !reachable && lastDial.openedButUnauthed });
+        sendResponse({
+          paired: !!token, reachable,
+          tokenRejected: !!token && !reachable && lastDial.openedButUnauthed,
+          installedHere: reachable || !!token || (await everReached()),
+        });
         break;
       }
       case "widgetState": sendResponse(await widgetState(sender)); break;
@@ -506,7 +516,7 @@ chrome.runtime.onConnect.addListener((port) => {
           code: 4900,
           message: reason === "unpaired"
             ? "Switchboard isn't paired yet — open the side panel to pair"
-            : "your sidekick isn't reachable — open the Relay app",
+            : "your sidekick isn't reachable — open the Switchboard app",
           data: { reason },
         },
       });
