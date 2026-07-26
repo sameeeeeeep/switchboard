@@ -318,6 +318,29 @@
   /* privacy tile mini-viz */
   .priv-viz{width:100%;max-width:300px;height:auto;margin:8px 0 2px}
 
+  /* ---------- context travels (set once, follows you) ---------- */
+  .travels{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;max-width:940px;margin:8px auto 0}
+  @media(max-width:760px){.travels{grid-template-columns:1fr}.tr-link{display:none}.trapp+.tr-link+.trapp{margin-top:14px}}
+  .trapp{background:#0E1116;border:1px solid #222834;border-radius:12px;overflow:hidden;color:#E8EDF4;font-family:'Instrument Sans',system-ui,sans-serif;box-shadow:0 20px 50px -30px rgba(0,0,0,.9)}
+  .trapp .tb{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid #1B2028;font-size:12.5px;font-weight:600;color:#E8EDF4}
+  .trapp .tb .i{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font-size:11px;flex:none;font-family:var(--dot);font-weight:900}
+  .trapp .body{padding:14px 13px;min-height:92px;display:flex;flex-direction:column;justify-content:center;gap:9px}
+  .trapp .ctx{display:flex;align-items:center;gap:9px;border:1px solid #2A313D;border-radius:8px;padding:8px 10px;background:#12151C;opacity:.22;transform:translateY(4px);transition:opacity .5s,transform .5s,border-color .5s}
+  .trapp .ctx.on{opacity:1;transform:none;border-color:#3f6b2a}
+  .trapp .ctx .sw{width:20px;height:20px;border-radius:4px;background:linear-gradient(135deg,#C8F250,#6b8f1a);flex:none}
+  .trapp .ctx .nm{font-size:12.5px;color:#E8EDF4}
+  .trapp .ctx .nm b{color:#C8F250;font-weight:600}
+  .trapp .ln2{font-family:var(--mono);font-size:10px;color:#8FA96B;opacity:0;transition:opacity .5s}
+  .trapp .ln2.on{opacity:1}
+  .trapp .ln2.wait{color:#6E7C90}
+  .tr-link{position:relative;width:60px;height:2px}
+  .tr-link .ln{position:absolute;inset:0;top:50%;height:1px;background:#2A313D}
+  .tr-link .dot{position:absolute;top:-2.5px;left:0;width:6px;height:6px;border-radius:50%;background:#C8F250;box-shadow:0 0 9px #C8F250;opacity:0}
+  .tr-link .dot.go{animation:trdot 1.05s ease forwards}
+  @keyframes trdot{0%{opacity:1;left:0}100%{opacity:1;left:calc(100% - 6px)}}
+  .tr-cap{text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--faint);margin-top:22px}
+  .tr-cap b{color:var(--phosphor-dim)}
+
   /* ---------- provider strip ---------- */
   .prov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
   .prov-head p{color:var(--muted);font-size:14px;max-width:440px;margin-top:12px}
@@ -602,6 +625,42 @@
 
     </div>
     <div class="replay rv"><button id="replay-btn" type="button">↻ replay</button></div>
+  </div>
+</section>
+
+<!-- ============ CONTEXT TRAVELS ============ -->
+<section id="travels">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">personalised by default</p>
+      <h2>Set it once. <span class="lit">It follows you.</span></h2>
+    </div>
+    <div class="travels rv" id="travels-flow">
+      <div class="trapp">
+        <div class="tb"><span class="i" style="background:#F6B93B;color:#0E1116">A</span> Ad maker</div>
+        <div class="body">
+          <div class="ctx"><span class="sw"></span><span class="nm"><b>Your brand</b></span></div>
+          <div class="ln2">you set it here</div>
+        </div>
+      </div>
+      <div class="tr-link"><div class="ln"></div><div class="dot"></div></div>
+      <div class="trapp">
+        <div class="tb"><span class="i" style="background:#7FB2F6;color:#0E1116">L</span> Landing page</div>
+        <div class="body">
+          <div class="ctx"><span class="sw"></span><span class="nm"><b>Your brand</b></span></div>
+          <div class="ln2 wait">already there · 0s</div>
+        </div>
+      </div>
+      <div class="tr-link"><div class="ln"></div><div class="dot"></div></div>
+      <div class="trapp">
+        <div class="tb"><span class="i" style="background:#C8F250;color:#0E1116">E</span> Email</div>
+        <div class="body">
+          <div class="ctx"><span class="sw"></span><span class="nm"><b>Your brand</b></span></div>
+          <div class="ln2 wait">already there · 0s</div>
+        </div>
+      </div>
+    </div>
+    <p class="tr-cap rv">one setup — <b>every wrapp after it opens in 0 seconds</b></p>
   </div>
 </section>
 
@@ -1273,6 +1332,34 @@
       });
     },{threshold:.35});
     vio.observe(vlist);
+  }
+
+  /* ---------- context travels: the brand chip lights up across wrapps ---------- */
+  var trav = document.getElementById('travels-flow');
+  if(trav){
+    var ctxs = Array.prototype.slice.call(trav.querySelectorAll('.ctx'));
+    var lns  = Array.prototype.slice.call(trav.querySelectorAll('.ln2'));
+    var dots = Array.prototype.slice.call(trav.querySelectorAll('.dot'));
+    function travAll(){ ctxs.forEach(function(c){ c.classList.add('on'); }); lns.forEach(function(l){ l.classList.add('on'); }); }
+    window.__travelsFinal = travAll;
+    var trplayed = false;
+    var trio = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting && !trplayed){
+          trplayed = true;
+          if(reduce){ travAll(); }
+          else {
+            setTimeout(function(){ ctxs[0].classList.add('on'); lns[0].classList.add('on'); }, 350);
+            setTimeout(function(){ if(dots[0]) dots[0].classList.add('go'); }, 1250);
+            setTimeout(function(){ ctxs[1].classList.add('on'); lns[1].classList.add('on'); }, 2300);
+            setTimeout(function(){ if(dots[1]) dots[1].classList.add('go'); }, 2900);
+            setTimeout(function(){ ctxs[2].classList.add('on'); lns[2].classList.add('on'); }, 3950);
+          }
+          trio.unobserve(e.target);
+        }
+      });
+    },{threshold:.4});
+    trio.observe(trav);
   }
 })();
 </script>
