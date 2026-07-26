@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Switchboard — v5, the OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══ v5 — full fidelity, one state at a time, the REAL house faces ═══════════
+   Tokens are brandbrain's, unchanged (docs/DESIGN.md). Type scale is the
+   brief's: 12/14/16/18 inside an item, 36 section, 46 page. Weights 400/500/
+   600/700 and nothing else. Everything new is a modifier on a base class. */
+:root{
+  --page:#0A0C10; --inset:#070809; --panel:#12151C; --raised:#1A1F29;
+  --edge:#262C38; --edge-soft:#1C212B;
+  --ink:#E8EDF4; --ink-2:#B4BECE; --dim:#99A3B7; --faint:#6E7C90;
+  --lime:#C8F250; --lime-soft:#232B0D; --lime-line:rgba(200,242,80,.34);
+  --ok:#3DD68C; --warn:#F59E0B; --amber:#C88A2E;
+  --yours:#14110A;
+  --d:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --s:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --m:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+}
+body.light{
+  --page:#FBFAF7; --inset:#FFFFFF; --panel:#FFFFFF; --raised:#F3F2EF;
+  --edge:#E4E3DF; --edge-soft:#EDECE8;
+  --ink:#0B0B0C; --ink-2:#54545A; --dim:#6E6E73; --faint:#9A9AA0;
+  --lime:#5E8B23; --lime-soft:#EEF6DC; --lime-line:rgba(94,139,35,.30);
+  --ok:#1F8A5B; --yours:#FBF6EC;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:var(--page);color:var(--ink);font:400 16px/1.55 var(--s);-webkit-font-smoothing:antialiased}
+::selection{background:rgba(200,242,80,.28)}
+button{font-family:inherit;cursor:pointer}
+.mono{font-family:var(--m);font-variant-numeric:tabular-nums}
+
+/* ── the wireframe's own chrome (not part of the design) ────────────────── */
+.meta{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
+  padding:11px 28px;background:var(--inset);border-bottom:1px solid var(--edge)}
+.meta .lbl{font:500 11px/1 var(--m);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.seg{display:flex;gap:2px;background:var(--raised);border:1px solid var(--edge);border-radius:10px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--dim);font:500 13px var(--s);
+  padding:7px 13px;border-radius:7px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--page)}
+.meta .sp{flex:1}
+.meta .tog{background:transparent;border:1px solid var(--edge);color:var(--dim);
+  border-radius:999px;padding:7px 14px;font:500 12.5px var(--s)}
+
+/* ── SYSTEM BAR — an OS states what it is working on, in the chrome, always ─ */
+.wrap{max-width:1180px;margin:0 auto;padding:0 40px}
+.sys{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--edge-soft)}
+.mark{display:flex;align-items:center;gap:10px;font:600 17px/1 var(--d);letter-spacing:-.02em}
+.mark i{width:22px;height:22px;border-radius:7px;background:var(--lime);display:block;
+  box-shadow:0 0 18px rgba(200,242,80,.35)}
+.desk{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--edge);
+  border-radius:999px;padding:5px 14px 5px 6px}
+.desk i{width:24px;height:24px;border-radius:8px;display:block;flex:none}
+.desk b{font:600 14px var(--s)} .desk s{text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
+.sys .sp{flex:1}
+.sys a{font:400 14px var(--s);color:var(--dim);text-decoration:none}
+/* capacity, not price — tokens read as a system resource */
+.cap{display:flex;align-items:center;gap:10px}
+.cap .g{width:74px;height:5px;border-radius:3px;background:var(--raised);overflow:hidden;display:block;
+  border:1px solid var(--edge-soft)}
+.cap .g i{display:block;height:100%;background:var(--lime)}
+.cap s{text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
+.pill{font:600 13.5px var(--s);background:var(--lime);color:#0A0C10;border-radius:999px;padding:9px 17px;
+  border:0;text-decoration:none;display:inline-block}
+body.light .pill{color:#fff}
+
+/* ── THE OBJECT — big, quiet, factual ──────────────────────────────────── */
+.kick{font:500 12px/1 var(--m);letter-spacing:.15em;text-transform:uppercase;color:var(--faint);margin:0}
+/* THE SIGNATURE MOMENT — the desk wears the object's own palette. A context
+   already carries `palette` (docs/CONTEXT-KINDS.md), so this is derived from
+   real data, not decoration: switching desks visibly changes the room. It is
+   also the cheapest possible proof that the page is about YOUR thing, not ours. */
+.obj{padding:44px 0 34px;position:relative}
+.obj::before{content:"";position:absolute;left:-40px;right:-40px;top:0;height:340px;z-index:-1;
+  background:radial-gradient(900px 300px at 12% 0%, var(--tint-a), transparent 62%),
+             radial-gradient(700px 260px at 78% 8%, var(--tint-b), transparent 66%)}
+.sw{display:flex;gap:5px;margin:22px 0 0}
+.sw i{width:26px;height:8px;border-radius:3px;display:block}
+.obj h1{font:700 46px/1.02 var(--d);letter-spacing:-.028em;margin:14px 0 0}
+.obj .line{font:400 18px/1.5 var(--s);color:var(--ink-2);margin:12px 0 0;max-width:58ch}
+.facts{display:flex;gap:26px;margin:20px 0 0;flex-wrap:wrap}
+.facts span{font:400 12px var(--m);color:var(--faint)}
+.facts b{font-weight:500;color:var(--ink-2)}
+
+/* ═══ THE SIGNATURE — the stop rule ═══════════════════════════════════════
+   Every row carries a 2px left rail that encodes how far the work got by
+   itself. `auto` runs continuous: it flowed through, nothing was risked.
+   `needs you` runs solid then BREAKS, and the gap is where you are — the work
+   came this far and stopped at a boundary it is not allowed to cross. `yours`
+   is dotted the whole way: it was never going to run. The rail is the product
+   thesis rendered as a structural device rather than said in a trust badge. */
+.deck{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1000px){.deck{grid-template-columns:1fr}}
+.queue{background:var(--yours);border:1px solid var(--edge);
+  border-radius:20px;padding:26px 28px 24px}
+body.light .queue{border-color:#EDE6D4}
+.qhead{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.qhead h2{font:600 36px/1.1 var(--d);letter-spacing:-.02em;margin:0}
+.qhead .n{margin-left:auto;font:500 12px var(--m);letter-spacing:.1em;color:var(--amber)}
+.qsub{font:400 14px/1.55 var(--s);color:var(--dim);margin:0 0 20px;max-width:64ch}
+
+.qi{display:flex;align-items:center;gap:18px;padding:15px 0 15px 22px;position:relative}
+.qi + .qi{border-top:1px solid rgba(255,255,255,.055)}
+body.light .qi + .qi{border-top-color:rgba(0,0,0,.06)}
+/* the rail */
+.qi::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;border-radius:2px}
+.qi.auto::before{background:var(--ok);opacity:.55}
+.qi.mine::before{background:repeating-linear-gradient(180deg,var(--faint) 0 3px,transparent 3px 7px)}
+.qi.hold::before{background:linear-gradient(180deg,var(--lime) 0 42%,transparent 42% 62%,var(--lime) 62% 100%)}
+/* the cap that sits in the rail's gap — the button, made structural */
+.qi.hold::after{content:"";position:absolute;left:-3px;top:50%;width:8px;height:8px;margin-top:-4px;
+  border-radius:2px;background:var(--lime);box-shadow:0 0 0 4px var(--yours),0 0 14px rgba(200,242,80,.5)}
+body.light .qi.hold::after{box-shadow:0 0 0 4px var(--yours)}
+
+.qi .tx{flex:1;min-width:0;max-width:46ch}
+.qi .t{font:500 18px/1.35 var(--s);margin:0}
+.qi .w{font:400 12px var(--m);color:var(--faint);margin:5px 0 0}
+.qi .w em{font-style:normal;color:var(--ink-2)}
+.qi .go{flex:none;font:600 13.5px var(--s);background:var(--lime);color:#0A0C10;border:0;
+  border-radius:999px;padding:9px 18px}
+body.light .qi .go:not(.q){color:#fff}
+.qi .go.q{background:transparent;color:var(--ink-2);border:1px solid var(--edge)}
+.qfoot{margin:20px 0 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);
+  font:400 13px/1.6 var(--s);color:var(--dim);max-width:70ch}
+body.light .qfoot{border-top-color:rgba(0,0,0,.07)}
+.qfoot b{color:var(--ink);font-weight:600}
+
+.rail{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:18px;padding:20px 21px 21px}
+.card .h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.card .h .n{margin-left:auto;font:400 12px var(--m);color:var(--faint)}
+.mini{display:flex;align-items:center;gap:11px;padding:11px 0}
+.mini + .mini{border-top:1px solid var(--edge-soft)}
+.mini .ic{width:32px;height:32px;border-radius:9px;flex:none}
+.mini .tx{flex:1;min-width:0}
+.mini .nm{font:600 15px/1.25 var(--s);margin:0}
+.mini .vb{font:400 12.5px/1.4 var(--s);color:var(--dim);margin:2px 0 0}
+.mini .at{font:400 11px var(--m);color:var(--faint);flex:none}
+.gauge{height:6px;border-radius:3px;background:var(--raised);overflow:hidden;border:1px solid var(--edge-soft)}
+.gauge i{display:block;height:100%;background:var(--lime)}
+.gnums{display:flex;align-items:baseline;gap:8px;margin:0 0 12px}
+.gnums b{font:600 36px/1 var(--d);letter-spacing:-.02em}
+.gnums s{text-decoration:none;font:400 13px var(--s);color:var(--dim)}
+.gfoot{font:400 12px/1.55 var(--s);color:var(--faint);margin:12px 0 0}
+
+/* ── SCAN — quietest register. Running now, and the tail. ───────────────── */
+.sec{display:flex;align-items:baseline;gap:12px;margin:44px 0 14px}
+.sec .n{margin-left:auto;font:400 12px var(--m);color:var(--faint)}
+.row{display:flex;align-items:center;gap:15px;padding:15px 0;border-bottom:1px solid var(--edge-soft)}
+.row .ic{width:44px;height:44px;border-radius:12px;flex:none}
+.row .tx{flex:1;min-width:0}
+.row .nm{font:600 18px/1.25 var(--s);margin:0}
+.row .vb{font:400 14px/1.45 var(--s);color:var(--dim);margin:3px 0 0}
+.row .at{font:400 12px var(--m);color:var(--faint)}
+.row .op{font:600 13.5px var(--s);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;
+  color:var(--ink-2);background:transparent}
+.live{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;
+  box-shadow:0 0 0 4px rgba(61,214,140,.15);animation:bp 2.4s ease-in-out infinite}
+@keyframes bp{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ── PACK — the use band. Unit is a job; the app is the small print. ────── */
+.pack{margin:14px -40px 0;padding:24px 0 26px;background:var(--panel);
+  border-top:1px solid var(--edge-soft);border-bottom:1px solid var(--edge-soft)}
+.pack .in{max-width:1180px;margin:0 auto;padding:0 40px}
+.pk{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px}
+.pk::-webkit-scrollbar{height:0}
+.use{flex:none;width:246px;background:var(--inset);border:1px solid var(--edge);
+  border-radius:15px;overflow:hidden}
+.use .art{height:96px;display:block}
+.use .ub{padding:14px 15px 15px}
+.use .uj{font:600 17px/1.32 var(--s);margin:0;letter-spacing:-.004em}
+.use .um{display:flex;align-items:center;gap:9px;margin:12px 0 0}
+.use .um i{width:20px;height:20px;border-radius:6px;flex:none;display:block}
+.use .um b{font:500 13px var(--s);color:var(--dim)}
+.use .um s{margin-left:auto;text-decoration:none;font:400 11.5px var(--m);color:var(--faint)}
+
+/* ── ACT — once per screen ──────────────────────────────────────────────── */
+.act{margin-top:40px;background:var(--raised);border:1px solid var(--edge);border-radius:18px;
+  padding:24px 26px}
+.act .lb{font:500 11.5px/1 var(--m);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 14px}
+.act .in{display:flex;align-items:center;gap:14px;background:var(--inset);border:1px solid var(--edge);
+  border-radius:13px;padding:15px 17px}
+.act .in .ph{flex:1;font:400 17px var(--s);color:var(--faint)}
+.act .ft{font:400 12px var(--m);color:var(--faint);margin:13px 0 0}
+
+/* ── MAP — you choose a direction ───────────────────────────────────────── */
+.map{margin-top:40px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;
+  background:var(--edge);border:1px solid var(--edge);border-radius:16px;overflow:hidden}
+.mc{background:var(--panel);padding:18px 19px 19px}
+.mc .n{font:600 18px/1.3 var(--s);margin:0}
+.mc .c{font:400 12px var(--m);color:var(--faint);margin:7px 0 0}
+
+/* ── the pointer — the conversion event ─────────────────────────────────── */
+.pts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:26px}
+.pt{background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:20px 19px 21px}
+.pt h3{font:600 18px/1.28 var(--s);margin:0}
+.pt p{font:400 14px/1.5 var(--s);color:var(--dim);margin:7px 0 0}
+.pt s{display:block;text-decoration:none;font:400 11.5px var(--m);color:var(--faint);margin:13px 0 0}
+
+.end{display:flex;align-items:center;gap:14px;margin:44px 0 0;padding:22px 0 60px;
+  border-top:1px solid var(--edge-soft)}
+.end .lk{font:600 14px var(--s);color:var(--ink-2);border-bottom:1px solid var(--edge);text-decoration:none}
+.end .nt{margin-left:auto;font:400 12.5px/1.55 var(--s);color:var(--faint);max-width:52ch;text-align:right}
+
+@media (max-width:900px){
+  .wrap,.pack .in{padding:0 22px} .pack{margin-left:-22px;margin-right:-22px}
+  .obj h1{font-size:36px} .qhead h2{font-size:28px}
+  .map,.pts{grid-template-columns:1fr}
+  .qi{flex-wrap:wrap} .qi .go{margin-left:22px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head>
+<body>
+
+<div class="meta">
+  <span class="lbl">v5 · full fidelity</span>
+  <div class="seg" id="seg">
+    <button data-s="os" aria-pressed="true">The OS</button>
+    <button data-s="empty" aria-pressed="false">Connected, empty</button>
+    <button data-s="cold" aria-pressed="false">First visit</button>
+  </div>
+  <span class="sp"></span>
+  <button class="tog" onclick="document.body.classList.toggle('light')">Light / dark</button>
+</div>
+
+<main id="app"></main>
+
+<script>
+const C={
+ autopilot:["#2F8F4E","Autopilot"], adforge:["#EC6142","AdForge"], redline:["#4C7EF3","Redline"],
+ bank:["#12A594","Bank"], studio:["#E93D82","Studio"], adpulse:["#E5922B","AdPulse"],
+ brandbrain:["#3DA35D","brandbrain"], ideabrain:["#4C7EF3","ideabrain"], marquee:["#4C7EF3","Marquee"]};
+
+const USES=[
+ ["Find the spend that's being wasted","adpulse","paste an export","linear-gradient(140deg,#F1E3C6,#DFC894)"],
+ ["Shoot the product without a studio","studio","upload one photo","linear-gradient(140deg,#F0DAE6,#DEB3CB)"],
+ ["Mark up my landing page like a doc","redline","needs a URL","linear-gradient(140deg,#DCE4F0,#BECDE4)"],
+ ["Get the whole week into one list","bank","reads a folder","linear-gradient(140deg,#D6E8E4,#B0D0C9)"],
+ ["Draft this week's ads","adforge","about 3 min","linear-gradient(140deg,#F2DCD2,#E2B9A6)"],
+ ["Build a brand from a site that exists","brandbrain","about 10 min","linear-gradient(140deg,#DCEBD8,#B9D6B0)"],
+ ["Argue with an idea before I build it","ideabrain","about 8 min","linear-gradient(140deg,#DDE0F0,#BCC2E2)"]];
+
+const JOBS=[["Work out if it's worth building",3],["Name it and design it",4],["Get it in front of people",5],
+ ["Sell the thing",3],["Run the week",4],["After hours",3]];
+
+const use=([j,k,m,g])=>`<article class="use"><span class="art" style="background:${g}"></span><div class="ub">
+ <p class="uj">${j}</p><span class="um"><i style="background:${C[k][0]}"></i><b>${C[k][1]}</b><s>${m}</s></span></div></article>`;
+const pack=(list,kick,more)=>`<section class="pack"><div class="in">
+ <div class="sec" style="margin-top:0"><p class="kick">${kick}</p><span class="n">${more||""}</span></div>
+ <div class="pk">${list.map(use).join("")}</div></div></section>`;
+const map=(kick)=>`<div class="sec"><p class="kick">${kick}</p></div><div class="map">
+ ${JOBS.map(([n,c])=>`<div class="mc"><p class="n">${n}</p><p class="c">${c} apps</p></div>`).join("")}</div>`;
+const pts=()=>`<div class="pts">
+ <div class="pt"><h3>A website</h3><p>Reads the live page for its palette, products and voice.</p><s>paste a URL</s></div>
+ <div class="pt"><h3>A repo</h3><p>The README, roadmap and open tasks become a project.</p><s>a github link</s></div>
+ <div class="pt"><h3>A folder</h3><p>Stays on disk. The apps read it where it already is.</p><s>pick a folder</s></div></div>`;
+const sys=(desk,cap)=>`<div class="sys">
+ <span class="mark"><i></i>Switchboard</span>
+ ${desk?`<span class="desk"><i style="background:${desk[1]}"></i><b>${desk[0]}</b><s>${desk[2]}</s></span>`:""}
+ <span class="sp"></span>
+ ${cap!=null?`<span class="cap"><span class="g"><i style="width:${cap}%"></i></span><s>${cap}% capacity</s></span>`:""}
+ <a href="#">All apps</a>${desk?"":'<a href="#">How it works</a><a class="pill" href="#">Connect</a>'}</div>`;
+const row=(k,vb,at,live)=>`<div class="row">${live?'<span class="live"></span>':""}
+ <span class="ic" style="background:${C[k][0]}"></span>
+ <div class="tx"><p class="nm">${C[k][1]}</p><p class="vb">${vb}</p></div>
+ <span class="at">${at}</span><button class="op">Open</button></div>`;
+/* mode: hold = stopped at you · auto = ran through · mine = never was going to run */
+const qi=(mode,t,who,w,cta,quiet)=>`<div class="qi ${mode}">
+ <span class="tx"><p class="t">${t}</p><p class="w">${C[who][1]} · ${w}</p></span>
+ <button class="go${quiet?" q":""}">${cta}</button></div>`;
+
+const OS=`${sys(["Aamras","#C8842E","brand"],62)}
+<section class="obj" style="--tint-a:rgba(200,68,107,.13);--tint-b:rgba(244,160,0,.10)">
+ <p class="kick">On the desk</p>
+ <h1>Aamras</h1>
+ <p class="line">Indian maximalist home fragrance, made in small batches. Five apps have worked on this one.</p>
+ <div class="sw">${["#8B1A1A","#F4A000","#C0446B","#F4ECE2","#2B2B2B"].map(c=>`<i style="background:${c}"></i>`).join("")}</div>
+ <div class="facts"><span><b>12</b> artifacts</span><span><b>5</b> apps</span>
+  <span><b>3</b> decisions locked</span><span>last touched <b>2h ago</b></span></div>
+</section>
+
+<div class="deck">
+ <section class="queue">
+  <div class="qhead"><h2>Waiting on you</h2><span class="n">3 of 5</span></div>
+  <p class="qsub">Everything five apps prepared and then stopped, because the next step spends money, faces the public, or can't be undone.</p>
+  ${qi("hold","Run \u201cNo kettle\u201d on paid search","autopilot","staged 20m ago · <em>spends money</em>","Review")}
+  ${qi("hold","Ad set 01 — three creatives, nothing published","adforge","staged 2h ago · <em>faces the public</em>","Review")}
+  ${qi("hold","Five edits pinned on the landing page","redline","staged yesterday · <em>rewrites the page</em>","Review")}
+  ${qi("auto","This week's notes turned into eight tasks","bank","done · reversible, so it just ran","Look",1)}
+  ${qi("mine","Call the co-packer about the 21-day lead","autopilot","only you can do this one","Mark done",1)}
+  <p class="qfoot">All of it was prepared on your machine, on your own Claude. <b>Nothing on this list has happened.</b> The three with a break in the line stopped there on purpose — that gap is you.</p>
+ </section>
+
+ <aside class="rail">
+  <div class="card">
+   <div class="h"><p class="kick">Running now</p><span class="n">2</span></div>
+   <div class="mini"><span class="live"></span><span class="ic" style="background:${C.autopilot[0]}"></span>
+    <span class="tx"><p class="nm">Autopilot</p><p class="vb">Redrafting the channel</p></span><span class="at">126k</span></div>
+   <div class="mini"><span class="live"></span><span class="ic" style="background:${C.studio[0]}"></span>
+    <span class="tx"><p class="nm">Studio</p><p class="vb">Four packshots</p></span><span class="at">3 of 4</span></div>
+  </div>
+
+  <div class="card">
+   <div class="h"><p class="kick">Capacity</p></div>
+   <div class="gnums"><b>62<span style="font-size:20px">%</span></b><s>of this week's budget</s></div>
+   <div class="gauge"><i style="width:62%"></i></div>
+   <p class="gfoot">A budget is how much thinking the desk gets this week — not a bill. It runs on the Claude you already pay for.</p>
+  </div>
+
+  <div class="card">
+   <div class="h"><p class="kick">Lent to this desk</p></div>
+   <div class="mini"><span class="ic" style="background:#C8842E"></span>
+    <span class="tx"><p class="nm">Aamras</p><p class="vb">brand · 5 apps can read it</p></span></div>
+   <p class="gfoot">Only what you lend. Revoke any app from the panel and it stops reading immediately.</p>
+  </div>
+ </aside>
+</div>
+
+${pack([USES[0],USES[1],USES[2],USES[3],USES[4],USES[5]],"Next for Aamras","ordered by what's already banked")}
+
+<section class="act">
+ <p class="lb">Or ask for something else</p>
+ <div class="in"><span class="ph">Ask for anything — it routes and fills it in</span><button class="pill">Go</button></div>
+ <p class="ft">runs on your Claude · nothing routed through us</p>
+</section>
+
+${map("Everything else, by what you're doing")}
+<div class="end"><a class="lk" href="#">See all 22 apps →</a>
+ <span class="nt">Switch desks from the bar at the top. Each company keeps its own queue.</span></div>`;
+
+const EMPTY=`${sys(null,4)}
+<section class="obj">
+ <p class="kick">Connected</p>
+ <h1>Nothing on the desk yet.</h1>
+ <p class="line">Switchboard is running and the apps can reach your Claude. They just have nothing to work on. Give it one thing and the whole desk fills in.</p>
+ ${pts()}
+</section>
+<section class="act">
+ <p class="lb">Or just say what you're working on</p>
+ <div class="in"><span class="ph">“a home fragrance brand called Aamras”</span><button class="pill">Start it</button></div>
+ <p class="ft">one line is enough · nothing is sent anywhere</p>
+</section>
+${pack(USES.slice(0,6),"What it'll be able to do","nothing here can run until something is on the desk")}
+<div class="end"><a class="lk" href="#">See all 22 apps →</a></div>`;
+
+const COLD=`${sys(null,null)}
+<section class="obj">
+ <p class="kick">Switchboard</p>
+ <h1>Your companies, and everything staged against them.</h1>
+ <p class="line">Twenty-two apps that work on the same few things you already have. They run on the Claude subscription you already pay for — no new account, no second bill, and nothing you type reaches a server of ours.</p>
+ ${pts()}
+</section>
+${pack(USES,"What you'll be able to do with it","8 of 22 shown →")}
+${map("Or browse by what you're doing")}
+<div class="end"><a class="lk" href="#">See all 22 apps →</a>
+ <span class="nt">Six of these are ideabrain opened onto a different kind of idea, so it counts once.</span></div>`;
+
+const S={os:OS,empty:EMPTY,cold:COLD};
+const app=document.getElementById("app");
+function show(k){app.innerHTML=`<div class="wrap">${S[k]}</div>`;
+ document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.s===k)));
+ scrollTo(0,0);}
+document.getElementById("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)show(b.dataset.s);});
+show("os");
+</script>
+</body></html>
