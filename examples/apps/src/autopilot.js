@@ -1383,6 +1383,8 @@ function opsCol(co) {
   for (const t of tasks.slice(0, 5)) tc.append(taskRow(co, t));
   c.append(tc);
 
+  c.append(docsCard(co));
+
   // the decision slate — HARNESS CONTRACT: decision rows are `.card .row` carrying "N options" /
   // "Inherited". The runner asserts the cold-open slate rendered by counting exactly these.
   const dc = el("div", "card");
@@ -1447,6 +1449,50 @@ function tasksPane(body, co) {
     if (t.detail) card.append(el("div", "tdetail" + (t.status === "failed" ? " err" : ""), t.err || t.detail));
     body.append(card);
   }
+}
+
+// ---- DOCUMENTS — every real artifact the company produced, in one place (Acoco's Documents). Pure
+// function of state: the CEO's briefing log, the site copy, the product brief, each social post and
+// outreach draft. Nothing invented — if it's listed, the clone actually made it. -----------------
+function docsFor(co) {
+  const D = [];
+  const ceo = (co.chat || []).filter((m) => m.who === "ceo");
+  if (ceo.length) D.push({ id: "briefing", title: "Briefing log", tag: "DAILY", body: ceo.map((m) => m.at + " — " + m.text).join("\n\n") });
+  if (co.site && co.site.drafted) D.push({ id: "site", title: kindCfg(co).econ === "usage" ? "The wrapp" : "Landing page", tag: "ARTIFACT", site: true });
+  if (co.product && co.product.drafted) D.push({ id: "product", title: "Product brief", tag: "ARTIFACT", body: co.product.name + (co.product.price ? " · $" + co.product.price : "") + "\n\n" + (co.product.blurb || "") });
+  (co.posts || []).forEach((p, i) => D.push({ id: "post-" + p.id, title: "Social post " + (i + 1), tag: "ARTIFACT", body: p.text }));
+  (co.inbox || []).forEach((m) => D.push({ id: "mail-" + m.id, title: m.subject || "Outreach", tag: "ARTIFACT", body: "To: " + m.to + "\n\n" + m.body }));
+  return D;
+}
+function docsCard(co) {
+  const docs = docsFor(co);
+  const c = el("div", "card");
+  const h = el("div", "cthead");
+  h.append(cardTitle("Documents", docs.length ? docs.length + " artifacts" : "none yet"));
+  if (docs.length > 4) { const v = el("button", "taskmanage", "View all →"); v.onclick = () => { pane = { kind: "docs" }; render(); }; h.append(v); }
+  c.append(h);
+  if (!docs.length) { c.append(el("div", "empty", "The clone's artifacts land here as it works — briefings, the site, posts, outreach.")); return c; }
+  for (const d of docs.slice(0, 4)) c.append(docRow(co, d));
+  return c;
+}
+function docRow(co, d) {
+  const r = el("button", "docrow");
+  r.append(el("span", "docname", d.title), el("span", "doctag", d.tag));
+  r.onclick = () => { if (d.site) pane = { kind: "site" }; else pane = { kind: "doc", docId: d.id }; render(); };
+  return r;
+}
+function docsPane(body, co) {
+  body.append(el("h3", "ptitle", "Documents"));
+  const docs = docsFor(co);
+  if (!docs.length) { body.append(el("div", "empty", "Nothing yet.")); return; }
+  for (const d of docs) body.append(docRow(co, d));
+}
+function docPane(body, co) {
+  const d = docsFor(co).find((x) => x.id === (pane.docId));
+  if (!d) { body.append(el("div", "empty", "Not found.")); return; }
+  body.append(el("h3", "ptitle", d.title));
+  body.append(el("div", "kicker", d.tag + " · drafted by the clone"));
+  body.append(el("pre", "doctext", d.body || ""));
 }
 
 // ---- COLUMN 3 · GROWTH — ads / distribution, social, and the inbox ---------------------------
@@ -1600,8 +1646,9 @@ function renderPane(co) {
   const isSite = pane.kind === "site";
   const isConn = pane.kind === "connectors";
   const isTasks = pane.kind === "tasks";
-  const d = isTok || isSite || isConn || isTasks ? null : co.decisions[pane.kind];
-  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : isConn ? "CONNECTORS" : isTasks ? "TASKS" : (d ? d.axis : "")));
+  const isDocs = pane.kind === "docs" || pane.kind === "doc";
+  const d = isTok || isSite || isConn || isTasks || isDocs ? null : co.decisions[pane.kind];
+  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : isConn ? "CONNECTORS" : isTasks ? "TASKS" : isDocs ? "DOCUMENTS" : (d ? d.axis : "")));
   const close = el("button", "pclose", "✕");
   close.onclick = () => { pane = null; render(); };
   head.append(close);
@@ -1613,6 +1660,8 @@ function renderPane(co) {
   if (isSite) { sitePane(body, co); return; }
   if (isConn) { connectorsPane(body); return; }
   if (isTasks) { tasksPane(body, co); return; }
+  if (pane.kind === "docs") { docsPane(body, co); return; }
+  if (pane.kind === "doc") { docPane(body, co); return; }
   if (!d) return;
   slate(body, co, d);
 }
