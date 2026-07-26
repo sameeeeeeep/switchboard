@@ -1586,8 +1586,26 @@ function strategyCol(co) {
   const btn = el("button", "chatsend", "→"); btn.onclick = () => void send();
   row.append(input, btn);
   cc.append(row);
+
+  // CANVAS chips (the mock's "drop an intent → it becomes queued work"): preset intents that drop
+  // into the thread and run the real action, kind-aware.
+  cc.append(el("div", "canvasnote", "Drop an intent — it becomes queued work."));
+  const chipsRow = el("div", "canvaschips");
+  for (const ch of canvasChips(co)) {
+    const b = el("button", "chip", ch.label);
+    b.onclick = async () => { co.chat.push({ id: uid(), who: "you", text: ch.label, at: clock() }); logLine(co, "you: " + ch.label, "run", null); await saveCo(co); render(); await ch.run(); };
+    chipsRow.append(b);
+  }
+  cc.append(chipsRow);
   c.append(cc);
   return c;
+}
+/** the CANVAS preset intents — kind-aware, each wired to a real action the clone performs. */
+function canvasChips(co) {
+  const post = { label: "Draft social", run: () => genPost(co, { lane: "social" }) };
+  const out = { label: "Draft outreach", run: () => genOutreach(co, { lane: "inbox" }) };
+  if (kindCfg(co).econ === "usage") return [post, out, { label: (co.site && co.site.drafted) ? "Rebuild the wrapp" : "Ship the wrapp", run: () => genSite(co) }];
+  return [post, out, { label: (co.product && co.product.drafted) ? "Rebuild the site" : "Shape the product", run: () => ((co.product && co.product.drafted) ? genSite(co) : genProduct(co)) }];
 }
 /** Chat input dispatch — slash commands drive the OS, everything else is a message to the CEO. */
 async function ceoCommand(co, text) {
@@ -1625,8 +1643,8 @@ function decRow(co, d) {
   meta.append(el("span", "tag " + cls, txt));
   meta.append(el("span", null, d.error ? d.error
     : d.busy ? "drafting…"
-    : d.inherited ? "from " + d.inherited.from
-    : d.chosenId ? "locked " + d.chosenAt
+    : d.inherited ? "inherited · tap to see"
+    : d.chosenId ? "locked " + d.chosenAt + " · tap to see"
     : d.options.length + " options"));
   b.append(meta);
   b.onclick = () => { pane = { kind: d.id }; render(); };

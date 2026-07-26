@@ -350,6 +350,10 @@
       .chatrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 9px; color: var(--ink); font: 400 12.5px/1.4 var(--sans); padding: 10px 11px; outline: none; }
       .chatrow input:focus { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
       .chatsend { font: 600 14px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 9px; padding: 0 14px; cursor: pointer; flex: none; }
+      .canvasnote { font: 400 10.5px/1.5 var(--mono); color: var(--ink-faint); margin-top: 10px; }
+      .canvaschips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+      .chip { font: 500 11px/1 var(--sans); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 7px 12px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .chip:hover { border-color: var(--accent); color: var(--ink); }
 
       /* the master autopilot switch */
       .autobtn { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 8px 14px; cursor: pointer; color: var(--ink-sec); transition: border-color .15s, color .15s, background .15s; }
