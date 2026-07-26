@@ -39,6 +39,7 @@ import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
+import { AutopilotRunner } from "./autopilot/runner.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
@@ -107,6 +108,8 @@ export class Broker implements ConsentPrompter {
   private streams = new Map<string, AbortController>();
   /** Keeps every connected extension's MV3 worker alive (see start()). */
   private heartbeat: NodeJS.Timeout | null = null;
+  /** The "while you sleep" runner — constructed only under RELAY_AUTOPILOT=1; otherwise undefined. */
+  private autopilot?: AutopilotRunner;
 
   constructor(private deps: BrokerDeps) {}
 
@@ -165,6 +168,20 @@ export class Broker implements ConsentPrompter {
     }, 20_000);
     this.heartbeat.unref?.();
     console.error(`[relay] sidekick listening on ws://${host}:${port} (paired-only)`);
+
+    // AUTOPILOT RUNNER — the "while you sleep" half. Inert unless RELAY_AUTOPILOT=1 (additive,
+    // flag-gated, Team Mode pattern). It sweeps granted origins' storage and advances any company
+    // whose owner turned autopilot on, using THIS server's gated completion so every call is
+    // consent/budget-checked; it only ever does reversible work and never sends. See autopilot/runner.ts.
+    if (process.env.RELAY_AUTOPILOT === "1") {
+      this.autopilot = new AutopilotRunner({
+        storage: this.deps.storage,
+        origins: () => this.deps.grants.list().map((g) => g.origin),
+        complete: (origin, prompt, maxTokens) => this.complete(origin, { prompt, model: "sonnet", maxTokens }).then((r) => ({ text: r.text, usage: r.usage })),
+        log: (m) => console.error("[relay] " + m),
+      });
+      this.autopilot.start();
+    }
   }
 
   // ---- ConsentPrompter: push to the extension popup, await the user's click. Fail-closed. ----
