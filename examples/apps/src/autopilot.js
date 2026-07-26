@@ -614,14 +614,58 @@ function movesFor(co) {
 
 // ---- tasks: the operations list. Derived from the slate's own state, so it's always honest about
 // what's actually pending — plus one standing recurring beat, the way a company plans daily.
+// The TASK SYSTEM — every task is a pure function of the venture's state, tagged with a status and a
+// runnable action, exactly like Acoco's. `run now` on any pending task executes it (the same call
+// the clone/Autopilot would make); staged tasks are approve-class and gated; recurring is the daily
+// beat; done is derived from real state; failed carries the error. Nothing here is hand-authored.
+const runningTasks = new Set();     // task ids executing right now (transient)
+const failedTasks = new Map();      // task id → last error message (transient)
 function tasksFor(co) {
-  const derived = [];
-  const undecided = SPEC.filter((s) => { const d = co.decisions[s.id]; return d && !d.chosenId && !d.inherited && d.options.length; });
-  for (const s of undecided) derived.push({ id: "decide-" + s.id, title: "Decide " + s.label.toLowerCase(), detail: co.decisions[s.id].options.length + " options drafted — pick one", state: "queued" });
-  for (const m of movesFor(co).filter((m) => m.mode === "approve")) derived.push({ id: "move-" + m.id, title: m.n, detail: MODES.approve.note, state: "staged", move: m });
-  const stored = (co.tasks || []).filter((t) => t.custom);
-  const plan = { id: "daily-plan", title: "Daily company planning", detail: "the CEO reviews the board and queues the day", state: "recurring", recurring: true };
-  return [...stored, ...derived, plan];
+  const T = [];
+  const kc = kindCfg(co);
+  // decide the open forks
+  for (const s of SPEC) {
+    const d = co.decisions[s.id];
+    if (d && !d.chosenId && !d.inherited && d.options.length)
+      T.push({ id: "decide-" + s.id, title: "Decide " + s.label.toLowerCase(), detail: d.options.length + " options drafted — pick one", status: "pending", act: { kind: "decide", id: s.id } });
+  }
+  // reversible generative work the clone can prepare
+  if (kc.econ === "sales" && (!co.product || !co.product.drafted)) T.push({ id: "gen-product", title: "Shape the product", detail: "a first paid offer, from your context + angle", status: "pending", act: { kind: "product" } });
+  if (!co.site || !co.site.drafted) T.push({ id: "gen-site", title: kc.deployVerb, detail: "generate the " + kc.deployNoun + " from the context", status: "pending", act: { kind: "site" } });
+  if ((co.posts || []).length < 3) T.push({ id: "gen-post", title: "Draft the launch social", detail: "posts in the company's voice", status: "pending", act: { kind: "post" } });
+  if ((co.inbox || []).length < 2) T.push({ id: "gen-outreach", title: "Draft outreach", detail: "cold emails to your first " + (kc.econ === "usage" ? "users" : "buyers"), status: "pending", act: { kind: "outreach" } });
+  // staged sends — approve-class, need your go
+  for (const m of movesFor(co).filter((m) => m.mode === "approve")) T.push({ id: "move-" + m.id, title: m.n, detail: MODES.approve.note, status: "staged", move: m, act: { kind: "move", move: m } });
+  // recurring beat
+  T.push({ id: "daily-plan", title: "Daily company planning", detail: "the CEO reviews the board and queues the day", status: "recurring", act: { kind: "plan" } });
+  // apply transient run state
+  return T.map((t) => runningTasks.has(t.id) ? { ...t, status: "running" } : failedTasks.has(t.id) ? { ...t, status: "failed", err: failedTasks.get(t.id) } : t);
+}
+/** Tasks already done — derived from real state, so the Done tab is honest, never a hand-kept list. */
+function tasksDone(co) {
+  const D = [];
+  for (const s of SPEC) { const d = co.decisions[s.id]; if (d && (d.chosenId || d.inherited)) D.push({ id: "done-" + s.id, title: "Decided " + s.label.toLowerCase(), detail: (optOf(d) || {}).label || (d.inherited || {}).value || "", status: "done" }); }
+  if (co.site && co.site.drafted) D.push({ id: "done-site", title: kindCfg(co).econ === "usage" ? "Shipped the wrapp" : "Built the site", detail: co.site.host || "", status: "done" });
+  if (co.product && co.product.drafted) D.push({ id: "done-product", title: "Shaped the product", detail: co.product.name || "", status: "done" });
+  if ((co.posts || []).length) D.push({ id: "done-posts", title: "Drafted the launch social", detail: co.posts.length + " posts", status: "done" });
+  if ((co.inbox || []).length) D.push({ id: "done-inbox", title: "Drafted outreach", detail: co.inbox.length + " emails", status: "done" });
+  return D;
+}
+/** run now — execute a task's action, the same call the clone/Autopilot makes. Reversible ones run;
+ *  staged (approve) ones go through runMove's gate; failures surface on the task, never silent. */
+async function runTask(co, task) {
+  const a = task.act; if (!a) return;
+  runningTasks.add(task.id); failedTasks.delete(task.id); render();
+  try {
+    if (a.kind === "decide") { const d = co.decisions[a.id]; if (d && d.options.length) await autoChoose(co, d); }
+    else if (a.kind === "product") await genProduct(co);
+    else if (a.kind === "site") await genSite(co);
+    else if (a.kind === "post") await genPost(co, { lane: "social" });
+    else if (a.kind === "outreach") await genOutreach(co, { lane: "inbox" });
+    else if (a.kind === "move") await runMove(co, a.move);
+    else if (a.kind === "plan") await ceoProactive(co);
+  } catch (e) { failedTasks.set(task.id, msg(e)); }
+  finally { runningTasks.delete(task.id); await saveCo(co); render(); }
 }
 
 // ---- the CEO: the strategy surface. A persona grounded in THIS company that reviews the board,
@@ -1328,11 +1372,15 @@ function opsCol(co) {
   }
   c.append(lc);
 
-  // tasks
+  // tasks — a mini-list here; the full board (status tabs + run now) opens in the pane
   const tc = el("div", "card");
   const tasks = tasksFor(co);
-  tc.append(cardTitle("Tasks", tasks.filter((t) => t.state === "staged").length + " staged"));
-  for (const t of tasks) tc.append(taskRow(co, t));
+  const th = el("div", "cthead");
+  th.append(cardTitle("Tasks", tasks.filter((t) => t.status === "staged").length + " staged"));
+  const manage = el("button", "taskmanage", "Manage →"); manage.onclick = () => { pane = { kind: "tasks" }; render(); };
+  th.append(manage);
+  tc.append(th);
+  for (const t of tasks.slice(0, 5)) tc.append(taskRow(co, t));
   c.append(tc);
 
   // the decision slate — HARNESS CONTRACT: decision rows are `.card .row` carrying "N options" /
@@ -1345,19 +1393,60 @@ function opsCol(co) {
 }
 function taskRow(co, t) {
   const r = el("div", "task");
-  const dot = el("span", "tstate s-" + t.state);
+  r.append(el("span", "tstate s-" + t.status));
   const mid = el("div", "tmid");
   mid.append(el("div", "ttitle", t.title));
-  if (t.detail) mid.append(el("div", "tdetail", t.detail));
-  r.append(dot, mid);
-  if (t.move && t.move.mode === "approve") {
-    const go = el("button", "tgo", "Go");
-    go.onclick = (e) => { e.stopPropagation(); void runMove(co, t.move); };
-    r.append(go);
+  if (t.err) mid.append(el("div", "tdetail err", t.err));
+  else if (t.detail) mid.append(el("div", "tdetail", t.detail));
+  r.append(mid);
+  // Run now on anything runnable; staged sends say "Go"; running spins; done/recurring just tag.
+  if (t.status === "running") r.append(el("span", "ttag", "running…"));
+  else if (t.act && t.status !== "recurring") {
+    const b = el("button", "tgo" + (t.status === "staged" ? " go" : ""), t.status === "staged" ? "Go" : "Run now");
+    b.onclick = (e) => { e.stopPropagation(); void runTask(co, t); };
+    r.append(b);
   } else {
-    r.append(el("span", "ttag", t.recurring ? "recurring" : t.state));
+    r.append(el("span", "ttag", t.status));
   }
   return r;
+}
+/** THE TASKS BOARD — Acoco's Tasks modal: status tabs, every task with Run now. Pure function of
+ *  state; the clone works the same list Autopilot does. */
+let taskTab = "pending";
+function tasksPane(body, co) {
+  body.append(el("h3", "ptitle", "Tasks"));
+  const live = tasksFor(co), done = tasksDone(co);
+  const groups = {
+    pending: live.filter((t) => t.status === "pending" || t.status === "running"),
+    staged: live.filter((t) => t.status === "staged"),
+    recurring: live.filter((t) => t.status === "recurring"),
+    done: done,
+    failed: live.filter((t) => t.status === "failed"),
+  };
+  const tabs = el("div", "ttabs");
+  for (const [k, label] of [["pending", "Pending"], ["staged", "Staged"], ["recurring", "Recurring"], ["done", "Done"], ["failed", "Failed"]]) {
+    const n = groups[k].length; if (k === "failed" && !n) continue;
+    const b = el("button", "ttab" + (taskTab === k ? " on" : ""));
+    b.append(el("span", null, label)); if (n) b.append(el("span", "tcount", String(n)));
+    b.onclick = () => { taskTab = k; render(); };
+    tabs.append(b);
+  }
+  body.append(tabs);
+  const list = groups[taskTab] || [];
+  if (!list.length) { body.append(el("div", "empty", "Nothing here.")); return; }
+  for (const t of list) {
+    const card = el("div", "taskcard");
+    const top = el("div", "taskcardtop");
+    top.append(el("div", "ttitle", t.title));
+    if (t.act && t.status !== "recurring" && t.status !== "done") {
+      const b = el("button", "tgo" + (t.status === "staged" ? " go" : ""), t.status === "running" ? "running…" : t.status === "staged" ? "Go →" : "Run now");
+      if (t.status !== "running") b.onclick = () => void runTask(co, t);
+      top.append(b);
+    } else { top.append(el("span", "ttag", t.status)); }
+    card.append(top);
+    if (t.detail) card.append(el("div", "tdetail" + (t.status === "failed" ? " err" : ""), t.err || t.detail));
+    body.append(card);
+  }
 }
 
 // ---- COLUMN 3 · GROWTH — ads / distribution, social, and the inbox ---------------------------
@@ -1510,8 +1599,9 @@ function renderPane(co) {
   const isTok = pane.kind === "tokens";
   const isSite = pane.kind === "site";
   const isConn = pane.kind === "connectors";
-  const d = isTok || isSite || isConn ? null : co.decisions[pane.kind];
-  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : isConn ? "CONNECTORS" : (d ? d.axis : "")));
+  const isTasks = pane.kind === "tasks";
+  const d = isTok || isSite || isConn || isTasks ? null : co.decisions[pane.kind];
+  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : isConn ? "CONNECTORS" : isTasks ? "TASKS" : (d ? d.axis : "")));
   const close = el("button", "pclose", "✕");
   close.onclick = () => { pane = null; render(); };
   head.append(close);
@@ -1522,6 +1612,7 @@ function renderPane(co) {
   if (isTok) { tokensPane(body, co); return; }
   if (isSite) { sitePane(body, co); return; }
   if (isConn) { connectorsPane(body); return; }
+  if (isTasks) { tasksPane(body, co); return; }
   if (!d) return;
   slate(body, co, d);
 }
