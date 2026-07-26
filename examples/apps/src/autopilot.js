@@ -393,6 +393,15 @@ function newCompany(cfg) {
     glyph: (cfg.name || "?").trim().charAt(0).toUpperCase(),
     color: PALETTE[Math.abs(hashOf(cfg.id)) % PALETTE.length], ink: "#EAF2E4",
     tokens: { spent: 0, budget: 2_000_000, by: {}, estimated: false },
+    // ---- the OS state: everything a company runs on, beyond its decisions. All of it derives
+    // from the slate or from an explicit human action — nothing here is invented data.
+    site: cfg.domain ? { host: cfg.domain, live: false } : null,
+    metrics: { revenue: null, traffic: null },          // null = "not connected", never a fake 0
+    tasks: [],        // { id, title, detail, state: queued|running|done|blocked, recurring, at }
+    posts: [],        // social drafts: { id, channel, text, state: draft|staged|posted, at, ref }
+    inbox: [],        // outreach drafts: { id, to, subject, body, state, at, ref }
+    chat: [],         // CEO thread: { id, who: ceo|you, text, at }
+    autotweet: false, // when true, a generated post stages instead of sitting as a silent draft
     log: [], decisions: {}, at: Date.now(),
   };
   for (const s of SPEC) co.decisions[s.id] = decision(s);
@@ -485,23 +494,159 @@ async function draftSlate(co) {
   }
 }
 
+// ---- execution: the half that makes it an OS, not a cockpit ---------------------------------
+// Autopilot INITIATES; the Switchboard daemon is the consent surface. Every world-touching move is
+// a `relay.callTool` — and the daemon's gate classifies it write-class and throws its own per-action
+// confirm THE MODEL CANNOT CLICK. So "approve" here means: Autopilot stages the exact call, you tap
+// go, the daemon asks you once more, and only then does it leave the machine. When no connector is
+// wired for a lane, the move stages honestly and says what to connect — it never pretends to send.
+let toolNames = null;                 // cached lowercased tool-name list from the broker
+async function discoverTools() {
+  if (toolNames) return toolNames;
+  try { const t = await relay.listTools(); toolNames = (t || []).map((x) => String(x.name || x).toLowerCase()); }
+  catch { toolNames = []; }
+  return toolNames;
+}
+// Map an abstract lane to a real connected tool, if the user has one. Deliberately loose: any Gmail /
+// mail / send tool satisfies "inbox"; any tweet / x / social tool satisfies "social".
+const LANE_MATCH = {
+  social: /tweet|twitter|\bx_|social|post_to|linkedin/i,
+  inbox: /gmail|mail|email|send_message|outreach/i,
+  ads: /\bad(s|_|-)|campaign|adset|boost/i,
+  site: /deploy|publish|website|pages|vercel|netlify/i,
+};
+async function toolForLane(lane) {
+  const names = await discoverTools();
+  const rx = LANE_MATCH[lane];
+  return names.find((n) => rx.test(n)) || null;
+}
+
+/** Run a staged move. approve/auto only — manual moves are the human's, out in the world. */
+async function runMove(co, move) {
+  if (move.mode === "manual") return;
+  if (move.mode === "auto") {                         // reversible: do it locally, no gate
+    if (move.lane === "social") await genPost(co, move);
+    else if (move.lane === "inbox") await genOutreach(co, move);
+    return;
+  }
+  // approve — real, gated. Find a connector; if none, stage honestly.
+  const tool = move.lane ? await toolForLane(move.lane) : null;
+  if (!tool) {
+    logLine(co, "staged “" + move.n + "” — no " + (move.lane || "connector") + " connected yet", "run", null);
+    toast("Staged — connect a " + (move.lane || "tool") + " in the Switchboard panel to send it for real.");
+    await saveCo(co); render();
+    return;
+  }
+  logLine(co, "sending “" + move.n + "” via " + tool + "…", "run", null);
+  await saveCo(co); render();
+  try {
+    const res = await relay.callTool(tool, move.args || {});   // daemon gate fires here
+    logLine(co, "ran “" + move.n + "” — done", "done", null);
+    if (move.postId) { const p = co.posts.find((x) => x.id === move.postId); if (p) { p.state = "posted"; p.ref = res?.ref || res?.id || null; } }
+    if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "sent"; m.ref = res?.ref || res?.id || null; } }
+    toast("Done — " + move.n);
+  } catch (e) {
+    logLine(co, "“" + move.n + "” didn't go through — " + msg(e), "run", null);
+    toast(msg(e), true);
+  }
+  await saveCo(co); render();
+}
+
 // ---- staged moves: derived from the decisions, never invented -------------------------------
 function movesFor(co) {
   const out = [];
   const angle = optOf(co.decisions.angle);
   const channel = optOf(co.decisions.channel);
   const next = optOf(co.decisions.next);
-  // Which field carries the human-readable NAME differs by decision, so this can't be one helper:
-  // for angle/channel `label` is the name and `text` is the rationale ("Paid search" vs "they
-  // search the problem by name…"), while for `next` the move itself lives in `text`. Both fall
-  // back the other way, because a human-written option (the escape hatch) puts its whole wording
-  // in `label` and leaves `text` empty.
   const named = (o) => (o.label || o.text || "").trim();
   const stated = (o) => (o.text || o.label || "").trim();
-  if (angle) out.push({ n: "Draft the creative for “" + named(angle) + "”", mode: "auto" });
-  if (angle && channel) out.push({ n: "Run it on " + named(channel), mode: "approve" });
-  if (next) out.push({ n: stated(next), mode: "manual" });
+  if (angle) out.push({ id: "creative", n: "Draft the creative for “" + named(angle) + "”", mode: "auto", lane: "social" });
+  if (angle && channel) out.push({ id: "run", n: "Run “" + named(angle) + "” on " + named(channel), mode: "approve", lane: "ads",
+    args: { angle: named(angle), channel: named(channel), body: angle?.body || "" } });
+  if (angle) out.push({ id: "outreach", n: "Email leads about “" + named(angle) + "”", mode: "auto", lane: "inbox" });
+  if (next) out.push({ id: "widen", n: stated(next), mode: "manual" });
   return out;
+}
+
+// ---- tasks: the operations list. Derived from the slate's own state, so it's always honest about
+// what's actually pending — plus one standing recurring beat, the way a company plans daily.
+function tasksFor(co) {
+  const derived = [];
+  const undecided = SPEC.filter((s) => { const d = co.decisions[s.id]; return d && !d.chosenId && !d.inherited && d.options.length; });
+  for (const s of undecided) derived.push({ id: "decide-" + s.id, title: "Decide " + s.label.toLowerCase(), detail: co.decisions[s.id].options.length + " options drafted — pick one", state: "queued" });
+  for (const m of movesFor(co).filter((m) => m.mode === "approve")) derived.push({ id: "move-" + m.id, title: m.n, detail: MODES.approve.note, state: "staged", move: m });
+  const stored = (co.tasks || []).filter((t) => t.custom);
+  const plan = { id: "daily-plan", title: "Daily company planning", detail: "the CEO reviews the board and queues the day", state: "recurring", recurring: true };
+  return [...stored, ...derived, plan];
+}
+
+// ---- the CEO: the strategy surface. A persona grounded in THIS company that reviews the board,
+// proposes the day, and answers you. Real model calls, your Claude, grounded — never invented facts.
+async function ceoSay(co, text) {
+  const you = { id: uid(), who: "you", text: text.trim(), at: clock() };
+  co.chat.push(you);
+  await saveCo(co); render();
+  const chosen = SPEC.map((s) => { const d = co.decisions[s.id]; const o = optOf(d); return o ? s.label + ": " + o.label : (d.inherited ? s.label + ": " + d.inherited.value : null); }).filter(Boolean);
+  const recent = co.chat.slice(-6).map((m) => (m.who === "you" ? "Founder" : "You (CEO)") + ": " + m.text).join("\n");
+  const prompt = [
+    "You are the operating CEO of " + co.name + ". You speak to the founder as a trusted partner — direct, concrete, no fluff, first person.",
+    groundingBlock(co),
+    chosen.length ? "Decided so far:\n" + chosen.join("\n") : "Nothing decided yet.",
+    "Recent thread:\n" + (recent || "(new)"),
+    "Reply to the founder's last message in 2-4 sentences. Propose concrete next moves this company could actually make. Never invent a metric, a customer, a price, or a result — if you'd need data, say what you'd need.",
+  ].join("\n\n");
+  try {
+    const { text: reply, tokens, estimated } = await completeCounted(prompt, 500);
+    spend(co, tokens, "ceo", estimated);
+    co.chat.push({ id: uid(), who: "ceo", text: reply.trim(), at: clock() });
+  } catch (e) {
+    co.chat.push({ id: uid(), who: "ceo", text: "Couldn't reach your Claude just now — " + msg(e), at: clock() });
+  }
+  await saveCo(co); render();
+}
+
+// ---- social: a post drafted in the company's chosen voice, off the chosen angle. Stages (or, with
+// autotweet on, auto-stages) — the actual send is a gated callTool through runMove.
+async function genPost(co, move) {
+  const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
+  const prompt = [
+    "You are running social for " + co.name + ".",
+    groundingBlock(co),
+    angle ? "The angle to lead with: " + (angle.label || "") + " — " + (angle.text || "") : "",
+    "Write ONE post (under 260 chars) in this company's voice. No hashtags unless they're natural. Return only the post text.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const { text, tokens, estimated } = await completeCounted(prompt, 300);
+    spend(co, tokens, "social", estimated);
+    const p = { id: uid(), channel: "x", text: text.trim().slice(0, 280), state: co.autotweet ? "staged" : "draft", at: clock() };
+    co.posts.unshift(p); co.posts = co.posts.slice(0, 8);
+    logLine(co, co.autotweet ? "drafted + staged a post" : "drafted a post — yours to send", "done", null);
+  } catch (e) { logLine(co, "couldn't draft a post — " + msg(e), "run", null); }
+  await saveCo(co); render();
+}
+
+// ---- inbox: outreach drafts. Finding real leads needs a connector; absent one, this drafts the
+// message the company would send and stages it — honest about what it can and can't reach.
+async function genOutreach(co, move) {
+  const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
+  const aud = (co.inherited || {}).audience || "";
+  const prompt = [
+    "You are doing cold outreach for " + co.name + ".",
+    groundingBlock(co),
+    aud ? "Who to reach: " + aud : "",
+    angle ? "Lead with the angle: " + (angle.label || "") : "",
+    "Write ONE short cold email — a subject line and 3-4 sentence body — this company could send to a prospect. Return as JSON: {\"subject\":..., \"body\":...}. Never invent the recipient's name or a fake result.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const { text, tokens, estimated } = await completeCounted(prompt, 400);
+    spend(co, tokens, "inbox", estimated);
+    let subject = "Quick note", body = text.trim();
+    const j = text.indexOf("{"); if (j !== -1) { try { const o = JSON.parse(text.slice(j, text.lastIndexOf("}") + 1)); subject = o.subject || subject; body = o.body || body; } catch {} }
+    const m = { id: uid(), to: aud ? "(a " + aud.split(/[,.]/)[0].trim() + ")" : "(a prospect)", subject, body, state: "draft", at: clock() };
+    co.inbox.unshift(m); co.inbox = co.inbox.slice(0, 8);
+    logLine(co, "drafted outreach — yours to send", "done", null);
+  } catch (e) { logLine(co, "couldn't draft outreach — " + msg(e), "run", null); }
+  await saveCo(co); render();
 }
 
 // ---- the cold open ---------------------------------------------------------------------------
@@ -609,10 +754,16 @@ function cockpit(co) {
   if (!co) return wrap;
 
   const grid = el("div", "grid");
+  grid.append(companyCol(co), opsCol(co), growthCol(co), strategyCol(co));
+  wrap.append(grid);
+  return wrap;
+}
 
-  // ---- COMPANY
-  const c1 = el("div", "col");
-  c1.append(el("div", "chead", "COMPANY"));
+// ---- COLUMN 1 · COMPANY — identity, the live site, the two real numbers, and runway -----------
+function companyCol(co) {
+  const c = el("div", "col");
+  c.append(el("div", "chead", "COMPANY"));
+
   const idc = el("div", "card");
   const idrow = el("div", "idrow");
   const logo = el("div", "idlogo", co.glyph); logo.style.background = co.color; logo.style.color = co.ink;
@@ -622,15 +773,28 @@ function cockpit(co) {
   idrow.append(logo, who);
   idc.append(idrow);
   if (co.oneLine) idc.append(el("p", "blurb", co.oneLine));
+
+  // the site line — honest about whether anything is actually live
+  const site = el("div", "siteline");
+  if (co.site && co.site.host) {
+    site.append(el("span", "dot" + (co.site.live ? " on" : "")));
+    const a = el("a", "sitehost", co.site.host); a.href = "https://" + co.site.host; a.target = "_blank"; a.rel = "noopener";
+    site.append(a, el("span", "sitestate", co.site.live ? "live" : "not deployed"));
+  } else {
+    site.append(el("span", "dot"), el("span", "sitestate", "no site yet — a company needs one place to point at"));
+  }
+  idc.append(site);
+
   const kv = el("div", "kvs");
   kv.append(kvRow("Decisions yours", Object.values(co.decisions).filter((d) => d.chosenId).length + " of " + SPEC.length));
-  kv.append(kvRow("Revenue", "— not connected", true));
+  kv.append(kvRow("Revenue MTD", co.metrics.revenue == null ? "— not connected" : "$" + co.metrics.revenue, co.metrics.revenue == null));
+  kv.append(kvRow("Traffic", co.metrics.traffic == null ? "— not connected" : String(co.metrics.traffic), co.metrics.traffic == null));
   idc.append(kv);
-  const fund = el("button", "fundbtn", "Feed it tokens");
+  const fund = el("button", "fundbtn", "Fund runway");
   fund.onclick = () => { pane = { kind: "tokens" }; render(); };
   idc.append(fund);
-  idc.append(el("div", "fundnote", "tokens are capacity to work — not a subscription"));
-  c1.append(idc);
+  idc.append(el("div", "fundnote", "runway is capacity to work on your own Claude — not a subscription, no key ever leaves you"));
+  c.append(idc);
 
   const stillInherited = Object.entries(co.inherited || {}).filter(([k]) => !(co.overridden || []).includes(k));
   if (stillInherited.length) {
@@ -643,52 +807,162 @@ function cockpit(co) {
       r.append(el("span", "ik", k), el("span", "iv", flat.slice(0, 90)));
       ic.append(r);
     }
-    ic.append(el("div", "fundnote", "came from the lent context — Autopilot doesn't ask again"));
-    c1.append(ic);
+    ic.append(el("div", "fundnote", "came from the brandbrain / ideabrain context you lent — Autopilot doesn't ask again"));
+    c.append(ic);
   }
-  grid.append(c1);
+  return c;
+}
 
-  // ---- THE SLATE
-  const c2 = el("div", "col");
-  c2.append(el("div", "chead", "THE SLATE"));
-  const dc = el("div", "card");
-  // `drafting` is a Set now — a bare truthiness test is always true and pinned this to "drafting…"
-  dc.append(cardTitle("Decisions", drafting.has(co.id) ? "drafting…" : "choose any"));
-  for (const s of SPEC) dc.append(decRow(co, co.decisions[s.id]));
-  c2.append(dc);
-  grid.append(c2);
+// ---- COLUMN 2 · OPERATIONS — the live log, the task list, and the decision slate --------------
+function opsCol(co) {
+  const c = el("div", "col");
+  c.append(el("div", "chead", "OPERATIONS"));
 
-  // ---- STAGED + LOG
-  const c3 = el("div", "col");
-  c3.append(el("div", "chead", "STAGED"));
-  const mc = el("div", "card");
-  const moves = movesFor(co);
-  mc.append(cardTitle("Moves", moves.length ? moves.filter((m) => m.mode === "approve").length + " need you" : "choose first"));
-  if (!moves.length) mc.append(el("div", "empty", "Choose an angle and a channel — the moves they imply appear here."));
-  for (const m of moves) {
-    const r = el("div", "row static");
-    r.append(el("div", "rname", m.n));
-    const meta = el("div", "rmeta");
-    meta.append(el("span", "tag t-" + m.mode, MODES[m.mode].tag), el("span", null, MODES[m.mode].note));
-    r.append(meta);
-    mc.append(r);
-  }
-  mc.append(el("div", "fundnote", "nothing here has happened — Autopilot stages, you decide"));
-  c3.append(mc);
-
+  // live operating log
   const lc = el("div", "card");
-  lc.append(cardTitle("Log", "this company"));
+  lc.append(cardTitle("Live operating log", drafting.has(co.id) ? "working…" : "this company"));
   if (!co.log.length) lc.append(el("div", "empty", "Nothing yet."));
-  for (const l of co.log.slice(0, 8)) {
+  for (const l of co.log.slice(0, 9)) {
     const r = el("div", "l" + (l.s === "run" ? " run" : ""));
     r.append(el("span", "g", l.s === "run" ? "⟳" : "✓"), el("span", null, l.t), el("time", null, l.at));
     lc.append(r);
   }
-  c3.append(lc);
-  grid.append(c3);
+  c.append(lc);
 
-  wrap.append(grid);
-  return wrap;
+  // tasks
+  const tc = el("div", "card");
+  const tasks = tasksFor(co);
+  tc.append(cardTitle("Tasks", tasks.filter((t) => t.state === "staged").length + " staged"));
+  for (const t of tasks) tc.append(taskRow(co, t));
+  c.append(tc);
+
+  // the decision slate — HARNESS CONTRACT: decision rows are `.card .row` carrying "N options" /
+  // "Inherited". The runner asserts the cold-open slate rendered by counting exactly these.
+  const dc = el("div", "card");
+  dc.append(cardTitle("The slate", drafting.has(co.id) ? "drafting…" : "choose any"));
+  for (const s of SPEC) dc.append(decRow(co, co.decisions[s.id]));
+  c.append(dc);
+  return c;
+}
+function taskRow(co, t) {
+  const r = el("div", "task");
+  const dot = el("span", "tstate s-" + t.state);
+  const mid = el("div", "tmid");
+  mid.append(el("div", "ttitle", t.title));
+  if (t.detail) mid.append(el("div", "tdetail", t.detail));
+  r.append(dot, mid);
+  if (t.move && t.move.mode === "approve") {
+    const go = el("button", "tgo", "Go");
+    go.onclick = (e) => { e.stopPropagation(); void runMove(co, t.move); };
+    r.append(go);
+  } else {
+    r.append(el("span", "ttag", t.recurring ? "recurring" : t.state));
+  }
+  return r;
+}
+
+// ---- COLUMN 3 · GROWTH — ads / distribution, social, and the inbox ---------------------------
+function growthCol(co) {
+  const c = el("div", "col");
+  c.append(el("div", "chead", "GROWTH"));
+
+  // ads / the run move
+  const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
+  const runMoveObj = movesFor(co).find((m) => m.id === "run");
+  const ac = el("div", "card");
+  ac.append(cardTitle("Ads", angle ? "ready" : "choose an angle"));
+  if (angle) {
+    const ad = el("div", "adprev");
+    ad.append(el("div", "adkick", "SAMPLE AD · " + co.name));
+    ad.append(el("div", "adhead", angle.text || angle.label));
+    if (angle.body) ad.append(el("div", "adbody", angle.body));
+    if (angle.cta) ad.append(el("span", "adcta", angle.cta));
+    ac.append(ad);
+    if (runMoveObj) { const b = el("button", "growbtn", "Set up ads"); b.onclick = () => void runMove(co, runMoveObj); ac.append(b); }
+  } else {
+    ac.append(el("div", "empty", "Pick an ad angle in the slate and a preview appears here."));
+  }
+  c.append(ac);
+
+  // social
+  const sc = el("div", "card");
+  const at = el("div", "cthead");
+  at.append(cardTitle("Social", co.posts.length ? co.posts.length + " drafts" : "none yet"));
+  const tog = el("button", "toggle" + (co.autotweet ? " on" : ""), co.autotweet ? "Auto-post: on" : "Auto-post: off");
+  tog.onclick = async () => { co.autotweet = !co.autotweet; await saveCo(co); render(); };
+  sc.append(at, tog);
+  const draftBtn = el("button", "growbtn ghost", "Draft a post");
+  draftBtn.onclick = () => void genPost(co, { lane: "social" });
+  sc.append(draftBtn);
+  for (const p of co.posts.slice(0, 4)) {
+    const pr = el("div", "post");
+    pr.append(el("div", "ptext", p.text));
+    const foot = el("div", "pfoot");
+    foot.append(el("span", "ptag s-" + p.state, p.state));
+    if (p.state !== "posted") { const send = el("button", "psend", "Post"); send.onclick = () => void runMove(co, { mode: "approve", lane: "social", n: "Post to social", postId: p.id, args: { text: p.text } }); foot.append(send); }
+    pr.append(foot);
+    sc.append(pr);
+  }
+  c.append(sc);
+
+  // inbox
+  const ic = el("div", "card");
+  ic.append(cardTitle("Inbox", co.inbox.length ? co.inbox.length + " drafts" : "outreach"));
+  const outBtn = el("button", "growbtn ghost", "Draft outreach");
+  outBtn.onclick = () => void genOutreach(co, { lane: "inbox" });
+  ic.append(outBtn);
+  for (const m of co.inbox.slice(0, 3)) {
+    const mr = el("div", "mail");
+    mr.append(el("div", "msubj", m.subject));
+    mr.append(el("div", "mto", "to " + m.to));
+    mr.append(el("div", "mbody", m.body.slice(0, 140)));
+    const foot = el("div", "pfoot");
+    foot.append(el("span", "ptag s-" + m.state, m.state));
+    if (m.state !== "sent") { const send = el("button", "psend", "Send"); send.onclick = () => void runMove(co, { mode: "approve", lane: "inbox", n: "Send outreach", mailId: m.id, args: { subject: m.subject, body: m.body } }); foot.append(send); }
+    mr.append(foot);
+    ic.append(mr);
+  }
+  c.append(ic);
+  return c;
+}
+
+// ---- COLUMN 4 · STRATEGY — your CEO. A grounded persona that reviews the board and answers you --
+function strategyCol(co) {
+  const c = el("div", "col");
+  c.append(el("div", "chead", "STRATEGY"));
+  const cc = el("div", "card chatcard");
+  const head = el("div", "chathead");
+  const badge = el("div", "ceobadge", co.glyph); badge.style.background = co.color; badge.style.color = co.ink;
+  head.append(badge, el("div", "ceoname", "Your CEO"), el("div", "ceosub", "runs " + co.name));
+  cc.append(head);
+
+  const thread = el("div", "thread");
+  if (!co.chat.length) thread.append(el("div", "empty", "Ask your CEO what to do next — or type /plan, /post, /outreach, /ship."));
+  for (const m of co.chat.slice(-12)) {
+    const b = el("div", "msg " + (m.who === "you" ? "me" : "ceo"));
+    b.append(el("div", "mbub", m.text), el("time", null, m.at));
+    thread.append(b);
+  }
+  cc.append(thread);
+
+  const row = el("div", "chatrow");
+  const input = el("input"); input.placeholder = "Message your CEO, or / for commands";
+  const send = async () => { const v = input.value.trim(); if (!v) return; input.value = ""; await ceoCommand(co, v); const th = document.querySelector(".thread"); if (th) th.scrollTop = th.scrollHeight; };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") void send(); });
+  const btn = el("button", "chatsend", "→"); btn.onclick = () => void send();
+  row.append(input, btn);
+  cc.append(row);
+  c.append(cc);
+  return c;
+}
+/** Chat input dispatch — slash commands drive the OS, everything else is a message to the CEO. */
+async function ceoCommand(co, text) {
+  const cmd = text.toLowerCase();
+  if (cmd === "/post") return genPost(co, { lane: "social" });
+  if (cmd === "/outreach") return genOutreach(co, { lane: "inbox" });
+  if (cmd === "/ship") { const m = movesFor(co).find((x) => x.mode === "approve"); if (m) return runMove(co, m); toast("Nothing staged to ship — choose an angle and a channel first."); return; }
+  if (cmd === "/plan") return ceoSay(co, "Review the board and tell me the 3 highest-leverage moves for today.");
+  return ceoSay(co, text);
 }
 
 function cardTitle(t, more) {

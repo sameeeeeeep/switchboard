@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Autopilot — the cockpit for the company you already have</title>
+    <title>Autopilot — the operating system for the company you already have</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -92,8 +92,9 @@
       .tokbar { display: flex; height: 5px; border-radius: 3px; background: var(--inset); overflow: hidden; border: 1px solid var(--edge-soft); }
       .tokbar i { display: block; height: 100%; }
 
-      .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; align-items: start; }
-      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+      .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 18px; align-items: start; }
+      @media (max-width: 1240px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
       .chead { font: 500 9.5px/1 var(--mono); letter-spacing: .18em; color: var(--ink-faint); margin: 0 0 9px 2px; }
       .col { display: flex; flex-direction: column; gap: 12px; }
       .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 14px; }
@@ -192,6 +193,77 @@
       .tier .tp { grid-column: 1 / -1; font: 400 11.5px/1.5 var(--sans); color: var(--ink-dim); }
       .honest { font: 400 10px/1.8 var(--mono); color: var(--ink-faint); margin-top: 14px; }
       .honest.ember { color: var(--warn); }
+
+      /* ==== the OS surfaces (four-column cockpit) ==== */
+      /* COMPANY · the live-site line */
+      .siteline { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--edge-soft); flex-wrap: wrap; }
+      .siteline .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ink-faint); flex: none; }
+      .siteline .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(61,214,140,.6); }
+      .sitehost { font: 500 12px/1.3 var(--mono); color: var(--accent); text-decoration: none; }
+      .sitehost:hover { text-decoration: underline; }
+      .sitestate { font: 400 10px/1.4 var(--mono); color: var(--ink-faint); }
+
+      /* OPERATIONS · tasks */
+      .task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--edge-soft); }
+      .task:first-of-type { border-top: 0; }
+      .tstate { width: 8px; height: 8px; border-radius: 3px; margin-top: 5px; flex: none; background: var(--ink-faint); }
+      .tstate.s-staged { background: var(--warn); }
+      .tstate.s-queued { background: var(--blue); }
+      .tstate.s-running { background: var(--accent); }
+      .tstate.s-done { background: var(--ok); }
+      .tstate.s-recurring { background: var(--ink-faint); box-shadow: inset 0 0 0 2px var(--panel), 0 0 0 1px var(--ink-faint); }
+      .tmid { flex: 1; min-width: 0; }
+      .ttitle { font: 600 12.5px/1.35 var(--sans); color: var(--ink); }
+      .tdetail { font: 400 11px/1.45 var(--sans); color: var(--ink-dim); margin-top: 2px; }
+      .tgo { font: 600 10.5px/1 var(--mono); background: var(--accent); color: var(--page); border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; flex: none; }
+      .tgo:hover { filter: brightness(1.08); }
+      .ttag { font: 500 8.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); flex: none; padding-top: 3px; }
+
+      /* GROWTH · shared button */
+      .growbtn { width: 100%; margin-top: 11px; font: 600 12px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 9px; padding: 10px; cursor: pointer; }
+      .growbtn.ghost { background: var(--inset); color: var(--ink-sec); border: 1px solid var(--edge); }
+      .growbtn.ghost:hover { border-color: var(--accent); color: var(--ink); }
+      .cthead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+      .toggle { font: 500 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-faint); padding: 5px 9px; cursor: pointer; flex: none; }
+      .toggle.on { color: var(--ok); border-color: rgba(61,214,140,.4); background: rgba(61,214,140,.08); }
+
+      /* GROWTH · ad preview */
+      .adprev { background: var(--inset); border: 1px solid var(--edge); border-radius: 11px; padding: 12px; }
+      .adkick { font: 500 8px/1.4 var(--mono); letter-spacing: .14em; color: var(--ink-faint); }
+      .adhead { font: 700 15px/1.25 var(--display); color: var(--ink); margin-top: 7px; letter-spacing: -.01em; }
+      .adbody { font: 400 12px/1.5 var(--sans); color: var(--ink-sec); margin-top: 6px; }
+      .adcta { display: inline-block; font: 600 10px/1 var(--sans); background: var(--accent); color: var(--page); border-radius: 6px; padding: 6px 10px; margin-top: 10px; }
+
+      /* GROWTH · social posts + inbox mail */
+      .post, .mail { background: var(--inset); border: 1px solid var(--edge-soft); border-radius: 10px; padding: 11px; margin-top: 9px; }
+      .ptext { font: 400 12.5px/1.5 var(--sans); color: var(--ink); }
+      .msubj { font: 600 12.5px/1.3 var(--sans); color: var(--ink); }
+      .mto { font: 400 10px/1.4 var(--mono); color: var(--ink-faint); margin-top: 2px; }
+      .mbody { font: 400 11.5px/1.5 var(--sans); color: var(--ink-dim); margin-top: 6px; }
+      .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; }
+      .ptag { font: 500 8.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; padding: 3px 8px; color: var(--ink-dim); background: var(--raised); border: 1px solid var(--edge); }
+      .ptag.s-staged { color: var(--warn); background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.3); }
+      .ptag.s-posted, .ptag.s-sent { color: var(--ok); background: rgba(61,214,140,.1); border-color: rgba(61,214,140,.3); }
+      .psend { font: 600 10px/1 var(--mono); background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 5px 12px; cursor: pointer; flex: none; }
+      .psend:hover { background: var(--accent); color: var(--page); }
+
+      /* STRATEGY · CEO chat */
+      .chatcard { display: flex; flex-direction: column; min-height: 420px; }
+      .chathead { display: flex; align-items: center; gap: 9px; padding-bottom: 11px; border-bottom: 1px solid var(--edge-soft); }
+      .ceobadge { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font: 700 13px/1 var(--display); flex: none; }
+      .ceoname { font: 600 13px/1.2 var(--sans); color: var(--ink); }
+      .ceosub { font: 400 10px/1.3 var(--mono); color: var(--ink-faint); margin-left: auto; }
+      .thread { flex: 1; overflow-y: auto; max-height: 340px; display: flex; flex-direction: column; gap: 10px; padding: 12px 2px; }
+      .msg { display: flex; flex-direction: column; gap: 3px; max-width: 92%; }
+      .msg.me { align-self: flex-end; align-items: flex-end; }
+      .mbub { font: 400 12.5px/1.5 var(--sans); padding: 9px 12px; border-radius: 12px; }
+      .msg.ceo .mbub { background: var(--inset); border: 1px solid var(--edge); color: var(--ink); border-bottom-left-radius: 4px; }
+      .msg.me .mbub { background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); color: var(--ink); border-bottom-right-radius: 4px; }
+      .msg time { font: 400 8.5px/1 var(--mono); color: var(--ink-faint); }
+      .chatrow { display: flex; gap: 7px; margin-top: 10px; }
+      .chatrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 9px; color: var(--ink); font: 400 12.5px/1.4 var(--sans); padding: 10px 11px; outline: none; }
+      .chatrow input:focus { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
+      .chatsend { font: 600 14px/1 var(--sans); background: var(--accent); color: var(--page); border: 0; border-radius: 9px; padding: 0 14px; cursor: pointer; flex: none; }
     </style>
   </head>
   <body>
@@ -201,8 +273,8 @@
     </header>
     <main>
       <section class="hero" id="hero">
-        <h1>The cockpit for the company <em>you already have</em>.</h1>
-        <p>Lend it a brand, a project or an idea and it drafts the operating slate with no input at all — voice, ad angle, channel, next move. Choose one and everything downstream rewrites. Nothing irreversible happens without you. Runs on your own Claude via Switchboard — the operator holds no key and never sees your data.</p>
+        <h1>The operating system for the company <em>you already have</em>.</h1>
+        <p>Lend it a brand, a project or an idea and the whole company comes up with no input at all — decisions, operations, growth and a CEO that runs it. Ads, social, outreach and the day's tasks, all drafted; nothing irreversible leaves the machine without you tapping go. Runs on your own Claude via Switchboard — the operator holds no key and never sees your data.</p>
       </section>
       <div id="view"></div>
     </main>
