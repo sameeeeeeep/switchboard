@@ -341,6 +341,20 @@
   .tr-cap{text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--faint);margin-top:22px}
   .tr-cap b{color:var(--phosphor-dim)}
 
+  /* ---------- bento tile mini-graphics ---------- */
+  .bt .mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .bt .sw3{display:flex;gap:4px}
+  .bt .sw3 i{width:17px;height:17px;border-radius:4px;display:block}
+  .bt .vchip{font-family:var(--mono);font-size:9.5px;color:var(--phosphor-dim);border:1px solid var(--line-bright);padding:4px 8px;border-radius:6px}
+  .bt .pchip{font-family:var(--mono);font-size:10px;color:var(--paper);background:var(--panel-2);border:1px solid var(--line-bright);padding:5px 9px;border-radius:6px}
+  .bt .loadbar{display:flex;align-items:center;gap:9px;margin-top:5px;font-family:var(--mono);font-size:10px;color:var(--phosphor-dim)}
+  .bt .loadbar .track{flex:1;height:6px;border:1px solid var(--line-bright);border-radius:4px;overflow:hidden;background:var(--void);max-width:150px}
+  .bt .loadbar .track i{display:block;height:100%;width:100%;background:var(--phosphor);box-shadow:0 0 10px var(--phosphor)}
+  .bt .loadbar b{color:var(--phosphor)}
+  .bt .avs{display:flex;margin-top:5px}
+  .bt .avs i{width:22px;height:22px;border-radius:50%;border:2px solid var(--panel);margin-left:-6px;display:block}
+  .bt .avs i:first-child{margin-left:0}
+
   /* ---------- provider strip ---------- */
   .prov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
   .prov-head p{color:var(--muted);font-size:14px;max-width:440px;margin-top:12px}
@@ -699,21 +713,23 @@
       <div class="bt pillar wide">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
         <h3>Personalised by default</h3>
-        <p>Every wrapp opens already knowing your brand, your voice, your work — not a blank box.</p>
+        <p>Every wrapp opens already knowing you — not a blank box.</p>
+        <div class="mini"><span class="sw3"><i style="background:#C8F250"></i><i style="background:#F6B93B"></i><i style="background:#7FB2F6"></i></span><span class="vchip">your voice · bold, warm</span></div>
       </div>
 
       <!-- PILLAR 3 -->
       <div class="bt pillar wide">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 3 4 14h7l-1 7 9-11h-7z"/></svg></span>
         <h3>Zero context lag</h3>
-        <p>No re-uploading, no re-explaining. Your context is there the second a wrapp loads.</p>
+        <p>No re-uploading. There the second a wrapp loads.</p>
+        <div class="loadbar"><span>context</span><span class="track"><i></i></span><b>0.0s</b></div>
       </div>
 
       <!-- SUPPORT -->
       <div class="bt">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>
         <h3>Any model</h3>
-        <p>Cloud Claude or local — Ollama, LM Studio, llama.cpp.</p>
+        <div class="mini"><span class="pchip">Claude</span><span class="pchip">Ollama</span><span class="pchip">LM Studio</span><span class="vchip">cloud or local</span></div>
       </div>
 
       <div class="bt">
@@ -726,7 +742,8 @@
         <span class="pro">Pro</span>
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 19a5 5 0 0 1 10 0M13 19a5 5 0 0 1 8-4"/></svg></span>
         <h3>Team mode</h3>
-        <p>Your whole team on one shared folder — live, each on their own Claude. Nothing uploaded to us.</p>
+        <p>One shared folder, live — each on their own Claude.</p>
+        <div class="avs"><i style="background:#C8F250"></i><i style="background:#7FB2F6"></i><i style="background:#F6B93B"></i></div>
       </div>
 
       <div class="bt wide">
