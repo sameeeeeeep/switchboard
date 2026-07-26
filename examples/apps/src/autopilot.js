@@ -86,6 +86,7 @@ async function onReady() {
   if (!hydrated) { hydrated = true; await loadState(); }
   render();
   autostart();
+  void discoverTools().then(() => render()).catch(() => {});   // learn which lanes have a connector
 }
 /** Re-read everything this wrapp persists, then render. Called on every live nudge. */
 async function reloadState() { if (!relay) return; await loadState(); render(); }
@@ -528,6 +529,20 @@ async function toolForLane(lane) {
   const rx = LANE_MATCH[lane];
   return names.find((n) => rx.test(n)) || null;
 }
+// The lanes an autonomous company sends on, and what each does out in the world. This is the map
+// between "a staged move" and "a real connector" — the surface that makes the gate legible.
+const LANES = [
+  { lane: "site", label: "Site", what: "publish the landing page" },
+  { lane: "social", label: "Social", what: "post to X / LinkedIn" },
+  { lane: "inbox", label: "Inbox", what: "send outreach email" },
+  { lane: "ads", label: "Ads", what: "launch an ad campaign" },
+  { lane: "payments", label: "Payments", what: "charge for the product" },
+];
+/** Sync lane status off the cached tool list: a tool name (live), false (none), or null (unknown). */
+function laneLive(lane) {
+  if (!toolNames) return null;
+  return toolNames.find((n) => LANE_MATCH[lane].test(n)) || false;
+}
 
 /** Run a staged move. approve/auto only — manual moves are the human's, out in the world. */
 async function runMove(co, move) {
@@ -898,6 +913,37 @@ function portRow(c) {
   return r;
 }
 
+/** the connectors chip — how many of the five send-lanes have a live connector. Clicking opens the
+ *  readout that turns "staged" into "here's exactly what to connect". */
+function connectorsChip() {
+  const b = el("button", "connchip");
+  const live = LANES.filter((l) => laneLive(l.lane)).length;
+  const known = toolNames != null;
+  b.append(el("span", "cbolt", "⚡"));
+  b.append(el("span", "cbtxt", known ? live + "/" + LANES.length + " lanes live" : "connectors"));
+  b.onclick = () => { pane = { kind: "connectors" }; render(); };
+  return b;
+}
+/** the connectors readout — each send-lane, whether it's wired, and what it unlocks. The honest map
+ *  from Autopilot's staged moves to the real world: sends stay gated until a connector exists. */
+function connectorsPane(body) {
+  body.append(el("h3", "ptitle", "Connectors"));
+  body.append(el("div", "fundnote", "Autopilot drafts everything on its own, but a send only leaves the machine through a connector you've wired in Switchboard — and even then, each send asks for your go. This is the map."));
+  if (toolNames == null) { body.append(researching("checking what's connected…")); void discoverTools().then(() => render()); return; }
+  for (const l of LANES) {
+    const tool = laneLive(l.lane);
+    const row = el("div", "connrow");
+    row.append(el("span", "conndot" + (tool ? " on" : "")));
+    const mid = el("div", "connmid");
+    mid.append(el("div", "connlabel", l.label));
+    mid.append(el("div", "connwhat", l.what));
+    row.append(mid);
+    row.append(el("span", "connstate" + (tool ? " on" : ""), tool ? "live" : "not connected"));
+    body.append(row);
+  }
+  body.append(el("div", "honest ember", "● Nothing here is a number we made up. A lane is 'live' only if the daemon actually reports a matching connected tool for this origin — otherwise every move on that lane stays staged, and Autopilot never pretends it sent."));
+}
+
 /** the master switch — turning it on IS the authorizing act; the CEO advances everything reversible
  *  from here, and the operating log tells you each move as it happens. */
 function autoToggle(co) {
@@ -974,7 +1020,7 @@ function cockpit(co) {
   const allBtn = el("button", "cotab port", "◱ Companies");
   allBtn.onclick = () => { portfolio = true; pane = null; render(); };
   tabs.prepend(allBtn);
-  top.append(tabs, co ? autoToggle(co) : el("span"), tokenMeter(co));
+  top.append(tabs, connectorsChip(), co ? autoToggle(co) : el("span"), tokenMeter(co));
   wrap.append(top);
 
   if (!co) return wrap;
@@ -1271,8 +1317,9 @@ function renderPane(co) {
   const head = el("div", "phead");
   const isTok = pane.kind === "tokens";
   const isSite = pane.kind === "site";
-  const d = isTok || isSite ? null : co.decisions[pane.kind];
-  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : (d ? d.axis : "")));
+  const isConn = pane.kind === "connectors";
+  const d = isTok || isSite || isConn ? null : co.decisions[pane.kind];
+  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : isConn ? "CONNECTORS" : (d ? d.axis : "")));
   const close = el("button", "pclose", "✕");
   close.onclick = () => { pane = null; render(); };
   head.append(close);
@@ -1282,6 +1329,7 @@ function renderPane(co) {
   host.append(body);
   if (isTok) { tokensPane(body, co); return; }
   if (isSite) { sitePane(body, co); return; }
+  if (isConn) { connectorsPane(body); return; }
   if (!d) return;
   slate(body, co, d);
 }
