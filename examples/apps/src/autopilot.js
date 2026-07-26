@@ -817,6 +817,7 @@ function autostart() {
 // ==== render ================================================================================
 let pane = null;      // { kind } — the open slate, or "tokens"
 let creating = false; // "+ New company" pressed — show the seed box over the portfolio
+let portfolio = false; // the Companies overview — every company at a glance, the OS's front door
 
 function render() {
   const hero = $("hero"), view = $("view");
@@ -832,10 +833,69 @@ function render() {
   // second case fell through to cockpit(null), which drew the tabs and then nothing — the portfolio
   // claim ("several companies on one board") was unreachable because you could never add the second.
   if (!cos.length || creating) { view.append(startBox()); return; }
+  if (portfolio) { view.append(portfolioView()); ensureAutoLoop(); return; }
 
   view.append(cockpit(co));
   renderPane(co);
   ensureAutoLoop();   // resume/settle the autonomous loop to match current auto-on state
+}
+
+// ---- the portfolio: every company on one board — the Companies overview you land on with more
+// than one, and can always return to. Each row opens that company's cockpit. --------------------
+function portfolioView() {
+  const wrap = el("div", "port");
+  const head = el("div", "porthead");
+  const ht = el("div");
+  ht.append(el("h2", "porttitle", "Companies"));
+  ht.append(el("div", "portsub", cos.length + " compan" + (cos.length === 1 ? "y" : "ies") + " · " + cos.filter((c) => c.auto && c.auto.on).length + " on autopilot"));
+  head.append(ht);
+  const add = el("button", "primary", "+ New company");
+  add.onclick = () => { creating = true; portfolio = false; render(); };
+  head.append(add);
+  wrap.append(head);
+
+  const tiles = el("div", "porttiles");
+  tiles.append(portTile("Companies", String(cos.length)));
+  tiles.append(portTile("On autopilot", String(cos.filter((c) => c.auto && c.auto.on).length)));
+  const anyRev = cos.some((c) => c.metrics && typeof c.metrics.revenue === "number");
+  const rev = cos.reduce((s, c) => s + (c.metrics && typeof c.metrics.revenue === "number" ? c.metrics.revenue : 0), 0);
+  tiles.append(portTile("Revenue MTD", anyRev ? "$" + rev : "— not connected", !anyRev));
+  const spent = cos.reduce((s, c) => s + (c.tokens?.spent || 0), 0);
+  tiles.append(portTile("Runway spent", fmtTok(spent)));
+  wrap.append(tiles);
+
+  const table = el("div", "porttable");
+  const hr = el("div", "ptrow pthead");
+  hr.append(el("div", null, "Company"), el("div", null, "Status"), el("div", null, "Decisions"), el("div", null, "Revenue MTD"), el("div", null, "Site"));
+  table.append(hr);
+  for (const c of cos) table.append(portRow(c));
+  wrap.append(table);
+  return wrap;
+}
+function portTile(label, value, na) {
+  const t = el("div", "ptile");
+  t.append(el("div", "ptlabel", label));
+  t.append(el("div", "ptvalue" + (na ? " na" : ""), value));
+  return t;
+}
+function portRow(c) {
+  const r = el("button", "ptrow ptco");
+  const who = el("div", "ptwho");
+  const logo = el("div", "ptlogo", c.glyph); logo.style.background = c.color; logo.style.color = c.ink;
+  const nm = el("div");
+  nm.append(el("div", "ptname", c.name), el("div", "ptkind", c.kindLabel));
+  who.append(logo, nm);
+  const decided = Object.values(c.decisions || {}).filter((d) => d.chosenId || d.inherited).length;
+  const status = c.auto && c.auto.on ? el("span", "ptstat on", "● Autopilot") : drafting.has(c.id) ? el("span", "ptstat run", "drafting") : el("span", "ptstat", "paused");
+  const rev = c.metrics && typeof c.metrics.revenue === "number" ? "$" + c.metrics.revenue : el("span", "na", "— not connected");
+  const site = c.site && c.site.live ? el("span", "ptsite on", c.site.host) : c.site && c.site.drafted ? el("span", "ptsite draft", "drafted") : el("span", "na", "no site");
+  const revCell = typeof rev === "string" ? el("div", null, rev) : (() => { const d = el("div"); d.append(rev); return d; })();
+  const siteCell = el("div"); siteCell.append(site);
+  const decCell = el("div", null, decided + " / " + SPEC.length);
+  const statCell = el("div"); statCell.append(status);
+  r.append(who, statCell, decCell, revCell, siteCell);
+  r.onclick = () => { activeId = c.id; portfolio = false; pane = null; render(); };
+  return r;
 }
 
 /** the master switch — turning it on IS the authorizing act; the CEO advances everything reversible
@@ -911,6 +971,9 @@ function cockpit(co) {
   const add = el("button", "cotab add", "+ New company");
   add.onclick = () => { creating = true; pane = null; render(); };
   tabs.append(add);
+  const allBtn = el("button", "cotab port", "◱ Companies");
+  allBtn.onclick = () => { portfolio = true; pane = null; render(); };
+  tabs.prepend(allBtn);
   top.append(tabs, co ? autoToggle(co) : el("span"), tokenMeter(co));
   wrap.append(top);
 
