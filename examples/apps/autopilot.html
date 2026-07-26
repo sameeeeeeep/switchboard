@@ -199,9 +199,13 @@
       .siteline { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--edge-soft); flex-wrap: wrap; }
       .siteline .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ink-faint); flex: none; }
       .siteline .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(61,214,140,.6); }
+      .siteline .dot.draft { background: var(--warn); }
       .sitehost { font: 500 12px/1.3 var(--mono); color: var(--accent); text-decoration: none; }
       .sitehost:hover { text-decoration: underline; }
       .sitestate { font: 400 10px/1.4 var(--mono); color: var(--ink-faint); }
+      .sitebtn { margin-left: auto; font: 500 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 5px 10px; cursor: pointer; flex: none; }
+      .sitebtn:hover { border-color: var(--accent); color: var(--ink); }
+      .siteframe { width: 100%; height: 380px; border: 1px solid var(--edge); border-radius: 11px; background: #fff; margin: 12px 0; display: block; }
 
       /* OPERATIONS · tasks */
       .task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--edge-soft); }

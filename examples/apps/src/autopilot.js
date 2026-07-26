@@ -34,6 +34,7 @@ const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const uid = () => Math.random().toString(36).slice(2, 9);
 const msg = (e) => String(e?.message || e).slice(0, 160);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let toastT = null;
 function toast(text, err) {
   clearTimeout(toastT);
@@ -550,6 +551,7 @@ async function runMove(co, move) {
     logLine(co, "ran “" + move.n + "” — done", "done", null);
     if (move.postId) { const p = co.posts.find((x) => x.id === move.postId); if (p) { p.state = "posted"; p.ref = res?.ref || res?.id || null; } }
     if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "sent"; m.ref = res?.ref || res?.id || null; } }
+    if (move.lane === "site" && co.site) { co.site.live = true; co.site.url = res?.url || ("https://" + co.site.host); }
     toast("Done — " + move.n);
   } catch (e) {
     logLine(co, "“" + move.n + "” didn't go through — " + msg(e), "run", null);
@@ -655,6 +657,45 @@ async function genOutreach(co, move) {
   await saveCo(co); render();
 }
 
+// ---- the site: the one place a company points at. Generated from the context + the chosen slate,
+// previewed LOCALLY (reversible, nothing public). Publishing it is a separate approve-class move
+// behind a deploy connector — the same honest boundary as every other send.
+async function genSite(co) {
+  if (co.site && co.site.busy) return;
+  const host = (co.site && co.site.host) || slugOf(co.name) + ".autopilot.build";
+  co.site = { ...(co.site || {}), host, busy: true };
+  logLine(co, "building the site…", "run", null); render();
+  const voice = optOf(co.decisions.voice) || (co.decisions.voice.inherited ? { label: co.decisions.voice.inherited.value } : null);
+  const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
+  const pal = (co.inherited && co.inherited.palette) || [];
+  const prompt = [
+    "You are building the launch landing page for " + co.name + ".",
+    groundingBlock(co),
+    voice ? "Voice: " + (voice.label || "") : "",
+    angle ? "Lead with the angle: " + (angle.label || "") + " — " + (angle.text || "") : "",
+    pal.length ? "Palette to use: " + pal.join(", ") : "",
+    "Return ONE self-contained HTML document — inline <style> only, no external assets, no <script>. A real, tasteful single-screen landing page: a headline, a subhead, ONE clear call-to-action button, and 3 short value points. Dark, modern, generous spacing. Ground every word in the company above — never invent a metric, a customer, a price, or a testimonial. Return ONLY the HTML, starting with <!doctype html>.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const { text, tokens, estimated } = await completeCounted(prompt, 2200);
+    spend(co, tokens, "site", estimated);
+    let html = text.replace(/```[a-z]*\n?/gi, "").trim();
+    const lo = html.toLowerCase();
+    if (!lo.includes("<html") && !lo.includes("<!doctype") && !lo.includes("<body")) {
+      // the backend didn't return a page (the harness mock never will) — wrap what came back into an
+      // honest minimal page so the surface still works, rather than pretending nothing happened.
+      html = "<!doctype html><meta charset=utf-8><body style=\"margin:0;font:16px/1.6 system-ui;background:#0A0C10;color:#E8EDF4;display:grid;place-items:center;min-height:100vh;text-align:center;padding:40px\">"
+        + "<div style=\"max-width:560px\"><h1 style=\"font:700 2.2rem/1.1 system-ui;letter-spacing:-.02em\">" + esc(co.name) + "</h1>"
+        + "<p style=\"color:#B4BECE\">" + esc(co.oneLine || "") + "</p>"
+        + "<a style=\"display:inline-block;margin-top:18px;background:#C8F250;color:#0A0C10;font-weight:600;padding:11px 20px;border-radius:10px;text-decoration:none\">Get started</a>"
+        + "<p style=\"color:#6E7C90;font:12px/1.6 monospace;margin-top:26px\">" + esc(html.slice(0, 240)) + "</p></div>";
+    }
+    co.site = { host, html, live: false, drafted: true, at: clock() };
+    logLine(co, "drafted the site — preview it, then publish when you're ready", "done", null);
+  } catch (e) { co.site.busy = false; logLine(co, "couldn't build the site — " + msg(e), "run", null); }
+  await saveCo(co); render();
+}
+
 // ==== autonomy: the company advances itself ==================================================
 // The honest boundary: turning autopilot ON authorizes the CEO to do everything REVERSIBLE without
 // you — decide the open slate, draft posts and outreach, plan, report. It NEVER auto-sends: anything
@@ -716,6 +757,7 @@ async function autoTick(co) {
   const open = SPEC.map((s) => co.decisions[s.id]).find((d) => d && !d.chosenId && !d.inherited && d.options.length && !d.busy);
   if (open) { await autoChoose(co, open); co.auto.at = Date.now(); return; }
   const beats = [
+    async () => { if (!co.site || !co.site.drafted) { await genSite(co); return true; } return false; },
     async () => { if (co.posts.length < 3) { await genPost(co, { lane: "social" }); return true; } return false; },
     async () => { if (co.inbox.length < 2) { await genOutreach(co, { lane: "inbox" }); return true; } return false; },
     async () => { await ceoProactive(co); return true; },
@@ -865,14 +907,17 @@ function companyCol(co) {
   idc.append(idrow);
   if (co.oneLine) idc.append(el("p", "blurb", co.oneLine));
 
-  // the site line — honest about whether anything is actually live
+  // the site line — honest about whether anything is actually live vs merely drafted locally
   const site = el("div", "siteline");
-  if (co.site && co.site.host) {
-    site.append(el("span", "dot" + (co.site.live ? " on" : "")));
-    const a = el("a", "sitehost", co.site.host); a.href = "https://" + co.site.host; a.target = "_blank"; a.rel = "noopener";
-    site.append(a, el("span", "sitestate", co.site.live ? "live" : "not deployed"));
+  if (co.site && co.site.drafted) {
+    site.append(el("span", "dot" + (co.site.live ? " on" : " draft")));
+    site.append(el("span", "sitehost", co.site.host), el("span", "sitestate", co.site.busy ? "building…" : co.site.live ? "live" : "drafted"));
+    const pv = el("button", "sitebtn", "Preview"); pv.onclick = () => { pane = { kind: "site" }; render(); };
+    site.append(pv);
   } else {
-    site.append(el("span", "dot"), el("span", "sitestate", "no site yet — a company needs one place to point at"));
+    site.append(el("span", "dot"), el("span", "sitestate", co.site && co.site.busy ? "building the site…" : "no site yet"));
+    const build = el("button", "sitebtn", "Build the site"); build.onclick = () => void genSite(co);
+    site.append(build);
   }
   idc.append(site);
 
@@ -1100,8 +1145,9 @@ function renderPane(co) {
 
   const head = el("div", "phead");
   const isTok = pane.kind === "tokens";
-  const d = isTok ? null : co.decisions[pane.kind];
-  head.append(el("div", "pkind", isTok ? "TOKENS" : (d ? d.axis : "")));
+  const isSite = pane.kind === "site";
+  const d = isTok || isSite ? null : co.decisions[pane.kind];
+  head.append(el("div", "pkind", isTok ? "RUNWAY" : isSite ? "THE SITE" : (d ? d.axis : "")));
   const close = el("button", "pclose", "✕");
   close.onclick = () => { pane = null; render(); };
   head.append(close);
@@ -1110,8 +1156,34 @@ function renderPane(co) {
   const body = el("div", "pbody");
   host.append(body);
   if (isTok) { tokensPane(body, co); return; }
+  if (isSite) { sitePane(body, co); return; }
   if (!d) return;
   slate(body, co, d);
+}
+
+/* THE SITE — a real page, generated from the company and previewed locally. Publishing is a gated
+   approve-class move; until then nothing is public. */
+function sitePane(body, co) {
+  body.append(el("h3", "ptitle", co.name + " — the site"));
+  if (!co.site || !co.site.html) {
+    body.append(el("div", "empty", "No site drafted yet. Autopilot builds it from your context and the angle you're running."));
+    const b = el("button", "growbtn", "Build it now"); b.onclick = () => void genSite(co);
+    body.append(b);
+    return;
+  }
+  body.append(el("div", "kicker", co.site.host + " · " + (co.site.live ? "live" : "drafted locally — not public")));
+  const frame = el("iframe", "siteframe"); frame.setAttribute("sandbox", ""); frame.setAttribute("title", co.name + " preview"); frame.srcdoc = co.site.html;
+  body.append(frame);
+  if (co.site.live) {
+    body.append(el("div", "picknote", "published " + (co.site.at || "") + " · " + (co.site.url || "https://" + co.site.host)));
+  } else {
+    const pub = el("button", "growbtn", "Publish — make it live");
+    pub.onclick = () => void runMove(co, { mode: "approve", lane: "site", n: "Publish " + co.site.host, args: { host: co.site.host, html: co.site.html } });
+    body.append(pub);
+    body.append(el("div", "fundnote", "Preview is local. Publishing is a gated move — it needs a deploy connector and your go; nothing is public until then."));
+  }
+  const re = el("button", "act", "↺ rebuild the page"); re.onclick = () => void genSite(co);
+  body.append(re);
 }
 
 /* THE SLATE — options you can actually choose, a lock that records who chose it, alternatives
