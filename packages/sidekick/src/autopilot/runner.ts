@@ -53,6 +53,7 @@ const clock = () => new Date().toTimeString().slice(0, 5);
 interface Decision { id: string; label: string; options: Array<{ id: string; label: string; rec?: boolean }>; chosenId: string | null; chosenAt?: string | null; inherited?: unknown; stale?: boolean; }
 interface Company {
   id: string; name: string; oneLine?: string;
+  kind?: string;   // "wrapp" earns by usage and has no separate product offer; else it's a sales venture
   auto?: { on?: boolean; cursor?: number; at?: number };
   tokens?: { spent?: number; budget?: number };
   decisions?: Record<string, Decision>;
@@ -123,8 +124,9 @@ export class AutopilotRunner {
       this.pushLog(co, "CEO chose " + rec.label + " for " + open.label.toLowerCase(), "done", open.id);
       return true;
     }
-    // 2) everything decided → draft the reversible artifacts the wrapp would (product, then site).
-    if (!co.product?.drafted) { await this.draftProduct(origin, co); return true; }
+    // 2) everything decided → draft the reversible artifacts. A wrapp earns by usage and has no
+    //    separate priced offer (the wrapp itself is the product), so only sales ventures draft one.
+    if (co.kind !== "wrapp" && !co.product?.drafted) { await this.draftProduct(origin, co); return true; }
     if (!co.site?.drafted) { await this.draftSite(origin, co); return true; }
     return false; // nothing left to do headless — the rest is gated sends, which wait for a human
   }

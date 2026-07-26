@@ -387,9 +387,25 @@ async function genOptions(co, id, reason) {
 const PALETTE = ["#2f6b45", "#2b4a7a", "#6b3f2f", "#4a2f6b", "#6b2f4a", "#2f5f6b"];
 const slugOf = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || uid();
 
+// ---- KINDS: the venture is ONE object; its `kind` only resolves three slots — what the deployable
+// IS, how it makes money, and where it lives. A consumer brand, a consumer tech product, and a wrapp
+// are the same venture with different answers here. This is the whole "it doesn't matter what it is"
+// insight, made data: everything else (decisions, ops, growth, CEO, autonomy, daemon) is shared.
+const KINDS = {
+  brand:   { label: "BRAND",   deployNoun: "landing page", deployVerb: "Build the site",  offerNoun: "product",   econ: "sales", host: (s) => s + ".site" },
+  product: { label: "PRODUCT", deployNoun: "product site", deployVerb: "Build the site",  offerNoun: "product",   econ: "sales", host: (s) => s + ".app" },
+  wrapp:   { label: "WRAPP",   deployNoun: "wrapp",        deployVerb: "Ship the wrapp",   offerNoun: "the wrapp", econ: "usage", host: (s) => s + ".wrapp.sh" },
+};
+// A lent context's raw kind → a venture kind. brandbrain publishes `brand`; ideabrain `idea`
+// (a software project → a product); the store pointer `project`; and a wrapp idea is `wrapp`.
+const KIND_OF = { brand: "brand", company: "brand", project: "product", idea: "product", product: "product", wrapp: "wrapp" };
+const resolveKind = (raw) => KIND_OF[String(raw || "").toLowerCase()] || "brand";
+const kindCfg = (co) => KINDS[co && co.kind] || KINDS.brand;
+
 function newCompany(cfg) {
+  const kind = resolveKind(cfg.kind);
   const co = {
-    id: cfg.id, name: cfg.name, kind: cfg.kind || "company", kindLabel: (cfg.kindLabel || cfg.kind || "COMPANY").toUpperCase(),
+    id: cfg.id, name: cfg.name, kind, kindLabel: KINDS[kind].label,
     oneLine: cfg.oneLine || "", ctxId: cfg.ctxId || null, ctxName: cfg.ctxName || null,
     inherited: cfg.inherited || {},
     glyph: (cfg.name || "?").trim().charAt(0).toUpperCase(),
@@ -398,7 +414,8 @@ function newCompany(cfg) {
     // ---- the OS state: everything a company runs on, beyond its decisions. All of it derives
     // from the slate or from an explicit human action — nothing here is invented data.
     site: cfg.domain ? { host: cfg.domain, live: false } : null,
-    metrics: { revenue: null, traffic: null },          // null = "not connected", never a fake 0
+    // `revenue` for sales kinds, `uses`/`payout` for usage (wrapp) kinds. null = "not connected".
+    metrics: { revenue: null, traffic: null, uses: null, payout: null },
     tasks: [],        // { id, title, detail, state: queued|running|done|blocked, recurring, at }
     posts: [],        // social drafts: { id, channel, text, state: draft|staged|posted, at, ref }
     inbox: [],        // outreach drafts: { id, to, subject, body, state, at, ref }
@@ -444,8 +461,7 @@ async function seedFromContext() {
   const co = newCompany({
     id: slugOf(brand.id || brand.name),
     name: brand.name || "Company",
-    kind: brand.kind || "company",
-    kindLabel: brand.kind === "idea" ? "IDEA" : brand.kind === "project" ? "PROJECT" : "BRAND",
+    kind: brand.kind || "company",   // resolveKind maps brand/project/idea/wrapp → a venture kind
     oneLine: inherited.oneLine || inherited.summary || inherited.positioning || "",
     ctxId: brand.id, ctxName: brand.name,
     inherited,
@@ -463,15 +479,15 @@ async function seedFromContext() {
   await draftSlate(co);
 }
 
-async function seedFromLine(line) {
+async function seedFromLine(line, kind) {
   // "Kettle — a cold-brew subscription for offices" is a NAME and a description, not a 45-character
   // name. Split on the first dash/colon/pipe so the tab reads "Kettle" and the blurb carries the rest.
   const m = line.match(/^\s*([^\u2014\u2013\-:|]{2,40}?)\s*[\u2014\u2013\-:|]\s*(.+)$/);
   const name = (m ? m[1] : line).trim().slice(0, 40);
   const oneLine = (m ? m[2] : line).trim();
-  const co = newCompany({ id: slugOf(name) + "-" + uid().slice(0, 4), name, oneLine });
+  const co = newCompany({ id: slugOf(name) + "-" + uid().slice(0, 4), name, oneLine, kind: kind || "brand" });
   cos.push(co); activeId = co.id; creating = false;
-  logLine(co, "seeded from one line", "done", null);
+  logLine(co, "seeded a " + kindCfg(co).label.toLowerCase() + " from one line", "done", null);
   await saveCo(co); render();
   await draftSlate(co);
 }
@@ -523,6 +539,7 @@ const LANE_MATCH = {
   ads: /\bad(s|_|-)|campaign|adset|boost/i,
   site: /deploy|publish|website|pages|vercel|netlify/i,
   payments: /stripe|payment|checkout|charge|invoice|billing/i,
+  usage: /analytics|usage|meter|plausible|posthog|umami|events/i,
 };
 async function toolForLane(lane) {
   const names = await discoverTools();
@@ -532,11 +549,12 @@ async function toolForLane(lane) {
 // The lanes an autonomous company sends on, and what each does out in the world. This is the map
 // between "a staged move" and "a real connector" — the surface that makes the gate legible.
 const LANES = [
-  { lane: "site", label: "Site", what: "publish the landing page" },
+  { lane: "site", label: "Site / deploy", what: "publish the page or ship the wrapp to a subdomain" },
   { lane: "social", label: "Social", what: "post to X / LinkedIn" },
   { lane: "inbox", label: "Inbox", what: "send outreach email" },
   { lane: "ads", label: "Ads", what: "launch an ad campaign" },
-  { lane: "payments", label: "Payments", what: "charge for the product" },
+  { lane: "payments", label: "Payments", what: "charge for a product (sales ventures)" },
+  { lane: "usage", label: "Usage", what: "meter uses → Spotify-style rev-share (wrapps)" },
 ];
 /** Sync lane status off the cached tool list: a tool name (live), false (none), or null (unknown). */
 function laneLive(lane) {
@@ -569,6 +587,7 @@ async function runMove(co, move) {
     if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "sent"; m.ref = res?.ref || res?.id || null; } }
     if (move.lane === "site" && co.site) { co.site.live = true; co.site.url = res?.url || ("https://" + co.site.host); }
     if (move.lane === "payments" && co.product) { co.product.live = true; co.metrics.revenue = co.metrics.revenue ?? 0; }
+    if (move.lane === "usage") { co.usageLive = true; co.metrics.uses = co.metrics.uses ?? 0; co.metrics.payout = co.metrics.payout ?? 0; }
     toast("Done — " + move.n);
   } catch (e) {
     logLine(co, "“" + move.n + "” didn't go through — " + msg(e), "run", null);
@@ -679,19 +698,23 @@ async function genOutreach(co, move) {
 // behind a deploy connector — the same honest boundary as every other send.
 async function genSite(co) {
   if (co.site && co.site.busy) return;
-  const host = (co.site && co.site.host) || slugOf(co.name) + ".autopilot.build";
+  const kc = kindCfg(co);
+  const host = (co.site && co.site.host) || kc.host(slugOf(co.name));
   co.site = { ...(co.site || {}), host, busy: true };
-  logLine(co, "building the site…", "run", null); render();
+  logLine(co, kc.econ === "usage" ? "building the wrapp's entry…" : "building the site…", "run", null); render();
   const voice = optOf(co.decisions.voice) || (co.decisions.voice.inherited ? { label: co.decisions.voice.inherited.value } : null);
   const angle = optOf(co.decisions.angle) || shownOf(co.decisions.angle);
   const pal = (co.inherited && co.inherited.palette) || [];
+  const wrappBrief = kc.econ === "usage"
+    ? "You are building the entry screen for a WRAPP — a single-purpose app that runs on the visitor's own Claude via Switchboard (they bring the compute; there is no signup and no charge). Make the ONE thing it does obvious, with a single primary action to start. It will live at " + host + "."
+    : "You are building the launch landing page for " + co.name + ".";
   const prompt = [
-    "You are building the launch landing page for " + co.name + ".",
+    wrappBrief,
     groundingBlock(co),
     voice ? "Voice: " + (voice.label || "") : "",
     angle ? "Lead with the angle: " + (angle.label || "") + " — " + (angle.text || "") : "",
     pal.length ? "Palette to use: " + pal.join(", ") : "",
-    "Return ONE self-contained HTML document — inline <style> only, no external assets, no <script>. A real, tasteful single-screen landing page: a headline, a subhead, ONE clear call-to-action button, and 3 short value points. Dark, modern, generous spacing. Ground every word in the company above — never invent a metric, a customer, a price, or a testimonial. Return ONLY the HTML, starting with <!doctype html>.",
+    "Return ONE self-contained HTML document — inline <style> only, no external assets, no <script>. A real, tasteful single screen: a headline, a subhead, ONE clear primary action, and 3 short points. Dark, modern, generous spacing. Ground every word in the company above — never invent a metric, a customer, a price, or a testimonial. Return ONLY the HTML, starting with <!doctype html>.",
   ].filter(Boolean).join("\n\n");
   try {
     const { text, tokens, estimated } = await completeCounted(prompt, 2200);
@@ -800,8 +823,9 @@ async function autoTick(co) {
   }
   const open = SPEC.map((s) => co.decisions[s.id]).find((d) => d && !d.chosenId && !d.inherited && d.options.length && !d.busy);
   if (open) { await autoChoose(co, open); co.auto.at = Date.now(); return; }
+  const salesKind = kindCfg(co).econ === "sales";
   const beats = [
-    async () => { if (!co.product || !co.product.drafted) { await genProduct(co); return true; } return false; },
+    async () => { if (salesKind && (!co.product || !co.product.drafted)) { await genProduct(co); return true; } return false; },
     async () => { if (!co.site || !co.site.drafted) { await genSite(co); return true; } return false; },
     async () => { if (co.posts.length < 3) { await genPost(co, { lane: "social" }); return true; } return false; },
     async () => { if (co.inbox.length < 2) { await genOutreach(co, { lane: "inbox" }); return true; } return false; },
@@ -957,13 +981,27 @@ function autoToggle(co) {
   return b;
 }
 
+let seedKind = "brand";   // the venture kind chosen in the start box for a one-line venture
 function startBox() {
   const box = el("div", "start");
   if (brand) box.append(el("div", "ctx", "ready to pick up your lent context — " + brand.name));
+
+  // THE UNIFICATION, made visible: a brand, a product, and a wrapp are the same venture. Pick which
+  // — it only changes what gets deployed and how it earns; everything else is identical.
+  const picker = el("div", "kindpick");
+  for (const [k, cfg] of Object.entries(KINDS)) {
+    const b = el("button", "kindopt" + (seedKind === k ? " on" : ""));
+    b.append(el("span", "kn", cfg.label.toLowerCase()));
+    b.append(el("span", "kd", k === "wrapp" ? "a subdomain product · earns by usage" : k === "product" ? "an app · earns by sales" : "a brand · earns by sales"));
+    b.onclick = () => { seedKind = k; render(); };
+    picker.append(b);
+  }
+  box.append(picker);
+
   const row = el("div", "bindrow");
   const input = el("input");
-  input.placeholder = "one line — what is the company?";
-  const go = () => { const v = input.value.trim(); if (v) void seedFromLine(v); };
+  input.placeholder = seedKind === "wrapp" ? "one line — what should the wrapp do?" : "one line — what is the " + KINDS[seedKind].label.toLowerCase() + "?";
+  const go = () => { const v = input.value.trim(); if (v) void seedFromLine(v, seedKind); };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
   const btn = el("button", "primary", brand ? "Pick it up" : "Start it");
   btn.onclick = () => { if (brand && !input.value.trim()) void seedFromContext(); else go(); };
@@ -971,7 +1009,7 @@ function startBox() {
   box.append(row);
   box.append(el("div", "hint", brand
     ? "Lend a different context in the Switchboard panel and it picks that up instead."
-    : "Or lend Autopilot a brand, project or idea in the Switchboard panel — it drafts the whole slate with no input at all."));
+    : "Or lend Autopilot a brand, project, idea or wrapp in the Switchboard panel — it drafts the whole slate with no input at all."));
   // never a one-way door: if there's already a portfolio behind this, you can always go back to it
   if (creating && cos.length) {
     const back = el("button", "act", "← back to " + (CO()?.name || "the board"));
@@ -1046,7 +1084,9 @@ function companyCol(co) {
   idc.append(idrow);
   if (co.oneLine) idc.append(el("p", "blurb", co.oneLine));
 
-  // the site line — honest about whether anything is actually live vs merely drafted locally
+  // the site line — kind-aware (a wrapp SHIPS to a subdomain; a brand builds a landing page), and
+  // honest about whether anything is actually live vs merely drafted locally.
+  const kc = kindCfg(co);
   const site = el("div", "siteline");
   if (co.site && co.site.drafted) {
     site.append(el("span", "dot" + (co.site.live ? " on" : " draft")));
@@ -1054,16 +1094,23 @@ function companyCol(co) {
     const pv = el("button", "sitebtn", "Preview"); pv.onclick = () => { pane = { kind: "site" }; render(); };
     site.append(pv);
   } else {
-    site.append(el("span", "dot"), el("span", "sitestate", co.site && co.site.busy ? "building the site…" : "no site yet"));
-    const build = el("button", "sitebtn", "Build the site"); build.onclick = () => void genSite(co);
+    site.append(el("span", "dot"), el("span", "sitestate", co.site && co.site.busy ? "building…" : "no " + kc.deployNoun + " yet"));
+    const build = el("button", "sitebtn", kc.deployVerb); build.onclick = () => void genSite(co);
     site.append(build);
   }
   idc.append(site);
 
   const kv = el("div", "kvs");
   kv.append(kvRow("Decisions yours", Object.values(co.decisions).filter((d) => d.chosenId).length + " of " + SPEC.length));
-  kv.append(kvRow("Revenue MTD", co.metrics.revenue == null ? "— not connected" : "$" + co.metrics.revenue, co.metrics.revenue == null));
-  kv.append(kvRow("Traffic", co.metrics.traffic == null ? "— not connected" : String(co.metrics.traffic), co.metrics.traffic == null));
+  if (kc.econ === "usage") {
+    // a wrapp earns on the Spotify model: pro-sub pool → rev-share by usage. Both stay "not
+    // connected" until a real usage meter reports — never a fabricated play count or payout.
+    kv.append(kvRow("Uses MTD", co.metrics.uses == null ? "— not connected" : String(co.metrics.uses), co.metrics.uses == null));
+    kv.append(kvRow("Est. rev-share", co.metrics.payout == null ? "— not connected" : "$" + co.metrics.payout, co.metrics.payout == null));
+  } else {
+    kv.append(kvRow("Revenue MTD", co.metrics.revenue == null ? "— not connected" : "$" + co.metrics.revenue, co.metrics.revenue == null));
+    kv.append(kvRow("Traffic", co.metrics.traffic == null ? "— not connected" : String(co.metrics.traffic), co.metrics.traffic == null));
+  }
   idc.append(kv);
   const fund = el("button", "fundbtn", "Fund runway");
   fund.onclick = () => { pane = { kind: "tokens" }; render(); };
@@ -1090,10 +1137,27 @@ function companyCol(co) {
   return c;
 }
 
-/** the offer + its money path. Drafting is reversible; charging is a gated approve move. */
+/** the offer + its money path, resolved by kind. A sales venture drafts a priced offer and connects
+ *  payments; a WRAPP earns on usage — the wrapp itself is the product, revenue is the Spotify-style
+ *  rev-share, and the gated move connects a usage meter instead of a checkout. */
 function productCard(co) {
   const c = el("div", "card");
+  const usage = kindCfg(co).econ === "usage";
   const p = co.product;
+  if (usage) {
+    // wrapp: the money path is rev-share, and the "product" IS the shipped wrapp — no separate offer.
+    c.append(cardTitle("Rev-share", co.usageLive ? "meter on" : "the money path"));
+    c.append(el("div", "prodblurb", "The wrapp earns like a song on Spotify: pro members pay one sub, and you're paid from the pool by how much your wrapp gets used — no charge to the visitor, who runs it on their own Claude."));
+    if (co.usageLive) {
+      c.append(el("div", "fundnote", "usage meter connected — the Uses / rev-share lines above fill only from real, metered usage"));
+    } else {
+      const b = el("button", "growbtn", "Connect usage meter");
+      b.onclick = () => void runMove(co, { mode: "approve", lane: "usage", n: "Connect the usage meter for " + co.name, args: { host: co.site?.host } });
+      c.append(b);
+      c.append(el("div", "fundnote", "a gated move — needs a usage/analytics connector and your go. Nothing here is a made-up number."));
+    }
+    return c;
+  }
   c.append(cardTitle("Product", p && p.live ? "payments on" : p && p.drafted ? "drafted" : "the money path"));
   if (p && p.drafted) {
     const box = el("div", "prod");

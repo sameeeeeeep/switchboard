@@ -46,6 +46,13 @@
       .steps b { color: var(--accent); font-weight: 500; }
 
       .start .ctx { font: 500 11.5px/1 var(--mono); color: var(--accent); margin-bottom: 10px; }
+      .kindpick { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+      .kindopt { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; background: var(--inset); border: 1px solid var(--edge); border-radius: 11px; padding: 11px 13px; cursor: pointer; transition: border-color .15s, background .15s; }
+      .kindopt:hover { border-color: var(--ink-faint); }
+      .kindopt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 45%, var(--inset)); }
+      .kindopt .kn { font: 600 13px/1 var(--display); color: var(--ink); text-transform: capitalize; }
+      .kindopt .kd { font: 400 10.5px/1.4 var(--mono); color: var(--ink-faint); }
+      .kindopt.on .kn { color: var(--accent); }
       .bindrow { display: flex; gap: 8px; }
       .bindrow input { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 400 13px/1.4 var(--sans); padding: 12px 13px; outline: none; }
       .bindrow input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
