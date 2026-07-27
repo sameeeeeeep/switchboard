@@ -6,8 +6,8 @@
 //
 // NOTE: the Autopilot wrapp (src/autopilot.js) lives on the unmerged feat/autopilot-wrapp branch, so
 // this core mirrors its genOptions() prompt VERBATIM rather than sharing a module with it (yet). Its
-// origin (https://autopilot.thelastprompt.ai) isn't a granted origin here, so the connector runs it
-// in mock until the wrapp is deployed + connected once in the browser.
+// origin (https://sameep.ai — the OS lives at the apex root) becomes a granted origin once the wrapp
+// is connected once in the browser; until then the connector runs it in mock.
 //
 // Autopilot uses relay.complete() (not stream) — options come back as one JSON array, no partial
 // render — so the action uses sb.complete(). PURE ESM, NO DOM.
@@ -179,7 +179,7 @@ export async function plan(input, sb) {
 export const manifest = {
   name: "autopilot",
   title: "Autopilot",
-  origin: "https://autopilot.thelastprompt.ai",
+  origin: "https://sameep.ai",
   scope: { models: ["sonnet"], contextKinds: ["brand", "project", "idea"] },
   actions: [
     {
