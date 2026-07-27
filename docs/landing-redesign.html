@@ -374,6 +374,41 @@
   @keyframes apulse{50%{opacity:.35}}
   @media(prefers-reduced-motion:reduce){.warrow .a{animation:none}}
 
+  /* ---------- store · visual storefront ---------- */
+  #store .cats{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:30px}
+  #store .cat{font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#A2A2A8;border:1px solid #2C2C31;border-radius:100px;padding:9px 15px;text-decoration:none;transition:color .15s,background .15s,border-color .15s}
+  #store .cat:hover{color:#F4F4F2;border-color:#3a3a40}
+  #store .cat.on{color:#0A0A0B;background:#EDEDEA;border-color:#EDEDEA}
+  #store .wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:13px}
+  #store .wcard{display:flex;flex-direction:column;background:#131315;border:1px solid #232327;border-radius:14px;overflow:hidden;text-decoration:none;transition:transform .15s,border-color .15s,box-shadow .15s;box-shadow:0 14px 34px -22px rgba(0,0,0,.8)}
+  #store .wcard:hover{transform:translateY(-4px);border-color:#3a3a40;box-shadow:0 22px 50px -24px rgba(0,0,0,.9)}
+  #store .wthumb{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:#1a1a1d}
+  #store .wbody{padding:13px 15px 15px;display:flex;flex-direction:column;gap:4px}
+  #store .wname{font:600 15px/1.2 'Space Grotesk','Inter',sans-serif;color:#F4F4F2;letter-spacing:-.01em}
+  #store .wdesc{font:400 12.5px/1.5 'Instrument Sans',sans-serif;color:#A2A2A8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:37px}
+  #store .wcat{margin-top:5px;font:500 9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#6C6C74}
+  #store .wcard.more{border-style:dashed;border-color:var(--line-bright);background:var(--panel)}
+  #store .wcard.more .wmore{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;text-align:center;padding:24px 18px;height:100%}
+  #store .wmore-plus{font-family:var(--dot);font-weight:900;font-size:32px;color:var(--phosphor);line-height:1}
+  #store .wcard.more .wname{color:var(--paper)}
+  #store .wcard.more .wdesc{color:var(--muted);min-height:0}
+  #store .wcard.more .wcat{color:var(--phosphor)}
+  #store .promise{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 14px;margin-top:28px;font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--muted)}
+  #store .promise b{color:var(--phosphor)}
+  #store .promise .sep{color:var(--line-bright)}
+  #store .store-cta-row{margin-top:24px;text-align:center}
+
+  /* ---------- setup (kept deliberately simple) ---------- */
+  #setup .inst{align-items:flex-start}
+  #setup .sic{width:42px;height:42px;border:1px solid var(--line-bright);background:var(--panel-2);border-radius:11px;display:grid;place-items:center;color:var(--phosphor);margin-bottom:16px}
+  #setup .sic svg{width:21px;height:21px}
+  #setup .inst h3{font-size:16px;margin-bottom:7px}
+  #setup .inst p{flex:1;color:var(--muted);font-size:13.5px;line-height:1.55;margin-bottom:18px}
+  #setup .prereq{text-align:center;margin-top:30px;font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.8}
+  #setup .prereq b{color:var(--paper);font-weight:500}
+  #setup .prereq a{color:var(--phosphor);text-decoration:none}
+  #setup .prereq a:hover{text-decoration:underline}
+
   /* ---------- provider strip ---------- */
   .prov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
   .prov-head p{color:var(--muted);font-size:14px;max-width:440px;margin-top:12px}
@@ -560,7 +595,7 @@
       <a href="#features" class="nav-hide">Features</a>
       <a href="#store" class="nav-hide">Wrapp Store</a>
       <a href="#pricing" class="nav-hide">Pricing</a>
-      <a href="#install" class="btn btn-solid">Get the extension</a>
+      <a href="#setup" class="btn btn-solid">Get the extension</a>
     </div>
   </div>
 </nav>
@@ -569,11 +604,11 @@
   <canvas id="bitfield" aria-hidden="true"></canvas>
   <div class="hero-glow" aria-hidden="true"></div>
   <div class="wrap">
-    <a class="announce rv" href="#install"><span class="tag">New</span> Switchboard is on the Chrome Web Store <span class="arr">→</span></a>
+    <a class="announce rv" href="#setup"><span class="tag">New</span> Switchboard is on the Chrome Web Store <span class="arr">→</span></a>
     <h1 class="rv">Bring your own<br><span class="brk">&lt;</span><span class="lit" id="byo-word">AI</span><span class="brk">&gt;</span></h1>
     <p class="hero-plain rv">Every AI app runs on the <b>Claude you already pay for</b> — private by default, personal from the first second, no signup.</p>
     <div class="hero-ctas rv">
-      <a href="#install" class="btn btn-solid">Install Switchboard</a>
+      <a href="#setup" class="btn btn-solid">Install Switchboard</a>
       <a href="#store" class="btn btn-ghost">Browse the wrapp store</a>
     </div>
     <p class="hero-req rv">for anyone running a <b>Claude Code CLI</b> today · Chrome · Node ≥ 20 · macOS</p>
@@ -782,6 +817,73 @@
   </div>
 </section>
 
+<!-- ============ STORE ============ -->
+<section id="store">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">the wrapp store</p>
+      <h2>An app store where <span class="lit">every app is free.</span></h2>
+      <p class="lead-sub">Because you bring the AI. Every wrapp runs on your own Claude — no signup, no per-app bill, nothing leaves your machine.</p>
+    </div>
+    <div class="cats rv">
+      <a class="cat on" href="https://thelastprompt.ai/apps/">All</a>
+      <a class="cat" href="https://thelastprompt.ai/apps/">Creative</a>
+      <a class="cat" href="https://thelastprompt.ai/apps/">Brand</a>
+      <a class="cat" href="https://thelastprompt.ai/apps/">Play</a>
+      <a class="cat" href="https://thelastprompt.ai/apps/">Fun</a>
+      <a class="cat" href="https://thelastprompt.ai/apps/">Growth</a>
+    </div>
+    <div class="wgrid rv">
+      <a class="wcard" href="https://thelastprompt.ai/apps/reel-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/reel.jpg" alt="Reel" loading="lazy"><span class="wbody"><span class="wname">Reel</span><span class="wdesc">One line → a launch reel, painted and rendered in your browser.</span><span class="wcat">Creative</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/prism-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/prism.jpg" alt="Prism" loading="lazy"><span class="wbody"><span class="wname">Prism</span><span class="wdesc">On-brand images, generated on your own AI.</span><span class="wcat">Creative</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/cast-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/cast.jpg" alt="Cast" loading="lazy"><span class="wbody"><span class="wname">Cast</span><span class="wdesc">AI personas that stay on-model, shoot after shoot.</span><span class="wcat">Creative</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/marquee-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/marquee.jpg" alt="Marquee" loading="lazy"><span class="wbody"><span class="wname">Marquee</span><span class="wdesc">A cinematic scrolling landing page from one line.</span><span class="wcat">Brand</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/identity-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/identity.jpg" alt="Identity" loading="lazy"><span class="wbody"><span class="wname">Identity</span><span class="wdesc">Compose a creator persona, facet by facet.</span><span class="wcat">Creative</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/roomify-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/roomify.jpg" alt="Roomify" loading="lazy"><span class="wbody"><span class="wname">Roomify</span><span class="wdesc">Redesign any room from a single photo.</span><span class="wcat">Creative</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/storybook-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/storybook.jpg" alt="Storybook" loading="lazy"><span class="wbody"><span class="wname">Storybook</span><span class="wdesc">A personalised kids' storybook, page by page.</span><span class="wcat">Play</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/yearbook-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/yearbook.jpg" alt="Yearbook" loading="lazy"><span class="wbody"><span class="wname">Yearbook</span><span class="wdesc">Your own AI yearbook portraits.</span><span class="wcat">Play</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/toon-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/toon.jpg" alt="Toon" loading="lazy"><span class="wbody"><span class="wname">Toon</span><span class="wdesc">Turn any photo into a cartoon.</span><span class="wcat">Fun</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/petrait-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/petrait.jpg" alt="Petrait" loading="lazy"><span class="wbody"><span class="wname">Petrait</span><span class="wdesc">Studio portraits of your pet.</span><span class="wcat">Fun</span></span></a>
+      <a class="wcard" href="https://thelastprompt.ai/apps/thumbs-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/thumbs.jpg" alt="Thumbs" loading="lazy"><span class="wbody"><span class="wname">Thumbs</span><span class="wdesc">Thumbnails engineered for the click.</span><span class="wcat">Growth</span></span></a>
+      <a class="wcard more" href="https://thelastprompt.ai/apps/"><span class="wmore"><span class="wmore-plus">+</span><span class="wname">20+ wrapps</span><span class="wdesc">Browse the full catalog and point any one at your work.</span><span class="wcat">Open the store →</span></span></a>
+    </div>
+    <div class="promise rv"><span>every wrapp</span><span class="sep">·</span><b>your Claude</b><span class="sep">·</span><b>$0</b><span class="sep">·</span><span>no signup</span><span class="sep">·</span><span>nothing leaves</span></div>
+    <div class="store-cta-row rv"><a class="btn btn-solid" href="https://thelastprompt.ai/apps/">Browse all wrapps →</a></div>
+  </div>
+</section>
+
+<!-- ============ SETUP ============ -->
+<section id="setup">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">set up in 2 minutes</p>
+      <h2>Two pieces. <span class="lit">One pairing.</span></h2>
+      <p class="lead-sub">A browser extension and a tiny desktop app. Pair them once — then every wrapp just runs on your Claude.</p>
+    </div>
+    <div class="install-grid rv">
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 7h.01"/></svg></span>
+        <h3>Add the extension</h3>
+        <p>One click from the Chrome Web Store. It lands in your toolbar.</p>
+        <div class="act"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb" target="_blank" rel="noreferrer">Add to Chrome →</a></div>
+      </div>
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+        <h3>Get the desktop app</h3>
+        <p>It holds your Claude on your machine and shows a short pairing code.</p>
+        <div class="act"><a class="btn btn-solid" href="https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg">Download for Mac →</a></div>
+      </div>
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6M8.5 13.5l-2 2a3 3 0 1 0 4 4l2-2M15.5 10.5l2-2a3 3 0 1 0-4-4l-2 2"/></svg></span>
+        <h3>Pair, then open a wrapp</h3>
+        <p>Paste the code into the extension. Open any wrapp and hit Connect — done.</p>
+        <div class="act"><a class="btn btn-ghost" href="#store">Open a wrapp →</a></div>
+      </div>
+    </div>
+    <p class="prereq rv">One thing to have first: a <b>Claude subscription signed in through Claude Code</b> — that's the AI your wrapps run on. &nbsp;·&nbsp; <a href="https://thelastprompt.ai/switchboard/install.md">Rather your coding agent set it up? →</a></p>
+  </div>
+</section>
+
 <!-- ============ PRICING ============ -->
 <section id="pricing">
   <div class="wrap">
@@ -803,7 +905,7 @@
           <li>Runs local — nothing leaves your machine</li>
           <li>Open source · MIT</li>
         </ul>
-        <a class="btn btn-ghost" href="#install">Install free →</a>
+        <a class="btn btn-ghost" href="#setup">Install free →</a>
       </div>
 
       <div class="tier feat">
@@ -818,7 +920,7 @@
           <li>Cloud sync &amp; encrypted backup</li>
           <li>Sealed end to end — the relay can't read a byte</li>
         </ul>
-        <a class="btn btn-solid" href="#install">Start Pro →</a>
+        <a class="btn btn-solid" href="#setup">Start Pro →</a>
       </div>
 
       <div class="tier">
@@ -903,83 +1005,6 @@
   </div>
 </section>
 
-<!-- ============ STORE ============ -->
-<section id="store">
-  <div class="wrap">
-    <div class="band-head center rv">
-      <p class="kick">wrapp store<b>·</b>runs on your own ai</p>
-      <h2>Apps that bring <span class="lit">nothing but the interface.</span></h2>
-      <p class="lead-sub">Every wrapp runs on your own Claude and your tools — the operator never holds a key or sees your data. Open one and it just works.</p>
-    </div>
-    <div class="store-grid rv">
-      <a class="scard" href="https://thelastprompt.ai/apps/huddle-landing.html">
-        <span class="scard-ic" style="--tint:#E7F1EC;--gl:#2E8B6A"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3Z"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Huddle</span>
-          <span class="scard-c">Get on a working call with your own Claude — camera on, grounded in a project folder.</span>
-          <span class="scard-cat">Play &amp; make</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/reel-landing.html">
-        <span class="scard-ic" style="--tint:#F0E7F1;--gl:#B54A78"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5Z"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Reel</span>
-          <span class="scard-c">One line to a launch reel — Claude scripts scenes, Higgsfield paints them, renders in your browser.</span>
-          <span class="scard-cat">Creative</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/identity-landing.html">
-        <span class="scard-ic" style="--tint:#EDE8F3;--gl:#7B5EA8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Identity</span>
-          <span class="scard-c">Compose an AI creator persona facet by facet, then publish it as a context Cast picks up.</span>
-          <span class="scard-cat">Creative</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/take-landing.html">
-        <span class="scard-ic" style="--tint:#E7F1EC;--gl:#2E8B6A"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5Z"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Take</span>
-          <span class="scard-c">Script it, then record it — Claude writes the beats, you capture in the page. Never leaves your browser.</span>
-          <span class="scard-cat">Play &amp; make</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/batch-landing.html">
-        <span class="scard-ic" style="--tint:#F2E8D2;--gl:#B4802A"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Batch</span>
-          <span class="scard-c">Your YC application, answer by answer — all 8 questions drafted on your own Claude.</span>
-          <span class="scard-cat">Ads &amp; growth</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/marquee-landing.html">
-        <span class="scard-ic" style="--tint:#E7F0F6;--gl:#3A6EA5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M8 13h8M8 16h5"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Marquee</span>
-          <span class="scard-c">A cinematic scrolling landing page from one line — generated, hero-painted, edited in place.</span>
-          <span class="scard-cat">Brand &amp; content</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/redline-landing.html">
-        <span class="scard-ic" style="--tint:#E7F0F6;--gl:#3A6EA5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16Z"/><path d="M14 6l3 3"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Redline</span>
-          <span class="scard-c">Review a landing page like a document — drop comments, your Claude proposes copy &amp; edits the real file.</span>
-          <span class="scard-cat">Brand &amp; content</span>
-        </span>
-      </a>
-      <a class="scard" href="https://thelastprompt.ai/apps/" style="border-style:dashed">
-        <span class="scard-ic" style="--tint:#191A1D;--gl:#A2A2A8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></span>
-        <span class="scard-body">
-          <span class="scard-n">Browse the store</span>
-          <span class="scard-c">The full catalog — filter by Pro or Free, search, and point any wrapp at your work.</span>
-          <span class="scard-cat">All wrapps →</span>
-        </span>
-      </a>
-    </div>
-    <div class="store-cta-row rv"><a class="btn btn-ghost" href="https://thelastprompt.ai/apps/">Open the store →</a></div>
-  </div>
-</section>
 
 <!-- ============ TEAM ============ -->
 <section id="team">
@@ -1060,52 +1085,6 @@
   </div>
 </section>
 
-<!-- ============ INSTALL ============ -->
-<section id="install">
-  <div class="wrap">
-    <div class="band-head center rv">
-      <p class="kick">patch yourself in<b>·</b>~5 minutes</p>
-      <h2>Try it <span class="lit">today.</span></h2>
-      <p class="lead-sub">Two pieces: the extension in your browser, the sidekick on your machine. Then any wrapp runs on your Claude.</p>
-    </div>
-    <div class="install-grid rv">
-      <div class="inst">
-        <span class="num">01</span>
-        <h3>Add the extension</h3>
-        <p>One click — Switchboard is on the Chrome Web Store.</p>
-        <div class="cmd"><span class="f">chromewebstore.google.com</span>
-<span class="g">▸</span> Add to Chrome
-<span class="g">✓</span> Switchboard in your toolbar</div>
-        <div class="act"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb" target="_blank" rel="noreferrer">Add to Chrome →</a></div>
-      </div>
-      <div class="inst">
-        <span class="num">02</span>
-        <h3>Run the sidekick</h3>
-        <p>The local app that holds your Claude. Launch it once — it prints a pairing token.</p>
-        <div class="cmd"><span class="f">Switchboard.dmg</span>
-<span class="g">▸</span> drag onto Applications
-<span class="g">▸</span> launch it
-<span class="g">pairing token: ····-····</span></div>
-        <div class="act"><a class="btn btn-solid" href="https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg">Download for macOS →</a></div>
-        <p class="fine">Apple Silicon, macOS 13+ · signed &amp; notarized. <b>Needs a signed-in Claude Code CLI</b> — that's whose Claude the wrapps run on.</p>
-      </div>
-      <div class="inst">
-        <span class="num">03</span>
-        <h3>Pair &amp; connect</h3>
-        <p>Paste the token into the extension, open a wrapp, click Connect.</p>
-        <div class="cmd"><span class="g">▸</span> extension <span class="f">→ paste token</span>
-<span class="g">▸</span> open <span class="f">a wrapp ↓</span>
-<span class="g">▸</span> Connect Switchboard
-<span class="g">✓</span> running on your Claude</div>
-        <div class="act"><a class="btn btn-ghost" href="https://cartridge.thelastprompt.ai/">Open Cartridge — make a game</a></div>
-      </div>
-    </div>
-    <div class="agent-note rv">
-      <p>Prefer your coding agent to set it up? Point it at the runbook — it audits the MIT source first, then installs, stopping at every step it can't take.</p>
-      <a class="btn btn-ghost" href="https://thelastprompt.ai/switchboard/install.md">Install with your agent →</a>
-    </div>
-  </div>
-</section>
 
 <!-- ============ FINAL ============ -->
 <section class="final">
@@ -1114,7 +1093,7 @@
     <h2 class="rv">Patch yourself <span class="lit">in.</span></h2>
     <p class="rv">The cloud was someone else's computer.<br>This one is yours.</p>
     <div class="hero-ctas rv">
-      <a href="#install" class="btn btn-solid">Install Switchboard</a>
+      <a href="#setup" class="btn btn-solid">Install Switchboard</a>
       <a href="https://github.com/sameeeeeeep/switchboard" class="btn btn-ghost">Star on GitHub</a>
     </div>
   </div>
@@ -1130,7 +1109,7 @@
       <div class="foot-col">
         <h5>Product</h5>
         <a href="#store">Wrapp store</a>
-        <a href="#install">Install</a>
+        <a href="#setup">Install</a>
         <a href="https://github.com/sameeeeeeep/switchboard/releases/latest">Releases</a>
         <a href="https://thelastprompt.ai/switchboard/install.md">Install with agent</a>
       </div>
