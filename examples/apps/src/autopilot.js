@@ -394,7 +394,7 @@ const slugOf = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").
 const KINDS = {
   brand:   { label: "BRAND",   deployNoun: "landing page", deployVerb: "Build the site",  offerNoun: "product",   econ: "sales", host: (s) => s + ".site" },
   product: { label: "PRODUCT", deployNoun: "product site", deployVerb: "Build the site",  offerNoun: "product",   econ: "sales", host: (s) => s + ".app" },
-  wrapp:   { label: "WRAPP",   deployNoun: "wrapp",        deployVerb: "Ship the wrapp",   offerNoun: "the wrapp", econ: "usage", host: (s) => s + ".wrapp.sh" },
+  wrapp:   { label: "WRAPP",   deployNoun: "wrapp",        deployVerb: "Ship the wrapp",   offerNoun: "the wrapp", econ: "usage", host: (s) => s + ".sameep.ai" },
 };
 // A lent context's raw kind → a venture kind. brandbrain publishes `brand`; ideabrain `idea`
 // (a software project → a product); the store pointer `project`; and a wrapp idea is `wrapp`.
