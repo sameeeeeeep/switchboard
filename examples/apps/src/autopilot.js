@@ -535,7 +535,7 @@ async function discoverTools() {
 // mail / send tool satisfies "inbox"; any tweet / x / social tool satisfies "social".
 const LANE_MATCH = {
   social: /tweet|twitter|\bx_|social|post_to|linkedin/i,
-  inbox: /gmail|mail|email|send_message|outreach/i,
+  inbox: /create_draft|gmail|mail|email|draft|outreach/i,
   ads: /\bad(s|_|-)|campaign|adset|boost/i,
   site: /deploy|publish|website|pages|vercel|netlify/i,
   payments: /stripe|payment|checkout|charge|invoice|billing/i,
@@ -544,6 +544,13 @@ const LANE_MATCH = {
 async function toolForLane(lane) {
   const names = await discoverTools();
   const rx = LANE_MATCH[lane];
+  // inbox is DRAFT-only — prefer a create-draft tool and NEVER a send tool, so the cockpit can only
+  // ever draft. Sending stays the human's own tap inside Gmail.
+  if (lane === "inbox") {
+    const draft = names.find((n) => /create_draft|draft/i.test(n));
+    if (draft) return draft;
+    return names.find((n) => rx.test(n) && !/send/i.test(n)) || null;
+  }
   return names.find((n) => rx.test(n)) || null;
 }
 // The lanes an autonomous company sends on, and what each does out in the world. This is the map
@@ -572,19 +579,21 @@ async function runMove(co, move) {
   }
   // approve — real, gated. Find a connector; if none, stage honestly.
   const tool = move.lane ? await toolForLane(move.lane) : null;
+  const verb = move.verb || "sending", doneVerb = move.doneVerb || "ran";
   if (!tool) {
     logLine(co, "staged “" + move.n + "” — no " + (move.lane || "connector") + " connected yet", "run", null);
-    toast("Staged — connect a " + (move.lane || "tool") + " in the Switchboard panel to send it for real.");
+    toast("Staged — connect a " + (move.lane || "tool") + " in the Switchboard panel to do it for real.");
     await saveCo(co); render();
     return;
   }
-  logLine(co, "sending “" + move.n + "” via " + tool + "…", "run", null);
+  logLine(co, verb + " “" + move.n + "” via " + tool + "…", "run", null);
   await saveCo(co); render();
   try {
     const res = await relay.callTool(tool, move.args || {});   // daemon gate fires here
-    logLine(co, "ran “" + move.n + "” — done", "done", null);
+    logLine(co, doneVerb + " “" + move.n + "” — done", "done", null);
     if (move.postId) { const p = co.posts.find((x) => x.id === move.postId); if (p) { p.state = "posted"; p.ref = res?.ref || res?.id || null; } }
-    if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "sent"; m.ref = res?.ref || res?.id || null; } }
+    // inbox is DRAFT-only: the outcome is a Gmail draft, never a send. Sending stays the human's tap in Gmail.
+    if (move.mailId) { const m = co.inbox.find((x) => x.id === move.mailId); if (m) { m.state = "drafted"; m.ref = res?.id || res?.ref || null; } }
     if (move.lane === "site" && co.site) { co.site.live = true; co.site.url = res?.url || ("https://" + co.site.host); }
     if (move.lane === "payments" && co.product) { co.product.live = true; co.metrics.revenue = co.metrics.revenue ?? 0; }
     if (move.lane === "usage") { co.usageLive = true; co.metrics.uses = co.metrics.uses ?? 0; co.metrics.payout = co.metrics.payout ?? 0; }
@@ -1551,11 +1560,21 @@ function growthCol(co) {
     mr.append(el("div", "mto", "to " + m.to));
     mr.append(el("div", "mbody", m.body.slice(0, 140)));
     const foot = el("div", "pfoot");
-    foot.append(el("span", "ptag s-" + m.state, m.state));
-    if (m.state !== "sent") { const send = el("button", "psend", "Send"); send.onclick = () => void runMove(co, { mode: "approve", lane: "inbox", n: "Send outreach", mailId: m.id, args: { subject: m.subject, body: m.body } }); foot.append(send); }
+    foot.append(el("span", "ptag s-" + m.state, m.state === "drafted" ? "in Gmail" : m.state));
+    // DRAFT-ONLY: creates a real Gmail draft via the connector; it never sends. You send it yourself
+    // from Gmail once the recipient's right — the gate the whole design turns on.
+    if (m.state !== "drafted") {
+      const draft = el("button", "psend", "Draft in Gmail");
+      draft.onclick = () => void runMove(co, { mode: "approve", lane: "inbox", n: m.subject || "outreach", mailId: m.id, verb: "drafting", doneVerb: "drafted", args: { subject: m.subject, body: m.body } });
+      foot.append(draft);
+    } else if (m.ref) {
+      const open = el("a", "psend", "Open in Gmail"); open.href = "https://mail.google.com/mail/u/0/#drafts"; open.target = "_blank"; open.rel = "noopener";
+      foot.append(open);
+    }
     mr.append(foot);
     ic.append(mr);
   }
+  if (co.inbox.length) ic.append(el("div", "fundnote", "“Draft in Gmail” creates a real draft — it never sends. You send it yourself from Gmail."));
   c.append(ic);
   return c;
 }
