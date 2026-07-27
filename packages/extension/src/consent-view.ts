@@ -13,6 +13,7 @@
  */
 
 import { connectorOf, connectorGlyph, brandIcon, VERBS, KIND_MARKS, normalize, type ConnectorInfo } from "./icons.js";
+import { resolveNeeds, CONNECTOR_META, type ConnectorNeed, type ConnectorInventory } from "@relay/protocol";
 
 type Access = "read" | "write";
 interface ConnectBody {
@@ -23,6 +24,10 @@ interface ConnectBody {
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
   /** Library kinds the app asks to SEE (names only; data reads stay per-item + audited). */
   contextKinds?: string[];
+  /** Rung 6 (STATES.md §5): class-level connector needs + what's available, so this view can offer a
+   *  same-class substitute. Declarative — accepting one just adds the substitute's exact tools back. */
+  needs?: ConnectorNeed[];
+  connectors?: ConnectorInventory;
 }
 interface WriteBody { origin: string; tool: { name: string; arguments: Record<string, unknown> }; }
 interface StorageBindBody { origin: string; path: string; }
@@ -40,6 +45,16 @@ const el = (tag: string, cls?: string, text?: string): HTMLElement => {
 const host = (o: string) => { try { return new URL(o.includes("://") ? o : `https://${o}`).host; } catch { return o; } };
 const shortTool = (name: string) => name.includes("__") ? name.split("__").pop()!.replace(/[-_*]/g, " ").trim() : name;
 const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+const aOr = (s: string) => (/^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`);
+/** A link to where the user adds a claude.ai connector — the one non-dead-end action for a missing
+ *  or unknown need (STATES.md §5.5). Opens in a new tab; never navigates the consent surface. */
+function connectorsLink(): HTMLElement {
+  const a = el("a") as HTMLAnchorElement;
+  a.textContent = "Add one in claude.ai → Connectors ↗";
+  a.href = "https://claude.ai/settings/connectors";
+  a.target = "_blank"; a.rel = "noopener noreferrer";
+  return a;
+}
 
 // Brandbrain tokens + consent styles, injected once. The host page loads the fonts.
 const STYLE_ID = "relay-consent-style";
@@ -140,6 +155,20 @@ function ensureStyles() {
     .rc .approve:hover { opacity: .9; }
     .rc .deny { flex: 0 0 32%; background: transparent; color: var(--ink-dim,#99A3B7); border-color: var(--edge,#262C38); }
     .rc .empty { color: var(--ink-faint,#6E7C90); font-size: 12.5px; padding: 6px 0; }
+    /* ---- connectors it needs (STATES.md §5): one card per class-level need ---- */
+    .rc .needcard { display: flex; gap: 9px; align-items: flex-start; background: var(--raised,#1A1F29);
+      border: 1px solid var(--edge-soft,#1C212B); border-radius: 11px; padding: 9px 11px; margin-top: 7px; }
+    .rc .needcard .nmark { width: 20px; height: 20px; border-radius: 6px; flex: none; display: grid; place-items: center;
+      font: 700 11px/1 "Spline Sans Mono", monospace; }
+    .rc .needcard .nmark.met { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+    .rc .needcard .nmark.substitute { background: var(--lime-soft,#232B0D); color: var(--lime); }
+    .rc .needcard .nmark.missing, .rc .needcard .nmark.unknown { background: var(--raised-2,#20262F); color: var(--ink-dim,#99A3B7); }
+    .rc .needcard .nbody { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .rc .needcard .ntitle { font-weight: 600; font-size: 12.5px; }
+    .rc .needcard .nwhy { color: var(--ink-dim,#99A3B7); font-size: 11.5px; }
+    .rc .needcard .nsub { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 12px; cursor: pointer; }
+    .rc .needcard a { color: var(--lime); text-decoration: none; font-weight: 600; }
+    .rc .needcard a:hover { text-decoration: underline; }
   `;
   document.head.appendChild(s);
 }
@@ -209,6 +238,45 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     if (sees.length) scope.append(srow("Can see", sees));
     if (does.length) scope.append(srow("Can do", does));
     rc.append(scope);
+  }
+
+  // ---- Connectors it needs (STATES.md §5): the app's CLASS-level needs, resolved against what's
+  // actually available. This is where "I have Leonardo, not Higgsfield" becomes a one-click swap.
+  // Purely additive — accepting a substitute APPENDS its exact tool names to the grant below; the gate
+  // stays exact-match. Only classes the app EXPLICITLY declared appear here. ----
+  const subChecks: Array<{ cb: HTMLInputElement; tools: string[] }> = [];
+  if (body.needs?.length && body.connectors) {
+    const labelOf = (id: string) => CONNECTOR_META[id]?.label ?? id;
+    const nSec = section(rc, "Connectors it needs");
+    for (const o of resolveNeeds(body.needs, body.connectors)) {
+      const card = el("div", "needcard");
+      card.append(el("div", `nmark ${o.status}`, o.status === "met" ? "✓" : o.status === "substitute" ? "⇄" : "?"));
+      const nb = el("div", "nbody");
+      if (o.status === "met") {
+        nb.append(el("div", "ntitle", `${labelOf(o.available[0]!)} — ready`), el("div", "nwhy", cap(o.need.why)));
+      } else if (o.status === "substitute") {
+        const subLabel = o.available.map(labelOf).join(" / ");
+        const want = (o.need.prefer ?? []).map(labelOf).join(" / ") || o.need.class;
+        nb.append(el("div", "ntitle", `Use ${subLabel} for ${o.need.class}?`));
+        nb.append(el("div", "nwhy", `This app asks for ${want} to ${o.need.why}. You have ${subLabel}.`));
+        const lab = el("label", "nsub");
+        const cb = el("input") as HTMLInputElement; cb.type = "checkbox"; cb.className = "box"; cb.checked = true;
+        lab.append(cb, el("span", undefined, `Use ${subLabel} instead`));
+        nb.append(lab);
+        subChecks.push({ cb, tools: o.tools });
+      } else if (o.status === "missing") {
+        const names = o.suggested.slice(0, 3).map(labelOf).join(", ");
+        nb.append(el("div", "ntitle", `Needs ${aOr(o.need.class)} connector`));
+        nb.append(el("div", "nwhy", `${cap(o.need.why)}.${names ? ` Known to work: ${names}.` : ""}`));
+        nb.append(connectorsLink());
+      } else { // unknown — we can't enumerate claude.ai connectors; state it, offer to try
+        nb.append(el("div", "ntitle", `${cap(aOr(o.need.class))} connector — can't tell from here`));
+        nb.append(el("div", "nwhy", `${cap(o.need.why)}. We can’t see your claude.ai connectors from here — approve to try; the app will say so if it isn’t there.`));
+        nb.append(connectorsLink());
+      }
+      card.append(nb);
+      nSec.append(card);
+    }
   }
 
   // ---- Models — compact toggle chips (default = the requested set, else the first available).
@@ -305,14 +373,21 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
 
   const actions = el("div", "actions");
   const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(null);
-  const approve = el("button", "approve", "Approve"); approve.onclick = () => onDecision({
-    models: modelBoxes.filter(([, c]) => c.checked).map(([m]) => m),
-    tools: toolBoxes.filter(([, c]) => c.checked).map(([t]) => t),
-    budgets: { maxTokensPerDay: numVal(tok), maxCallsPerMin: numVal(calls) },
-    // Shape carries meaning downstream: kinds = approved; [] = the row was SHOWN and unchecked
-    // (a decline — never re-ask); undefined = the app never asked (a scope upgrade may ask later).
-    contextKinds: kindsBox ? (kindsBox.checked ? kinds : []) : undefined,
-  });
+  const approve = el("button", "approve", "Approve"); approve.onclick = () => {
+    const tools = toolBoxes.filter(([, c]) => c.checked).map(([t]) => t);
+    // Fold in the exact tool names of every ACCEPTED substitution. access is a placeholder — connect()
+    // re-classifies every approved tool out of band, so a substitute can't sneak in as a cheaper class.
+    for (const s of subChecks) if (s.cb.checked) for (const name of s.tools)
+      if (!tools.some((t) => t.name === name)) tools.push({ name, access: "write" });
+    onDecision({
+      models: modelBoxes.filter(([, c]) => c.checked).map(([m]) => m),
+      tools,
+      budgets: { maxTokensPerDay: numVal(tok), maxCallsPerMin: numVal(calls) },
+      // Shape carries meaning downstream: kinds = approved; [] = the row was SHOWN and unchecked
+      // (a decline — never re-ask); undefined = the app never asked (a scope upgrade may ask later).
+      contextKinds: kindsBox ? (kindsBox.checked ? kinds : []) : undefined,
+    });
+  };
   actions.append(deny, approve);
   rc.append(actions);
   approveBtn = approve;
