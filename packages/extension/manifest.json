@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Switchboard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bring your own AI. Lend any website your Claude, tools, context and data \u2014 under per-site consent. MetaMask, but for AI.",
   "icons": {
     "16": "icons/icon16.png",
@@ -29,6 +29,8 @@
       "matches": [
         "https://thelastprompt.ai/*",
         "https://*.thelastprompt.ai/*",
+        "https://sameep.ai/*",
+        "https://*.sameep.ai/*",
         "https://sameeeeeeep.github.io/*",
         "http://127.0.0.1/*",
         "http://localhost/*"
@@ -89,6 +91,8 @@
       "matches": [
         "https://thelastprompt.ai/*",
         "https://*.thelastprompt.ai/*",
+        "https://sameep.ai/*",
+        "https://*.sameep.ai/*",
         "https://sameeeeeeep.github.io/*",
         "http://127.0.0.1/*",
         "http://localhost/*"
