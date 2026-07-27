@@ -75,7 +75,8 @@ console.log("1. stage the build + CNAME(" + host + ") + .nojekyll" + (DRY ? "  (
 console.log("2. create the repo, commit, push:");
 run("git", ["-C", work, "init", "-b", "main"]);
 run("git", ["-C", work, "add", "-A"]);
-run("git", ["-C", work, "commit", "-m", `deploy ${repo} → ${host}`]);
+// set the commit identity inline so this never depends on a global git config being present
+run("git", ["-C", work, "-c", `user.name=${owner}`, "-c", `user.email=${owner}@users.noreply.github.com`, "commit", "-m", `deploy ${repo} → ${host}`]);
 run("gh", ["repo", "create", `${owner}/${repo}`, "--public", "--source", work, "--remote", "origin", "--push"]);
 console.log("3. enable GitHub Pages from main / root, set the custom domain:");
 run("gh", ["api", "-X", "POST", `/repos/${owner}/${repo}/pages`, "-f", "source[branch]=main", "-f", "source[path]=/"], { allowFail: true });
