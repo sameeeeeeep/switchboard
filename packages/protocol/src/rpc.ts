@@ -43,6 +43,11 @@ export interface Capabilities {
   models: string[];
   /** Backends currently online, e.g. ["claude-code", "ollama"]. */
   backends: string[];
+  /** Rung 4 (STATES.md §4): whether the daemon can actually fulfil a completion right now — Claude
+   *  Code signed in, or a local/hosted backend healthy. `false` = the invisible cliff (everything
+   *  reads green but the first call would fail on sign-in); `undefined` = not determinable (older
+   *  daemon, or the marker couldn't be read) → surfaces must not assert signed-out from it. */
+  signedIn?: boolean;
   /** Whether the gated agentic loop is available. */
   agentic: boolean;
   /** The paired user's public identity, for greeting + attribution in the app's own UI. */

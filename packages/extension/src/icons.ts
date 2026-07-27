@@ -8,28 +8,24 @@
  * icon, the curated glyph/monogram renders instead — same look as before, zero flash.
  */
 
+import { CONNECTOR_META } from "@relay/protocol";
+
 export interface ConnectorInfo { key: string; label: string; color: string; hint: string }
 
 // ---- friendly connector identities (framed as capabilities, not raw tool names) ----
-export const CONNECTORS: Record<string, { label: string; color: string; hint: string }> = {
-  higgsfield: { label: "Higgsfield", color: "#EE46BC", hint: "images" },
-  shopify: { label: "Shopify", color: "#95BF47", hint: "store" },
-  gmail: { label: "Gmail", color: "#EA4335", hint: "email" },
-  drive: { label: "Drive", color: "#1FA463", hint: "files" },
-  sheets: { label: "Sheets", color: "#1FA463", hint: "data" },
-  meta: { label: "Meta Ads", color: "#1264FF", hint: "ads" },
-  web: { label: "Web", color: "#4F8CFF", hint: "search" },
-  clickup: { label: "ClickUp", color: "#7B68EE", hint: "tasks" },
-  notion: { label: "Notion", color: "#37352F", hint: "pages" },
-  github: { label: "GitHub", color: "#3D444D", hint: "code" },
-  figma: { label: "Figma", color: "#A259FF", hint: "design" },
-  slack: { label: "Slack", color: "#611F69", hint: "chat" },
-  claude: { label: "Claude", color: "#D97757", hint: "ai" },
-  granola: { label: "Granola", color: "#F59E0B", hint: "meetings" },
-  huggingface: { label: "Hugging Face", color: "#FFB300", hint: "models" },
-  linear: { label: "Linear", color: "#5E6AD2", hint: "issues" },
-  canva: { label: "Canva", color: "#8B3DFF", hint: "design" },
+// Label + CLASSES are canonical in @relay/protocol's CONNECTOR_META, so the daemon, the panel and the
+// store can't drift (STATES.md §5.2). Brand COLOUR is a pure UI facet, so it stays here; `hint` — the
+// tile subtext — is now the connector's first class, derived from that one shared table.
+const COLORS: Record<string, string> = {
+  higgsfield: "#EE46BC", leonardo: "#8B5CF6", ideogram: "#5B5BD6", runway: "#00D0BD", elevenlabs: "#111111",
+  shopify: "#95BF47", gmail: "#EA4335", drive: "#1FA463", sheets: "#1FA463", meta: "#1264FF", web: "#4F8CFF",
+  clickup: "#7B68EE", notion: "#37352F", github: "#3D444D", figma: "#A259FF", canva: "#8B3DFF",
+  slack: "#611F69", claude: "#D97757", granola: "#F59E0B", huggingface: "#FFB300", linear: "#5E6AD2",
 };
+const DEFAULT_COLOR = "#C8F250";
+export const CONNECTORS: Record<string, { label: string; color: string; hint: string }> = Object.fromEntries(
+  Object.entries(CONNECTOR_META).map(([id, m]) => [id, { label: m.label, color: COLORS[id] ?? DEFAULT_COLOR, hint: m.classes[0] ?? "" }]),
+);
 
 // Recognisable brand marks for the connector tiles — simple line/solid glyphs drawn in white so they
 // read on each connector's colour. Keyed by connector key; unknown connectors fall back to a monogram.

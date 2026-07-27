@@ -85,6 +85,9 @@ func writeDaemonPlist(to path: String = PLIST) throws {
 let LIME_NS = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1)
 let PAGE_NS = NSColor(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0, alpha: 1)
 let SLATE_NS = NSColor(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0, alpha: 1)
+// The house danger colour (--danger #FF2D6E). Rung 4 (STATES.md §4) is the ONE place a red glyph is
+// warranted: the daemon runs, everything reads green, but Claude Code isn't signed in on this Mac.
+let DANGER_NS = NSColor(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0, alpha: 1)
 extension Color {
     static let page = Color(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0)
     static let panel = Color(red: 0x12/255.0, green: 0x15/255.0, blue: 0x1C/255.0)
@@ -94,16 +97,18 @@ extension Color {
     static let inkDim = Color(red: 0x99/255.0, green: 0xA3/255.0, blue: 0xB7/255.0)
     static let inkFaint = Color(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0)
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
+    static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
 }
 
 // ---------- the status-bar glyph (matches the chip/panel mark) ----------
-func glyphImage(running: Bool, working: Bool, phase: Int) -> NSImage {
+func glyphImage(running: Bool, working: Bool, signedIn: Bool, phase: Int) -> NSImage {
     let size = NSSize(width: 18, height: 18)
     let img = NSImage(size: size, flipped: false) { rect in
         // Stopped: draw in black and let template rendering recolor it — slate #6E7C90 was
         // near-invisible against a dark menu bar, which is exactly the state a first-run user
-        // must find. Running: keep the lime brand mark (template off, see below).
-        let body = running ? LIME_NS : NSColor.black
+        // must find. Running: the lime brand mark — but RED when the daemon is up yet signed out
+        // (rung 4), the one state where "on" would be a lie the user pays for on their first action.
+        let body = running ? (signedIn ? LIME_NS : DANGER_NS) : NSColor.black
         let alpha: CGFloat = working ? (phase % 2 == 0 ? 1.0 : 0.55) : 1.0
         body.withAlphaComponent(alpha).setFill()
         let r = rect.insetBy(dx: 1.5, dy: 1.5)
@@ -162,6 +167,28 @@ func readLastAct() -> LastAct? {
     }
     return nil
 }
+// Rung 4 (STATES.md §4). The SAME marker the daemon reads — ~/.claude.json → oauthAccount.accountUuid
+// — a non-secret, non-prompting file on this machine. Cached 30s (it changes only on sign-in/out).
+// Defaults to TRUE and only returns false on a CONFIDENT negative (a readable file that plainly lacks
+// the account); a missing/unreadable file stays "signed in" so the menubar never cries wolf — the
+// daemon's call-time verdict is the backstop for the expired-token case the marker can't see.
+private var signedInCache: (at: Date, val: Bool)? = nil
+// One remediation, matching the shared copy the browser surfaces use (protocol SIGNED_OUT_MESSAGE).
+let SIGN_IN_HINT = "Claude Code isn\u{2019}t signed in on this Mac — open Terminal, run `claude`, and log in once."
+func readSignedIn() -> Bool {
+    if let c = signedInCache, Date().timeIntervalSince(c.at) < 30 { return c.val }
+    var val = true
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".claude.json")
+    if let obj = readJSON(path) as? [String: Any] {
+        if let acct = obj["oauthAccount"] as? [String: Any] {
+            val = !((acct["accountUuid"] as? String) ?? "").isEmpty
+        } else {
+            val = false // ran claude, but no account on file → signed out
+        }
+    } // missing/unreadable → leave true (unknown; never assert signed-out from absence)
+    signedInCache = (Date(), val)
+    return val
+}
 func hostOf(_ origin: String) -> String {
     origin.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
 }
@@ -178,6 +205,8 @@ func agoText(_ ts: Double) -> String {
 final class Model: ObservableObject {
     @Published var running = false
     @Published var working = false
+    /** Rung 4: Claude Code signed in on this Mac. Defaults true; poll() refreshes from the marker. */
+    @Published var signedIn = true
     @Published var contexts: [Ctx] = []
     @Published var defaultId: String? = nil
     @Published var apps = 0
@@ -232,33 +261,40 @@ struct Panel: View {
                 Text("Switchboard").font(.system(size: 15, weight: .bold)).foregroundColor(.ink)
                 Spacer()
                 HStack(spacing: 6) {
+                    // Running-but-signed-out reads RED here too — never a green "on" over a daemon that
+                    // can't run a call (rung 4). Green when truly on, faint when the daemon is down.
+                    let signedOut = model.running && !model.signedIn
+                    let onColor = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)
                     Circle()
-                        .fill(model.running ? Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0) : Color.inkFaint)
+                        .fill(signedOut ? Color.danger : (model.running ? onColor : Color.inkFaint))
                         .frame(width: 7, height: 7)
-                        .shadow(color: model.running ? Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0).opacity(0.6) : .clear, radius: 4)
-                    Text(model.running ? "on" : "off").font(.system(size: 12, weight: .semibold)).foregroundColor(.inkDim)
+                        .shadow(color: signedOut ? Color.danger.opacity(0.6) : (model.running ? onColor.opacity(0.6) : .clear), radius: 4)
+                    Text(signedOut ? "signed out" : (model.running ? "on" : "off")).font(.system(size: 12, weight: .semibold)).foregroundColor(signedOut ? .danger : .inkDim)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 13)
             Rectangle().fill(Color.edge).frame(height: 1)
 
             // ---- THE MOMENT — the only hero a menubar deserves: what is my AI doing right now? ----
+            //   …and when the daemon is up but signed out (rung 4), the hero IS that: one red line and
+            //   the single fix, so the user never discovers it as a failed first action instead.
+            let signedOut = model.running && !model.signedIn
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
                     Circle()
-                        .fill(model.working ? Color.lime : (model.running ? Color.inkFaint : Color.inkFaint.opacity(0.4)))
+                        .fill(signedOut ? Color.danger : (model.working ? Color.lime : (model.running ? Color.inkFaint : Color.inkFaint.opacity(0.4))))
                         .frame(width: 10, height: 10)
                         .opacity(model.working ? (breathe ? 1.0 : 0.25) : 1.0)
-                        .shadow(color: model.working ? Color.lime.opacity(0.7) : .clear, radius: 6)
+                        .shadow(color: signedOut ? Color.danger.opacity(0.7) : (model.working ? Color.lime.opacity(0.7) : .clear), radius: 6)
                         .animation(model.working ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: breathe)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(model.working ? "Working" : (model.running ? "Idle" : "Offline"))
+                        Text(signedOut ? "Sign in to Claude" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")))
                             .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(model.working ? .lime : (model.running ? .ink : .inkDim))
-                        Text(momentMeta)
+                            .foregroundColor(signedOut ? .danger : (model.working ? .lime : (model.running ? .ink : .inkDim)))
+                        Text(signedOut ? SIGN_IN_HINT : momentMeta)
                             .font(.system(size: 11))
                             .foregroundColor(.inkDim)
-                            .lineLimit(1)
+                            .lineLimit(signedOut ? 3 : 1)
                     }
                     Spacer()
                 }
@@ -367,7 +403,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = glyphImage(running: false, working: false, phase: 0)
+        statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
         statusItem.button?.target = self
 
@@ -449,11 +485,16 @@ final class RelayController: NSObject, NSApplicationDelegate {
         checkReachable { ok in
             self.checkWorking { busy in
                 Task { @MainActor in
+                    // Rung 4: only meaningful once the daemon is up. When up-but-signed-out, the glyph
+                    // goes RED and the tooltip names the one fix — the cliff caught before the first call.
+                    let signedIn = ok ? readSignedIn() : true
                     self.model.running = ok
-                    self.model.working = ok && busy
+                    self.model.working = ok && busy && signedIn
+                    self.model.signedIn = signedIn
                     self.phase += 1
-                    self.statusItem.button?.image = glyphImage(running: ok, working: ok && busy, phase: self.phase)
+                    self.statusItem.button?.image = glyphImage(running: ok, working: self.model.working, signedIn: signedIn, phase: self.phase)
                     self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
+                        : !signedIn ? "Switchboard — \(SIGN_IN_HINT)"
                         : (ok && busy) ? "Switchboard — your model is working…" : "Switchboard — connected"
                     if self.panel.isVisible { self.model.refreshFiles() }
                 }

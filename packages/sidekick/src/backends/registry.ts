@@ -86,6 +86,19 @@ export class BackendRegistry {
     return this.backends.some((b) => b.hosted);
   }
 
+  /** Rung 4 (STATES.md §4): can the daemon actually FULFIL a completion right now? A healthy backend
+   *  that needs no sign-in (a local runner, a hosted key) means yes regardless of Claude Code's auth —
+   *  those serve the default route. Otherwise the verdict is the BYO default's own (`signedIn()`).
+   *  `undefined` = can't tell (never asserts signed-out). */
+  async signedIn(): Promise<boolean | undefined> {
+    for (const b of this.backends) {
+      if (b.id === "claude-code") continue;
+      if (this.lastHealthy.get(b.id) === true) return true; // a usable non-BYO backend is enough
+    }
+    const cc = this.backends.find((b) => b.id === "claude-code");
+    return cc?.signedIn ? cc.signedIn() : undefined;
+  }
+
   async onlineIds(): Promise<string[]> {
     const ids: string[] = [];
     let cameOnline = false;

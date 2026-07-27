@@ -1,4 +1,4 @@
-import type { RequestEnvelope, HealthStatus, HealthReason } from "@relay/protocol";
+import { deriveStage, type RequestEnvelope, type HealthStatus, type HealthReason } from "@relay/protocol";
 
 /**
  * The MV3 service worker — the trusted core of the extension.
@@ -219,43 +219,65 @@ function probeReachable(timeoutMs = 800): Promise<boolean> {
   return probeInflight;
 }
 
+/** Rung 4's signal (STATES.md §4), from the daemon's lean `signedIn` control action. `undefined` when
+ *  the daemon is too old to answer (unknown action) or can't tell — deriveStage then SKIPS the rung
+ *  rather than asserting signed-out. Only ever called once paired, so the socket is already up. */
+async function daemonSignedIn(): Promise<boolean | undefined> {
+  const r = await control("signedIn") as { ok?: boolean; signedIn?: boolean };
+  return r?.ok ? r.signedIn : undefined;
+}
+
 /** This origin's grant, if any (the widgetState lookup, extracted so health shares it). */
 async function grantFor(origin: string): Promise<{ origin: string; mode?: string; usage?: { tokensToday?: number } } | null> {
   const g = await control("listGrants") as { grants?: Array<{ origin: string; mode?: string; usage?: { tokensToday?: number } }> };
   return (g?.grants ?? []).find((x) => x.origin === origin) ?? null;
 }
 
-/** The setup ladder WITHOUT the per-origin bit: reachable/paired/reason from the worker's own state.
- *  Never redials when a token is stored — it classifies from the last dial (fresh at every
- *  transition call site), so a broadcast from socket.onclose can't recurse into a reconnect. */
-async function baseHealth(): Promise<{ installed: true; reachable: boolean; paired: boolean; reason?: HealthReason; installedHere: boolean }> {
-  if (socket && socket.readyState === WebSocket.OPEN && authed) return { installed: true, reachable: true, paired: true, installedHere: true };
-  const token = await getToken();
-  const seen = !!token || (await everReached());
-  if (token) {
-    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, reason: "unpaired", installedHere: true };
-    return { installed: true, reachable: false, paired: false, reason: "unreachable", installedHere: seen };
-  }
-  const reachable = await probeReachable();
-  return { installed: true, reachable, paired: false, reason: reachable ? "unpaired" : "unreachable", installedHere: reachable || seen };
-}
-
-/** claude_health's answer — the one method that never NEEDS the daemon. Degraded states resolve
- *  entirely from worker state (<1s via the probe cache); only the healthy state consults the daemon,
- *  and only for this origin's `connected` bit. */
-async function healthSnapshot(origin: string): Promise<HealthStatus> {
+/** THE ONE health derivation (docs/STATES.md §1.1). Everything that reports the ladder — the page
+ *  SDK's `claude_health`, the panel's `getStatus`, the widget's `widgetState`, and the live `health`
+ *  broadcast — is built from THIS, so the three shapes that used to each re-derive "where am I?" (and
+ *  disagree) now share one answer and one `stage`. Degraded rungs resolve entirely from worker state,
+ *  so it stays <1s in exactly the states where every daemon method would hang; only once paired do we
+ *  touch the daemon, and only for the bits that live there (sign-in, this origin's grant).
+ *
+ *  `origin` null = an origin-less consumer (the panel is not a page): the per-origin `connected` rung
+ *  is not applicable, so the ladder tops out at signed-in rather than falsely reading "disconnected". */
+async function computeHealth(origin: string | null): Promise<HealthStatus> {
+  // ---- rungs 2–3: reachable / paired, classified from the last dial (fresh at every transition call
+  //      site) so a broadcast from socket.onclose can't recurse into a reconnect. A rejected token is
+  //      REACHABLE (the daemon answered) with pairing still missing — one honest shape, not two. ----
+  let reachable: boolean, paired: boolean, installedHere: boolean, tokenRejected = false;
   if (socket && socket.readyState === WebSocket.OPEN && authed) {
-    return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)), installedHere: true };
+    reachable = true; paired = true; installedHere = true;
+  } else {
+    const token = await getToken();
+    const seen = !!token || (await everReached());
+    if (token) {
+      if (await ensureSocket()) { reachable = true; paired = true; installedHere = true; }
+      else if (lastDial.openedButUnauthed) { reachable = true; paired = false; tokenRejected = true; installedHere = true; }
+      else { reachable = false; paired = false; installedHere = seen; }
+    } else {
+      reachable = await probeReachable(); paired = false; installedHere = reachable || seen;
+    }
   }
-  const token = await getToken();
-  const seen = !!token || (await everReached());
-  if (token) {
-    if (await ensureSocket()) return { installed: true, reachable: true, paired: true, connected: !!(await grantFor(origin)), installedHere: true };
-    if (lastDial.openedButUnauthed) return { installed: true, reachable: true, paired: false, connected: false, reason: "unpaired", installedHere: true };
-    return { installed: true, reachable: false, paired: false, connected: false, reason: "unreachable", installedHere: seen };
+  // ---- rungs 4–5: only meaningful once paired, and each lives in the daemon, so we ask ONLY here —
+  //      never on the degraded fast path. `signedIn` undefined = unknown → deriveStage skips the rung. ----
+  let signedIn: boolean | undefined;
+  let connected = false;
+  if (reachable && paired) {
+    signedIn = await daemonSignedIn();
+    if (origin) connected = !!(await grantFor(origin));
   }
-  const reachable = await probeReachable();
-  return { installed: true, reachable, paired: false, connected: false, reason: reachable ? "unpaired" : "unreachable", installedHere: reachable || seen };
+  const stage = deriveStage({
+    installed: true, installedHere, reachable, paired, signedIn,
+    connected: origin ? connected : undefined, // null origin → the disconnected rung is N/A
+  });
+  const h: HealthStatus = { installed: true, reachable, paired, connected, installedHere, stage };
+  const reason: HealthReason | undefined = reachable ? (paired ? undefined : "unpaired") : "unreachable";
+  if (reason) h.reason = reason;
+  if (tokenRejected) h.tokenRejected = true;
+  if (signedIn !== undefined) h.signedIn = signedIn;
+  return h;
 }
 
 /** Fan the `health` event out to every page (per-origin `connected`) and nudge the open panel to
@@ -263,8 +285,8 @@ async function healthSnapshot(origin: string): Promise<HealthStatus> {
  *  the onclose reconnect loop and repeated failed dials produce ONE push per actual transition. */
 let lastHealthKey = "";
 async function broadcastHealth(): Promise<void> {
-  const base = await baseHealth();
-  const key = `${base.reachable}|${base.paired}|${base.reason ?? ""}`;
+  const base = await computeHealth(null); // shared rungs (+ sign-in); per-origin `connected` added below
+  const key = `${base.reachable}|${base.paired}|${base.reason ?? ""}|${base.signedIn ?? ""}`;
   if (key === lastHealthKey) return;
   lastHealthKey = key;
   // One grant list when reachable+paired; per-origin `connected` derives from it. False otherwise.
@@ -274,7 +296,10 @@ async function broadcastHealth(): Promise<void> {
   }
   for (const p of pagePorts) {
     const origin = p.sender?.origin ?? (p.sender?.url ? new URL(p.sender.url).origin : "null");
-    const payload: HealthStatus = { ...base, connected: grants.some((x) => x.origin === origin) };
+    const connected = grants.some((x) => x.origin === origin);
+    // `stage` is per-origin: the disconnected rung depends on THIS page's grant, so re-derive it here.
+    const stage = deriveStage({ installed: true, installedHere: base.installedHere, reachable: base.reachable, paired: base.paired, signedIn: base.signedIn, connected });
+    const payload: HealthStatus = { ...base, connected, stage };
     try { p.postMessage({ event: "health", payload }); } catch { /* gone */ }
   }
   try { panelPort?.postMessage({ type: "state:changed", event: "health" }); } catch { /* panel gone */ }
@@ -385,29 +410,20 @@ async function tryOpenPanel() {
  *  (which the page already earned by connecting). Sensitive controls stay in the panel/toast. */
 async function widgetState(sender: chrome.runtime.MessageSender): Promise<Record<string, unknown>> {
   const origin = sender.origin ?? (sender.url ? new URL(sender.url).origin : "");
-  const token = await getToken();
-  let paired = !!token;
-  let reachable: boolean;
-  if (token) {
-    reachable = await ensureSocket();
-    // Daemon up but it rejected the token → the daemon IS reachable and pairing is what's missing.
-    if (!reachable && lastDial.openedButUnauthed) { reachable = true; paired = false; }
-  } else {
-    // No token: probe anyway, so the widget can tell "sidekick asleep" from "pair now".
-    reachable = await probeReachable();
-  }
-  // installedHere lets the widget stay SILENT on a true fresh install (the chip owns first-run) while
-  // still showing "asleep" to someone who has the app but hasn't started it.
-  const installedHere = reachable || !!token || (await everReached());
-  if (!reachable || !paired) return { paired, reachable, connected: false, installedHere };
-  const grant = await grantFor(origin);
-  let lentName: string | null = null;
-  if (grant) {
-    const c = await control("listContexts") as { contexts?: Array<{ id: string; name: string }>; activeProject?: string | null; selections?: Array<{ origin: string; contextId: string | null }> };
-    const sel = (c?.selections ?? []).find((s) => s.origin === origin)?.contextId ?? c?.activeProject ?? null;
-    lentName = (c?.contexts ?? []).find((x) => x.id === sel)?.name ?? null;
-  }
-  return { paired: true, reachable: true, connected: !!grant, mode: grant?.mode ?? null, lentName, tokensToday: grant?.usage?.tokensToday ?? 0 };
+  // The SAME ladder every surface reads — `stage` and all — so the widget can't disagree with the
+  // panel or the page about where setup stands. Compute the shared rungs WITHOUT an origin (so the
+  // one grant fetch below isn't doubled), then fold in THIS origin's `connected` and re-derive stage.
+  const base = await computeHealth(null);
+  if (!base.reachable || !base.paired) return { ...base };
+  const grant = await grantFor(origin); // one round-trip: feeds both `connected` and the detail rows
+  const connected = !!grant;
+  const stage = deriveStage({ installed: true, installedHere: base.installedHere, reachable: base.reachable, paired: base.paired, signedIn: base.signedIn, connected });
+  if (!connected) return { ...base, connected, stage };
+  // Connected: enrich with THIS origin's own lent context + today's compute (nothing cross-origin).
+  const c = await control("listContexts") as { contexts?: Array<{ id: string; name: string }>; activeProject?: string | null; selections?: Array<{ origin: string; contextId: string | null }> };
+  const sel = (c?.selections ?? []).find((s) => s.origin === origin)?.contextId ?? c?.activeProject ?? null;
+  const lentName = (c?.contexts ?? []).find((x) => x.id === sel)?.name ?? null;
+  return { ...base, connected, stage, mode: grant?.mode ?? null, lentName, tokensToday: grant?.usage?.tokensToday ?? 0 };
 }
 
 /** The widget's "Manage" button → open the full control surface for the sensitive actions. Prefer the
@@ -425,23 +441,13 @@ async function openPanelFor(sender: chrome.runtime.MessageSender): Promise<void>
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
-      case "getStatus": {
-        const token = await getToken();
-        // `reachable` = something answers the daemon port. With a token that means "up + authenticates";
-        // without one we bare-probe, so the panel can tell "unpaired" (show pairing) from "unreachable"
-        // (show the get-the-sidekick card). `tokenRejected` = the daemon answered but refused OUR token —
-        // the panel must say "token didn't match", never "isn't running", when it is running.
-        // `installedHere` separates "never downloaded the app" from "app is here, just asleep" —
-        // WITHOUT it the panel showed "Get the sidekick" to people who already had it (they had simply
-        // never paired, so there was no token to infer from). Same derivation as baseHealth().
-        const reachable = token ? await ensureSocket() : await probeReachable();
-        sendResponse({
-          paired: !!token, reachable,
-          tokenRejected: !!token && !reachable && lastDial.openedButUnauthed,
-          installedHere: reachable || !!token || (await everReached()),
-        });
+      case "getStatus":
+        // The panel reads the SAME HealthStatus as every other surface — `stage` and all. It is not a
+        // page, so it passes no origin: the per-origin `connected` rung is N/A and the ladder tops out
+        // at signed-in. `stage` drives the status strip and the setup cards; `tokenRejected` lets the
+        // pairing card say "token didn't match" instead of "isn't running".
+        sendResponse(await computeHealth(null));
         break;
-      }
       case "widgetState": sendResponse(await widgetState(sender)); break;
       case "openPanel": await openPanelFor(sender); sendResponse({ ok: true }); break;
       case "pair": await chrome.storage.local.set({ pairingToken: msg.token }); await ensureSocket(); void broadcastHealth(); sendResponse({ ok: true }); break;
@@ -498,7 +504,7 @@ chrome.runtime.onConnect.addListener((port) => {
     // claude_health — the one method the background answers from its OWN state, before any daemon
     // dial: it must resolve fast in exactly the states where everything else would fail.
     if (m.method === "claude_health") {
-      try { port.postMessage({ id: m.id, result: await healthSnapshot(origin) }); } catch { /* port gone */ }
+      try { port.postMessage({ id: m.id, result: await computeHealth(origin) }); } catch { /* port gone */ }
       return;
     }
     const ok = await ensureSocket();

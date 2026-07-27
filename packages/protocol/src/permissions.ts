@@ -8,6 +8,8 @@
  * `RequestEnvelope.origin` field, which the daemon treats as authoritative.
  */
 
+import type { ConnectorNeed } from "./connectors.js";
+
 /** A tool's danger class, decided OUT OF BAND by the daemon's policy table — never by the
  *  model and never from page input. Default-deny: an unclassified tool is `write`. */
 export type ToolAccess = "read" | "write";
@@ -86,6 +88,11 @@ export interface ScopeRequest {
   contextKinds?: string[];
   /** Human-readable reason shown in the consent UI. Untrusted; displayed, never executed. */
   reason?: string;
+  /** CLASS-level connector needs (docs/STATES.md §5.3), declared ALONGSIDE `tools`. Purely
+   *  declarative — the consent UI reasons over it to offer a same-class substitute; the gate never
+   *  sees it and `tools` is unchanged. Declaring a need is the app's promise it uses that class
+   *  generically, so it can take the substitute. */
+  needs?: ConnectorNeed[];
 }
 
 export const DEFAULT_BUDGETS: Budgets = {

@@ -20,6 +20,7 @@ import type {
   StreamDelta,
   ToolCallRequest,
   ToolDescriptor,
+  ConnectorInventory,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
@@ -278,6 +279,7 @@ export class Broker implements ConsentPrompter {
       methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak"],
       models: await this.deps.backends.models(),
       backends: await this.deps.backends.onlineIds(),
+      signedIn: await this.deps.backends.signedIn(),
       agentic: true,
       user: this.deps.config.profile,
       local: { tts: ttsAvailable(), voices: ttsVoices() },
@@ -320,6 +322,16 @@ export class Broker implements ConsentPrompter {
         };
       case "audit":
         return { entries: this.deps.audit.read(args?.origin, args?.limit ?? 300) };
+      case "signedIn":
+        // Rung 4 (STATES.md §4): the extension folds this into the ladder once paired, so the panel
+        // stops reading green while the daemon can't actually run a call. Lean by design — no models
+        // list, no backend probe beyond the cached sign-in verdict — because it's on the health path.
+        return { ok: true, signedIn: await this.deps.backends.signedIn() };
+      case "listConnectors":
+        // Rung 6 (STATES.md §5.4): what's actually available, with an explicit honesty boundary —
+        // local MCP servers are enumerable + exact; claude.ai connectors are inherited by the SDK
+        // (in no local file) so they degrade to "unknown", never a guessed absence.
+        return { ok: true, ...this.connectorInventory() };
       case "revoke": {
         const origin = String(args?.origin ?? "");
         this.deps.grants.revoke(origin);
@@ -554,6 +566,13 @@ export class Broker implements ConsentPrompter {
     }
   }
 
+  /** The connector inventory (docs/STATES.md §5.4). Local MCP servers are enumerable + exact; claude.ai
+   *  connectors are inherited by the Agent SDK from the user's sign-in — held in no local file — so they
+   *  are reported "unknown" rather than asserted absent. `Date.now()` is fine here (not a hot path). */
+  private connectorInventory(): ConnectorInventory {
+    return { local: this.deps.mcp.connectors(), inherited: "unknown", checkedAt: Date.now() };
+  }
+
   /** claude_connect: run the connect consent flow, then persist the (narrowed) grant. */
   private async connect(origin: string, requested: ScopeRequest): Promise<OriginGrant> {
     // TabSidekick principal (`tabsidekick@<host>`): a distinct, extension-driven flow — the user's
@@ -577,6 +596,12 @@ export class Broker implements ConsentPrompter {
       budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
       // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
       contextKinds: (requested.contextKinds ?? []).map((k) => String(k).trim()).filter(Boolean),
+      // Rung 6 (STATES.md §5): the app's CLASS-level needs + what's actually available, so the consent
+      // UI can offer a same-class substitute. Declarative only — `tools` above is what the gate sees;
+      // an accepted substitution adds the substitute's exact tool names back through `approved.tools`,
+      // which are re-classified below, so the exact-match gate is never widened by a class.
+      needs: (requested.needs ?? []),
+      connectors: this.connectorInventory(),
     };
     const approved = await this.requestConnectConsent(origin, consentBody);
     if (!approved) throw new ProviderError(BYOPErrorCode.USER_REJECTED, "user rejected connect");

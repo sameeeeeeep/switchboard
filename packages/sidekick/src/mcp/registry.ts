@@ -1,7 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { ToolCallRequest, ToolCallResult, ToolDescriptor } from "@relay/protocol";
+import type { ConnectorClass, ConnectorInventory, ToolCallRequest, ToolCallResult, ToolDescriptor } from "@relay/protocol";
+import { CONNECTOR_META, connectorIdOf } from "@relay/protocol";
 import { classifyTool } from "../security/classifier.js";
 import { isHttp, type RelayMcpConfig, type RelayMcpServer } from "./config.js";
 
@@ -76,6 +77,30 @@ export class McpRegistry {
 
   get(name: string): ToolDescriptor | null {
     return this.tools.get(name) ?? null;
+  }
+
+  /** The LOCAL connector inventory for listConnectors (docs/STATES.md §5.4): each configured MCP
+   *  server, the class(es) it serves (from the shared table), and its EXACT tool names. This is the
+   *  enumerable, honest half — claude.ai connectors are inherited by the SDK and reported "unknown"
+   *  by the caller, never guessed here. */
+  connectors(): ConnectorInventory["local"] {
+    const toolsByServer = new Map<string, string[]>();
+    for (const t of this.tools.values()) {
+      const arr = toolsByServer.get(t.server) ?? [];
+      arr.push(t.name);
+      toolsByServer.set(t.server, arr);
+    }
+    const serverIds = new Set<string>([...Object.keys(this.configs), ...toolsByServer.keys()]);
+    return [...serverIds].map((serverId) => {
+      const key = connectorIdOf(serverId); // map "clickup" / "claude_ai_Figma" → the shared table key
+      const classes: ConnectorClass[] = key ? CONNECTOR_META[key]!.classes : [];
+      return {
+        id: key ?? serverId,
+        label: key ? CONNECTOR_META[key]!.label : serverId,
+        classes,
+        tools: (toolsByServer.get(serverId) ?? []).sort(),
+      };
+    });
   }
 
   /**

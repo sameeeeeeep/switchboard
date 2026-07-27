@@ -1,3 +1,4 @@
+import { deriveStage, type Stage } from "@relay/protocol";
 import { WRAPPS, hostMatch, type Wrapp } from "./wrapps.js";
 
 /**
@@ -19,7 +20,13 @@ const HOST_ID = "relay-switchboard-widget";
 const HIDE_KEY = (h: string) => `relayWidgetHidden:${h}`;
 const COLLAPSED_KEY = "relayWidgetCollapsed";
 
-interface WidgetState { paired: boolean; reachable: boolean; installedHere?: boolean; connected?: boolean; mode?: string | null; lentName?: string | null; tokensToday?: number }
+interface WidgetState { paired: boolean; reachable: boolean; installedHere?: boolean; connected?: boolean; stage?: Stage; mode?: string | null; lentName?: string | null; tokensToday?: number }
+
+/** The one ladder, as the widget sees it — the shared ordinal from the background, with a local
+ *  fallback derivation for safety against an older background that predates `stage`. */
+function widgetStage(s: WidgetState): Stage {
+  return s.stage ?? deriveStage({ installed: true, installedHere: s.installedHere, reachable: s.reachable, paired: s.paired, connected: s.connected });
+}
 
 const GLYPH = `<span style="width:16px;height:16px;border-radius:5px;background:#C8F250;box-shadow:0 0 12px rgba(200,242,80,.45);display:inline-block;position:relative;flex:none">
   <span style="position:absolute;inset:5px 5px auto auto;width:4px;height:4px;border-radius:50%;background:#0A0C10"></span></span>`;
@@ -86,10 +93,12 @@ function headerEl(): HTMLElement {
 function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) {
   root.innerHTML = `<style>${css()}</style>`;
   const rerender = (c: boolean) => { setCollapsed(c); render(root, view, host, c); };
-  const connected = view.kind === "status" && !!view.state.connected;
-  // Mini ladder colours: asleep is AMBER (nothing is broken), everything else keeps its meaning.
-  const asleep = view.kind === "status" && !view.state.reachable && (view.state.paired || !!view.state.installedHere);
-  const dotColor = view.kind === "alts" ? "#6E7C90" : asleep ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
+  const stage = view.kind === "status" ? widgetStage(view.state) : null;
+  const connected = stage === "ready";
+  // Mini ladder colours: AMBER where setup needs one more step (asleep, or signed-out — nothing is
+  // broken, but the daemon can't run a call yet); green when connected; lime for the in-between rungs.
+  const amber = stage === "app-asleep" || stage === "signed-out";
+  const dotColor = view.kind === "alts" ? "#6E7C90" : amber ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
 
   if (collapsed) {
     const pill = document.createElement("div");
@@ -130,17 +139,18 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
     bd.appendChild(foot);
   } else {
     const s = view.state;
-    // The status face's mini ladder. "Switchboard ready" is only ever said where it's TRUE
-    // (paired + reachable); the degraded rungs each name their one next action, and every
-    // button below is openPanel — no dead CTAs.
-    const unpaired = s.reachable && !s.paired;
+    // The status face's mini ladder, read from the shared `stage`. Each degraded rung names its one
+    // next action, "Connected" is only ever said at `ready`, and every button below is openPanel —
+    // no dead CTAs. Rungs below app-asleep never reach here (main() suppresses the true fresh install).
     const stat = document.createElement("div");
     stat.className = "stat";
     stat.innerHTML = `<span class="dot" style="background:${dotColor}"></span><span></span>`;
     (stat.querySelector("span:last-child") as HTMLElement).textContent =
-      asleep ? "Sidekick asleep — open the Switchboard app"
-      : unpaired ? "Almost there — pair Switchboard"
-      : connected ? "Connected — running on your Claude" : "Switchboard ready — connect on this page";
+      stage === "app-asleep" ? "Sidekick asleep — open the Switchboard app"
+      : stage === "unpaired" ? "Almost there — pair Switchboard"
+      : stage === "signed-out" ? "Sign in to Claude to finish setup"
+      : stage === "ready" ? "Connected — running on your Claude"
+      : "Switchboard ready — connect on this page"; // disconnected
     bd.appendChild(stat);
 
     if (connected) {
@@ -192,7 +202,7 @@ async function main() {
     // paired-but-asleep, reachable-but-unpaired): the user has started setup, so the widget's one
     // next action helps rather than nags.
     const state = (await send({ type: "widgetState" })) as WidgetState | undefined;
-    if (!state || (!state.paired && !state.reachable && !state.installedHere)) return;
+    if (!state || widgetStage(state) === "no-app") return; // true fresh install: the chip owns first-run
     view = { kind: "status", state };
   }
 
