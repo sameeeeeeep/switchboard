@@ -1,5 +1,11 @@
 # Spec: modular backend capabilities
 
+> **⚠️ Superseded in framing by [BACKEND-AS-CONNECTORS.md](./BACKEND-AS-CONNECTORS.md).** The doctrine
+> we landed on: a wrapp's backend is a **connector** (brokered via `callTool` + consent), not a new
+> set of daemon methods. Under that, most of this spec dissolves — `sb_http`→the API's connector,
+> `sb_db`→a DB connector, `sb_secrets`→gone (each connector holds its own auth), `sb_exec`→a sandbox
+> connector. Read this for the motivation/consent-model thinking; read the doctrine for the direction.
+
 **Status:** draft / design — no implementation yet.
 **Author:** design note from the brandbrain-port work.
 **Related:** [PORTING-AND-DEPLOY.md](./PORTING-AND-DEPLOY.md), [ARCHITECTURE.md](../ARCHITECTURE.md),
