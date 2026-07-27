@@ -1,10 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { query, type CanUseTool, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
-import { BYOPErrorCode, ProviderError, type CompletionParams } from "@relay/protocol";
+import { BYOPErrorCode, ProviderError, SIGNED_OUT_MESSAGE, type CompletionParams } from "@relay/protocol";
 import type { BackendRunContext, ModelBackend } from "./types.js";
 
 /**
@@ -62,6 +62,37 @@ function probeCli(): Promise<boolean> {
 /** Sign-in failures come back inside the SDK's result message, not as spawn errors. */
 const AUTH_ERROR_RE = /log ?in|logged.?out|not.+authenticated|authentication|credential|api.?key|unauthorized|oauth|billing|subscription/i;
 
+/** Rung 4's signal (STATES.md §4). `healthy()` proves the CLI RUNTIME works but NOT sign-in, so the
+ *  cliff — installed, paired, green everywhere, first call fails — needs a real signed-in probe.
+ *
+ *  Two honest sources, most-authoritative first:
+ *   1. `observedSignedIn` — set by a REAL call: a success proves signed in, an auth-classified failure
+ *      proves signed out. Sticky (survives until the next call flips it); the ground truth once we have it.
+ *   2. The credential MARKER in ~/.claude.json (`oauthAccount.accountUuid`) — a non-secret, non-prompting
+ *      file the daemon can read as the user. Present ⇒ signed in at some point; a readable file WITHOUT it
+ *      ⇒ ran `claude`, never logged in ⇒ signed out. Missing/unreadable ⇒ undefined (never assert).
+ *  Framed per §3 rule 4: absence is "we haven't seen a sign-in", reversible — never a hard "you are not". */
+let observedSignedIn: boolean | undefined;
+/** Record what a real call proved about sign-in (called from run()). */
+export function noteSignInObserved(ok: boolean): void { observedSignedIn = ok; }
+
+let markerProbe: { at: number; val: boolean | undefined } | null = null;
+const MARKER_TTL_MS = 30_000;
+function signInMarker(): boolean | undefined {
+  if (markerProbe && Date.now() - markerProbe.at < MARKER_TTL_MS) return markerProbe.val;
+  let val: boolean | undefined;
+  try {
+    const raw = readFileSync(join(homedir(), ".claude.json"), "utf8");
+    // Parse only the field we need — the file is large and the rest is none of our business.
+    const acct = (JSON.parse(raw) as { oauthAccount?: { accountUuid?: string } }).oauthAccount;
+    val = acct ? !!acct.accountUuid : false; // readable but no account ⇒ ran claude, not logged in
+  } catch {
+    val = undefined; // missing or unreadable ⇒ we can't tell; do not assert signed-out
+  }
+  markerProbe = { at: Date.now(), val };
+  return val;
+}
+
 const DEFAULT_MODEL = process.env.RELAY_CLAUDE_MODEL || "sonnet";
 
 function toPrompt(params: CompletionParams): string {
@@ -81,8 +112,16 @@ export class ClaudeCodeBackend implements ModelBackend {
   }
 
   async listModels(): Promise<string[]> {
-    // Aliases the SDK/CLI accepts; the daemon routes any of these here.
+    // Aliases the SDK/CLI accepts; the daemon routes any of these here. NOTE: this stays non-empty
+    // even when signed OUT (the CLI accepts these ids regardless), which is exactly why an empty
+    // models[] can't be the signed-out signal — `signedIn()` is. See STATES.md §4.
     return [DEFAULT_MODEL, "opus", "sonnet", "haiku", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"];
+  }
+
+  /** Rung 4: signed in on this Mac? Observed truth (a real call) wins; otherwise the credential
+   *  marker. Never touches the network and never prompts — see signInMarker/noteSignInObserved. */
+  async signedIn(): Promise<boolean | undefined> {
+    return observedSignedIn !== undefined ? observedSignedIn : signInMarker();
   }
 
   async run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }> {
@@ -165,11 +204,12 @@ export class ClaudeCodeBackend implements ModelBackend {
           if (r.is_error || (r.subtype && r.subtype !== "success")) {
             const raw = typeof r.result === "string" ? r.result : (r.subtype ?? "backend error");
             if (AUTH_ERROR_RE.test(raw)) {
-              throw new ProviderError(BYOPErrorCode.UNAUTHORIZED,
-                "Claude Code isn’t signed in on this Mac. Open Terminal, run `claude`, and log in once — Switchboard runs on your own Claude.");
+              noteSignInObserved(false); // ground truth: this Mac is signed OUT — the ladder upgrades to it
+              throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, SIGNED_OUT_MESSAGE);
             }
             throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, raw.slice(0, 200));
           }
+          noteSignInObserved(true); // a completed result proves we ARE signed in — clears a stale marker
           if (typeof r.result === "string" && !text) text = r.result;
         }
       }

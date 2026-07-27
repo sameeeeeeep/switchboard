@@ -95,9 +95,10 @@ function render(root: ShadowRoot, view: View, host: string, collapsed: boolean) 
   const rerender = (c: boolean) => { setCollapsed(c); render(root, view, host, c); };
   const stage = view.kind === "status" ? widgetStage(view.state) : null;
   const connected = stage === "ready";
-  // Mini ladder colours: asleep is AMBER (nothing is broken), everything else keeps its meaning.
-  const asleep = stage === "app-asleep";
-  const dotColor = view.kind === "alts" ? "#6E7C90" : asleep ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
+  // Mini ladder colours: AMBER where setup needs one more step (asleep, or signed-out — nothing is
+  // broken, but the daemon can't run a call yet); green when connected; lime for the in-between rungs.
+  const amber = stage === "app-asleep" || stage === "signed-out";
+  const dotColor = view.kind === "alts" ? "#6E7C90" : amber ? "#F2B450" : connected ? "#3DD68C" : "#C8F250";
 
   if (collapsed) {
     const pill = document.createElement("div");

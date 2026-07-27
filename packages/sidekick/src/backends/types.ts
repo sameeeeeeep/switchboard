@@ -46,6 +46,11 @@ export interface ModelBackend {
   listModels(): Promise<string[]>;
   /** True if the backend is reachable right now (CLI present / local server up). */
   healthy(): Promise<boolean>;
+  /** Rung 4 (STATES.md §4): whether this backend is not just present but ACTUALLY USABLE — for BYO
+   *  Claude Code that means signed in, which `healthy()` deliberately does NOT test (sign-in lives in
+   *  the Keychain and is only truly known at call time). `true`/`false`/`undefined` (can't tell).
+   *  Optional: a backend that is usable whenever healthy (a local runner, a hosted key) omits it. */
+  signedIn?(): Promise<boolean | undefined>;
   /** Run a (possibly agentic, possibly streaming) completion. The backend pushes deltas via
    *  ctx.emit and returns the final text. Throws on backend error; the daemon maps to BYOP. */
   run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }>;

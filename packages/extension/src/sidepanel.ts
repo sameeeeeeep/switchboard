@@ -31,7 +31,7 @@ interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamNa
 interface CloudStatus { enabled: boolean; hostedModels: string[]; models?: string[] }
 interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; installedHere?: boolean; signedIn?: boolean; stage?: Stage; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
 
-import { deriveStage, type Stage } from "@relay/protocol";
+import { deriveStage, SIGNED_OUT_HEADLINE, SIGNED_OUT_MESSAGE, type Stage } from "@relay/protocol";
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
 import { connectorOf, connectorGlyph, brandIcon, KIND_MARKS, type ConnectorInfo } from "./icons.js";
@@ -147,7 +147,7 @@ const EMPTY = { grants: [], audit: [], contexts: [], activeProject: null, select
 
 async function load(): Promise<PanelData> {
   if (!inExtension) {
-    // Design preview: ?state=unreachable | unpaired | asleep | asleep-unpaired | rejected mocks each
+    // Design preview: ?state=unreachable | unpaired | asleep | asleep-unpaired | rejected | signed-out mocks each
     // setup state (serve.mjs, outside the extension); default renders the connected home with MOCK data.
     const s = new URLSearchParams(location.search).get("state");
     if (s === "unreachable") return { paired: false, reachable: false, installedHere: false, ...EMPTY };
@@ -159,6 +159,8 @@ async function load(): Promise<PanelData> {
     // Rejected token = the daemon ANSWERED but refused it → reachable, pairing still missing (the
     // unified shape; the old preset said reachable:false, which now reads as app-asleep).
     if (s === "rejected") return { paired: false, reachable: true, tokenRejected: true, installedHere: true, ...EMPTY };
+    // Paired + reachable, but Claude Code isn't signed in (§4) — the cliff that used to read green.
+    if (s === "signed-out") return { paired: true, reachable: true, installedHere: true, signedIn: false, ...EMPTY };
     // `cold` = set up and online, but an EMPTY library — the first-run state the three pointers
     // exist for, and the one MOCK (a full library) can never show.
     if (s === "cold") return { paired: true, reachable: true, ...EMPTY };
@@ -213,7 +215,7 @@ function render(data: PanelData) {
   // first unmet rung; the panel renders THAT and never re-derives. `deriveStage` is the fallback only
   // for the design-preview `?state=` mocks, which carry booleans but no stage.
   const stage = data.stage ?? deriveStage({ installed: true, installedHere: data.installedHere, reachable: data.reachable, paired: data.paired, signedIn: data.signedIn });
-  const online = data.reachable && data.paired; // the home surface can show once past pairing
+  const online = stage === "ready"; // the home shows only when EVERY rung holds — signed-out is a cliff
   const rejected = !!data.tokenRejected;
   const st = $("status"); st.className = "status" + (online ? " on" : "");
   // Status strip: calm, each string names where you are on the ladder — never "offline"/"error".
@@ -232,14 +234,22 @@ function render(data: PanelData) {
   //     case used to fall into the branch above and tell someone who had it to go download it.
   //   • unpaired: daemon up, no accepted pairing (none stored, or the stored one was rejected) → the
   //     pairing card (token input + Pair). The auth_ok health push flips the panel home once it wakes.
+  //   • signed-out: paired, but Claude Code isn't signed in on this Mac (§4 — the invisible cliff).
+  //     No token; the one action is a Terminal sign-in, and "Retry" re-polls once they have.
   const freshInstall = stage === "no-app";
   const asleep = stage === "app-asleep";
+  const signedOut = stage === "signed-out";
   ($("setup") as HTMLElement).hidden = online || !freshInstall;
   ($("pairing") as HTMLElement).hidden = online || freshInstall;
   if (!online && !freshInstall) {
     const tokenEl = $("token") as HTMLInputElement;
     const err = $("pairErr");
-    if (asleep) {                 // app present, daemon down — retry is a courtesy; health auto-recovers
+    if (signedOut) {              // paired but not signed in — the sharpest hole; one Terminal step fixes it
+      $("pairH2").textContent = SIGNED_OUT_HEADLINE;
+      tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
+      err.className = "err calm"; err.textContent = SIGNED_OUT_MESSAGE;
+      $("pairBtn").textContent = "Retry";
+    } else if (asleep) {          // app present, daemon down — retry is a courtesy; health auto-recovers
       $("pairH2").textContent = "Your sidekick is asleep";
       tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
       err.className = "err calm";

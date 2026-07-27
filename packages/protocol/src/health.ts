@@ -112,3 +112,12 @@ export function deriveStage(h: StageInput): Stage {
 
 /** The provider event name for live ladder transitions (window.claude.on(HEALTH_EVENT, …)). */
 export const HEALTH_EVENT = "health" as const;
+
+/** THE ONE signed-out remediation (STATES.md §4/§6). The daemon throws it at call time, and the panel,
+ *  widget and menubar show it as guidance — all from here, so the surfaces say it identically instead
+ *  of the four stale variants that used to drift ("Start the Switchboard daemon", "npm run daemon…").
+ *  Phrased to be true whether shown proactively (we haven't seen a sign-in) or on an observed failure
+ *  (the token expired): either way, the one action is the same. */
+export const SIGNED_OUT_HEADLINE = "Sign in to Claude to finish setup";
+export const SIGNED_OUT_MESSAGE =
+  "Claude Code isn’t signed in on this Mac — open Terminal, run `claude`, and log in once. Switchboard runs on your own Claude.";

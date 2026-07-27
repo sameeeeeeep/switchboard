@@ -278,6 +278,7 @@ export class Broker implements ConsentPrompter {
       methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak"],
       models: await this.deps.backends.models(),
       backends: await this.deps.backends.onlineIds(),
+      signedIn: await this.deps.backends.signedIn(),
       agentic: true,
       user: this.deps.config.profile,
       local: { tts: ttsAvailable(), voices: ttsVoices() },
@@ -320,6 +321,11 @@ export class Broker implements ConsentPrompter {
         };
       case "audit":
         return { entries: this.deps.audit.read(args?.origin, args?.limit ?? 300) };
+      case "signedIn":
+        // Rung 4 (STATES.md §4): the extension folds this into the ladder once paired, so the panel
+        // stops reading green while the daemon can't actually run a call. Lean by design — no models
+        // list, no backend probe beyond the cached sign-in verdict — because it's on the health path.
+        return { ok: true, signedIn: await this.deps.backends.signedIn() };
       case "revoke": {
         const origin = String(args?.origin ?? "");
         this.deps.grants.revoke(origin);

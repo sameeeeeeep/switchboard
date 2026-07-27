@@ -219,6 +219,14 @@ function probeReachable(timeoutMs = 800): Promise<boolean> {
   return probeInflight;
 }
 
+/** Rung 4's signal (STATES.md §4), from the daemon's lean `signedIn` control action. `undefined` when
+ *  the daemon is too old to answer (unknown action) or can't tell — deriveStage then SKIPS the rung
+ *  rather than asserting signed-out. Only ever called once paired, so the socket is already up. */
+async function daemonSignedIn(): Promise<boolean | undefined> {
+  const r = await control("signedIn") as { ok?: boolean; signedIn?: boolean };
+  return r?.ok ? r.signedIn : undefined;
+}
+
 /** This origin's grant, if any (the widgetState lookup, extracted so health shares it). */
 async function grantFor(origin: string): Promise<{ origin: string; mode?: string; usage?: { tokensToday?: number } } | null> {
   const g = await control("listGrants") as { grants?: Array<{ origin: string; mode?: string; usage?: { tokensToday?: number } }> };
@@ -253,11 +261,13 @@ async function computeHealth(origin: string | null): Promise<HealthStatus> {
     }
   }
   // ---- rungs 4–5: only meaningful once paired, and each lives in the daemon, so we ask ONLY here —
-  //      never on the degraded fast path. `signedIn` stays undefined until rung 4 is wired (task §4);
-  //      undefined = unknown, which deriveStage skips rather than asserting signed-out. ----
+  //      never on the degraded fast path. `signedIn` undefined = unknown → deriveStage skips the rung. ----
   let signedIn: boolean | undefined;
   let connected = false;
-  if (reachable && paired && origin) connected = !!(await grantFor(origin));
+  if (reachable && paired) {
+    signedIn = await daemonSignedIn();
+    if (origin) connected = !!(await grantFor(origin));
+  }
   const stage = deriveStage({
     installed: true, installedHere, reachable, paired, signedIn,
     connected: origin ? connected : undefined, // null origin → the disconnected rung is N/A
