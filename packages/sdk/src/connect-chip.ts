@@ -71,8 +71,11 @@ function rungFromError(e: ProviderError): { kind: "unreachable" } | { kind: "unp
 
 /** One-click extension install (the landing page stays the "full setup" story: extension + sidekick). */
 const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb";
-/** Stable unversioned asset — survives releases (see DAEMON-DISTRIBUTION.md §7). */
-const RELAY_DMG_URL = "https://github.com/sameeeeeeep/switchboard/releases/latest/download/Relay.dmg";
+/** Stable unversioned asset — survives releases (see DAEMON-DISTRIBUTION.md §7). The filename must
+ *  match the GitHub release asset EXACTLY: it was `Relay.dmg` until v0.2.1 renamed it, and the stale
+ *  name here 404'd every install click in between. Verify with
+ *  `gh release view --repo sameeeeeeep/switchboard --json assets` before changing it. */
+const RELAY_DMG_URL = "https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg";
 
 const STYLE = `
 :host { all: initial; }
@@ -183,7 +186,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     // store users run an older extension against newer wrapp bundles.
     const h = await r.health();
     if (destroyed || my !== seq) return;
-    // installedHere === false is a 0.1.4+ extension SAYING the Relay app was never seen on this
+    // installedHere === false is a 0.1.4+ extension SAYING the Switchboard app was never seen on this
     // machine — render "get the app", not "wake it". Absence of the field (older worker) means
     // unknown, and the calmer "asleep" copy stays the safe default.
     if (h && !h.reachable) { state = { kind: "unreachable", appMissing: h.installedHere === false }; emitTransition(false); return render(); }
@@ -297,10 +300,10 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
         const menu = el("div", "menu");
         // The only rung whose menu had no explanatory copy — and the one where the two-part
         // install most needs saying, or "Add to Chrome" reads as the complete action.
-        menu.append(el("div", "body", "Two parts: the Chrome extension, then Relay for Mac."));
+        menu.append(el("div", "body", "Two parts: the Chrome extension, then Switchboard for Mac."));
         const store = el("button", "item", "1 · Add to Chrome ↗");
         store.onclick = () => { menuOpen = false; render(); window.open(CHROME_STORE_URL, "_blank", "noopener"); };
-        const guide = el("button", "item", "2 · Get Relay for Mac ↗");
+        const guide = el("button", "item", "2 · Get Switchboard for Mac ↗");
         guide.onclick = () => { menuOpen = false; render(); window.open(url, "_blank", "noopener"); };
         menu.append(store, guide);
         wrap.append(menu);
@@ -316,18 +319,18 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       const appMissing = state.appMissing === true;
       const wrap = el("div", "wrap");
       const b = el("button", "btn get");
-      b.append(el("span", "glyph"), el("span", undefined, appMissing ? "Get Relay for Mac" : "Your sidekick is asleep"), el("span", appMissing ? "arr" : "dot", appMissing ? "↗" : undefined), ...(appMissing ? [] : [el("span", "caret", "▾")]));
+      b.append(el("span", "glyph"), el("span", undefined, appMissing ? "Get Switchboard for Mac" : "Your sidekick is asleep"), el("span", appMissing ? "arr" : "dot", appMissing ? "↗" : undefined), ...(appMissing ? [] : [el("span", "caret", "▾")]));
       b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
       wrap.append(b);
       if (menuOpen) {
         const menu = el("div", "menu");
         if (appMissing) {
-          menu.append(el("div", "body", "Extension ✓ — now the other half: Relay, the Mac app that holds your Claude."));
-          const dl = el("button", "item", "Download Relay.dmg ↗");
+          menu.append(el("div", "body", "Extension ✓ — now the other half: Switchboard, the Mac app that holds your Claude."));
+          const dl = el("button", "item", "Download Switchboard.dmg ↗");
           dl.onclick = () => { menuOpen = false; render(); window.open(RELAY_DMG_URL, "_blank", "noopener"); };
           menu.append(dl, el("div", "sep"));
         } else {
-          menu.append(el("div", "body", "Open the Relay menubar app to wake it."));
+          menu.append(el("div", "body", "Open the Switchboard menubar app to wake it."));
           const retry = el("button", "item", "Retry");
           retry.onclick = () => { menuOpen = false; render(); void refresh(); };
           menu.append(retry, el("div", "sep"));

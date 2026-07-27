@@ -29,7 +29,7 @@ interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamNa
 /** Hosted-inference state (the OPT-IN lane). `hostedModels` are the ids whose prompts would leave
  *  the machine — the panel badges them so the trade is never silent. */
 interface CloudStatus { enabled: boolean; hostedModels: string[]; models?: string[] }
-interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
+interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; installedHere?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
 
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
@@ -146,13 +146,16 @@ const EMPTY = { grants: [], audit: [], contexts: [], activeProject: null, select
 
 async function load(): Promise<PanelData> {
   if (!inExtension) {
-    // Design preview: ?state=unreachable | unpaired | asleep | rejected mocks each setup state
-    // (serve.mjs, outside the extension); default renders the connected home with MOCK data.
+    // Design preview: ?state=unreachable | unpaired | asleep | asleep-unpaired | rejected mocks each
+    // setup state (serve.mjs, outside the extension); default renders the connected home with MOCK data.
     const s = new URLSearchParams(location.search).get("state");
-    if (s === "unreachable") return { paired: false, reachable: false, ...EMPTY };
-    if (s === "unpaired") return { paired: false, reachable: true, ...EMPTY };
-    if (s === "asleep") return { paired: true, reachable: false, ...EMPTY };
-    if (s === "rejected") return { paired: true, reachable: false, tokenRejected: true, ...EMPTY };
+    if (s === "unreachable") return { paired: false, reachable: false, installedHere: false, ...EMPTY };
+    if (s === "unpaired") return { paired: false, reachable: true, installedHere: true, ...EMPTY };
+    if (s === "asleep") return { paired: true, reachable: false, installedHere: true, ...EMPTY };
+    // Downloaded the app, never paired, daemon not running — the state that used to render
+    // "Get the sidekick" at someone who already had it.
+    if (s === "asleep-unpaired") return { paired: false, reachable: false, installedHere: true, ...EMPTY };
+    if (s === "rejected") return { paired: true, reachable: false, tokenRejected: true, installedHere: true, ...EMPTY };
     // `cold` = set up and online, but an EMPTY library — the first-run state the three pointers
     // exist for, and the one MOCK (a full library) can never show.
     if (s === "cold") return { paired: true, reachable: true, ...EMPTY };
@@ -160,7 +163,7 @@ async function load(): Promise<PanelData> {
   }
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
   if (!status?.paired || !status?.reachable)
-    return { paired: !!status?.paired, reachable: !!status?.reachable, tokenRejected: !!status?.tokenRejected, ...EMPTY };
+    return { paired: !!status?.paired, reachable: !!status?.reachable, tokenRejected: !!status?.tokenRejected, installedHere: !!status?.installedHere, ...EMPTY };
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
   const c = await control("listContexts");
@@ -206,38 +209,46 @@ function render(data: PanelData) {
   // Status strip: calm, each string names where you are on the ladder — never "offline"/"error".
   $("statusText").textContent = online ? "on"
     : rejected || (!data.paired && data.reachable) ? "pair to finish setup"
-    : data.paired ? "sidekick asleep"
+    : data.paired || data.installedHere ? "sidekick asleep"
     : "not set up";
   ($("home") as HTMLElement).hidden = !online;
 
-  // Three setup states, never shown together:
-  //   • fresh install (nothing answers the daemon port, nothing paired) → the get-the-sidekick
-  //     card. No token input — pairing against a dead daemon is a dead end.
+  // Four setup states, never shown together. The ordering below is the ladder: each branch is only
+  // reached once the ones above it hold.
+  //   • never installed (nothing answers the port AND the app has never been seen here) → the
+  //     get-the-sidekick card. No token input — pairing against a dead daemon is a dead end.
+  //   • app IS here but not running (installedHere, unreachable — whether or not a token is stored)
+  //     → the calm amber "asleep" note with Retry. This case used to fall into the branch above and
+  //     tell someone who had already downloaded the app to go download it.
   //   • daemon up, no accepted pairing (none stored, or the stored one was rejected) → the
   //     pairing card (token input + Pair).
-  //   • paired but the sidekick isn't running → the pairing card as a calm amber "asleep" note
-  //     with Retry; the auth_ok health push flips the panel home on its own once it wakes.
-  const freshInstall = !online && !data.paired && !data.reachable;
+  //   • the auth_ok health push flips the panel home on its own once the daemon wakes.
+  const asleep = !data.reachable && (data.installedHere || data.paired) && !rejected;
+  const freshInstall = !online && !data.reachable && !asleep && !rejected;
   ($("setup") as HTMLElement).hidden = online || !freshInstall;
   ($("pairing") as HTMLElement).hidden = online || freshInstall;
   if (!online && !freshInstall) {
     const tokenEl = $("token") as HTMLInputElement;
     const err = $("pairErr");
-    if (!data.paired) {           // reachable + unpaired: the normal first pairing
+    if (asleep) {                 // app present, daemon down — retry is a courtesy; health auto-recovers
+      $("pairH2").textContent = "Your sidekick is asleep";
+      tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
+      err.className = "err calm";
+      // Someone who has never paired needs BOTH steps named, or "Retry" reads as the whole job.
+      err.textContent = data.paired
+        ? "Your sidekick isn’t running. Open Switchboard from Applications — it lives in your menu bar — and it will wake up."
+        : "Your sidekick isn’t running. Open Switchboard from Applications — it lives in your menu bar — then come back here to pair.";
+      $("pairBtn").textContent = "Retry";
+    } else if (rejected) {        // daemon up but it refused our token — never say "isn't running"
+      $("pairH2").textContent = "Connect this browser to your Claude";
+      tokenEl.hidden = false; ($("pairHint") as HTMLElement).hidden = false;
+      err.className = "err"; err.textContent = "That pairing token didn’t match. Copy a fresh one from the Switchboard app and pair again.";
+      $("pairBtn").textContent = "Pair";
+    } else {                      // reachable + unpaired: the normal first pairing
       $("pairH2").textContent = "Connect this browser to your Claude";
       tokenEl.hidden = false; ($("pairHint") as HTMLElement).hidden = false;
       err.className = "err"; err.textContent = "";
       $("pairBtn").textContent = "Pair";
-    } else if (rejected) {        // daemon up but it refused our token — never say "isn't running"
-      $("pairH2").textContent = "Connect this browser to your Claude";
-      tokenEl.hidden = false; ($("pairHint") as HTMLElement).hidden = false;
-      err.className = "err"; err.textContent = "That pairing token didn’t match. Copy a fresh one from the Relay app and pair again.";
-      $("pairBtn").textContent = "Pair";
-    } else {                      // paired, sidekick asleep — retry is a courtesy; health auto-recovers
-      $("pairH2").textContent = "Your sidekick is asleep";
-      tokenEl.hidden = true; ($("pairHint") as HTMLElement).hidden = true;
-      err.className = "err calm"; err.textContent = "Your sidekick isn’t running. Open Relay from Applications — it lives in your menu bar — and it will wake up.";
-      $("pairBtn").textContent = "Retry";
     }
   }
   if (!online) return;
