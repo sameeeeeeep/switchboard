@@ -17,7 +17,7 @@ const APP = {
   name: "Autopilot",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
-    reason: "Autopilot — drafts and re-drafts the operating slate for the companies you lend it",
+    reason: "Autopilot — drafts and re-drafts the operating slate for the companies you bring it",
     models: ["sonnet"],
     tools: [],
     // Autopilot RUNS whatever you already have. brandbrain publishes `brand`, ideabrain publishes
@@ -159,14 +159,15 @@ function dormantCockpit() {
   const wrap = el("div", "cock dormant");
 
   const call = el("div", "dormcall");
-  call.append(el("div", "dormline", "Lend it a company. It runs itself."));
+  call.append(el("div", "dormline", "A company that runs itself."));
   // A real button that forwards to the standard chip in the header, so the one action is right here
-  // and not a caption pointing off-screen. Neutral label: works whether or not Switchboard is present
-  // (if it isn't, the chip's own menu offers the install) — never tells an installed user to install.
+  // and not a caption pointing off-screen. "Get started" in the plain register — if Switchboard isn't
+  // present the chip's own menu offers the install, so it never mis-tells an installed user to install.
   const cta = el("button", "dormcta");
-  cta.append(el("span", null, "Connect your Claude"), el("span", "arr", "↗"));
+  cta.append(el("span", null, "Get started"), el("span", "arr", "→"));
   cta.onclick = () => { const b = document.querySelector("#chip-dock button"); if (b) b.click(); };
   call.append(cta);
+  call.append(el("div", "dormsub", "Bring a brand, a product or an idea — it runs on your own Claude."));
 
   const grid = el("div", "grid ghost");
   const COLS = [
@@ -1124,7 +1125,7 @@ function startBox() {
   box.append(fast);
   box.append(el("div", "hint", brand
     ? "“Let AI run it” decides the whole route for you and starts operating; “Pick it up” drops you into the slate to decide each call yourself."
-    : "“Let AI run it” decides the whole route and starts operating; “Start it” drops you in to decide each call yourself. Or lend a brand, project, idea or wrapp in the Switchboard panel."));
+    : "“Let AI run it” decides the whole route and starts operating; “Start it” drops you in to decide each call yourself. Or bring a brand, project, idea or wrapp from the Switchboard panel."));
   // never a one-way door: if there's already a portfolio behind this, you can always go back to it
   if (creating && cos.length) {
     const back = el("button", "act", "← back to " + (CO()?.name || "the board"));
