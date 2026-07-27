@@ -29,8 +29,9 @@ interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamNa
 /** Hosted-inference state (the OPT-IN lane). `hostedModels` are the ids whose prompts would leave
  *  the machine — the panel badges them so the trade is never silent. */
 interface CloudStatus { enabled: boolean; hostedModels: string[]; models?: string[] }
-interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; installedHere?: boolean; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
+interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; installedHere?: boolean; signedIn?: boolean; stage?: Stage; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
 
+import { deriveStage, type Stage } from "@relay/protocol";
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
 import { connectorOf, connectorGlyph, brandIcon, KIND_MARKS, type ConnectorInfo } from "./icons.js";
@@ -155,15 +156,20 @@ async function load(): Promise<PanelData> {
     // Downloaded the app, never paired, daemon not running — the state that used to render
     // "Get the sidekick" at someone who already had it.
     if (s === "asleep-unpaired") return { paired: false, reachable: false, installedHere: true, ...EMPTY };
-    if (s === "rejected") return { paired: true, reachable: false, tokenRejected: true, installedHere: true, ...EMPTY };
+    // Rejected token = the daemon ANSWERED but refused it → reachable, pairing still missing (the
+    // unified shape; the old preset said reachable:false, which now reads as app-asleep).
+    if (s === "rejected") return { paired: false, reachable: true, tokenRejected: true, installedHere: true, ...EMPTY };
     // `cold` = set up and online, but an EMPTY library — the first-run state the three pointers
     // exist for, and the one MOCK (a full library) can never show.
     if (s === "cold") return { paired: true, reachable: true, ...EMPTY };
     return MOCK;
   }
+  // getStatus now returns the shared HealthStatus (stage + all) — carry the ladder bits through so the
+  // panel renders the exact rung the background derived, never a second opinion.
   const status = await new Promise<any>((r) => chrome.runtime.sendMessage({ type: "getStatus" }, r));
+  const ladder = { paired: !!status?.paired, reachable: !!status?.reachable, tokenRejected: !!status?.tokenRejected, installedHere: !!status?.installedHere, signedIn: status?.signedIn, stage: status?.stage as Stage | undefined };
   if (!status?.paired || !status?.reachable)
-    return { paired: !!status?.paired, reachable: !!status?.reachable, tokenRejected: !!status?.tokenRejected, installedHere: !!status?.installedHere, ...EMPTY };
+    return { ...ladder, ...EMPTY };
   const g = await control("listGrants");
   const a = await control("audit", { limit: 40 });
   const c = await control("listContexts");
@@ -172,7 +178,7 @@ async function load(): Promise<PanelData> {
   const t = await control("team.status");
   const cl = await control("cloud.status");
   return {
-    paired: true, reachable: true,
+    paired: true, reachable: true, signedIn: status?.signedIn, stage: status?.stage as Stage | undefined,
     cloud: cl?.ok ? { enabled: !!cl.enabled, hostedModels: cl.hostedModels ?? [], models: cl.models ?? [] } : null,
     grants: (g?.grants ?? []).map((x: any) => ({ ...x, pending: x.pending ?? null })),
     audit: a?.entries ?? [],
@@ -203,28 +209,31 @@ let lastData: PanelData | null = null; // so tab-change events can re-render the
 function render(data: PanelData) {
   if (consentActive) return;
   lastData = data;
-  const online = data.paired && data.reachable;
+  // ONE ladder, read from the shared ordinal (docs/STATES.md §1.1). The background already derived the
+  // first unmet rung; the panel renders THAT and never re-derives. `deriveStage` is the fallback only
+  // for the design-preview `?state=` mocks, which carry booleans but no stage.
+  const stage = data.stage ?? deriveStage({ installed: true, installedHere: data.installedHere, reachable: data.reachable, paired: data.paired, signedIn: data.signedIn });
+  const online = data.reachable && data.paired; // the home surface can show once past pairing
   const rejected = !!data.tokenRejected;
   const st = $("status"); st.className = "status" + (online ? " on" : "");
   // Status strip: calm, each string names where you are on the ladder — never "offline"/"error".
-  $("statusText").textContent = online ? "on"
-    : rejected || (!data.paired && data.reachable) ? "pair to finish setup"
-    : data.paired || data.installedHere ? "sidekick asleep"
-    : "not set up";
+  $("statusText").textContent =
+    stage === "ready" ? "on"
+    : stage === "signed-out" ? "sign in to finish setup"
+    : stage === "unpaired" ? "pair to finish setup"
+    : stage === "app-asleep" ? "sidekick asleep"
+    : "not set up"; // no-app
   ($("home") as HTMLElement).hidden = !online;
 
-  // Four setup states, never shown together. The ordering below is the ladder: each branch is only
-  // reached once the ones above it hold.
-  //   • never installed (nothing answers the port AND the app has never been seen here) → the
-  //     get-the-sidekick card. No token input — pairing against a dead daemon is a dead end.
-  //   • app IS here but not running (installedHere, unreachable — whether or not a token is stored)
-  //     → the calm amber "asleep" note with Retry. This case used to fall into the branch above and
-  //     tell someone who had already downloaded the app to go download it.
-  //   • daemon up, no accepted pairing (none stored, or the stored one was rejected) → the
-  //     pairing card (token input + Pair).
-  //   • the auth_ok health push flips the panel home on its own once the daemon wakes.
-  const asleep = !data.reachable && (data.installedHere || data.paired) && !rejected;
-  const freshInstall = !online && !data.reachable && !asleep && !rejected;
+  // Setup cards, one per rung, never shown together — the ordinal guarantees only one is reached.
+  //   • no-app: nothing answers the port AND the app has never been seen here → the get-the-sidekick
+  //     card. No token input — pairing against a dead daemon is a dead end.
+  //   • app-asleep: the app IS here but not running → the calm amber "asleep" note with Retry. This
+  //     case used to fall into the branch above and tell someone who had it to go download it.
+  //   • unpaired: daemon up, no accepted pairing (none stored, or the stored one was rejected) → the
+  //     pairing card (token input + Pair). The auth_ok health push flips the panel home once it wakes.
+  const freshInstall = stage === "no-app";
+  const asleep = stage === "app-asleep";
   ($("setup") as HTMLElement).hidden = online || !freshInstall;
   ($("pairing") as HTMLElement).hidden = online || freshInstall;
   if (!online && !freshInstall) {
