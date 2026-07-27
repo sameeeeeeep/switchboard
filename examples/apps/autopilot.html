@@ -84,8 +84,19 @@
       body.cock-on main { max-width: none; padding: 20px 22px 80px; }
       .hint { font: 400 12px/1.6 var(--sans); color: var(--ink-faint); margin-top: 12px; max-width: 520px; }
 
-      .sample { margin-top: 26px; opacity: .8; }
-      .srow { display: grid; grid-template-columns: 130px 1fr auto; gap: 12px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--edge-soft); }
+      /* dormant cockpit — the command centre before a Claude is lent: one bright call, the frame dimmed behind it. */
+      .dormcall { text-align: center; padding: 34px 20px 24px; }
+      .dormline { font: 700 clamp(1.5rem, 3.4vw, 2.15rem)/1.08 var(--display); letter-spacing: -0.02em; color: var(--ink); }
+      .dormcta { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 16px; border-radius: 999px;
+                 background: var(--accent); color: #0A0C10; font: 600 13px/1 var(--sans); border: 0; cursor: pointer; transition: filter .15s; }
+      .dormcta:hover { filter: brightness(1.06); }
+      .dormcta .arr { font-weight: 700; }
+      .grid.ghost { opacity: .5; pointer-events: none; user-select: none; }
+      .ghostcard { min-height: 62px; }
+      .ghostcard.mini { min-height: 38px; }
+      .gline { height: 9px; border-radius: 5px; background: var(--raised); margin-bottom: 9px; }
+      .gline.w70 { width: 70%; } .gline.w45 { width: 45%; }
+      .gsub { font: 400 11px/1.5 var(--sans); color: var(--ink-faint); margin-top: 6px; }
 
       .top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--edge-soft); }
       .cosw { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
@@ -417,7 +428,7 @@
     <main>
       <section class="hero" id="hero">
         <h1>The operating system for the company <em>you already have</em>.</h1>
-        <p>Lend it a brand, a project or an idea and the whole company comes up with no input at all — decisions, operations, growth and a CEO that runs it. Ads, social, outreach and the day's tasks, all drafted; nothing irreversible leaves the machine without you tapping go. Runs on your own Claude via Switchboard — the operator holds no key and never sees your data.</p>
+        <p>Lend it a brand, a project or an idea — it runs the company on your own Claude.</p>
       </section>
       <div id="view"></div>
     </main>

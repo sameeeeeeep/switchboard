@@ -152,17 +152,40 @@ function parseJsonArray(text) {
 
 // ==== house UI atoms ========================================================================
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
-function connectSteps() {
-  const card = el("div", "steps-card");
-  const steps = el("div", "steps");
-  const s1 = el("div"); s1.innerHTML = notInstalled
-    ? "<b>1</b> · Install Switchboard (button, top-right)"
-    : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  const s2 = el("div"); s2.innerHTML = "<b>2</b> · Lend it a brand, project or idea — the slate drafts itself";
-  const s3 = el("div"); s3.innerHTML = "<b>3</b> · Choose an option; everything downstream rewrites";
-  steps.append(s1, s2, s3);
-  card.append(steps);
-  return card;
+/** The command centre before a Claude is lent: the four real columns, dormant, with one bright call.
+ *  The FRAME is the pitch — no paragraph, no numbered steps, no sample table. Each column says, in a
+ *  concrete half-line, what it will hold; the grid sits dimmed behind a single thing to do. */
+function dormantCockpit() {
+  const wrap = el("div", "cock dormant");
+
+  const call = el("div", "dormcall");
+  call.append(el("div", "dormline", "Lend it a company. It runs itself."));
+  // A real button that forwards to the standard chip in the header, so the one action is right here
+  // and not a caption pointing off-screen. Neutral label: works whether or not Switchboard is present
+  // (if it isn't, the chip's own menu offers the install) — never tells an installed user to install.
+  const cta = el("button", "dormcta");
+  cta.append(el("span", null, "Connect your Claude"), el("span", "arr", "↗"));
+  cta.onclick = () => { const b = document.querySelector("#chip-dock button"); if (b) b.click(); };
+  call.append(cta);
+
+  const grid = el("div", "grid ghost");
+  const COLS = [
+    ["COMPANY", "identity, the live site, revenue and runway"],
+    ["OPERATIONS", "the day's tasks, the decision slate, the log"],
+    ["GROWTH", "ads, social and outreach — drafted, never sent"],
+    ["STRATEGY", "a CEO that reads the board and answers you"],
+  ];
+  for (const [head, sub] of COLS) {
+    const c = el("div", "col");
+    c.append(el("div", "chead", head));
+    const card = el("div", "card ghostcard");
+    card.append(el("div", "gline w70"), el("div", "gline w45"), el("div", "gsub", sub));
+    c.append(card, el("div", "card ghostcard mini"));
+    grid.append(c);
+  }
+
+  wrap.append(call, grid);
+  return wrap;
 }
 
 // ==== APP LOGIC ═════════════════════════════════════════════════════════════════════════════
@@ -942,12 +965,16 @@ function render() {
   const hero = $("hero"), view = $("view");
   if (!hero || !view) return;
   const co = CO();
-  const onDeck = !!(relay && cos.length);
-  hero.hidden = onDeck;
-  document.body.classList.toggle("cock-on", onDeck);   // full-width shell only once there's a board
+  const board = !!(relay && cos.length);
+  // The command centre is the ONLY frame now — running OR dormant. The old marketing hero (a headline,
+  // a four-sentence paragraph, three numbered steps and a sample table) is retired: a landing page is
+  // not what Acoco shows and not what this is. You land ON the OS; before a Claude is lent it just sits
+  // there dormant, so the first thing you see is the thing itself, not a pitch for it.
+  hero.hidden = true;
+  document.body.classList.toggle("cock-on", board || !relay);   // full-width shell for the cockpit, live or dormant
   view.textContent = "";
 
-  if (!relay) { view.append(connectSteps(), sampleSlate()); return; }
+  if (!relay) { view.append(dormantCockpit()); return; }
   // No companies yet, or "+ New company" was pressed: the seed box IS the screen. Previously the
   // second case fell through to cockpit(null), which drew the tabs and then nothing — the portfolio
   // claim ("several companies on one board") was unreachable because you could never add the second.
@@ -1106,24 +1133,6 @@ function startBox() {
   }
   setTimeout(() => input.focus(), 30);
   return box;
-}
-
-/** Pre-connect only, and visibly labelled — doctrine allows a sample ONLY here. */
-function sampleSlate() {
-  const w = el("div", "sample");
-  w.append(el("div", "kicker sect", "what a slate looks like · sample, not your data"));
-  const rows = [
-    ["Voice", "how it talks, and to whom", "3 options"],
-    ["Ad angle", "what the ad is actually about", "follows the voice you pick"],
-    ["Channel", "where it runs, and why there", "follows the angle"],
-    ["Next move", "what widens the company", "3 options"],
-  ];
-  for (const [a, b, c] of rows) {
-    const r = el("div", "srow");
-    r.append(el("div", "rname", a), el("div", "rsub", b), el("div", "rmeta", c));
-    w.append(r);
-  }
-  return w;
 }
 
 function cockpit(co) {
