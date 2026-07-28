@@ -423,6 +423,12 @@
   .faq .ans code{font-family:var(--mono);color:var(--phosphor);font-size:12.5px}
   .faq .ans a{color:var(--phosphor);text-decoration:none}
   .faq .ans a:hover{text-decoration:underline}
+  .faq-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:26px}
+  .faq-tab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid var(--line-bright);padding:10px 18px;cursor:pointer;transition:color .15s,background .15s,border-color .15s}
+  .faq-tab:hover{color:var(--paper)}
+  .faq-tab.on{color:var(--void);background:var(--phosphor);border-color:var(--phosphor)}
+  .faq-group{display:none}
+  .faq-group.on{display:block}
 
   /* ---------- privacy manifesto ---------- */
   .manifesto{text-align:center;position:relative;overflow:hidden}
@@ -871,10 +877,10 @@
     <div class="band-head center rv">
       <p class="kick">the new internet</p>
       <h2>A private twin for <span class="lit">every app.</span></h2>
-      <p class="lead-sub">Land on Canva, Google Docs, any closed app — and Switchboard quietly points you to a version that runs on your own AI. The web you know, going private, one wrapp at a time.</p>
+      <p class="lead-sub">Open any app you already use, and there's a version that runs on your own AI — keeps your work home, and already knows you. The web you know, going private, one wrapp at a time.</p>
     </div>
     <div class="altswaps rv">
-      <span class="swap"><span class="old">Canva</span><span class="arr">→</span><span class="new">Prism</span></span>
+      <span class="swap"><span class="old">On-brand images</span><span class="arr">→</span><span class="new">Prism</span></span>
       <span class="swap"><span class="old">A landing page</span><span class="arr">→</span><span class="new">Marquee</span></span>
       <span class="swap"><span class="old">A launch reel</span><span class="arr">→</span><span class="new">Reel</span></span>
       <span class="swap"><span class="old">Brand personas</span><span class="arr">→</span><span class="new">Cast</span></span>
@@ -1159,35 +1165,48 @@
       <p class="kick">faq</p>
       <h2>Questions, <span class="lit">answered.</span></h2>
     </div>
+    <div class="faq-tabs rv">
+      <button class="faq-tab on" type="button" data-g="you">For you</button>
+      <button class="faq-tab" type="button" data-g="build">For builders</button>
+      <button class="faq-tab" type="button" data-g="team">For teams</button>
+    </div>
     <div class="faq rv">
-      <details>
-        <summary><span class="q">Is it really free?</span><span class="pm">+</span></summary>
-        <div class="ans">Yes — for you. Every wrapp runs on the Claude subscription you already pay for, so there's no per-app charge and nothing new to sign up for. <b>Pro</b> ($20/mo + $5/seat) only adds team features — shared folders, internal apps and cloud sync.</div>
-      </details>
-      <details>
-        <summary><span class="q">Do I need a Claude subscription?</span><span class="pm">+</span></summary>
-        <div class="ans">Yes. You'll need a Claude subscription signed in through Claude Code on your machine — that's the AI your wrapps run on. Have the subscription but not the CLI? It's one command to install <code>@anthropic-ai/claude-code</code>, then <code>claude</code> to log in.</div>
-      </details>
-      <details>
-        <summary><span class="q">Is my data private — where does it actually go?</span><span class="pm">+</span></summary>
-        <div class="ans">Nowhere new. Everything runs on your own machine, and every request passes one consent screen. A wrapp gets a <b>result</b> back — never your keys, and never the folder behind them — and only sees what you approve for one job. Revoke any app, tool, or all of it in one tap. It's open source (MIT), so you can verify every line.</div>
-      </details>
-      <details>
-        <summary><span class="q">Can I use a local model instead of Claude?</span><span class="pm">+</span></summary>
-        <div class="ans">Yes. Point it at <b>Ollama, LM Studio, or llama.cpp</b> — a wrapp calls the same <code>window.switchboard</code> interface and can't tell the difference. Fully offline if you want.</div>
-      </details>
-      <details>
-        <summary><span class="q">What do I need to run it?</span><span class="pm">+</span></summary>
-        <div class="ans">A Mac (Apple Silicon, macOS 13+), Chrome, and a signed-in Claude Code CLI. Setup is two pieces — the extension and a tiny desktop app — paired once. Not a developer? Point your coding agent at the <a href="https://thelastprompt.ai/switchboard/install.md">runbook</a> and it sets it up for you.</div>
-      </details>
-      <details>
-        <summary><span class="q">Can I build and publish my own wrapp?</span><span class="pm">+</span></summary>
-        <div class="ans">Yes — and you never run a backend. Publish static files that call <code>window.switchboard</code>; every visitor brings their own model, tools and data, so it's free for you to serve. Bring an open-source app or start fresh — see the <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md">build guide</a>.</div>
-      </details>
-      <details>
-        <summary><span class="q">In Team mode, is our work shared with you?</span><span class="pm">+</span></summary>
-        <div class="ans">Never. Each teammate runs on their own Claude, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div>
-      </details>
+      <div class="faq-group on" data-g="you">
+      <details><summary><span class="q">Is it really free?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes — for you. Every wrapp runs on the Claude subscription you already pay for, so there's no per-app charge and nothing new to sign up for. <b>Pro</b> only adds team features.</div></details>
+      <details><summary><span class="q">Do I need a Claude subscription?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes, signed in through Claude Code on your machine — that's the AI your wrapps run on. Don't have the CLI yet? One command to install <code>@anthropic-ai/claude-code</code>, then <code>claude</code> to log in.</div></details>
+      <details><summary><span class="q">Is my data private — where does it actually go?</span><span class="pm">+</span></summary>
+        <div class="ans">Nowhere new. Everything runs on your own machine, and every request passes one consent screen. A wrapp gets a <b>result</b> back — never your keys, and never the folder behind them. Revoke anytime. It's open source (MIT), so you can verify every line.</div></details>
+      <details><summary><span class="q">Can I use a local model instead of Claude?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes. Point it at <b>Ollama, LM Studio, or llama.cpp</b> — a wrapp calls the same <code>window.switchboard</code> interface and can't tell the difference. Fully offline if you want.</div></details>
+      <details><summary><span class="q">What do I need to run it?</span><span class="pm">+</span></summary>
+        <div class="ans">A Mac (Apple Silicon, macOS 13+), Chrome, and a signed-in Claude Code CLI. Two pieces — the extension and a tiny desktop app — paired once.</div></details>
+      </div>
+      <div class="faq-group" data-g="build">
+      <details><summary><span class="q">Do I run a backend or hold any keys?</span><span class="pm">+</span></summary>
+        <div class="ans">No. A wrapp is static files that call <code>window.switchboard</code>. The visitor's own AI runs it — no server, no keys, no inference bill. Free for you to serve.</div></details>
+      <details><summary><span class="q">Can I port an app I already have?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes. Bring an open-source app or start fresh, and point its AI calls at <code>window.switchboard</code>. See the <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md">build guide</a>.</div></details>
+      <details><summary><span class="q">What can a wrapp actually do?</span><span class="pm">+</span></summary>
+        <div class="ans">Reach the visitor's AI, storage, fetch and background jobs — plus the tools they've connected (mail, sheets, repos…). It runs sandboxed, and anything that writes passes the consent gate.</div></details>
+      <details><summary><span class="q">Can I make money from a wrapp?</span><span class="pm">+</span></summary>
+        <div class="ans">Usage-based payouts for publishers are on the roadmap — a share of Pro, by what actually runs. Today it's free to publish and free to serve.</div></details>
+      <details><summary><span class="q">Is it open source?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes — MIT. Fork it, audit it, self-host the pieces. The whole runtime is yours.</div></details>
+      </div>
+      <div class="faq-group" data-g="team">
+      <details><summary><span class="q">In Team mode, is our work shared with you?</span><span class="pm">+</span></summary>
+        <div class="ans">Never. Each teammate runs on their own Claude, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div></details>
+      <details><summary><span class="q">What does Pro cost?</span><span class="pm">+</span></summary>
+        <div class="ans">$20/mo + $5/seat. It adds team mode, shared context across the team, internal apps, and cloud sync &amp; backup.</div></details>
+      <details><summary><span class="q">What are &ldquo;internal apps&rdquo;?</span><span class="pm">+</span></summary>
+        <div class="ans">Private wrapps only your team can open — internal tools that run on your own runtime, with no vendor in the middle.</div></details>
+      <details><summary><span class="q">Does the team share one subscription?</span><span class="pm">+</span></summary>
+        <div class="ans">No. Everyone brings their own Claude, so inference never changes hands and there's no shared account to log into.</div></details>
+      <details><summary><span class="q">Is there SSO, admin, and enterprise support?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes — Cloud &amp; Enterprise (let's talk) adds SSO, roles &amp; admin controls, a private wrapp registry, and onboarding.</div></details>
+      </div>
     </div>
   </div>
 </section>
@@ -1470,6 +1489,18 @@
       });
     },{threshold:.4});
     trio.observe(trav);
+  }
+
+  /* ---------- faq: audience tabs ---------- */
+  var faqTabs = Array.prototype.slice.call(document.querySelectorAll('.faq-tab'));
+  if(faqTabs.length){
+    faqTabs.forEach(function(t){
+      t.addEventListener('click', function(){
+        var g = t.getAttribute('data-g');
+        faqTabs.forEach(function(x){ x.classList.toggle('on', x === t); });
+        document.querySelectorAll('.faq-group').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-g') === g); });
+      });
+    });
   }
 })();
 </script>
