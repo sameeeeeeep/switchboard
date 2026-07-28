@@ -432,7 +432,7 @@
 
   /* ---------- thesis · chaos -> order scroll animation ---------- */
   .chaos{padding:0;position:relative;border-top:1px solid var(--line)}
-  .chaos-track{position:relative;height:250vh}
+  .chaos-track{position:relative;height:360vh}
   .chaos-pin{position:sticky;top:0;height:100vh;height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
   .chaos .kick{justify-content:center;margin-bottom:6px}
   .chaos .kick::before{display:none}
@@ -440,12 +440,12 @@
   .chaos-h .lit{color:var(--phosphor);text-shadow:0 0 40px rgba(61,255,136,.35)}
   .chaos-svgwrap{width:100%;max-width:860px;margin:10px auto 0}
   .chaos-svg{width:100%;height:auto;display:block;max-height:58vh}
-  .chaos-cap{position:relative;height:48px;text-align:center;margin-top:2px;width:100%}
-  .chaos-cap p{position:absolute;left:0;right:0;margin:0 auto;max-width:640px;font-size:15px;line-height:1.5;color:var(--muted);transition:opacity .25s}
+  .chaos-cap{position:relative;height:70px;text-align:center;margin-top:4px;width:100%}
+  .chaos-cap p{position:absolute;left:0;right:0;margin:0 auto;max-width:660px;font-size:16px;line-height:1.5;color:var(--paper);opacity:0;transition:opacity .25s}
   .chaos-cap p b{color:var(--phosphor);font-weight:600}
-  .chaos-cap p.them b{color:#c25566}
+  .chaos-cap p b.them{color:#c25566}
   .chaos-hint{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-  @media(max-width:640px){.chaos-track{height:200vh}.chaos-h{font-size:1.55rem}.chaos-svg{max-height:46svh}}
+  @media(max-width:640px){.chaos-track{height:300vh}.chaos-h{font-size:1.55rem}.chaos-svg{max-height:42svh}.chaos-cap{height:96px}.chaos-cap p{font-size:14.5px}}
   @media (prefers-reduced-motion: reduce){.chaos-track{height:auto}.chaos-pin{position:static;height:auto;padding:96px 0}.chaos-hint{display:none}}
 
   /* ---------- the new internet · subtle swap chips ---------- */
@@ -669,15 +669,17 @@
   <div class="chaos-track">
     <div class="chaos-pin">
       <div class="wrap">
-        <p class="kick">privacy-first</p>
+        <p class="kick">your data, your rules</p>
         <h2 class="chaos-h">The internet was never meant to be a <span class="lit">group chat.</span></h2>
         <div class="chaos-svgwrap"><svg class="chaos-svg" viewBox="0 0 900 520" fill="none" aria-hidden="true"></svg></div>
         <div class="chaos-cap">
-          <p class="them">Every app: <b>its own login, its own AI, its own copy of your data.</b></p>
-          <p class="us" style="opacity:0">One private system every app plugs into — <b>yours, and unfairly powerful.</b></p>
+          <p data-act="1">You use dozens of apps.</p>
+          <p data-act="2">Each one hoards <b class="them">its own login, its own AI, its own copy of you.</b></p>
+          <p data-act="3">Your work — <b class="them">scattered across servers you'll never see.</b></p>
+          <p data-act="4">Flip it. <b>One private system — yours, and finally in your control.</b></p>
+          <p data-act="5"><b>An app asks. You approve once. It runs on your AI</b> — and nothing leaves.</p>
         </div>
       </div>
-      <div class="chaos-hint">&darr; scroll</div>
     </div>
   </div>
 </section>
@@ -1522,57 +1524,96 @@
 (function(){
   var track=document.getElementById('thesis'); if(!track) return;
   var svg=track.querySelector('.chaos-svg');
-  var capThem=track.querySelector('.chaos-cap .them'), capUs=track.querySelector('.chaos-cap .us');
+  var caps=Array.prototype.slice.call(track.querySelectorAll('.chaos-cap p'));
   var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var W=900,H=520,cx=450,cy=260,N=8,R=160;
-  var ring=[],scat=[[130,80],[700,60],[810,290],[650,452],[310,470],[100,392],[212,236],[492,140]],
-      csc=[[50,150],[840,105],[872,404],[500,496],[150,500],[24,300],[300,54],[664,176]];
-  for(var i=0;i<N;i++){var a=(-90+i*(360/N))*Math.PI/180;ring.push([cx+R*Math.cos(a),cy+R*Math.sin(a)]);}
   var NS='http://www.w3.org/2000/svg';
   function el(t,at){var e=document.createElementNS(NS,t);for(var k in at)e.setAttribute(k,at[k]);return e;}
-  var lines=[],sys=[],apps=[];
+  function txt(e,s){e.textContent=s;return e;}
+  var cx=450,cy=248,N=8;
+  var scat=[[150,90],[720,70],[822,250],[688,430],[402,470],[132,442],[248,206],[560,150]];
+  var ring=[],R=150,i;
+  for(i=0;i<N;i++){var a=(-90+i*(360/N))*Math.PI/180;ring.push([cx+R*Math.cos(a),cy+R*Math.sin(a)]);}
+  function outward(px,py,f){return [cx+(px-cx)*f, cy+(py-cy)*f];}
+  var srvBase=scat.map(function(q){return outward(q[0],q[1],1.30);});
+  var srvOut=scat.map(function(q){return outward(q[0],q[1],1.66);});
+  var chaosG=el('g',{}),lines=[],srvs=[],copies=[],apps=[];
+  for(i=0;i<N;i++){var ln=el('line',{stroke:'#7a3b48','stroke-width':1.2,'stroke-opacity':0});lines.push(ln);chaosG.appendChild(ln);}
   var coreG=el('g',{opacity:0});
-  coreG.appendChild(el('circle',{cx:cx,cy:cy,r:66,fill:'rgba(61,255,136,0.08)'}));
-  coreG.appendChild(el('rect',{x:cx-54,y:cy-27,width:108,height:54,rx:11,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.6}));
-  var t1=el('text',{x:cx,y:cy-3,'text-anchor':'middle','font-family':'Doto, monospace','font-weight':900,'font-size':17,fill:'#3dff88'});t1.textContent='YOUR';
-  var t2=el('text',{x:cx,y:cy+15,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,'letter-spacing':'1',fill:'#7fa18d'});t2.textContent='PRIVATE BOARD';
-  coreG.appendChild(t1);coreG.appendChild(t2);
-  for(i=0;i<N;i++){var ln=el('line',{stroke:'#7a3b48','stroke-width':1.1,'stroke-opacity':0.55});lines.push(ln);svg.appendChild(ln);}
-  svg.appendChild(coreG);
-  for(i=0;i<N;i++){var sn=el('g',{});var r=el('rect',{width:28,height:18,rx:4,fill:'#12100f',stroke:'#3a2530','stroke-width':1});sn.appendChild(r);sn.appendChild(el('path',{d:'',stroke:'#6e3a44','stroke-width':1,fill:'none'}));sys.push(sn);svg.appendChild(sn);}
-  for(i=0;i<N;i++){var an=el('rect',{width:20,height:20,rx:5,fill:'#0d1410',stroke:'#48604f','stroke-width':1.4});apps.push(an);svg.appendChild(an);}
+  coreG.appendChild(el('circle',{cx:cx,cy:cy,r:54,fill:'rgba(61,255,136,0.09)'}));
+  coreG.appendChild(el('rect',{x:cx-46,y:cy-20,width:92,height:40,rx:9,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.6}));
+  coreG.appendChild(txt(el('text',{x:cx,y:cy+4,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':10,fill:'#3dff88'}),'YOUR SYSTEM'));
+  chaosG.appendChild(coreG);
+  for(i=0;i<N;i++){var sg=el('g',{opacity:0});
+    sg.appendChild(el('rect',{x:-17,y:-11,width:34,height:22,rx:4,fill:'#160f12',stroke:'#7a3b48','stroke-width':1.1}));
+    sg.appendChild(el('line',{x1:-10,y1:-3,x2:10,y2:-3,stroke:'#8a4450','stroke-width':1}));
+    sg.appendChild(el('line',{x1:-10,y1:3,x2:10,y2:3,stroke:'#8a4450','stroke-width':1}));
+    srvs.push(sg);chaosG.appendChild(sg);}
+  for(i=0;i<N;i++){copies.push(el('circle',{r:3.2,fill:'#c25566',opacity:0}));chaosG.appendChild(copies[i]);}
+  for(i=0;i<N;i++){apps.push(el('rect',{width:22,height:22,rx:5,fill:'#0d1410',stroke:'#48604f','stroke-width':1.5,opacity:0}));chaosG.appendChild(apps[i]);}
+  svg.appendChild(chaosG);
+  var flowG=el('g',{opacity:0}),fA=[152,248],fG=[452,248],fY=[746,248];
+  flowG.appendChild(el('line',{x1:fA[0]+66,y1:fA[1],x2:fG[0]-92,y2:fG[1],stroke:'#3dff88','stroke-width':1.6}));
+  flowG.appendChild(el('path',{d:'M'+(fG[0]-98)+' '+(fA[1]-6)+' l7 6 -7 6',stroke:'#3dff88','stroke-width':1.6,fill:'none'}));
+  flowG.appendChild(el('line',{x1:fG[0]+90,y1:fG[1],x2:fY[0]-76,y2:fY[1],stroke:'#3dff88','stroke-width':1.6}));
+  flowG.appendChild(el('path',{d:'M'+(fY[0]-82)+' '+(fA[1]-6)+' l7 6 -7 6',stroke:'#3dff88','stroke-width':1.6,fill:'none'}));
+  flowG.appendChild(txt(el('text',{x:(fA[0]+fG[0])/2,y:fA[1]-16,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'asks'));
+  flowG.appendChild(txt(el('text',{x:(fG[0]+fY[0])/2,y:fA[1]-16,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'lends'));
+  flowG.appendChild(el('rect',{x:fA[0]-62,y:fA[1]-38,width:124,height:76,rx:10,fill:'#0d1410',stroke:'#234433','stroke-width':1.4}));
+  flowG.appendChild(txt(el('text',{x:fA[0],y:fA[1]-6,'text-anchor':'middle','font-family':'Doto, monospace','font-weight':900,'font-size':13,fill:'#cfe3d6'}),'A WRAPP'));
+  flowG.appendChild(txt(el('text',{x:fA[0],y:fA[1]+14,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'just a page'));
+  flowG.appendChild(el('rect',{x:fG[0]-80,y:fG[1]-44,width:160,height:88,rx:11,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.7}));
+  flowG.appendChild(el('rect',{x:fG[0]-11,y:fG[1]-14,width:22,height:16,rx:3,fill:'none',stroke:'#3dff88','stroke-width':1.5}));
+  flowG.appendChild(el('path',{d:'M'+(fG[0]-6)+' '+(fG[1]-14)+' v-4 a6 6 0 0 1 12 0 v4',stroke:'#3dff88','stroke-width':1.5,fill:'none'}));
+  flowG.appendChild(txt(el('text',{x:fG[0],y:fG[1]+30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#3dff88'}),'YOUR CONSENT GATE'));
+  flowG.appendChild(el('rect',{x:fY[0]-64,y:fY[1]-50,width:128,height:100,rx:10,fill:'#0d1410',stroke:'#234433','stroke-width':1.4}));
+  ['your Claude','your tools','your context'].forEach(function(t,k){var ty=fY[1]-26+k*24;
+    flowG.appendChild(el('circle',{cx:fY[0]-46,cy:ty-3,r:2.4,fill:'#3dff88'}));
+    flowG.appendChild(txt(el('text',{x:fY[0]-38,y:ty,'font-family':'JetBrains Mono, monospace','font-size':10.5,fill:'#cfe3d6'}),t));});
+  flowG.appendChild(el('path',{d:'M'+(fY[0]-64)+' '+(fY[1]+62)+' Q450 392 '+(fA[0]+44)+' '+(fA[1]+50),stroke:'#1d7a45','stroke-width':1.3,'stroke-dasharray':'4 4',fill:'none'}));
+  flowG.appendChild(el('path',{d:'M'+(fA[0]+52)+' '+(fA[1]+44)+' l-9 3 5 -8',stroke:'#1d7a45','stroke-width':1.3,fill:'none'}));
+  flowG.appendChild(txt(el('text',{x:450,y:404,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#7fa18d'}),'a result comes back — nothing leaves'));
+  svg.appendChild(flowG);
   function lerp(a,b,t){return a+(b-a)*t;}
   function sm(a,b,t){t=Math.max(0,Math.min(1,(t-a)/(b-a)));return t*t*(3-2*t);}
-  function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+  function capOp(a,b,c,d,p){return Math.max(0,Math.min(sm(a,b,p),1-sm(c,d,p)));}
   function render(p){
-    var e=ease(p), coreOp=sm(0.4,0.9,p), sysOp=1-sm(0.42,0.82,p);
-    coreG.setAttribute('opacity',coreOp.toFixed(3));
+    var a1=sm(0.02,0.13,p),a2=sm(0.18,0.34,p),a3=sm(0.40,0.56,p),a4=sm(0.60,0.80,p),a5=sm(0.84,0.98,p);
+    chaosG.setAttribute('opacity',(1-a5).toFixed(3));
+    flowG.setAttribute('opacity',a5.toFixed(3));
+    coreG.setAttribute('opacity',sm(0.62,0.82,p).toFixed(3));
     for(var i=0;i<N;i++){
-      var ax=lerp(scat[i][0],ring[i][0],e), ay=lerp(scat[i][1],ring[i][1],e);
-      var sx=lerp(csc[i][0],cx,e), sy=lerp(csc[i][1],cy,e);
-      apps[i].setAttribute('x',(ax-10).toFixed(1));apps[i].setAttribute('y',(ay-10).toFixed(1));
-      apps[i].setAttribute('stroke', p>0.62?'#2c5c39':'#48604f');
-      sys[i].setAttribute('transform','translate('+(sx-14).toFixed(1)+','+(sy-9).toFixed(1)+')');
-      sys[i].setAttribute('opacity',sysOp.toFixed(3));
+      var ax=lerp(scat[i][0],ring[i][0],a4), ay=lerp(scat[i][1],ring[i][1],a4);
+      apps[i].setAttribute('x',(ax-11).toFixed(1));apps[i].setAttribute('y',(ay-11).toFixed(1));
+      apps[i].setAttribute('opacity',a1.toFixed(3));
+      apps[i].setAttribute('stroke', a4>0.5?'#2c5c39':'#48604f');
+      var sbx=lerp(srvBase[i][0],srvOut[i][0],a3), sby=lerp(srvBase[i][1],srvOut[i][1],a3);
+      var sxx=lerp(sbx,cx,a4), syy=lerp(sby,cy,a4);
+      srvs[i].setAttribute('transform','translate('+sxx.toFixed(1)+','+syy.toFixed(1)+')');
+      srvs[i].setAttribute('opacity',(a2*(1-sm(0.62,0.80,p))).toFixed(3));
+      copies[i].setAttribute('cx',sxx.toFixed(1));copies[i].setAttribute('cy',(syy-1).toFixed(1));
+      copies[i].setAttribute('opacity',(a2*(1-sm(0.60,0.78,p))).toFixed(3));
+      var lx2=lerp(sxx,cx,a4), ly2=lerp(syy,cy,a4);
       lines[i].setAttribute('x1',ax.toFixed(1));lines[i].setAttribute('y1',ay.toFixed(1));
-      lines[i].setAttribute('x2',sx.toFixed(1));lines[i].setAttribute('y2',sy.toFixed(1));
-      lines[i].setAttribute('stroke', p>0.5?'#1d7a45':'#7a3b48');
-      lines[i].setAttribute('stroke-opacity',(p>0.5?lerp(0.2,0.6,sm(0.5,1,p)):0.55).toFixed(2));
+      lines[i].setAttribute('x2',lx2.toFixed(1));lines[i].setAttribute('y2',ly2.toFixed(1));
+      lines[i].setAttribute('stroke', a4>0.5?'#1d7a45':'#7a3b48');
+      lines[i].setAttribute('stroke-opacity',(a2*(a4>0.5?lerp(0.55,0.9,a4):0.5)).toFixed(2));
     }
-    if(capThem) capThem.style.opacity=(1-sm(0.35,0.62,p)).toFixed(2);
-    if(capUs) capUs.style.opacity=sm(0.5,0.78,p).toFixed(2);
+    if(caps[0])caps[0].style.opacity=capOp(0.02,0.07,0.14,0.19,p).toFixed(2);
+    if(caps[1])caps[1].style.opacity=capOp(0.19,0.24,0.35,0.40,p).toFixed(2);
+    if(caps[2])caps[2].style.opacity=capOp(0.41,0.46,0.55,0.60,p).toFixed(2);
+    if(caps[3])caps[3].style.opacity=capOp(0.61,0.66,0.79,0.84,p).toFixed(2);
+    if(caps[4])caps[4].style.opacity=Math.min(1,sm(0.85,0.92,p)).toFixed(2);
   }
   window.__thesisRender=render;
-  var vh=window.innerHeight, ticking=false, cur=0;
-  function measure(){vh=window.innerHeight;}
+  var vh=window.innerHeight,ticking=false,cur=0;
   function onScroll(){
     var total=track.offsetHeight-vh;
     if(total<120){render(1);return;}
-    var p=Math.max(0,Math.min(1,(-track.getBoundingClientRect().top)/total));
-    cur=p; if(!ticking){ticking=true;requestAnimationFrame(function(){render(cur);ticking=false;});}
+    var pp=Math.max(0,Math.min(1,(-track.getBoundingClientRect().top)/total));
+    cur=pp; if(!ticking){ticking=true;requestAnimationFrame(function(){render(cur);ticking=false;});}
   }
   if(reduce || track.offsetHeight-vh<120){render(1);}
-  else{render(0);window.addEventListener('scroll',onScroll,{passive:true});window.addEventListener('resize',function(){measure();onScroll();},{passive:true});onScroll();}
+  else{render(0);window.addEventListener('scroll',onScroll,{passive:true});window.addEventListener('resize',function(){vh=window.innerHeight;onScroll();},{passive:true});onScroll();}
 })();
 </script>
 </body>
