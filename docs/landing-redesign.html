@@ -437,6 +437,16 @@
   .mani-tag{margin-top:26px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--phosphor-dim)}
   .mani-tag b{color:var(--phosphor)}
 
+  /* ---------- the new internet · subtle swap chips ---------- */
+  .altswaps{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:860px;margin:6px auto 0}
+  .swap{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--panel);border-radius:100px;padding:10px 16px;font-family:var(--mono);font-size:12px;text-decoration:none;transition:border-color .15s}
+  .swap:hover{border-color:var(--line-bright)}
+  .swap .old{color:var(--muted)}
+  .swap .arr{color:var(--phosphor-dim)}
+  .swap .new{color:var(--phosphor)}
+  .swap.more{border-style:dashed;border-color:var(--line-bright);color:var(--phosphor-dim)}
+  .swap.more:hover{color:var(--phosphor);border-color:var(--phosphor-dim)}
+
   /* ---------- provider strip ---------- */
   .prov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
   .prov-head p{color:var(--muted);font-size:14px;max-width:440px;margin-top:12px}
@@ -851,6 +861,24 @@
         <p>Publish a wrapp as static files. Every visitor brings their own model, tools and data — nothing for you to run.</p>
       </div>
 
+    </div>
+  </div>
+</section>
+
+<!-- ============ ALTERNATIVES ============ -->
+<section id="alternatives">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">the new internet</p>
+      <h2>A private twin for <span class="lit">every app.</span></h2>
+      <p class="lead-sub">Land on Canva, Google Docs, any closed app — and Switchboard quietly points you to a version that runs on your own AI. The web you know, going private, one wrapp at a time.</p>
+    </div>
+    <div class="altswaps rv">
+      <span class="swap"><span class="old">Canva</span><span class="arr">→</span><span class="new">Prism</span></span>
+      <span class="swap"><span class="old">A landing page</span><span class="arr">→</span><span class="new">Marquee</span></span>
+      <span class="swap"><span class="old">A launch reel</span><span class="arr">→</span><span class="new">Reel</span></span>
+      <span class="swap"><span class="old">Brand personas</span><span class="arr">→</span><span class="new">Cast</span></span>
+      <a class="swap more" href="https://thelastprompt.ai/apps/">the whole store →</a>
     </div>
   </div>
 </section>
