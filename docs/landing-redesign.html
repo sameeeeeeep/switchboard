@@ -205,9 +205,18 @@
   .arun-ctx b{color:#E8EDF4;font-weight:600}
   .arun-ctx .tag{margin-left:auto;font-family:var(--mono);font-size:9px;color:#8FA96B;border:1px solid #2A313D;padding:4px 8px;border-radius:6px}
   .arun-ads{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-  .arun-ad{aspect-ratio:.82;border-radius:9px;border:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:9px;opacity:0;transform:scale(.95);transition:opacity .45s,transform .45s;color:#fff}
+  .arun-ad{aspect-ratio:.82;border-radius:9px;border:1px solid rgba(255,255,255,.14);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:9px;opacity:0;transform:scale(.95);transition:opacity .45s,transform .45s;color:#fff;
+    background:radial-gradient(120% 85% at 72% 12%, rgba(255,255,255,.34), transparent 52%), linear-gradient(158deg, var(--a,#F7B733), var(--b,#7A1512))}
+  .arun-ad::after{content:"";position:absolute;inset:0;background:radial-gradient(130% 92% at 50% 120%, rgba(0,0,0,.5), transparent 58%);pointer-events:none}
   .arun-ad.on{opacity:1;transform:none}
-  .arun-ad .hl{font-family:var(--dot);font-weight:700;font-size:9.5px;line-height:1.15;text-shadow:0 1px 6px rgba(0,0,0,.5)}
+  .arun-ad .ad-brand{position:absolute;top:8px;left:9px;z-index:2;font-family:var(--mono);font-size:6.5px;letter-spacing:.22em;color:rgba(255,255,255,.92)}
+  .arun-ad .ad-can{position:absolute;top:19%;left:50%;transform:translateX(-50%);z-index:1;width:23%;height:45%;border-radius:5px 5px 7px 7px;
+    background:linear-gradient(90deg,rgba(0,0,0,.24),rgba(255,255,255,.45) 44%,rgba(255,255,255,.72) 52%,rgba(255,255,255,.34) 62%,rgba(0,0,0,.26));
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.32),0 8px 16px rgba(0,0,0,.4)}
+  .arun-ad .ad-can::before{content:"";position:absolute;left:0;right:0;top:35%;height:26%;background:rgba(0,0,0,.3)}
+  .arun-ad .ad-can::after{content:"";position:absolute;left:50%;top:-10%;transform:translateX(-50%);width:54%;height:15%;border-radius:50%;background:rgba(255,255,255,.55)}
+  .arun-ad .hl{position:relative;z-index:1;font-family:var(--dot);font-weight:700;font-size:9.5px;line-height:1.15;text-shadow:0 1px 6px rgba(0,0,0,.55)}
+  .arun-ad .ad-cta{position:relative;z-index:1;font-family:var(--mono);font-size:6.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.85);margin-top:3px}
   .arun-done{font-family:var(--mono);font-size:11px;color:#C8F250;display:flex;align-items:center;gap:7px;opacity:0;transition:opacity .4s}
   .arun-done.on{opacity:1}
   .arun-done .d{width:6px;height:6px;border-radius:50%;background:#C8F250;box-shadow:0 0 7px #C8F250}
@@ -712,18 +721,50 @@
   <div class="chaos-track">
     <div class="chaos-pin">
       <div class="wrap">
-        <p class="kick">your data, your rules</p>
-        <h2 class="chaos-h">The internet was never meant to be a <span class="lit">group chat.</span></h2>
+        <p class="kick">one board, not a hundred lines</p>
+        <h2 class="chaos-h">Every website lays its own <span class="lit">line into your house.</span></h2>
         <div class="chaos-svgwrap"><svg class="chaos-svg" viewBox="0 0 900 520" fill="none" aria-hidden="true"></svg></div>
         <div class="chaos-cap">
-          <p data-act="1">You use dozens of apps.</p>
-          <p data-act="2">Each one hoards <b class="them">its own login and its own AI — running its own copy of you.</b></p>
-          <p data-act="3">Your work — <b class="them">scattered across servers you'll never see.</b></p>
-          <p data-act="4">Flip it. <b>One private system — finally yours.</b></p>
-          <p data-act="5"><b>An app asks. You approve once. It runs on your AI</b> — and nothing leaves.</p>
+          <p data-act="1">You open a dozen apps a day.</p>
+          <p data-act="2">Each runs <b class="them">its own login, its own AI — a copy of you on a server you'll never see.</b></p>
+          <p data-act="3">A hundred apps. <b class="them">A hundred lines, none of them yours.</b></p>
+          <p data-act="4">Flip it. <b>One board — every line runs through you.</b></p>
+          <p data-act="5"><b>An app asks. You patch it through, or you don't.</b> We're building the <b>switchboard.</b></p>
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ============ SETUP ============ -->
+<section id="setup">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">set up in 2 minutes</p>
+      <h2>Two pieces. <span class="lit">One pairing.</span></h2>
+      <p class="lead-sub">A browser extension and a tiny desktop app. Pair them once — then every wrapp just runs on your AI.</p>
+    </div>
+    <div class="install-grid rv">
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 7h.01"/></svg></span>
+        <h3>Add the extension</h3>
+        <p>One click from the Chrome Web Store. It lands in your toolbar.</p>
+        <div class="act"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb" target="_blank" rel="noreferrer">Add to Chrome →</a></div>
+      </div>
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+        <h3>Get the desktop app</h3>
+        <p>It holds your AI on your machine and shows a short pairing code.</p>
+        <div class="act"><a class="btn btn-solid" href="https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg">Download for Mac →</a></div>
+      </div>
+      <div class="inst">
+        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6M8.5 13.5l-2 2a3 3 0 1 0 4 4l2-2M15.5 10.5l2-2a3 3 0 1 0-4-4l-2 2"/></svg></span>
+        <h3>Pair, then open a wrapp</h3>
+        <p>Paste the code into the extension. Open any wrapp and hit Connect — done.</p>
+        <div class="act"><a class="btn btn-ghost" href="#store">Open a wrapp →</a></div>
+      </div>
+    </div>
+    <p class="prereq rv">One thing to have first: a <b>Claude subscription signed in through Claude Code</b> — that's the AI your wrapps run on. &nbsp;·&nbsp; <a href="https://thelastprompt.ai/switchboard/install.md">Rather your coding agent set it up? →</a></p>
   </div>
 </section>
 
@@ -790,9 +831,9 @@
             <div class="arun" id="arun">
               <div class="arun-ctx"><span class="a">◆</span><span><b>Your brand</b> already loaded</span><span class="tag">zero setup</span></div>
               <div class="arun-ads">
-                <div class="arun-ad" style="background:linear-gradient(150deg,#F6B93B,#8B1A1A)"><span class="hl">Mango season, canned.</span></div>
-                <div class="arun-ad" style="background:linear-gradient(150deg,#E8873B,#6B1414)"><span class="hl">Summer in a sip.</span></div>
-                <div class="arun-ad" style="background:linear-gradient(150deg,#FFC24B,#9B2A1A)"><span class="hl">Cold-pressed &amp; canned.</span></div>
+                <div class="arun-ad" style="--a:#F7B733;--b:#7A1512"><span class="ad-brand">AAM&middot;CO</span><span class="ad-can"></span><span class="hl">Peak mango, canned.</span><span class="ad-cta">shop the case →</span></div>
+                <div class="arun-ad" style="--a:#F59B2E;--b:#6A1414"><span class="ad-brand">AAM&middot;CO</span><span class="ad-can"></span><span class="hl">Summer, on ice.</span><span class="ad-cta">find a fridge →</span></div>
+                <div class="arun-ad" style="--a:#FFC24B;--b:#8E1E12"><span class="ad-brand">AAM&middot;CO</span><span class="ad-can"></span><span class="hl">Cold-pressed gold.</span><span class="ad-cta">taste it →</span></div>
               </div>
               <div class="arun-done" id="arun-done"><span class="d"></span>3 ads · 38s</div>
             </div>
@@ -929,24 +970,6 @@
   </div>
 </section>
 
-<!-- ============ ALTERNATIVES ============ -->
-<section id="alternatives">
-  <div class="wrap">
-    <div class="band-head center rv">
-      <p class="kick">the new internet</p>
-      <h2>A private twin for <span class="lit">every app.</span></h2>
-      <p class="lead-sub">Open any app you already use, and there's a version that runs on your own AI — keeps your work home, and already knows you. The web you know, going private, one wrapp at a time.</p>
-    </div>
-    <div class="altswaps rv">
-      <span class="swap"><span class="old">On-brand images</span><span class="arr">→</span><span class="new">Prism</span></span>
-      <span class="swap"><span class="old">A landing page</span><span class="arr">→</span><span class="new">Marquee</span></span>
-      <span class="swap"><span class="old">A launch reel</span><span class="arr">→</span><span class="new">Reel</span></span>
-      <span class="swap"><span class="old">Brand personas</span><span class="arr">→</span><span class="new">Cast</span></span>
-      <a class="swap more" href="https://thelastprompt.ai/apps/">the whole store →</a>
-    </div>
-  </div>
-</section>
-
 <!-- ============ STORE ============ -->
 <section id="store">
   <div class="wrap">
@@ -979,38 +1002,6 @@
     </div>
     <div class="promise rv"><span>every wrapp</span><span class="sep">·</span><b>your AI</b><span class="sep">·</span><b>$0</b><span class="sep">·</span><span>no signup</span><span class="sep">·</span><span>nothing leaves</span></div>
     <div class="store-cta-row rv"><a class="btn btn-solid" href="https://thelastprompt.ai/apps/">Browse all wrapps →</a></div>
-  </div>
-</section>
-
-<!-- ============ SETUP ============ -->
-<section id="setup">
-  <div class="wrap">
-    <div class="band-head center rv">
-      <p class="kick">set up in 2 minutes</p>
-      <h2>Two pieces. <span class="lit">One pairing.</span></h2>
-      <p class="lead-sub">A browser extension and a tiny desktop app. Pair them once — then every wrapp just runs on your AI.</p>
-    </div>
-    <div class="install-grid rv">
-      <div class="inst">
-        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 7h.01"/></svg></span>
-        <h3>Add the extension</h3>
-        <p>One click from the Chrome Web Store. It lands in your toolbar.</p>
-        <div class="act"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb" target="_blank" rel="noreferrer">Add to Chrome →</a></div>
-      </div>
-      <div class="inst">
-        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
-        <h3>Get the desktop app</h3>
-        <p>It holds your AI on your machine and shows a short pairing code.</p>
-        <div class="act"><a class="btn btn-solid" href="https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg">Download for Mac →</a></div>
-      </div>
-      <div class="inst">
-        <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6M8.5 13.5l-2 2a3 3 0 1 0 4 4l2-2M15.5 10.5l2-2a3 3 0 1 0-4-4l-2 2"/></svg></span>
-        <h3>Pair, then open a wrapp</h3>
-        <p>Paste the code into the extension. Open any wrapp and hit Connect — done.</p>
-        <div class="act"><a class="btn btn-ghost" href="#store">Open a wrapp →</a></div>
-      </div>
-    </div>
-    <p class="prereq rv">One thing to have first: a <b>Claude subscription signed in through Claude Code</b> — that's the AI your wrapps run on. &nbsp;·&nbsp; <a href="https://thelastprompt.ai/switchboard/install.md">Rather your coding agent set it up? →</a></p>
   </div>
 </section>
 
@@ -1135,7 +1126,6 @@
   </div>
 </section>
 
-
 <!-- ============ TEAM ============ -->
 <section id="team">
   <div class="wrap">
@@ -1214,7 +1204,6 @@
     </div>
   </div>
 </section>
-
 
 <!-- ============ FAQ ============ -->
 <section id="faq">
@@ -1470,12 +1459,16 @@
   var egName = document.getElementById('eg-name');
   var egLogo = document.getElementById('eg-logo');
   var byoSet = [
-    { word:'AI',      name:'Claude',     logo:'claude' },
-    { word:'models',  name:'Ollama',     logo:'ollama' },
-    { word:'context', name:'Obsidian',   logo:'obsidian' },
-    { word:'data',    name:'your files', logo:null },
-    { word:'tools',   name:'Higgsfield', logo:'higgsfield' },
-    { word:'backend', name:'your stack', logo:null }
+    { word:'AI',      name:'Claude',       logo:'claude' },
+    { word:'data',    name:'your files',   logo:null },
+    { word:'models',  name:'Ollama',       logo:'ollama' },
+    { word:'memory',  name:'your vault',   logo:null },
+    { word:'context', name:'Obsidian',     logo:'obsidian' },
+    { word:'backend', name:'your stack',   logo:null },
+    { word:'tools',   name:'Higgsfield',   logo:'higgsfield' },
+    { word:'storage', name:'your disk',    logo:null },
+    { word:'agents',  name:'Claude Code',  logo:null },
+    { word:'keys',    name:'your keychain', logo:null }
   ];
   function egSvg(key){ var s = key && document.getElementById('logo-'+key); return s ? s.innerHTML : ''; }
   if(byo && !reduce){
