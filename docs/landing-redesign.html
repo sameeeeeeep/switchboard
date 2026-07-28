@@ -409,6 +409,34 @@
   #setup .prereq a{color:var(--phosphor);text-decoration:none}
   #setup .prereq a:hover{text-decoration:underline}
 
+  /* ---------- faq ---------- */
+  .faq{max-width:800px;margin:8px auto 0}
+  .faq details{border:1px solid var(--line);background:var(--panel);margin-bottom:10px;transition:border-color .15s}
+  .faq details[open]{border-color:var(--line-bright)}
+  .faq summary{list-style:none;cursor:pointer;padding:18px 22px;display:flex;align-items:center;gap:16px;font-weight:600;font-size:15.5px;color:var(--paper)}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary .q{flex:1}
+  .faq summary .pm{font-family:var(--mono);color:var(--phosphor);font-size:20px;line-height:1;flex:none;transition:transform .2s}
+  .faq details[open] summary .pm{transform:rotate(45deg)}
+  .faq .ans{padding:0 22px 20px;color:var(--muted);font-size:14px;line-height:1.65;max-width:680px}
+  .faq .ans b{color:var(--paper);font-weight:600}
+  .faq .ans code{font-family:var(--mono);color:var(--phosphor);font-size:12.5px}
+  .faq .ans a{color:var(--phosphor);text-decoration:none}
+  .faq .ans a:hover{text-decoration:underline}
+
+  /* ---------- privacy manifesto ---------- */
+  .manifesto{text-align:center;position:relative;overflow:hidden}
+  .manifesto::before{content:"";position:absolute;left:50%;top:46%;width:640px;height:420px;transform:translate(-50%,-50%);background:radial-gradient(50% 50% at 50% 50%,rgba(61,255,136,.07),transparent 70%);pointer-events:none}
+  .manifesto .wrap{position:relative;max-width:880px}
+  .manifesto .kick{justify-content:center}
+  .manifesto .kick::before{display:none}
+  .mani-big{font-family:var(--dot);font-weight:900;text-transform:uppercase;font-size:clamp(1.9rem,4.8vw,3.4rem);line-height:1.1;letter-spacing:.01em;margin:16px 0 0}
+  .mani-big .lit{color:var(--phosphor);text-shadow:0 0 44px rgba(61,255,136,.35)}
+  .mani-body{color:var(--paper);font-size:clamp(16px,1.7vw,18.5px);line-height:1.65;max-width:660px;margin:26px auto 0}
+  .mani-body b{color:var(--phosphor);font-weight:600}
+  .mani-tag{margin-top:26px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--phosphor-dim)}
+  .mani-tag b{color:var(--phosphor)}
+
   /* ---------- provider strip ---------- */
   .prov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
   .prov-head p{color:var(--muted);font-size:14px;max-width:440px;margin-top:12px}
@@ -614,6 +642,16 @@
     <p class="hero-req rv">for anyone running a <b>Claude Code CLI</b> today · Chrome · Node ≥ 20 · macOS</p>
   </div>
 </header>
+
+<!-- ============ MANIFESTO ============ -->
+<section class="manifesto">
+  <div class="wrap">
+    <p class="kick rv">privacy-first</p>
+    <h2 class="mani-big rv">The internet was never meant to be a <span class="lit">group chat.</span></h2>
+    <p class="mani-body rv">Every AI app today copies your work onto someone else's servers just to answer you. Switchboard flips it — the app runs on <b>your AI, on your own machine</b>. Nothing leaves. And because it's your AI, it already knows your context — so it's <b>private by default, and more powerful for it.</b></p>
+    <p class="mani-tag rv">privacy-first apps · <b>AI on steroids</b></p>
+  </div>
+</section>
 
 <!-- ============ LIVE · the same job, two ways ============ -->
 <section id="live">
@@ -1085,6 +1123,46 @@
   </div>
 </section>
 
+
+<!-- ============ FAQ ============ -->
+<section id="faq">
+  <div class="wrap">
+    <div class="band-head center rv">
+      <p class="kick">faq</p>
+      <h2>Questions, <span class="lit">answered.</span></h2>
+    </div>
+    <div class="faq rv">
+      <details>
+        <summary><span class="q">Is it really free?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes — for you. Every wrapp runs on the Claude subscription you already pay for, so there's no per-app charge and nothing new to sign up for. <b>Pro</b> ($20/mo + $5/seat) only adds team features — shared folders, internal apps and cloud sync.</div>
+      </details>
+      <details>
+        <summary><span class="q">Do I need a Claude subscription?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes. You'll need a Claude subscription signed in through Claude Code on your machine — that's the AI your wrapps run on. Have the subscription but not the CLI? It's one command to install <code>@anthropic-ai/claude-code</code>, then <code>claude</code> to log in.</div>
+      </details>
+      <details>
+        <summary><span class="q">Is my data private — where does it actually go?</span><span class="pm">+</span></summary>
+        <div class="ans">Nowhere new. Everything runs on your own machine, and every request passes one consent screen. A wrapp gets a <b>result</b> back — never your keys, and never the folder behind them — and only sees what you approve for one job. Revoke any app, tool, or all of it in one tap. It's open source (MIT), so you can verify every line.</div>
+      </details>
+      <details>
+        <summary><span class="q">Can I use a local model instead of Claude?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes. Point it at <b>Ollama, LM Studio, or llama.cpp</b> — a wrapp calls the same <code>window.switchboard</code> interface and can't tell the difference. Fully offline if you want.</div>
+      </details>
+      <details>
+        <summary><span class="q">What do I need to run it?</span><span class="pm">+</span></summary>
+        <div class="ans">A Mac (Apple Silicon, macOS 13+), Chrome, and a signed-in Claude Code CLI. Setup is two pieces — the extension and a tiny desktop app — paired once. Not a developer? Point your coding agent at the <a href="https://thelastprompt.ai/switchboard/install.md">runbook</a> and it sets it up for you.</div>
+      </details>
+      <details>
+        <summary><span class="q">Can I build and publish my own wrapp?</span><span class="pm">+</span></summary>
+        <div class="ans">Yes — and you never run a backend. Publish static files that call <code>window.switchboard</code>; every visitor brings their own model, tools and data, so it's free for you to serve. Bring an open-source app or start fresh — see the <a href="https://github.com/sameeeeeeep/switchboard/blob/main/docs/BUILDING-A-WRAPP.md">build guide</a>.</div>
+      </details>
+      <details>
+        <summary><span class="q">In Team mode, is our work shared with you?</span><span class="pm">+</span></summary>
+        <div class="ans">Never. Each teammate runs on their own Claude, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div>
+      </details>
+    </div>
+  </div>
+</section>
 
 <!-- ============ FINAL ============ -->
 <section class="final">
