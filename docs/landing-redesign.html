@@ -633,6 +633,22 @@
     .scard:hover{transform:none}
   }
 
+  /* ---------- hero: byo example + logo strip ---------- */
+  .hero-eg{margin-top:14px;display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:13.5px;color:var(--muted);min-height:24px}
+  .hero-eg .eg-arrow{color:var(--phosphor-dim)}
+  .hero-eg .eg-logo{display:inline-flex;width:20px;height:20px;color:var(--phosphor)}
+  .hero-eg .eg-logo svg{width:100%;height:100%}
+  .hero-eg .eg-name,.hero-eg .eg-logo{transition:opacity .22s ease}
+  .hero-eg .eg-name{color:var(--paper)}
+  .hero-logos{margin-top:28px;display:flex;align-items:center;flex-wrap:wrap;gap:18px}
+  .hero-logos .hl-lead{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+  .blogo{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px}
+  .blogo .bl-svg{display:inline-flex;width:18px;height:18px;color:var(--phosphor-dim)}
+  .blogo .bl-svg svg{width:100%;height:100%}
+  .blogo b{font-weight:500;color:var(--paper)}
+  .hero-logos .hl-and{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  @media(max-width:560px){.hero-logos{gap:13px}.hero-logos .hl-lead{width:100%}.blogo{font-size:11px}}
+
   /* ---------- contact modal ---------- */
   .cmodal{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:24px}
   .cmodal[hidden]{display:none}
@@ -673,12 +689,21 @@
   <div class="wrap">
     <a class="announce rv" href="#setup"><span class="tag">New</span> Switchboard is on the Chrome Web Store <span class="arr">→</span></a>
     <h1 class="rv">Bring your own<br><span class="brk">&lt;</span><span class="lit" id="byo-word">AI</span><span class="brk">&gt;</span></h1>
-    <p class="hero-plain rv">Every AI app runs on the <b>Claude you already pay for</b> — private by default, personal from the first second, no signup.</p>
+    <p class="hero-eg rv" id="hero-eg" aria-hidden="true"><span class="eg-arrow">&#8627;</span><span class="eg-logo" id="eg-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2.5v5.5M12 16v5.5M2.5 12h5.5M16 12h5.5M5.2 5.2l3.9 3.9M14.9 14.9l3.9 3.9M18.8 5.2l-3.9 3.9M9.1 14.9l-3.9 3.9"/></svg></span><span class="eg-name" id="eg-name">Claude</span></p>
+    <p class="hero-plain rv">Run AI apps on the <b>Claude Code subscription</b> you already pay for — private by default, personal from the first second, no signup.</p>
     <div class="hero-ctas rv">
       <a href="#setup" class="btn btn-solid">Install Switchboard</a>
       <a href="#store" class="btn btn-ghost">Browse the wrapp store</a>
     </div>
     <p class="hero-req rv">for anyone running a <b>Claude Code CLI</b> today · Chrome · Node ≥ 20 · macOS</p>
+    <div class="hero-logos rv" aria-label="Works with Claude, Ollama, Obsidian, Higgsfield, and any wrapp">
+      <span class="hl-lead">works with</span>
+      <span class="blogo"><span class="bl-svg" id="logo-claude"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2.5v5.5M12 16v5.5M2.5 12h5.5M16 12h5.5M5.2 5.2l3.9 3.9M14.9 14.9l3.9 3.9M18.8 5.2l-3.9 3.9M9.1 14.9l-3.9 3.9"/></svg></span><b>Claude</b></span>
+      <span class="blogo"><span class="bl-svg" id="logo-ollama"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.1 3.5c.5-.2 1 .1 1.1.6l.4 2.1c.1.4.4.7.8.7h.6c2.4 0 4.3 1.9 4.3 4.3V19c0 .6-.5 1-1 1-.6 0-1-.4-1-1v-3c0-.4-.5-.6-.8-.3-.8.7-1.8 1.1-2.9 1.1h-.2c-.6 0-1 .4-1 1v1.2c0 .6-.5 1-1 1-.6 0-1-.4-1-1v-6.4c0-1 .4-1.9 1.1-2.6l.5-.5c.2-.2.3-.4.3-.7V5c0-.7.4-1.2 1-1.5z"/><circle cx="8.7" cy="6.6" r=".8" fill="var(--void)"/><path d="M6.9 4.1c.3-.2.8 0 .9.4l.3 1.3-1.5-.4c-.4-.1-.5-.6-.2-.9z"/></svg></span><b>Ollama</b></span>
+      <span class="blogo"><span class="bl-svg" id="logo-obsidian"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M12 3l7 5-2.5 11h-9L5 8z"/><path d="M12 3v16M5 8l7 3 7-3M8.5 19L12 11l3.5 8"/></svg></span><b>Obsidian</b></span>
+      <span class="blogo"><span class="bl-svg" id="logo-higgsfield"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="2.3" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(28 12 12)"/></svg></span><b>Higgsfield</b></span>
+      <span class="hl-and">&middot; and any wrapp</span>
+    </div>
   </div>
 </header>
 
@@ -749,13 +774,13 @@
       <div class="way us waiting" id="way-us">
         <div class="way-tab">With Switchboard <span class="st" id="us-st">waiting…</span></div>
         <div class="appui">
-          <div class="app-bar"><span class="mk">A</span><span class="nm">AdForge</span><span class="st"><span class="d"></span>your Claude</span></div>
+          <div class="app-bar"><span class="mk">A</span><span class="nm">AdForge</span><span class="st"><span class="d"></span>your AI</span></div>
           <div class="app-body">
             <div class="perm" id="perm">
               <div class="perm-h"><span>Switchboard · permission</span><span>#0142</span></div>
               <div class="perm-b">
                 <div class="perm-o">AdForge wants to connect</div>
-                <div class="perm-g"><span>use your AI</span><span>your Claude</span></div>
+                <div class="perm-g"><span>use your AI</span><span>on your machine</span></div>
                 <div class="perm-g"><span>see context</span><span>your brand</span></div>
                 <div class="perm-g"><span>your files</span><span>one folder</span></div>
                 <div class="perm-g"><span>make changes</span><span>always asks</span></div>
@@ -774,7 +799,7 @@
           </div>
         </div>
         <div class="way-tally" id="us-tally">
-          <span class="chip">1 approval</span><span class="chip">your Claude</span><span class="chip">$0</span><span class="chip">nothing uploaded</span>
+          <span class="chip">1 approval</span><span class="chip">your AI</span><span class="chip">$0</span><span class="chip">nothing uploaded</span>
         </div>
       </div>
 
@@ -883,7 +908,7 @@
         <span class="pro">Pro</span>
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 19a5 5 0 0 1 10 0M13 19a5 5 0 0 1 8-4"/></svg></span>
         <h3>Team mode</h3>
-        <p>One shared folder, live — each on their own Claude.</p>
+        <p>One shared folder, live — each on their own AI.</p>
         <div class="avs"><i style="background:#C8F250"></i><i style="background:#7FB2F6"></i><i style="background:#F6B93B"></i></div>
       </div>
 
@@ -928,7 +953,7 @@
     <div class="band-head center rv">
       <p class="kick">the wrapp store</p>
       <h2>An app store where <span class="lit">every app is free.</span></h2>
-      <p class="lead-sub">Because you bring the AI. Every wrapp runs on your own Claude — no signup, no per-app bill, nothing leaves your machine.</p>
+      <p class="lead-sub">Because you bring the AI. Every wrapp runs on it — no signup, no per-app bill, nothing leaves your machine.</p>
     </div>
     <div class="cats rv">
       <a class="cat on" href="https://thelastprompt.ai/apps/">All</a>
@@ -952,7 +977,7 @@
       <a class="wcard" href="https://thelastprompt.ai/apps/thumbs-landing.html"><img class="wthumb" src="https://thelastprompt.ai/apps/img/thumbs.jpg" alt="Thumbs" loading="lazy"><span class="wbody"><span class="wname">Thumbs</span><span class="wdesc">Thumbnails engineered for the click.</span><span class="wcat">Growth</span></span></a>
       <a class="wcard more" href="https://thelastprompt.ai/apps/"><span class="wmore"><span class="wmore-plus">+</span><span class="wname">20+ wrapps</span><span class="wdesc">Browse the full catalog and point any one at your work.</span><span class="wcat">Open the store →</span></span></a>
     </div>
-    <div class="promise rv"><span>every wrapp</span><span class="sep">·</span><b>your Claude</b><span class="sep">·</span><b>$0</b><span class="sep">·</span><span>no signup</span><span class="sep">·</span><span>nothing leaves</span></div>
+    <div class="promise rv"><span>every wrapp</span><span class="sep">·</span><b>your AI</b><span class="sep">·</span><b>$0</b><span class="sep">·</span><span>no signup</span><span class="sep">·</span><span>nothing leaves</span></div>
     <div class="store-cta-row rv"><a class="btn btn-solid" href="https://thelastprompt.ai/apps/">Browse all wrapps →</a></div>
   </div>
 </section>
@@ -963,7 +988,7 @@
     <div class="band-head center rv">
       <p class="kick">set up in 2 minutes</p>
       <h2>Two pieces. <span class="lit">One pairing.</span></h2>
-      <p class="lead-sub">A browser extension and a tiny desktop app. Pair them once — then every wrapp just runs on your Claude.</p>
+      <p class="lead-sub">A browser extension and a tiny desktop app. Pair them once — then every wrapp just runs on your AI.</p>
     </div>
     <div class="install-grid rv">
       <div class="inst">
@@ -975,7 +1000,7 @@
       <div class="inst">
         <span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
         <h3>Get the desktop app</h3>
-        <p>It holds your Claude on your machine and shows a short pairing code.</p>
+        <p>It holds your AI on your machine and shows a short pairing code.</p>
         <div class="act"><a class="btn btn-solid" href="https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg">Download for Mac →</a></div>
       </div>
       <div class="inst">
@@ -1019,7 +1044,7 @@
         <div class="pseat">flat · no per-seat, while in beta</div>
         <div class="pdesc">Everything in Free, plus your whole team on one board.</div>
         <ul>
-          <li>Team mode — one shared folder, live, each on their own Claude</li>
+          <li>Team mode — one shared folder, live, each on their own AI</li>
           <li>Shared context across the team</li>
           <li>Internal apps — private wrapps only your team can open</li>
           <li>Cloud sync &amp; encrypted backup</li>
@@ -1069,7 +1094,7 @@
       <div class="warrow"><span class="a">→</span>lends</div>
       <div class="wnode">
         <div class="wlab">yours, never handed over</div>
-        <div class="wrow"><span class="k">▸</span>your Claude</div>
+        <div class="wrow"><span class="k">▸</span>your AI</div>
         <div class="wrow"><span class="k">▸</span>your tools — gmail, sheets, github</div>
         <div class="wrow"><span class="k">▸</span>your context &amp; data</div>
       </div>
@@ -1095,7 +1120,7 @@
         <div class="popup-head"><span>SWITCHBOARD · PERMISSION REQUEST</span><span>#0142</span></div>
         <div class="popup-body">
           <p class="origin">AdForge wants to connect</p>
-          <div class="grant"><span>use your ai</span><span>your Claude</span></div>
+          <div class="grant"><span>use your ai</span><span>on your machine</span></div>
           <div class="grant"><span>see context</span><span>your brand</span></div>
           <div class="grant"><span>your files</span><span>one folder only</span></div>
           <div class="grant"><span>make changes</span><span>always asks</span></div>
@@ -1116,7 +1141,7 @@
   <div class="wrap">
     <div class="band-head center rv">
       <p class="kick">team mode<b>·</b>pro</p>
-      <h2>One folder. <span class="lit">Every Claude.</span></h2>
+      <h2>One folder. <span class="lit">Every AI.</span></h2>
     </div>
     <div class="teamapp rv">
       <div class="ta-bar">
@@ -1131,14 +1156,14 @@
           <span class="av" style="background:#7FB2F6">I</span>
           <span class="av" style="background:#F6B93B">D</span>
         </span>
-        <span class="who"><b>3 on the board</b> — each on their own Claude</span>
+        <span class="who"><b>3 on the board</b> — each on their own AI</span>
         <span class="now"><span class="d"></span>live</span>
       </div>
       <div class="ta-feed" id="ta-feed">
-        <div class="ta-row" data-r="0"><span class="av" style="background:#7FB2F6">I</span><span class="txt"><b>Ira</b> <span class="ac">generated 3 ad variants</span></span><span class="claude">her Claude</span><span class="t">now</span></div>
-        <div class="ta-row" data-r="1"><span class="av" style="background:#C8F250">S</span><span class="txt"><b>Sameep</b> <span class="ac">drafted the launch email</span></span><span class="claude">his Claude</span><span class="t">1m</span></div>
-        <div class="ta-row" data-r="2"><span class="av" style="background:#F6B93B">D</span><span class="txt"><b>Dev</b> <span class="ac">refined the brand voice</span></span><span class="claude">their Claude</span><span class="t">2m</span></div>
-        <div class="ta-row" data-r="3"><span class="av" style="background:#B4BECE">Y</span><span class="txt"><b>You</b> <span class="ac">opened the shared brand</span></span><span class="claude">your Claude</span><span class="t">now</span></div>
+        <div class="ta-row" data-r="0"><span class="av" style="background:#7FB2F6">I</span><span class="txt"><b>Ira</b> <span class="ac">generated 3 ad variants</span></span><span class="claude">her AI</span><span class="t">now</span></div>
+        <div class="ta-row" data-r="1"><span class="av" style="background:#C8F250">S</span><span class="txt"><b>Sameep</b> <span class="ac">drafted the launch email</span></span><span class="claude">his AI</span><span class="t">1m</span></div>
+        <div class="ta-row" data-r="2"><span class="av" style="background:#F6B93B">D</span><span class="txt"><b>Dev</b> <span class="ac">refined the brand voice</span></span><span class="claude">their AI</span><span class="t">2m</span></div>
+        <div class="ta-row" data-r="3"><span class="av" style="background:#B4BECE">Y</span><span class="txt"><b>You</b> <span class="ac">opened the shared brand</span></span><span class="claude">your AI</span><span class="t">now</span></div>
       </div>
       <div class="ta-foot">
         <span>inference never changes hands</span><span class="sep">·</span><span>no shared account</span><span class="sep">·</span><span>the relay can't read a byte</span>
@@ -1174,9 +1199,9 @@
         <div class="visitors">
           <div class="vh"><b>anyone opens it</b> — on their own runtime</div>
           <div class="vlist" id="vlist">
-            <div class="vrow" data-v="0"><span class="vg">↗</span><span class="vn">A founder in Berlin</span><span class="vc">her Claude</span></div>
+            <div class="vrow" data-v="0"><span class="vg">↗</span><span class="vn">A founder in Berlin</span><span class="vc">her AI</span></div>
             <div class="vrow" data-v="1"><span class="vg">↗</span><span class="vn">A studio in Lagos</span><span class="vc">their Ollama</span></div>
-            <div class="vrow" data-v="2"><span class="vg">↗</span><span class="vn">A team in Mumbai</span><span class="vc">their Claude</span></div>
+            <div class="vrow" data-v="2"><span class="vg">↗</span><span class="vn">A team in Mumbai</span><span class="vc">their AI</span></div>
           </div>
           <div class="vfoot">you served <b>0 requests</b> · <b>$0</b> · held no keys</div>
         </div>
@@ -1206,9 +1231,11 @@
     <div class="faq rv">
       <div class="faq-group on" data-g="you">
       <details><summary><span class="q">Is it really free?</span><span class="pm">+</span></summary>
-        <div class="ans">Yes — for you. Every wrapp runs on the Claude subscription you already pay for, so there's no per-app charge and nothing new to sign up for. <b>Pro</b> only adds team features.</div></details>
+        <div class="ans">Yes — for you. Every wrapp runs on the AI you already pay for, so there's no per-app charge and nothing new to sign up for. <b>Pro</b> only adds team features.</div></details>
       <details><summary><span class="q">Do I need a Claude subscription?</span><span class="pm">+</span></summary>
         <div class="ans">Yes, signed in through Claude Code on your machine — that's the AI your wrapps run on. Don't have the CLI yet? One command to install <code>@anthropic-ai/claude-code</code>, then <code>claude</code> to log in.</div></details>
+      <details><summary><span class="q">Is it allowed to run wrapps on your Claude subscription?</span><span class="pm">+</span></summary>
+        <div class="ans">Switchboard runs on your own machine through Anthropic&rsquo;s official <b>Claude Agent SDK</b> — your own Claude Code sign-in, no shared or resold key, and each person brings their own. That usage counts against your own plan&rsquo;s limits, the same as your terminal sessions. Anthropic currently supports the Agent SDK and <code>claude -p</code> path on Pro and Max plans, and can change how it&rsquo;s metered or rate-limited without notice — see <a href="https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan">Anthropic&rsquo;s guidance</a>, and run <code>claude auth status</code> if that matters to you. Prefer pay-as-you-go? Point it at an API key or a local model instead.</div></details>
       <details><summary><span class="q">Is my data private — where does it actually go?</span><span class="pm">+</span></summary>
         <div class="ans">Nowhere new. Everything runs on your own machine, and every request passes one consent screen. A wrapp gets a <b>result</b> back — never your keys, and never the folder behind them. Revoke anytime. It's open source (MIT), so you can verify every line.</div></details>
       <details><summary><span class="q">Can I use a local model instead of Claude?</span><span class="pm">+</span></summary>
@@ -1230,13 +1257,13 @@
       </div>
       <div class="faq-group" data-g="team">
       <details><summary><span class="q">In Team mode, is our work shared with you?</span><span class="pm">+</span></summary>
-        <div class="ans">Never. Each teammate runs on their own Claude, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div></details>
+        <div class="ans">Never. Each teammate runs on their own AI, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div></details>
       <details><summary><span class="q">What does Pro cost?</span><span class="pm">+</span></summary>
         <div class="ans">$10/mo flat while we&rsquo;re in beta &mdash; no per-seat. It adds team mode, shared context across the team, internal apps, and cloud sync &amp; backup.</div></details>
       <details><summary><span class="q">What are &ldquo;internal apps&rdquo;?</span><span class="pm">+</span></summary>
         <div class="ans">Private wrapps only your team can open — internal tools that run on your own runtime, with no vendor in the middle.</div></details>
       <details><summary><span class="q">Does the team share one subscription?</span><span class="pm">+</span></summary>
-        <div class="ans">No. Everyone brings their own Claude, so inference never changes hands and there's no shared account to log into.</div></details>
+        <div class="ans">No. Everyone brings their own AI, so inference never changes hands and there's no shared account to log into.</div></details>
       <details><summary><span class="q">Is there SSO, admin, and enterprise support?</span><span class="pm">+</span></summary>
         <div class="ans">Yes — Cloud &amp; Enterprise (let's talk) adds SSO, roles &amp; admin controls, a private wrapp registry, and onboarding.</div></details>
       </div>
@@ -1438,17 +1465,34 @@
     rvEls.forEach(function(el){io.observe(el);});
   }
 
-  /* ---------- hero: cycling BYO word ---------- */
+  /* ---------- hero: cycling BYO word + synced example logo ---------- */
   var byo = document.getElementById('byo-word');
+  var egName = document.getElementById('eg-name');
+  var egLogo = document.getElementById('eg-logo');
+  var byoSet = [
+    { word:'AI',      name:'Claude',     logo:'claude' },
+    { word:'models',  name:'Ollama',     logo:'ollama' },
+    { word:'context', name:'Obsidian',   logo:'obsidian' },
+    { word:'data',    name:'your files', logo:null },
+    { word:'tools',   name:'Higgsfield', logo:'higgsfield' },
+    { word:'backend', name:'your stack', logo:null }
+  ];
+  function egSvg(key){ var s = key && document.getElementById('logo-'+key); return s ? s.innerHTML : ''; }
   if(byo && !reduce){
-    var words = ['AI','context','data','backend','tools'];
     var wi = 0;
-    setInterval(function(){
-      wi = (wi+1)%words.length;
-      byo.style.opacity = '0';
-      setTimeout(function(){ byo.textContent = words[wi]; byo.style.opacity='1'; },220);
-    },2200);
     byo.style.transition = 'opacity .22s ease';
+    setInterval(function(){
+      wi = (wi+1)%byoSet.length;
+      var it = byoSet[wi];
+      byo.style.opacity = '0';
+      if(egName) egName.style.opacity = '0';
+      if(egLogo) egLogo.style.opacity = '0';
+      setTimeout(function(){
+        byo.textContent = it.word; byo.style.opacity = '1';
+        if(egName){ egName.textContent = it.name; egName.style.opacity = '1'; }
+        if(egLogo){ egLogo.innerHTML = egSvg(it.logo); egLogo.style.display = it.logo ? '' : 'none'; egLogo.style.opacity = '1'; }
+      },220);
+    },2400);
   }
 
   /* ---------- hero: subtle bit-matrix field (only animates while the hero is on-screen) ---------- */
@@ -1706,7 +1750,7 @@
   flowG.appendChild(el('path',{d:'M'+(fG[0]-6)+' '+(fG[1]-14)+' v-4 a6 6 0 0 1 12 0 v4',stroke:'#3dff88','stroke-width':1.5,fill:'none'}));
   flowG.appendChild(txt(el('text',{x:fG[0],y:fG[1]+30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#3dff88'}),'YOUR CONSENT GATE'));
   flowG.appendChild(el('rect',{x:fY[0]-64,y:fY[1]-50,width:128,height:100,rx:10,fill:'#0d1410',stroke:'#234433','stroke-width':1.4}));
-  ['your Claude','your tools','your context'].forEach(function(t,k){var ty=fY[1]-26+k*24;
+  ['your AI','your tools','your context'].forEach(function(t,k){var ty=fY[1]-26+k*24;
     flowG.appendChild(el('circle',{cx:fY[0]-46,cy:ty-3,r:2.4,fill:'#3dff88'}));
     flowG.appendChild(txt(el('text',{x:fY[0]-38,y:ty,'font-family':'JetBrains Mono, monospace','font-size':10.5,fill:'#cfe3d6'}),t));});
   flowG.appendChild(el('path',{d:'M'+(fY[0]-64)+' '+(fY[1]+62)+' Q450 392 '+(fA[0]+44)+' '+(fA[1]+50),stroke:'#1d7a45','stroke-width':1.3,'stroke-dasharray':'4 4',fill:'none'}));
