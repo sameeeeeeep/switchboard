@@ -632,6 +632,24 @@
     .run-live .d,.d2-stage,.d2-done{opacity:1 !important;transform:none !important}
     .scard:hover{transform:none}
   }
+
+  /* ---------- contact modal ---------- */
+  .cmodal{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:24px}
+  .cmodal[hidden]{display:none}
+  .cmodal-scrim{position:absolute;inset:0;background:rgba(3,5,4,.82);backdrop-filter:blur(4px)}
+  .cform{position:relative;width:100%;max-width:420px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(61,255,136,.06)}
+  .cform .popup-head{align-items:center}
+  .cform .cx{background:none;border:0;color:var(--faint);font-size:16px;line-height:1;cursor:pointer;padding:0 2px;font-family:var(--mono)}
+  .cform .cx:hover{color:var(--phosphor)}
+  .cform .popup-body{padding:18px 18px 20px}
+  .cf{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+  .cf input,.cf textarea{display:block;width:100%;margin-top:7px;background:var(--void);border:1px solid var(--line-bright);color:var(--paper);
+    font-family:var(--mono);font-size:13px;letter-spacing:.01em;padding:10px 12px;border-radius:6px;transition:border-color .15s,box-shadow .15s}
+  .cf input:focus,.cf textarea:focus{outline:none;border-color:var(--phosphor);box-shadow:0 0 0 3px rgba(61,255,136,.12)}
+  .cf textarea{resize:vertical;line-height:1.5}
+  .cform-actions{display:flex;gap:10px;margin-top:4px}
+  .cform-actions .btn{flex:1;justify-content:center;font-size:11px;padding:11px 0}
+  .cform-ok{font-family:var(--mono);font-size:13px;color:var(--phosphor);text-align:center;padding:18px 6px 8px;letter-spacing:.02em}
 </style>
 <noscript><style>.rv{opacity:1 !important;transform:none !important}</style></noscript>
 </head>
@@ -996,9 +1014,9 @@
       </div>
 
       <div class="tier feat">
-        <div class="tname">Pro <span class="badge">TEAMS</span></div>
-        <div class="price">$20<span class="per">/mo</span></div>
-        <div class="pseat">+ $5 / seat</div>
+        <div class="tname">Pro <span class="badge">BETA</span></div>
+        <div class="price">$10<span class="per">/mo</span></div>
+        <div class="pseat">flat · no per-seat, while in beta</div>
         <div class="pdesc">Everything in Free, plus your whole team on one board.</div>
         <ul>
           <li>Team mode — one shared folder, live, each on their own Claude</li>
@@ -1007,7 +1025,7 @@
           <li>Cloud sync &amp; encrypted backup</li>
           <li>Sealed end to end — the relay can't read a byte</li>
         </ul>
-        <a class="btn btn-solid" href="#setup">Start Pro →</a>
+        <a class="btn btn-solid" href="mailto:sameep@stayoften.com?subject=Switchboard%20Pro%20beta" data-cta="pro">Start Pro →</a>
       </div>
 
       <div class="tier">
@@ -1021,7 +1039,7 @@
           <li>Private wrapp registry</li>
           <li>Onboarding &amp; support</li>
         </ul>
-        <a class="btn btn-ghost" href="mailto:sameep@stayoften.com?subject=Switchboard%20for%20teams">Get in touch →</a>
+        <a class="btn btn-ghost" href="mailto:sameep@stayoften.com?subject=Switchboard%20for%20teams" data-cta="enterprise">Get in touch →</a>
       </div>
 
     </div>
@@ -1214,7 +1232,7 @@
       <details><summary><span class="q">In Team mode, is our work shared with you?</span><span class="pm">+</span></summary>
         <div class="ans">Never. Each teammate runs on their own Claude, and the shared folder syncs <b>sealed end to end</b> — encrypted with your team's key. The relay is a mailman, not a landlord; it can't read a byte.</div></details>
       <details><summary><span class="q">What does Pro cost?</span><span class="pm">+</span></summary>
-        <div class="ans">$20/mo + $5/seat. It adds team mode, shared context across the team, internal apps, and cloud sync &amp; backup.</div></details>
+        <div class="ans">$10/mo flat while we&rsquo;re in beta &mdash; no per-seat. It adds team mode, shared context across the team, internal apps, and cloud sync &amp; backup.</div></details>
       <details><summary><span class="q">What are &ldquo;internal apps&rdquo;?</span><span class="pm">+</span></summary>
         <div class="ans">Private wrapps only your team can open — internal tools that run on your own runtime, with no vendor in the middle.</div></details>
       <details><summary><span class="q">Does the team share one subscription?</span><span class="pm">+</span></summary>
@@ -1272,6 +1290,128 @@
     </div>
   </div>
 </footer>
+
+<!-- ============ CONTACT / PRO-BETA MODAL ============ -->
+<div id="contact" class="cmodal" hidden>
+  <div class="cmodal-scrim" data-close></div>
+  <div class="popup cform" role="dialog" aria-modal="true" aria-labelledby="cform-title">
+    <div class="popup-head">
+      <span id="cform-title">SWITCHBOARD · GET IN TOUCH</span>
+      <button type="button" class="cx" data-close aria-label="Close">×</button>
+    </div>
+    <div class="popup-body">
+      <form novalidate>
+        <label class="cf">Name<input name="name" autocomplete="name" required></label>
+        <label class="cf">Work email<input name="email" type="email" autocomplete="email" required></label>
+        <label class="cf">Company<input name="company" autocomplete="organization"></label>
+        <div class="cform-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-solid">Send →</button>
+        </div>
+      </form>
+      <p class="cform-ok" hidden>Sent — we&rsquo;ll be in touch shortly.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== contact form + Pro checkout ===== */
+(function(){
+  // Pro checkout: paste a hosted payment link (Dodo Payments / Stripe / Lemon Squeezy).
+  // Empty => "Start Pro" opens the contact form with the Pro-beta intent.
+  var PRO_CHECKOUT_URL = "";
+
+  // Enterprise / Pro-beta contact form -> silent Google Forms submission.
+  // After creating the form, paste its /formResponse action + the entry.<id> for each field.
+  var CONTACT_FORM = {
+    action: "https://docs.google.com/forms/d/e/1FAIpQLSfZIxGXFMbuqbICFD9xKmt5RXOtaQ_ivs8F9wZ-QW9yPhxUBg/formResponse",
+    fields: {
+      name:    "entry.1412016144",
+      email:   "entry.1545493625",
+      company: "entry.280725317"
+    }
+  };
+  var CONTACT_EMAIL = "sameep@stayoften.com";
+
+  var modal   = document.getElementById('contact');
+  if(!modal) return;
+  var form    = modal.querySelector('form');
+  var okMsg   = modal.querySelector('.cform-ok');
+  var titleEl = modal.querySelector('#cform-title');
+  var currentIntent = 'Enterprise';
+  var lastFocus = null;
+
+  function open(kind){
+    var intent = kind === 'pro' ? 'Pro beta' : 'Enterprise';
+    currentIntent = intent;
+    lastFocus = document.activeElement;
+    if(titleEl) titleEl.textContent = intent === 'Pro beta'
+      ? 'SWITCHBOARD · JOIN THE PRO BETA'
+      : 'SWITCHBOARD · GET IN TOUCH';
+    if(okMsg) okMsg.hidden = true;
+    form.hidden = false;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    var first = form.querySelector('input,textarea');
+    if(first) first.focus();
+  }
+  function close(){
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cta]'), function(a){
+    a.addEventListener('click', function(e){
+      var kind = a.getAttribute('data-cta');
+      if(kind === 'pro' && PRO_CHECKOUT_URL){
+        e.preventDefault();
+        window.open(PRO_CHECKOUT_URL, '_blank', 'noopener');
+        return;
+      }
+      e.preventDefault();
+      open(kind);
+    });
+  });
+
+  Array.prototype.forEach.call(modal.querySelectorAll('[data-close]'), function(b){
+    b.addEventListener('click', close);
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !modal.hidden) close();
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var data = {};
+    ['name','email','company'].forEach(function(k){
+      var el = form.querySelector('[name='+k+']');
+      data[k] = el ? String(el.value).trim() : '';
+    });
+    if(!data.name || !data.email){
+      var missing = form.querySelector(!data.name ? '[name=name]' : '[name=email]');
+      if(missing) missing.focus();
+      return;
+    }
+    var configured = CONTACT_FORM.action && CONTACT_FORM.fields.email;
+    if(configured){
+      var body = new URLSearchParams();
+      Object.keys(CONTACT_FORM.fields).forEach(function(k){
+        if(CONTACT_FORM.fields[k]) body.append(CONTACT_FORM.fields[k], data[k] || '');
+      });
+      fetch(CONTACT_FORM.action, { method:'POST', mode:'no-cors', body: body }).catch(function(){});
+    } else {
+      // fallback until the Google Form is wired: hand off to the mail client
+      var subj = encodeURIComponent('Switchboard — ' + currentIntent);
+      var lines = ['Name: '+data.name, 'Email: '+data.email, 'Company: '+data.company];
+      location.href = 'mailto:'+CONTACT_EMAIL+'?subject='+subj+'&body='+encodeURIComponent(lines.join('\n'));
+    }
+    form.reset();
+    form.hidden = true;
+    if(okMsg) okMsg.hidden = false;
+  });
+})();
+</script>
 
 <script>
 (function(){
