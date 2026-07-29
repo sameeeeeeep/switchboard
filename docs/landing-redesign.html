@@ -1716,7 +1716,6 @@
   function capOp(a,b,c,d,p){return Math.max(0,Math.min(sm(a,b,p),1-sm(c,d,p)));}
   svg.setAttribute('viewBox','0 0 900 560');
 
-  // ---------- defs: filters + gradients (static literal, parsed in SVG ns) ----------
   var defsStr='<svg xmlns="http://www.w3.org/2000/svg"><defs>'
     +'<filter id="sbGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
     +'<filter id="sbBig" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="8"/></filter>'
@@ -1726,11 +1725,10 @@
     +'<radialGradient id="holeG" cx="0.5" cy="0.38" r="0.7"><stop offset="0" stop-color="#00110a"/><stop offset="1" stop-color="#0c1a13"/></radialGradient>'
     +'<radialGradient id="bezelG" cx="0.35" cy="0.3" r="0.85"><stop offset="0" stop-color="#4d8f66"/><stop offset="0.55" stop-color="#22402e"/><stop offset="1" stop-color="#0a1610"/></radialGradient>'
     +'<radialGradient id="bloomG" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#3dff88" stop-opacity="0.55"/><stop offset="1" stop-color="#3dff88" stop-opacity="0"/></radialGradient>'
-    +'<radialGradient id="sheenG" cx="0.5" cy="0" r="0.9"><stop offset="0" stop-color="#8effb8" stop-opacity="0.10"/><stop offset="1" stop-color="#8effb8" stop-opacity="0"/></radialGradient>'
+    +'<radialGradient id="sheenG" cx="0.5" cy="0" r="0.9"><stop offset="0" stop-color="#8effb8" stop-opacity="0.12"/><stop offset="1" stop-color="#8effb8" stop-opacity="0"/></radialGradient>'
     +'<linearGradient id="plugG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6ffef"/><stop offset="0.45" stop-color="#5effa0"/><stop offset="1" stop-color="#1d7a45"/></linearGradient>'
     +'</defs></svg>';
-  var pdoc=new DOMParser().parseFromString(defsStr,'image/svg+xml');
-  svg.appendChild(document.importNode(pdoc.documentElement.firstChild,true));
+  svg.appendChild(document.importNode(new DOMParser().parseFromString(defsStr,'image/svg+xml').documentElement.firstChild,true));
 
   function port(g,cx,cy,r){
     g.appendChild(el('circle',{cx:cx,cy:cy,r:r,fill:'url(#bezelG)',stroke:'#050b08','stroke-width':0.8}));
@@ -1756,111 +1754,113 @@
     return g;
   }
 
-  var N=7, appX=[180,270,360,450,540,630,720], appY=58, appR=16;
-  var srvJit=[[-13,166],[16,180],[-7,160],[9,174],[-16,168],[14,176],[-3,182]];
-  var bX=100,bY=196,bW=700,bH=226, bR=bX+bW, bB=bY+bH, gateY=264, connY=352;
+  var N=7, appX=[180,270,360,450,540,630,720], appY=72, appR=14;
+  var srvJit=[[-13,150],[16,164],[-7,146],[9,160],[-16,152],[14,160],[-3,166]];
+  var gX=118,gY=226,gW=664,gH=52,gR=gX+gW,gB=gY+gH;
+  var connY=392;
   var conns=[
     {n:'claude',l:'Claude',x:180},{n:'ollama',l:'Ollama',x:250},
     {n:'gmail',l:'Gmail',x:350},{n:'sheets',l:'Sheets',x:420},{n:'github',l:'GitHub',x:490},{n:'notion',l:'Notion',x:560},
     {n:'obsidian',l:'Obsidian',x:670},{n:'files',l:'Files',x:740}
   ];
-  var patches=[[1,1],[3,4],[6,6]];
-  var activeApp={},activeConn={}; patches.forEach(function(p){activeApp[p[0]]=1;activeConn[p[1]]=1;});
+  var patches=[[1,1],[4,5],[6,7]]; // app -> connector (kept clear of the nameplate)
+  var np=[368,232,158,40]; // nameplate x,y,w,h
+
+  // faint "your machine" boundary
+  var boundG=el('g',{opacity:0});
+  boundG.appendChild(el('rect',{x:60,y:34,width:780,height:406,rx:20,fill:'none',stroke:'#20362a','stroke-width':1.2,'stroke-dasharray':'2 7'}));
+  boundG.appendChild(txt(el('text',{x:76,y:52,'font-family':'JetBrains Mono, monospace','font-size':8.5,'letter-spacing':'0.16em',fill:'#3a5a45'}),'YOUR MACHINE — NOTHING LEAVES'));
+  svg.appendChild(boundG);
 
   // apps as little windows
   var appEls=[];
   for(var i=0;i<N;i++){var g=el('g',{opacity:0});
-    g.appendChild(el('rect',{x:appX[i]-appR,y:appY-appR,width:appR*2,height:appR*2,rx:7,fill:'url(#panelG)',stroke:'#3a5a45','stroke-width':1.3,filter:'url(#sbSoft)'}));
-    g.appendChild(el('rect',{x:appX[i]-appR,y:appY-appR,width:appR*2,height:9,rx:7,fill:'#16261c'}));
-    g.appendChild(el('circle',{cx:appX[i]-appR+7,cy:appY-appR+4.5,r:1.4,fill:'#4d7a5c'}));
-    g.appendChild(el('rect',{x:appX[i]-8,y:appY-1,width:16,height:2.4,rx:1.2,fill:'#3a5a45'}));
-    g.appendChild(el('rect',{x:appX[i]-8,y:appY+5,width:10,height:2.4,rx:1.2,fill:'#2c4736'}));
+    g.appendChild(el('rect',{x:appX[i]-appR,y:appY-appR,width:appR*2,height:appR*2,rx:6,fill:'url(#panelG)',stroke:'#3a5a45','stroke-width':1.3,filter:'url(#sbSoft)'}));
+    g.appendChild(el('rect',{x:appX[i]-appR,y:appY-appR,width:appR*2,height:8,rx:6,fill:'#16261c'}));
+    g.appendChild(el('circle',{cx:appX[i]-appR+6,cy:appY-appR+4,r:1.3,fill:'#4d7a5c'}));
+    g.appendChild(el('rect',{x:appX[i]-7,y:appY-1,width:14,height:2.2,rx:1.1,fill:'#3a5a45'}));
+    g.appendChild(el('rect',{x:appX[i]-7,y:appY+4,width:9,height:2.2,rx:1.1,fill:'#2c4736'}));
     svg.appendChild(g); appEls.push(g);}
 
-  // mess: own server + copy of you
+  // beat 1: lines lead out to each app's OWN backend + red copy
   var srvEls=[],copyEls=[],outLines=[];
   for(i=0;i<N;i++){var sx=appX[i]+srvJit[i][0], sy=srvJit[i][1];
-    var ln=el('line',{x1:appX[i],y1:appY+appR,x2:sx,y2:sy-12,stroke:'#7a3b48','stroke-width':1.3,'stroke-opacity':0}); outLines.push(ln); svg.appendChild(ln);
+    var ln=el('line',{x1:appX[i],y1:appY+appR,x2:sx,y2:sy-11,stroke:'#8a4450','stroke-width':1.3,'stroke-opacity':0}); outLines.push(ln); svg.appendChild(ln);
     var sg=el('g',{opacity:0});
     sg.appendChild(el('rect',{x:sx-15,y:sy-10,width:30,height:20,rx:4,fill:'#1a1013',stroke:'#8a4450','stroke-width':1.2}));
     sg.appendChild(el('line',{x1:sx-8,y1:sy-3,x2:sx+8,y2:sy-3,stroke:'#a35662','stroke-width':1}));
     sg.appendChild(el('line',{x1:sx-8,y1:sy+3,x2:sx+8,y2:sy+3,stroke:'#a35662','stroke-width':1}));
     svg.appendChild(sg); srvEls.push(sg);
-    copyEls.push(el('circle',{cx:sx,cy:sy,r:2.9,fill:'#d06576'})); copyEls[i].setAttribute('opacity',0); svg.appendChild(copyEls[i]);}
+    copyEls.push(el('circle',{cx:sx,cy:sy,r:2.9,fill:'#d06576',opacity:0})); svg.appendChild(copyEls[i]);}
 
-  // idle app -> jack lines (everyone plugged in)
+  // idle app -> gateway lines (everyone routes through the switchboard)
   var inLines=[];
-  for(i=0;i<N;i++){inLines.push(el('line',{x1:appX[i],y1:appY+appR,x2:appX[i],y2:bY-4,stroke:'#1d7a45','stroke-width':1.3,'stroke-opacity':0})); svg.appendChild(inLines[i]);}
+  for(i=0;i<N;i++){inLines.push(el('line',{x1:appX[i],y1:appY+appR,x2:appX[i],y2:gY-4,stroke:'#1d7a45','stroke-width':1.3,'stroke-opacity':0})); svg.appendChild(inLines[i]);}
 
-  // ---------- the console ----------
-  var boardG=el('g',{opacity:0});
-  boardG.appendChild(el('rect',{x:bX-2,y:bY-2,width:bW+4,height:bH+4,rx:20,fill:'#3dff88',opacity:0.06,filter:'url(#sbBig)'}));
-  boardG.appendChild(el('rect',{x:bX,y:bY,width:bW,height:bH,rx:16,fill:'url(#panelG)',stroke:'#325b41','stroke-width':1.4,filter:'url(#sbSoft)'}));
-  boardG.appendChild(el('rect',{x:bX+3.5,y:bY+3.5,width:bW-7,height:bH-7,rx:13,fill:'none',stroke:'#0c1712','stroke-width':1.2}));
-  boardG.appendChild(el('rect',{x:bX+40,y:bY+2,width:bW-80,height:60,rx:10,fill:'url(#sheenG)'}));
-  boardG.appendChild(el('path',{d:'M'+(bX+18)+' '+(bY+1.5)+' H'+(bR-18),stroke:'#4a7a59','stroke-width':1,'stroke-opacity':0.55}));
-  [[bX+15,bY+15],[bR-15,bY+15],[bX+15,bB-15],[bR-15,bB-15]].forEach(function(rv){
-    boardG.appendChild(el('circle',{cx:rv[0],cy:rv[1],r:3.2,fill:'url(#bezelG)',stroke:'#050b08','stroke-width':0.6}));
-    boardG.appendChild(el('circle',{cx:rv[0]-0.8,cy:rv[1]-0.8,r:1,fill:'#8fd3a4','opacity':0.6}));});
-  boardG.appendChild(txt(el('text',{x:bX+22,y:bY+31,'font-family':'JetBrains Mono, monospace','font-size':11,'letter-spacing':'0.07em',fill:'#3dff88',filter:'url(#sbGlow)'}),'YOUR SWITCHBOARD'));
-  boardG.appendChild(txt(el('text',{x:bX+22,y:bY+47,'font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'on your machine'));
-  // input jacks (recessed ports)
-  for(i=0;i<N;i++){ port(boardG, appX[i], bY, 6); }
-  // consent module
-  boardG.appendChild(el('line',{x1:bX+80,y1:gateY,x2:bR-26,y2:gateY,stroke:'#1d7a45','stroke-width':1.1,'stroke-dasharray':'2 5','stroke-opacity':0.8}));
-  boardG.appendChild(el('rect',{x:bX+14,y:gateY-14,width:30,height:28,rx:7,fill:'url(#jackG)',stroke:'#3dff88','stroke-width':1.3,filter:'url(#sbGlow)'}));
-  boardG.appendChild(el('rect',{x:bX+24,y:gateY-2,width:10,height:9,rx:2,fill:'none',stroke:'#3dff88','stroke-width':1.3}));
-  boardG.appendChild(el('path',{d:'M'+(bX+26)+' '+(gateY-2)+' v-2.6 a3 3 0 0 1 6 0 v2.6',stroke:'#3dff88','stroke-width':1.3,fill:'none'}));
-  boardG.appendChild(txt(el('text',{x:bX+59,y:gateY+3.5,'font-family':'JetBrains Mono, monospace','font-size':7.5,'letter-spacing':'0.1em',fill:'#8fe6ac'}),'CONSENT'));
-  // group labels + separators
+  // ---------- gateway + connectors (appear together in beat 2) ----------
+  var gwG=el('g',{opacity:0});
+  // connectors first (behind the gateway visually is fine; they're separate nodes)
   [['YOUR AI',215],['YOUR TOOLS',455],['YOUR DATA',705]].forEach(function(gl){
-    boardG.appendChild(txt(el('text',{x:gl[1],y:connY-28,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':8.5,'letter-spacing':'0.16em',fill:'#5c7a67'}),gl[0]));});
-  [305,612].forEach(function(sxp){boardG.appendChild(el('line',{x1:sxp,y1:connY-40,x2:sxp,y2:connY+34,stroke:'#0e1a13','stroke-width':1.4}));boardG.appendChild(el('line',{x1:sxp+1,y1:connY-40,x2:sxp+1,y2:connY+34,stroke:'#2a4835','stroke-width':0.6,'stroke-opacity':0.5}));});
-  svg.appendChild(boardG);
-
-  // connectors (beveled jack tiles + icon)
+    gwG.appendChild(txt(el('text',{x:gl[1],y:connY-30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':8.5,'letter-spacing':'0.16em',fill:'#5c7a67'}),gl[0]));});
+  gwG.appendChild(txt(el('text',{x:450,y:connY-30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':0,fill:'none'}),''));
   conns.forEach(function(c){
-    var g=el('g',{});
-    g.appendChild(el('rect',{x:c.x-15,y:connY-15,width:30,height:30,rx:8,fill:'url(#jackG)',stroke:'#2c5c39','stroke-width':1.3,filter:'url(#sbSoft)'}));
-    g.appendChild(el('rect',{x:c.x-15,y:connY-15,width:30,height:14,rx:8,fill:'#8effb8',opacity:0.03}));
-    var ic=icon(c.n,'#9fc6b1'); ic.setAttribute('transform','translate('+(c.x-9)+','+(connY-9)+') scale(0.75)'); g.appendChild(ic);
-    g.appendChild(txt(el('text',{x:c.x,y:connY+28,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':7.5,fill:'#7fa18d'}),c.l));
-    boardG.appendChild(g);
+    gwG.appendChild(el('rect',{x:c.x-15,y:connY-15,width:30,height:30,rx:8,fill:'url(#jackG)',stroke:'#2c5c39','stroke-width':1.3,filter:'url(#sbSoft)'}));
+    gwG.appendChild(el('rect',{x:c.x-15,y:connY-15,width:30,height:14,rx:8,fill:'#8effb8',opacity:0.03}));
+    var ic=icon(c.n,'#9fc6b1'); ic.setAttribute('transform','translate('+(c.x-9)+','+(connY-9)+') scale(0.75)'); gwG.appendChild(ic);
+    gwG.appendChild(txt(el('text',{x:c.x,y:connY+28,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':7.5,fill:'#7fa18d'}),c.l));
   });
+  // the SWITCHBOARD gateway module (a thing calls pass THROUGH)
+  gwG.appendChild(el('rect',{x:gX-2,y:gY-2,width:gW+4,height:gH+4,rx:16,fill:'#3dff88',opacity:0.06,filter:'url(#sbBig)'}));
+  gwG.appendChild(el('rect',{x:gX,y:gY,width:gW,height:gH,rx:13,fill:'url(#panelG)',stroke:'#3a6b4c','stroke-width':1.5,filter:'url(#sbSoft)'}));
+  gwG.appendChild(el('rect',{x:gX+3,y:gY+3,width:gW-6,height:gH-6,rx:11,fill:'none',stroke:'#0c1712','stroke-width':1}));
+  gwG.appendChild(el('rect',{x:gX+30,y:gY+2,width:gW-60,height:20,rx:8,fill:'url(#sheenG)'}));
+  [[gX+13,gY+13],[gR-13,gY+13],[gX+13,gB-13],[gR-13,gB-13]].forEach(function(rv){
+    gwG.appendChild(el('circle',{cx:rv[0],cy:rv[1],r:2.8,fill:'url(#bezelG)',stroke:'#050b08','stroke-width':0.6}));});
+  for(i=0;i<N;i++){ port(gwG, appX[i], gY, 5.5); }        // input ports (calls in, on top)
+  conns.forEach(function(c){ port(gwG, c.x, gB, 4.5); });  // output ports (out to connectors, on bottom)
+  svg.appendChild(gwG);
 
-  // ---------- live patches ----------
+  // ---------- live patches: through the gateway to your connectors ----------
   var patchG=el('g',{opacity:0});
-  // blooms behind active connectors (soft, no filter)
   patches.forEach(function(pr){var c=conns[pr[1]];
     patchG.appendChild(el('circle',{cx:c.x,cy:connY,r:26,fill:'url(#bloomG)'}));});
   var cordG=el('g',{filter:'url(#sbGlow)'});
   patches.forEach(function(pr){
-    var ax=appX[pr[0]], c=conns[pr[1]], cyp=connY-15;
-    var d='M'+ax+' '+bY+' C '+lerp(ax,c.x,0.5)+' '+(bY+48)+', '+c.x+' '+(gateY+30)+', '+c.x+' '+cyp;
-    cordG.appendChild(el('path',{d:d,fill:'none',stroke:'#06331c','stroke-width':5.5,'stroke-linecap':'round'}));
-    cordG.appendChild(el('path',{d:d,fill:'none',stroke:'#1d7a45','stroke-width':3.4,'stroke-linecap':'round'}));
-    cordG.appendChild(el('path',{'class':'sb-flow',d:d,fill:'none',stroke:'#9effc0','stroke-width':1.6,'stroke-linecap':'round'}));
-    var lx=lerp(ax,c.x,(gateY-bY)/(cyp-bY));
-    cordG.appendChild(el('circle',{cx:lx,cy:gateY,r:4,fill:'#0a130d',stroke:'#8effb8','stroke-width':1.4}));
-    plug(cordG,ax,bY); plug(cordG,c.x,cyp);
+    var ax=appX[pr[0]], c=conns[pr[1]];
+    var d='M'+ax+' '+(appY+appR)+' L '+ax+' '+gY+' C '+ax+' '+(gY+24)+', '+c.x+' '+(gB-24)+', '+c.x+' '+gB+' L '+c.x+' '+(connY-15);
+    cordG.appendChild(el('path',{d:d,fill:'none',stroke:'#06331c','stroke-width':5.5,'stroke-linecap':'round','stroke-linejoin':'round'}));
+    cordG.appendChild(el('path',{d:d,fill:'none',stroke:'#1d7a45','stroke-width':3.4,'stroke-linecap':'round','stroke-linejoin':'round'}));
+    cordG.appendChild(el('path',{'class':'sb-flow',d:d,fill:'none',stroke:'#9effc0','stroke-width':1.6,'stroke-linecap':'round','stroke-linejoin':'round'}));
+    plug(cordG,ax,gY); plug(cordG,c.x,gB); plug(cordG,c.x,connY-15);
     cordG.appendChild(el('rect',{x:c.x-16,y:connY-16,width:32,height:32,rx:9,fill:'none',stroke:'#7dffb0','stroke-width':1.6}));
   });
   patchG.appendChild(cordG);
-  patchG.appendChild(txt(el('text',{x:450,y:appY-26,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#8fa79a'}),'wrapps call in'));
-  patchG.appendChild(txt(el('text',{x:450,y:bB+30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#8fa79a'}),'you patch each call through — it runs on your connectors, the result runs back, nothing leaves'));
+  patchG.appendChild(txt(el('text',{x:450,y:appY-24,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#8fa79a'}),'wrapps call in'));
+  patchG.appendChild(txt(el('text',{x:450,y:460,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#8fa79a'}),'each call passes through the switchboard to your connectors — the result runs back, nothing leaves'));
   svg.appendChild(patchG);
 
+  // ---------- nameplate on top: cords route behind it ----------
+  var plateG=el('g',{opacity:0});
+  plateG.appendChild(el('rect',{x:np[0],y:np[1],width:np[2],height:np[3],rx:9,fill:'url(#panelG)',stroke:'#3dff88','stroke-width':1.2,filter:'url(#sbGlow)'}));
+  plateG.appendChild(el('rect',{x:np[0]+8,y:np[1]+9,width:14,height:12,rx:3,fill:'none',stroke:'#3dff88','stroke-width':1.4}));
+  plateG.appendChild(el('path',{d:'M'+(np[0]+11)+' '+(np[1]+9)+' v-3 a4 4 0 0 1 8 0 v3',stroke:'#3dff88','stroke-width':1.4,fill:'none'}));
+  plateG.appendChild(txt(el('text',{x:np[0]+30,y:np[1]+18,'font-family':'JetBrains Mono, monospace','font-size':11,'letter-spacing':'0.06em',fill:'#3dff88',filter:'url(#sbGlow)'}),'SWITCHBOARD'));
+  plateG.appendChild(txt(el('text',{x:np[0]+30,y:np[1]+31,'font-family':'JetBrains Mono, monospace','font-size':7.5,fill:'#8fe6ac'}),'consent gate · you approve'));
+  svg.appendChild(plateG);
+
   function render(p){
-    var mApp=sm(0.03,0.12,p), mSrv=sm(0.15,0.30,p), mMore=sm(0.33,0.46,p), toBoard=sm(0.50,0.66,p), patch=sm(0.72,0.92,p);
+    var mApp=sm(0.03,0.13,p), mLine=sm(0.16,0.28,p), mSrv=sm(0.22,0.36,p), toGate=sm(0.50,0.66,p), patch=sm(0.72,0.92,p);
+    boundG.setAttribute('opacity',toGate.toFixed(3));
     for(var i=0;i<N;i++){
       appEls[i].setAttribute('opacity', mApp.toFixed(3));
-      var mv=mSrv*(1-toBoard);
+      outLines[i].setAttribute('stroke-opacity',(mLine*(1-toGate)*0.8).toFixed(3));
+      var mv=mSrv*(1-toGate);
       srvEls[i].setAttribute('opacity',mv.toFixed(3)); copyEls[i].setAttribute('opacity',mv.toFixed(3));
-      outLines[i].setAttribute('stroke-opacity',(lerp(0.4,0.75,mMore)*(1-toBoard)).toFixed(3));
-      inLines[i].setAttribute('stroke-opacity',(toBoard*0.4).toFixed(3));
+      inLines[i].setAttribute('stroke-opacity',(toGate*0.4).toFixed(3));
     }
-    boardG.setAttribute('opacity',toBoard.toFixed(3));
+    gwG.setAttribute('opacity',toGate.toFixed(3));
     patchG.setAttribute('opacity',patch.toFixed(3));
+    plateG.setAttribute('opacity',toGate.toFixed(3));
     if(caps[0])caps[0].style.opacity=capOp(0.03,0.08,0.13,0.18,p).toFixed(2);
     if(caps[1])caps[1].style.opacity=capOp(0.16,0.21,0.28,0.33,p).toFixed(2);
     if(caps[2])caps[2].style.opacity=capOp(0.34,0.39,0.46,0.50,p).toFixed(2);
