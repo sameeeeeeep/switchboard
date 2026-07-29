@@ -95,6 +95,8 @@ export const PARKED = [
     tokens: 165_000, updates: 1, pro: null },
   { id: "meme", name: "Meme", href: "./meme.html",
     tokens: 208_000, updates: 1, pro: null },
+  { id: "echo", name: "Echo", href: "./echo.html",
+    tokens: 0, updates: 1, pro: null },
   { id: "roast", name: "Roast", href: "./roast.html",
     tokens: 128_000, updates: 1, pro: null },
   { id: "rizz", name: "Rizz", href: "./rizz.html",
