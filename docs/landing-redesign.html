@@ -642,6 +642,11 @@
     .scard:hover{transform:none}
   }
 
+  /* ---------- manifesto: switchboard patch signal ---------- */
+  @keyframes sbflow{to{stroke-dashoffset:-24}}
+  .chaos-svg .sb-flow{stroke-dasharray:4 6;animation:sbflow 1s linear infinite}
+  @media(prefers-reduced-motion:reduce){.chaos-svg .sb-flow{animation:none;stroke-dasharray:none}}
+
   /* ---------- hero: byo example + logo strip ---------- */
   .hero-eg{margin-top:14px;display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:13.5px;color:var(--muted);min-height:24px}
   .hero-eg .eg-arrow{color:var(--phosphor-dim)}
@@ -1706,80 +1711,88 @@
   var NS='http://www.w3.org/2000/svg';
   function el(t,at){var e=document.createElementNS(NS,t);for(var k in at)e.setAttribute(k,at[k]);return e;}
   function txt(e,s){e.textContent=s;return e;}
-  var cx=450,cy=248,N=8;
-  var scat=[[150,90],[720,70],[822,250],[688,430],[402,470],[132,442],[248,206],[560,150]];
-  var ring=[],R=150,i;
-  for(i=0;i<N;i++){var a=(-90+i*(360/N))*Math.PI/180;ring.push([cx+R*Math.cos(a),cy+R*Math.sin(a)]);}
-  function outward(px,py,f){return [cx+(px-cx)*f, cy+(py-cy)*f];}
-  var srvBase=scat.map(function(q){return outward(q[0],q[1],1.30);});
-  var srvOut=scat.map(function(q){return outward(q[0],q[1],1.66);});
-  var chaosG=el('g',{}),lines=[],srvs=[],copies=[],apps=[];
-  for(i=0;i<N;i++){var ln=el('line',{stroke:'#7a3b48','stroke-width':1.2,'stroke-opacity':0});lines.push(ln);chaosG.appendChild(ln);}
-  var coreG=el('g',{opacity:0});
-  coreG.appendChild(el('circle',{cx:cx,cy:cy,r:54,fill:'rgba(61,255,136,0.09)'}));
-  coreG.appendChild(el('rect',{x:cx-46,y:cy-20,width:92,height:40,rx:9,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.6}));
-  coreG.appendChild(txt(el('text',{x:cx,y:cy+4,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':10,fill:'#3dff88'}),'YOUR SYSTEM'));
-  chaosG.appendChild(coreG);
-  for(i=0;i<N;i++){var sg=el('g',{opacity:0});
-    sg.appendChild(el('rect',{x:-17,y:-11,width:34,height:22,rx:4,fill:'#160f12',stroke:'#7a3b48','stroke-width':1.1}));
-    sg.appendChild(el('line',{x1:-10,y1:-3,x2:10,y2:-3,stroke:'#8a4450','stroke-width':1}));
-    sg.appendChild(el('line',{x1:-10,y1:3,x2:10,y2:3,stroke:'#8a4450','stroke-width':1}));
-    srvs.push(sg);chaosG.appendChild(sg);}
-  for(i=0;i<N;i++){copies.push(el('circle',{r:3.2,fill:'#c25566',opacity:0}));chaosG.appendChild(copies[i]);}
-  for(i=0;i<N;i++){apps.push(el('rect',{width:22,height:22,rx:5,fill:'#0d1410',stroke:'#48604f','stroke-width':1.5,opacity:0}));chaosG.appendChild(apps[i]);}
-  svg.appendChild(chaosG);
-  var flowG=el('g',{opacity:0}),fA=[152,248],fG=[452,248],fY=[746,248];
-  flowG.appendChild(el('line',{x1:fA[0]+66,y1:fA[1],x2:fG[0]-92,y2:fG[1],stroke:'#3dff88','stroke-width':1.6}));
-  flowG.appendChild(el('path',{d:'M'+(fG[0]-98)+' '+(fA[1]-6)+' l7 6 -7 6',stroke:'#3dff88','stroke-width':1.6,fill:'none'}));
-  flowG.appendChild(el('line',{x1:fG[0]+90,y1:fG[1],x2:fY[0]-76,y2:fY[1],stroke:'#3dff88','stroke-width':1.6}));
-  flowG.appendChild(el('path',{d:'M'+(fY[0]-82)+' '+(fA[1]-6)+' l7 6 -7 6',stroke:'#3dff88','stroke-width':1.6,fill:'none'}));
-  flowG.appendChild(txt(el('text',{x:(fA[0]+fG[0])/2,y:fA[1]-16,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'asks'));
-  flowG.appendChild(txt(el('text',{x:(fG[0]+fY[0])/2,y:fA[1]-16,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'lends'));
-  flowG.appendChild(el('rect',{x:fA[0]-62,y:fA[1]-38,width:124,height:76,rx:10,fill:'#0d1410',stroke:'#234433','stroke-width':1.4}));
-  flowG.appendChild(txt(el('text',{x:fA[0],y:fA[1]-6,'text-anchor':'middle','font-family':'Doto, monospace','font-weight':900,'font-size':13,fill:'#cfe3d6'}),'A WRAPP'));
-  flowG.appendChild(txt(el('text',{x:fA[0],y:fA[1]+14,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'just a page'));
-  flowG.appendChild(el('rect',{x:fG[0]-80,y:fG[1]-44,width:160,height:88,rx:11,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.7}));
-  flowG.appendChild(el('rect',{x:fG[0]-11,y:fG[1]-14,width:22,height:16,rx:3,fill:'none',stroke:'#3dff88','stroke-width':1.5}));
-  flowG.appendChild(el('path',{d:'M'+(fG[0]-6)+' '+(fG[1]-14)+' v-4 a6 6 0 0 1 12 0 v4',stroke:'#3dff88','stroke-width':1.5,fill:'none'}));
-  flowG.appendChild(txt(el('text',{x:fG[0],y:fG[1]+30,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#3dff88'}),'YOUR CONSENT GATE'));
-  flowG.appendChild(el('rect',{x:fY[0]-64,y:fY[1]-50,width:128,height:100,rx:10,fill:'#0d1410',stroke:'#234433','stroke-width':1.4}));
-  ['your AI','your tools','your context'].forEach(function(t,k){var ty=fY[1]-26+k*24;
-    flowG.appendChild(el('circle',{cx:fY[0]-46,cy:ty-3,r:2.4,fill:'#3dff88'}));
-    flowG.appendChild(txt(el('text',{x:fY[0]-38,y:ty,'font-family':'JetBrains Mono, monospace','font-size':10.5,fill:'#cfe3d6'}),t));});
-  flowG.appendChild(el('path',{d:'M'+(fY[0]-64)+' '+(fY[1]+62)+' Q450 392 '+(fA[0]+44)+' '+(fA[1]+50),stroke:'#1d7a45','stroke-width':1.3,'stroke-dasharray':'4 4',fill:'none'}));
-  flowG.appendChild(el('path',{d:'M'+(fA[0]+52)+' '+(fA[1]+44)+' l-9 3 5 -8',stroke:'#1d7a45','stroke-width':1.3,fill:'none'}));
-  flowG.appendChild(txt(el('text',{x:450,y:404,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#7fa18d'}),'a result comes back — nothing leaves'));
-  svg.appendChild(flowG);
   function lerp(a,b,t){return a+(b-a)*t;}
   function sm(a,b,t){t=Math.max(0,Math.min(1,(t-a)/(b-a)));return t*t*(3-2*t);}
   function capOp(a,b,c,d,p){return Math.max(0,Math.min(sm(a,b,p),1-sm(c,d,p)));}
+
+  var N=7, appX=[150,250,350,450,550,650,750], appY=66;
+  var srvJit=[[-14,182],[18,196],[-8,176],[10,192],[-18,184],[16,188],[-4,198]];
+  var bX=172,bY=252,bW=556,bH=192, bB=bY+bH;
+  var gate=[392,350], ACT=3;
+  var res=[[600,306,'your AI'],[600,350,'your tools'],[600,394,'your data']];
+
+  // apps (top row)
+  var appEls=[];
+  for(var i=0;i<N;i++){var g=el('g',{opacity:0});
+    g.appendChild(el('rect',{x:appX[i]-16,y:appY-16,width:32,height:32,rx:7,fill:'#0d1410',stroke:'#48604f','stroke-width':1.5}));
+    g.appendChild(el('rect',{x:appX[i]-7,y:appY-5,width:14,height:3,rx:1.5,fill:'#48604f'}));
+    g.appendChild(el('rect',{x:appX[i]-7,y:appY+1,width:9,height:3,rx:1.5,fill:'#48604f'}));
+    svg.appendChild(g); appEls.push(g);}
+
+  // mess: each app's own server + red copy of you + line out
+  var srvEls=[],copyEls=[],outLines=[];
+  for(i=0;i<N;i++){var sx=appX[i]+srvJit[i][0], sy=srvJit[i][1];
+    var ln=el('line',{x1:appX[i],y1:appY+16,x2:sx,y2:sy-13,stroke:'#7a3b48','stroke-width':1.2,'stroke-opacity':0});
+    outLines.push(ln); svg.appendChild(ln);
+    var sg=el('g',{opacity:0});
+    sg.appendChild(el('rect',{x:sx-16,y:sy-11,width:32,height:22,rx:4,fill:'#160f12',stroke:'#7a3b48','stroke-width':1.1}));
+    sg.appendChild(el('line',{x1:sx-9,y1:sy-3,x2:sx+9,y2:sy-3,stroke:'#8a4450','stroke-width':1}));
+    sg.appendChild(el('line',{x1:sx-9,y1:sy+3,x2:sx+9,y2:sy+3,stroke:'#8a4450','stroke-width':1}));
+    svg.appendChild(sg); srvEls.push(sg);
+    var cp=el('circle',{cx:sx,cy:sy,r:3,fill:'#c25566',opacity:0}); copyEls.push(cp); svg.appendChild(cp);}
+
+  // reroute lines app -> board jack
+  var inLines=[];
+  for(i=0;i<N;i++){var il=el('line',{x1:appX[i],y1:appY+16,x2:appX[i],y2:bY-6,stroke:'#1d7a45','stroke-width':1.4,'stroke-opacity':0}); inLines.push(il); svg.appendChild(il);}
+
+  // the board
+  var boardG=el('g',{opacity:0});
+  boardG.appendChild(el('rect',{x:bX,y:bY,width:bW,height:bH,rx:14,fill:'none',stroke:'#3dff88','stroke-width':7,'stroke-opacity':0.06}));
+  boardG.appendChild(el('rect',{x:bX,y:bY,width:bW,height:bH,rx:14,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.7}));
+  boardG.appendChild(txt(el('text',{x:bX+16,y:bY+24,'font-family':'JetBrains Mono, monospace','font-size':10.5,'letter-spacing':'0.14em',fill:'#3dff88'}),'YOUR SWITCHBOARD'));
+  boardG.appendChild(txt(el('text',{x:bX+16,y:bY+40,'font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'on your machine'));
+  for(i=0;i<N;i++){boardG.appendChild(el('circle',{cx:appX[i],cy:bY,r:5.5,fill:'#0d1410',stroke:'#2c5c39','stroke-width':1.5}));
+    boardG.appendChild(el('circle',{cx:appX[i],cy:bY,r:2.3,fill:'#1d7a45'}));}
+  // consent gate
+  boardG.appendChild(el('rect',{x:gate[0]-30,y:gate[1]-24,width:60,height:48,rx:9,fill:'#0a0f0c',stroke:'#3dff88','stroke-width':1.6}));
+  boardG.appendChild(el('rect',{x:gate[0]-9,y:gate[1]-5,width:18,height:14,rx:3,fill:'none',stroke:'#3dff88','stroke-width':1.5}));
+  boardG.appendChild(el('path',{d:'M'+(gate[0]-4)+' '+(gate[1]-5)+' v-4 a4 4 0 0 1 8 0 v4',stroke:'#3dff88','stroke-width':1.5,fill:'none'}));
+  boardG.appendChild(txt(el('text',{x:gate[0],y:gate[1]+20,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':7,'letter-spacing':'0.12em',fill:'#3dff88'}),'CONSENT'));
+  // your resources
+  res.forEach(function(r){boardG.appendChild(el('circle',{cx:r[0],cy:r[1],r:4,fill:'#0d1410',stroke:'#2c5c39','stroke-width':1.4}));
+    boardG.appendChild(el('circle',{cx:r[0],cy:r[1],r:1.8,fill:'#3dff88'}));
+    boardG.appendChild(txt(el('text',{x:r[0]+12,y:r[1]+3.5,'font-family':'JetBrains Mono, monospace','font-size':10,fill:'#cfe3d6'}),r[2]));});
+  svg.appendChild(boardG);
+
+  // active patch (beat 3)
+  var patchG=el('g',{opacity:0});
+  patchG.appendChild(el('path',{'class':'sb-flow',d:'M'+appX[ACT]+' '+bY+' C '+appX[ACT]+' '+(bY+48)+', '+gate[0]+' '+(gate[1]-58)+', '+gate[0]+' '+(gate[1]-24),stroke:'#3dff88','stroke-width':2,fill:'none','stroke-linecap':'round'}));
+  patchG.appendChild(el('path',{'class':'sb-flow',d:'M'+(gate[0]+30)+' '+gate[1]+' C '+(gate[0]+95)+' '+(gate[1]-8)+', '+(res[0][0]-45)+' '+(res[0][1]+6)+', '+(res[0][0]-6)+' '+res[0][1],stroke:'#3dff88','stroke-width':2,fill:'none','stroke-linecap':'round'}));
+  patchG.appendChild(el('circle',{cx:appX[ACT],cy:bY,r:6.5,fill:'none',stroke:'#3dff88','stroke-width':1.8}));
+  patchG.appendChild(txt(el('text',{x:appX[ACT],y:appY-24,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9,fill:'#7fa18d'}),'a wrapp asks'));
+  patchG.appendChild(txt(el('text',{x:450,y:bB+26,'text-anchor':'middle','font-family':'JetBrains Mono, monospace','font-size':9.5,fill:'#7fa18d'}),'patched through, once — the result runs back, nothing leaves'));
+  svg.appendChild(patchG);
+
   function render(p){
-    var a1=sm(0.02,0.13,p),a2=sm(0.18,0.34,p),a3=sm(0.40,0.56,p),a4=sm(0.60,0.80,p),a5=sm(0.84,0.98,p);
-    chaosG.setAttribute('opacity',(1-a5).toFixed(3));
-    flowG.setAttribute('opacity',a5.toFixed(3));
-    coreG.setAttribute('opacity',sm(0.62,0.82,p).toFixed(3));
+    var mApp=sm(0.03,0.12,p), mSrv=sm(0.15,0.30,p), mMore=sm(0.33,0.46,p), toBoard=sm(0.50,0.66,p), patch=sm(0.74,0.90,p);
     for(var i=0;i<N;i++){
-      var ax=lerp(scat[i][0],ring[i][0],a4), ay=lerp(scat[i][1],ring[i][1],a4);
-      apps[i].setAttribute('x',(ax-11).toFixed(1));apps[i].setAttribute('y',(ay-11).toFixed(1));
-      apps[i].setAttribute('opacity',a1.toFixed(3));
-      apps[i].setAttribute('stroke', a4>0.5?'#2c5c39':'#48604f');
-      var sbx=lerp(srvBase[i][0],srvOut[i][0],a3), sby=lerp(srvBase[i][1],srvOut[i][1],a3);
-      var sxx=lerp(sbx,cx,a4), syy=lerp(sby,cy,a4);
-      srvs[i].setAttribute('transform','translate('+sxx.toFixed(1)+','+syy.toFixed(1)+')');
-      srvs[i].setAttribute('opacity',(a2*(1-sm(0.62,0.80,p))).toFixed(3));
-      copies[i].setAttribute('cx',sxx.toFixed(1));copies[i].setAttribute('cy',(syy-1).toFixed(1));
-      copies[i].setAttribute('opacity',(a2*(1-sm(0.60,0.78,p))).toFixed(3));
-      var lx2=lerp(sxx,cx,a4), ly2=lerp(syy,cy,a4);
-      lines[i].setAttribute('x1',ax.toFixed(1));lines[i].setAttribute('y1',ay.toFixed(1));
-      lines[i].setAttribute('x2',lx2.toFixed(1));lines[i].setAttribute('y2',ly2.toFixed(1));
-      lines[i].setAttribute('stroke', a4>0.5?'#1d7a45':'#7a3b48');
-      lines[i].setAttribute('stroke-opacity',(a2*(a4>0.5?lerp(0.55,0.9,a4):0.5)).toFixed(2));
+      appEls[i].setAttribute('opacity', mApp.toFixed(3));
+      var mv=mSrv*(1-toBoard);
+      srvEls[i].setAttribute('opacity', mv.toFixed(3));
+      copyEls[i].setAttribute('opacity', mv.toFixed(3));
+      outLines[i].setAttribute('stroke-opacity', (lerp(0.4,0.72,mMore)*(1-toBoard)).toFixed(3));
+      var hot=(i===ACT && patch>0);
+      inLines[i].setAttribute('stroke-opacity', (toBoard*(hot?1:0.5)).toFixed(3));
+      inLines[i].setAttribute('stroke', hot?'#3dff88':'#1d7a45');
+      inLines[i].setAttribute('stroke-width', hot?2:1.4);
     }
-    if(caps[0])caps[0].style.opacity=capOp(0.02,0.07,0.14,0.19,p).toFixed(2);
-    if(caps[1])caps[1].style.opacity=capOp(0.19,0.24,0.35,0.40,p).toFixed(2);
-    if(caps[2])caps[2].style.opacity=capOp(0.41,0.46,0.55,0.60,p).toFixed(2);
-    if(caps[3])caps[3].style.opacity=capOp(0.61,0.66,0.79,0.84,p).toFixed(2);
-    if(caps[4])caps[4].style.opacity=Math.min(1,sm(0.85,0.92,p)).toFixed(2);
+    boardG.setAttribute('opacity', toBoard.toFixed(3));
+    patchG.setAttribute('opacity', patch.toFixed(3));
+    if(caps[0])caps[0].style.opacity=capOp(0.03,0.08,0.13,0.18,p).toFixed(2);
+    if(caps[1])caps[1].style.opacity=capOp(0.16,0.21,0.28,0.33,p).toFixed(2);
+    if(caps[2])caps[2].style.opacity=capOp(0.34,0.39,0.46,0.50,p).toFixed(2);
+    if(caps[3])caps[3].style.opacity=capOp(0.51,0.56,0.68,0.73,p).toFixed(2);
+    if(caps[4])caps[4].style.opacity=Math.min(1,sm(0.77,0.86,p)).toFixed(2);
   }
   window.__thesisRender=render;
   var vh=window.innerHeight,ticking=false,cur=0;
