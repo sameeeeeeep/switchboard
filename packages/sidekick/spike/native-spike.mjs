@@ -46,13 +46,13 @@ async function retry(fn, ms = 20_000) {
 
 /** Connect to the EXTENSION socket (the panel's channel): drive control actions AND auto-approve any
  *  consent prompt the daemon pushes (we stand in for the human clicking "Allow"). */
-function connectExtension(token) {
+function connectExtension(token, surface) {
   return new Promise((res, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`); // no Origin ⇒ treated as extension
     const pending = new Map();
     let prompts = 0;
     ws.on("close", () => reject(new Error("ext socket closed before auth")));
-    ws.on("open", () => ws.send(JSON.stringify({ type: "auth", token })));
+    ws.on("open", () => ws.send(JSON.stringify({ type: "auth", token, ...(surface ? { surface } : {}) })));
     ws.on("error", reject);
     ws.on("message", (data) => {
       const msg = JSON.parse(data.toString());
@@ -136,12 +136,15 @@ async function main() {
   const forbidden = await app.request("claude_storage", { op: "list" });
   results.forbiddenVerbRefused = forbidden.error?.code === 4200; // UNSUPPORTED_METHOD
 
-  // (9) INTERACTIVE "Allow this app": an UNREGISTERED app requests connect → the daemon pushes a
-  //     consent:native-connect prompt to the panel (our ext auto-approves) → mints a token → the
-  //     app authenticates with the minted token. No pairing token, no out-of-band step.
+  // (9) INTERACTIVE "Allow this app": an UNREGISTERED app requests connect → the daemon routes the
+  //     consent to the MENU-BAR surface (a native app's consent belongs on a native surface, NOT in
+  //     a browser panel). Our menubar client approves; the browser extension must NOT be shown it.
+  const menubar = await retry(() => connectExtension(token, "menubar"));
+  const extPromptsBefore = ext.promptsSeen();
   const granted = await retry(() => requestNativeConnect({ appId: "com.you.interactive", reason: "dictation" }));
   results.interactiveMintedToken = !!granted.token && Array.isArray(granted.models);
-  results.panelSawAllowPrompt = ext.promptsSeen() >= 1;
+  results.menubarSawAllowPrompt = menubar.promptsSeen() >= 1;
+  results.consentBypassedBrowser = ext.promptsSeen() === extPromptsBefore;   // routed to the menu bar, not the panel
   const back = await connectNative({ token: granted.token, appId: "com.you.interactive" });
   results.mintedTokenAuthenticates = back.appId === "com.you.interactive";
 
@@ -150,7 +153,7 @@ async function main() {
   want("originRejected"); want("unknownTokenRejected"); want("pairingTokenRejectedOnNative");
   want("registered"); want("authedAsSelf"); want("transcribeAdvertised");
   want("transcribeFailsClosed"); want("forbiddenVerbRefused");
-  want("interactiveMintedToken"); want("panelSawAllowPrompt"); want("mintedTokenAuthenticates");
+  want("interactiveMintedToken"); want("menubarSawAllowPrompt"); want("consentBypassedBrowser"); want("mintedTokenAuthenticates");
   const pass = Object.values(results).every(Boolean);
   console.error(`\n${pass ? "✅ NATIVE SPIKE PASSED — a local app reaches the gate as its own principal, isolated from the web path." : "❌ FAILED"}`);
   daemon.kill("SIGKILL");

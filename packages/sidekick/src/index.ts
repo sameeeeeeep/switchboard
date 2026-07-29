@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, hasAppTokens } from "./config.js";
+import { loadConfig } from "./config.js";
 import { GrantStore } from "./security/grant-store.js";
 import { BudgetLedger } from "./security/budgets.js";
 import { AuditLog } from "./security/audit-log.js";
@@ -63,7 +63,10 @@ async function main() {
   // the daemon without a browser. INERT by default: it only starts if a native app has been
   // registered (~/.relay/app-tokens.json exists) or RELAY_NATIVE=1 is set. The extension socket,
   // its pairing token, and every existing verb are untouched whether or not this runs.
-  if (process.env.RELAY_NATIVE === "1" || hasAppTokens()) {
+  // Native listener ON by default now (loopback-only, per-app-token or interactive-consent gated),
+  // so a native app like Flow can connect to the user's main daemon and get its "Allow this app"
+  // prompt in the panel. RELAY_NATIVE=0 disables it.
+  if (process.env.RELAY_NATIVE !== "0") {
     const nativePort = Number(process.env.RELAY_NATIVE_PORT ?? 8788);
     new NativeListener("127.0.0.1", nativePort, broker).start();
   }

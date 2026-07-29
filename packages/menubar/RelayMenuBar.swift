@@ -621,6 +621,51 @@ struct GhostButton: View {
     }
 }
 
+// ---------- native consent surface ----------
+// A NATIVE app's "Allow this app?" belongs HERE — the menu bar, a native surface — not a browser
+// side panel. We connect to the daemon as a `surface:"menubar"` client; the daemon routes native
+// consent prompts to us. Auto-reconnects (daemon restart, or not paired yet).
+final class ConsentClient: NSObject {
+    private var task: URLSessionWebSocketTask?
+    private let session = URLSession(configuration: .default)
+    private let port: UInt16
+    private let tokenProvider: () -> String?
+    private let onPrompt: (String, [String: Any]) -> Void   // (id, body) for consent:native-connect
+
+    init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, [String: Any]) -> Void) {
+        self.port = port; self.tokenProvider = tokenProvider; self.onPrompt = onPrompt
+        super.init(); connect()
+    }
+    private func connect() {
+        guard let token = tokenProvider() else { retry(); return } // daemon not paired yet
+        task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
+        task?.resume(); receive()
+        send(["type": "auth", "token": token, "surface": "menubar"])
+    }
+    private func retry() { DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in self?.connect() } }
+    private func receive() {
+        task?.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .failure: self.retry()
+            case .success(let msg):
+                if case let .string(s) = msg, let d = s.data(using: .utf8),
+                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                   o["type"] as? String == "prompt", (o["kind"] as? String) == "consent:native-connect",
+                   let id = o["id"] as? String {
+                    self.onPrompt(id, (o["body"] as? [String: Any]) ?? [:])
+                }
+                self.receive()
+            }
+        }
+    }
+    func reply(_ id: String, _ result: Bool) { send(["type": "reply", "id": id, "result": result]) }
+    private func send(_ obj: [String: Any]) {
+        guard let d = try? JSONSerialization.data(withJSONObject: obj), let s = String(data: d, encoding: .utf8) else { return }
+        task?.send(.string(s)) { _ in }
+    }
+}
+
 // ---------- app shell ----------
 @MainActor
 final class RelayController: NSObject, NSApplicationDelegate {
@@ -632,9 +677,36 @@ final class RelayController: NSObject, NSApplicationDelegate {
     private var phase = 0
     private let model = Model()
     private let ollama = OllamaMonitor()
+    private var consent: ConsentClient?
+
+    // Native "Allow this app?" dialog — a real macOS alert, from the trusted Switchboard app itself.
+    private func showNativeConsent(_ id: String, _ body: [String: Any]) {
+        let appId = body["appId"] as? String ?? "an app"
+        let name = appId.contains(".") ? String(appId.split(separator: ".").last!).capitalized : appId
+        let reason = body["reason"] as? String ?? ""
+        let canDo = (body["canDo"] as? [String])?.joined(separator: " · ") ?? "Use your local models and your Claude, through the gate"
+        let a = NSAlert()
+        a.messageText = "Allow \u{201C}\(name)\u{201D} to connect?"
+        a.informativeText = "\(appId) — a native app on this Mac."
+            + (reason.isEmpty ? "" : "\n\u{201C}\(reason)\u{201D}")
+            + "\n\nCan do: \(canDo)"
+            + "\n\nIdentity isn\u{2019}t signature-verified yet — only allow an app you installed yourself."
+        a.addButton(withTitle: "Allow")
+        a.addButton(withTitle: "Deny")
+        NSApp.activate(ignoringOtherApps: true)
+        consent?.reply(id, a.runModal() == .alertFirstButtonReturn)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
+        consent = ConsentClient(port: PORT,
+            tokenProvider: {
+                guard let raw = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8) else { return nil }
+                let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                return t.isEmpty ? nil : t
+            },
+            onPrompt: { [weak self] id, body in Task { @MainActor in self?.showNativeConsent(id, body) } })
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)

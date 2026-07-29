@@ -24,9 +24,9 @@ let FLOW_HOME = (NSHomeDirectory() as NSString).appendingPathComponent(".flow")
 let CONFIG_FILE = (FLOW_HOME as NSString).appendingPathComponent("config.json")
 let TOKEN_FILE = (FLOW_HOME as NSString).appendingPathComponent("token.json")
 let SETTINGS_FILE = (FLOW_HOME as NSString).appendingPathComponent("settings.json")  // user prefs (cleanup mode)
-let RELAY_DIR = (FLOW_HOME as NSString).appendingPathComponent("relay")
-let EXT_PORT: UInt16 = 8795
-let NATIVE_PORT: UInt16 = 8796
+// Flow connects to the user's MAIN Switchboard daemon (the one the menu-bar app runs + the panel
+// pairs with) — that's where the "Allow Flow?" consent can show. Native port default = 8788.
+let NATIVE_PORT: UInt16 = UInt16(ProcessInfo.processInfo.environment["RELAY_NATIVE_PORT"].flatMap { UInt16($0) } ?? 8788)
 let APP_ID = "ai.thelastprompt.flow"
 
 struct FlowConfig {
@@ -94,20 +94,25 @@ func portOpen(_ port: UInt16) -> Bool {
 final class DaemonClient: NSObject {
     private var task: URLSessionWebSocketTask?
     private var session: URLSession!
-    private var authed = false
     private var pending: [String: (Result<[String: Any], Error>) -> Void] = [:]
     private let onAuth: () -> Void
-    private let authToken: String
+    private let onRegistered: ((String, [String]) -> Void)?
+    private let hello: [String: Any]
 
-    init(port: UInt16, token: String, onAuth: @escaping () -> Void) {
+    // Two ways to open: AUTH with a saved per-app token, or ask for interactive consent (appId only).
+    // On `registered` the daemon has already authed this same socket, so it's usable immediately.
+    init(port: UInt16, token: String? = nil, appId: String? = nil, reason: String? = nil,
+         onAuth: @escaping () -> Void = {}, onRegistered: ((String, [String]) -> Void)? = nil) {
         self.onAuth = onAuth
-        self.authToken = token
+        self.onRegistered = onRegistered
+        self.hello = token != nil ? ["type": "auth", "token": token!]
+                                   : ["type": "requestConnect", "appId": appId ?? "", "reason": reason ?? ""]
         super.init()
         session = URLSession(configuration: .default)
         task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
         task?.resume()
         receive()
-        send(["type": "auth", "token": token])
+        send(hello)
     }
 
     private func receive() {
@@ -126,15 +131,16 @@ final class DaemonClient: NSObject {
     }
 
     private func handle(_ m: [String: Any]) {
-        let type = m["type"] as? String
-        if type == "auth_ok" { authed = true; onAuth(); return }
-        if type == "response", let id = m["id"] as? String, let cb = pending.removeValue(forKey: id) {
-            if let err = m["error"] as? [String: Any] {
-                cb(.failure(NSError(domain: "flow", code: (err["code"] as? Int) ?? -1, userInfo: [NSLocalizedDescriptionKey: (err["message"] as? String) ?? "error"])))
-            } else { cb(.success((m["result"] as? [String: Any]) ?? [:])) }
-        }
-        if type == "control_result", let id = m["id"] as? String, let cb = pending.removeValue(forKey: id) {
-            cb(.success((m["result"] as? [String: Any]) ?? [:]))
+        switch m["type"] as? String {
+        case "auth_ok": onAuth()
+        case "registered": onRegistered?((m["token"] as? String) ?? "", (m["models"] as? [String]) ?? [])
+        case "response":
+            if let id = m["id"] as? String, let cb = pending.removeValue(forKey: id) {
+                if let err = m["error"] as? [String: Any] {
+                    cb(.failure(NSError(domain: "flow", code: (err["code"] as? Int) ?? -1, userInfo: [NSLocalizedDescriptionKey: (err["message"] as? String) ?? "error"])))
+                } else { cb(.success((m["result"] as? [String: Any]) ?? [:])) }
+            }
+        default: break
         }
     }
 
@@ -147,12 +153,6 @@ final class DaemonClient: NSObject {
         let id = UUID().uuidString
         pending[id] = cb
         send(["type": "request", "id": id, "method": method, "params": params])
-    }
-
-    func control(_ action: String, _ args: [String: Any], _ cb: @escaping (Result<[String: Any], Error>) -> Void) {
-        let id = UUID().uuidString
-        pending[id] = cb
-        send(["type": "control", "id": id, "action": action, "args": args])
     }
 
     func close() { task?.cancel(with: .goingAway, reason: nil) }
@@ -280,7 +280,6 @@ final class Recorder {
 final class AppState: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var config: FlowConfig!
-    var daemonProc: Process?
     var appToken: String?
     var models: [String] = []
     var native: DaemonClient?
@@ -304,7 +303,7 @@ final class AppState: NSObject, NSApplicationDelegate {
         config = cfg
         setupStatusItem()
         requestPermissions()
-        DispatchQueue.global().async { [weak self] in self?.ensureDaemonAndRegister() }
+        DispatchQueue.global().async { [weak self] in self?.connect() }
         installControlMonitor()
     }
 
@@ -353,7 +352,7 @@ final class AppState: NSObject, NSApplicationDelegate {
     func setStatus(_ s: String) {
         DispatchQueue.main.async { self.statusItem.menu?.item(withTag: 1)?.title = s }
     }
-    @objc func quit() { daemonProc?.terminate(); NSApp.terminate(nil) }
+    @objc func quit() { NSApp.terminate(nil) }
 
     // ---- permissions ----
     func requestPermissions() {
@@ -363,72 +362,41 @@ final class AppState: NSObject, NSApplicationDelegate {
         if !AXIsProcessTrustedWithOptions(opts) { log("waiting for Accessibility permission") }
     }
 
-    // ---- daemon: launch (private, STT-configured) + register this app ----
-    func ensureDaemonAndRegister() {
-        if !portOpen(NATIVE_PORT) {
-            try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: config.node)
-            p.arguments = [config.daemon]
-            var env = ProcessInfo.processInfo.environment
-            env["RELAY_DIR"] = RELAY_DIR
-            env["RELAY_PORT"] = String(EXT_PORT)
-            env["RELAY_NATIVE"] = "1"
-            env["RELAY_NATIVE_PORT"] = String(NATIVE_PORT)
-            env["RELAY_STT_CMD"] = config.sttCmd
-            // Make LOCAL models available for cleanup (Ollama/LM Studio). Harmless if none is
-            // running — the backend just reports unhealthy and Flow falls back to Claude, then raw.
-            if !config.localOpenAIUrl.isEmpty { env["RELAY_LOCAL_OPENAI_URL"] = config.localOpenAIUrl }
-            p.environment = env
-            p.standardOutput = FileHandle.nullDevice
-            try? p.run()
-            daemonProc = p
-            log("launched private daemon")
-        }
-        // wait for native listener
-        for _ in 0..<80 { if portOpen(NATIVE_PORT) { break }; usleep(250_000) }
-
-        // Always (re)register so the granted model list reflects what's online NOW — e.g. a local
-        // model the user pulled after the first launch. Idempotent; rotates this app's own token.
-        register()
-    }
-
-    func register() {
-        guard let pairing = readPairingToken() else {
-            setStatus("Daemon not ready — retry from the menu")
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.ensureDaemonAndRegister() }
+    // ---- connect to the user's MAIN Switchboard daemon ----
+    // No private daemon. STT runs LOCALLY in this app (see transcribeLocally) — only the cleanup
+    // COMPLETION routes through the broker, which is the only part that needs the user's models +
+    // consent. First run asks the panel for consent ("Allow Flow?"); after that the minted per-app
+    // token is reused. Needs the Switchboard menu-bar app running (it hosts the daemon + the panel).
+    func connect() {
+        guard portOpen(NATIVE_PORT) else {
+            setStatus("Open Switchboard to connect…")
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.connect() }
             return
         }
-        // control socket (pairing token) → registerNativeApp
-        var ctl: DaemonClient?
-        ctl = DaemonClient(port: EXT_PORT, token: pairing, onAuth: { [weak self] in
-            ctl?.control("registerNativeApp", ["appId": APP_ID]) { res in
-                switch res {
-                case .failure(let e): log("register failed: \(e.localizedDescription)"); self?.setStatus("Registration failed")
-                case .success(let r):
-                    let token = r["token"] as? String ?? ""
-                    let models = r["models"] as? [String] ?? []
-                    self?.saveToken(token, models)
-                    self?.finishRegistration(token: token, models: models)
-                }
-                ctl?.close()
+        if let saved = loadToken() {
+            appToken = saved.0; models = saved.1
+            var ok = false
+            native = DaemonClient(port: NATIVE_PORT, token: saved.0, onAuth: { [weak self] in ok = true; self?.onConnected() })
+            // A stale token (e.g. minted by Flow's old private daemon) won't auth on the main daemon.
+            // If we don't connect quickly, drop it and fall back to the interactive consent flow.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self, !ok else { return }
+                self.clearToken(); self.native?.close(); self.native = nil; self.connect()
             }
-        })
-        _ = ctl // retain until callback
+        } else {
+            setStatus("Allow Flow in Switchboard to connect…")
+            native = DaemonClient(port: NATIVE_PORT, appId: APP_ID,
+                reason: "Dictation — transcribe your speech, then clean it up",
+                onRegistered: { [weak self] token, models in
+                    guard let self else { return }
+                    self.appToken = token; self.models = models; self.saveToken(token, models)
+                    self.onConnected()
+                })
+        }
     }
-
-    func finishRegistration(token: String, models: [String]) {
-        appToken = token; self.models = models
-        native = DaemonClient(port: NATIVE_PORT, token: token, onAuth: { [weak self] in
-            self?.setStatus("Ready — double-tap ⌃ to dictate")
-            log("connected as native@\(APP_ID) · models: \(models.joined(separator: ", "))")
-        })
-    }
-
-    // ---- token / pairing persistence ----
-    func readPairingToken() -> String? {
-        let f = (RELAY_DIR as NSString).appendingPathComponent("pairing-token")
-        return (try? String(contentsOfFile: f, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    func onConnected() {
+        setStatus("Ready — double-tap ⌃ to dictate")
+        log("connected to Switchboard · models: \(models.joined(separator: ", "))")
     }
     func saveToken(_ token: String, _ models: [String]) {
         let obj: [String: Any] = ["token": token, "models": models]
@@ -437,6 +405,7 @@ final class AppState: NSObject, NSApplicationDelegate {
             try? d.write(to: URL(fileURLWithPath: TOKEN_FILE))
         }
     }
+    func clearToken() { try? FileManager.default.removeItem(atPath: TOKEN_FILE); appToken = nil; models = [] }
     func loadToken() -> (String, [String])? {
         guard let d = FileManager.default.contents(atPath: TOKEN_FILE),
               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
@@ -483,17 +452,36 @@ final class AppState: NSObject, NSApplicationDelegate {
         guard isRecording, let wav = recorder.stop() else { return }
         isRecording = false; isBusy = true
         pill.set(.thinking, "Transcribing")
-        guard let native, let audio = try? Data(contentsOf: wav) else { finish(.error, "No audio"); return }
-        let dataUrl = "data:audio/wav;base64," + audio.base64EncodedString()
-        native.request("claude_transcribe", ["audio": dataUrl, "language": "en"]) { [weak self] res in
+        transcribeLocally(wav) { [weak self] text in
             guard let self else { return }
-            switch res {
-            case .failure(let e): self.finish(.error, e.localizedDescription)
-            case .success(let r):
-                let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if raw.isEmpty { self.finish(.error, "Nothing heard"); return }
-                self.cleanup(raw)
-            }
+            let raw = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if raw.isEmpty { self.finish(.error, "Nothing heard"); return }
+            self.cleanup(raw)   // cleanup routes through the broker; transcription did not
+        }
+    }
+
+    // STT runs HERE, in the app — NOT through the daemon. Transcription is a local, unprivileged op
+    // (audio the app already holds → text); only cleanup, which uses the user's models, needs the
+    // broker. This also fixes "local STT failed": the daemon (Finder-launched, minimal PATH) couldn't
+    // find `whisper`; here we run the configured adapter with a fuller PATH.
+    func transcribeLocally(_ wav: URL, _ done: @escaping (String?) -> Void) {
+        DispatchQueue.global().async {
+            let parts = self.config.sttCmd.split(separator: " ").map(String.init)  // e.g. [node, whisper-stt.mjs]
+            guard let bin = parts.first else { DispatchQueue.main.async { done(nil) }; return }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: bin)
+            p.arguments = Array(parts.dropFirst()) + [wav.path]
+            let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:" + (env["PATH"] ?? "")
+            p.environment = env
+            var text: String? = nil
+            do {
+                try p.run(); p.waitUntilExit()
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                if p.terminationStatus == 0 { text = String(data: data, encoding: .utf8) }
+            } catch { text = nil }
+            DispatchQueue.main.async { done(text) }
         }
     }
 
