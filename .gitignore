@@ -12,6 +12,10 @@ dist/
 packages/menubar/build/
 packages/menubar/Relay.app/
 
+# Flow app build output (compiled .app + notarized DMG — never commit)
+examples/flow/mac/build/
+examples/flow/mac/Flow.app/
+
 # brandbrain port build artifacts
 examples/brandbrain-port/.build/
 examples/brandbrain-port/dist/

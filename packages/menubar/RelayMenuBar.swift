@@ -98,6 +98,7 @@ extension Color {
     static let inkFaint = Color(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0)
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
     static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
+    static let ok = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)   // "connected" green
 }
 
 // ---------- the status-bar glyph (matches the chip/panel mark) ----------
@@ -145,6 +146,98 @@ func readGrantCount() -> Int {
     if let arr = readJSON(GRANTS_FILE) as? [[String: Any]] { return arr.count }
     if let map = readJSON(GRANTS_FILE) as? [String: Any] { return map.count }
     return 0
+}
+
+// A connected principal, classified by the SAME prefixes the daemon keys grants on: a real web
+// origin (https://…), a TabSidekick principal (tabsidekick@…), or a NATIVE app (native@…).
+enum AppKind { case web, native, tab }
+struct AppRow: Identifiable { let id: String; let label: String; let kind: AppKind; let tools: Int }
+
+func classify(_ origin: String) -> (AppKind, String) {
+    if origin.hasPrefix("native@") { return (.native, String(origin.dropFirst("native@".count))) }
+    if origin.hasPrefix("tabsidekick@") { return (.tab, String(origin.dropFirst("tabsidekick@".count))) }
+    return (.web, hostOf(origin))
+}
+func readApps() -> [AppRow] {
+    guard let arr = readJSON(GRANTS_FILE) as? [[String: Any]] else { return [] }
+    return arr.compactMap { g in
+        guard let origin = g["origin"] as? String else { return nil }
+        let (kind, label) = classify(origin)
+        let tools = (g["tools"] as? [[String: Any]])?.count ?? 0
+        return AppRow(id: origin, label: label, kind: kind, tools: tools)
+    }
+    // Native + web first (real apps), TabSidekick last (unconnected-mode helpers).
+    .sorted { ($0.kind == .tab ? 1 : 0) < ($1.kind == .tab ? 1 : 0) }
+}
+// Native apps that have been REGISTERED (allowed) — read straight from the daemon's app-tokens file.
+func readNativeApps() -> [String] {
+    guard let obj = readJSON((RELAY_DIR as NSString).appendingPathComponent("app-tokens.json")) as? [String: Any],
+          let apps = obj["apps"] as? [[String: Any]] else { return [] }
+    return apps.compactMap { $0["appId"] as? String }
+}
+
+// ---------- connectors + tools ----------
+// The daemon's live tool inventory (connectors it can grant to apps) doesn't live in a file the
+// panel can read — the servers are inherited via the claude.ai SDK. So the daemon writes a small
+// status.json on each health poll; until it does, this reads empty and the TOOLS section hides.
+let STATUS_FILE = (RELAY_DIR as NSString).appendingPathComponent("status.json")
+struct Connector: Identifiable { let id: String; let name: String; let tools: Int; let ok: Bool }
+func readConnectors() -> [Connector] {
+    guard let obj = readJSON(STATUS_FILE) as? [String: Any],
+          let arr = obj["connectors"] as? [[String: Any]] else { return [] }
+    return arr.compactMap { c in
+        guard let name = c["name"] as? String else { return nil }
+        return Connector(id: name, name: name, tools: (c["tools"] as? Int) ?? 0, ok: (c["ok"] as? Bool) ?? true)
+    }
+}
+func readToolCount() -> Int {
+    if let n = (readJSON(STATUS_FILE) as? [String: Any])?["toolCount"] as? Int { return n }
+    return readConnectors().reduce(0) { $0 + $1.tools }
+}
+
+// ---------- loaded local models (Ollama — a SEPARATE process the daemon can't see) ----------
+// The panel talks to Ollama directly: GET /api/ps for what's resident, POST /api/generate with
+// keep_alive:0 to unload one now. This is the RAM-safety valve — see what's loaded, kill it.
+struct LoadedModel: Identifiable { let id: String; let name: String; let vramGB: Double; let expiresIn: String }
+func ollamaExpiry(_ iso: String?) -> String {
+    guard let iso = iso else { return "" }
+    let withFrac = ISO8601DateFormatter(); withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let d = withFrac.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
+    let s = max(0, Int(d.timeIntervalSinceNow))
+    return String(format: "%d:%02d", s / 60, s % 60)
+}
+@MainActor
+final class OllamaMonitor: ObservableObject {
+    @Published var models: [LoadedModel] = []
+    @Published var up = false
+    private let base = "http://127.0.0.1:11434"
+    var totalVramGB: Double { (models.reduce(0) { $0 + $1.vramGB } * 10).rounded() / 10 }
+
+    func refresh() {
+        guard let url = URL(string: base + "/api/ps") else { return }
+        var req = URLRequest(url: url); req.timeoutInterval = 1.2
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            var up = false; var list: [LoadedModel] = []
+            if let d = data, let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                up = true
+                for m in (j["models"] as? [[String: Any]] ?? []) {
+                    let name = (m["name"] as? String) ?? (m["model"] as? String) ?? "?"
+                    let bytes = (m["size_vram"] as? Double) ?? (m["size"] as? Double) ?? 0
+                    let gb = (bytes / 1_073_741_824.0 * 10).rounded() / 10
+                    list.append(LoadedModel(id: name, name: name, vramGB: gb, expiresIn: ollamaExpiry(m["expires_at"] as? String)))
+                }
+            }
+            Task { @MainActor in self.up = up; self.models = list }
+        }.resume()
+    }
+
+    func unload(_ name: String) {
+        guard let url = URL(string: base + "/api/generate") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["model": name, "keep_alive": 0])
+        URLSession.shared.dataTask(with: req) { _, _, _ in Task { @MainActor in self.refresh() } }.resume()
+    }
 }
 func readLastAct() -> LastAct? {
     guard let data = FileManager.default.contents(atPath: AUDIT_FILE),
@@ -210,6 +303,10 @@ final class Model: ObservableObject {
     @Published var contexts: [Ctx] = []
     @Published var defaultId: String? = nil
     @Published var apps = 0
+    @Published var appList: [AppRow] = []
+    @Published var nativeApps: [String] = []
+    @Published var connectors: [Connector] = []
+    @Published var toolCount = 0
     @Published var last: LastAct? = nil
     @Published var plist: PlistState = plistState()
     let bundled = hasBundledDaemon()
@@ -219,7 +316,11 @@ final class Model: ObservableObject {
     func refreshFiles() {
         contexts = readContexts()
         defaultId = readDefaultId()
-        apps = readGrantCount()
+        appList = readApps()
+        apps = appList.count
+        nativeApps = readNativeApps()
+        connectors = readConnectors()
+        toolCount = readToolCount()
         last = readLastAct()
         plist = plistState()
     }
@@ -231,6 +332,7 @@ final class Model: ObservableObject {
 // the library, one line of life, quiet controls. Information display = hero + kicker + marks.
 struct Panel: View {
     @ObservedObject var model: Model
+    @ObservedObject var ollama: OllamaMonitor
     let onToken: () -> Void
     let onLogs: () -> Void
     let onRestart: () -> Void
@@ -247,6 +349,129 @@ struct Panel: View {
         if model.running { return "\(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s") banked · \(model.apps) app\(model.apps == 1 ? "" : "s") connected" }
         if model.bundled && model.translocated { return "move Switchboard to /Applications, then reopen it" }
         return "start the sidekick below"
+    }
+
+    // A connected principal's mark: a web origin, a native app, or a TabSidekick helper.
+    @ViewBuilder private func appGlyph(_ kind: AppKind) -> some View {
+        let spec: (String, Color) = {
+            switch kind {
+            case .web:    return ("globe", .inkDim)
+            case .native: return ("desktopcomputer", .lime)
+            case .tab:    return ("square.on.square.dashed", .inkFaint)
+            }
+        }()
+        Image(systemName: spec.0).font(.system(size: 12, weight: .medium)).foregroundColor(spec.1).frame(width: 16)
+    }
+
+    // ---- backends: what's actually powering completions (Claude Code + any local runner) ----
+    @ViewBuilder private var backendsStrip: some View {
+        HStack(spacing: 7) {
+            backendPill("Claude Code", model.signedIn ? "signed in" : "signed out", model.signedIn ? Color.ok : Color.danger)
+            if ollama.up { backendPill("Ollama", "local", Color.lime) }
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
+    }
+    @ViewBuilder private func backendPill(_ name: String, _ detail: String, _ dot: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(dot).frame(width: 6, height: 6)
+            Text(name).font(.system(size: 11, weight: .medium)).foregroundColor(.ink)
+            Text(detail).font(.system(size: 10)).foregroundColor(.inkFaint)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1)))
+    }
+
+    // ---- connected apps: a horizontal card row so it never crowds, however many connect ----
+    @ViewBuilder private var appsSection: some View {
+        if model.running && !model.appList.isEmpty {
+            Rectangle().fill(Color.edge).frame(height: 1)
+            VStack(alignment: .leading, spacing: 9) {
+                Text("CONNECTED APPS").kicker()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) { ForEach(model.appList) { appCard($0) } }.padding(.trailing, 16)
+                }
+            }
+            .padding(.leading, 16).padding(.vertical, 12)
+        }
+    }
+    @ViewBuilder private func appCard(_ app: AppRow) -> some View {
+        let sym = app.kind == .native ? "desktopcomputer" : (app.kind == .tab ? "square.on.square.dashed" : "globe")
+        let col: Color = app.kind == .native ? .lime : (app.kind == .tab ? .inkFaint : .inkDim)
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: sym).font(.system(size: 15, weight: .medium)).foregroundColor(col)
+            Text(app.label).font(.system(size: 11, weight: .medium)).foregroundColor(app.kind == .tab ? .inkDim : .ink).lineLimit(1)
+            if app.kind == .native {
+                Text("native").font(.system(size: 9, weight: .semibold)).foregroundColor(.page)
+                    .padding(.horizontal, 5).padding(.vertical, 1).background(Color.lime).cornerRadius(4)
+            } else {
+                Text(app.kind == .tab ? "tab" : "\(app.tools) tool\(app.tools == 1 ? "" : "s")")
+                    .font(.system(size: 9, design: .monospaced)).foregroundColor(.inkFaint)
+            }
+        }
+        .frame(width: 88, alignment: .leading).padding(9)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edge, lineWidth: 1)))
+    }
+
+    // ---- tools: the connectors the daemon can grant (horizontal chips; hidden until status.json) ----
+    @ViewBuilder private var toolsSection: some View {
+        if model.running && !model.connectors.isEmpty {
+            Rectangle().fill(Color.edge).frame(height: 1)
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    Text("TOOLS").kicker()
+                    Spacer()
+                    Text("\(model.toolCount) across \(model.connectors.count) connector\(model.connectors.count == 1 ? "" : "s")")
+                        .font(.system(size: 9.5)).foregroundColor(.inkFaint).padding(.trailing, 16)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(model.connectors) { c in
+                            HStack(spacing: 6) {
+                                Circle().fill(c.ok ? Color.ok : Color.inkFaint).frame(width: 6, height: 6)
+                                Text(c.name).font(.system(size: 11)).foregroundColor(c.ok ? .ink : .inkDim)
+                            }
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1)))
+                        }
+                    }.padding(.trailing, 16)
+                }
+            }
+            .padding(.leading, 16).padding(.vertical, 12)
+        }
+    }
+
+    // ---- loaded models: what Ollama has resident right now, with unload (the RAM valve) ----
+    @ViewBuilder private var loadedModelsSection: some View {
+        if ollama.up {
+            Rectangle().fill(Color.edge).frame(height: 1)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("LOADED MODELS").kicker()
+                    Spacer()
+                    Text(String(format: "%.1f GB", ollama.totalVramGB)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkDim)
+                }
+                if ollama.models.isEmpty {
+                    Text("nothing loaded").font(.system(size: 11)).foregroundColor(.inkFaint)
+                } else {
+                    ForEach(ollama.models) { m in
+                        HStack(spacing: 9) {
+                            Image(systemName: "cpu").font(.system(size: 13)).foregroundColor(.lime)
+                            Text(m.name).font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundColor(.ink).lineLimit(1)
+                            Spacer()
+                            Text(String(format: "%.1f GB", m.vramGB)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkDim)
+                            if !m.expiresIn.isEmpty { Text(m.expiresIn).font(.system(size: 9, design: .monospaced)).foregroundColor(.inkFaint) }
+                            Button(action: { ollama.unload(m.name) }) {
+                                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundColor(.danger)
+                            }.buttonStyle(.plain).help("Unload now, free the memory")
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1)))
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
     }
 
     var body: some View {
@@ -272,7 +497,8 @@ struct Panel: View {
                     Text(signedOut ? "signed out" : (model.running ? "on" : "off")).font(.system(size: 12, weight: .semibold)).foregroundColor(signedOut ? .danger : .inkDim)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 13)
+            .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 11)
+            backendsStrip
             Rectangle().fill(Color.edge).frame(height: 1)
 
             // ---- THE MOMENT — the only hero a menubar deserves: what is my AI doing right now? ----
@@ -311,6 +537,11 @@ struct Panel: View {
                 }
             }
             .padding(16)
+
+            // ---- the daemon, surfaced: apps that use it · tools it can grant · models it has loaded ----
+            appsSection
+            toolsSection
+            loadedModelsSection
 
             // ---- daemon custody notice (packaged app only) — never acts silently, always says why ----
             if model.bundled && !model.translocated && (model.plist == .foreign || model.plist == .staleOurs) {
@@ -353,7 +584,7 @@ struct Panel: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
         }
-        .frame(width: 324)
+        .frame(width: 340)
         .background(Color.page)
         .clipShape(RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
@@ -399,6 +630,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var phase = 0
     private let model = Model()
+    private let ollama = OllamaMonitor()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -409,6 +641,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
 
         hosting = NSHostingView(rootView: Panel(
             model: model,
+            ollama: ollama,
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
@@ -463,6 +696,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
         if panel.isVisible { hidePanel(); return }
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
+        ollama.refresh()
         let size = hosting.fittingSize
         panel.setContentSize(size)
         let icon = btnWindow.frame
@@ -496,7 +730,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
                     self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
                         : !signedIn ? "Switchboard — \(SIGN_IN_HINT)"
                         : (ok && busy) ? "Switchboard — your model is working…" : "Switchboard — connected"
-                    if self.panel.isVisible { self.model.refreshFiles() }
+                    if self.panel.isVisible { self.model.refreshFiles(); self.ollama.refresh() }
                 }
             }
         }

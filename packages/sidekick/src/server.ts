@@ -21,8 +21,9 @@ import type {
   ToolCallRequest,
   ToolDescriptor,
   ConnectorInventory,
+  TranscribeParams,
 } from "@relay/protocol";
-import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal } from "@relay/protocol";
+import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
@@ -41,6 +42,9 @@ import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
+import { localSTT, sttAvailable } from "./media/stt.js";
+import { registerAppToken } from "./config.js";
+import type { NativeHandler } from "./native/listener.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
  *  attachments (relay__put_blob) and, when the origin has a BOUND folder, the publish verb
@@ -95,7 +99,7 @@ const BUILTIN_TOOLS: Array<{ name: string; server: string; description: string }
 /** App-level keepalive frame (Chrome resets the MV3 idle timer on received WS messages). */
 const PING_MSG = JSON.stringify({ type: "ping" });
 
-export class Broker implements ConsentPrompter {
+export class Broker implements ConsentPrompter, NativeHandler {
   private wss: WebSocketServer | null = null;
   private extensions = new Set<WebSocket>();
   /** Consent + control requests awaiting a reply from the extension. */
@@ -247,6 +251,8 @@ export class Broker implements ConsentPrompter {
         return { ok: true };
       case "claude_speak":
         return this.speak(origin, env.params as SpeakParams);
+      case "claude_transcribe":
+        return this.transcribe(origin, env.params as TranscribeParams);
       case "claude_permissions":
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
@@ -276,7 +282,7 @@ export class Broker implements ConsentPrompter {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak"],
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe"],
       models: await this.deps.backends.models(),
       backends: await this.deps.backends.onlineIds(),
       signedIn: await this.deps.backends.signedIn(),
@@ -302,6 +308,93 @@ export class Broker implements ConsentPrompter {
     }
   }
 
+  /** claude_transcribe — speech-to-text on-device (local STT server or a whisper CLI). The mirror
+   *  of speak: a connected principal may call it freely (audited, no per-action consent) because it
+   *  only touches local recognition. Primarily used by direct-principal (native) apps. */
+  private async transcribe(origin: string, params: TranscribeParams): Promise<{ text: string; backend: string }> {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using transcription");
+    if (!sttAvailable()) throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "no local STT on this machine");
+    try {
+      const out = await localSTT(params.audio, params.language);
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_transcribe__${out.backend}`, outcome: "ok", note: `${out.text.length} chars` });
+      return out;
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "claude_transcribe", outcome: "denied", note: String((e as Error).message).slice(0, 80) });
+      throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "local STT failed");
+    }
+  }
+
+  // ── Native (direct-principal) surface ────────────────────────────────────────────────────────
+  // Served on the SEPARATE native listener, never this Broker's extension socket. A native app
+  // proves identity with its own per-app token; the daemon stamps `native@<appId>` and routes the
+  // request through the SAME grant/gate/audit machinery — only over a small allowlist of verbs that
+  // need no live consent-popup (that surface is the menubar and comes later). Fail-closed on the rest.
+
+  /** Register a native app OUT OF BAND (the menubar/CLI, i.e. the native connect-consent step): mint
+   *  its per-app token and grant it the requested scope so it is "connected". Returns the token the
+   *  app stores (e.g. macOS Keychain). Never called by the app itself. */
+  async registerNativeApp(appId: string, scope?: { models?: string[]; tools?: { name: string; access: "read" | "write" }[] }): Promise<{ appId: string; principal: string; token: string; models: string[] }> {
+    const token = registerAppToken(appId);
+    const principal = nativePrincipal(appId);
+    // Default scope: the two local, no-consent capabilities. A grant must exist for them to run.
+    const tools = scope?.tools ?? [
+      { name: "claude_speak", access: "read" as const },
+      { name: "claude_transcribe", access: "read" as const },
+    ];
+    // Default to granting whatever models are online so the app can run cleanup completions. The
+    // user's own compute; the app never sees a key. Callers may pass an explicit narrower list.
+    const models = scope?.models ?? await this.deps.backends.models();
+    this.deps.grants.upsert(principal, { models, tools, budgets: undefined });
+    this.deps.audit.record({ origin: principal, kind: "request", method: "registerNativeApp", outcome: "ok", note: appId });
+    return { appId, principal, token, models };
+  }
+
+  /** Interactive "Allow this app": an unregistered native app asked to connect. Push a consent
+   *  prompt to the panel (rate-limited to one pending prompt per appId, so a rogue local process
+   *  can't spam dialogs); on approval mint its per-app token + grant and hand them back. The human
+   *  click is the gate — no prompt injection can satisfy it. (Code-sign verification of the peer is
+   *  future hardening; today the card is honest that identity is unverified.) */
+  private pendingNativeConnect = new Set<string>();
+  async requestNativeConnect(appId: string, reason?: string): Promise<{ token: string; models: string[] } | null> {
+    if (this.pendingNativeConnect.has(appId)) return null; // already asking about this app — ignore the flood
+    this.pendingNativeConnect.add(appId);
+    try {
+      const principal = nativePrincipal(appId);
+      const canDo = ["Transcribe audio on-device", "Clean up and generate text on your Claude"];
+      const ok = await this.ask<boolean>("consent:native-connect", { appId, reason, verified: false, canDo }, 120_000, false);
+      if (!ok) { this.deps.audit.record({ origin: principal, kind: "request", method: "native-connect", outcome: "denied", note: appId }); return null; }
+      const reg = await this.registerNativeApp(appId);
+      return { token: reg.token, models: reg.models };
+    } finally {
+      this.pendingNativeConnect.delete(appId);
+    }
+  }
+
+  /** NativeHandler — dispatch a request already stamped with its verified native principal, over a
+   *  strict allowlist. Anything not listed fails closed (native apps can't reach write/consent verbs
+   *  until the menubar consent surface is wired). Mirrors `handle`'s audit envelope. */
+  async handleNativeRequest(principal: string, method: string, params: unknown): Promise<unknown> {
+    try {
+      let result: unknown;
+      switch (method) {
+        case "claude_capabilities": result = await this.capabilities(); break;
+        case "claude_transcribe": result = await this.transcribe(principal, params as TranscribeParams); break;
+        case "claude_speak": result = await this.speak(principal, params as SpeakParams); break;
+        // One-shot completion (e.g. cleaning up a raw transcript). Self-contained — it never
+        // streams to or needs the extension socket. Agentic tool calls would need the consent
+        // surface a native app doesn't have yet, so this stays one-shot/text-only here.
+        case "claude_complete": result = await this.complete(principal, params as CompletionParams); break;
+        default: throw new ProviderError(BYOPErrorCode.UNSUPPORTED_METHOD, `native apps cannot call ${method}`);
+      }
+      this.deps.audit.record({ origin: principal, kind: "request", method, outcome: "ok" });
+      return result;
+    } catch (err) {
+      const e = err instanceof ProviderError ? err : new ProviderError(BYOPErrorCode.BACKEND_ERROR, "internal error");
+      this.deps.audit.record({ origin: principal, kind: "request", method, outcome: "denied", note: e.message.slice(0, 120) });
+      throw e;
+    }
+  }
+
   /**
    * Control channel for the paired extension (no origin — these act ACROSS origins). Powers the
    * popup's grant list, audit view, per-origin revoke, and the kill switch. Only an authenticated
@@ -309,6 +402,12 @@ export class Broker implements ConsentPrompter {
    */
   private async handleControl(action: string, args: any): Promise<unknown> {
     switch (action) {
+      // Register a native (direct-principal) app — the menubar's "allow this app" action. Mints the
+      // app's per-app token + grant out of band; this control action IS the native connect-consent.
+      case "registerNativeApp": {
+        if (!args?.appId || typeof args.appId !== "string") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "appId required");
+        return this.registerNativeApp(args.appId, { models: args.models, tools: args.tools });
+      }
       case "listGrants":
         return {
           grants: this.deps.grants.list().map((g) => ({

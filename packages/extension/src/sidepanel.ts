@@ -272,6 +272,7 @@ function render(data: PanelData) {
   }
   if (!online) return;
 
+  renderBackends(data);
   void renderCurrentSite(data);
   void renderProject(data);
   renderTeam(data);
@@ -280,6 +281,25 @@ function render(data: PanelData) {
   renderApps(data);
   renderWrapps(data);
   renderActivity(data);
+}
+
+// ---- Backends: what's actually powering completions — the honest first line (Claude Code + any
+// local runner). Derived from panel data alone (no localhost fetch): sign-in from the ladder, a
+// local runner from ollama-style model ids in the grants, hosted from the opt-in cloud lane. ----
+function renderBackends(data: PanelData) {
+  const box = $("backends"); box.hidden = false; box.textContent = "";
+  const pill = (name: string, sub: string, color: string) => {
+    const p = el("div", "bpill");
+    const d = el("span", "bd"); d.style.background = color;
+    p.append(d, el("span", undefined, name), el("span", "sub", sub));
+    return p;
+  };
+  box.append(pill("Claude Code", data.signedIn === false ? "signed out" : "signed in",
+    data.signedIn === false ? "var(--danger)" : "var(--ok)"));
+  const models = data.grants.flatMap((g) => g.models || []);
+  if (models.some((m) => m.includes(":"))) box.append(pill("Ollama", "local", "var(--lime)")); // ids like llama3.2:latest
+  const hosted = data.cloud?.enabled ? (data.cloud.hostedModels?.length ?? 0) : 0;
+  if (hosted) box.append(pill("Hosted", `${hosted} model${hosted === 1 ? "" : "s"}`, "var(--warn)"));
 }
 
 // ---- This tab: the active site, and whether Switchboard can help here ----

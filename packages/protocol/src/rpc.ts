@@ -71,6 +71,22 @@ export interface SpeakResult {
   voice?: string;
 }
 
+/** claude_transcribe — speech-to-text LOCALLY (no cloud, no connector, no credits). The mirror of
+ *  claude_speak: audio in, text out, on a local model (an OpenAI-compatible local server or a
+ *  configured whisper binary). The daemon as orchestrator of local models. */
+export interface TranscribeParams {
+  /** Source audio as a data: URL (e.g. "data:audio/wav;base64,…"). Stays on the machine. */
+  audio: string;
+  /** Optional ISO-639-1 hint (e.g. "en"); omit to let the model auto-detect. */
+  language?: string;
+}
+export interface TranscribeResult {
+  /** The recognized text. */
+  text: string;
+  /** Which local backend produced it, e.g. "local-server" or "whisper-cli". */
+  backend: string;
+}
+
 /** The typed method table: each method's params and result. */
 export interface BYOPMethods {
   /** Feature-detect. No permission required. */
@@ -108,6 +124,9 @@ export interface BYOPMethods {
   claude_session: { params: SessionRequest; result: SessionResult };
   /** Local text-to-speech — synthesized on-device, no cloud/connector/credits. Requires a grant. */
   claude_speak: { params: SpeakParams; result: SpeakResult };
+  /** Local speech-to-text — recognized on-device, no cloud/connector/credits. Requires a grant.
+   *  The mirror of claude_speak; primarily used by direct-principal (native) apps. */
+  claude_transcribe: { params: TranscribeParams; result: TranscribeResult };
   /** The setup ladder, answered by the EXTENSION locally — never forwarded to the daemon, no
    *  grant required, resolves fast (<1s) even when the daemon is unreachable or unpaired. The
    *  chip/widget render install → unreachable → unpaired → disconnected → connected from this;

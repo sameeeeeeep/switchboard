@@ -21,17 +21,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"          # packages/menubar
 ROOT="$(cd "$HERE/../.." && pwd)"              # repo root
 STAGE="$HERE/build/dmg-staging/Switchboard.app"
 RES="$STAGE/Contents/Resources"
-ESBUILD="$ROOT/node_modules/.bin/esbuild"
-SDK_DIR="$ROOT/node_modules/@anthropic-ai/claude-agent-sdk"
-SDK_NATIVE_DIR="$ROOT/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64"
 ICON_SRC="$ROOT/packages/extension/icons"
 PB=/usr/libexec/PlistBuddy
 
 say() { echo "[package-dmg] $*"; }
 die() { echo "[package-dmg] ERROR: $*" >&2; exit 1; }
 
-[ -x "$ESBUILD" ] || die "esbuild not found at $ESBUILD — run npm install first"
-[ -d "$SDK_NATIVE_DIR" ] || die "agent-sdk native package missing — run npm install first"
+# Resolve deps via node's own upward module search — robust in a plain checkout AND a git worktree,
+# where the shared install lives in the parent repo rather than $ROOT/node_modules.
+ESBUILD="$(cd "$ROOT" && node -e "process.stdout.write(require.resolve('esbuild/package.json').replace(/package\.json$/,'bin/esbuild'))" 2>/dev/null || true)"
+# The native package exposes its package.json; the JS SDK hides it behind an exports map, so derive
+# the JS SDK dir as its sibling under @anthropic-ai/ rather than resolving it directly.
+SDK_NATIVE_DIR="$(cd "$ROOT" && node -e "process.stdout.write(require('path').dirname(require.resolve('@anthropic-ai/claude-agent-sdk-darwin-arm64/package.json')))" 2>/dev/null || true)"
+SDK_DIR="$(cd "$(dirname "$SDK_NATIVE_DIR")" 2>/dev/null && pwd)/claude-agent-sdk"
+[ -n "$ESBUILD" ] && [ -f "$ESBUILD" ] || die "esbuild not found — run npm install first"
+[ -n "$SDK_NATIVE_DIR" ] && [ -d "$SDK_NATIVE_DIR" ] || die "agent-sdk native package missing — run npm install first"
+[ -f "$SDK_DIR/package.json" ] || die "agent-sdk JS package not found at $SDK_DIR"
 
 # ---------- 1. build the daemon (tsc -> packages/sidekick/dist) ----------
 say "building @relay/sidekick…"
