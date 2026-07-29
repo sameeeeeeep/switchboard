@@ -19,8 +19,13 @@ export class BackendRegistry {
   static async boot(): Promise<BackendRegistry> {
     const reg = new BackendRegistry();
     reg.register(new ClaudeCodeBackend());
-    if (process.env.RELAY_LOCAL_OPENAI_URL) {
-      reg.register(new LocalOpenAIBackend({ baseUrl: process.env.RELAY_LOCAL_OPENAI_URL, id: "ollama" }));
+    // Local runner (Ollama / LM Studio) — AUTO-DETECTED at Ollama's default port so every daemon
+    // (incl. the always-on menu-bar one) can serve local models with zero config. healthy() gates
+    // it: nothing listening ⇒ no models, inert. RELAY_LOCAL_OPENAI_URL overrides the URL;
+    // RELAY_LOCAL_OPENAI=0 disables the probe entirely.
+    if (process.env.RELAY_LOCAL_OPENAI !== "0") {
+      const baseUrl = process.env.RELAY_LOCAL_OPENAI_URL || "http://127.0.0.1:11434/v1";
+      reg.register(new LocalOpenAIBackend({ baseUrl, id: "ollama" }));
     }
     // OPT-IN hosted lane: only registered when the user has provided an OpenRouter key. Off by
     // default — the daemon stays pure BYO-Claude/local until someone explicitly opts in.

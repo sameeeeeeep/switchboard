@@ -21,10 +21,13 @@ const lang = process.env.FLOW_WHISPER_LANG || "en";
 const outDir = mkdtempSync(join(tmpdir(), "flow-whisper-"));
 
 // whisper writes <basename>.txt into --output_dir; --fp16 False keeps it CPU-friendly & silent-ish.
+// A Finder-launched app has a minimal PATH; prepend the usual Homebrew/pip locations so `whisper`
+// is found regardless of who spawned us.
+const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH || ""}` };
 const res = spawnSync("whisper", [
   audio, "--model", model, "--language", lang,
   "--output_format", "txt", "--output_dir", outDir, "--fp16", "False", "--verbose", "False",
-], { stdio: ["ignore", "ignore", "ignore"] });
+], { stdio: ["ignore", "ignore", "ignore"], env });
 
 try {
   if (res.status !== 0) throw new Error(`whisper exited ${res.status}`);
