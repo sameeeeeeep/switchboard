@@ -118,11 +118,13 @@ export function rotatePairingToken(): string {
   return token;
 }
 
-/** A registered native app: its secret token and the app id (reverse-DNS) the daemon stamps as
- *  its principal. `token → appId` is a strict one-way map — the app presents the token, never the id. */
+/** A registered native app: its secret token, the app id (reverse-DNS) the daemon stamps as its
+ *  principal, and a human display NAME (so the user sees "Flow", not "ai.thelastprompt.flow").
+ *  `token → appId` is a strict one-way map — the app presents the token, never the id. */
 export interface AppToken {
   appId: string;
   token: string;
+  name?: string;
 }
 
 /** All registered native-app tokens (map keyed by token). Absent file ⇒ {} ⇒ no native apps.
@@ -149,15 +151,33 @@ export function resolveAppToken(token: string): string | null {
 /** Register a native app: mint a fresh per-app token, persist it (0600), return the token the app
  *  will store (e.g. in the macOS Keychain). Re-registering the same appId rotates its token. This
  *  IS the native connect-consent step — performed out of band (menubar/CLI), never by the app. */
-export function registerAppToken(appId: string): string {
+function readAppTokenList(): AppToken[] {
+  try { if (existsSync(APP_TOKENS_FILE)) { const raw = JSON.parse(readFileSync(APP_TOKENS_FILE, "utf8")); if (Array.isArray(raw?.apps)) return raw.apps; } } catch { /* rebuild on bad JSON */ }
+  return [];
+}
+export function registerAppToken(appId: string, name?: string): string {
   ensureDir();
-  let apps: AppToken[] = [];
-  try { if (existsSync(APP_TOKENS_FILE)) { const raw = JSON.parse(readFileSync(APP_TOKENS_FILE, "utf8")); if (Array.isArray(raw?.apps)) apps = raw.apps; } } catch { /* rebuild on bad JSON */ }
   const token = randomBytes(32).toString("base64url");
-  apps = apps.filter((a) => a.appId !== appId);
-  apps.push({ appId, token });
+  const apps = readAppTokenList().filter((a) => a.appId !== appId);
+  apps.push(name ? { appId, token, name } : { appId, token });
   writeFileSync(APP_TOKENS_FILE, JSON.stringify({ apps }, null, 2), { mode: 0o600 });
   return token;
+}
+
+/** DISCONNECT a native app: drop its token so it can never re-auth (a fresh connect re-asks for
+ *  consent). The caller also revokes its grant. Returns whether an entry was removed. */
+export function removeAppToken(appId: string): boolean {
+  ensureDir();
+  const apps = readAppTokenList();
+  const kept = apps.filter((a) => a.appId !== appId);
+  if (kept.length === apps.length) return false;
+  writeFileSync(APP_TOKENS_FILE, JSON.stringify({ apps: kept }, null, 2), { mode: 0o600 });
+  return true;
+}
+
+/** The registered native apps (appId + display name), for the menu bar's "Native apps" list. */
+export function listApps(): { appId: string; name: string }[] {
+  return readAppTokenList().map((a) => ({ appId: a.appId, name: a.name || a.appId }));
 }
 
 /** Are any native apps registered? Used to keep the native listener INERT by default. */

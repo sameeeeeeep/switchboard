@@ -43,7 +43,7 @@ import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 import { localSTT, sttAvailable } from "./media/stt.js";
-import { registerAppToken } from "./config.js";
+import { registerAppToken, removeAppToken } from "./config.js";
 import type { NativeHandler } from "./native/listener.js";
 
 /** Merge the origin's local MCP servers with a per-run relay-native server holding this call's
@@ -351,8 +351,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
   /** Register a native app OUT OF BAND (the menubar/CLI, i.e. the native connect-consent step): mint
    *  its per-app token and grant it the requested scope so it is "connected". Returns the token the
    *  app stores (e.g. macOS Keychain). Never called by the app itself. */
-  async registerNativeApp(appId: string, scope?: { models?: string[]; tools?: { name: string; access: "read" | "write" }[] }): Promise<{ appId: string; principal: string; token: string; models: string[] }> {
-    const token = registerAppToken(appId);
+  async registerNativeApp(appId: string, name?: string, scope?: { models?: string[]; tools?: { name: string; access: "read" | "write" }[] }): Promise<{ appId: string; principal: string; token: string; models: string[] }> {
+    const token = registerAppToken(appId, name);
     const principal = nativePrincipal(appId);
     // Default scope: the two local, no-consent capabilities. A grant must exist for them to run.
     const tools = scope?.tools ?? [
@@ -373,15 +373,17 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  click is the gate — no prompt injection can satisfy it. (Code-sign verification of the peer is
    *  future hardening; today the card is honest that identity is unverified.) */
   private pendingNativeConnect = new Set<string>();
-  async requestNativeConnect(appId: string, reason?: string): Promise<{ token: string; models: string[] } | null> {
+  async requestNativeConnect(appId: string, reason?: string, name?: string): Promise<{ token: string; models: string[] } | null> {
     if (this.pendingNativeConnect.has(appId)) return null; // already asking about this app — ignore the flood
     this.pendingNativeConnect.add(appId);
     try {
       const principal = nativePrincipal(appId);
       const canDo = ["Transcribe audio on-device", "Clean up and generate text on your Claude"];
-      const ok = await this.ask<boolean>("consent:native-connect", { appId, reason, verified: false, canDo }, 120_000, false);
+      // `name` is the app's own display name (shown to the human); `appId` is the identity the daemon
+      // trusts. Both are shown so the user sees a name AND can verify the id.
+      const ok = await this.ask<boolean>("consent:native-connect", { appId, name, reason, verified: false, canDo }, 120_000, false);
       if (!ok) { this.deps.audit.record({ origin: principal, kind: "request", method: "native-connect", outcome: "denied", note: appId }); return null; }
-      const reg = await this.registerNativeApp(appId);
+      const reg = await this.registerNativeApp(appId, name);
       return { token: reg.token, models: reg.models };
     } finally {
       this.pendingNativeConnect.delete(appId);
@@ -424,7 +426,18 @@ export class Broker implements ConsentPrompter, NativeHandler {
       // app's per-app token + grant out of band; this control action IS the native connect-consent.
       case "registerNativeApp": {
         if (!args?.appId || typeof args.appId !== "string") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "appId required");
-        return this.registerNativeApp(args.appId, { models: args.models, tools: args.tools });
+        return this.registerNativeApp(args.appId, args.name, { models: args.models, tools: args.tools });
+      }
+      // DISCONNECT a native app (the menu bar's "×"): drop its token so it can never re-auth AND
+      // revoke its grant. A later connect re-asks for consent. Reversibility for registerNativeApp.
+      case "disconnectNativeApp": {
+        if (!args?.appId || typeof args.appId !== "string") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "appId required");
+        const principal = nativePrincipal(args.appId);
+        const hadGrant = !!this.deps.grants.get(principal);
+        this.deps.grants.revoke(principal);
+        const tokenGone = removeAppToken(args.appId);
+        this.deps.audit.record({ origin: principal, kind: "request", method: "disconnectNativeApp", outcome: "ok", note: args.appId });
+        return { ok: tokenGone || hadGrant };
       }
       case "listGrants":
         return {
