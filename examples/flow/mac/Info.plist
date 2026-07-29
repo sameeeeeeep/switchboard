@@ -3,24 +3,26 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Switchboard</string>
+	<string>Flow</string>
 	<key>CFBundleExecutable</key>
-	<string>Relay</string>
+	<string>Flow</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.relay.menubar</string>
+	<string>ai.thelastprompt.flow</string>
 	<key>CFBundleName</key>
-	<string>Switchboard</string>
+	<string>Flow</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.1</string>
+	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Flow transcribes your speech on-device to type it at your cursor.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Switchboard — BYO-Claude</string>
+	<string>Flow — dictation on your own Claude, via Switchboard</string>
 </dict>
 </plist>

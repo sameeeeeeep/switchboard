@@ -373,6 +373,11 @@ function consentToast(kind: string, body: any): { title: string; message: string
   if (kind === "consent:storage-pick") {
     return { title: "Switchboard — folder access", message: `${h(body?.origin ?? "")} wants to open a folder — approving opens your Mac's folder chooser` };
   }
+  if (kind === "consent:native-connect") {
+    const app = String(body?.appId ?? "an app");
+    const name = app.includes(".") ? app.split(".").pop() : app;
+    return { title: "Switchboard — allow app", message: `${name} (a native app) wants to connect to your Claude` };
+  }
   return null;
 }
 

@@ -43,6 +43,7 @@ mode); nothing bypasses it.
 | `claude_context` | shared, cross-app **context** (publish / read the one you're lent) | selection = consent; never enumerable |
 | `claude_callTool` | any MCP tool / claude.ai connector the user granted | read auto · write per-action |
 | `claude_speak` | on-device text-to-speech — a local TTS server or macOS `say` | local · no cloud, no credits |
+| `claude_transcribe` | on-device speech-to-text — a local whisper / STT server (mirror of `speak`) | local · no cloud, no credits |
 
 **Context can be backed by a source you already keep** — a published Google Sheet's CSV is fetched and
 parsed to JSON rows (SSRF-guarded, cached), so a spreadsheet becomes live shared context with zero new
@@ -52,6 +53,22 @@ infra. A global **"working on" project** scopes every connected app at once.
 subscription, a local model (Ollama / LM Studio), or an on-device engine — `claude_speak` even
 synthesizes voice locally. Switchboard is the orchestrator: Claude **+** connectors **+** local models,
 all on your compute.
+
+## Beyond the browser — native apps
+
+The daemon is the machine's **AI capability runtime**; web wrapps were its first client. A native
+Mac app can talk to the daemon **directly** (no browser) and borrow the same broker — its own Claude,
+local models, gated tools, storage — as its own least-privilege principal `native@<appId>`. It's a
+second loopback listener that authenticates a per-app token; everything below the identity stamp is
+the *same* gate, grants, budgets, and audit as the web path (additive — the web spikes stay green).
+Interactive **"Allow this app"** consent: an unregistered app connects → the panel prompts (rate-limited,
+human-approval gate) → a token is minted. Proof: `packages/sidekick/spike/native-spike.mjs`.
+
+**[Flow](examples/flow)** is the demo — a Wispr-style dictation app: hold a key, talk, and cleaned-up
+text lands at your cursor. It's a thin native shell that transcribes locally (whisper) and cleans up
+on a small **local model** (or your Claude), synthesized entirely on your machine. Ships as a
+notarized `.dmg`. The rule it proves: an app supplies the skin; the *user's* intelligence comes from
+the broker — no key, no bundled model.
 
 ## Porting existing apps
 
@@ -106,7 +123,8 @@ no injection into the page). Packs are a data registry — adding one is one ent
 | [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
 | [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
 | [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge |
+| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS) |
+| [`examples/flow`](examples/flow) | **Flow** — the native dictation app (menu-bar Swift + notarized DMG); the "beyond the browser" demo |
 | [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the trust chain, the gate, and how a request flows.
@@ -123,6 +141,7 @@ All packages compile; the spine is proven end-to-end by spikes under `packages/s
 | `context-source-spike` | Google Sheet CSV → JSON rows, SSRF guard, cache | 13/13 |
 | `session-spike` | warm thread, sequential turns, later turns ~40% faster | 6/6 |
 | `consent-durable-spike` | consent survives a mid-prompt socket drop | 3/3 |
+| `native-spike` | native app as its own `native@` principal, isolation, + interactive "Allow this app" | 11/11 |
 | `run-live` / `run-context-demo` | real brandbrain data + Claude + a real route, end-to-end | green |
 
 Plus the original gate / MCP / daemon round-trip spikes. Honest gaps (see [ARCHITECTURE.md](ARCHITECTURE.md)):

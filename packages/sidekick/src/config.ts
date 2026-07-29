@@ -16,6 +16,10 @@ export const RELAY_DIR = process.env.RELAY_DIR || join(homedir(), ".relay");
 const TOKEN_FILE = join(RELAY_DIR, "pairing-token");
 const PROFILE_FILE = join(RELAY_DIR, "profile.json");
 const CLOUD_FILE = join(RELAY_DIR, "cloud.json");
+/** Per-app tokens for DIRECT-principal (native) clients. SEPARATE from the extension's single
+ *  pairing token: each entry is one app's own secret, mapping token → appId, and grants NO
+ *  origin-stamping power (unlike the pairing token). Absent by default ⇒ no native apps registered. */
+const APP_TOKENS_FILE = join(RELAY_DIR, "app-tokens.json");
 
 /** The OPT-IN hosted-inference config (OpenRouter). Absent by default — Switchboard is BYO-Claude
  *  and local-first; this only exists once the user provides their own OpenRouter key. The key is a
@@ -112,6 +116,53 @@ export function rotatePairingToken(): string {
   const token = randomBytes(32).toString("base64url");
   writeFileSync(TOKEN_FILE, token, { mode: 0o600 });
   return token;
+}
+
+/** A registered native app: its secret token and the app id (reverse-DNS) the daemon stamps as
+ *  its principal. `token → appId` is a strict one-way map — the app presents the token, never the id. */
+export interface AppToken {
+  appId: string;
+  token: string;
+}
+
+/** All registered native-app tokens (map keyed by token). Absent file ⇒ {} ⇒ no native apps.
+ *  Never throws — a malformed file degrades to empty, exactly like loadProfile. */
+export function loadAppTokens(): Record<string, string> {
+  ensureDir();
+  if (!existsSync(APP_TOKENS_FILE)) return {};
+  try {
+    const raw = JSON.parse(readFileSync(APP_TOKENS_FILE, "utf8"));
+    const out: Record<string, string> = {};
+    for (const { appId, token } of (Array.isArray(raw?.apps) ? raw.apps : []) as AppToken[]) {
+      if (typeof appId === "string" && typeof token === "string" && appId && token) out[token] = appId;
+    }
+    return out;
+  } catch { return {}; }
+}
+
+/** Resolve a presented token to its app id, or null if unregistered. The native listener's gate. */
+export function resolveAppToken(token: string): string | null {
+  if (!token) return null;
+  return loadAppTokens()[token] ?? null;
+}
+
+/** Register a native app: mint a fresh per-app token, persist it (0600), return the token the app
+ *  will store (e.g. in the macOS Keychain). Re-registering the same appId rotates its token. This
+ *  IS the native connect-consent step — performed out of band (menubar/CLI), never by the app. */
+export function registerAppToken(appId: string): string {
+  ensureDir();
+  let apps: AppToken[] = [];
+  try { if (existsSync(APP_TOKENS_FILE)) { const raw = JSON.parse(readFileSync(APP_TOKENS_FILE, "utf8")); if (Array.isArray(raw?.apps)) apps = raw.apps; } } catch { /* rebuild on bad JSON */ }
+  const token = randomBytes(32).toString("base64url");
+  apps = apps.filter((a) => a.appId !== appId);
+  apps.push({ appId, token });
+  writeFileSync(APP_TOKENS_FILE, JSON.stringify({ apps }, null, 2), { mode: 0o600 });
+  return token;
+}
+
+/** Are any native apps registered? Used to keep the native listener INERT by default. */
+export function hasAppTokens(): boolean {
+  return existsSync(APP_TOKENS_FILE) && Object.keys(loadAppTokens()).length > 0;
 }
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);

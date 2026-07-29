@@ -85,6 +85,11 @@
       .sec > .head { display: flex; align-items: center; justify-content: space-between; }
       .sec > .head .act { font: 600 12px/1 var(--sans); color: var(--lime); background: none; border: 0; cursor: pointer; padding: 0; }
       .sec > .head .act:hover { text-decoration: underline; }
+      /* backends strip — what's powering completions right now (Claude Code + any local runner) */
+      .backends { display: flex; gap: 7px; flex-wrap: wrap; }
+      .bpill { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 5px 10px; font: 500 12px/1 var(--sans); color: var(--ink); }
+      .bpill .bd { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+      .bpill .sub { color: var(--ink-faint); font-size: 11px; }
 
       /* ---- working on (the hero: your active project, in its own colours) ---- */
       .project { border: 1px solid var(--edge); background: linear-gradient(180deg, var(--raised) 0%, var(--panel) 100%); border-radius: 16px; padding: 15px; position: relative; overflow: hidden; }
@@ -339,11 +344,32 @@
       </div>
 
       <div class="body" id="home" hidden>
+        <!-- what's actually powering it — the honest first thing (Claude Code + any local runner) -->
+        <div class="backends" id="backends" hidden></div>
+
         <div class="sec" id="siteSec" hidden>
           <div class="head"><span class="eyebrow">This tab</span></div>
           <div id="site"></div>
         </div>
 
+        <div class="sec">
+          <div class="head"><span class="eyebrow">Apps</span><span class="eyebrow" id="appCount"></span></div>
+          <div id="apps" style="display:flex;flex-direction:column;gap:9px"></div>
+        </div>
+
+        <div class="sec">
+          <div class="head"><span class="eyebrow">Tools</span></div>
+          <div class="connectors" id="connectors"></div>
+        </div>
+
+        <div class="sec">
+          <div class="head"><span class="eyebrow">Wrapp store</span><button class="act" id="browseStore">Browse all →</button></div>
+          <div class="wrapps" id="wrapps"></div>
+          <div id="wrappsMore"></div>
+          <div class="openurl"><input id="openUrlInput" placeholder="or paste any tool URL…" spellcheck="false" /><button id="openUrlBtn">Open</button></div>
+        </div>
+
+        <!-- secondary, moved below the everyday stuff -->
         <div class="sec">
           <div class="head"><span class="eyebrow">Working on</span></div>
           <div id="project"></div>
@@ -357,23 +383,6 @@
         <div class="sec" id="cloudSec" hidden>
           <div class="head"><span class="eyebrow">Cloud</span></div>
           <div id="cloud"></div>
-        </div>
-
-        <div class="sec">
-          <div class="head"><span class="eyebrow">Connectors</span></div>
-          <div class="connectors" id="connectors"></div>
-        </div>
-
-        <div class="sec">
-          <div class="head"><span class="eyebrow">Apps</span><span class="eyebrow" id="appCount"></span></div>
-          <div id="apps" style="display:flex;flex-direction:column;gap:9px"></div>
-        </div>
-
-        <div class="sec">
-          <div class="head"><span class="eyebrow">Wrapp store</span><button class="act" id="browseStore">Browse all →</button></div>
-          <div class="wrapps" id="wrapps"></div>
-          <div id="wrappsMore"></div>
-          <div class="openurl"><input id="openUrlInput" placeholder="or paste any tool URL…" spellcheck="false" /><button id="openUrlBtn">Open</button></div>
         </div>
 
         <details class="activity" id="activity">

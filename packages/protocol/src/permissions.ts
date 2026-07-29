@@ -125,3 +125,30 @@ export function isTabPrincipal(origin: string): boolean {
 export function hostOfTabPrincipal(origin: string): string {
   return isTabPrincipal(origin) ? origin.slice(TAB_PRINCIPAL_PREFIX.length) : "";
 }
+
+/**
+ * NATIVE principal. A local app (a Mac/desktop shell, a CLI) that talks to the daemon DIRECTLY —
+ * no browser, so no origin oracle to vouch for it. It connects on the daemon's separate native
+ * listener, authenticates with its OWN per-app token, and the daemon stamps this principal from
+ * that token — the app NEVER declares its own identity, so it can only ever act as itself and can
+ * never impersonate a web origin. Carried in the SAME `origin` slot on the envelope, so grants,
+ * budgets, audit, storage, and revoke are all keyed to it and stay STRUCTURALLY SEPARATE from web
+ * (`https://…`) and TabSidekick (`tabsidekick@…`) principals. The `appId` is a reverse-DNS bundle
+ * id, e.g. `com.you.speechtotext`.
+ */
+export const NATIVE_PRINCIPAL_PREFIX = "native@";
+
+/** Build the native principal for a registered app id (e.g. "com.you.speechtotext"). */
+export function nativePrincipal(appId: string): string {
+  return `${NATIVE_PRINCIPAL_PREFIX}${appId}`;
+}
+
+/** Is this origin a native (direct-principal) app vs a web origin or TabSidekick? */
+export function isNativePrincipal(origin: string): boolean {
+  return origin.startsWith(NATIVE_PRINCIPAL_PREFIX);
+}
+
+/** The app id a native principal identifies, e.g. "com.you.speechtotext" (empty if not native). */
+export function appIdOfNativePrincipal(origin: string): string {
+  return isNativePrincipal(origin) ? origin.slice(NATIVE_PRINCIPAL_PREFIX.length) : "";
+}

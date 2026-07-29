@@ -34,7 +34,10 @@ interface StorageBindBody { origin: string; path: string; }
 interface StoragePickBody { origin: string; reason?: string; }
 interface ContextMetaRow { id: string; name: string; kind?: string; source?: string }
 interface ContextPickBody { origin: string; contexts: ContextMetaRow[] }
-export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:storage-pick" | "consent:context-pick"; body: unknown; }
+/** A NATIVE app (no browser) asking to connect for the first time. The daemon derives `appId` and
+ *  the code-sign `verified` identity itself — never the app. Approving mints the app's per-app token. */
+interface NativeConnectBody { appId: string; reason?: string; verified?: string | boolean; canDo?: string[] }
+export interface Prompt { kind: "consent:connect" | "consent:write" | "consent:storage-bind" | "consent:storage-pick" | "consent:context-pick" | "consent:native-connect"; body: unknown; }
 
 const el = (tag: string, cls?: string, text?: string): HTMLElement => {
   const n = document.createElement(tag);
@@ -146,6 +149,16 @@ function ensureStyles() {
       background: var(--inset,#070809); border: 1px solid var(--edge,#262C38); border-radius: 8px; padding: 8px; outline: none; }
     .rc .args { font-family: "Spline Sans Mono", monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-word;
       background: var(--raised,#1A1F29); border-radius: 10px; padding: 10px; max-height: 180px; overflow: auto; color: var(--ink-sec,#B4BECE); }
+    /* HUMANIZED write action — the tool's arguments as labelled rows, not a JSON dump. */
+    .rc .kvcard { background: var(--panel,#12151C); border: 1px solid var(--edge-soft,#1C212B); border-radius: 12px; padding: 2px 12px; margin-top: 12px; }
+    .rc .kv { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--edge-soft,#1C212B); }
+    .rc .kv:last-child { border-bottom: 0; }
+    .rc .kvk { flex: 0 0 62px; font: 600 10px/1.5 "Spline Sans Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint,#6E7C90); }
+    .rc .kvv { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-sec,#B4BECE); line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+      display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+    .rc .rawtoggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 8px 0 2px; cursor: pointer;
+      font: 600 11.5px/1 "Hanken Grotesk", sans-serif; color: var(--ink-faint,#6E7C90); }
+    .rc .rawtoggle:hover { color: var(--ink,#E8EDF4); }
     .rc .warn { color: var(--danger); font-weight: 600; }
     /* the decision never scrolls away: pinned, hairline, softly frosted */
     .rc .actions { display: flex; gap: 8px; margin-top: 18px; position: sticky; bottom: 0; padding: 10px 0 12px;
@@ -155,6 +168,15 @@ function ensureStyles() {
     .rc .approve:hover { opacity: .9; }
     .rc .deny { flex: 0 0 32%; background: transparent; color: var(--ink-dim,#99A3B7); border-color: var(--edge,#262C38); }
     .rc .empty { color: var(--ink-faint,#6E7C90); font-size: 12.5px; padding: 6px 0; }
+    /* progressive disclosure: the decision reads in one screen; the knobs live behind "Customize" */
+    .rc .custhead { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; cursor: pointer;
+      padding: 14px 0 2px; font: 600 12.5px/1 "Hanken Grotesk", sans-serif; color: var(--ink-dim,#99A3B7); }
+    .rc .custhead:hover { color: var(--ink,#E8EDF4); }
+    .rc .custhead .chev { margin-left: auto; transition: transform .15s; font-size: 11px; }
+    .rc .custhead.open .chev { transform: rotate(180deg); }
+    .rc .custsum { font: 500 10.5px/1.4 "Spline Sans Mono", monospace; color: var(--ink-faint,#6E7C90); margin-top: 3px; }
+    .rc .customize { display: none; }
+    .rc .customize.open { display: block; }
     /* ---- connectors it needs (STATES.md §5): one card per class-level need ---- */
     .rc .needcard { display: flex; gap: 9px; align-items: flex-start; background: var(--raised,#1A1F29);
       border: 1px solid var(--edge-soft,#1C212B); border-radius: 11px; padding: 9px 11px; margin-top: 7px; }
@@ -182,6 +204,7 @@ export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d:
   const rc = el("div", "rc");
   root.appendChild(rc);
   if (prompt.kind === "consent:connect") renderConnect(rc, prompt.body as ConnectBody, onDecision);
+  else if (prompt.kind === "consent:native-connect") renderNativeConnect(rc, prompt.body as NativeConnectBody, onDecision);
   else if (prompt.kind === "consent:storage-bind") renderStorageBind(rc, prompt.body as StorageBindBody, onDecision);
   else if (prompt.kind === "consent:storage-pick") renderStoragePick(rc, prompt.body as StoragePickBody, onDecision);
   else if (prompt.kind === "consent:context-pick") renderContextPick(rc, prompt.body as ContextPickBody, onDecision);
@@ -279,11 +302,15 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     }
   }
 
+  // ---- Everything below is the granular scope, folded behind "Customize" — the digest above already
+  // says what approving does, so the decision reads in one screen. Boxes stay checked-by-default. ----
+  const custom = el("div", "customize");
+
   // ---- Models — compact toggle chips (default = the requested set, else the first available).
   // Chips wrap, so even 6 models stay ~2 rows and need no fold; the daemon runs the user's pick. ----
   const wantModels = new Set(body.models.requested.length ? body.models.requested : body.models.available.slice(0, 1));
   const modelBoxes: Array<[string, HTMLInputElement]> = [];
-  const mSec = section(rc, "Models", () => toggleAll(modelBoxes.map(([, c]) => c)));
+  const mSec = section(custom, "Models", () => toggleAll(modelBoxes.map(([, c]) => c)));
   const mchips = el("div", "mchips");
   for (const m of body.models.available) {
     const cb = el("input") as HTMLInputElement; cb.type = "checkbox"; cb.className = "box"; cb.checked = wantModels.has(m);
@@ -304,7 +331,7 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
   };
   const writes = body.tools.filter((t) => t.access === "write").length;
   const tSec = section(
-    rc, "Tools",
+    custom, "Tools",
     () => { toggleAll(toolBoxes.map(([, c]) => c)); groupSyncs.forEach((f) => f()); },
     body.tools.length ? `${body.tools.length} requested · ${writes} write` : undefined,
   );
@@ -353,7 +380,7 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
   // names of these kinds from your library; each actual read is one context at a time, audited.
   let kindsBox: HTMLInputElement | null = null;
   if (kinds.length) {
-    const cSec = section(rc, "Your library");
+    const cSec = section(custom, "Your library");
     const box = el("div", "scope");
     const cb = el("input") as HTMLInputElement; cb.type = "checkbox"; cb.className = "box"; cb.checked = true;
     kindsBox = cb;
@@ -364,12 +391,22 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
   }
 
   // Budget
-  const bSec = section(rc, "Budget");
+  const bSec = section(custom, "Budget");
   const tok = numInput(body.budgets.maxTokensPerDay);
   const calls = numInput(body.budgets.maxCallsPerMin);
   const grid = el("div", "budget");
   grid.append(wrapLabel("Max tokens / day", tok), wrapLabel("Max calls / min", calls));
   bSec.append(grid);
+
+  // Customize disclosure — collapsed by default; a summary line stands in for the hidden knobs so the
+  // decision reads in one screen, with full control one tap away.
+  const custHead = el("button", "custhead");
+  custHead.append(el("span", undefined, "Customize tools, models, budget"), el("span", "chev", "▾"));
+  const defModels = wantModels.size;
+  const custSum = el("div", "custsum",
+    `${body.tools.length} tool${body.tools.length === 1 ? "" : "s"} · ${defModels} model${defModels === 1 ? "" : "s"} · runs on your Claude`);
+  custHead.onclick = () => { const open = custom.classList.toggle("open"); custHead.classList.toggle("open", open); custSum.style.display = open ? "none" : "block"; };
+  rc.append(custHead, custSum, custom);
 
   const actions = el("div", "actions");
   const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(null);
@@ -394,22 +431,91 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
   updateApprove();
 }
 
+/** Turn a tool arg key into a readable label ("to" → "to", "message_body" → "message body"). */
+function humanKey(k: string): string { return k.replace(/[_-]+/g, " ").trim(); }
+/** Render an arg value as human text — strings verbatim, scalars stringified, structures compacted. */
+function humanVal(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "string") return v || "—";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map((x) => (x && typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ");
+  return JSON.stringify(v);
+}
+
 function renderWrite(rc: HTMLElement, body: WriteBody, onDecision: (d: Decision) => void) {
   rc.append(el("div", "kick", "Write action"));
-  const h = el("h2");
-  h.append(originIcon(body.origin), document.createTextNode("Approve this action?"));
-  rc.append(h);
   const conn = connectorOf(body.tool.name);
-  const p = el("div", "reason");
-  p.append(Object.assign(el("span", "o"), { textContent: host(body.origin) }), document.createTextNode(" wants to run "), Object.assign(el("b"), { textContent: shortTool(body.tool.name) }));
-  if (conn) p.append(document.createTextNode(" · "), connectorGlyph(conn, "ichip"), document.createTextNode(` ${conn.label}`));
-  rc.append(p);
-  const sec = section(rc, "Arguments");
-  sec.append(el("div", "args", JSON.stringify(body.tool.arguments, null, 2)));
-  rc.append(el("div", "reason warn", "This may send, change, delete, or spend. Approve only if you initiated it."));
+  // Headline names the action in plain words: "<site> wants to <tool>", not "Approve this action?".
+  const h = el("h2");
+  h.append(originIcon(body.origin), Object.assign(el("span", "o"), { textContent: host(body.origin) }),
+    document.createTextNode(" wants to "), Object.assign(el("b"), { textContent: shortTool(body.tool.name) }));
+  rc.append(h);
+  if (conn) {
+    const p = el("div", "reason");
+    p.append(connectorGlyph(conn, "ichip"), document.createTextNode(` via ${conn.label}`));
+    rc.append(p);
+  }
+
+  // Humanized details — the arguments as labelled rows instead of a JSON dump. Raw JSON stays one
+  // click away for anyone who wants the exact payload.
+  const entries = Object.entries(body.tool.arguments ?? {});
+  const kvcard = el("div", "kvcard");
+  if (!entries.length) kvcard.append(el("div", "kv", "No details — this action takes no inputs."));
+  for (const [k, v] of entries) {
+    const row = el("div", "kv");
+    row.append(el("span", "kvk", humanKey(k)), el("span", "kvv", humanVal(v)));
+    kvcard.append(row);
+  }
+  rc.append(kvcard);
+
+  const raw = el("div", "args"); raw.style.display = "none"; raw.textContent = JSON.stringify(body.tool.arguments, null, 2);
+  const toggle = el("button", "rawtoggle", "Show raw arguments");
+  let shown = false;
+  toggle.onclick = () => { shown = !shown; raw.style.display = shown ? "block" : "none"; toggle.textContent = shown ? "Hide raw arguments" : "Show raw arguments"; };
+  rc.append(toggle, raw);
+
+  rc.append(el("div", "reason warn", "This sends, changes, deletes, or spends for real. Approve only if you asked for it."));
   const actions = el("div", "actions");
   const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
   const approve = el("button", "approve", "Approve once"); approve.onclick = () => onDecision(true as unknown as Decision);
+  actions.append(deny, approve);
+  rc.append(actions);
+}
+
+/** A lime app-mark for a native principal (no favicon exists — it's not a web origin). */
+function nativeIcon(letter: string): HTMLElement {
+  const s = el("span", "oicon"); s.style.background = "var(--lime,#C8F250)"; s.style.color = "#0A0C10";
+  s.textContent = (letter || "•").toUpperCase();
+  return s;
+}
+
+function renderNativeConnect(rc: HTMLElement, body: NativeConnectBody, onDecision: (d: Decision) => void) {
+  rc.append(el("div", "kick", "Native app"));
+  const appName = body.appId.includes(".") ? body.appId.split(".").pop()! : body.appId; // ai.thelastprompt.flow → flow
+  const h = el("h2");
+  h.append(nativeIcon(appName[0] ?? "•"), document.createTextNode("Allow "),
+    Object.assign(el("span", "o"), { textContent: cap(appName) }), document.createTextNode(" to connect?"));
+  rc.append(h);
+  // Identity line — the app id + whether its code signature was verified. This is what the user is
+  // actually trusting; the daemon derives both, so the app can't dress itself up.
+  const verified = body.verified;
+  const idline = el("div", "reason");
+  idline.append(Object.assign(el("b"), { textContent: body.appId }),
+    document.createTextNode(verified ? ` · verified: ${typeof verified === "string" ? verified : "app signature"}` : " · unverified"));
+  rc.append(idline);
+  if (body.reason) rc.append(el("div", "reason quote", `“${body.reason}”`));
+
+  const canDo = body.canDo?.length ? body.canDo : ["Use your local models and your Claude, through the gate"];
+  const scope = el("div", "scope");
+  const r = el("div", "srow"); r.append(el("span", "kick", "Can do"), el("span", "s", cap(canDo.join(" · "))));
+  scope.append(r);
+  rc.append(scope);
+
+  if (!verified) rc.append(el("div", "reason warn", "This app's signature couldn't be verified. Only allow an app you installed yourself."));
+
+  const actions = el("div", "actions");
+  const deny = el("button", "deny", "Deny"); deny.onclick = () => onDecision(false);
+  const approve = el("button", "approve", "Allow"); approve.onclick = () => onDecision(true as unknown as Decision);
   actions.append(deny, approve);
   rc.append(actions);
 }
