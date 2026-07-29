@@ -151,23 +151,49 @@ func readGrantCount() -> Int {
 // A connected principal, classified by the SAME prefixes the daemon keys grants on: a real web
 // origin (https://…), a TabSidekick principal (tabsidekick@…), or a NATIVE app (native@…).
 enum AppKind { case web, native, tab }
-struct AppRow: Identifiable { let id: String; let label: String; let kind: AppKind; let tools: Int }
+struct AppRow: Identifiable { let id: String; let label: String; let kind: AppKind; let tools: Int; let appId: String?; let lastSeen: Double }
 
 func classify(_ origin: String) -> (AppKind, String) {
     if origin.hasPrefix("native@") { return (.native, String(origin.dropFirst("native@".count))) }
     if origin.hasPrefix("tabsidekick@") { return (.tab, String(origin.dropFirst("tabsidekick@".count))) }
     return (.web, hostOf(origin))
 }
+/** appId → display name, from the daemon's app-tokens file — so a native app shows "Flow", not "ai.thelastprompt.flow". */
+func nativeNames() -> [String: String] {
+    guard let obj = readJSON((RELAY_DIR as NSString).appendingPathComponent("app-tokens.json")) as? [String: Any],
+          let apps = obj["apps"] as? [[String: Any]] else { return [:] }
+    var out: [String: String] = [:]
+    for a in apps { if let id = a["appId"] as? String { out[id] = (a["name"] as? String) ?? id } }
+    return out
+}
+/** origin → most-recent activity ts, from the audit tail — drives active-first ordering. */
+func lastSeenByOrigin() -> [String: Double] {
+    guard let data = FileManager.default.contents(atPath: AUDIT_FILE),
+          let text = String(data: data.suffix(65_536), encoding: .utf8) else { return [:] }
+    var out: [String: Double] = [:]
+    for line in text.split(separator: "\n") {
+        guard let d = line.data(using: .utf8),
+              let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+              let origin = o["origin"] as? String, let ts = o["ts"] as? Double else { continue }
+        if ts > (out[origin] ?? 0) { out[origin] = ts }
+    }
+    return out
+}
 func readApps() -> [AppRow] {
     guard let arr = readJSON(GRANTS_FILE) as? [[String: Any]] else { return [] }
-    return arr.compactMap { g in
+    let names = nativeNames(); let seen = lastSeenByOrigin()
+    let rows: [AppRow] = arr.compactMap { g in
         guard let origin = g["origin"] as? String else { return nil }
-        let (kind, label) = classify(origin)
+        let (kind, ident) = classify(origin)
+        let label = kind == .native ? (names[ident] ?? ident) : ident
         let tools = (g["tools"] as? [[String: Any]])?.count ?? 0
-        return AppRow(id: origin, label: label, kind: kind, tools: tools)
+        return AppRow(id: origin, label: label, kind: kind, tools: tools, appId: kind == .native ? ident : nil, lastSeen: seen[origin] ?? 0)
     }
-    // Native + web first (real apps), TabSidekick last (unconnected-mode helpers).
-    .sorted { ($0.kind == .tab ? 1 : 0) < ($1.kind == .tab ? 1 : 0) }
+    // Active-first: most-recently-active first; TabSidekick helpers always last.
+    return rows.sorted {
+        if ($0.kind == .tab) != ($1.kind == .tab) { return $1.kind == .tab }
+        return $0.lastSeen > $1.lastSeen
+    }
 }
 // Native apps that have been REGISTERED (allowed) — read straight from the daemon's app-tokens file.
 func readNativeApps() -> [String] {
@@ -340,6 +366,7 @@ struct Panel: View {
     let onTakeOver: () -> Void
     let onRepair: () -> Void
     let onQuit: () -> Void
+    let onDisconnect: (String) -> Void   // disconnect a native app by appId
     @State private var breathe = false
 
     // The hero's one supporting line: who it's working for, or what's on the bench.
@@ -399,7 +426,15 @@ struct Panel: View {
         let sym = app.kind == .native ? "desktopcomputer" : (app.kind == .tab ? "square.on.square.dashed" : "globe")
         let col: Color = app.kind == .native ? .lime : (app.kind == .tab ? .inkFaint : .inkDim)
         VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: sym).font(.system(size: 15, weight: .medium)).foregroundColor(col)
+            HStack(spacing: 4) {
+                Image(systemName: sym).font(.system(size: 15, weight: .medium)).foregroundColor(col)
+                Spacer(minLength: 0)
+                if app.kind == .native, let appId = app.appId {
+                    Button(action: { onDisconnect(appId) }) {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.inkFaint)
+                    }.buttonStyle(.plain).help("Disconnect this app")
+                }
+            }
             Text(app.label).font(.system(size: 11, weight: .medium)).foregroundColor(app.kind == .tab ? .inkDim : .ink).lineLimit(1)
             if app.kind == .native {
                 Text("native").font(.system(size: 9, weight: .semibold)).foregroundColor(.page)
@@ -660,6 +695,9 @@ final class ConsentClient: NSObject {
         }
     }
     func reply(_ id: String, _ result: Bool) { send(["type": "reply", "id": id, "result": result]) }
+    /** Fire a daemon control action over the same authed socket (e.g. disconnectNativeApp). The panel
+     *  re-reads its files right after, so we don't need the reply. */
+    func control(_ action: String, _ args: [String: Any]) { send(["type": "control", "id": UUID().uuidString, "action": action, "args": args]) }
     private func send(_ obj: [String: Any]) {
         guard let d = try? JSONSerialization.data(withJSONObject: obj), let s = String(data: d, encoding: .utf8) else { return }
         task?.send(.string(s)) { _ in }
@@ -682,7 +720,9 @@ final class RelayController: NSObject, NSApplicationDelegate {
     // Native "Allow this app?" dialog — a real macOS alert, from the trusted Switchboard app itself.
     private func showNativeConsent(_ id: String, _ body: [String: Any]) {
         let appId = body["appId"] as? String ?? "an app"
-        let name = appId.contains(".") ? String(appId.split(separator: ".").last!).capitalized : appId
+        // The app's OWN display name if it gave one (legible); else, honestly, the last id segment.
+        let name = (body["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? (appId.contains(".") ? String(appId.split(separator: ".").last!).capitalized : appId)
         let reason = body["reason"] as? String ?? ""
         let canDo = (body["canDo"] as? [String])?.joined(separator: " · ") ?? "Use your local models and your Claude, through the gate"
         let a = NSAlert()
@@ -693,8 +733,30 @@ final class RelayController: NSObject, NSApplicationDelegate {
             + "\n\nIdentity isn\u{2019}t signature-verified yet — only allow an app you installed yourself."
         a.addButton(withTitle: "Allow")
         a.addButton(withTitle: "Deny")
+        // Make it a real, commanding modal: bring the (accessory) app forward, float the alert above
+        // every other window, and center it — a system-style "allow this app" moment, not a stray popup.
         NSApp.activate(ignoringOtherApps: true)
+        let win = a.window
+        win.level = .modalPanel
+        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        win.center()
+        win.makeKeyAndOrderFront(nil)
         consent?.reply(id, a.runModal() == .alertFirstButtonReturn)
+    }
+
+    // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
+    // next time) but still a real revocation. Drops the token + grant via the daemon, then refreshes.
+    private func disconnectNativeApp(_ appId: String) {
+        let name = nativeNames()[appId] ?? appId
+        let a = NSAlert()
+        a.messageText = "Disconnect \u{201C}\(name)\u{201D}?"
+        a.informativeText = "It loses access now. It'll ask to connect again the next time you use it."
+        a.addButton(withTitle: "Disconnect")
+        a.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        consent?.control("disconnectNativeApp", ["appId": appId])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -721,7 +783,8 @@ final class RelayController: NSObject, NSApplicationDelegate {
             onStop: { [weak self] in self?.stopDaemon() },
             onTakeOver: { [weak self] in self?.takeOverDaemon() },
             onRepair: { [weak self] in self?.repairDaemon() },
-            onQuit: { NSApp.terminate(nil) }
+            onQuit: { NSApp.terminate(nil) },
+            onDisconnect: { [weak self] appId in self?.disconnectNativeApp(appId) }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.

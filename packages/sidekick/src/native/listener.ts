@@ -25,10 +25,10 @@ export interface NativeHandler {
   handleNativeRequest(principal: string, method: string, params: unknown): Promise<unknown>;
   /** Interactive "Allow this app": an UNregistered app asked to connect. Pushes a consent prompt to
    *  the panel; on approval mints the app's per-app token + grant and returns it. null = denied. */
-  requestNativeConnect(appId: string, reason?: string): Promise<{ token: string; models: string[] } | null>;
+  requestNativeConnect(appId: string, reason?: string, name?: string): Promise<{ token: string; models: string[] } | null>;
 }
 
-interface NativeMsg { type?: string; id?: string; token?: string; method?: string; params?: unknown; appId?: string; reason?: string }
+interface NativeMsg { type?: string; id?: string; token?: string; method?: string; params?: unknown; appId?: string; reason?: string; name?: string }
 
 export class NativeListener {
   private wss: WebSocketServer | null = null;
@@ -67,8 +67,9 @@ export class NativeListener {
             const appId = msg.appId;
             if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/.test(appId)) { ws.close(1008, "bad appId"); return; }
             const reason = typeof msg.reason === "string" ? msg.reason.slice(0, 200) : undefined;
+            const name = typeof msg.name === "string" ? msg.name.slice(0, 80) : undefined;
             let res: { token: string; models: string[] } | null = null;
-            try { res = await this.handler.requestNativeConnect(appId, reason); } catch { res = null; }
+            try { res = await this.handler.requestNativeConnect(appId, reason, name); } catch { res = null; }
             if (res) { principal = nativePrincipal(appId); ws.send(JSON.stringify({ type: "registered", appId, token: res.token, models: res.models })); }
             else ws.close(1008, "denied");
             return;

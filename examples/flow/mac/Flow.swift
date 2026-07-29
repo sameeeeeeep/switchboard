@@ -101,12 +101,12 @@ final class DaemonClient: NSObject {
 
     // Two ways to open: AUTH with a saved per-app token, or ask for interactive consent (appId only).
     // On `registered` the daemon has already authed this same socket, so it's usable immediately.
-    init(port: UInt16, token: String? = nil, appId: String? = nil, reason: String? = nil,
+    init(port: UInt16, token: String? = nil, appId: String? = nil, name: String? = nil, reason: String? = nil,
          onAuth: @escaping () -> Void = {}, onRegistered: ((String, [String]) -> Void)? = nil) {
         self.onAuth = onAuth
         self.onRegistered = onRegistered
         self.hello = token != nil ? ["type": "auth", "token": token!]
-                                   : ["type": "requestConnect", "appId": appId ?? "", "reason": reason ?? ""]
+                                   : ["type": "requestConnect", "appId": appId ?? "", "name": name ?? "", "reason": reason ?? ""]
         super.init()
         session = URLSession(configuration: .default)
         task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
@@ -385,7 +385,7 @@ final class AppState: NSObject, NSApplicationDelegate {
             }
         } else {
             setStatus("Allow Flow in Switchboard to connect…")
-            native = DaemonClient(port: NATIVE_PORT, appId: APP_ID,
+            native = DaemonClient(port: NATIVE_PORT, appId: APP_ID, name: "Flow",
                 reason: "Dictation — transcribe your speech, then clean it up",
                 onRegistered: { [weak self] token, models in
                     guard let self else { return }
