@@ -607,8 +607,9 @@ struct GhostButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                if let l = label { Text(l).font(.system(size: 10.5, weight: .medium)) }
+                if let l = label { Text(l).font(.system(size: 10.5, weight: .medium)).lineLimit(1).fixedSize() }
             }
+            .fixedSize() // never let the row compress a control into wrapped/truncated text
             .foregroundColor(hover ? .ink : .inkDim)
             .padding(.horizontal, 9).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 7).fill(hover ? Color.raised : Color.panel))
