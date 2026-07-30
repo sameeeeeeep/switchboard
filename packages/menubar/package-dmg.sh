@@ -85,6 +85,12 @@ say "runtime: node $NODE_VER"
 # ---------- 7. compile the menubar app + Info.plist ----------
 say "compiling RelayMenuBar.swift…"
 swiftc -O -o "$STAGE/Contents/MacOS/Relay" "$HERE/RelayMenuBar.swift" -framework AppKit -framework SwiftUI
+
+# House fonts (optional; the panel falls back to the system font if the dir is empty).
+if ls "$HERE"/fonts/*.ttf "$HERE"/fonts/*.otf >/dev/null 2>&1; then
+  mkdir -p "$RES/fonts"; cp "$HERE"/fonts/*.ttf "$HERE"/fonts/*.otf "$RES/fonts/" 2>/dev/null || true
+  say "bundled house fonts"
+fi
 cp "$HERE/Info.plist" "$STAGE/Contents/Info.plist"
 printf 'APPL????' > "$STAGE/Contents/PkgInfo"
 VERSION="$($PB -c 'Print CFBundleShortVersionString' "$STAGE/Contents/Info.plist")"
