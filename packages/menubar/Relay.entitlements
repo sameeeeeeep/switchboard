@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the Switchboard app itself (the menu-bar bundle).
+
+  The app is NOT sandboxed (Developer ID, hardened runtime), so mic access is governed by
+  TCC + NSMicrophoneUsageDescription. We still declare the audio-input + apple-events
+  entitlements so the hardened runtime can never be the thing that blocks God's ear or its
+  hands — and so re-signing (codesign drops entitlements unless passed back) keeps them.
+
+  God now records the microphone IN-PROCESS (AVAudioRecorder) rather than shelling out to
+  ffmpeg, so THIS app is the microphone client TCC attributes and lists — which is the whole
+  reason it can finally appear in System Settings → Privacy → Microphone.
+-->
+<plist version="1.0">
+<dict>
+	<!-- God's ear: capture the microphone (⌃⌃ push-to-talk). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- God's hands: drive System Events / other apps via Apple Events (type, keys, open). -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

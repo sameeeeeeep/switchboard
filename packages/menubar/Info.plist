@@ -15,12 +15,16 @@
 	<key>CFBundleShortVersionString</key>
 	<string>0.2.5</string>
 	<key>CFBundleVersion</key>
-	<string>10</string>
+	<string>11</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>God opens apps, types, and presses the keys you approve — every action asks first, in the notch.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Switchboard — BYO-Claude</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>God listens to your spoken request when you summon it with ⌃⌃. Audio is transcribed on your own Claude and never leaves your Mac unasked.</string>
 </dict>
 </plist>

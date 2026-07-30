@@ -138,7 +138,10 @@ if [ -n "${IDENTITY:-}" ]; then
   # back in, and a node without allow-jit cannot boot V8 at all (step 10 catches it).
   codesign --force --options runtime --timestamp \
     --entitlements "$HERE/node.entitlements" --sign "$IDENTITY" "$RES/node"
-  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$STAGE"
+  # Relay.entitlements gives the APP itself mic (audio-input) + automation (apple-events) so the
+  # hardened runtime never blocks God's ear/hands, and so the app is the microphone client TCC lists.
+  codesign --force --options runtime --timestamp \
+    --entitlements "$HERE/Relay.entitlements" --sign "$IDENTITY" "$STAGE"
 else
   say "signing ad-hoc (no Developer ID identity in keychain)"
   codesign --force --sign - "$STAGE"

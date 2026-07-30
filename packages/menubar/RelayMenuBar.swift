@@ -1560,7 +1560,7 @@ struct ActionConsentDrop: View {
     private var ctrlWasDown = false
     private var godStateTimer: Timer?             // polls ~/.relay/god-state → notch listening/thinking/speaking
     private var godListening = false              // mic is recording your request
-    private var recProc: Process?                 // the ffmpeg mic recorder
+    private var recorder: AVAudioRecorder?        // in-process mic capture — makes THIS app the TCC mic client
     private var recWav: String?                   // where the clip lands
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
@@ -1876,54 +1876,51 @@ struct ActionConsentDrop: View {
         }
     }
 
-    private func ffmpegPath() -> String? {
-        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].first { FileManager.default.fileExists(atPath: $0) }
-    }
-
-    // ⌃⌃ → record the mic; the notch shows "Listening". No mic grant OR no ffmpeg ⇒ fall back to a
-    // straight (silent) look rather than spinning a recorder we can't use. Critically: if the mic is
-    // NOT authorized we must not launch ffmpeg at all — a denied avfoundation device can hang the
-    // recorder open, which is what used to freeze the loop at "listening".
+    // ⌃⌃ → record the mic IN-PROCESS via AVAudioRecorder. This is the whole reason Switchboard can
+    // appear in System Settings → Privacy → Microphone: TCC lists the process that actually opens the
+    // device, and now that's THIS app — not an external ffmpeg it used to shell out to. If the mic
+    // isn't authorized yet we surface the permission card and fall back to a silent look (never spin a
+    // recorder we can't use, and never block the main actor). 16 kHz mono PCM WAV = what the daemon's
+    // transcribe wants.
     @MainActor private func startListening() {
         godLog("⌃⌃ → listening")
-        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        if status == .notDetermined {
+            // First ask: request now (needs NSMicrophoneUsageDescription); on grant, start listening.
+            AVCaptureDevice.requestAccess(for: .audio) { granted in Task { @MainActor in
+                self.refreshPermissionGate()
+                if granted { self.startListening() } else { self.triggerGod(at: NSEvent.mouseLocation) }
+            } }
+            return
+        }
+        guard status == .authorized else {
             godLog("mic not authorized — looking without voice"); refreshPermissionGate(); triggerGod(at: NSEvent.mouseLocation); return
         }
-        NSSound(named: "Tink")?.play()
-        guard let ffmpeg = ffmpegPath() else { godLog("no ffmpeg — looking without voice"); triggerGod(at: NSEvent.mouseLocation); return }
         let wav = NSTemporaryDirectory() + "god-rec.wav"
         try? FileManager.default.removeItem(atPath: wav)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: ffmpeg)
-        p.arguments = ["-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", "-y", wav]
-        p.standardInput = Pipe()   // so we can send 'q' for a clean stop
-        // If the recorder dies on its own WHILE we still think we're listening (mic failure), recover
-        // to idle instead of stranding the notch at "listening". A deliberate stop clears godListening
-        // first, so this no-ops then. A deliberate stop also reassigns this handler.
-        p.terminationHandler = { [weak self] _ in Task { @MainActor in self?.recorderDiedEarly() } }
-        do { try p.run(); recProc = p; recWav = wav; godListening = true; setGlow(.listening) }
-        catch { godLog("mic failed: \(error)"); godListening = false; triggerGod(at: NSEvent.mouseLocation) }
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: 16000.0, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ]
+        do {
+            let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
+            guard rec.record() else { throw NSError(domain: "god", code: 1, userInfo: [NSLocalizedDescriptionKey: "record() returned false"]) }
+            NSSound(named: "Tink")?.play()
+            recorder = rec; recWav = wav; godListening = true; setGlow(.listening)
+        } catch {
+            godLog("mic capture failed: \(error.localizedDescription) — looking without voice")
+            godListening = false; triggerGod(at: NSEvent.mouseLocation)
+        }
     }
 
-    // The recorder exited on its own. If we still think we're listening, the mic was unavailable —
-    // recover to idle rather than stranding the notch at "listening".
-    @MainActor private func recorderDiedEarly() {
-        guard godListening else { return }
-        godListening = false; recProc = nil; setGlow(.idle); godLog("recorder exited early — mic unavailable")
-    }
-
-    // single ⌃ while listening → stop the mic, then run God on what you said. NEVER block the main
-    // actor waiting for ffmpeg (a denied/stuck device would freeze the whole UI — the old bug): send
-    // 'q', let the terminationHandler drive the next step off-main, and hard-kill after a short grace.
+    // single ⌃ while listening → stop the mic, then run God on what you said. AVAudioRecorder.stop()
+    // finalizes the file synchronously and does NOT block on any external process — the freeze that
+    // came from waiting on ffmpeg is gone with ffmpeg itself.
     @MainActor private func stopListeningAndAct() {
         godListening = false
         NSSound(named: "Pop")?.play()
-        guard let p = recProc else { triggerGod(at: NSEvent.mouseLocation); return }
-        recProc = nil
-        let wav = recWav
-        p.terminationHandler = { [weak self] _ in Task { @MainActor in self?.triggerGod(at: NSEvent.mouseLocation, audio: wav) } }
-        if let h = (p.standardInput as? Pipe)?.fileHandleForWriting { try? h.write(contentsOf: Data("q".utf8)); try? h.close() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak p] in if p?.isRunning == true { p?.terminate() } }
+        recorder?.stop(); recorder = nil
+        triggerGod(at: NSEvent.mouseLocation, audio: recWav)
     }
 
     // single ⌃ while God works → abort the loop. Must fully reset EVERY moving part (recorder, child
@@ -1931,8 +1928,7 @@ struct ActionConsentDrop: View {
     @MainActor private func cancelGod() {
         godLog("cancelled")
         NSSound(named: "Pop")?.play()
-        if let p = recProc { p.terminationHandler = nil; p.terminate() }
-        recProc = nil; godListening = false
+        recorder?.stop(); recorder = nil; godListening = false
         godProc?.terminate(); godProc = nil
         godStateTimer?.invalidate()
         godConsentPending = false
