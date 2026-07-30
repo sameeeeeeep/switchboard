@@ -28,10 +28,10 @@
  * real ~/.relay. In production it attaches to the menubar daemon instead.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { WebSocket } from "ws";
 import { resolvePersona, loadPersonas } from "./lib/persona.mjs";
@@ -89,27 +89,45 @@ const PROTOCOL =
   "If there's nothing to point at, write no tag.";
 
 // When acting is enabled, God may propose ONE action. The gate is the human confirm in `act` — the
-// model never executes anything itself; god.mjs asks before it touches the machine.
+// model never executes anything itself; god.mjs asks before it touches the machine. The hands come
+// in two kinds: LOCAL (touch this Mac like the reference cursor apps — open/type/click/scroll/key)
+// and RUN (invoke a wrapp/connector tool through the daemon — "run things"). Both hit the same gate.
 const ACTION_PROTOCOL =
   "\n\nIf — and only if — the user clearly wants you to DO something, end your reply with AT MOST ONE " +
-  "action tag on its own line: [OPEN:<url or app name>] to open something, [TYPE:<text>] to type at the " +
-  "current cursor focus, or [CLICK:x,y:label] to click an on-screen element (pixel coords in THIS image). " +
-  "Prefer OPEN or POINT over CLICK when unsure. Never propose a destructive action. If no action is " +
-  "warranted, just use [POINT:x,y:label] or no tag.";
+  "action tag on its own line:\n" +
+  "  [OPEN:<url or app name>]        — open an app or URL\n" +
+  "  [TYPE:<text>]                   — type at the current cursor focus\n" +
+  "  [CLICK:x,y:label]               — click an on-screen element (pixel coords in THIS image)\n" +
+  "  [KEY:<combo>]                   — press keys, e.g. cmd+s, return, cmd+shift+4\n" +
+  "  [RUN:<tool> <json args>]        — run one of the tools listed under RUNNABLE TOOLS below\n" +
+  "Prefer OPEN, RUN, or POINT over raw CLICK/KEY when a cleaner route exists. Never propose a " +
+  "destructive action. If no action is warranted, just use [POINT:x,y:label] or no tag.";
 
-// Parse the ONE action/point tag off the reply. Priority: explicit actions over a bare point.
+// Parse the ONE action/point tag off the reply. Priority: an explicit RUN or LOCAL action over a
+// bare point. RUN captures a tool name then optional JSON args (or a bare string → {input:string}).
 function parseAction(text) {
+  const run = /\[RUN:\s*([A-Za-z0-9_.:-]+)\s*(\{[\s\S]*?\}|[^\]]*?)\]/i.exec(text);
+  if (run) return { kind: "run", tool: run[1].trim(), args: parseToolArgs((run[2] || "").trim()) };
   const open = /\[OPEN:([^\]]+)\]/i.exec(text);
   if (open) return { kind: "open", target: open[1].trim() };
   const type = /\[TYPE:([^\]]+)\]/i.exec(text);
   if (type) return { kind: "type", text: type[1] };
+  const key = /\[KEY:([^\]]+)\]/i.exec(text);
+  if (key) return { kind: "key", combo: key[1].trim() };
   const click = /\[CLICK:(\d+)\s*,\s*(\d+)(?::([^\]]*))?\]/i.exec(text);
   if (click) return { kind: "click", x: +click[1], y: +click[2], label: (click[3] || "").trim() };
   const point = /\[POINT:(\d+)\s*,\s*(\d+)(?::([^\]]*))?\]/i.exec(text);
   if (point) return { kind: "point", x: +point[1], y: +point[2], label: (point[3] || "").trim() };
   return null;
 }
-const stripTags = (t) => t.replace(/\[(?:OPEN|TYPE|CLICK|POINT):[^\]]*\]/gi, "").trim();
+// RUN args are best-effort: valid JSON object → use it; otherwise treat the remainder as a plain
+// prompt for the wrapp (`{input: "..."}` is the near-universal wrapp entry shape). Empty → {}.
+function parseToolArgs(raw) {
+  if (!raw) return {};
+  try { const v = JSON.parse(raw); return v && typeof v === "object" ? v : { input: String(v) }; }
+  catch { return { input: raw }; }
+}
+const stripTags = (t) => t.replace(/\[(?:OPEN|TYPE|CLICK|KEY|POINT):[^\]]*\]/gi, "").replace(/\[RUN:[\s\S]*?\]/gi, "").trim();
 
 // The desktop's size in POINTS (screencapture gives PIXELS); the ratio maps image coords → clickable
 // screen points on retina. Cheap, non-prompting.
@@ -118,17 +136,36 @@ function screenPointsSize() {
   const m = /(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)/.exec(r.stdout || "");
   return m ? { w: Number(m[3]), h: Number(m[4]) } : null;
 }
+function prettyTool(name) { return String(name).replace(/^mcp__[^_]+__/, "").replace(/^wrapp__/, "").replace(/__/g, " · "); }
 function describeAction(a, shot) {
   if (a.kind === "open") return `open ${a.target}`;
   if (a.kind === "type") return `type: “${a.text.slice(0, 60)}”`;
+  if (a.kind === "key") return `press ${a.combo}`;
+  if (a.kind === "run") { const arg = a.args?.input ?? Object.values(a.args || {})[0]; return `run ${prettyTool(a.tool)}${arg ? ` — “${String(arg).slice(0, 50)}”` : ""}`; }
   if (a.kind === "click") { const p = screenPointsSize(); const sx = p ? Math.round(a.x / shot.w * p.w) : a.x, sy = p ? Math.round(a.y / shot.h * p.h) : a.y; return `click “${a.label || "element"}” at (${sx}, ${sy})`; }
   return "point";
 }
-// Execute a CONFIRMED action. Writes only reach here after the human said yes.
-function runAction(a, shot) {
+// A key combo ("cmd+shift+s", "return") → the osascript to press it. Modifiers map to System Events'
+// `using {… down}`; named keys go through `key code`, single chars through `keystroke`.
+const KEY_CODES = { return: 36, enter: 36, tab: 48, space: 49, delete: 51, escape: 53, esc: 53, left: 123, right: 124, down: 125, up: 126 };
+const MODS = { cmd: "command down", command: "command down", ctrl: "control down", control: "control down", opt: "option down", option: "option down", alt: "option down", shift: "shift down" };
+function keyComboOsa(combo) {
+  const parts = combo.toLowerCase().split(/[+\s]+/).filter(Boolean);
+  const mods = parts.filter((p) => MODS[p]).map((p) => MODS[p]);
+  const key = parts.find((p) => !MODS[p]);
+  if (!key) return null;
+  const using = mods.length ? ` using {${mods.join(", ")}}` : "";
+  const press = key in KEY_CODES ? `key code ${KEY_CODES[key]}` : `keystroke ${JSON.stringify(key.length === 1 ? key : key)}`;
+  return `tell application "System Events" to ${press}${using}`;
+}
+// Execute a CONFIRMED action. Writes only reach here after the human said yes (auto-mode, the TTY
+// prompt, or the notch consent drop). `reg` is needed only for RUN (the daemon tool call).
+async function runAction(a, shot, reg) {
   if (process.env.GOD_DRYRUN === "1") return `[dry-run] would ${describeAction(a, shot)}`; // headless harness: no side effects
   if (a.kind === "open") { spawnSync("open", [a.target]); return `opened ${a.target}`; }
   if (a.kind === "type") { spawnSync("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(a.text)}`]); return `typed`; }
+  if (a.kind === "key") { const osa = keyComboOsa(a.combo); if (!osa) return `couldn't parse key combo “${a.combo}”`; spawnSync("osascript", ["-e", osa]); return `pressed ${a.combo}`; }
+  if (a.kind === "run") return runToolCall(reg, a.tool, a.args);
   if (a.kind === "click") {
     const p = screenPointsSize(); if (!p) return "couldn't read screen size";
     const sx = Math.round(a.x / shot.w * p.w), sy = Math.round(a.y / shot.h * p.h);
@@ -136,6 +173,23 @@ function runAction(a, shot) {
     return `would click (${sx}, ${sy}) — run \`brew install cliclick\` to enable clicking`;
   }
   return "no-op";
+}
+
+// RUN a wrapp/connector tool through the daemon — God's "run things" hand. Opens a fresh native
+// channel (God's per-app token), calls claude_callTool, and returns a short human summary. The
+// daemon re-checks the grant/allowlist and audits; this call is only reached after the human said
+// yes at the gate. Note: the notch consent already happened upstream — this is the execution.
+async function runToolCall(reg, tool, args) {
+  const { request, close } = await connectNative(reg.token);
+  try {
+    const r = await request("claude_callTool", { name: tool, arguments: args || {} });
+    if (r.error) return `couldn't run ${prettyTool(tool)}: ${r.error.message}`;
+    const res = r.result;
+    // Tool results are MCP content blocks or a plain value — surface the first text we can find.
+    const text = res?.content?.map?.((c) => c?.text).filter(Boolean).join("\n")
+      || (typeof res === "string" ? res : res?.text) || "done";
+    return `ran ${prettyTool(tool)} → ${String(text).slice(0, 300)}`;
+  } finally { close(); }
 }
 
 // Autonomy, not nagging: in `auto` God acts freely; only genuinely IRREVERSIBLE things always confirm
@@ -317,7 +371,22 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       ? `\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.` +
         (proj.data ? ` Project context: ${JSON.stringify(proj.data).slice(0, 700)}` : "")
       : "";
-    const system = `${persona.characteristic}\n\n${PROTOCOL}${projLine}` + (act ? ACTION_PROTOCOL : "");
+    // RUN discovery: when acting, ask the daemon which wrapp/connector tools God's grant covers and
+    // advertise them so the model can only ever propose a tool that actually exists + is allowed.
+    // Empty (no connectors configured / not granted) → no RUNNABLE block, so the model won't invent one.
+    let runBlock = "";
+    if (act) {
+      try {
+        const lt = await request("claude_listTools", {});
+        const tools = (lt.result?.tools || []).filter((t) => String(t.name).startsWith("mcp__"));
+        if (tools.length) {
+          runBlock = "\n\nRUNNABLE TOOLS (use with [RUN:<name> <json args>]):\n" +
+            tools.slice(0, 40).map((t) => `  ${t.name} — ${(t.title || t.description || "").slice(0, 80)}`).join("\n");
+          log(`runnable tools: ${tools.length}`);
+        }
+      } catch (e) { log(`listTools skipped: ${e.message}`); }
+    }
+    const system = `${persona.characteristic}\n\n${PROTOCOL}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "");
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(" (vision)")}…`);
@@ -386,18 +455,33 @@ async function main() {
   if (acting && action && action.kind !== "point") {
     const autonomy = process.env.GOD_AUTONOMY || (args.includes("--ask") ? "ask" : "auto"); // acts freely by default
     const risky = isRisky(action, spoken);
-    if (autonomy === "auto" && !risky) {
-      log(`▶ ${runAction(action, shot)}  ${dim("(auto)")}`);       // acts freely
+    // RUN (invoke a wrapp/connector tool) is a write-class hand with real side effects, so it ALWAYS
+    // hits the gate — never the auto lane, even in auto autonomy. And unlike the local hands, RUN is
+    // executed BY god.mjs (it holds the daemon channel + token), so its consent must resolve WHILE
+    // this process is still alive — the notch round-trip below — not the fire-and-exit file handoff.
+    const mustConfirm = risky || action.kind === "run";
+    const runsHere = action.kind === "run";
+    if (process.env.GOD_DRYRUN === "1") {
+      log(`▶ ${await runAction(action, shot, reg)}  ${dim("(dry-run)")}`);  // harness: no side effects, no gate
+    } else if (autonomy === "auto" && !mustConfirm) {
+      log(`▶ ${await runAction(action, shot, reg)}  ${dim("(auto)")}`);     // local hands act freely
     } else if (process.stdin.isTTY) {
-      // The gate — only where it earns its keep (each action in `ask`, or anything irreversible).
+      // The gate — only where it earns its keep (RUN, or anything irreversible).
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const flag = risky ? " \x1b[33m(irreversible)\x1b[0m" : "";
       const ok = await new Promise((r) => rl.question(`\n   ${persona.cursor.glyph} God wants to ${describeAction(action, shot)}${flag}.  Allow? [y/N] `, (a) => r(/^y/i.test(a.trim()))));
       rl.close();
-      log(ok ? runAction(action, shot) : "cancelled — nothing touched.");
+      log(ok ? await runAction(action, shot, reg) : "cancelled — nothing touched.");
+    } else if (runsHere) {
+      // Spawned by the app (no terminal), RUN: raise the notch consent drop and WAIT for the human's
+      // click, then execute the tool call here. god.mjs stays alive across the decision.
+      const ok = await awaitNotchConsent(action, shot);
+      log(ok ? await runAction(action, shot, reg) : "cancelled — nothing touched.");
+      godState("idle");
     } else {
-      // Spawned by the app (no terminal): hand the action to the NATIVE consent drop — write it out;
-      // the menu-bar app shows "God wants to …?" and executes it on Allow.
+      // Spawned by the app (no terminal), LOCAL action: hand it to the NATIVE consent drop — write it
+      // out and exit; the menu-bar app shows "God wants to …?" and executes it (open/type/click/key)
+      // on Allow. (Proven fire-and-exit path — Swift owns execution for the local hands.)
       try {
         writeFileSync(join(REAL_RELAY, "god-action.json"),
           JSON.stringify({ ...action, describe: describeAction(action, shot), shotW: shot.w, shotH: shot.h }));
@@ -409,5 +493,41 @@ async function main() {
   }
 }
 
-main().then(() => { daemonProc?.kill("SIGKILL"); process.exit(0); })
-  .catch((e) => { console.error("\n❌", e.message); daemonProc?.kill("SIGKILL"); process.exit(1); });
+// The RUN consent round-trip (app path). Publish the proposed tool call + flip God's state to
+// `consent`; the menu-bar app's state poll notices, renders the SAME notch drop, and writes back a
+// decision. We poll for it (default-deny on timeout). Distinct files from the local-hand handoff so
+// the app's on-exit `checkPendingAction` never double-fires for a RUN. Reuses the daemon's 120s feel.
+async function awaitNotchConsent(action, shot) {
+  const reqFile = join(REAL_RELAY, "god-run.json");
+  const decisionFile = join(REAL_RELAY, "god-consent.json");
+  try { rmSync(decisionFile, { force: true }); } catch { /* fine */ }
+  try {
+    writeFileSync(reqFile, JSON.stringify({ ...action, describe: describeAction(action, shot) }));
+  } catch { /* best effort */ }
+  godState("consent");
+  log(`awaiting consent: ${describeAction(action, shot)}`);
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 120_000) {
+      if (existsSync(decisionFile)) {
+        try { const d = JSON.parse(readFileSync(decisionFile, "utf8")); return !!d.allow; }
+        catch { /* partial write — retry next tick */ }
+      }
+      await sleep(200);
+    }
+    return false; // timed out → nothing touched
+  } finally {
+    try { rmSync(reqFile, { force: true }); } catch { /* fine */ }
+    try { rmSync(decisionFile, { force: true }); } catch { /* fine */ }
+  }
+}
+
+// Run main() only when invoked as a script — importing god.mjs (e.g. from hands.test.mjs to unit-test
+// the pure parse/dispatch helpers) must NOT kick off the daemon + pipeline.
+const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  main().then(() => { daemonProc?.kill("SIGKILL"); process.exit(0); })
+    .catch((e) => { console.error("\n❌", e.message); daemonProc?.kill("SIGKILL"); process.exit(1); });
+}
+
+export { parseAction, parseToolArgs, describeAction, runAction, keyComboOsa, prettyTool };

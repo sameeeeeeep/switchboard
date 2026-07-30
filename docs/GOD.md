@@ -20,9 +20,9 @@ source, and the **notch is the product**, not a bolted-on menu. God ships **insi
 | 7 | **Second cursor** | replacement pointer | **glow behind your cursor** (presence, not hijack), state-reactive | ✅ built (visual tune pending) |
 | 8 | **Mark on screen** | `[POINT]`/`[TYPE]` boxes | `[POINT:x,y:label]` → glow **halo** at the target | ✅ parse+halo · live-map ✳️ |
 | 9 | **Give me text** | inserts at cursor | paste at cursor (Flow path) / clipboard | ✅ (CLI) |
-| 10 | **Do anything (act)** | `[TYPE]`, clicks, computer-use fallback | gated AXPress/CGEvent/type **through the consent gate** | ❌ **the hands — not built** |
-| 11 | **Open things** | opens apps/urls | semantic routes (`open` URL, Apple Events) — prefer over GUI | ❌ not built |
-| 12 | **Run things** | child workers / Codex | the **wrapp connector** (NL → run a wrapp) + agentic | ✳️ connector exists, not wired to God |
+| 10 | **Do anything (act)** | `[TYPE]`, clicks, computer-use fallback | `[TYPE]`/`[CLICK]`/`[KEY]` type+click+keys **through the consent gate** | ✅ open/type/click/key · AX-tree + scroll ✳️ |
+| 11 | **Open things** | opens apps/urls | `[OPEN:…]` → the `open` command (apps + URLs) | ✅ |
+| 12 | **Run things** | child workers / Codex | the **wrapp connector**: `[RUN:tool …]` → native `claude_callTool`, gated + audited | ✅ wired (trust-mode grant, notch gate) · agentic ✳️ |
 | 13 | **Persona / skin** | one fixed assistant + a pet | swappable persona files (voice + characteristic + cursor) | ✅ |
 | 14 | **Dictation** | — | **fold Flow in** as a God mode (⌃⌥-hold = dictate) | ✳️ Flow standalone; fold planned |
 | 15 | **Dynamic canvas** | — (our idea) | notch shows generated media; **drag-and-drop out** | ❌ new — spec'd below |
@@ -90,15 +90,22 @@ re-add + relaunch**. A signed DMG is stable. This is exactly what the concierge 
 
 ---
 
-## 6. The hands — "do anything" (the biggest gap)
+## 6. The hands — "do anything" (built)
 
-The reference apps type/clicks via a one-time Accessibility firehose. God's version:
+The reference apps type/click via a one-time Accessibility firehose. God's version, now shipped:
 
-- **Semantic routes first** (`open` a URL, an Apple Event, an MCP/connector call) — faster, reliable.
-- **Pixel/AX actions last** (`AXPress`, set `AXValue`, CGEvent click/type) — and **each write hits the
-  consent gate**, not Apple's blanket grant. "It can touch anything on your Mac — and it asks first,
-  with an audit trail." That gate is the moat, sitting exactly where those apps cut the corner.
-- **Run things** = the wrapp connector: "make me a set of ads" → God invokes the wrapp.
+- **Local hands** — the model ends its reply with at most one tag: `[OPEN:…]` (the `open` command,
+  apps + URLs), `[TYPE:…]` (keystroke at focus), `[CLICK:x,y]` (`cliclick` at a mapped point),
+  `[KEY:combo]` (System Events key combos, e.g. `cmd+s`). Semantic routes first (`open`), pixel/keys
+  when needed.
+- **Run things** = the wrapp connector, WIRED: `[RUN:<tool> <json>]` → God discovers its runnable
+  tools via native `claude_listTools` and invokes one via native `claude_callTool`. God's principal
+  (`native@ai.thelastprompt.god`) is granted the `mcp__*` connector surface in **trust** mode; the
+  per-action HUMAN gate is God's notch "Allow this action?" drop (RUN never auto-runs), and every call
+  is classified + rate-bounded + **audited** by the daemon. "It can run any of your wrapps — and it
+  asks first, with an audit trail." That gate is the moat. (Proven end-to-end: `spike/god-run-spike.mjs`.)
+- **Still ahead** (✳️): the agentic observe→act→observe loop, AX-tree targeting (`AXPress`/`AXValue`
+  instead of blind pixels), scroll/drag, and browser/tab automation — a Clicky-grade computer-use loop.
 
 ---
 
@@ -122,7 +129,13 @@ Flow stays runnable standalone.
 
 ## 9. Status, plainly
 
-- **Shell (notch, orb, glow, consent, onboarding card):** built; pending screenshot tuning.
-- **The magic on ⌃⌥ (see → speak → point):** **wired** — spawns the proven loop attached to the daemon.
-- **Listening in ⌃⌥, mic/screen onboarding cards, drag-near-Settings, glow-follows-[POINT]:** next.
-- **The hands (act / open / run), agentic, the dynamic canvas, Flow fold-in:** not started — the real road ahead.
+- **Shell (notch, orb, glow, consent, onboarding card):** built. Listening/Thinking/Speaking now drop
+  from the notch as one surface (`GodStatusDrop`, the `NotchDropShape` silhouette) — no stray pill —
+  rendered with the **dot-matrix** motion language (`DotMatrix`, apt for a *switchboard*).
+- **The magic on ⌃⌃ (listen → see → speak → point):** wired. Mic grant is status-aware (sends you to
+  the pane when already denied); the mic loop never blocks the main thread (a denied device can't
+  strand it at "listening"); a single ⌃ cancels an in-flight run.
+- **The hands (open / type / click / key + RUN a wrapp via the connector):** **built + gated + audited**
+  (§6). Proven: `examples/god/hands.test.mjs`, `packages/sidekick/spike/god-run-spike.mjs`.
+- **Still ahead:** the agentic loop, AX-tree targeting, the dynamic canvas, Flow fold-in, and rolling
+  the dot-matrix language out across the rest of the UI.

@@ -1066,34 +1066,12 @@ struct OrbView: View {
     @ObservedObject var glow: GlowModel
     var onOpen: () -> Void
     @State private var breathe = false
-    private var godLabel: String? {
-        switch glow.state {
-        case .listening: return "Listening"
-        case .thinking: return "Thinking"
-        case .speaking: return "Speaking"
-        default: return nil
-        }
-    }
     var body: some View {
         ZStack {
-            if let label = godLabel {
-                // God's live phase in the notch — label + animated waveform (notch-native)
-                HStack(spacing: 9) {
-                    Text(label).font(.hanken(12, .semibold)).foregroundColor(.ink)
-                    TimelineView(.animation) { tl in
-                        let t = tl.date.timeIntervalSinceReferenceDate
-                        HStack(spacing: 2.5) {
-                            ForEach(0..<5, id: \.self) { i in
-                                Capsule()
-                                    .fill(glow.state == .listening ? Color.cyan : Color(red: 1, green: 0.72, blue: 0.3))
-                                    .frame(width: 2.5, height: 4 + 9 * abs(sin(t * 3.2 + Double(i) * 0.7)))
-                            }
-                        }.frame(height: 16)
-                    }
-                }
-                .padding(.horizontal, 13).padding(.vertical, 5)
-                .background(Capsule().fill(Color.raised))
-            } else if model.working {
+            // God's live phase (listening/thinking/speaking) is NOT drawn here — it drops from the
+            // notch as GodStatusDrop (the same silhouette as the panel/consent), so the orb stays the
+            // ambient dot ↔ "working" pill and the phase reads as one consistent notch surface.
+            if model.working {
                 Capsule().fill(Color.lime.opacity(0.92))
                     .frame(width: 150, height: 20)
                     .overlay(HStack(spacing: 6) {
@@ -1218,6 +1196,79 @@ struct GodGlowView: View {
         }
         .allowsHitTesting(false)
         .onAppear { pulse = true }
+    }
+}
+
+/// DOT-MATRIX — Switchboard's signature motion primitive. A grid of dots whose per-dot brightness is
+/// a pure function of (col, row, time), so each phase is one animated pattern with no assets, no GIFs,
+/// no timers — apt for a *switchboard* (the operator's lamp field). Reusable anywhere a status,
+/// loader, or accent belongs; the God notch is its first home. Honors reduce-motion (falls to a still
+/// mid-frame). Patterns mirror the reference's Agent/Status families.
+struct DotMatrix: View {
+    enum Pattern { case listening, thinking, speaking, working }
+    let pattern: Pattern
+    let accent: Color
+    var cols: Int = 7
+    var rows: Int = 5
+    var dot: CGFloat = 3
+    var gap: CGFloat = 3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private func brightness(_ c: Int, _ r: Int, _ t: Double) -> Double {
+        let cx = Double(c), rx = Double(r), mid = Double(rows - 1) / 2
+        switch pattern {
+        case .listening:
+            // VU field: each column breathes a height around the mid row (a lamp meter).
+            let h = 1.0 + 2.0 * (0.5 + 0.5 * sin(t * 3.0 + cx * 0.7))
+            return abs(rx - mid) <= h ? 1.0 : 0.1
+        case .speaking:
+            // A sine wave scrolling left→right; dots near the wave line light up.
+            let wave = mid + (mid - 0.15) * sin(t * 4.2 + cx * 0.95)
+            return abs(rx - wave) < 0.85 ? 1.0 : 0.1
+        case .thinking:
+            // A diagonal band sweeping across — computation moving through the field.
+            let s = 0.5 + 0.5 * sin((cx + rx) * 0.6 - t * 3.0)
+            return 0.14 + 0.86 * (s * s * s)
+        case .working:
+            return 0.16 + 0.84 * (0.5 + 0.5 * sin(cx * 0.55 - t * 2.6))
+        }
+    }
+
+    private func grid(_ t: Double) -> some View {
+        VStack(spacing: gap) {
+            ForEach(0..<rows, id: \.self) { r in
+                HStack(spacing: gap) {
+                    ForEach(0..<cols, id: \.self) { c in
+                        Circle().fill(accent).frame(width: dot, height: dot).opacity(brightness(c, r, t))
+                    }
+                }
+            }
+        }
+    }
+    var body: some View {
+        if reduceMotion { grid(0) }                                   // a still, legible mid-frame
+        else { TimelineView(.animation) { tl in grid(tl.date.timeIntervalSinceReferenceDate) } }
+    }
+}
+
+/// God's live PHASE as a notch DROP — same silhouette (NotchDropShape) + tokens as the panel and the
+/// consent drop, so listening/thinking/speaking read as the SAME extended notch, never a stray pill.
+/// Label + the dot-matrix, coloured + patterned per phase.
+struct GodStatusDrop: View {
+    let label: String
+    let accent: Color
+    let pattern: DotMatrix.Pattern
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
+            DotMatrix(pattern: pattern, accent: accent)
+        }
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 15)
+        .frame(minWidth: 130)
+        .padding(.horizontal, 14)   // room for the notch "ears" (the shape flares to full width at top)
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+        .ignoresSafeArea()
     }
 }
 
@@ -1511,6 +1562,9 @@ struct ActionConsentDrop: View {
     private var godListening = false              // mic is recording your request
     private var recProc: Process?                 // the ffmpeg mic recorder
     private var recWav: String?                   // where the clip lands
+    private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
+    private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
+    private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
     private var clickMonitor: Any?
     private var hotKeyMonitor: Any?
@@ -1744,8 +1798,22 @@ struct ActionConsentDrop: View {
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         let grant: () -> Void = { [weak self] in
             switch perm {
-            case .mic: AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self?.refreshPermissionGate() } }
-            case .screen: _ = CGRequestScreenCaptureAccess(); Task { @MainActor in self?.refreshPermissionGate() }
+            case .mic:
+                // requestAccess ONLY shows the OS prompt when the status is .notDetermined. After a
+                // prior denial — which ad-hoc/dev builds cause constantly (TCC identity churns each
+                // rebuild, see GOD.md §5) — it silently calls back false and NOTHING appears, so the
+                // button looks dead. So: prompt only when it can, else send the user to the pane.
+                if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+                    AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self?.refreshPermissionGate() } }
+                } else {
+                    NSWorkspace.shared.open(URL(string: perm.pane)!)
+                    Task { @MainActor in self?.refreshPermissionGate() }
+                }
+            case .screen:
+                // CGRequestScreenCaptureAccess prompts when undetermined and returns false when already
+                // denied (no UI) — same trap as the mic. Open the pane on a false result.
+                if !CGRequestScreenCaptureAccess() { NSWorkspace.shared.open(URL(string: perm.pane)!) }
+                Task { @MainActor in self?.refreshPermissionGate() }
             case .accessibility: NSWorkspace.shared.open(URL(string: perm.pane)!)
             }
         }
@@ -1812,9 +1880,15 @@ struct ActionConsentDrop: View {
         ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].first { FileManager.default.fileExists(atPath: $0) }
     }
 
-    // ⌃⌃ → record the mic; the notch shows "Listening". No ffmpeg ⇒ fall back to a straight look.
+    // ⌃⌃ → record the mic; the notch shows "Listening". No mic grant OR no ffmpeg ⇒ fall back to a
+    // straight (silent) look rather than spinning a recorder we can't use. Critically: if the mic is
+    // NOT authorized we must not launch ffmpeg at all — a denied avfoundation device can hang the
+    // recorder open, which is what used to freeze the loop at "listening".
     @MainActor private func startListening() {
         godLog("⌃⌃ → listening")
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            godLog("mic not authorized — looking without voice"); refreshPermissionGate(); triggerGod(at: NSEvent.mouseLocation); return
+        }
         NSSound(named: "Tink")?.play()
         guard let ffmpeg = ffmpegPath() else { godLog("no ffmpeg — looking without voice"); triggerGod(at: NSEvent.mouseLocation); return }
         let wav = NSTemporaryDirectory() + "god-rec.wav"
@@ -1823,28 +1897,46 @@ struct ActionConsentDrop: View {
         p.executableURL = URL(fileURLWithPath: ffmpeg)
         p.arguments = ["-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", "-y", wav]
         p.standardInput = Pipe()   // so we can send 'q' for a clean stop
+        // If the recorder dies on its own WHILE we still think we're listening (mic failure), recover
+        // to idle instead of stranding the notch at "listening". A deliberate stop clears godListening
+        // first, so this no-ops then. A deliberate stop also reassigns this handler.
+        p.terminationHandler = { [weak self] _ in Task { @MainActor in self?.recorderDiedEarly() } }
         do { try p.run(); recProc = p; recWav = wav; godListening = true; setGlow(.listening) }
         catch { godLog("mic failed: \(error)"); godListening = false; triggerGod(at: NSEvent.mouseLocation) }
     }
 
-    // single ⌃ while listening → stop the mic, then run God on what you said.
+    // The recorder exited on its own. If we still think we're listening, the mic was unavailable —
+    // recover to idle rather than stranding the notch at "listening".
+    @MainActor private func recorderDiedEarly() {
+        guard godListening else { return }
+        godListening = false; recProc = nil; setGlow(.idle); godLog("recorder exited early — mic unavailable")
+    }
+
+    // single ⌃ while listening → stop the mic, then run God on what you said. NEVER block the main
+    // actor waiting for ffmpeg (a denied/stuck device would freeze the whole UI — the old bug): send
+    // 'q', let the terminationHandler drive the next step off-main, and hard-kill after a short grace.
     @MainActor private func stopListeningAndAct() {
         godListening = false
         NSSound(named: "Pop")?.play()
-        if let p = recProc {
-            if let h = (p.standardInput as? Pipe)?.fileHandleForWriting { try? h.write(contentsOf: Data("q".utf8)); try? h.close() }
-            p.waitUntilExit()
-        }
+        guard let p = recProc else { triggerGod(at: NSEvent.mouseLocation); return }
         recProc = nil
-        triggerGod(at: NSEvent.mouseLocation, audio: recWav)
+        let wav = recWav
+        p.terminationHandler = { [weak self] _ in Task { @MainActor in self?.triggerGod(at: NSEvent.mouseLocation, audio: wav) } }
+        if let h = (p.standardInput as? Pipe)?.fileHandleForWriting { try? h.write(contentsOf: Data("q".utf8)); try? h.close() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak p] in if p?.isRunning == true { p?.terminate() } }
     }
 
-    // single ⌃ while God works → abort the loop.
+    // single ⌃ while God works → abort the loop. Must fully reset EVERY moving part (recorder, child
+    // process, timers, glow, pending consent) so a cancel can never leave a stuck process or state.
     @MainActor private func cancelGod() {
         godLog("cancelled")
         NSSound(named: "Pop")?.play()
+        if let p = recProc { p.terminationHandler = nil; p.terminate() }
+        recProc = nil; godListening = false
         godProc?.terminate(); godProc = nil
         godStateTimer?.invalidate()
+        godConsentPending = false
+        actionPanel?.orderOut(nil)
         godRunning = false; glowModel.target = nil; setGlow(.idle)
     }
 
@@ -1857,10 +1949,38 @@ struct ActionConsentDrop: View {
         showActionConsent(json["describe"] as? String ?? "do something", json)
     }
 
+    // LOCAL hand (open/type/click/key): god.mjs handed off the action and EXITED — Swift executes it
+    // here on Allow.
     @MainActor private func showActionConsent(_ describe: String, _ action: [String: Any]) {
-        let view = ActionConsentDrop(describe: describe,
+        presentConsentDrop(ActionConsentDrop(describe: describe,
             onAllow: { [weak self] in self?.executeGodAction(action); self?.actionPanel?.orderOut(nil) },
-            onDeny: { [weak self] in self?.actionPanel?.orderOut(nil) })
+            onDeny: { [weak self] in self?.actionPanel?.orderOut(nil) }))
+    }
+
+    // RUN hand: god.mjs is STILL ALIVE and will run the tool itself. It wrote the proposed call to
+    // ~/.relay/god-run.json and flipped state → "consent"; we render the same drop and write the
+    // decision to ~/.relay/god-consent.json, which god.mjs is polling for.
+    @MainActor private func showRunConsent() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-run.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { godConsentPending = false; return }
+        let describe = json["describe"] as? String ?? "run a tool"
+        presentConsentDrop(ActionConsentDrop(describe: describe,
+            onAllow: { [weak self] in self?.writeGodConsent(true) },
+            onDeny: { [weak self] in self?.writeGodConsent(false) }))
+    }
+
+    // Hand the RUN decision back to the waiting god.mjs. It executes (or not) and speaks the result.
+    @MainActor private func writeGodConsent(_ allow: Bool) {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-consent.json")
+        try? Data("{\"allow\":\(allow)}".utf8).write(to: URL(fileURLWithPath: path))
+        actionPanel?.orderOut(nil)
+        godConsentPending = false
+    }
+
+    // Shared notch-drop presentation — one anchored surface for both hands, so consent always looks
+    // like the rest of the notch UI (top-center, fade-in), never a stray pill.
+    @MainActor private func presentConsentDrop(_ view: ActionConsentDrop) {
         if actionPanel == nil {
             actionPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             actionPanel.isOpaque = false; actionPanel.backgroundColor = .clear; actionPanel.hasShadow = false
@@ -1895,8 +2015,27 @@ struct ActionConsentDrop: View {
                 let sx = Int(x / w * screen.frame.width), sy = Int(y / h * screen.frame.height)
                 let p = Process(); p.executableURL = URL(fileURLWithPath: cli); p.arguments = ["c:\(sx),\(sy)"]; try? p.run()
             }
+        case "key":
+            // A key combo ("cmd+s", "return") — only reaches Swift when a KEY was held for the gate
+            // (a risky combo); the common case auto-runs inside god.mjs. Mirrors god.mjs keyComboOsa.
+            if let combo = a["combo"] as? String, let osa = Self.keyComboOsa(combo) {
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript"); p.arguments = ["-e", osa]; try? p.run()
+            }
         default: break
         }
+    }
+
+    // Combo → System Events osascript. Modifiers map to `using {… down}`; named keys → `key code`,
+    // single chars → `keystroke`. Kept in lockstep with god.mjs's keyComboOsa (same tables).
+    static func keyComboOsa(_ combo: String) -> String? {
+        let codes: [String: Int] = ["return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51, "escape": 53, "esc": 53, "left": 123, "right": 124, "down": 125, "up": 126]
+        let mods: [String: String] = ["cmd": "command down", "command": "command down", "ctrl": "control down", "control": "control down", "opt": "option down", "option": "option down", "alt": "option down", "shift": "shift down"]
+        let parts = combo.lowercased().split(whereSeparator: { $0 == "+" || $0 == " " }).map(String.init).filter { !$0.isEmpty }
+        let usedMods = parts.compactMap { mods[$0] }
+        guard let key = parts.first(where: { mods[$0] == nil }) else { return nil }
+        let using = usedMods.isEmpty ? "" : " using {\(usedMods.joined(separator: ", "))}"
+        let press = codes[key].map { "key code \($0)" } ?? "keystroke \"\(key)\""
+        return "tell application \"System Events\" to \(press)\(using)"
     }
 
     // The GOD seam. This is where the native flow lands: ScreenCaptureKit screenshot → daemon
@@ -1956,12 +2095,17 @@ struct ActionConsentDrop: View {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
         let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch s {
-        case "listening": glowModel.state = .listening
-        case "thinking": glowModel.state = .thinking
-        case "speaking": glowModel.state = .speaking
+        case "listening": setGlow(.listening)
+        case "thinking": setGlow(.thinking)
+        case "speaking": setGlow(.speaking)
+        case "consent":
+            // God (still running) proposed a RUN action and is WAITING on us. Raise the same notch
+            // drop the local hands use, once, and write the decision back for god.mjs to execute.
+            setGlow(.thinking)
+            if !godConsentPending { godConsentPending = true; showRunConsent() }
         default: break   // idle handled on termination
         }
-        if glowModel.state != .idle { glow.orderFrontRegardless() }
+        // setGlow() drives the cursor glow AND the notch phase drop; nothing more to do per tick.
     }
 
     // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
@@ -2020,7 +2164,43 @@ struct ActionConsentDrop: View {
         if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
         glowModel.state = s
         if s == .idle { glow.orderOut(nil) } else { updateGlowCursor(); glow.orderFrontRegardless() }
+        updateGodStatusDrop(s)
     }
+
+    // Drive the notch-drop phase indicator from the one place glow state changes. Only the three
+    // spoken phases get a label; armed/pointing are cursor-glow only (no notch label). idle hides it.
+    @MainActor private func updateGodStatusDrop(_ s: GlowState) {
+        switch s {
+        case .listening: showGodStatus("Listening", accent: .cyan, pattern: .listening)
+        case .thinking:  showGodStatus("Thinking",  accent: .lime, pattern: .thinking)
+        case .speaking:  showGodStatus("Speaking",  accent: Color(red: 1, green: 0.72, blue: 0.3), pattern: .speaking)
+        default: hideGodStatus()
+        }
+    }
+
+    @MainActor private func showGodStatus(_ label: String, accent: Color, pattern: DotMatrix.Pattern) {
+        // Same label already showing → do nothing, so the poll (every 0.25s) doesn't restart the
+        // waveform animation each tick. Only (re)build the drop when the phase actually changes.
+        if godStatusLabel == label, godStatusPanel?.isVisible == true { return }
+        godStatusLabel = label
+        if godStatusPanel == nil {
+            godStatusPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            godStatusPanel.isOpaque = false; godStatusPanel.backgroundColor = .clear; godStatusPanel.hasShadow = false
+            godStatusPanel.level = .popUpMenu; godStatusPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern))
+        let size = godStatusPanel.contentView!.fittingSize
+        godStatusPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            godStatusPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        if !godStatusPanel.isVisible {
+            godStatusPanel.alphaValue = 0; godStatusPanel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; godStatusPanel.animator().alphaValue = 1 }
+        }
+    }
+
+    @MainActor private func hideGodStatus() { godStatusLabel = nil; godStatusPanel?.orderOut(nil) }
 
     private func poll() {
         checkReachable { ok in

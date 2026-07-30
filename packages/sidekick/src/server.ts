@@ -351,7 +351,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
   /** Register a native app OUT OF BAND (the menubar/CLI, i.e. the native connect-consent step): mint
    *  its per-app token and grant it the requested scope so it is "connected". Returns the token the
    *  app stores (e.g. macOS Keychain). Never called by the app itself. */
-  async registerNativeApp(appId: string, name?: string, scope?: { models?: string[]; tools?: { name: string; access: "read" | "write" }[] }): Promise<{ appId: string; principal: string; token: string; models: string[] }> {
+  async registerNativeApp(appId: string, name?: string, scope?: { models?: string[]; tools?: { name: string; access: "read" | "write" }[]; connectors?: boolean }): Promise<{ appId: string; principal: string; token: string; models: string[] }> {
     const token = registerAppToken(appId, name);
     const principal = nativePrincipal(appId);
     // Default scope: the two local, no-consent capabilities. A grant must exist for them to run.
@@ -359,10 +359,19 @@ export class Broker implements ConsentPrompter, NativeHandler {
       { name: "claude_speak", access: "read" as const },
       { name: "claude_transcribe", access: "read" as const },
     ];
+    // `connectors: true` (God's "run things" hand) additionally grants the whole MCP/connector
+    // surface via the `mcp__*` wildcard — so the app can invoke ANY wrapp/connector tool the user
+    // has. This is NOT a blank cheque: the per-action HUMAN gate lives upstream in the app itself
+    // (God's notch "Allow this action?" drop), and every call here is still classified, rate-bounded,
+    // and AUDITED. We set the grant to `trust` mode so the daemon doesn't ALSO try to raise a
+    // write-consent on the extension surface (which a native app has no path to) — the notch already
+    // asked the human. Reversible: disconnectNativeApp revokes the grant + token.
+    if (scope?.connectors) tools.push({ name: "mcp__*", access: "write" as const });
     // Default to granting whatever models are online so the app can run cleanup completions. The
     // user's own compute; the app never sees a key. Callers may pass an explicit narrower list.
     const models = scope?.models ?? await this.deps.backends.models();
     this.deps.grants.upsert(principal, { models, tools, budgets: undefined });
+    if (scope?.connectors) this.deps.grants.setMode(principal, "trust");
     this.deps.audit.record({ origin: principal, kind: "request", method: "registerNativeApp", outcome: "ok", note: appId });
     return { appId, principal, token, models };
   }
@@ -404,6 +413,13 @@ export class Broker implements ConsentPrompter, NativeHandler {
         // streams to or needs the extension socket. Agentic tool calls would need the consent
         // surface a native app doesn't have yet, so this stays one-shot/text-only here.
         case "claude_complete": result = await this.complete(principal, params as CompletionParams); break;
+        // The "run things" hand (God's connector reach). A native app may ENUMERATE the tools its
+        // grant covers and CALL one — but only through the exact same gate as a page: the call is
+        // allowlist-checked (`mcp__*` wildcard or an exact name), classified, rate-bounded, and
+        // audited. The human gate is upstream (God's notch "Allow this action?"); a native app whose
+        // grant lacks the connector wildcard still gets nothing here (fail-closed).
+        case "claude_listTools": result = { tools: this.listTools(principal) }; break;
+        case "claude_callTool": result = await this.deps.gate.gateToolCall(principal, params as ToolCallRequest); break;
         default: throw new ProviderError(BYOPErrorCode.UNSUPPORTED_METHOD, `native apps cannot call ${method}`);
       }
       this.deps.audit.record({ origin: principal, kind: "request", method, outcome: "ok" });
@@ -426,7 +442,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
       // app's per-app token + grant out of band; this control action IS the native connect-consent.
       case "registerNativeApp": {
         if (!args?.appId || typeof args.appId !== "string") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "appId required");
-        return this.registerNativeApp(args.appId, args.name, { models: args.models, tools: args.tools });
+        return this.registerNativeApp(args.appId, args.name, { models: args.models, tools: args.tools, connectors: args.connectors });
       }
       // DISCONNECT a native app (the menu bar's "×"): drop its token so it can never re-auth AND
       // revoke its grant. A later connect re-asks for consent. Reversibility for registerNativeApp.
@@ -959,10 +975,15 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private listTools(origin: string): ToolDescriptor[] {
     const grant = this.deps.grants.get(origin);
     if (!grant) return [];
-    const allowed = new Set(grant.tools.map((t) => t.name));
+    // Cover a tool the same way the gate does (security/gate.ts `matches`): an exact grant OR a
+    // connector wildcard like `mcp__switchboard__*` / `mcp__*`. Enumeration must agree with the gate,
+    // or a wildcard-granted app (God's "run things" scope) would see an empty toolset yet be allowed
+    // to call — this keeps listTools and gateToolCall reading from one rule.
+    const patterns = grant.tools.map((t) => t.name);
+    const covered = (name: string) => patterns.some((p) => p === name || (p.endsWith("*") && name.startsWith(p.slice(0, -1))));
     const builtins: ToolDescriptor[] = BUILTIN_TOOLS.map((t) => ({ name: t.name, server: t.server, title: t.description, description: t.description, access: classifyTool(t.name) }));
     return [...builtins, ...this.deps.mcp.all()]
-      .filter((t) => allowed.has(t.name))
+      .filter((t) => covered(t.name))
       .map((t) => ({ ...t, access: classifyTool(t.name) }));
   }
 
