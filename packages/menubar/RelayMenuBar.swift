@@ -630,6 +630,8 @@ final class Model: ObservableObject {
     @Published var last: LastAct? = nil
     @Published var plist: PlistState = plistState()
     @Published var updateAvailable = false
+    @Published var voices: [String] = []          // cloned/dropped voices in ~/.relay/voices
+    @Published var selectedVoice: String = ""     // the one God speaks in (empty = macOS `say`)
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -644,7 +646,29 @@ final class Model: ObservableObject {
         toolCount = readToolCount()
         last = readLastAct()
         plist = plistState()
+        voices = readVoices()
+        selectedVoice = readSelectedVoice()
     }
+}
+
+// The cloned voices the user has dropped in (~/.relay/voices/<name>.wav → cloned to <name>.safetensors
+// by the god-tts service). A voice "exists" once its .wav or .safetensors is there. `-full` copies hide.
+func readVoices() -> [String] {
+    let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices")
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return [] }
+    var names = Set<String>()
+    for f in files {
+        if f.hasSuffix(".safetensors") { names.insert((f as NSString).deletingPathExtension) }
+        else if f.hasSuffix(".wav") {
+            let n = (f as NSString).deletingPathExtension
+            if !n.hasSuffix("-full") { names.insert(n) }
+        }
+    }
+    return names.sorted()
+}
+func readSelectedVoice() -> String {
+    let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/selected")
+    return ((try? String(contentsOfFile: f, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 // ---------- the popover — the side panel's grammar, not a list ----------
@@ -690,8 +714,11 @@ struct Panel: View {
     let onDisconnect: (String) -> Void   // disconnect a native app by appId
     let onUpdate: () -> Void             // restart a stale daemon after an app update
     let onPickContext: (String?) -> Void // set/clear the global default context (nil = unconnected)
+    let onSelectVoice: (String) -> Void  // pick God's voice (empty = macOS say)
+    let onDropVoice: ([URL]) -> Void     // drop a .wav/.mp3 sample → clone it into a voice
     @State private var breathe = false
     @State private var pickerOpen = false
+    @State private var dropTargeted = false
 
     private var signedOut: Bool { model.running && !model.signedIn }
     private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
@@ -875,6 +902,8 @@ struct Panel: View {
                     Rectangle().fill(Color.edge).frame(width: 1)
                     toolsColumn.frame(maxWidth: .infinity, alignment: .leading)
                 }
+                Rectangle().fill(Color.edge).frame(height: 1)
+                voiceSection
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Daemon offline").font(.brico(15, .bold)).foregroundColor(.inkDim)
@@ -894,6 +923,44 @@ struct Panel: View {
             Spacer()
             GhostButton(icon: button.0, label: button.1, action: button.2)
         }.padding(.horizontal, 18).padding(.vertical, 10).background(tint == .lime ? Color.lime.opacity(0.05) : Color.clear)
+    }
+
+    // GOD'S VOICE — drop a sample to clone (Pocket TTS), pick which voice God speaks in. The drop
+    // copies + clones into ~/.relay/voices; the radio writes ~/.relay/voices/selected that God reads.
+    private var voiceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) { Text("GOD'S VOICE").kicker(); Spacer()
+                if !model.selectedVoice.isEmpty { Text("· \(model.selectedVoice)").font(.splMono(9.5)).foregroundColor(.inkFaint) } }
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .foregroundColor(dropTargeted ? .lime : .edge)
+                .frame(height: 48)
+                .background(RoundedRectangle(cornerRadius: 9).fill(dropTargeted ? Color.lime.opacity(0.06) : Color.clear))
+                .overlay(HStack(spacing: 7) {
+                    Image(systemName: "waveform.badge.plus").font(.system(size: 13)).foregroundColor(dropTargeted ? .lime : .inkFaint)
+                    Text("Drop a voice sample (.wav / .mp3, ~15–30s) to clone").font(.hanken(11)).foregroundColor(.inkDim)
+                })
+                .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+                    var urls: [URL] = []; let g = DispatchGroup()
+                    for p in providers { g.enter(); _ = p.loadObject(ofClass: URL.self) { u, _ in if let u = u { urls.append(u) }; g.leave() } }
+                    g.notify(queue: .main) { if !urls.isEmpty { onDropVoice(urls) } }
+                    return true
+                }
+            VStack(spacing: 0) {
+                voiceRow(name: "", label: "Default (macOS voice)")
+                ForEach(model.voices, id: \.self) { v in voiceRow(name: v, label: v.replacingOccurrences(of: "-", with: " ").capitalized) }
+            }
+        }.padding(.horizontal, 18).padding(.vertical, 13)
+    }
+    private func voiceRow(name: String, label: String) -> some View {
+        let selected = model.selectedVoice == name
+        return Button(action: { onSelectVoice(name) }) {
+            HStack(spacing: 9) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle").font(.system(size: 12)).foregroundColor(selected ? .lime : .inkFaint)
+                Text(label).font(.hanken(12, selected ? .semibold : .regular)).foregroundColor(selected ? .ink : .inkDim)
+                Spacer()
+            }.padding(.vertical, 6).contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     // apps — the real-icon row across the top
@@ -1639,6 +1706,50 @@ struct ActionConsentDrop: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
     }
 
+    // Pick God's voice: write ~/.relay/voices/selected (God's companion.mjs reads it). Empty = macOS say.
+    @MainActor private func selectVoice(_ name: String) {
+        let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/selected")
+        try? Data(name.utf8).write(to: URL(fileURLWithPath: f))
+        model.refreshFiles()
+        toast(name.isEmpty ? "Voice: macOS default" : "Voice: \(name)")
+    }
+
+    // Drop a sample → clone it into a voice: convert to a 24kHz mono WAV in ~/.relay/voices, ask the
+    // god-tts service to clone it (caches a .safetensors), then select it. Off the main thread.
+    @MainActor private func dropVoices(_ urls: [URL]) {
+        let audio = urls.first { ["wav", "mp3", "m4a", "aiff", "aac", "flac", "ogg"].contains($0.pathExtension.lowercased()) }
+        guard let src = audio ?? urls.first else { return }
+        let raw = src.deletingPathExtension().lastPathComponent.lowercased()
+        let cleaned = String(raw.map { ($0.isLetter || $0.isNumber) ? $0 : "-" })
+        let voice = cleaned.split(separator: "-").prefix(3).joined(separator: "-").prefix(24).description
+        let name = voice.isEmpty ? "voice" : voice
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices")
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let dst = (dir as NSString).appendingPathComponent("\(name).wav")
+        toast("Cloning \(name)…")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ff = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"].first { FileManager.default.fileExists(atPath: $0) }
+            if let ff = ff {
+                let p = Process(); p.executableURL = URL(fileURLWithPath: ff)
+                p.arguments = ["-y", "-i", src.path, "-ar", "24000", "-ac", "1", dst]
+                p.standardOutput = Pipe(); p.standardError = Pipe()
+                try? p.run(); p.waitUntilExit()
+            } else {
+                try? FileManager.default.removeItem(atPath: dst)
+                try? FileManager.default.copyItem(atPath: src.path, toPath: dst)
+            }
+            Task { @MainActor in self.model.refreshFiles() }   // the file exists now → shows in the list
+            // ask the service to clone (idempotent; caches a .safetensors), then select it.
+            var req = URLRequest(url: URL(string: "http://127.0.0.1:7897/clone")!)
+            req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "content-type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
+            req.timeoutInterval = 180
+            URLSession.shared.dataTask(with: req) { _, _, _ in
+                Task { @MainActor in self.selectVoice(name); self.toast("Voice ready: \(name)") }
+            }.resume()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerBundledFonts()
         NSApp.setActivationPolicy(.accessory)
@@ -1668,7 +1779,9 @@ struct ActionConsentDrop: View {
             onQuit: { NSApp.terminate(nil) },
             onDisconnect: { [weak self] appId in self?.disconnectNativeApp(appId) },
             onUpdate: { [weak self] in self?.updateDaemon() },
-            onPickContext: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() }
+            onPickContext: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
+            onSelectVoice: { [weak self] name in self?.selectVoice(name) },
+            onDropVoice: { [weak self] urls in self?.dropVoices(urls) }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
