@@ -3,12 +3,41 @@
 // the same inputs whether it draws a terminal glyph now or moves a borderless always-on-top
 // NSWindow later. Swapping the body never touches the pipeline.
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 
 const COLOR = { green: 32, cyan: 36, magenta: 35, yellow: 33, red: 31, blue: 34, white: 37 };
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
+
+// A CLONED voice (Pocket TTS): if the user picked one in Settings (~/.relay/voices/selected), render
+// the text through the local voice service and play it. On-device, no cloud. Returns false on ANY
+// hiccup (no selection, service down, error) so the caller falls back to `say` — a God never goes mute.
+const TTS_PORT = process.env.GOD_TTS_PORT || "7897";
+function selectedVoice() {
+  try {
+    const f = join(homedir(), ".relay", "voices", "selected");
+    return existsSync(f) ? readFileSync(f, "utf8").trim() : "";
+  } catch { return ""; }
+}
+async function speakCloned(text) {
+  const voice = selectedVoice();
+  if (!voice) return false;
+  try {
+    const res = await fetch(`http://127.0.0.1:${TTS_PORT}/speak`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, voice }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return false;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) return false;
+    const wav = join(mkdtempSync(join(tmpdir(), "god-tts-")), "v.wav");
+    writeFileSync(wav, buf);
+    await new Promise((r) => { const p = spawn("afplay", [wav]); p.on("close", r); p.on("error", r); });
+    return true;
+  } catch { return false; }
+}
 
 // A god's voice: render the persona voice, drench it in cathedral reverb (ffmpeg multi-tap echo),
 // play it back. Rate-agnostic (no pitch math). Returns false if ffmpeg/afplay aren't around → plain `say`.
@@ -44,6 +73,7 @@ export function makeCompanion(persona) {
      *  back to the default voice if the persona's voice isn't installed — a God never goes mute. */
     async speak(text) {
       if (!text || process.env.GOD_MUTE) return; // GOD_MUTE: skip audio (tests, quiet rooms)
+      if (await speakCloned(text)) return;       // a Settings-selected CLONED voice wins if it's up
       const divine = persona.voiceFx === "divine" || process.env.GOD_DIVINE === "1";
       if (divine && (await speakDivine(persona.voice, text))) return; // reverb-drenched god's voice
       const say = (voiceArgs) =>
