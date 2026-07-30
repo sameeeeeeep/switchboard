@@ -88,6 +88,9 @@ mkdir -p "$RES/god"
 cp "$ROOT/examples/god/god.mjs" "$RES/god/god.mjs"
 cp -R "$ROOT/examples/god/lib" "$RES/god/lib"
 cp -R "$ROOT/examples/god/personas" "$RES/god/personas"
+# Flow's whisper STT adapter — the menubar daemon's RELAY_STT_CMD points here so God can hear you
+# (OpenAI `whisper --model tiny`, on-device, Homebrew PATH prepended inside the adapter).
+cp "$ROOT/examples/flow/whisper-stt.mjs" "$RES/god/whisper-stt.mjs"
 WS_DIR="$(cd "$ROOT" && node -e "process.stdout.write(require('path').dirname(require.resolve('ws/package.json')))" 2>/dev/null || true)"
 [ -n "$WS_DIR" ] && [ -d "$WS_DIR" ] || die "ws package not found — run npm install first"
 mkdir -p "$RES/god/node_modules/ws"

@@ -88,6 +88,11 @@ func writeDaemonPlist(to path: String = PLIST) throws {
             // God is first-party — keep the native listener up so ⌃⌥ can attach on the first press,
             // even before any native app has registered.
             "RELAY_NATIVE": "1",
+            // STT for God's voice: the SAME proven path Flow uses — the whisper-stt.mjs adapter runs
+            // OpenAI `whisper --model tiny` (on-device) and prepends the Homebrew PATH itself so it's
+            // found from a launchd-spawned daemon. Without this the menubar daemon has no STT and God
+            // can't hear you (returns "no local STT"), so it falls back to a generic screen answer.
+            "RELAY_STT_CMD": "\(BUNDLED_NODE) " + ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("god/whisper-stt.mjs"),
         ],
     ]
     // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
@@ -1082,10 +1087,14 @@ struct OrbView: View {
                     .scaleEffect(breathe ? 1.0 : 0.96)
                     .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
             } else {
-                Circle()
-                    .fill(model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.45) : .clear, radius: 4)
+                // Idle: a row of three dots — the dot-matrix language at its smallest (a switchboard's
+                // resting lamps), health-tinted. Lime = running+signed-in, red = running not-signed-in,
+                // faint = daemon down.
+                let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
+                HStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { _ in Circle().fill(tint).frame(width: 5, height: 5) }
+                }
+                .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.35) : .clear, radius: 3)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
@@ -2068,7 +2077,7 @@ struct ActionConsentDrop: View {
         godLog("triggerGod: captured=\(FileManager.default.fileExists(atPath: shot)) spawning \(node) \(god)")
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: node)
-        proc.arguments = [god, "act", "Look at my screen and do the single obvious helpful thing if there is one; otherwise just tell me what you see."]
+        proc.arguments = [god, "act", "If there's one obvious way you could help me right now, offer it in a short question (\"Want me to …?\"); otherwise stay quiet. Don't describe my screen back to me."]
         proc.currentDirectoryURL = URL(fileURLWithPath: (god as NSString).deletingLastPathComponent)
         var env = ProcessInfo.processInfo.environment
         env["GOD_ATTACH"] = "1"    // attach to the running menu-bar daemon, not a private one
