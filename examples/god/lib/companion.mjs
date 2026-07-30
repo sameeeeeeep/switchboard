@@ -1,0 +1,58 @@
+// The COMPANION — the visible + audible body of a God. This is the seam people customise
+// (persona.cursor, persona.voice) AND the seam a native overlay would replace: `point()` gets
+// the same inputs whether it draws a terminal glyph now or moves a borderless always-on-top
+// NSWindow later. Swapping the body never touches the pipeline.
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const COLOR = { green: 32, cyan: 36, magenta: 35, yellow: 33, red: 31, blue: 34, white: 37 };
+const dim = (s) => `\x1b[2m${s}\x1b[0m`;
+
+// A god's voice: render the persona voice, drench it in cathedral reverb (ffmpeg multi-tap echo),
+// play it back. Rate-agnostic (no pitch math). Returns false if ffmpeg/afplay aren't around → plain `say`.
+async function speakDivine(voice, text) {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "god-voice-"));
+    const aiff = join(dir, "v.aiff"), wav = join(dir, "v.wav");
+    if (spawnSync("say", ["-v", voice, "-o", aiff, text]).status !== 0) return false;
+    // A SUBTLE room, not a canyon: one short quiet tap. Multi-tap long delays read as "two voices".
+    const fx = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", aiff,
+      "-af", "aecho=0.9:0.82:26:0.15", wav]);
+    if (fx.status !== 0) return false;
+    await new Promise((res) => { const p = spawn("afplay", [wav]); p.on("close", res); p.on("error", res); });
+    return true;
+  } catch { return false; }
+}
+
+export function makeCompanion(persona) {
+  const code = COLOR[persona.cursor.color] ?? 37;
+  const tint = (s) => `\x1b[${code}m${s}\x1b[0m`;
+  return {
+    /** Where the hand points. Terminal proof: glyph + label + coord (image-space). Native slice:
+     *  move the overlay window to the mapped screen point — identical inputs, pixels instead of text. */
+    point({ x, y, label }, imgW, imgH) {
+      console.log(
+        `\n   ${tint(persona.cursor.glyph)}  ${tint(persona.name + " points")} → ` +
+          `${tint(label || persona.cursor.label)}   ${dim(`@ (${x}, ${y}) in ${imgW}×${imgH}`)}`,
+      );
+    },
+
+    /** The voice. Persona-scoped so a different God literally SOUNDS different. macOS `say -v`
+     *  now; the daemon's `claude_speak` (cloned / connector voices) is the drop-in upgrade. Falls
+     *  back to the default voice if the persona's voice isn't installed — a God never goes mute. */
+    async speak(text) {
+      if (!text || process.env.GOD_MUTE) return; // GOD_MUTE: skip audio (tests, quiet rooms)
+      const divine = persona.voiceFx === "divine" || process.env.GOD_DIVINE === "1";
+      if (divine && (await speakDivine(persona.voice, text))) return; // reverb-drenched god's voice
+      const say = (voiceArgs) =>
+        new Promise((res) => {
+          const p = spawn("say", [...voiceArgs, text]);
+          p.on("close", (c) => res(c === 0));
+          p.on("error", () => res(false));
+        });
+      if (!(await say(["-v", persona.voice]))) await say([]);
+    },
+  };
+}

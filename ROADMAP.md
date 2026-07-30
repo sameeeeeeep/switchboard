@@ -229,6 +229,40 @@ Open decisions flagged in the brief: light vs dark (research says light, DESIGN.
 and real output stills to replace the placeholder art. Reuse `examples/apps/src/kit/ui.js` — it is
 already imported by 21 wrapps and exists because 18 byte-identical copies were found.
 
+### 12. God — the native, screen-aware assistant (**client landed; eye shipped**)
+God is the ambient assistant that sees your screen, hears you, and points a cursor-companion at any
+app — supported wrapp or not. Built as a native client of the daemon, the sibling of Flow:
+`hotkey → screencapture → claude_complete(+vision, +persona) → [POINT:x,y:label] overlay + voice`.
+
+- **Vision-in — DONE.** `claude-code.ts`'s `toSdkPrompt()` now sends screenshots as real image
+  content blocks (were connector-upload-only, never model vision). Proven pixel-accurate
+  (`spike/god-eye-spike.mjs`: read a code that lives only in pixels; `[POINT]` 1px off center).
+- **Client — DONE (`examples/god/`).** Persona-modular: the cursor / voice / characteristic that
+  accompany you live in swappable `personas/*.json` (drop one in `~/.god/personas` to add a God).
+  Verified end-to-end (daemon spawn → native register → vision → `[POINT]` → companion); same
+  screen, different persona = genuinely different behaviour.
+- **Ships INSIDE the notch bundle — the first-party built-in concierge, not a store install.**
+  `Relay.app` already carries node + daemon + claude CLI; God adds native hotkey + ScreenCaptureKit
+  + overlay `NSWindow`. Pre-installed by construction. First-party principal → token auto-mints on
+  first run with NO connect-consent (it *is* the app), **but every write still hits the gate.**
+- **Why couple it — God is the platform's legibility layer:** (1) **setup concierge** — sees you're
+  signed-out / missing-extension / ungranted and points at the button (attacks the install-journey
+  drop-off); (2) **runs wrapps** via the Switchboard connector (NL front door to the catalogue);
+  (3) **discovery** — "there's a wrapp for that / here's the open-source alternative"; (4)
+  **anywhere** — how Switchboard escapes the walled web-wrapp set and leaves the browser.
+- **Next:** migrate hotkey+capture+overlay into the menu-bar app (Swift); the consent-gated *hands*
+  (`AXPress`/CGEvent/type) route through the gate, never macOS Accessibility's one-time firehose;
+  then the native-app-store catalog + launch lifecycle (God is the mold third-party native apps copy).
+
+### 13. Codex backend (BYO-Codex) — **coming soon**
+A `CodexBackend implements ModelBackend` shelling the `codex` CLI, a sibling to `ClaudeCodeBackend`,
+so apps can run on an OpenAI/Codex subscription the way they run on Claude or Ollama today (register
+in `backends/registry.ts`). Two tiers: **model-only** (OpenAI-compatible completions + `image_url`
+vision blocks in `local-openai.ts` → e.g. God on GPT-4o) is small; **agentic Codex** is gated on
+wiring the consent gate into Codex's loop (the "gate lives with the loop" constraint — `claude-code`
+is trusted because the SDK's `canUseTool` fires out-of-band per tool). The closed reference apps are Codex-first
+(entire `Codex*` runtime), so this is the parity path once the interpose is proven.
+
 ---
 
 ## Key decisions (context for a fresh thread)

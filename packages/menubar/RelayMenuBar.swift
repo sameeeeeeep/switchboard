@@ -7,6 +7,9 @@
 import AppKit
 import SwiftUI
 import Darwin
+import CoreText
+import ApplicationServices   // AXIsProcessTrusted() — the honest Accessibility check
+import AVFoundation          // microphone authorization
 
 let LABEL = "com.relay.sidekick"
 let PORT: UInt16 = 8787
@@ -17,6 +20,7 @@ let CONTEXTS_FILE = (RELAY_DIR as NSString).appendingPathComponent("contexts.jso
 let SELECTION_FILE = (RELAY_DIR as NSString).appendingPathComponent("context-selection.json")
 let GRANTS_FILE = (RELAY_DIR as NSString).appendingPathComponent("grants.json")
 let AUDIT_FILE = (RELAY_DIR as NSString).appendingPathComponent("audit.log")
+let FAVICON_DIR = (RELAY_DIR as NSString).appendingPathComponent("favicons")
 let PLIST = (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents/\(LABEL).plist")
 
 // ---------- the bundled daemon + its LaunchAgent ----------
@@ -52,6 +56,17 @@ func plistState(at path: String = PLIST, bundlePath: String = Bundle.main.bundle
 /// The plist the packaged app installs — same shape the dev installer proved out, but pointing at
 /// the bundle's own runtime. PATH is load-bearing: launchd's default PATH is bare, and both the
 /// daemon's system-claude fallback (warm sessions) and npx-based stdio MCP servers need real bins.
+// Append-only diagnostics I can read from ~/.relay/god-hotkey.log — ground truth for the hotkey path
+// (AXIsProcessTrusted, tap creation, each ⌃⌥ edge), independent of the unified-log visibility quirks.
+func godLog(_ s: String) {
+    let line = "[\(Date())] \(s)\n"
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-hotkey.log")
+    if let d = line.data(using: .utf8) {
+        if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(d); try? h.close() }
+        else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
+}
+
 func writeDaemonPlist(to path: String = PLIST) throws {
     let home = NSHomeDirectory()
     let spec: [String: Any] = [
@@ -70,6 +85,9 @@ func writeDaemonPlist(to path: String = PLIST) throws {
             // a perfectly good Anthropic-signed one sat beside sidekick.mjs unused.
             "RELAY_CLAUDE_CLI": ((Bundle.main.resourcePath ?? "") as NSString)
                 .appendingPathComponent("daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
+            // God is first-party — keep the native listener up so ⌃⌥ can attach on the first press,
+            // even before any native app has registered.
+            "RELAY_NATIVE": "1",
         ],
     ]
     // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
@@ -81,6 +99,42 @@ func writeDaemonPlist(to path: String = PLIST) throws {
     try data.write(to: URL(fileURLWithPath: path))
 }
 
+// ---------- is the running daemon stale vs the bundle? (the recurring install gotcha) ----------
+// Installing a new Switchboard.app does NOT restart the LaunchAgent — launchd keeps the old node
+// process (old code in memory) until it's kickstarted. Detect it: if OUR plist is what's running
+// and the bundle's daemon file is NEWER than the running process's start time, an update is waiting.
+func firstPid(matching pattern: String) -> Int32? {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+    p.arguments = ["-f", pattern]
+    let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+    try? p.run(); p.waitUntilExit()
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    guard let s = String(data: data, encoding: .utf8) else { return nil }
+    for line in s.split(separator: "\n") {
+        if let pid = Int32(line.trimmingCharacters(in: .whitespaces)) { return pid }
+    }
+    return nil
+}
+func processElapsedSeconds(_ pid: Int32) -> Int? {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/ps")
+    p.arguments = ["-o", "etimes=", "-p", "\(pid)"]
+    let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+    try? p.run(); p.waitUntilExit()
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+}
+/// True when a newer daemon is bundled than the one currently resident. Only for OUR plist (a dev
+/// checkout's foreign plist is left alone). Runs two short child processes — call it off the main thread.
+func daemonUpdateReady() -> Bool {
+    guard hasBundledDaemon(), !isTranslocated(), plistState() == .ours else { return false }
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: BUNDLED_ENTRY),
+          let mtime = attrs[.modificationDate] as? Date else { return false }
+    guard let pid = firstPid(matching: BUNDLED_ENTRY), let etimes = processElapsedSeconds(pid) else { return false }
+    let started = Date().addingTimeInterval(-Double(etimes))
+    // 5s guard so a fresh restart (mtime ≈ start time) doesn't flicker as "update ready".
+    return mtime.timeIntervalSince(started) > 5
+}
+
 // ---------- house palette ----------
 let LIME_NS = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1)
 let PAGE_NS = NSColor(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0, alpha: 1)
@@ -89,16 +143,42 @@ let SLATE_NS = NSColor(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0, alp
 // warranted: the daemon runs, everything reads green, but Claude Code isn't signed in on this Mac.
 let DANGER_NS = NSColor(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0, alpha: 1)
 extension Color {
-    static let page = Color(red: 0x0A/255.0, green: 0x0C/255.0, blue: 0x10/255.0)
-    static let panel = Color(red: 0x12/255.0, green: 0x15/255.0, blue: 0x1C/255.0)
-    static let raised = Color(red: 0x1A/255.0, green: 0x1F/255.0, blue: 0x29/255.0)
-    static let edge = Color(red: 0x26/255.0, green: 0x2C/255.0, blue: 0x38/255.0)
+    static let page = Color(red: 0x00/255.0, green: 0x00/255.0, blue: 0x00/255.0)   // pure black
+    static let rail = Color(red: 0x0A/255.0, green: 0x0A/255.0, blue: 0x0B/255.0)   // the left rail
+    static let panel = Color(red: 0x14/255.0, green: 0x14/255.0, blue: 0x16/255.0)  // neutral card
+    static let raised = Color(red: 0x1E/255.0, green: 0x1E/255.0, blue: 0x21/255.0)
+    static let edge = Color(red: 0x28/255.0, green: 0x28/255.0, blue: 0x29/255.0)   // neutral hairline
     static let ink = Color(red: 0xE8/255.0, green: 0xED/255.0, blue: 0xF4/255.0)
-    static let inkDim = Color(red: 0x99/255.0, green: 0xA3/255.0, blue: 0xB7/255.0)
-    static let inkFaint = Color(red: 0x6E/255.0, green: 0x7C/255.0, blue: 0x90/255.0)
+    static let inkDim = Color(red: 0x9A/255.0, green: 0x9A/255.0, blue: 0xA2/255.0)  // neutral, no blue
+    static let inkFaint = Color(red: 0x6C/255.0, green: 0x6C/255.0, blue: 0x74/255.0)
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
     static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
     static let ok = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)   // "connected" green
+}
+
+// ---------- house fonts (self-hosted so the panel reads in the brand's type, not the OS default) ----------
+// Bricolage Grotesque (display) · Hanken Grotesk (body) · Spline Sans Mono (numbers/kickers) — the same
+// stack as the extension + brandbrain. Register any .ttf/.otf shipped in Resources/fonts (packaged) or
+// beside the dev binary. Until the files are present, Font.custom falls back to the system font, so the
+// panel always renders — drop the three OFL files into packages/menubar/fonts/ and they light up.
+func registerBundledFonts() {
+    var dirs: [String] = []
+    if let rp = Bundle.main.resourcePath { dirs.append((rp as NSString).appendingPathComponent("fonts")) }
+    let exeDir = (CommandLine.arguments.first as NSString?)?.deletingLastPathComponent ?? "."
+    dirs.append((exeDir as NSString).appendingPathComponent("fonts"))
+    for dir in dirs {
+        guard let items = try? FileManager.default.contentsOfDirectory(atPath: dir) else { continue }
+        for f in items where f.hasSuffix(".ttf") || f.hasSuffix(".otf") {
+            CTFontManagerRegisterFontsForURL(URL(fileURLWithPath: (dir as NSString).appendingPathComponent(f)) as CFURL, .process, nil)
+        }
+    }
+}
+extension Font {
+    static func brico(_ size: CGFloat, _ w: Font.Weight = .semibold) -> Font { .custom("Bricolage Grotesque", size: size).weight(w) }
+    static func hanken(_ size: CGFloat, _ w: Font.Weight = .regular) -> Font { .custom("Hanken Grotesk", size: size).weight(w) }
+    static func splMono(_ size: CGFloat) -> Font { .custom("Spline Sans Mono", size: size) }
+    // Doto — the dot-matrix display face; Switchboard's wordmark direction (LED/circuit feel).
+    static func doto(_ size: CGFloat, _ w: Font.Weight = .bold) -> Font { .custom("Doto", size: size).weight(w) }
 }
 
 // ---------- the status-bar glyph (matches the chip/panel mark) ----------
@@ -142,6 +222,15 @@ func readContexts() -> [Ctx] {
     }
 }
 func readDefaultId() -> String? { (readJSON(SELECTION_FILE) as? [String: String])?["*global*"] }
+/// The menubar's half of the context selector: set (or clear, for "unconnected") the GLOBAL default
+/// context every app inherits unless it picked its own. Merges into the per-origin selection map so a
+/// wrapp's own choice is never clobbered. nil id → run unconnected (no global context).
+func writeGlobalContext(_ id: String?) {
+    var sel = (readJSON(SELECTION_FILE) as? [String: String]) ?? [:]
+    if let id = id { sel["*global*"] = id } else { sel.removeValue(forKey: "*global*") }
+    guard let data = try? JSONSerialization.data(withJSONObject: sel, options: [.prettyPrinted]) else { return }
+    try? data.write(to: URL(fileURLWithPath: SELECTION_FILE))
+}
 func readGrantCount() -> Int {
     if let arr = readJSON(GRANTS_FILE) as? [[String: Any]] { return arr.count }
     if let map = readJSON(GRANTS_FILE) as? [String: Any] { return map.count }
@@ -150,11 +239,12 @@ func readGrantCount() -> Int {
 
 // A connected principal, classified by the SAME prefixes the daemon keys grants on: a real web
 // origin (https://…), a TabSidekick principal (tabsidekick@…), or a NATIVE app (native@…).
-enum AppKind { case web, native, tab }
-struct AppRow: Identifiable { let id: String; let label: String; let kind: AppKind; let tools: Int; let appId: String?; let lastSeen: Double }
+enum AppKind { case web, native, iphone, tab }
+struct AppRow: Identifiable { let id: String; let label: String; let kind: AppKind; let tools: Int; let appId: String?; let lastSeen: Double; let icon: NSImage? }
 
 func classify(_ origin: String) -> (AppKind, String) {
     if origin.hasPrefix("native@") { return (.native, String(origin.dropFirst("native@".count))) }
+    if origin.hasPrefix("bridge@") { return (.iphone, String(origin.dropFirst("bridge@".count))) }  // "<device>/<origin>"
     if origin.hasPrefix("tabsidekick@") { return (.tab, String(origin.dropFirst("tabsidekick@".count))) }
     return (.web, hostOf(origin))
 }
@@ -185,9 +275,15 @@ func readApps() -> [AppRow] {
     let rows: [AppRow] = arr.compactMap { g in
         guard let origin = g["origin"] as? String else { return nil }
         let (kind, ident) = classify(origin)
-        let label = kind == .native ? (names[ident] ?? ident) : ident
+        let label: String
+        switch kind {
+        case .native: label = names[ident] ?? ident
+        case .iphone:  label = hostOf(ident.contains("/") ? String(ident.split(separator: "/", maxSplits: 1)[1]) : ident)
+        default:       label = ident
+        }
         let tools = (g["tools"] as? [[String: Any]])?.count ?? 0
-        return AppRow(id: origin, label: label, kind: kind, tools: tools, appId: kind == .native ? ident : nil, lastSeen: seen[origin] ?? 0)
+        let bundleId: String? = kind == .native ? ident : nil
+        return AppRow(id: origin, label: label, kind: kind, tools: tools, appId: bundleId, lastSeen: seen[origin] ?? 0, icon: bundleId.flatMap(nativeAppIcon))
     }
     // Active-first: most-recently-active first; TabSidekick helpers always last.
     return rows.sorted {
@@ -221,39 +317,77 @@ func readToolCount() -> Int {
     return readConnectors().reduce(0) { $0 + $1.tools }
 }
 
-// ---------- loaded local models (Ollama — a SEPARATE process the daemon can't see) ----------
-// The panel talks to Ollama directly: GET /api/ps for what's resident, POST /api/generate with
-// keep_alive:0 to unload one now. This is the RAM-safety valve — see what's loaded, kill it.
-struct LoadedModel: Identifiable { let id: String; let name: String; let vramGB: Double; let expiresIn: String }
+// ---------- local models (Ollama — a SEPARATE process the daemon can't see) ----------
+// The panel talks to Ollama directly: GET /api/tags for EVERY installed model, GET /api/ps for the
+// ones resident right now, POST /api/generate with keep_alive:0 to unload one. ONE unified list:
+// loaded models are highlighted (RAM + idle countdown + unload ×), the rest are shown greyed.
+struct LocalModel: Identifiable { let id: String; let name: String; let sizeGB: Double; let loaded: Bool; let vramGB: Double; let expiresIn: String }
 func ollamaExpiry(_ iso: String?) -> String {
     guard let iso = iso else { return "" }
     let withFrac = ISO8601DateFormatter(); withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     guard let d = withFrac.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
     let s = max(0, Int(d.timeIntervalSinceNow))
+    if s <= 0 { return "" }
     return String(format: "%d:%02d", s / 60, s % 60)
 }
 @MainActor
 final class OllamaMonitor: ObservableObject {
-    @Published var models: [LoadedModel] = []
-    @Published var up = false
+    @Published var models: [LocalModel] = []   // ALL installed, loaded-first
+    @Published var reachable = false           // the Ollama server answered at all
     private let base = "http://127.0.0.1:11434"
+    var up: Bool { reachable }
+    var loadedCount: Int { models.filter { $0.loaded }.count }
     var totalVramGB: Double { (models.reduce(0) { $0 + $1.vramGB } * 10).rounded() / 10 }
 
+    // Merge /api/tags (everything installed) with /api/ps (what's resident) into one list. Two short
+    // requests; whichever answers proves the server is up. Loaded models sort to the top.
     func refresh() {
-        guard let url = URL(string: base + "/api/ps") else { return }
-        var req = URLRequest(url: url); req.timeoutInterval = 1.2
-        URLSession.shared.dataTask(with: req) { data, _, _ in
-            var up = false; var list: [LoadedModel] = []
-            if let d = data, let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                up = true
+        let group = DispatchGroup()
+        var tags: [(String, Double)] = []          // name → on-disk size (GB)
+        var ps: [String: (Double, String)] = [:]   // name → (vramGB, idle countdown)
+        var sawTags = false, sawPs = false
+        group.enter()
+        Self.fetchJSON(base + "/api/tags") { j in
+            if let j = j { sawTags = true
                 for m in (j["models"] as? [[String: Any]] ?? []) {
                     let name = (m["name"] as? String) ?? (m["model"] as? String) ?? "?"
-                    let bytes = (m["size_vram"] as? Double) ?? (m["size"] as? Double) ?? 0
-                    let gb = (bytes / 1_073_741_824.0 * 10).rounded() / 10
-                    list.append(LoadedModel(id: name, name: name, vramGB: gb, expiresIn: ollamaExpiry(m["expires_at"] as? String)))
+                    let gb = (((m["size"] as? Double) ?? 0) / 1_073_741_824.0 * 10).rounded() / 10
+                    tags.append((name, gb))
                 }
             }
-            Task { @MainActor in self.up = up; self.models = list }
+            group.leave()
+        }
+        group.enter()
+        Self.fetchJSON(base + "/api/ps") { j in
+            if let j = j { sawPs = true
+                for m in (j["models"] as? [[String: Any]] ?? []) {
+                    let name = (m["name"] as? String) ?? (m["model"] as? String) ?? "?"
+                    let gb = (((m["size_vram"] as? Double) ?? (m["size"] as? Double) ?? 0) / 1_073_741_824.0 * 10).rounded() / 10
+                    ps[name] = (gb, ollamaExpiry(m["expires_at"] as? String))
+                }
+            }
+            group.leave()
+        }
+        group.notify(queue: .main) {
+            var names = tags.map { $0.0 }
+            for n in ps.keys where !names.contains(n) { names.append(n); tags.append((n, 0)) }
+            let sizeOf = Dictionary(tags, uniquingKeysWith: { a, _ in a })
+            var list = names.map { name -> LocalModel in
+                let r = ps[name]
+                return LocalModel(id: name, name: name, sizeGB: sizeOf[name] ?? 0,
+                                  loaded: r != nil, vramGB: r?.0 ?? 0, expiresIn: r?.1 ?? "")
+            }
+            list.sort { ($0.loaded ? 0 : 1, $0.name) < ($1.loaded ? 0 : 1, $1.name) }
+            self.reachable = sawTags || sawPs
+            self.models = list
+        }
+    }
+
+    nonisolated static func fetchJSON(_ urlString: String, _ done: @escaping @Sendable ([String: Any]?) -> Void) {
+        guard let url = URL(string: urlString) else { done(nil); return }
+        var req = URLRequest(url: url); req.timeoutInterval = 1.2
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            done(data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] })
         }.resume()
     }
 
@@ -265,6 +399,138 @@ final class OllamaMonitor: ObservableObject {
         URLSession.shared.dataTask(with: req) { _, _, _ in Task { @MainActor in self.refresh() } }.resume()
     }
 }
+
+// ---------- icons: real marks, never monograms ----------
+// Web wrapps → their OWN favicon (first-party; we already talk to that origin). Connectors → their
+// brand favicon (the brand's own domain). Native apps → the real .app bundle icon. Everything caches
+// to ~/.relay/favicons and degrades to an SF Symbol. NEVER a third-party favicon aggregator — the
+// only hosts contacted are a wrapp's own origin or a brand's own domain (see CONNECTOR_DOMAINS).
+
+// Curated connector → brand domain, ported from packages/extension/src/icons.ts so the two surfaces
+// agree on what "Higgsfield" looks like. Matched against a normalized connector name.
+let CONNECTOR_DOMAINS: [String: String] = [
+    "higgsfield": "higgsfield.ai", "shopify": "shopify.com", "gmail": "mail.google.com",
+    "google": "google.com", "drive": "drive.google.com", "sheets": "sheets.google.com",
+    "clickup": "clickup.com", "granola": "granola.ai", "notion": "notion.so",
+    "huggingface": "huggingface.co", "facebook": "facebook.com", "meta": "facebook.com",
+    "metaads": "facebook.com", "claude": "claude.ai", "claudeai": "claude.ai",
+    "anthropic": "claude.ai", "github": "github.com", "figma": "figma.com",
+    "canva": "canva.com", "linear": "linear.app", "slack": "slack.com",
+]
+// A fallback SF Symbol per connector capability — used until (or unless) a favicon loads. Never a
+// letter tile. Unknown connectors get a neutral puzzle-piece mark.
+let CONNECTOR_SYMBOLS: [String: String] = [
+    "gmail": "envelope.fill", "shopify": "bag.fill", "drive": "externaldrive.fill",
+    "sheets": "tablecells", "clickup": "checklist", "notion": "doc.text",
+    "github": "chevron.left.forwardslash.chevron.right", "figma": "pencil.and.outline",
+    "slack": "number", "granola": "calendar", "higgsfield": "sparkles",
+    "linear": "square.stack.3d.up.fill", "canva": "paintpalette", "huggingface": "cpu",
+    "claude": "sparkle", "web": "globe", "pencil": "pencil.tip.crop.circle",
+]
+func normalizeConnector(_ raw: String) -> String {
+    raw.lowercased().replacingOccurrences(of: "mcp__", with: "").replacingOccurrences(of: "claude_ai_", with: "")
+        .filter { $0.isLetter || $0.isNumber }
+}
+func connectorSymbol(_ name: String) -> String { CONNECTOR_SYMBOLS[normalizeConnector(name)] ?? "puzzlepiece.extension.fill" }
+func connectorDomain(_ name: String) -> String? { CONNECTOR_DOMAINS[normalizeConnector(name)] }
+
+// The real .app icon for a native app, resolved from its bundle id (e.g. ai.thelastprompt.flow) with
+// NO daemon-side capture needed. nil when the app isn't installed/resolvable → caller shows a symbol.
+func nativeAppIcon(_ bundleId: String) -> NSImage? {
+    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return nil }
+    let icon = NSWorkspace.shared.icon(forFile: url.path)
+    icon.size = NSSize(width: 32, height: 32)
+    return icon
+}
+
+@MainActor
+final class IconStore: ObservableObject {
+    @Published private(set) var cache: [String: NSImage] = [:]
+    private var inflight = Set<String>()
+    private var failed = Set<String>()   // don't re-hammer a host that has no favicon
+
+    // Kick off a first-party favicon load for `key` from `hosts` (memory → disk → network). Safe to
+    // call from .onAppear; mutates published state only after the async fetch, never during a view body.
+    func request(key: String, hosts: [String]) {
+        if cache[key] != nil || inflight.contains(key) || failed.contains(key) { return }
+        if let img = Self.diskImage(key) { cache[key] = img; return }
+        if hosts.isEmpty { failed.insert(key); return }
+        inflight.insert(key)
+        Self.fetch(key: key, hosts: hosts) { img in
+            Task { @MainActor in
+                self.inflight.remove(key)
+                if let img = img { self.cache[key] = img } else { self.failed.insert(key) }
+            }
+        }
+    }
+
+    nonisolated static func diskPath(_ key: String) -> String {
+        let safe = key.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
+        return (FAVICON_DIR as NSString).appendingPathComponent(safe + ".png")
+    }
+    nonisolated static func diskImage(_ key: String) -> NSImage? {
+        let p = diskPath(key)
+        guard FileManager.default.fileExists(atPath: p), let img = NSImage(contentsOfFile: p) else { return nil }
+        return img
+    }
+    // Try, in order, apple-touch-icon then favicon.ico on each host; first 200-with-image wins, is
+    // cached to disk, and handed back. NEVER a third-party favicon service — only the given hosts.
+    nonisolated static func fetch(key: String, hosts: [String], done: @escaping @Sendable (NSImage?) -> Void) {
+        var urls: [URL] = []
+        for h in hosts {
+            let b = h.contains("://") ? h : "https://\(h)"
+            if let u = URL(string: b + "/apple-touch-icon.png") { urls.append(u) }
+            if let u = URL(string: b + "/favicon.ico") { urls.append(u) }
+        }
+        func attempt(_ i: Int) {
+            if i >= urls.count { done(nil); return }
+            var req = URLRequest(url: urls[i]); req.timeoutInterval = 2.5
+            URLSession.shared.dataTask(with: req) { data, resp, _ in
+                if let data = data, (resp as? HTTPURLResponse)?.statusCode == 200,
+                   let img = NSImage(data: data), img.size.width > 0 {
+                    if let png = pngData(img) {
+                        try? FileManager.default.createDirectory(atPath: FAVICON_DIR, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                        try? png.write(to: URL(fileURLWithPath: diskPath(key)))
+                    }
+                    done(img)
+                } else { attempt(i + 1) }
+            }.resume()
+        }
+        attempt(0)
+    }
+    nonisolated static func pngData(_ img: NSImage) -> Data? {
+        guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+}
+
+// A square icon tile: the cached favicon once it lands, else an SF Symbol on a neutral fill. The load
+// is triggered in .onAppear so reading `store.cache[key]` in the body stays a pure read.
+struct IconView: View {
+    @ObservedObject var store: IconStore
+    let key: String
+    let hosts: [String]
+    let symbol: String
+    let tint: Color
+    let bg: Color
+    let size: CGFloat
+    let corner: CGFloat
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: corner).fill(bg)
+            if let img = store.cache[key] {
+                Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.72, height: size * 0.72)
+                    .clipShape(RoundedRectangle(cornerRadius: max(2, corner * 0.6)))
+            } else {
+                Image(systemName: symbol).font(.system(size: size * 0.5, weight: .medium)).foregroundColor(tint)
+            }
+        }
+        .frame(width: size, height: size)
+        .onAppear { store.request(key: key, hosts: hosts) }
+    }
+}
+
 func readLastAct() -> LastAct? {
     guard let data = FileManager.default.contents(atPath: AUDIT_FILE),
           let text = String(data: data.suffix(16_384), encoding: .utf8) else { return nil }
@@ -280,6 +546,9 @@ func readLastAct() -> LastAct? {
         else if what.contains("__get") || what.contains("__set") { verb = "touched storage" }
         else if what == "connect" { verb = "connected" }
         else if what == "consent" { verb = "asked consent" }
+        else if what == "claude_complete" { verb = "ran a completion" }
+        else if what == "claude_transcribe" { verb = "transcribed audio" }
+        else if what == "claude_speak" { verb = "spoke aloud" }
         else if what.hasPrefix("mcp__") { verb = what.components(separatedBy: "__").last ?? "ran a tool" }
         else { verb = what }
         return LastAct(origin: origin, verb: verb, note: (o["note"] as? String) ?? "", ts: ts)
@@ -335,6 +604,7 @@ final class Model: ObservableObject {
     @Published var toolCount = 0
     @Published var last: LastAct? = nil
     @Published var plist: PlistState = plistState()
+    @Published var updateAvailable = false
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -356,9 +626,35 @@ final class Model: ObservableObject {
 // Hierarchy mirrors the Chrome side panel: top bar (glyph + wordmark + on-dot), ONE hero card for
 // the default context (lime stripe, mark tile, name + honest meta), a marks strip for the rest of
 // the library, one line of life, quiet controls. Information display = hero + kicker + marks.
+// A wrapping HStack (chips flow onto the next line when they run out of width). macOS 13+.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxW = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0, total: CGFloat = 0
+        for s in subviews {
+            let sz = s.sizeThatFits(.unspecified)
+            if x + sz.width > maxW, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
+            x += sz.width + spacing; rowH = max(rowH, sz.height); total = max(total, x - spacing)
+        }
+        return CGSize(width: maxW == .infinity ? total : maxW, height: y + rowH)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let maxW = bounds.width
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
+        for s in subviews {
+            let sz = s.sizeThatFits(.unspecified)
+            if x + sz.width > maxW, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
+            s.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), proposal: ProposedViewSize(sz))
+            x += sz.width + spacing; rowH = max(rowH, sz.height)
+        }
+    }
+}
+
 struct Panel: View {
     @ObservedObject var model: Model
     @ObservedObject var ollama: OllamaMonitor
+    @ObservedObject var icons: IconStore
     let onToken: () -> Void
     let onLogs: () -> Void
     let onRestart: () -> Void
@@ -367,269 +663,704 @@ struct Panel: View {
     let onRepair: () -> Void
     let onQuit: () -> Void
     let onDisconnect: (String) -> Void   // disconnect a native app by appId
+    let onUpdate: () -> Void             // restart a stale daemon after an app update
+    let onPickContext: (String?) -> Void // set/clear the global default context (nil = unconnected)
     @State private var breathe = false
+    @State private var pickerOpen = false
 
-    // The hero's one supporting line: who it's working for, or what's on the bench.
+    private var signedOut: Bool { model.running && !model.signedIn }
+    private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
+    private var heroColor: Color { signedOut ? .danger : (model.working ? .lime : (model.running ? .ink : .inkDim)) }
+    private var heroDot: Color { signedOut ? .danger : (model.working ? .lime : .inkFaint) }
     private var momentMeta: String {
-        if model.working, let a = model.last { return "for \(hostOf(a.origin))" }
-        if model.working { return "on your Claude" }
-        if model.running { return "\(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s") banked · \(model.apps) app\(model.apps == 1 ? "" : "s") connected" }
-        if model.bundled && model.translocated { return "move Switchboard to /Applications, then reopen it" }
-        return "start the sidekick below"
+        if signedOut { return "" }
+        if model.running { return "\(model.apps) app\(model.apps == 1 ? "" : "s") · \(model.contexts.count) context\(model.contexts.count == 1 ? "" : "s")" }
+        if model.bundled && model.translocated { return "move Switchboard to /Applications, then reopen" }
+        return "the daemon is stopped"
     }
 
-    // A connected principal's mark: a web origin, a native app, or a TabSidekick helper.
-    @ViewBuilder private func appGlyph(_ kind: AppKind) -> some View {
-        let spec: (String, Color) = {
-            switch kind {
-            case .web:    return ("globe", .inkDim)
-            case .native: return ("desktopcomputer", .lime)
-            case .tab:    return ("square.on.square.dashed", .inkFaint)
-            }
-        }()
-        Image(systemName: spec.0).font(.system(size: 12, weight: .medium)).foregroundColor(spec.1).frame(width: 16)
+    // the app/site behind an activity line, by its real display name (never a raw principal)
+    private func actorName(_ a: LastAct) -> String {
+        let (kind, ident) = classify(a.origin)
+        if kind == .native { return model.appList.first(where: { $0.appId == ident })?.label ?? ident }
+        if kind == .iphone { return hostOf(ident.contains("/") ? String(ident.split(separator: "/", maxSplits: 1)[1]) : ident) }
+        return ident
     }
 
-    // ---- backends: what's actually powering completions (Claude Code + any local runner) ----
-    @ViewBuilder private var backendsStrip: some View {
-        HStack(spacing: 7) {
-            backendPill("Claude Code", model.signedIn ? "signed in" : "signed out", model.signedIn ? Color.ok : Color.danger)
-            if ollama.up { backendPill("Ollama", "local", Color.lime) }
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.bottom, 12)
-    }
-    @ViewBuilder private func backendPill(_ name: String, _ detail: String, _ dot: Color) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(dot).frame(width: 6, height: 6)
-            Text(name).font(.system(size: 11, weight: .medium)).foregroundColor(.ink)
-            Text(detail).font(.system(size: 10)).foregroundColor(.inkFaint)
-        }
-        .padding(.horizontal, 9).padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1)))
-    }
-
-    // ---- connected apps: a horizontal card row so it never crowds, however many connect ----
-    @ViewBuilder private var appsSection: some View {
-        if model.running && !model.appList.isEmpty {
-            Rectangle().fill(Color.edge).frame(height: 1)
-            VStack(alignment: .leading, spacing: 9) {
-                Text("CONNECTED APPS").kicker()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) { ForEach(model.appList) { appCard($0) } }.padding(.trailing, 16)
-                }
-            }
-            .padding(.leading, 16).padding(.vertical, 12)
-        }
-    }
-    @ViewBuilder private func appCard(_ app: AppRow) -> some View {
-        let sym = app.kind == .native ? "desktopcomputer" : (app.kind == .tab ? "square.on.square.dashed" : "globe")
-        let col: Color = app.kind == .native ? .lime : (app.kind == .tab ? .inkFaint : .inkDim)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: sym).font(.system(size: 15, weight: .medium)).foregroundColor(col)
-                Spacer(minLength: 0)
-                if app.kind == .native, let appId = app.appId {
-                    Button(action: { onDisconnect(appId) }) {
-                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.inkFaint)
-                    }.buttonStyle(.plain).help("Disconnect this app")
-                }
-            }
-            Text(app.label).font(.system(size: 11, weight: .medium)).foregroundColor(app.kind == .tab ? .inkDim : .ink).lineLimit(1)
-            if app.kind == .native {
-                Text("native").font(.system(size: 9, weight: .semibold)).foregroundColor(.page)
-                    .padding(.horizontal, 5).padding(.vertical, 1).background(Color.lime).cornerRadius(4)
+    // ---------- icons ----------
+    @ViewBuilder private func appIcon(_ app: AppRow, size: CGFloat) -> some View {
+        let corner = size * 0.24
+        switch app.kind {
+        case .native:
+            if let icon = app.icon {
+                Image(nsImage: icon).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                    .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: corner))
             } else {
-                Text(app.kind == .tab ? "tab" : "\(app.tools) tool\(app.tools == 1 ? "" : "s")")
-                    .font(.system(size: 9, design: .monospaced)).foregroundColor(.inkFaint)
+                ZStack { RoundedRectangle(cornerRadius: corner).fill(Color.panel)
+                    Image(systemName: "app.dashed").font(.system(size: size * 0.5)).foregroundColor(.lime) }.frame(width: size, height: size)
             }
-        }
-        .frame(width: 88, alignment: .leading).padding(9)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edge, lineWidth: 1)))
-    }
-
-    // ---- tools: the connectors the daemon can grant (horizontal chips; hidden until status.json) ----
-    @ViewBuilder private var toolsSection: some View {
-        if model.running && !model.connectors.isEmpty {
-            Rectangle().fill(Color.edge).frame(height: 1)
-            VStack(alignment: .leading, spacing: 9) {
-                HStack {
-                    Text("TOOLS").kicker()
-                    Spacer()
-                    Text("\(model.toolCount) across \(model.connectors.count) connector\(model.connectors.count == 1 ? "" : "s")")
-                        .font(.system(size: 9.5)).foregroundColor(.inkFaint).padding(.trailing, 16)
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(model.connectors) { c in
-                            HStack(spacing: 6) {
-                                Circle().fill(c.ok ? Color.ok : Color.inkFaint).frame(width: 6, height: 6)
-                                Text(c.name).font(.system(size: 11)).foregroundColor(c.ok ? .ink : .inkDim)
-                            }
-                            .padding(.horizontal, 9).padding(.vertical, 5)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1)))
-                        }
-                    }.padding(.trailing, 16)
-                }
-            }
-            .padding(.leading, 16).padding(.vertical, 12)
+        case .web:
+            IconView(store: icons, key: app.id, hosts: [hostOf(app.id)], symbol: "globe", tint: .inkDim, bg: Color.panel, size: size, corner: corner)
+        case .iphone:
+            IconView(store: icons, key: app.id, hosts: [app.label], symbol: "globe", tint: .inkDim, bg: Color.panel, size: size, corner: corner)
+        case .tab:
+            ZStack { RoundedRectangle(cornerRadius: corner).fill(Color.raised)
+                Image(systemName: "square.on.square.dashed").font(.system(size: size * 0.42)).foregroundColor(.inkFaint) }.frame(width: size, height: size)
         }
     }
+    @ViewBuilder private func activityIcon(_ a: LastAct) -> some View {
+        if let row = model.appList.first(where: { $0.id == a.origin }) { appIcon(row, size: 20) }
+        else { IconView(store: icons, key: a.origin, hosts: [hostOf(a.origin)], symbol: "globe", tint: .inkDim, bg: Color.panel, size: 20, corner: 6) }
+    }
 
-    // ---- loaded models: what Ollama has resident right now, with unload (the RAM valve) ----
-    @ViewBuilder private var loadedModelsSection: some View {
-        if ollama.up {
-            Rectangle().fill(Color.edge).frame(height: 1)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("LOADED MODELS").kicker()
-                    Spacer()
-                    Text(String(format: "%.1f GB", ollama.totalVramGB)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkDim)
+    // ---------- LEFT RAIL: identity · the moment · daemon controls ----------
+    private var rail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 5).fill(Color.lime).frame(width: 17, height: 17)
+                    .overlay(Circle().fill(Color.rail).frame(width: 5, height: 5).offset(x: 4.5, y: -4.5))
+                    .shadow(color: Color.lime.opacity(0.4), radius: 6)
+                Text("SWITCHBOARD").font(.doto(11, .black)).kerning(0.5).lineLimit(1).fixedSize().foregroundColor(.ink)
+                Spacer(minLength: 0)
+                Circle().fill(signedOut ? Color.danger : (model.running ? Color.ok : Color.inkFaint)).frame(width: 6, height: 6)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 11) {
+                    Circle().fill(heroDot).frame(width: 9, height: 9)
+                        .opacity(model.working ? (breathe ? 1.0 : 0.3) : 1.0)
+                        .shadow(color: model.working ? Color.lime.opacity(0.7) : .clear, radius: 6)
+                        .animation(model.working ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: breathe)
+                    Text(heroTitle).font(.brico(model.running ? 26 : 22, .bold)).foregroundColor(heroColor).lineLimit(1).minimumScaleFactor(0.7)
                 }
-                if ollama.models.isEmpty {
-                    Text("nothing loaded").font(.system(size: 11)).foregroundColor(.inkFaint)
+                if signedOut {
+                    Text(SIGN_IN_HINT).font(.hanken(11)).foregroundColor(.inkDim).padding(.top, 12).fixedSize(horizontal: false, vertical: true)
+                } else if model.running, let a = model.last {
+                    HStack(alignment: .top, spacing: 8) {
+                        activityIcon(a)
+                        (Text(actorName(a)).foregroundColor(.inkDim).fontWeight(.semibold)
+                            + Text(" \(a.verb)").foregroundColor(.inkFaint)).font(.hanken(11.5)).lineLimit(2)
+                    }.padding(.top, 14)
+                    Text("\(agoText(a.ts)) ago").font(.splMono(10)).foregroundColor(.inkFaint).padding(.top, 6).padding(.leading, 28)
                 } else {
-                    ForEach(ollama.models) { m in
-                        HStack(spacing: 9) {
-                            Image(systemName: "cpu").font(.system(size: 13)).foregroundColor(.lime)
-                            Text(m.name).font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundColor(.ink).lineLimit(1)
-                            Spacer()
-                            Text(String(format: "%.1f GB", m.vramGB)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkDim)
-                            if !m.expiresIn.isEmpty { Text(m.expiresIn).font(.system(size: 9, design: .monospaced)).foregroundColor(.inkFaint) }
-                            Button(action: { ollama.unload(m.name) }) {
-                                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundColor(.danger)
-                            }.buttonStyle(.plain).help("Unload now, free the memory")
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1)))
+                    Text(momentMeta).font(.hanken(11)).foregroundColor(.inkDim).padding(.top, 12).fixedSize(horizontal: false, vertical: true)
+                }
+            }.padding(.top, 30)
+
+            if model.running { contextSelector.padding(.top, 18) }
+
+            Spacer(minLength: 24)
+
+            VStack(alignment: .leading, spacing: 9) {
+                if let t = model.toast { Text(t).font(.hanken(10)).foregroundColor(.lime).lineLimit(1) }
+                Text("DAEMON").kicker()
+                HStack(spacing: 8) {
+                    GhostButton(icon: "link", label: "pairing", action: onToken).help("Copy the pairing token")
+                    GhostButton(icon: "text.alignleft", label: "logs", action: onLogs).help("Open the daemon log")
+                }
+                HStack(spacing: 8) {
+                    if model.running {
+                        GhostButton(icon: "arrow.clockwise", label: nil, action: onRestart).help("Restart the daemon")
+                        GhostButton(icon: "stop.fill", label: nil, action: onStop).help("Stop the daemon")
+                    } else {
+                        GhostButton(icon: "play.fill", label: "start", action: onRestart).help("Start the daemon")
+                    }
+                    Spacer(minLength: 0)
+                    GhostButton(icon: "power", label: nil, action: onQuit).help("Quit this app; the daemon keeps running")
+                }
+            }
+        }
+        .padding(18)
+        .frame(width: 206, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.rail)
+    }
+
+    // ---------- context selector: optional, defaults to none; personalises every app at once ----------
+    private var currentContext: Ctx? { model.contexts.first { $0.id == model.defaultId } }
+    private func kindMark(_ kind: String?) -> some View {
+        let sym: String = { switch kind {
+            case "brand": return "tag"; case "project": return "folder"; case "data": return "cylinder.split.1x2"
+            case "idea": return "lightbulb"; case "personal": return "person"; default: return "circle.dashed" } }()
+        return Image(systemName: sym).font(.system(size: 11)).foregroundColor(.inkDim).frame(width: 16)
+    }
+    private var contextSelector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("CONTEXT").kicker()
+            Button(action: { withAnimation(.easeOut(duration: 0.12)) { pickerOpen.toggle() } }) {
+                HStack(spacing: 8) {
+                    kindMark(currentContext?.kind)
+                    Text(currentContext?.name ?? "No context").font(.hanken(12, .medium))
+                        .foregroundColor(currentContext == nil ? .inkDim : .ink).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Image(systemName: pickerOpen ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundColor(.inkFaint)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.panel)
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(currentContext == nil ? Color.edge : Color.lime.opacity(0.4), lineWidth: 1)))
+            }.buttonStyle(.plain).focusable(false)
+            if pickerOpen {
+                VStack(spacing: 0) {
+                    contextRow(nil, "No context", nil)   // run unconnected
+                    if !model.contexts.isEmpty {
+                        Rectangle().fill(Color.edge).frame(height: 1)
+                        ScrollView { VStack(spacing: 0) { ForEach(model.contexts) { c in contextRow(c.id, c.name, c.kind) } } }
+                            .frame(maxHeight: 156)
+                    } else {
+                        Text("Bank a brand or project in the store to personalise here.")
+                            .font(.hanken(10.5)).foregroundColor(.inkFaint).padding(10).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised).overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1)))
             }
-            .padding(.horizontal, 16).padding(.vertical, 12)
         }
+    }
+    private func contextRow(_ id: String?, _ name: String, _ kind: String?) -> some View {
+        let selected = id == model.defaultId
+        return Button(action: { onPickContext(id); withAnimation { pickerOpen = false } }) {
+            HStack(spacing: 8) {
+                kindMark(kind)
+                Text(name).font(.hanken(11.5)).foregroundColor(selected ? .lime : .ink).lineLimit(1)
+                Spacer(minLength: 4)
+                if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundColor(.lime) }
+            }.padding(.horizontal, 10).padding(.vertical, 7).contentShape(Rectangle())
+        }.buttonStyle(.plain).focusable(false)
+    }
+
+    // ---------- RIGHT CONTENT ----------
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if model.updateAvailable {
+                banner(icon: "arrow.down.circle", tint: .lime, text: "A newer daemon shipped with this app",
+                       button: ("arrow.clockwise", "update", onUpdate))
+                Rectangle().fill(Color.edge).frame(height: 1)
+            } else if model.bundled && !model.translocated && model.plist == .foreign {
+                banner(icon: "arrow.triangle.2.circlepath", tint: .inkDim, text: "Daemon managed by a dev install",
+                       button: ("arrow.triangle.2.circlepath", "take over", onTakeOver))
+                Rectangle().fill(Color.edge).frame(height: 1)
+            } else if model.bundled && !model.translocated && model.plist == .staleOurs {
+                banner(icon: "wrench.adjustable", tint: .inkDim, text: "Daemon points at a missing install",
+                       button: ("wrench.adjustable", "repair", onRepair))
+                Rectangle().fill(Color.edge).frame(height: 1)
+            }
+            if model.running {
+                appsRow
+                Rectangle().fill(Color.edge).frame(height: 1)
+                HStack(alignment: .top, spacing: 0) {
+                    modelsColumn.frame(maxWidth: .infinity, alignment: .leading)
+                    Rectangle().fill(Color.edge).frame(width: 1)
+                    toolsColumn.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Daemon offline").font(.brico(15, .bold)).foregroundColor(.inkDim)
+                    Text("Start it from the rail to see your connected apps, models, and tools.")
+                        .font(.hanken(12)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+                }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder private func banner(icon: String, tint: Color, text: String, button: (String, String, () -> Void)) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundColor(tint)
+            Text(text).font(.hanken(11)).foregroundColor(.inkDim).lineLimit(1)
+            Spacer()
+            GhostButton(icon: button.0, label: button.1, action: button.2)
+        }.padding(.horizontal, 18).padding(.vertical, 10).background(tint == .lime ? Color.lime.opacity(0.05) : Color.clear)
+    }
+
+    // apps — the real-icon row across the top
+    private var appsRow: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(spacing: 6) { Text("CONNECTED APPS").kicker(); Text("· \(model.apps)").font(.splMono(9.5)).foregroundColor(.inkFaint); Spacer() }
+            if model.appList.isEmpty {
+                Text("No apps yet — open a wrapp and it'll ask to connect.").font(.hanken(11.5)).foregroundColor(.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 14) { ForEach(model.appList) { appTile($0) } }.padding(.trailing, 18)
+                }
+            }
+        }.padding(.horizontal, 18).padding(.vertical, 16)
+    }
+    @ViewBuilder private func platformBadge(_ kind: AppKind) -> some View {
+        let sym: String = { switch kind {
+            case .web: return "globe"; case .native: return "laptopcomputer"
+            case .iphone: return "iphone"; case .tab: return "square.on.square.dashed" } }()
+        ZStack {
+            Circle().fill(Color.page).overlay(Circle().stroke(Color.edge, lineWidth: 1))
+            Image(systemName: sym).font(.system(size: 8, weight: .semibold)).foregroundColor(.inkDim)
+        }.frame(width: 15, height: 15)
+    }
+    private func appTile(_ app: AppRow) -> some View {
+        VStack(spacing: 7) {
+            ZStack(alignment: .topTrailing) {
+                appIcon(app, size: 44).overlay(alignment: .bottomTrailing) { platformBadge(app.kind).offset(x: 4, y: 4) }
+                if app.kind == .native, let id = app.appId {
+                    Button(action: { onDisconnect(id) }) {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 13))
+                            .foregroundColor(.inkFaint).background(Circle().fill(Color.page).frame(width: 11, height: 11))
+                    }.buttonStyle(.plain).offset(x: 6, y: -6).help("Disconnect this app")
+                }
+            }
+            Text(app.label).font(.hanken(10.5, .medium)).foregroundColor(app.kind == .tab ? .inkFaint : .inkDim).lineLimit(1).frame(width: 60)
+        }.frame(width: 60)
+    }
+
+    // models — cloud + local, one accent for the loaded model
+    private var modelsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack { Text("MODELS").kicker(); Spacer()
+                if ollama.up && ollama.loadedCount > 0 {
+                    Text("\(ollama.loadedCount) loaded · \(String(format: "%.1f GB", ollama.totalVramGB))").font(.splMono(9.5)).foregroundColor(.inkDim)
+                }
+            }.padding(.bottom, 12)
+            HStack(spacing: 8) {
+                IconView(store: icons, key: "conn:claude", hosts: ["claude.ai"], symbol: "sparkle",
+                         tint: model.signedIn ? .ok : .danger, bg: Color.panel, size: 15, corner: 4)
+                Text(model.signedIn ? "CLAUDE CODE" : "CLAUDE CODE · SIGNED OUT").font(.splMono(9)).kerning(0.4)
+                    .foregroundColor(model.signedIn ? .inkDim : .danger)
+            }.padding(.bottom, 8)
+            FlowLayout(spacing: 6) {
+                ForEach(["Opus 4.8", "Sonnet", "Haiku"], id: \.self) { t in
+                    modelChip(t, live: false, dim: !model.signedIn, mono: false, detail: nil, onUnload: nil)
+                }
+            }.padding(.bottom, 14)
+            HStack(spacing: 8) {
+                ZStack { RoundedRectangle(cornerRadius: 4).fill(Color.raised)
+                    Image(systemName: "cpu").font(.system(size: 9)).foregroundColor(.inkDim) }.frame(width: 15, height: 15)
+                Text(ollama.up ? "OLLAMA" : "OLLAMA · NOT RUNNING").font(.splMono(9)).kerning(0.4).foregroundColor(.inkDim)
+            }.padding(.bottom, 8)
+            if ollama.up && !ollama.models.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(ollama.models) { m in
+                        modelChip(m.name, live: m.loaded, dim: !m.loaded, mono: true,
+                                  detail: m.loaded ? (m.expiresIn.isEmpty ? String(format: "%.1fGB", m.vramGB) : m.expiresIn) : (m.sizeGB > 0 ? String(format: "%.1fGB", m.sizeGB) : nil),
+                                  onUnload: m.loaded ? { ollama.unload(m.name) } : nil)
+                    }
+                }
+            } else if ollama.up {
+                Text("No local models — pull one with `ollama pull`").font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(18)
+    }
+    private func modelChip(_ name: String, live: Bool, dim: Bool, mono: Bool, detail: String?, onUnload: (() -> Void)?) -> some View {
+        HStack(spacing: 7) {
+            if live { Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.5), radius: 3) }
+            Text(name).font(mono ? .splMono(11) : .hanken(11, .medium)).foregroundColor(dim ? .inkFaint : .ink).lineLimit(1)
+            if let d = detail { Text(d).font(.splMono(9)).foregroundColor(.inkFaint) }
+            if let u = onUnload {
+                Button(action: u) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.danger) }
+                    .buttonStyle(.plain).help("Unload now, free the memory")
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 9).fill(live ? Color.lime.opacity(0.09) : Color.panel)
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(live ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1)))
+        .opacity(dim ? 0.5 : 1)
+    }
+
+    // tools — real brand logos, a tidy vertical list
+    private var toolsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack { Text("TOOLS").kicker(); Spacer()
+                Text("\(model.toolCount)").font(.splMono(9.5)).foregroundColor(.inkFaint) }.padding(.bottom, 12)
+            if model.connectors.isEmpty {
+                Text("Warming up…").font(.hanken(11)).foregroundColor(.inkFaint)
+            } else {
+                VStack(alignment: .leading, spacing: 9) { ForEach(model.connectors) { toolRow($0) } }
+            }
+        }.padding(18)
+    }
+    private func toolRow(_ c: Connector) -> some View {
+        HStack(spacing: 9) {
+            IconView(store: icons, key: "conn:" + normalizeConnector(c.name),
+                     hosts: connectorDomain(c.name).map { [$0] } ?? [], symbol: connectorSymbol(c.name),
+                     tint: c.ok ? .inkDim : .inkFaint, bg: Color.panel, size: 22, corner: 6)
+            Text(c.name).font(.hanken(12)).foregroundColor(c.ok ? .ink : .inkDim).lineLimit(1)
+            Spacer(minLength: 6)
+            if c.tools > 0 { Text("\(c.tools)").font(.splMono(9)).foregroundColor(.inkFaint) }
+        }.opacity(c.ok ? 1 : 0.55)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // ---- top bar: glyph + wordmark + status, exactly the panel's header ----
-            HStack(spacing: 9) {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.lime)
-                    .frame(width: 17, height: 17)
-                    .overlay(Circle().fill(Color.page).frame(width: 5, height: 5).offset(x: 4.5, y: -4.5))
-                    .shadow(color: Color.lime.opacity(0.4), radius: 7)
-                Text("Switchboard").font(.system(size: 15, weight: .bold)).foregroundColor(.ink)
-                Spacer()
-                HStack(spacing: 6) {
-                    // Running-but-signed-out reads RED here too — never a green "on" over a daemon that
-                    // can't run a call (rung 4). Green when truly on, faint when the daemon is down.
-                    let signedOut = model.running && !model.signedIn
-                    let onColor = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)
-                    Circle()
-                        .fill(signedOut ? Color.danger : (model.running ? onColor : Color.inkFaint))
-                        .frame(width: 7, height: 7)
-                        .shadow(color: signedOut ? Color.danger.opacity(0.6) : (model.running ? onColor.opacity(0.6) : .clear), radius: 4)
-                    Text(signedOut ? "signed out" : (model.running ? "on" : "off")).font(.system(size: 12, weight: .semibold)).foregroundColor(signedOut ? .danger : .inkDim)
-                }
-            }
-            .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 11)
-            backendsStrip
-            Rectangle().fill(Color.edge).frame(height: 1)
-
-            // ---- THE MOMENT — the only hero a menubar deserves: what is my AI doing right now? ----
-            //   …and when the daemon is up but signed out (rung 4), the hero IS that: one red line and
-            //   the single fix, so the user never discovers it as a failed first action instead.
-            let signedOut = model.running && !model.signedIn
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(signedOut ? Color.danger : (model.working ? Color.lime : (model.running ? Color.inkFaint : Color.inkFaint.opacity(0.4))))
-                        .frame(width: 10, height: 10)
-                        .opacity(model.working ? (breathe ? 1.0 : 0.25) : 1.0)
-                        .shadow(color: signedOut ? Color.danger.opacity(0.7) : (model.working ? Color.lime.opacity(0.7) : .clear), radius: 6)
-                        .animation(model.working ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: breathe)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(signedOut ? "Sign in to Claude" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")))
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(signedOut ? .danger : (model.working ? .lime : (model.running ? .ink : .inkDim)))
-                        Text(signedOut ? SIGN_IN_HINT : momentMeta)
-                            .font(.system(size: 11))
-                            .foregroundColor(.inkDim)
-                            .lineLimit(signedOut ? 3 : 1)
-                    }
-                    Spacer()
-                }
-                // supporting detail: the last thing that happened — one line, never a feed
-                if model.running, let a = model.last {
-                    HStack(spacing: 8) {
-                        Rectangle().fill(Color.edge).frame(width: 2, height: 14)
-                        (Text(hostOf(a.origin).prefix(26)).foregroundColor(.inkDim).fontWeight(.semibold)
-                            + Text("  \(a.verb)\(a.note.isEmpty ? "" : " \u{201C}\(a.note.prefix(22))\u{201D}")").foregroundColor(.inkFaint))
-                            .font(.system(size: 11)).lineLimit(1)
-                        Spacer()
-                        Text(agoText(a.ts)).font(.system(size: 10, design: .monospaced)).foregroundColor(.inkFaint)
-                    }
-                }
-            }
-            .padding(16)
-
-            // ---- the daemon, surfaced: apps that use it · tools it can grant · models it has loaded ----
-            appsSection
-            toolsSection
-            loadedModelsSection
-
-            // ---- daemon custody notice (packaged app only) — never acts silently, always says why ----
-            if model.bundled && !model.translocated && (model.plist == .foreign || model.plist == .staleOurs) {
-                Rectangle().fill(Color.edge).frame(height: 1)
-                HStack(spacing: 8) {
-                    if model.plist == .foreign {
-                        Text("daemon managed by a dev install")
-                            .font(.system(size: 11)).foregroundColor(.inkDim).lineLimit(1)
-                        Spacer()
-                        GhostButton(icon: "arrow.triangle.2.circlepath", label: "take over", action: onTakeOver)
-                    } else {
-                        Text("daemon points at a missing install")
-                            .font(.system(size: 11)).foregroundColor(.inkDim).lineLimit(1)
-                        Spacer()
-                        GhostButton(icon: "wrench.adjustable", label: "repair", action: onRepair)
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 10)
-            }
-
-            Rectangle().fill(Color.edge).frame(height: 1)
-
-            // ---- quiet controls ----
-            HStack(spacing: 8) {
-                GhostButton(icon: "doc.on.doc", label: "token", action: onToken)
-                GhostButton(icon: "text.alignleft", label: "logs", action: onLogs)
-                GhostButton(icon: "arrow.clockwise", label: model.running ? "restart" : "start", action: onRestart)
-                if model.running {
-                    // The audit's "leaving" journey: the power glyph read as "turn Switchboard
-                    // off" but only quit this app — the daemon kept serving every wrapp with the
-                    // user's only handle on it gone. Stop is now its own explicit control.
-                    GhostButton(icon: "stop.circle", label: "stop", action: onStop)
-                }
-                Spacer()
-                if let t = model.toast {
-                    Text(t).font(.system(size: 10)).foregroundColor(.lime).lineLimit(1)
-                }
-                GhostButton(icon: "power", label: nil, action: onQuit)
-                    .help("Quit this app. The sidekick daemon keeps running — use stop to end it.")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+        HStack(alignment: .top, spacing: 0) {
+            rail
+            Rectangle().fill(Color.edge).frame(width: 1)
+            content
         }
-        .frame(width: 340)
+        .frame(width: 620)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 14)   // room for the tab ears (the shape flares to full width at the top)
         .background(Color.page)
-        .clipShape(RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
+        .clipShape(NotchDropShape())   // no stroke — the black shape blends into the notch, no grey line
+        .ignoresSafeArea()
         .onAppear { breathe = true }
     }
 }
 
 extension Text {
     func kicker() -> some View {
-        self.font(.system(size: 9.5, weight: .semibold)).kerning(1.4).foregroundColor(.inkFaint)
+        self.font(.splMono(9.5)).kerning(1.4).foregroundColor(.inkFaint)
+    }
+}
+
+/// The panel silhouette — a shape that DROPS from the notch. The top edge is inset by `topR` and
+/// flares out to full width with CONCAVE corners (the notch "ears"), so the black body reads as one
+/// piece with the notch / black menu bar instead of a hard-cornered rectangle. Convex `botR` rounds
+/// the bottom. `UnevenRoundedRectangle` can't make concave corners — hence a hand-built path.
+/// NOTE: `topR` is the notch-corner feel; pixel-tune it on a real run (0 ⇒ squared top for non-notch).
+struct NotchDropShape: Shape {
+    var ear: CGFloat = 14    // the CSS-tab "ear": top is FULL width, flares in via a concave fillet
+    var botR: CGFloat = 20
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height
+        let e = min(ear, w / 2), b = min(botR, (w - 2 * e) / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))                                                      // top-left outer (on the bar)
+        p.addLine(to: CGPoint(x: w, y: 0))                                                   // flat top edge (against the bar — invisible)
+        p.addQuadCurve(to: CGPoint(x: w - e, y: e), control: CGPoint(x: w - e, y: 0))        // right inverted corner: curves DOWN & in
+        p.addLine(to: CGPoint(x: w - e, y: h - b))                                           // right body side (inset by the ear)
+        p.addQuadCurve(to: CGPoint(x: w - e - b, y: h), control: CGPoint(x: w - e, y: h))    // convex bottom-right
+        p.addLine(to: CGPoint(x: e + b, y: h))                                               // bottom edge
+        p.addQuadCurve(to: CGPoint(x: e, y: h - b), control: CGPoint(x: e, y: h))            // convex bottom-left
+        p.addLine(to: CGPoint(x: e, y: e))                                                   // left body side
+        p.addQuadCurve(to: CGPoint(x: 0, y: 0), control: CGPoint(x: e, y: 0))                // left inverted corner: curves UP & out
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// The panel OUTLINE — sides + bottom only. The top edge sits flush against the black notch/menu bar,
+/// so stroking it drew a wrong line across the top; this open path omits it. Matches NotchDropShape.
+struct NotchDropOutline: Shape {
+    var ear: CGFloat = 14
+    var botR: CGFloat = 20
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height
+        let e = min(ear, w / 2), b = min(botR, (w - 2 * e) / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))                                                      // left top-outer (on the bar)
+        p.addQuadCurve(to: CGPoint(x: e, y: e), control: CGPoint(x: e, y: 0))                // left inverted corner: down & in
+        p.addLine(to: CGPoint(x: e, y: h - b))                                               // left side
+        p.addQuadCurve(to: CGPoint(x: e + b, y: h), control: CGPoint(x: e, y: h))
+        p.addLine(to: CGPoint(x: w - e - b, y: h))                                           // bottom
+        p.addQuadCurve(to: CGPoint(x: w - e, y: h - b), control: CGPoint(x: w - e, y: h))
+        p.addLine(to: CGPoint(x: w - e, y: e))                                               // right side
+        p.addQuadCurve(to: CGPoint(x: w, y: 0), control: CGPoint(x: w - e, y: 0))            // right inverted corner: up & out
+        return p                                                                              // open — the flat top edge between the ears is unstroked
+    }
+}
+
+/// The ambient NOTCH ORB — the resting state of Switchboard, always present at the top-centre
+/// (Dynamic-Island-style progressive disclosure). Three states:
+///   • idle    → a small DOT (lime when ready, red signed-out, slate offline)
+///   • working → a notch-sized PILL that breathes while a model runs (driven by `model.working`)
+///   • hover / click → opens the full panel (the detailed view)
+/// A FIXED hit-area keeps the window one constant size; only the content morphs (no live resizing).
+/// Interaction feel (hover intent/delay, exact y, hit-through) is GUI — tune on a real run.
+struct OrbView: View {
+    @ObservedObject var model: Model
+    @ObservedObject var glow: GlowModel
+    var onOpen: () -> Void
+    @State private var breathe = false
+    private var godLabel: String? {
+        switch glow.state {
+        case .listening: return "Listening"
+        case .thinking: return "Thinking"
+        case .speaking: return "Speaking"
+        default: return nil
+        }
+    }
+    var body: some View {
+        ZStack {
+            if let label = godLabel {
+                // God's live phase in the notch — label + animated waveform (notch-native)
+                HStack(spacing: 9) {
+                    Text(label).font(.hanken(12, .semibold)).foregroundColor(.ink)
+                    TimelineView(.animation) { tl in
+                        let t = tl.date.timeIntervalSinceReferenceDate
+                        HStack(spacing: 2.5) {
+                            ForEach(0..<5, id: \.self) { i in
+                                Capsule()
+                                    .fill(glow.state == .listening ? Color.cyan : Color(red: 1, green: 0.72, blue: 0.3))
+                                    .frame(width: 2.5, height: 4 + 9 * abs(sin(t * 3.2 + Double(i) * 0.7)))
+                            }
+                        }.frame(height: 16)
+                    }
+                }
+                .padding(.horizontal, 13).padding(.vertical, 5)
+                .background(Capsule().fill(Color.raised))
+            } else if model.working {
+                Capsule().fill(Color.lime.opacity(0.92))
+                    .frame(width: 150, height: 20)
+                    .overlay(HStack(spacing: 6) {
+                        Circle().fill(Color.rail).frame(width: 5, height: 5)
+                        Text("working").font(.splMono(9)).foregroundColor(.rail)
+                    })
+                    .shadow(color: Color.lime.opacity(0.5), radius: 7)
+                    .scaleEffect(breathe ? 1.0 : 0.96)
+                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
+            } else {
+                Circle()
+                    .fill(model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.45) : .clear, radius: 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
+        .contentShape(Rectangle())
+        .onHover { if $0 { onOpen() } }
+        .onTapGesture { onOpen() }
+        .onAppear { breathe = true }
+    }
+}
+
+/// God's SECOND CURSOR — not a replacement pointer but a state-reactive GLOW behind
+/// the real cursor, plus a light HALO to mark a target. Reads as presence, not a hijacked pointer.
+enum GlowState { case idle, armed, listening, thinking, speaking, pointing }
+
+final class GlowModel: ObservableObject {
+    @Published var state: GlowState = .idle
+    @Published var cursor: CGPoint = .zero   // overlay-view (top-left) coords, kept in sync with the mouse
+    @Published var target: CGPoint? = nil    // a [POINT] marker, same coords (nil = no mark)
+}
+
+/// The overlay content: a soft aura tracking the cursor (colour/behaviour per state) and, when set,
+/// a pulsing ring at the point God is marking. Full-screen + click-through; shown only when active.
+struct GodGlowView: View {
+    @ObservedObject var m: GlowModel
+    @State private var pulse = false
+    private struct Spark { let dx: CGFloat; let dy: CGFloat; let size: CGFloat; let speed: Double; let phase: Double }
+    private let sparks: [Spark] = [
+        .init(dx: -22, dy: -9, size: 7, speed: 2.1, phase: 0.0),
+        .init(dx: 21, dy: -15, size: 6, speed: 2.7, phase: 1.3),
+        .init(dx: 17, dy: 13, size: 8, speed: 1.8, phase: 2.4),
+        .init(dx: -18, dy: 15, size: 6, speed: 2.4, phase: 3.1),
+        .init(dx: 2, dy: -25, size: 6, speed: 3.0, phase: 0.7),
+        .init(dx: -9, dy: 0, size: 5, speed: 3.3, phase: 4.2),
+    ]
+    private var tint: Color {
+        switch m.state {
+        case .idle: return .clear
+        case .armed: return .lime
+        case .listening: return .cyan
+        case .thinking: return .lime
+        case .speaking: return Color(red: 1, green: 0.72, blue: 0.3)
+        case .pointing: return .lime
+        }
+    }
+    private func captionFor(_ s: GlowState) -> String? {
+        switch s {
+        case .idle: return nil
+        case .armed: return "God"
+        case .listening: return "listening…"
+        case .thinking: return "thinking…"
+        case .speaking: return "speaking…"
+        case .pointing: return "here"
+        }
+    }
+    var body: some View {
+        ZStack {
+            if m.state != .idle {
+                // soft aura
+                Circle()
+                    .fill(RadialGradient(colors: [tint.opacity(0.4), tint.opacity(0)], center: .center, startRadius: 2, endRadius: 32))
+                    .frame(width: 64, height: 64)
+                    .scaleEffect(m.state == .listening ? (pulse ? 1.18 : 0.88) : (m.state == .thinking ? (pulse ? 1.06 : 0.96) : 1.0))
+                    .animation((m.state == .listening || m.state == .thinking) ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default, value: pulse)
+                    .position(m.cursor)
+                // a golden halo ring floating just above the cursor
+                Ellipse()
+                    .stroke(LinearGradient(colors: [Color(red: 1, green: 0.84, blue: 0.36), tint.opacity(0.85)], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
+                    .frame(width: 30, height: 11)
+                    .shadow(color: Color(red: 1, green: 0.84, blue: 0.36).opacity(0.6), radius: 5)
+                    .position(x: m.cursor.x, y: m.cursor.y - 20)
+                // sparkles twinkling around the cursor (SF Symbol so they read as light, not dots)
+                TimelineView(.animation) { tl in
+                    let t = tl.date.timeIntervalSinceReferenceDate
+                    ZStack {
+                        ForEach(0..<sparks.count, id: \.self) { i in
+                            let s = sparks[i]
+                            let tw = 0.5 + 0.5 * sin(t * s.speed + s.phase)
+                            Image(systemName: "sparkle")
+                                .font(.system(size: s.size))
+                                .foregroundColor(tint)
+                                .opacity(tw)
+                                .scaleEffect(0.5 + 0.7 * tw)
+                                .position(x: m.cursor.x + s.dx, y: m.cursor.y + s.dy)
+                        }
+                    }
+                }
+            }
+            if let t = m.target {
+                Circle().stroke(Color.lime.opacity(0.85), lineWidth: 2)
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(pulse ? 1.12 : 0.82)
+                    .opacity(pulse ? 0.3 : 0.95)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                    .position(t)
+            }
+            // A small label pill next to the cursor, so engaging a mode reads at a glance.
+            if let caption = captionFor(m.state) {
+                Text(caption)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.72)))
+                    .overlay(Capsule().stroke(tint.opacity(0.55), lineWidth: 1))
+                    .fixedSize()
+                    .position(x: m.cursor.x + 62, y: m.cursor.y)
+                    .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear { pulse = true }
+    }
+}
+
+/// The native "Allow this app?" consent — as a NOTCH DROP (notch-native), not a stray centered system
+/// alert. Same trust copy, same shape/tokens as the panel; drops from the notch and yields Allow/Deny.
+struct ConsentDrop: View {
+    let name: String
+    let appId: String
+    let reason: String
+    let canDo: String
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "laptopcomputer").font(.system(size: 15)).foregroundColor(.lime))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Allow \u{201C}\(name)\u{201D} to connect?").font(.hanken(14, .semibold)).foregroundColor(.ink)
+                    Text(appId).font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            if !reason.isEmpty {
+                Text("\u{201C}\(reason)\u{201D}").font(.hanken(11)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Can do: \(canDo)").font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+            Text("Only allow an app you installed yourself — identity isn\u{2019}t signature-verified yet.")
+                .font(.splMono(8.5)).foregroundColor(.inkFaint).opacity(0.75).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text("Allow").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
+/// The native Accessibility onboarding — a notch DROP (notch-native), not a terminal walk. It states
+/// the need, opens the exact pane, AND offers the real trick: a draggable app chip you drag straight
+/// into the Accessibility list (`.onDrag` yields the .app bundle URL), instead of hunting via the + button.
+// The permissions God needs, in concierge order: HEAR → ACT → SEE.
+enum GodPerm: CaseIterable {
+    case mic, accessibility, screen
+    var granted: Bool {
+        switch self {
+        case .mic: return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        case .accessibility: return AXIsProcessTrusted()
+        case .screen: return CGPreflightScreenCaptureAccess()
+        }
+    }
+    var title: String {
+        switch self {
+        case .mic: return "Let God hear you"
+        case .accessibility: return "Let God act for you"
+        case .screen: return "Let God see your screen"
+        }
+    }
+    var sub: String {
+        switch self {
+        case .mic: return "Microphone — so ⌃⌃ can listen to your request."
+        case .accessibility: return "Accessibility — to point, click and type. Drag me into the list, or hit Open."
+        case .screen: return "Screen Recording — so God can read what's on your screen."
+        }
+    }
+    var pane: String {
+        switch self {
+        case .mic: return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        case .accessibility: return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        case .screen: return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        }
+    }
+    var icon: String {
+        switch self { case .mic: return "mic.fill"; case .accessibility: return "hand.point.up.left.fill"; case .screen: return "rectangle.inset.filled" }
+    }
+    var needsDrag: Bool { self == .accessibility }   // AX has no programmatic grant → the drag trick
+}
+
+// The permissions CONCIERGE — one notch card at a time, in order, with progress dots. Mic/Screen get a
+// one-tap "Grant" (real system prompt); Accessibility gets Open + a draggable app chip (no grant API).
+struct PermissionGateCard: View {
+    let perm: GodPerm
+    let done: Int          // how many are already granted
+    let total: Int
+    let appIcon: NSImage
+    let appURL: URL
+    var onGrant: () -> Void
+    var onDismiss: () -> Void
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                HStack(spacing: 4) {
+                    ForEach(0..<total, id: \.self) { i in Circle().fill(i < done ? Color.lime : Color.edge).frame(width: 5, height: 5) }
+                }
+                Spacer()
+                Button(action: onDismiss) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint) }.buttonStyle(.plain)
+            }
+            HStack(spacing: 9) {
+                Image(systemName: perm.icon).font(.system(size: 14)).foregroundColor(.lime)
+                    .frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.14)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(perm.title).font(.hanken(13.5, .semibold)).foregroundColor(.ink)
+                    Text("Step \(done + 1) of \(total)").font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(perm.sub).font(.hanken(11)).foregroundColor(.inkDim).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            if perm.needsDrag {
+                HStack(spacing: 8) {
+                    Image(nsImage: appIcon).resizable().frame(width: 18, height: 18)
+                    Text("Switchboard").font(.hanken(11, .medium)).foregroundColor(.ink)
+                    Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.inkFaint)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised))
+                .onDrag { NSItemProvider(contentsOf: appURL) ?? NSItemProvider() }
+            }
+            Button(action: onGrant) {
+                Text(perm.needsDrag ? "Open Accessibility" : "Grant").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                    .padding(.horizontal, 18).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+            }.buttonStyle(.plain)
+        }
+        .padding(16)
+        .frame(width: 300)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
     }
 }
 
@@ -642,7 +1373,7 @@ struct GhostButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                if let l = label { Text(l).font(.system(size: 10.5, weight: .medium)).lineLimit(1).fixedSize() }
+                if let l = label { Text(l).font(.hanken(10.5, .medium)).lineLimit(1).fixedSize() }
             }
             .fixedSize() // never let the row compress a control into wrapped/truncated text
             .foregroundColor(hover ? .ink : .inkDim)
@@ -704,17 +1435,93 @@ final class ConsentClient: NSObject {
     }
 }
 
+// A panel that hangs from the menu bar without the window server nudging it back below the menu bar
+// (default windows are constrained to visibleFrame; a notch/top-docked panel must not be).
+final class NotchPanel: NSPanel {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
+// NSHostingView applies a top safe-area inset when the window sits at the screen top (near the menu
+// bar), which pushes the SwiftUI content down and leaves a gap under the flush top edge. Zero it so
+// the black panel reaches its own top edge.
+final class NoInsetHostingView<V: View>: NSHostingView<V> {
+    override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
+}
+
 // ---------- app shell ----------
 @MainActor
-final class RelayController: NSObject, NSApplicationDelegate {
+// God wants to DO something irreversible — the notch consent drop (notch-native). Everything else
+// auto-runs; only send/delete/pay/publish reach here. Names the action, Allow / Not now.
+struct ActionConsentDrop: View {
+    let describe: String
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "hand.raised.fill").font(.system(size: 14)).foregroundColor(.lime))
+                    .frame(width: 32, height: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("God wants to act").font(.hanken(13.5, .semibold)).foregroundColor(.ink)
+                    Text("This one's hard to undo — needs your yes.").font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(describe.prefix(1).capitalized + describe.dropFirst()).font(.hanken(12)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text("Allow").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                        .padding(.horizontal, 18).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(16).frame(width: 320).padding(.horizontal, 14)
+        .background(Color.page).clipShape(NotchDropShape())
+    }
+}
+
+@MainActor final class RelayController: NSObject, NSApplicationDelegate {
+    private var actionPanel: NSPanel!             // the "God wants to act?" consent drop
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
     private var hosting: NSHostingView<Panel>!
+    private var orb: NSPanel!                       // the ambient dot/working-pill at the notch
+    private var orbHosting: NSHostingView<OrbView>!
+    private var glow: NSPanel!                      // the second-cursor glow overlay (click-through)
+    private var glowHosting: NSHostingView<GodGlowView>!
+    private let glowModel = GlowModel()
+    private var consentPanel: NSPanel!             // the notch-drop "Allow this app?" (replaces the NSAlert)
+    private var gatePanel: NSPanel!                // the permissions concierge card (notch drop)
+    private var gateDismissed = false             // user closed the card this session → don't nag again until relaunch
+    private var gateShowingPerm: GodPerm?         // which permission step is currently on screen
+    private var openedByHover = false             // panel opened via orb hover (auto-close on hover-out) vs glyph click
+    private var godArmed = false                  // ⌃⌥ currently held (rising-edge detector for the trigger)
+    private var godRunning = false                // a God loop is in flight — don't stack another
+    private var lastCtrlTap: Date?                // ⌃⌃ double-tap detector
+    private var ctrlWasDown = false
+    private var godStateTimer: Timer?             // polls ~/.relay/god-state → notch listening/thinking/speaking
+    private var godListening = false              // mic is recording your request
+    private var recProc: Process?                 // the ffmpeg mic recorder
+    private var recWav: String?                   // where the clip lands
+    private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
     private var clickMonitor: Any?
+    private var hotKeyMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var mouseMonitor: Any?
+    private var flagsMonitor: Any?
     private var timer: Timer?
     private var phase = 0
     private let model = Model()
     private let ollama = OllamaMonitor()
+    private let icons = IconStore()
     private var consent: ConsentClient?
 
     // Native "Allow this app?" dialog — a real macOS alert, from the trusted Switchboard app itself.
@@ -725,23 +1532,31 @@ final class RelayController: NSObject, NSApplicationDelegate {
             ?? (appId.contains(".") ? String(appId.split(separator: ".").last!).capitalized : appId)
         let reason = body["reason"] as? String ?? ""
         let canDo = (body["canDo"] as? [String])?.joined(separator: " · ") ?? "Use your local models and your Claude, through the gate"
-        let a = NSAlert()
-        a.messageText = "Allow \u{201C}\(name)\u{201D} to connect?"
-        a.informativeText = "\(appId) — a native app on this Mac."
-            + (reason.isEmpty ? "" : "\n\u{201C}\(reason)\u{201D}")
-            + "\n\nCan do: \(canDo)"
-            + "\n\nIdentity isn\u{2019}t signature-verified yet — only allow an app you installed yourself."
-        a.addButton(withTitle: "Allow")
-        a.addButton(withTitle: "Deny")
-        // Make it a real, commanding modal: bring the (accessory) app forward, float the alert above
-        // every other window, and center it — a system-style "allow this app" moment, not a stray popup.
-        NSApp.activate(ignoringOtherApps: true)
-        let win = a.window
-        win.level = .modalPanel
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        win.center()
-        win.makeKeyAndOrderFront(nil)
-        consent?.reply(id, a.runModal() == .alertFirstButtonReturn)
+
+        // A notch DROP, not a centered system alert. Non-blocking: the reply fires on button tap.
+        let reply: (Bool) -> Void = { [weak self] allow in
+            self?.consent?.reply(id, allow)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = ConsentDrop(name: name, appId: appId, reason: reason, canDo: canDo,
+                               onAllow: { reply(true) }, onDeny: { reply(false) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        consentPanel.alphaValue = 0
+        consentPanel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; consentPanel.animator().alphaValue = 1 }
     }
 
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
@@ -760,6 +1575,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        registerBundledFonts()
         NSApp.setActivationPolicy(.accessory)
         // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
         consent = ConsentClient(port: PORT,
@@ -774,9 +1590,10 @@ final class RelayController: NSObject, NSApplicationDelegate {
         statusItem.button?.action = #selector(togglePopover)
         statusItem.button?.target = self
 
-        hosting = NSHostingView(rootView: Panel(
+        hosting = NoInsetHostingView(rootView: Panel(
             model: model,
             ollama: ollama,
+            icons: icons,
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
@@ -784,22 +1601,40 @@ final class RelayController: NSObject, NSApplicationDelegate {
             onTakeOver: { [weak self] in self?.takeOverDaemon() },
             onRepair: { [weak self] in self?.repairDaemon() },
             onQuit: { NSApp.terminate(nil) },
-            onDisconnect: { [weak self] appId in self?.disconnectNativeApp(appId) }
+            onDisconnect: { [weak self] appId in self?.disconnectNativeApp(appId) },
+            onUpdate: { [weak self] in self?.updateDaemon() },
+            onPickContext: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
-        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .statusBar
+        panel.hasShadow = false
+        panel.level = .popUpMenu   // above the system menu bar, so the panel can overlap it
         panel.collectionBehavior = [.canJoinAllSpaces, .transient]
         panel.contentView = hosting
 
+        // The ambient orb — always at the notch, morphing dot ↔ working-pill, hover/click opens the panel.
+        orbHosting = NoInsetHostingView(rootView: OrbView(model: model, glow: glowModel, onOpen: { [weak self] in self?.openFromOrb() }))
+        orb = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 168, height: 26), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        orb.isOpaque = false
+        orb.backgroundColor = .clear
+        orb.hasShadow = false
+        orb.level = .popUpMenu
+        orb.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        orb.acceptsMouseMovedEvents = true          // so SwiftUI onHover fires on this non-key panel
+        orb.contentView = orbHosting
+        positionOrb()
+        orb.orderFrontRegardless()
+
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.poll() }
+            MainActor.assumeIsolated { self?.poll(); self?.refreshPermissionGate() }
         }
+        installHotKey()
+        installGlow()
+        refreshPermissionGate()
 
         // FIRST RUN: launching the app IS the user's intent to run the daemon it ships — the
         // landing page promises "Launch it once — it prints a pairing token", so keep it. Auto-
@@ -829,7 +1664,9 @@ final class RelayController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePopover() {
-        if panel.isVisible { hidePanel(); return }
+        if panel.isVisible { hidePanel() } else { openedByHover = false; showPanel() }
+    }
+    private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
         ollama.refresh()
@@ -837,9 +1674,18 @@ final class RelayController: NSObject, NSApplicationDelegate {
         panel.setContentSize(size)
         let icon = btnWindow.frame
         // right-align the sheet to the icon, clamped inside the screen, 6pt below the menu bar
-        let x = min(max(icon.maxX - size.width, screen.visibleFrame.minX + 8), screen.visibleFrame.maxX - size.width - 8)
-        panel.setFrameTopLeftPoint(NSPoint(x: x, y: icon.minY - 6))
+        // Notch app: hang the panel flush under the menu bar, centred on the notch (screen centre on
+        // notched Macs), clamped on-screen. Squared top + rounded bottom → it reads as one black shape
+        // growing out of the notch. Fades in as it drops.
+        let centreX = screen.frame.midX - size.width / 2
+        let x = min(max(centreX, screen.visibleFrame.minX + 8), screen.visibleFrame.maxX - size.width - 8)
+        // Flush to the menu bar on ANY Mac (notch or not): icon.minY is the status item window's
+        // bottom = the TRUE menu-bar bottom edge (mainMenu.menuBarHeight lies on some displays). The
+        // NotchPanel subclass below refuses re-constraining, so the top lands exactly here.
+        panel.setFrameTopLeftPoint(NSPoint(x: x, y: screen.frame.maxY))   // top of the menu bar = screen top
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; panel.animator().alphaValue = 1 }
         // transient: any click outside puts it away
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.hidePanel() }
@@ -848,12 +1694,338 @@ final class RelayController: NSObject, NSApplicationDelegate {
 
     private func hidePanel() {
         panel.orderOut(nil)
+        openedByHover = false
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
+    }
+
+    // Park the orb centred at the top, just under the menu bar / notch. (menuH is a reasonable
+    // constant — tune per display on a real run; some Macs report a lying menuBarHeight.)
+    private func positionOrb() {
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        let w: CGFloat = 168
+        // Make the orb window span the menu bar EXACTLY (bottom = visibleFrame.maxY, height = the real
+        // menu-bar height — taller on notch Macs), so the centred dot lands between the bar's top and
+        // bottom edges — up on the notch line, not below it. Renders over the bar (popUpMenu level).
+        let menuH = max(screen.frame.maxY - screen.visibleFrame.maxY, 22)
+        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY, width: w, height: menuH), display: true)
+    }
+
+    // Hover/click on the orb → open the full detailed panel (reuses the existing show/position path).
+    @MainActor private func openFromOrb() {
+        if !panel.isVisible { openedByHover = true; showPanel() }
+    }
+
+    // Hover-out closes a HOVER-opened panel: once the cursor leaves both the orb and the panel, put it
+    // away. A glyph CLICK (openedByHover == false) stays open until you click away — so moving the mouse
+    // off after clicking the menu-bar icon doesn't yank it shut.
+    @MainActor private func maybeAutoClosePanel() {
+        guard openedByHover, panel.isVisible else { return }
+        let m = NSEvent.mouseLocation
+        if !panel.frame.insetBy(dx: -6, dy: -6).contains(m) && !orb.frame.insetBy(dx: -6, dy: -6).contains(m) {
+            hidePanel()
+        }
+    }
+
+    // Show the Accessibility onboarding card while the app isn't trusted (unless dismissed this
+    // session); auto-hide the instant it's granted. AXIsProcessTrusted() is the honest, non-prompting read.
+    // The concierge: show the FIRST missing permission (mic → accessibility → screen); advance as each
+    // is granted; hide when all three are in. Polled, so it steps forward on its own.
+    @MainActor private func refreshPermissionGate() {
+        let missing = GodPerm.allCases.filter { !$0.granted }
+        guard let next = missing.first else { gateShowingPerm = nil; gatePanel?.orderOut(nil); return }
+        guard !gateDismissed else { return }
+        if next == gateShowingPerm && gatePanel?.isVisible == true { return }   // already on this step
+        gateShowingPerm = next
+        showPermissionGate(next, done: GodPerm.allCases.count - missing.count)
+    }
+
+    @MainActor private func showPermissionGate(_ perm: GodPerm, done: Int) {
+        let url = Bundle.main.bundleURL
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        let grant: () -> Void = { [weak self] in
+            switch perm {
+            case .mic: AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self?.refreshPermissionGate() } }
+            case .screen: _ = CGRequestScreenCaptureAccess(); Task { @MainActor in self?.refreshPermissionGate() }
+            case .accessibility: NSWorkspace.shared.open(URL(string: perm.pane)!)
+            }
+        }
+        let view = PermissionGateCard(perm: perm, done: done, total: GodPerm.allCases.count, appIcon: icon, appURL: url,
+            onGrant: grant,
+            onDismiss: { [weak self] in self?.gateDismissed = true; self?.gatePanel?.orderOut(nil) })
+        if gatePanel == nil {
+            gatePanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            gatePanel.isOpaque = false
+            gatePanel.backgroundColor = .clear
+            gatePanel.hasShadow = false
+            gatePanel.level = .popUpMenu
+            gatePanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]  // NOT transient — stays while you drag into Settings
+        }
+        gatePanel.contentView = NoInsetHostingView(rootView: view)
+        let size = gatePanel.contentView!.fittingSize
+        gatePanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            gatePanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        gatePanel.orderFrontRegardless()
+    }
+
+    // ⌃⌥ + click anywhere → summon God at the click point the summon gesture. A global monitor needs
+    // Accessibility / Input-Monitoring — exactly what God's setup concierge grants; without it this
+    // silently no-ops, which is honest. Fires only when Switchboard isn't the key app — fine, it's a
+    // menu-bar accessory that's never key.
+    private func installHotKey() {
+        // Double-tap CONTROL (⌃⌃) — Flow's gesture — via a PASSIVE global modifier monitor (NSEvent),
+        // NOT a CGEventTap. A tap needs Input Monitoring; this passive modifier monitor is lighter, which
+        // is exactly why Flow's ⌃⌃ "just works." Diagnostics land in ~/.relay/god-hotkey.log.
+        godLog("installHotKey: AXIsProcessTrusted=\(AXIsProcessTrusted()) — passive ⌃⌃ monitor installed")
+        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] e in
+            Task { @MainActor in self?.onFlags(e.modifierFlags) }
+        }
+    }
+
+    // ⌃⌃ (double-tap Control, alone, within 0.5s) → summon God. ⌃+anything combos are ignored.
+    @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
+        let m = flags.intersection([.control, .option, .command, .shift])
+        if m == [.control] && !ctrlWasDown {
+            ctrlWasDown = true
+            onCtrlTap()
+        } else if m.isEmpty {
+            ctrlWasDown = false
+        } else {
+            ctrlWasDown = flags.contains(.control)
+        }
+    }
+
+    // The gesture grammar: ⌃⌃ (idle) → start listening · single ⌃ (listening) → stop + act ·
+    // single ⌃ (running) → cancel. One key drives the whole loop.
+    @MainActor private func onCtrlTap() {
+        if godListening { stopListeningAndAct() }
+        else if godRunning { cancelGod() }
+        else {
+            let now = Date()
+            if let last = lastCtrlTap, now.timeIntervalSince(last) < 0.5 { lastCtrlTap = nil; startListening() }
+            else { lastCtrlTap = now }
+        }
+    }
+
+    private func ffmpegPath() -> String? {
+        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    // ⌃⌃ → record the mic; the notch shows "Listening". No ffmpeg ⇒ fall back to a straight look.
+    @MainActor private func startListening() {
+        godLog("⌃⌃ → listening")
+        NSSound(named: "Tink")?.play()
+        guard let ffmpeg = ffmpegPath() else { godLog("no ffmpeg — looking without voice"); triggerGod(at: NSEvent.mouseLocation); return }
+        let wav = NSTemporaryDirectory() + "god-rec.wav"
+        try? FileManager.default.removeItem(atPath: wav)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: ffmpeg)
+        p.arguments = ["-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", "-y", wav]
+        p.standardInput = Pipe()   // so we can send 'q' for a clean stop
+        do { try p.run(); recProc = p; recWav = wav; godListening = true; setGlow(.listening) }
+        catch { godLog("mic failed: \(error)"); godListening = false; triggerGod(at: NSEvent.mouseLocation) }
+    }
+
+    // single ⌃ while listening → stop the mic, then run God on what you said.
+    @MainActor private func stopListeningAndAct() {
+        godListening = false
+        NSSound(named: "Pop")?.play()
+        if let p = recProc {
+            if let h = (p.standardInput as? Pipe)?.fileHandleForWriting { try? h.write(contentsOf: Data("q".utf8)); try? h.close() }
+            p.waitUntilExit()
+        }
+        recProc = nil
+        triggerGod(at: NSEvent.mouseLocation, audio: recWav)
+    }
+
+    // single ⌃ while God works → abort the loop.
+    @MainActor private func cancelGod() {
+        godLog("cancelled")
+        NSSound(named: "Pop")?.play()
+        godProc?.terminate(); godProc = nil
+        godStateTimer?.invalidate()
+        godRunning = false; glowModel.target = nil; setGlow(.idle)
+    }
+
+    // After a run, if God held back a risky action, ask for a yes in the notch (the consent drop).
+    @MainActor private func checkPendingAction() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-action.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        try? FileManager.default.removeItem(atPath: path)
+        showActionConsent(json["describe"] as? String ?? "do something", json)
+    }
+
+    @MainActor private func showActionConsent(_ describe: String, _ action: [String: Any]) {
+        let view = ActionConsentDrop(describe: describe,
+            onAllow: { [weak self] in self?.executeGodAction(action); self?.actionPanel?.orderOut(nil) },
+            onDeny: { [weak self] in self?.actionPanel?.orderOut(nil) })
+        if actionPanel == nil {
+            actionPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            actionPanel.isOpaque = false; actionPanel.backgroundColor = .clear; actionPanel.hasShadow = false
+            actionPanel.level = .popUpMenu; actionPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        actionPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = actionPanel.contentView!.fittingSize
+        actionPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            actionPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        actionPanel.alphaValue = 0; actionPanel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; actionPanel.animator().alphaValue = 1 }
+    }
+
+    // The gated execution — reached ONLY after the human tapped Allow.
+    @MainActor private func executeGodAction(_ a: [String: Any]) {
+        switch a["kind"] as? String {
+        case "open":
+            if let t = a["target"] as? String { let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/open"); p.arguments = [t]; try? p.run() }
+        case "type":
+            if let text = a["text"] as? String {
+                let esc = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                p.arguments = ["-e", "tell application \"System Events\" to keystroke \"\(esc)\""]; try? p.run()
+            }
+        case "click":
+            if let x = (a["x"] as? NSNumber)?.doubleValue, let y = (a["y"] as? NSNumber)?.doubleValue,
+               let w = (a["shotW"] as? NSNumber)?.doubleValue, let h = (a["shotH"] as? NSNumber)?.doubleValue,
+               let screen = NSScreen.main,
+               let cli = ["/opt/homebrew/bin/cliclick", "/usr/local/bin/cliclick"].first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                let sx = Int(x / w * screen.frame.width), sy = Int(y / h * screen.frame.height)
+                let p = Process(); p.executableURL = URL(fileURLWithPath: cli); p.arguments = ["c:\(sx),\(sy)"]; try? p.run()
+            }
+        default: break
+        }
+    }
+
+    // The GOD seam. This is where the native flow lands: ScreenCaptureKit screenshot → daemon
+    // `claude_complete` (+vision, +persona) → parse `[POINT:x,y:label]` → overlay-cursor companion +
+    // voice. `at` is where the user ⌃⌥-clicked — the focus point God reasons about. Until that native
+    // slice ships, summon the panel so the gesture is live end-to-end and the wiring (permission →
+    // global click → handler) is proven. Every write it eventually makes still goes through the gate.
+    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil) {
+        guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
+        // The real ⌃⌥ loop: halo where you asked, then run the PROVEN pipeline against THIS daemon —
+        // god.mjs (attached) screenshots → vision+persona → speaks. Glow = thinking while it runs.
+        if let p = point, let screen = NSScreen.main {
+            glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)
+        }
+        guard let node = nodePath(), let god = godClientPath() else {
+            godLog("triggerGod: node or god.mjs NOT FOUND — opening panel instead")
+            glowModel.target = nil
+            if !panel.isVisible { openedByHover = false; showPanel() }
+            return
+        }
+        godRunning = true
+        setGlow(.thinking)
+        // Poll God's published phase (~/.relay/god-state) so the notch shows listening/thinking/speaking live.
+        godStateTimer?.invalidate()
+        godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.readGodState() }
+        }
+        // Capture the screen HERE (Switchboard holds Screen Recording; the bundled node may not), and
+        // hand the file to god.mjs via GOD_IMAGE so it never has to call screencapture itself.
+        let shot = NSTemporaryDirectory() + "god-shot.jpg"
+        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        cap.arguments = ["-x", "-t", "jpg", shot]
+        try? cap.run(); cap.waitUntilExit()
+        godLog("triggerGod: captured=\(FileManager.default.fileExists(atPath: shot)) spawning \(node) \(god)")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: node)
+        proc.arguments = [god, "act", "Look at my screen and do the single obvious helpful thing if there is one; otherwise just tell me what you see."]
+        proc.currentDirectoryURL = URL(fileURLWithPath: (god as NSString).deletingLastPathComponent)
+        var env = ProcessInfo.processInfo.environment
+        env["GOD_ATTACH"] = "1"    // attach to the running menu-bar daemon, not a private one
+        env["GOD_AUTONOMY"] = "auto"  // acts freely; irreversible things hold back for the consent drop
+        env["GOD_IMAGE"] = shot       // Switchboard-captured screenshot — node needs no Screen Recording grant
+        if let audio = audio { env["GOD_AUDIO"] = audio }   // your spoken request (transcribed by the daemon)
+        env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        proc.environment = env
+        // Capture god.mjs's own output so failures are visible in ~/.relay/god-run.log.
+        let runLog = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-run.log")
+        FileManager.default.createFile(atPath: runLog, contents: nil)
+        if let fh = FileHandle(forWritingAtPath: runLog) { proc.standardOutput = fh; proc.standardError = fh }
+        proc.terminationHandler = { [weak self] _ in Task { @MainActor in self?.godProc = nil; self?.godStateTimer?.invalidate(); self?.godRunning = false; self?.glowModel.target = nil; self?.setGlow(.idle); self?.checkPendingAction() } }
+        godProc = proc
+        do { try proc.run() } catch { godLog("spawn failed: \(error)"); godProc = nil; godStateTimer?.invalidate(); godRunning = false; glowModel.target = nil; setGlow(.idle) }
+    }
+
+    // Map God's published phase to the glow/notch state (drives the notch pill + cursor caption).
+    @MainActor private func readGodState() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
+        let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        switch s {
+        case "listening": glowModel.state = .listening
+        case "thinking": glowModel.state = .thinking
+        case "speaking": glowModel.state = .speaking
+        default: break   // idle handled on termination
+        }
+        if glowModel.state != .idle { glow.orderFrontRegardless() }
+    }
+
+    // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
+    private func nodePath() -> String? {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: BUNDLED_NODE) { return BUNDLED_NODE }
+        let home = NSHomeDirectory()
+        var candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "\(home)/.local/bin/node", "/usr/bin/node"]
+        let nvm = "\(home)/.nvm/versions/node"
+        if let vers = try? fm.contentsOfDirectory(atPath: nvm) {
+            for v in vers.sorted().reversed() { candidates.insert("\(nvm)/\(v)/bin/node", at: 0) }
+        }
+        return candidates.first { fm.fileExists(atPath: $0) }
+    }
+
+    // Locate the God client: bundled in the .app (DMG install) first, then dev in-tree, then an override.
+    private func godClientPath() -> String? {
+        let fm = FileManager.default
+        if let res = Bundle.main.resourcePath {
+            let bundled = (res as NSString).appendingPathComponent("god/god.mjs")
+            if fm.fileExists(atPath: bundled) { return bundled }
+        }
+        // dev: the .app builds at <repo>/packages/menubar/…app, so the repo is three levels up.
+        let dev = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("examples/god/god.mjs").path
+        if fm.fileExists(atPath: dev) { return dev }
+        if let override = ProcessInfo.processInfo.environment["GOD_CLIENT"], fm.fileExists(atPath: override) { return override }
+        return nil
+    }
+
+    private func installGlow() {
+        guard let screen = NSScreen.main else { return }
+        glowHosting = NoInsetHostingView(rootView: GodGlowView(m: glowModel))
+        glow = NotchPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        glow.isOpaque = false
+        glow.backgroundColor = .clear
+        glow.hasShadow = false
+        glow.level = .screenSaver
+        glow.ignoresMouseEvents = true                  // pure decoration — never intercepts a click
+        glow.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        glow.contentView = glowHosting
+        glow.setFrame(screen.frame, display: false)
+        glow.orderOut(nil)                              // shown only while a state is active
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] _ in
+            Task { @MainActor in self?.updateGlowCursor(); self?.maybeAutoClosePanel() }
+        }
+    }
+
+    @MainActor private func updateGlowCursor() {
+        guard let screen = NSScreen.main else { return }
+        let p = NSEvent.mouseLocation                    // global, bottom-left origin
+        glowModel.cursor = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)   // → overlay top-left coords
+    }
+
+    @MainActor private func setGlow(_ s: GlowState) {
+        if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
+        glowModel.state = s
+        if s == .idle { glow.orderOut(nil) } else { updateGlowCursor(); glow.orderFrontRegardless() }
     }
 
     private func poll() {
         checkReachable { ok in
             self.checkWorking { busy in
+                let updateReady = ok ? daemonUpdateReady() : false
                 Task { @MainActor in
                     // Rung 4: only meaningful once the daemon is up. When up-but-signed-out, the glyph
                     // goes RED and the tooltip names the one fix — the cliff caught before the first call.
@@ -861,6 +2033,7 @@ final class RelayController: NSObject, NSApplicationDelegate {
                     self.model.running = ok
                     self.model.working = ok && busy && signedIn
                     self.model.signedIn = signedIn
+                    self.model.updateAvailable = updateReady
                     self.phase += 1
                     self.statusItem.button?.image = glyphImage(running: ok, working: self.model.working, signedIn: signedIn, phase: self.phase)
                     self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
@@ -949,6 +2122,16 @@ final class RelayController: NSObject, NSApplicationDelegate {
         launchctl(["bootout", "gui/\(getuid())/\(LABEL)"])
         toast("sidekick stopped")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.poll() }
+    }
+
+    /// A newer daemon shipped inside this app bundle but the old one is still resident (launchd
+    /// does NOT restart on an app update). kickstart -k kills + relaunches the SAME job, so it
+    /// re-reads the bundle's now-newer sidekick.mjs. Paths are unchanged — no plist rewrite needed.
+    private func updateDaemon() {
+        launchctl(["kickstart", "-k", "gui/\(getuid())/\(LABEL)"])
+        toast("updating daemon…")
+        model.updateAvailable = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { self.poll() }
     }
 
     /// Write the bundle-pointing plist and bootstrap it. The one path that creates the LaunchAgent.
