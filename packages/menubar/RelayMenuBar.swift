@@ -104,6 +104,17 @@ func writeDaemonPlist(to path: String = PLIST) throws {
     try data.write(to: URL(fileURLWithPath: path))
 }
 
+/// Was this (ours) plist written by an OLDER build — i.e. is it missing a daemon env key this build
+/// requires? A same-path app update does not rewrite the plist, so env additions (e.g. RELAY_STT_CMD,
+/// which gives God its ear) silently never reach the running daemon. If any required key is absent,
+/// the launcher refreshes the LaunchAgent. Add new required keys here as the daemon grows to need them.
+func plistEnvOutdated(at path: String = PLIST) -> Bool {
+    guard let dict = NSDictionary(contentsOfFile: path) as? [String: Any],
+          let env = dict["EnvironmentVariables"] as? [String: Any] else { return false }
+    let required = ["RELAY_STT_CMD", "RELAY_NATIVE", "RELAY_CLAUDE_CLI"]
+    return required.contains { env[$0] == nil }
+}
+
 // ---------- is the running daemon stale vs the bundle? (the recurring install gotcha) ----------
 // Installing a new Switchboard.app does NOT restart the LaunchAgent — launchd keeps the old node
 // process (old code in memory) until it's kickstarted. Detect it: if OUR plist is what's running
@@ -1152,26 +1163,8 @@ struct GodGlowView: View {
     var body: some View {
         ZStack {
             if m.state != .idle {
-                // soft aura — bigger + brighter so it clearly reads as a companion following the cursor
-                Circle()
-                    .fill(RadialGradient(colors: [tint.opacity(0.55), tint.opacity(0)], center: .center, startRadius: 3, endRadius: 52))
-                    .frame(width: 104, height: 104)
-                    .scaleEffect(m.state == .listening ? (pulse ? 1.18 : 0.88) : (m.state == .thinking ? (pulse ? 1.08 : 0.94) : 1.0))
-                    .animation((m.state == .listening || m.state == .thinking) ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default, value: pulse)
-                    .position(m.cursor)
-                // a bright core dot — the unmistakable "God is here" marker riding just off the pointer
-                Circle()
-                    .fill(tint)
-                    .frame(width: 11, height: 11)
-                    .shadow(color: tint.opacity(0.9), radius: 7)
-                    .position(x: m.cursor.x + 16, y: m.cursor.y + 16)
-                // a golden halo ring floating just above the cursor
-                Ellipse()
-                    .stroke(LinearGradient(colors: [Color(red: 1, green: 0.84, blue: 0.36), tint.opacity(0.85)], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
-                    .frame(width: 30, height: 11)
-                    .shadow(color: Color(red: 1, green: 0.84, blue: 0.36).opacity(0.6), radius: 5)
-                    .position(x: m.cursor.x, y: m.cursor.y - 20)
-                // sparkles twinkling around the cursor (SF Symbol so they read as light, not dots)
+                // Just the sparkles — a light, unobtrusive shimmer trailing the cursor (no aura, no
+                // core dot, no halo). Presence, not a spotlight.
                 TimelineView(.animation) { tl in
                     let t = tl.date.timeIntervalSinceReferenceDate
                     ZStack {
@@ -1196,18 +1189,8 @@ struct GodGlowView: View {
                     .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
                     .position(t)
             }
-            // A small label pill next to the cursor, so engaging a mode reads at a glance.
-            if let caption = captionFor(m.state) {
-                Text(caption)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(Color.black.opacity(0.72)))
-                    .overlay(Capsule().stroke(tint.opacity(0.55), lineWidth: 1))
-                    .fixedSize()
-                    .position(x: m.cursor.x + 62, y: m.cursor.y)
-                    .transition(.opacity)
-            }
+            // No caption pill by the cursor — the notch drop already names the phase; a second label
+            // riding the cursor was noise.
         }
         .allowsHitTesting(false)
         .onAppear { pulse = true }
@@ -1716,6 +1699,12 @@ struct ActionConsentDrop: View {
             installAndStart(verb: "installed")
         case .staleOurs:
             // App was moved/updated since the plist was written — heal without being asked.
+            repairDaemon()
+        case .ours where hasBundledDaemon() && !isTranslocated() && plistEnvOutdated():
+            // Our plist, SAME path, but written by an older build that lacks a daemon env key this
+            // build needs (e.g. RELAY_STT_CMD for God's ear). A same-path app update doesn't otherwise
+            // rewrite the plist, so the fix never reached the running daemon — refresh it now.
+            godLog("plist missing required daemon env — refreshing LaunchAgent")
             repairDaemon()
         default:
             break
