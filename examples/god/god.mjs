@@ -205,13 +205,16 @@ function isRisky(action, spoken) {
 }
 
 const isLocalModel = (m) => m.includes(":") || m.includes("/");
-// Vision needs a real Claude model (tiny local models aren't multimodal here). God is an AMBIENT
-// glance-and-help loop, not a reasoning session — so prefer the FASTEST multimodal tier (Haiku)
-// over Opus/Sonnet: a "what's near my pointer?" shouldn't cost an Opus call or its latency. Order:
-// Haiku → any non-local (Sonnet) → whatever exists. GOD_MODEL overrides for power users.
+// Vision needs a real Claude model (tiny local models aren't multimodal here). God reads FINE screen
+// detail (a colour under the cursor, small UI), which Haiku fumbles — so prefer SONNET: strong vision,
+// and far faster/cheaper than Opus (which is overkill for a glance). Order: GOD_MODEL → Sonnet →
+// Haiku → any non-local → whatever exists. Set GOD_MODEL=<haiku id> for max speed over acuity.
 function pickVisionModel(models) {
   if (process.env.GOD_MODEL && models.includes(process.env.GOD_MODEL)) return process.env.GOD_MODEL;
-  return models.find((m) => /haiku/i.test(m)) || models.find((m) => !isLocalModel(m)) || models[0];
+  return models.find((m) => /sonnet/i.test(m))
+    || models.find((m) => /haiku/i.test(m))
+    || models.find((m) => !isLocalModel(m))
+    || models[0];
 }
 
 // ── daemon lifecycle (mirrors Flow's proven plumbing) ─────────────────────────────────────────

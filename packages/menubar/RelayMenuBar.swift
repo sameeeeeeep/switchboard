@@ -1152,13 +1152,19 @@ struct GodGlowView: View {
     var body: some View {
         ZStack {
             if m.state != .idle {
-                // soft aura
+                // soft aura — bigger + brighter so it clearly reads as a companion following the cursor
                 Circle()
-                    .fill(RadialGradient(colors: [tint.opacity(0.4), tint.opacity(0)], center: .center, startRadius: 2, endRadius: 32))
-                    .frame(width: 64, height: 64)
-                    .scaleEffect(m.state == .listening ? (pulse ? 1.18 : 0.88) : (m.state == .thinking ? (pulse ? 1.06 : 0.96) : 1.0))
+                    .fill(RadialGradient(colors: [tint.opacity(0.55), tint.opacity(0)], center: .center, startRadius: 3, endRadius: 52))
+                    .frame(width: 104, height: 104)
+                    .scaleEffect(m.state == .listening ? (pulse ? 1.18 : 0.88) : (m.state == .thinking ? (pulse ? 1.08 : 0.94) : 1.0))
                     .animation((m.state == .listening || m.state == .thinking) ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default, value: pulse)
                     .position(m.cursor)
+                // a bright core dot — the unmistakable "God is here" marker riding just off the pointer
+                Circle()
+                    .fill(tint)
+                    .frame(width: 11, height: 11)
+                    .shadow(color: tint.opacity(0.9), radius: 7)
+                    .position(x: m.cursor.x + 16, y: m.cursor.y + 16)
                 // a golden halo ring floating just above the cursor
                 Ellipse()
                     .stroke(LinearGradient(colors: [Color(red: 1, green: 0.84, blue: 0.36), tint.opacity(0.85)], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
@@ -1574,6 +1580,7 @@ struct ActionConsentDrop: View {
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
+    private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
     private var clickMonitor: Any?
     private var hotKeyMonitor: Any?
@@ -2176,9 +2183,25 @@ struct ActionConsentDrop: View {
     @MainActor private func setGlow(_ s: GlowState) {
         if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
         glowModel.state = s
-        if s == .idle { glow.orderOut(nil) } else { updateGlowCursor(); glow.orderFrontRegardless() }
+        if s == .idle {
+            glow.orderOut(nil); stopGlowTracking()
+        } else {
+            if let scr = NSScreen.main { glow.setFrame(scr.frame, display: false) }  // re-anchor (resolution/monitor may have changed)
+            updateGlowCursor(); glow.orderFrontRegardless(); startGlowTracking()
+        }
         updateGodStatusDrop(s)
     }
+
+    // Follow the cursor by POLLING its position (~30fps) while the glow is up. NSEvent.mouseLocation
+    // is a free read (no Accessibility/Input-Monitoring needed) — unlike the global mouse monitor,
+    // which silently never fires without that grant. This is why the glow wasn't following.
+    @MainActor private func startGlowTracking() {
+        glowCursorTimer?.invalidate()
+        glowCursorTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateGlowCursor() }
+        }
+    }
+    @MainActor private func stopGlowTracking() { glowCursorTimer?.invalidate(); glowCursorTimer = nil }
 
     // Drive the notch-drop phase indicator from the one place glow state changes. Only the three
     // spoken phases get a label; armed/pointing are cursor-glow only (no notch label). idle hides it.
@@ -2207,13 +2230,18 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             godStatusPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
+        orb?.orderOut(nil)   // the extended notch REPLACES the orb — don't show the 3-dot orb behind it
         if !godStatusPanel.isVisible {
             godStatusPanel.alphaValue = 0; godStatusPanel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; godStatusPanel.animator().alphaValue = 1 }
         }
     }
 
-    @MainActor private func hideGodStatus() { godStatusLabel = nil; godStatusPanel?.orderOut(nil) }
+    @MainActor private func hideGodStatus() {
+        godStatusLabel = nil
+        godStatusPanel?.orderOut(nil)
+        orb?.orderFrontRegardless()   // restore the ambient orb once the phase drop is gone
+    }
 
     private func poll() {
         checkReachable { ok in
