@@ -8,6 +8,17 @@ dist/
 .relay/
 *.log
 
+# Voice samples + cloned voices + model weights (Pocket TTS / whisper) — user voice data
+# and large binaries live in ~/.relay, never the repo. Belt-and-suspenders so a stray drop can't
+# be committed (the god harness uses .png fixtures, not audio, so these are safe to ignore repo-wide).
+*.safetensors
+*.wav
+*.mp3
+*.m4a
+*.aiff
+*.ggml
+*.bin
+
 # menu-bar app build output
 packages/menubar/build/
 packages/menubar/Relay.app/
