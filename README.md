@@ -70,6 +70,15 @@ on a small **local model** (or your Claude), synthesized entirely on your machin
 notarized `.dmg`. The rule it proves: an app supplies the skin; the *user's* intelligence comes from
 the broker — no key, no bundled model.
 
+**[God](examples/god)** is the flagship — an ambient, screen-aware assistant that ships *inside* the
+menu-bar app. Double-tap Control, speak, release: it sees your screen (real vision through the daemon),
+answers in a voice you choose, and acts across your whole Mac — opening, typing, clicking — while
+**irreversible** actions (send / delete / pay) hold for a one-tap consent drop in the notch. It keeps a
+**warm session** (it remembers) and works on the **project you pick** in the menu. The notch becomes an
+LED status panel — `Listening → Thinking → Speaking`, a permissions concierge that walks you through
+mic → accessibility → screen, a second-cursor glow, and a dot-matrix wordmark. Same rule as Flow: the
+app is a skin; the intelligence *and the gate* are the broker's. Full spec: [`docs/GOD.md`](docs/GOD.md).
+
 ## Porting existing apps
 
 An app is a small set of runtime **seams**; porting is *substituting* each seam with a broker-backed

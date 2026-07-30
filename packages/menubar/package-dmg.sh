@@ -82,14 +82,28 @@ NODE_VER="$("$RES/node" --version)"
 { echo "node $NODE_VER (arm64)"; echo "agent-sdk $SDK_VER"; echo "built $(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$RES/daemon/RUNTIME"
 say "runtime: node $NODE_VER"
 
+# ---------- 6b. God client (examples/god) + its ws dep — so ⌃⌥ runs the loop from the INSTALLED app ----------
+say "staging God client…"
+mkdir -p "$RES/god"
+cp "$ROOT/examples/god/god.mjs" "$RES/god/god.mjs"
+cp -R "$ROOT/examples/god/lib" "$RES/god/lib"
+cp -R "$ROOT/examples/god/personas" "$RES/god/personas"
+WS_DIR="$(cd "$ROOT" && node -e "process.stdout.write(require('path').dirname(require.resolve('ws/package.json')))" 2>/dev/null || true)"
+[ -n "$WS_DIR" ] && [ -d "$WS_DIR" ] || die "ws package not found — run npm install first"
+mkdir -p "$RES/god/node_modules/ws"
+cp -R "$WS_DIR/." "$RES/god/node_modules/ws/"
+say "God client staged (+ ws)"
+
 # ---------- 7. compile the menubar app + Info.plist ----------
 say "compiling RelayMenuBar.swift…"
 swiftc -O -o "$STAGE/Contents/MacOS/Relay" "$HERE/RelayMenuBar.swift" -framework AppKit -framework SwiftUI
 
 # House fonts (optional; the panel falls back to the system font if the dir is empty).
-if ls "$HERE"/fonts/*.ttf "$HERE"/fonts/*.otf >/dev/null 2>&1; then
-  mkdir -p "$RES/fonts"; cp "$HERE"/fonts/*.ttf "$HERE"/fonts/*.otf "$RES/fonts/" 2>/dev/null || true
-  say "bundled house fonts"
+if ls "$HERE"/fonts/*.ttf >/dev/null 2>&1 || ls "$HERE"/fonts/*.otf >/dev/null 2>&1; then
+  mkdir -p "$RES/fonts"
+  cp "$HERE"/fonts/*.ttf "$RES/fonts/" 2>/dev/null || true   # copy each kind independently — a
+  cp "$HERE"/fonts/*.otf "$RES/fonts/" 2>/dev/null || true   # missing glob must not skip the others
+  say "bundled house fonts ($(ls "$RES/fonts" | tr '\n' ' '))"
 fi
 cp "$HERE/Info.plist" "$STAGE/Contents/Info.plist"
 printf 'APPL????' > "$STAGE/Contents/PkgInfo"
@@ -172,7 +186,9 @@ fi
 # first launch work with no network at all.
 NOTARY_PROFILE="${RELAY_NOTARY_PROFILE:-relay-notary}"
 NOTARIZE=0
-if [ -n "${IDENTITY:-}" ] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+# SKIP_NOTARIZE=1 → fast local iteration builds (signed Developer ID, right-click→Open to run). Real
+# releases leave it unset so the profile drives notarization.
+if [ -z "${SKIP_NOTARIZE:-}" ] && [ -n "${IDENTITY:-}" ] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
   NOTARIZE=1
 fi
 

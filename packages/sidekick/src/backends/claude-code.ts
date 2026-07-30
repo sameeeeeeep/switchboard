@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { query, type CanUseTool, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { query, type CanUseTool, type PermissionResult, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { BYOPErrorCode, ProviderError, SIGNED_OUT_MESSAGE, type CompletionParams } from "@relay/protocol";
 import type { BackendRunContext, ModelBackend } from "./types.js";
 
@@ -101,6 +101,37 @@ function toPrompt(params: CompletionParams): string {
   return "";
 }
 
+/** Split a `data:<media>;base64,<b64>` URL into the SDK's image-source parts. Returns null for a
+ *  non-image or malformed URL so the caller can skip it (attachments stay text-safe). */
+function imageSourceFromDataUrl(dataUrl: string): { media_type: string; data: string } | null {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl);
+  if (!m) return null;
+  const [, mediaType, data] = m;
+  if (!mediaType || !data || !mediaType.startsWith("image/")) return null;
+  return { media_type: mediaType, data };
+}
+
+/**
+ * Build the SDK prompt. Vision-in: when the call carries image attachments (a screenshot, a
+ * reference image), the model must SEE them — not just have them available to `relay__put_blob`.
+ * The SDK's string prompt can't carry pixels, so we hand it a one-message async-iterable whose
+ * content is [text, ...image blocks]. Proven pixel-accurate in spike/god-eye-spike.mjs. No
+ * attachments ⇒ the plain string, byte-for-byte the old path (zero behaviour change).
+ */
+function toSdkPrompt(params: CompletionParams): string | AsyncIterable<SDKUserMessage> {
+  const images = (params.attachments ?? [])
+    .map((a) => imageSourceFromDataUrl(a.dataUrl))
+    .filter((s): s is { media_type: string; data: string } => s !== null);
+  if (images.length === 0) return toPrompt(params);
+  const content = [
+    { type: "text" as const, text: toPrompt(params) },
+    ...images.map((source) => ({ type: "image" as const, source: { type: "base64" as const, ...source } })),
+  ];
+  return (async function* () {
+    yield { type: "user", parent_tool_use_id: null, message: { role: "user", content } } as unknown as SDKUserMessage;
+  })();
+}
+
 export class ClaudeCodeBackend implements ModelBackend {
   id = "claude-code";
 
@@ -154,7 +185,7 @@ export class ClaudeCodeBackend implements ModelBackend {
     let outputTokens = 0;
 
     const q = query({
-      prompt: toPrompt(params),
+      prompt: toSdkPrompt(params),
       options: {
         model: params.model || DEFAULT_MODEL,
         ...(params.system ? { systemPrompt: params.system } : {}), // app persona (brandbrain STUDIO_SYSTEM etc.)

@@ -8,6 +8,8 @@ import AppKit
 import SwiftUI
 import Darwin
 import CoreText
+import ApplicationServices   // AXIsProcessTrusted() — the honest Accessibility check
+import AVFoundation          // microphone authorization
 
 let LABEL = "com.relay.sidekick"
 let PORT: UInt16 = 8787
@@ -54,6 +56,17 @@ func plistState(at path: String = PLIST, bundlePath: String = Bundle.main.bundle
 /// The plist the packaged app installs — same shape the dev installer proved out, but pointing at
 /// the bundle's own runtime. PATH is load-bearing: launchd's default PATH is bare, and both the
 /// daemon's system-claude fallback (warm sessions) and npx-based stdio MCP servers need real bins.
+// Append-only diagnostics I can read from ~/.relay/god-hotkey.log — ground truth for the hotkey path
+// (AXIsProcessTrusted, tap creation, each ⌃⌥ edge), independent of the unified-log visibility quirks.
+func godLog(_ s: String) {
+    let line = "[\(Date())] \(s)\n"
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-hotkey.log")
+    if let d = line.data(using: .utf8) {
+        if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(d); try? h.close() }
+        else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
+}
+
 func writeDaemonPlist(to path: String = PLIST) throws {
     let home = NSHomeDirectory()
     let spec: [String: Any] = [
@@ -72,6 +85,9 @@ func writeDaemonPlist(to path: String = PLIST) throws {
             // a perfectly good Anthropic-signed one sat beside sidekick.mjs unused.
             "RELAY_CLAUDE_CLI": ((Bundle.main.resourcePath ?? "") as NSString)
                 .appendingPathComponent("daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
+            // God is first-party — keep the native listener up so ⌃⌥ can attach on the first press,
+            // even before any native app has registered.
+            "RELAY_NATIVE": "1",
         ],
     ]
     // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
@@ -161,6 +177,8 @@ extension Font {
     static func brico(_ size: CGFloat, _ w: Font.Weight = .semibold) -> Font { .custom("Bricolage Grotesque", size: size).weight(w) }
     static func hanken(_ size: CGFloat, _ w: Font.Weight = .regular) -> Font { .custom("Hanken Grotesk", size: size).weight(w) }
     static func splMono(_ size: CGFloat) -> Font { .custom("Spline Sans Mono", size: size) }
+    // Doto — the dot-matrix display face; Switchboard's wordmark direction (LED/circuit feel).
+    static func doto(_ size: CGFloat, _ w: Font.Weight = .bold) -> Font { .custom("Doto", size: size).weight(w) }
 }
 
 // ---------- the status-bar glyph (matches the chip/panel mark) ----------
@@ -702,7 +720,7 @@ struct Panel: View {
                 RoundedRectangle(cornerRadius: 5).fill(Color.lime).frame(width: 17, height: 17)
                     .overlay(Circle().fill(Color.rail).frame(width: 5, height: 5).offset(x: 4.5, y: -4.5))
                     .shadow(color: Color.lime.opacity(0.4), radius: 6)
-                Text("Switchboard").font(.brico(15, .bold)).foregroundColor(.ink)
+                Text("SWITCHBOARD").font(.doto(11, .black)).kerning(0.5).lineLimit(1).fixedSize().foregroundColor(.ink)
                 Spacer(minLength: 0)
                 Circle().fill(signedOut ? Color.danger : (model.running ? Color.ok : Color.inkFaint)).frame(width: 6, height: 6)
             }
@@ -975,9 +993,9 @@ struct Panel: View {
         }
         .frame(width: 620)
         .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 14)   // room for the tab ears (the shape flares to full width at the top)
         .background(Color.page)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 2))
-        .overlay(UnevenRoundedRectangle(topLeadingRadius: 2, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 2).stroke(Color.edge, lineWidth: 1))
+        .clipShape(NotchDropShape())   // no stroke — the black shape blends into the notch, no grey line
         .ignoresSafeArea()
         .onAppear { breathe = true }
     }
@@ -986,6 +1004,363 @@ struct Panel: View {
 extension Text {
     func kicker() -> some View {
         self.font(.splMono(9.5)).kerning(1.4).foregroundColor(.inkFaint)
+    }
+}
+
+/// The panel silhouette — a shape that DROPS from the notch. The top edge is inset by `topR` and
+/// flares out to full width with CONCAVE corners (the notch "ears"), so the black body reads as one
+/// piece with the notch / black menu bar instead of a hard-cornered rectangle. Convex `botR` rounds
+/// the bottom. `UnevenRoundedRectangle` can't make concave corners — hence a hand-built path.
+/// NOTE: `topR` is the notch-corner feel; pixel-tune it on a real run (0 ⇒ squared top for non-notch).
+struct NotchDropShape: Shape {
+    var ear: CGFloat = 14    // the CSS-tab "ear": top is FULL width, flares in via a concave fillet
+    var botR: CGFloat = 20
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height
+        let e = min(ear, w / 2), b = min(botR, (w - 2 * e) / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))                                                      // top-left outer (on the bar)
+        p.addLine(to: CGPoint(x: w, y: 0))                                                   // flat top edge (against the bar — invisible)
+        p.addQuadCurve(to: CGPoint(x: w - e, y: e), control: CGPoint(x: w - e, y: 0))        // right inverted corner: curves DOWN & in
+        p.addLine(to: CGPoint(x: w - e, y: h - b))                                           // right body side (inset by the ear)
+        p.addQuadCurve(to: CGPoint(x: w - e - b, y: h), control: CGPoint(x: w - e, y: h))    // convex bottom-right
+        p.addLine(to: CGPoint(x: e + b, y: h))                                               // bottom edge
+        p.addQuadCurve(to: CGPoint(x: e, y: h - b), control: CGPoint(x: e, y: h))            // convex bottom-left
+        p.addLine(to: CGPoint(x: e, y: e))                                                   // left body side
+        p.addQuadCurve(to: CGPoint(x: 0, y: 0), control: CGPoint(x: e, y: 0))                // left inverted corner: curves UP & out
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// The panel OUTLINE — sides + bottom only. The top edge sits flush against the black notch/menu bar,
+/// so stroking it drew a wrong line across the top; this open path omits it. Matches NotchDropShape.
+struct NotchDropOutline: Shape {
+    var ear: CGFloat = 14
+    var botR: CGFloat = 20
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height
+        let e = min(ear, w / 2), b = min(botR, (w - 2 * e) / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))                                                      // left top-outer (on the bar)
+        p.addQuadCurve(to: CGPoint(x: e, y: e), control: CGPoint(x: e, y: 0))                // left inverted corner: down & in
+        p.addLine(to: CGPoint(x: e, y: h - b))                                               // left side
+        p.addQuadCurve(to: CGPoint(x: e + b, y: h), control: CGPoint(x: e, y: h))
+        p.addLine(to: CGPoint(x: w - e - b, y: h))                                           // bottom
+        p.addQuadCurve(to: CGPoint(x: w - e, y: h - b), control: CGPoint(x: w - e, y: h))
+        p.addLine(to: CGPoint(x: w - e, y: e))                                               // right side
+        p.addQuadCurve(to: CGPoint(x: w, y: 0), control: CGPoint(x: w - e, y: 0))            // right inverted corner: up & out
+        return p                                                                              // open — the flat top edge between the ears is unstroked
+    }
+}
+
+/// The ambient NOTCH ORB — the resting state of Switchboard, always present at the top-centre
+/// (Dynamic-Island-style progressive disclosure). Three states:
+///   • idle    → a small DOT (lime when ready, red signed-out, slate offline)
+///   • working → a notch-sized PILL that breathes while a model runs (driven by `model.working`)
+///   • hover / click → opens the full panel (the detailed view)
+/// A FIXED hit-area keeps the window one constant size; only the content morphs (no live resizing).
+/// Interaction feel (hover intent/delay, exact y, hit-through) is GUI — tune on a real run.
+struct OrbView: View {
+    @ObservedObject var model: Model
+    @ObservedObject var glow: GlowModel
+    var onOpen: () -> Void
+    @State private var breathe = false
+    private var godLabel: String? {
+        switch glow.state {
+        case .listening: return "Listening"
+        case .thinking: return "Thinking"
+        case .speaking: return "Speaking"
+        default: return nil
+        }
+    }
+    var body: some View {
+        ZStack {
+            if let label = godLabel {
+                // God's live phase in the notch — label + animated waveform (notch-native)
+                HStack(spacing: 9) {
+                    Text(label).font(.hanken(12, .semibold)).foregroundColor(.ink)
+                    TimelineView(.animation) { tl in
+                        let t = tl.date.timeIntervalSinceReferenceDate
+                        HStack(spacing: 2.5) {
+                            ForEach(0..<5, id: \.self) { i in
+                                Capsule()
+                                    .fill(glow.state == .listening ? Color.cyan : Color(red: 1, green: 0.72, blue: 0.3))
+                                    .frame(width: 2.5, height: 4 + 9 * abs(sin(t * 3.2 + Double(i) * 0.7)))
+                            }
+                        }.frame(height: 16)
+                    }
+                }
+                .padding(.horizontal, 13).padding(.vertical, 5)
+                .background(Capsule().fill(Color.raised))
+            } else if model.working {
+                Capsule().fill(Color.lime.opacity(0.92))
+                    .frame(width: 150, height: 20)
+                    .overlay(HStack(spacing: 6) {
+                        Circle().fill(Color.rail).frame(width: 5, height: 5)
+                        Text("working").font(.splMono(9)).foregroundColor(.rail)
+                    })
+                    .shadow(color: Color.lime.opacity(0.5), radius: 7)
+                    .scaleEffect(breathe ? 1.0 : 0.96)
+                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
+            } else {
+                Circle()
+                    .fill(model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.45) : .clear, radius: 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
+        .contentShape(Rectangle())
+        .onHover { if $0 { onOpen() } }
+        .onTapGesture { onOpen() }
+        .onAppear { breathe = true }
+    }
+}
+
+/// God's SECOND CURSOR — not a replacement pointer but a state-reactive GLOW behind
+/// the real cursor, plus a light HALO to mark a target. Reads as presence, not a hijacked pointer.
+enum GlowState { case idle, armed, listening, thinking, speaking, pointing }
+
+final class GlowModel: ObservableObject {
+    @Published var state: GlowState = .idle
+    @Published var cursor: CGPoint = .zero   // overlay-view (top-left) coords, kept in sync with the mouse
+    @Published var target: CGPoint? = nil    // a [POINT] marker, same coords (nil = no mark)
+}
+
+/// The overlay content: a soft aura tracking the cursor (colour/behaviour per state) and, when set,
+/// a pulsing ring at the point God is marking. Full-screen + click-through; shown only when active.
+struct GodGlowView: View {
+    @ObservedObject var m: GlowModel
+    @State private var pulse = false
+    private struct Spark { let dx: CGFloat; let dy: CGFloat; let size: CGFloat; let speed: Double; let phase: Double }
+    private let sparks: [Spark] = [
+        .init(dx: -22, dy: -9, size: 7, speed: 2.1, phase: 0.0),
+        .init(dx: 21, dy: -15, size: 6, speed: 2.7, phase: 1.3),
+        .init(dx: 17, dy: 13, size: 8, speed: 1.8, phase: 2.4),
+        .init(dx: -18, dy: 15, size: 6, speed: 2.4, phase: 3.1),
+        .init(dx: 2, dy: -25, size: 6, speed: 3.0, phase: 0.7),
+        .init(dx: -9, dy: 0, size: 5, speed: 3.3, phase: 4.2),
+    ]
+    private var tint: Color {
+        switch m.state {
+        case .idle: return .clear
+        case .armed: return .lime
+        case .listening: return .cyan
+        case .thinking: return .lime
+        case .speaking: return Color(red: 1, green: 0.72, blue: 0.3)
+        case .pointing: return .lime
+        }
+    }
+    private func captionFor(_ s: GlowState) -> String? {
+        switch s {
+        case .idle: return nil
+        case .armed: return "God"
+        case .listening: return "listening…"
+        case .thinking: return "thinking…"
+        case .speaking: return "speaking…"
+        case .pointing: return "here"
+        }
+    }
+    var body: some View {
+        ZStack {
+            if m.state != .idle {
+                // soft aura
+                Circle()
+                    .fill(RadialGradient(colors: [tint.opacity(0.4), tint.opacity(0)], center: .center, startRadius: 2, endRadius: 32))
+                    .frame(width: 64, height: 64)
+                    .scaleEffect(m.state == .listening ? (pulse ? 1.18 : 0.88) : (m.state == .thinking ? (pulse ? 1.06 : 0.96) : 1.0))
+                    .animation((m.state == .listening || m.state == .thinking) ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default, value: pulse)
+                    .position(m.cursor)
+                // a golden halo ring floating just above the cursor
+                Ellipse()
+                    .stroke(LinearGradient(colors: [Color(red: 1, green: 0.84, blue: 0.36), tint.opacity(0.85)], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
+                    .frame(width: 30, height: 11)
+                    .shadow(color: Color(red: 1, green: 0.84, blue: 0.36).opacity(0.6), radius: 5)
+                    .position(x: m.cursor.x, y: m.cursor.y - 20)
+                // sparkles twinkling around the cursor (SF Symbol so they read as light, not dots)
+                TimelineView(.animation) { tl in
+                    let t = tl.date.timeIntervalSinceReferenceDate
+                    ZStack {
+                        ForEach(0..<sparks.count, id: \.self) { i in
+                            let s = sparks[i]
+                            let tw = 0.5 + 0.5 * sin(t * s.speed + s.phase)
+                            Image(systemName: "sparkle")
+                                .font(.system(size: s.size))
+                                .foregroundColor(tint)
+                                .opacity(tw)
+                                .scaleEffect(0.5 + 0.7 * tw)
+                                .position(x: m.cursor.x + s.dx, y: m.cursor.y + s.dy)
+                        }
+                    }
+                }
+            }
+            if let t = m.target {
+                Circle().stroke(Color.lime.opacity(0.85), lineWidth: 2)
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(pulse ? 1.12 : 0.82)
+                    .opacity(pulse ? 0.3 : 0.95)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                    .position(t)
+            }
+            // A small label pill next to the cursor, so engaging a mode reads at a glance.
+            if let caption = captionFor(m.state) {
+                Text(caption)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.72)))
+                    .overlay(Capsule().stroke(tint.opacity(0.55), lineWidth: 1))
+                    .fixedSize()
+                    .position(x: m.cursor.x + 62, y: m.cursor.y)
+                    .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear { pulse = true }
+    }
+}
+
+/// The native "Allow this app?" consent — as a NOTCH DROP (notch-native), not a stray centered system
+/// alert. Same trust copy, same shape/tokens as the panel; drops from the notch and yields Allow/Deny.
+struct ConsentDrop: View {
+    let name: String
+    let appId: String
+    let reason: String
+    let canDo: String
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "laptopcomputer").font(.system(size: 15)).foregroundColor(.lime))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Allow \u{201C}\(name)\u{201D} to connect?").font(.hanken(14, .semibold)).foregroundColor(.ink)
+                    Text(appId).font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            if !reason.isEmpty {
+                Text("\u{201C}\(reason)\u{201D}").font(.hanken(11)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Can do: \(canDo)").font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+            Text("Only allow an app you installed yourself — identity isn\u{2019}t signature-verified yet.")
+                .font(.splMono(8.5)).foregroundColor(.inkFaint).opacity(0.75).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text("Allow").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
+/// The native Accessibility onboarding — a notch DROP (notch-native), not a terminal walk. It states
+/// the need, opens the exact pane, AND offers the real trick: a draggable app chip you drag straight
+/// into the Accessibility list (`.onDrag` yields the .app bundle URL), instead of hunting via the + button.
+// The permissions God needs, in concierge order: HEAR → ACT → SEE.
+enum GodPerm: CaseIterable {
+    case mic, accessibility, screen
+    var granted: Bool {
+        switch self {
+        case .mic: return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        case .accessibility: return AXIsProcessTrusted()
+        case .screen: return CGPreflightScreenCaptureAccess()
+        }
+    }
+    var title: String {
+        switch self {
+        case .mic: return "Let God hear you"
+        case .accessibility: return "Let God act for you"
+        case .screen: return "Let God see your screen"
+        }
+    }
+    var sub: String {
+        switch self {
+        case .mic: return "Microphone — so ⌃⌃ can listen to your request."
+        case .accessibility: return "Accessibility — to point, click and type. Drag me into the list, or hit Open."
+        case .screen: return "Screen Recording — so God can read what's on your screen."
+        }
+    }
+    var pane: String {
+        switch self {
+        case .mic: return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        case .accessibility: return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        case .screen: return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        }
+    }
+    var icon: String {
+        switch self { case .mic: return "mic.fill"; case .accessibility: return "hand.point.up.left.fill"; case .screen: return "rectangle.inset.filled" }
+    }
+    var needsDrag: Bool { self == .accessibility }   // AX has no programmatic grant → the drag trick
+}
+
+// The permissions CONCIERGE — one notch card at a time, in order, with progress dots. Mic/Screen get a
+// one-tap "Grant" (real system prompt); Accessibility gets Open + a draggable app chip (no grant API).
+struct PermissionGateCard: View {
+    let perm: GodPerm
+    let done: Int          // how many are already granted
+    let total: Int
+    let appIcon: NSImage
+    let appURL: URL
+    var onGrant: () -> Void
+    var onDismiss: () -> Void
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                HStack(spacing: 4) {
+                    ForEach(0..<total, id: \.self) { i in Circle().fill(i < done ? Color.lime : Color.edge).frame(width: 5, height: 5) }
+                }
+                Spacer()
+                Button(action: onDismiss) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint) }.buttonStyle(.plain)
+            }
+            HStack(spacing: 9) {
+                Image(systemName: perm.icon).font(.system(size: 14)).foregroundColor(.lime)
+                    .frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.14)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(perm.title).font(.hanken(13.5, .semibold)).foregroundColor(.ink)
+                    Text("Step \(done + 1) of \(total)").font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(perm.sub).font(.hanken(11)).foregroundColor(.inkDim).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            if perm.needsDrag {
+                HStack(spacing: 8) {
+                    Image(nsImage: appIcon).resizable().frame(width: 18, height: 18)
+                    Text("Switchboard").font(.hanken(11, .medium)).foregroundColor(.ink)
+                    Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.inkFaint)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised))
+                .onDrag { NSItemProvider(contentsOf: appURL) ?? NSItemProvider() }
+            }
+            Button(action: onGrant) {
+                Text(perm.needsDrag ? "Open Accessibility" : "Grant").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                    .padding(.horizontal, 18).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+            }.buttonStyle(.plain)
+        }
+        .padding(16)
+        .frame(width: 300)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
     }
 }
 
@@ -1075,11 +1450,73 @@ final class NoInsetHostingView<V: View>: NSHostingView<V> {
 
 // ---------- app shell ----------
 @MainActor
-final class RelayController: NSObject, NSApplicationDelegate {
+// God wants to DO something irreversible — the notch consent drop (notch-native). Everything else
+// auto-runs; only send/delete/pay/publish reach here. Names the action, Allow / Not now.
+struct ActionConsentDrop: View {
+    let describe: String
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "hand.raised.fill").font(.system(size: 14)).foregroundColor(.lime))
+                    .frame(width: 32, height: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("God wants to act").font(.hanken(13.5, .semibold)).foregroundColor(.ink)
+                    Text("This one's hard to undo — needs your yes.").font(.splMono(9)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(describe.prefix(1).capitalized + describe.dropFirst()).font(.hanken(12)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text("Allow").font(.hanken(11.5, .semibold)).foregroundColor(.rail)
+                        .padding(.horizontal, 18).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(16).frame(width: 320).padding(.horizontal, 14)
+        .background(Color.page).clipShape(NotchDropShape())
+    }
+}
+
+@MainActor final class RelayController: NSObject, NSApplicationDelegate {
+    private var actionPanel: NSPanel!             // the "God wants to act?" consent drop
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
     private var hosting: NSHostingView<Panel>!
+    private var orb: NSPanel!                       // the ambient dot/working-pill at the notch
+    private var orbHosting: NSHostingView<OrbView>!
+    private var glow: NSPanel!                      // the second-cursor glow overlay (click-through)
+    private var glowHosting: NSHostingView<GodGlowView>!
+    private let glowModel = GlowModel()
+    private var consentPanel: NSPanel!             // the notch-drop "Allow this app?" (replaces the NSAlert)
+    private var gatePanel: NSPanel!                // the permissions concierge card (notch drop)
+    private var gateDismissed = false             // user closed the card this session → don't nag again until relaunch
+    private var gateShowingPerm: GodPerm?         // which permission step is currently on screen
+    private var openedByHover = false             // panel opened via orb hover (auto-close on hover-out) vs glyph click
+    private var godArmed = false                  // ⌃⌥ currently held (rising-edge detector for the trigger)
+    private var godRunning = false                // a God loop is in flight — don't stack another
+    private var lastCtrlTap: Date?                // ⌃⌃ double-tap detector
+    private var ctrlWasDown = false
+    private var godStateTimer: Timer?             // polls ~/.relay/god-state → notch listening/thinking/speaking
+    private var godListening = false              // mic is recording your request
+    private var recProc: Process?                 // the ffmpeg mic recorder
+    private var recWav: String?                   // where the clip lands
+    private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
     private var clickMonitor: Any?
+    private var hotKeyMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var mouseMonitor: Any?
+    private var flagsMonitor: Any?
     private var timer: Timer?
     private var phase = 0
     private let model = Model()
@@ -1095,23 +1532,31 @@ final class RelayController: NSObject, NSApplicationDelegate {
             ?? (appId.contains(".") ? String(appId.split(separator: ".").last!).capitalized : appId)
         let reason = body["reason"] as? String ?? ""
         let canDo = (body["canDo"] as? [String])?.joined(separator: " · ") ?? "Use your local models and your Claude, through the gate"
-        let a = NSAlert()
-        a.messageText = "Allow \u{201C}\(name)\u{201D} to connect?"
-        a.informativeText = "\(appId) — a native app on this Mac."
-            + (reason.isEmpty ? "" : "\n\u{201C}\(reason)\u{201D}")
-            + "\n\nCan do: \(canDo)"
-            + "\n\nIdentity isn\u{2019}t signature-verified yet — only allow an app you installed yourself."
-        a.addButton(withTitle: "Allow")
-        a.addButton(withTitle: "Deny")
-        // Make it a real, commanding modal: bring the (accessory) app forward, float the alert above
-        // every other window, and center it — a system-style "allow this app" moment, not a stray popup.
-        NSApp.activate(ignoringOtherApps: true)
-        let win = a.window
-        win.level = .modalPanel
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        win.center()
-        win.makeKeyAndOrderFront(nil)
-        consent?.reply(id, a.runModal() == .alertFirstButtonReturn)
+
+        // A notch DROP, not a centered system alert. Non-blocking: the reply fires on button tap.
+        let reply: (Bool) -> Void = { [weak self] allow in
+            self?.consent?.reply(id, allow)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = ConsentDrop(name: name, appId: appId, reason: reason, canDo: canDo,
+                               onAllow: { reply(true) }, onDeny: { reply(false) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        consentPanel.alphaValue = 0
+        consentPanel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; consentPanel.animator().alphaValue = 1 }
     }
 
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
@@ -1165,15 +1610,31 @@ final class RelayController: NSObject, NSApplicationDelegate {
         panel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.level = .popUpMenu   // above the system menu bar, so the panel can overlap it
         panel.collectionBehavior = [.canJoinAllSpaces, .transient]
         panel.contentView = hosting
 
+        // The ambient orb — always at the notch, morphing dot ↔ working-pill, hover/click opens the panel.
+        orbHosting = NoInsetHostingView(rootView: OrbView(model: model, glow: glowModel, onOpen: { [weak self] in self?.openFromOrb() }))
+        orb = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 168, height: 26), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        orb.isOpaque = false
+        orb.backgroundColor = .clear
+        orb.hasShadow = false
+        orb.level = .popUpMenu
+        orb.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        orb.acceptsMouseMovedEvents = true          // so SwiftUI onHover fires on this non-key panel
+        orb.contentView = orbHosting
+        positionOrb()
+        orb.orderFrontRegardless()
+
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.poll() }
+            MainActor.assumeIsolated { self?.poll(); self?.refreshPermissionGate() }
         }
+        installHotKey()
+        installGlow()
+        refreshPermissionGate()
 
         // FIRST RUN: launching the app IS the user's intent to run the daemon it ships — the
         // landing page promises "Launch it once — it prints a pairing token", so keep it. Auto-
@@ -1203,7 +1664,9 @@ final class RelayController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePopover() {
-        if panel.isVisible { hidePanel(); return }
+        if panel.isVisible { hidePanel() } else { openedByHover = false; showPanel() }
+    }
+    private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
         ollama.refresh()
@@ -1231,7 +1694,332 @@ final class RelayController: NSObject, NSApplicationDelegate {
 
     private func hidePanel() {
         panel.orderOut(nil)
+        openedByHover = false
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
+    }
+
+    // Park the orb centred at the top, just under the menu bar / notch. (menuH is a reasonable
+    // constant — tune per display on a real run; some Macs report a lying menuBarHeight.)
+    private func positionOrb() {
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        let w: CGFloat = 168
+        // Make the orb window span the menu bar EXACTLY (bottom = visibleFrame.maxY, height = the real
+        // menu-bar height — taller on notch Macs), so the centred dot lands between the bar's top and
+        // bottom edges — up on the notch line, not below it. Renders over the bar (popUpMenu level).
+        let menuH = max(screen.frame.maxY - screen.visibleFrame.maxY, 22)
+        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY, width: w, height: menuH), display: true)
+    }
+
+    // Hover/click on the orb → open the full detailed panel (reuses the existing show/position path).
+    @MainActor private func openFromOrb() {
+        if !panel.isVisible { openedByHover = true; showPanel() }
+    }
+
+    // Hover-out closes a HOVER-opened panel: once the cursor leaves both the orb and the panel, put it
+    // away. A glyph CLICK (openedByHover == false) stays open until you click away — so moving the mouse
+    // off after clicking the menu-bar icon doesn't yank it shut.
+    @MainActor private func maybeAutoClosePanel() {
+        guard openedByHover, panel.isVisible else { return }
+        let m = NSEvent.mouseLocation
+        if !panel.frame.insetBy(dx: -6, dy: -6).contains(m) && !orb.frame.insetBy(dx: -6, dy: -6).contains(m) {
+            hidePanel()
+        }
+    }
+
+    // Show the Accessibility onboarding card while the app isn't trusted (unless dismissed this
+    // session); auto-hide the instant it's granted. AXIsProcessTrusted() is the honest, non-prompting read.
+    // The concierge: show the FIRST missing permission (mic → accessibility → screen); advance as each
+    // is granted; hide when all three are in. Polled, so it steps forward on its own.
+    @MainActor private func refreshPermissionGate() {
+        let missing = GodPerm.allCases.filter { !$0.granted }
+        guard let next = missing.first else { gateShowingPerm = nil; gatePanel?.orderOut(nil); return }
+        guard !gateDismissed else { return }
+        if next == gateShowingPerm && gatePanel?.isVisible == true { return }   // already on this step
+        gateShowingPerm = next
+        showPermissionGate(next, done: GodPerm.allCases.count - missing.count)
+    }
+
+    @MainActor private func showPermissionGate(_ perm: GodPerm, done: Int) {
+        let url = Bundle.main.bundleURL
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        let grant: () -> Void = { [weak self] in
+            switch perm {
+            case .mic: AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self?.refreshPermissionGate() } }
+            case .screen: _ = CGRequestScreenCaptureAccess(); Task { @MainActor in self?.refreshPermissionGate() }
+            case .accessibility: NSWorkspace.shared.open(URL(string: perm.pane)!)
+            }
+        }
+        let view = PermissionGateCard(perm: perm, done: done, total: GodPerm.allCases.count, appIcon: icon, appURL: url,
+            onGrant: grant,
+            onDismiss: { [weak self] in self?.gateDismissed = true; self?.gatePanel?.orderOut(nil) })
+        if gatePanel == nil {
+            gatePanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            gatePanel.isOpaque = false
+            gatePanel.backgroundColor = .clear
+            gatePanel.hasShadow = false
+            gatePanel.level = .popUpMenu
+            gatePanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]  // NOT transient — stays while you drag into Settings
+        }
+        gatePanel.contentView = NoInsetHostingView(rootView: view)
+        let size = gatePanel.contentView!.fittingSize
+        gatePanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            gatePanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        gatePanel.orderFrontRegardless()
+    }
+
+    // ⌃⌥ + click anywhere → summon God at the click point the summon gesture. A global monitor needs
+    // Accessibility / Input-Monitoring — exactly what God's setup concierge grants; without it this
+    // silently no-ops, which is honest. Fires only when Switchboard isn't the key app — fine, it's a
+    // menu-bar accessory that's never key.
+    private func installHotKey() {
+        // Double-tap CONTROL (⌃⌃) — Flow's gesture — via a PASSIVE global modifier monitor (NSEvent),
+        // NOT a CGEventTap. A tap needs Input Monitoring; this passive modifier monitor is lighter, which
+        // is exactly why Flow's ⌃⌃ "just works." Diagnostics land in ~/.relay/god-hotkey.log.
+        godLog("installHotKey: AXIsProcessTrusted=\(AXIsProcessTrusted()) — passive ⌃⌃ monitor installed")
+        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] e in
+            Task { @MainActor in self?.onFlags(e.modifierFlags) }
+        }
+    }
+
+    // ⌃⌃ (double-tap Control, alone, within 0.5s) → summon God. ⌃+anything combos are ignored.
+    @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
+        let m = flags.intersection([.control, .option, .command, .shift])
+        if m == [.control] && !ctrlWasDown {
+            ctrlWasDown = true
+            onCtrlTap()
+        } else if m.isEmpty {
+            ctrlWasDown = false
+        } else {
+            ctrlWasDown = flags.contains(.control)
+        }
+    }
+
+    // The gesture grammar: ⌃⌃ (idle) → start listening · single ⌃ (listening) → stop + act ·
+    // single ⌃ (running) → cancel. One key drives the whole loop.
+    @MainActor private func onCtrlTap() {
+        if godListening { stopListeningAndAct() }
+        else if godRunning { cancelGod() }
+        else {
+            let now = Date()
+            if let last = lastCtrlTap, now.timeIntervalSince(last) < 0.5 { lastCtrlTap = nil; startListening() }
+            else { lastCtrlTap = now }
+        }
+    }
+
+    private func ffmpegPath() -> String? {
+        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    // ⌃⌃ → record the mic; the notch shows "Listening". No ffmpeg ⇒ fall back to a straight look.
+    @MainActor private func startListening() {
+        godLog("⌃⌃ → listening")
+        NSSound(named: "Tink")?.play()
+        guard let ffmpeg = ffmpegPath() else { godLog("no ffmpeg — looking without voice"); triggerGod(at: NSEvent.mouseLocation); return }
+        let wav = NSTemporaryDirectory() + "god-rec.wav"
+        try? FileManager.default.removeItem(atPath: wav)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: ffmpeg)
+        p.arguments = ["-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", "-y", wav]
+        p.standardInput = Pipe()   // so we can send 'q' for a clean stop
+        do { try p.run(); recProc = p; recWav = wav; godListening = true; setGlow(.listening) }
+        catch { godLog("mic failed: \(error)"); godListening = false; triggerGod(at: NSEvent.mouseLocation) }
+    }
+
+    // single ⌃ while listening → stop the mic, then run God on what you said.
+    @MainActor private func stopListeningAndAct() {
+        godListening = false
+        NSSound(named: "Pop")?.play()
+        if let p = recProc {
+            if let h = (p.standardInput as? Pipe)?.fileHandleForWriting { try? h.write(contentsOf: Data("q".utf8)); try? h.close() }
+            p.waitUntilExit()
+        }
+        recProc = nil
+        triggerGod(at: NSEvent.mouseLocation, audio: recWav)
+    }
+
+    // single ⌃ while God works → abort the loop.
+    @MainActor private func cancelGod() {
+        godLog("cancelled")
+        NSSound(named: "Pop")?.play()
+        godProc?.terminate(); godProc = nil
+        godStateTimer?.invalidate()
+        godRunning = false; glowModel.target = nil; setGlow(.idle)
+    }
+
+    // After a run, if God held back a risky action, ask for a yes in the notch (the consent drop).
+    @MainActor private func checkPendingAction() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-action.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        try? FileManager.default.removeItem(atPath: path)
+        showActionConsent(json["describe"] as? String ?? "do something", json)
+    }
+
+    @MainActor private func showActionConsent(_ describe: String, _ action: [String: Any]) {
+        let view = ActionConsentDrop(describe: describe,
+            onAllow: { [weak self] in self?.executeGodAction(action); self?.actionPanel?.orderOut(nil) },
+            onDeny: { [weak self] in self?.actionPanel?.orderOut(nil) })
+        if actionPanel == nil {
+            actionPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            actionPanel.isOpaque = false; actionPanel.backgroundColor = .clear; actionPanel.hasShadow = false
+            actionPanel.level = .popUpMenu; actionPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        actionPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = actionPanel.contentView!.fittingSize
+        actionPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            actionPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        }
+        actionPanel.alphaValue = 0; actionPanel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; actionPanel.animator().alphaValue = 1 }
+    }
+
+    // The gated execution — reached ONLY after the human tapped Allow.
+    @MainActor private func executeGodAction(_ a: [String: Any]) {
+        switch a["kind"] as? String {
+        case "open":
+            if let t = a["target"] as? String { let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/open"); p.arguments = [t]; try? p.run() }
+        case "type":
+            if let text = a["text"] as? String {
+                let esc = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                p.arguments = ["-e", "tell application \"System Events\" to keystroke \"\(esc)\""]; try? p.run()
+            }
+        case "click":
+            if let x = (a["x"] as? NSNumber)?.doubleValue, let y = (a["y"] as? NSNumber)?.doubleValue,
+               let w = (a["shotW"] as? NSNumber)?.doubleValue, let h = (a["shotH"] as? NSNumber)?.doubleValue,
+               let screen = NSScreen.main,
+               let cli = ["/opt/homebrew/bin/cliclick", "/usr/local/bin/cliclick"].first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                let sx = Int(x / w * screen.frame.width), sy = Int(y / h * screen.frame.height)
+                let p = Process(); p.executableURL = URL(fileURLWithPath: cli); p.arguments = ["c:\(sx),\(sy)"]; try? p.run()
+            }
+        default: break
+        }
+    }
+
+    // The GOD seam. This is where the native flow lands: ScreenCaptureKit screenshot → daemon
+    // `claude_complete` (+vision, +persona) → parse `[POINT:x,y:label]` → overlay-cursor companion +
+    // voice. `at` is where the user ⌃⌥-clicked — the focus point God reasons about. Until that native
+    // slice ships, summon the panel so the gesture is live end-to-end and the wiring (permission →
+    // global click → handler) is proven. Every write it eventually makes still goes through the gate.
+    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil) {
+        guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
+        // The real ⌃⌥ loop: halo where you asked, then run the PROVEN pipeline against THIS daemon —
+        // god.mjs (attached) screenshots → vision+persona → speaks. Glow = thinking while it runs.
+        if let p = point, let screen = NSScreen.main {
+            glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)
+        }
+        guard let node = nodePath(), let god = godClientPath() else {
+            godLog("triggerGod: node or god.mjs NOT FOUND — opening panel instead")
+            glowModel.target = nil
+            if !panel.isVisible { openedByHover = false; showPanel() }
+            return
+        }
+        godRunning = true
+        setGlow(.thinking)
+        // Poll God's published phase (~/.relay/god-state) so the notch shows listening/thinking/speaking live.
+        godStateTimer?.invalidate()
+        godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.readGodState() }
+        }
+        // Capture the screen HERE (Switchboard holds Screen Recording; the bundled node may not), and
+        // hand the file to god.mjs via GOD_IMAGE so it never has to call screencapture itself.
+        let shot = NSTemporaryDirectory() + "god-shot.jpg"
+        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        cap.arguments = ["-x", "-t", "jpg", shot]
+        try? cap.run(); cap.waitUntilExit()
+        godLog("triggerGod: captured=\(FileManager.default.fileExists(atPath: shot)) spawning \(node) \(god)")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: node)
+        proc.arguments = [god, "act", "Look at my screen and do the single obvious helpful thing if there is one; otherwise just tell me what you see."]
+        proc.currentDirectoryURL = URL(fileURLWithPath: (god as NSString).deletingLastPathComponent)
+        var env = ProcessInfo.processInfo.environment
+        env["GOD_ATTACH"] = "1"    // attach to the running menu-bar daemon, not a private one
+        env["GOD_AUTONOMY"] = "auto"  // acts freely; irreversible things hold back for the consent drop
+        env["GOD_IMAGE"] = shot       // Switchboard-captured screenshot — node needs no Screen Recording grant
+        if let audio = audio { env["GOD_AUDIO"] = audio }   // your spoken request (transcribed by the daemon)
+        env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        proc.environment = env
+        // Capture god.mjs's own output so failures are visible in ~/.relay/god-run.log.
+        let runLog = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-run.log")
+        FileManager.default.createFile(atPath: runLog, contents: nil)
+        if let fh = FileHandle(forWritingAtPath: runLog) { proc.standardOutput = fh; proc.standardError = fh }
+        proc.terminationHandler = { [weak self] _ in Task { @MainActor in self?.godProc = nil; self?.godStateTimer?.invalidate(); self?.godRunning = false; self?.glowModel.target = nil; self?.setGlow(.idle); self?.checkPendingAction() } }
+        godProc = proc
+        do { try proc.run() } catch { godLog("spawn failed: \(error)"); godProc = nil; godStateTimer?.invalidate(); godRunning = false; glowModel.target = nil; setGlow(.idle) }
+    }
+
+    // Map God's published phase to the glow/notch state (drives the notch pill + cursor caption).
+    @MainActor private func readGodState() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
+        let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        switch s {
+        case "listening": glowModel.state = .listening
+        case "thinking": glowModel.state = .thinking
+        case "speaking": glowModel.state = .speaking
+        default: break   // idle handled on termination
+        }
+        if glowModel.state != .idle { glow.orderFrontRegardless() }
+    }
+
+    // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
+    private func nodePath() -> String? {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: BUNDLED_NODE) { return BUNDLED_NODE }
+        let home = NSHomeDirectory()
+        var candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "\(home)/.local/bin/node", "/usr/bin/node"]
+        let nvm = "\(home)/.nvm/versions/node"
+        if let vers = try? fm.contentsOfDirectory(atPath: nvm) {
+            for v in vers.sorted().reversed() { candidates.insert("\(nvm)/\(v)/bin/node", at: 0) }
+        }
+        return candidates.first { fm.fileExists(atPath: $0) }
+    }
+
+    // Locate the God client: bundled in the .app (DMG install) first, then dev in-tree, then an override.
+    private func godClientPath() -> String? {
+        let fm = FileManager.default
+        if let res = Bundle.main.resourcePath {
+            let bundled = (res as NSString).appendingPathComponent("god/god.mjs")
+            if fm.fileExists(atPath: bundled) { return bundled }
+        }
+        // dev: the .app builds at <repo>/packages/menubar/…app, so the repo is three levels up.
+        let dev = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("examples/god/god.mjs").path
+        if fm.fileExists(atPath: dev) { return dev }
+        if let override = ProcessInfo.processInfo.environment["GOD_CLIENT"], fm.fileExists(atPath: override) { return override }
+        return nil
+    }
+
+    private func installGlow() {
+        guard let screen = NSScreen.main else { return }
+        glowHosting = NoInsetHostingView(rootView: GodGlowView(m: glowModel))
+        glow = NotchPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        glow.isOpaque = false
+        glow.backgroundColor = .clear
+        glow.hasShadow = false
+        glow.level = .screenSaver
+        glow.ignoresMouseEvents = true                  // pure decoration — never intercepts a click
+        glow.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        glow.contentView = glowHosting
+        glow.setFrame(screen.frame, display: false)
+        glow.orderOut(nil)                              // shown only while a state is active
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] _ in
+            Task { @MainActor in self?.updateGlowCursor(); self?.maybeAutoClosePanel() }
+        }
+    }
+
+    @MainActor private func updateGlowCursor() {
+        guard let screen = NSScreen.main else { return }
+        let p = NSEvent.mouseLocation                    // global, bottom-left origin
+        glowModel.cursor = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)   // → overlay top-left coords
+    }
+
+    @MainActor private func setGlow(_ s: GlowState) {
+        if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
+        glowModel.state = s
+        if s == .idle { glow.orderOut(nil) } else { updateGlowCursor(); glow.orderFrontRegardless() }
     }
 
     private func poll() {
