@@ -205,10 +205,13 @@ function isRisky(action, spoken) {
 }
 
 const isLocalModel = (m) => m.includes(":") || m.includes("/");
-// Vision needs a real Claude model (tiny local models aren't multimodal here). Prefer the first
-// non-local model the principal was granted; fall back to whatever exists.
+// Vision needs a real Claude model (tiny local models aren't multimodal here). God is an AMBIENT
+// glance-and-help loop, not a reasoning session — so prefer the FASTEST multimodal tier (Haiku)
+// over Opus/Sonnet: a "what's near my pointer?" shouldn't cost an Opus call or its latency. Order:
+// Haiku → any non-local (Sonnet) → whatever exists. GOD_MODEL overrides for power users.
 function pickVisionModel(models) {
-  return models.find((m) => !isLocalModel(m)) || models[0];
+  if (process.env.GOD_MODEL && models.includes(process.env.GOD_MODEL)) return process.env.GOD_MODEL;
+  return models.find((m) => /haiku/i.test(m)) || models.find((m) => !isLocalModel(m)) || models[0];
 }
 
 // ── daemon lifecycle (mirrors Flow's proven plumbing) ─────────────────────────────────────────
@@ -362,14 +365,20 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
     const shot = captureScreen(region);
     log(`captured ${shot.w}×${shot.h}`);
     godState("thinking");
-    const clip = readClipboard();
 
     const model = pickVisionModel(reg.models || []);
     if (!model) throw new Error("no model available — is this Mac signed in to Claude?");
+    // Where the user's cursor is (GOD_POINT="fx,fy", 0–1 fractions of the screen from the ⌃⌃ point),
+    // mapped into THIS image's pixels — so "what's near my pointer?" is answerable. The screenshot
+    // also includes the cursor arrow itself (Swift captures with -C), so God can both see AND locate it.
+    let pointLine = "";
+    const gp = /^([0-9.]+),([0-9.]+)$/.exec(process.env.GOD_POINT || "");
+    if (gp) pointLine = `\n\n[my cursor is at about (${Math.round(+gp[1] * shot.w)}, ${Math.round(+gp[2] * shot.h)}) in this image]`;
+    // NOTE: we deliberately do NOT dump the clipboard into every prompt — it wasted tokens and made
+    // God tangent about "planted" text. Ask for it explicitly if a task needs it.
     const userText =
       (prompt || "What's on my screen? Point me at the most important thing and help.") +
-      `\n\n[screen is ${shot.w}×${shot.h} px]` +
-      (clip ? `\n\n[my clipboard]\n${clip.slice(0, 4000)}` : "");
+      `\n\n[screen is ${shot.w}×${shot.h} px]` + pointLine;
     const proj = activeProject();
     const projLine = proj
       ? `\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.` +

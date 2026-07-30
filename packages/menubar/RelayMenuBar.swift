@@ -2069,10 +2069,11 @@ struct ActionConsentDrop: View {
             MainActor.assumeIsolated { self?.readGodState() }
         }
         // Capture the screen HERE (Switchboard holds Screen Recording; the bundled node may not), and
-        // hand the file to god.mjs via GOD_IMAGE so it never has to call screencapture itself.
+        // hand the file to god.mjs via GOD_IMAGE so it never has to call screencapture itself. `-C`
+        // includes the CURSOR in the shot, so God can actually see where you're pointing.
         let shot = NSTemporaryDirectory() + "god-shot.jpg"
         let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        cap.arguments = ["-x", "-t", "jpg", shot]
+        cap.arguments = ["-x", "-C", "-t", "jpg", shot]
         try? cap.run(); cap.waitUntilExit()
         godLog("triggerGod: captured=\(FileManager.default.fileExists(atPath: shot)) spawning \(node) \(god)")
         let proc = Process()
@@ -2084,6 +2085,13 @@ struct ActionConsentDrop: View {
         env["GOD_AUTONOMY"] = "auto"  // acts freely; irreversible things hold back for the consent drop
         env["GOD_IMAGE"] = shot       // Switchboard-captured screenshot — node needs no Screen Recording grant
         if let audio = audio { env["GOD_AUDIO"] = audio }   // your spoken request (transcribed by the daemon)
+        // Where you're pointing, as 0–1 fractions of the screen (top-left origin) — lets God answer
+        // "what's near my pointer?" precisely, in concert with the cursor now visible in the shot.
+        if let p = point, let screen = NSScreen.main, screen.frame.width > 0, screen.frame.height > 0 {
+            let fx = (p.x - screen.frame.minX) / screen.frame.width
+            let fy = (screen.frame.maxY - p.y) / screen.frame.height
+            env["GOD_POINT"] = String(format: "%.4f,%.4f", fx, fy)
+        }
         env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         proc.environment = env
         // Capture god.mjs's own output so failures are visible in ~/.relay/god-run.log.
