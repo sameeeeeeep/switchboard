@@ -69,6 +69,31 @@ func godLog(_ s: String) {
 
 func writeDaemonPlist(to path: String = PLIST) throws {
     let home = NSHomeDirectory()
+    var envVars: [String: String] = [
+        "HOME": home,
+        "PATH": "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        // Point warm sessions and claudeBin() checks at the CLI this bundle SHIPS. Without
+        // this the daemon hunted the system PATH for a claude the user may not have, while
+        // a perfectly good Anthropic-signed one sat beside sidekick.mjs unused.
+        "RELAY_CLAUDE_CLI": ((Bundle.main.resourcePath ?? "") as NSString)
+            .appendingPathComponent("daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
+        // God is first-party — keep the native listener up so ⌃⌥ can attach on the first press,
+        // even before any native app has registered.
+        "RELAY_NATIVE": "1",
+        // STT for God's voice — the FALLBACK: Flow's whisper-stt.mjs adapter (OpenAI `whisper
+        // --model tiny`, on-device, Homebrew PATH prepended). Used when whisper.cpp isn't present.
+        "RELAY_STT_CMD": "\(BUNDLED_NODE) " + ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("god/whisper-stt.mjs"),
+    ]
+    // FAST STT: if whisper.cpp + a ggml model are installed, prefer them — localSTT checks WHISPER_BIN
+    // before the STT_CMD fallback, and whisper.cpp is ~0.5s warm vs OpenAI whisper's ~4s. Detected at
+    // plist-write time; the launcher's plistEnvOutdated refresh re-runs this after an install.
+    let wcpp = ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+    let mdir = (home as NSString).appendingPathComponent(".relay/models")
+    let model = (try? FileManager.default.contentsOfDirectory(atPath: mdir))?.first { $0.hasSuffix(".bin") && ($0.contains("base.en") || $0.contains("ggml")) }
+    if let wcpp = wcpp, let model = model {
+        envVars["RELAY_WHISPER_BIN"] = wcpp
+        envVars["RELAY_WHISPER_MODEL"] = (mdir as NSString).appendingPathComponent(model)
+    }
     let spec: [String: Any] = [
         "Label": LABEL,
         "ProgramArguments": [BUNDLED_NODE, BUNDLED_ENTRY],
@@ -77,23 +102,7 @@ func writeDaemonPlist(to path: String = PLIST) throws {
         "StandardOutPath": LOG_FILE,
         "StandardErrorPath": LOG_FILE,
         "WorkingDirectory": home,
-        "EnvironmentVariables": [
-            "HOME": home,
-            "PATH": "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-            // Point warm sessions and claudeBin() checks at the CLI this bundle SHIPS. Without
-            // this the daemon hunted the system PATH for a claude the user may not have, while
-            // a perfectly good Anthropic-signed one sat beside sidekick.mjs unused.
-            "RELAY_CLAUDE_CLI": ((Bundle.main.resourcePath ?? "") as NSString)
-                .appendingPathComponent("daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
-            // God is first-party — keep the native listener up so ⌃⌥ can attach on the first press,
-            // even before any native app has registered.
-            "RELAY_NATIVE": "1",
-            // STT for God's voice: the SAME proven path Flow uses — the whisper-stt.mjs adapter runs
-            // OpenAI `whisper --model tiny` (on-device) and prepends the Homebrew PATH itself so it's
-            // found from a launchd-spawned daemon. Without this the menubar daemon has no STT and God
-            // can't hear you (returns "no local STT"), so it falls back to a generic screen answer.
-            "RELAY_STT_CMD": "\(BUNDLED_NODE) " + ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("god/whisper-stt.mjs"),
-        ],
+        "EnvironmentVariables": envVars,
     ]
     // launchd opens the log path at spawn — make sure ~/.relay exists (0700, same as the daemon).
     try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true,
@@ -1560,6 +1569,9 @@ struct ActionConsentDrop: View {
     private var godListening = false              // mic is recording your request
     private var recorder: AVAudioRecorder?        // in-process mic capture — makes THIS app the TCC mic client
     private var recWav: String?                   // where the clip lands
+    private var dictating = false                 // ⌃⌥ hold-to-dictate in progress (raw STT → paste, no God)
+    private var dictateRecorder: AVAudioRecorder? // separate recorder for the dictation gesture
+    private var dictateWav: String?
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
@@ -1856,8 +1868,18 @@ struct ActionConsentDrop: View {
         }
     }
 
-    // ⌃⌃ (double-tap Control, alone, within 0.5s) → summon God. ⌃+anything combos are ignored.
+    // Two gestures on one monitor:
+    //   ⌃⌥ HOLD  → dictation (raw whisper transcript pasted at the cursor — no God, no cleanup)
+    //   ⌃⌃ tap   → summon God (see/hear/help)
     @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
+        let ctrlOpt = flags.contains(.control) && flags.contains(.option) && !flags.contains(.command) && !flags.contains(.shift)
+        // ⌃⌥ hold-to-dictate takes priority: while it's held we record; the moment either key lifts we
+        // transcribe + paste. (Ignore ⌃⌃ handling entirely while dictating.)
+        if dictating {
+            if !ctrlOpt { stopDictationAndPaste() }
+            return
+        }
+        if ctrlOpt { startDictation(); return }
         let m = flags.intersection([.control, .option, .command, .shift])
         if m == [.control] && !ctrlWasDown {
             ctrlWasDown = true
@@ -1867,6 +1889,66 @@ struct ActionConsentDrop: View {
         } else {
             ctrlWasDown = flags.contains(.control)
         }
+    }
+
+    // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —
+    //    a pure Wispr-Flow-style dictation gesture folded in as God's sibling. ─────────────────────────
+    private func whisperCliPath() -> String? {
+        ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+    }
+    private func whisperModelPath() -> String? {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/models")
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return nil }
+        // Prefer an English base model, else any ggml .bin.
+        let pick = files.first { $0.hasSuffix(".bin") && $0.contains("base.en") } ?? files.first { $0.hasSuffix(".bin") && $0.contains("ggml") }
+        return pick.map { (dir as NSString).appendingPathComponent($0) }
+    }
+
+    @MainActor private func startDictation() {
+        guard !godRunning, !godListening else { return }   // don't collide with a God summon
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { refreshPermissionGate(); return }
+        guard whisperCliPath() != nil, whisperModelPath() != nil else { toast("Dictation needs whisper.cpp — brew install whisper-cpp + a ggml model in ~/.relay/models"); return }
+        let wav = NSTemporaryDirectory() + "god-dictate.wav"
+        try? FileManager.default.removeItem(atPath: wav)
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: 16000.0, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ]
+        do {
+            let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
+            guard rec.record() else { return }
+            NSSound(named: "Tink")?.play()
+            dictateRecorder = rec; dictateWav = wav; dictating = true
+            showGodStatus("Dictating", accent: .cyan, pattern: .listening)
+        } catch { dictating = false; godLog("dictation record failed: \(error.localizedDescription)") }
+    }
+
+    @MainActor private func stopDictationAndPaste() {
+        dictating = false
+        dictateRecorder?.stop(); dictateRecorder = nil
+        NSSound(named: "Pop")?.play()
+        showGodStatus("Transcribing", accent: .lime, pattern: .thinking)
+        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); return }
+        // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then paste on the main actor.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
+            p.arguments = ["-m", model, "-f", wav, "-nt", "-np"]
+            let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+            try? p.run(); p.waitUntilExit()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let text = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            Task { @MainActor in self.hideGodStatus(); self.pasteText(text) }
+        }
+    }
+
+    // Put the raw transcript on the clipboard and paste it at the current focus (⌘V). Raw text — no
+    // model cleanup, which is the point of the dictation gesture.
+    @MainActor private func pasteText(_ text: String) {
+        guard !text.isEmpty else { return }
+        let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string)
+        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
+        try? p.run()
     }
 
     // The gesture grammar: ⌃⌃ (idle) → start listening · single ⌃ (listening) → stop + act ·
@@ -2001,7 +2083,15 @@ struct ActionConsentDrop: View {
     @MainActor private func executeGodAction(_ a: [String: Any]) {
         switch a["kind"] as? String {
         case "open":
-            if let t = a["target"] as? String { let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/open"); p.arguments = [t]; try? p.run() }
+            // DWIM like god.mjs's openArgs: URL/scheme → open it; path → open the file; else it's an
+            // APP NAME and needs `-a` (bare `open Calendar` looks for a file, not the app, and no-ops).
+            if let t = (a["target"] as? String)?.trimmingCharacters(in: .whitespaces) {
+                let isURL = t.range(of: "^[a-z][a-z0-9+.-]*://", options: [.regularExpression, .caseInsensitive]) != nil
+                    || t.range(of: "^(mailto|tel|facetime|sms):", options: [.regularExpression, .caseInsensitive]) != nil
+                let isPath = t.hasPrefix("/") || t.hasPrefix("~") || t.hasPrefix(".")
+                let args = (isURL || isPath) ? [t] : ["-a", t]
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/open"); p.arguments = args; try? p.run()
+            }
         case "type":
             if let text = a["text"] as? String {
                 let esc = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")

@@ -163,10 +163,19 @@ function keyComboOsa(combo) {
   return `tell application "System Events" to ${press}${using}`;
 }
 // Execute a CONFIRMED action. Writes only reach here after the human said yes (auto-mode, the TTY
+// `open <x>` DWIM: a URL/scheme → open it; an absolute/home path → open that file; anything else is
+// an APP NAME and needs `-a` (bare `open Calendar` looks for a FILE named Calendar and silently does
+// nothing — the "said opening Calendar, did nothing" bug).
+function openArgs(target) {
+  const t = String(target).trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) || /^(mailto|tel|facetime|sms):/i.test(t)) return [t];  // URL/scheme
+  if (t.startsWith("/") || t.startsWith("~") || t.startsWith(".")) return [t];                     // a path
+  return ["-a", t];                                                                                 // an app name
+}
 // prompt, or the notch consent drop). `reg` is needed only for RUN (the daemon tool call).
 async function runAction(a, shot, reg) {
   if (process.env.GOD_DRYRUN === "1") return `[dry-run] would ${describeAction(a, shot)}`; // headless harness: no side effects
-  if (a.kind === "open") { spawnSync("open", [a.target]); return `opened ${a.target}`; }
+  if (a.kind === "open") { spawnSync("open", openArgs(a.target)); return `opened ${a.target}`; }
   if (a.kind === "type") { spawnSync("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(a.text)}`]); return `typed`; }
   if (a.kind === "key") { const osa = keyComboOsa(a.combo); if (!osa) return `couldn't parse key combo “${a.combo}”`; spawnSync("osascript", ["-e", osa]); return `pressed ${a.combo}`; }
   if (a.kind === "run") return runToolCall(reg, a.tool, a.args);
