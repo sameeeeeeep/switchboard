@@ -139,3 +139,28 @@ Flow stays runnable standalone.
   (§6). Proven: `examples/god/hands.test.mjs`, `packages/sidekick/spike/god-run-spike.mjs`.
 - **Still ahead:** the agentic loop, AX-tree targeting, the dynamic canvas, Flow fold-in, and rolling
   the dot-matrix language out across the rest of the UI.
+
+---
+
+## 10. The voice — a cloned voice as an opt-in capability
+
+God speaks a **cloned** voice on-device (drag a `.wav` into Settings → it clones → God sounds like
+that). The engine is Kyutai **Pocket TTS**, but on Apple Silicon's **native MLX** form — not torch:
+
+- **The efficient form.** `pocket-tts-mlx` (Metal, no torch) → **~373 MB venv** (was 873 MB), model
+  load ~0.7s, **cloning a voice ~0.02s**, warm synthesis ~1s for ~3s of audio (~3× real-time).
+- **Not bundled.** The base DMG stays lean (~110 MB). The engine installs **on demand** —
+  `examples/god/tts/install-voice-engine.sh` builds the MLX venv, drops the server at
+  `~/.relay/tts/god-tts-server.py`, and loads the `com.relay.godtts` LaunchAgent (`:7897`). This is
+  the "Enable voice cloning" capability install *and* the fresh-Mac path. Idempotent.
+- **The service** (`examples/god/tts/god-tts-server.py`): persistent FastAPI, loads the model once,
+  clones from `~/.relay/voices/<name>.wav`, serves `/health · /voices · /clone · /speak`. All MLX
+  work is pinned to **one worker thread** (Metal streams are thread-local — a web server's per-request
+  threads otherwise fail with "no Stream(gpu, 0)"). `companion.mjs` POSTs `/speak`; if the service is
+  down, God falls back to macOS `say` — a God never goes mute.
+- **Two caveats, honest:** (1) `pocket-tts-mlx` 0.2.1 mistranslates torch's 2-arg `.transpose(-1,-2)`
+  as `mx.transpose` (needs a full permutation) — cloning crashes until patched with `mx.swapaxes`; we
+  patch it at server startup (a PR upstream would retire the patch). (2) Cloning uses the **gated**
+  `kyutai/pocket-tts` weights, so a fresh Mac needs `hf auth login` + accepting the model terms.
+- **Next:** register this as the daemon's `claude_speak` media capability (same shape as
+  `claude_transcribe` for STT), so any wrapp — not just God — can speak through it.

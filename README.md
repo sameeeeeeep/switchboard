@@ -42,7 +42,7 @@ mode); nothing bypasses it.
 | `claude_storage` | a private per-origin folder; **`bind`** points it at a real project folder | reads free; `bind` = path consent |
 | `claude_context` | shared, cross-app **context** (publish / read the one you're lent) | selection = consent; never enumerable |
 | `claude_callTool` | any MCP tool / claude.ai connector the user granted | read auto · write per-action |
-| `claude_speak` | on-device text-to-speech — a local TTS server or macOS `say` | local · no cloud, no credits |
+| `claude_speak` | on-device text-to-speech — a **cloned voice** (Kyutai Pocket TTS on MLX), a local TTS server, or macOS `say` | local · no cloud, no credits |
 | `claude_transcribe` | on-device speech-to-text — a local whisper / STT server (mirror of `speak`) | local · no cloud, no credits |
 
 **Context can be backed by a source you already keep** — a published Google Sheet's CSV is fetched and
@@ -72,7 +72,8 @@ the broker — no key, no bundled model.
 
 **[God](examples/god)** is the flagship — an ambient, screen-aware assistant that ships *inside* the
 menu-bar app. Double-tap Control, speak, release: it sees your screen (real vision through the daemon),
-answers in a voice you choose, and acts across your whole Mac — opening, typing, clicking — while
+answers in a voice you **clone** (on-device, Kyutai Pocket TTS on Apple's MLX — no cloud, no credits),
+and acts across your whole Mac — opening, typing, clicking — while
 **irreversible** actions (send / delete / pay) hold for a one-tap consent drop in the notch. It keeps a
 **warm session** (it remembers) and works on the **project you pick** in the menu. The notch becomes an
 LED status panel — `Listening → Thinking → Speaking`, a permissions concierge that walks you through
