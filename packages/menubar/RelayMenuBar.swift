@@ -2770,6 +2770,8 @@ struct ActionConsentDrop: View {
     private var godWeb: GodWebWindow?
     private var driveRunning = false
     private var driveName = "Roast"          // display name of the wrapp being driven
+    private var lastDrive: (url: URL, tool: String, input: String?, name: String)?   // for Regenerate
+    private var driveGeneration = 0          // bumps per drive; a superseded run's late result is dropped
     @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast") {
         let envURL = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"].flatMap(URL.init(string:))
         guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
@@ -2778,6 +2780,11 @@ struct ActionConsentDrop: View {
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
+        // One drive at a time — a new ask SUPERSEDES the old run (its window closes; its late result
+        // is dropped by the generation check below), never two widgets fighting over the notch.
+        if driveRunning, let old = godWeb { old.onUserClosed = nil; old.close() }
+        driveGeneration += 1
+        lastDrive = (url, tool, input, wrappName)
         driveName = wrappName
         let web = GodWebWindow(url: url, token: token)
         godWeb = web
@@ -2795,8 +2802,12 @@ struct ActionConsentDrop: View {
             // tool reads the one it declared (extra keys are ignored by the execute destructuring).
             let text = input ?? "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
             let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text]
+            let gen = self.driveGeneration
             web.drive(tool: tool, input: args) { result in
-                Task { @MainActor in self.driveFinished(result) }
+                Task { @MainActor in
+                    guard gen == self.driveGeneration else { return }   // superseded — drop the late result
+                    self.driveFinished(result)
+                }
             }
         })
     }
@@ -2830,8 +2841,15 @@ struct ActionConsentDrop: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in self?.hideGodStatus() }
             } else {
                 // User went elsewhere (or never opened the window) → the result is a notch notification.
+                // Regenerate re-runs the SAME drive (fresh generation, same input).
                 showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: title, openLabel: "Show the wrapp",
-                    result: .text(String(body.prefix(900)))), onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() })
+                    result: .text(String(body.prefix(2400)))),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() },
+                    onRegen: { [weak self] in
+                        guard let self, let d = self.lastDrive else { return }
+                        self.godWeb?.close()
+                        self.driveWrappLive(pageURL: d.url, tool: d.tool, input: d.input, wrappName: d.name)
+                    })
             }
         case .failure(let e):
             showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",

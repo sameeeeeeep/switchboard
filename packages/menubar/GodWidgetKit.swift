@@ -136,10 +136,22 @@ struct DragChip: View {
 }
 struct ActionRow: View {
     let openLabel: String; var draggable: Bool = true; var canRegen: Bool = true; var file: String? = nil
+    var copyText: String? = nil                      // what Copy puts on the pasteboard (text results)
     var onOpen: () -> Void = {}; var onRegen: () -> Void = {}
+    @State private var copied = false
     var body: some View {
         HStack(spacing: WK.s2) {
-            if draggable { DragChip(file: file) } else { WKActionButton(icon: "doc.on.doc", label: "Copy") }
+            if draggable {
+                DragChip(file: file)
+            } else {
+                WKActionButton(icon: copied ? "checkmark" : "doc.on.doc", label: copied ? "Copied" : "Copy") {
+                    guard let t = copyText, !t.isEmpty else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(t, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
+                }
+            }
             if canRegen { WKActionButton(icon: "arrow.clockwise", label: "Regenerate", action: onRegen) }
             Spacer(minLength: WK.s3)
             WKActionButton(icon: "arrow.up.right.square.fill", label: openLabel, primary: true, action: onOpen)
@@ -236,12 +248,20 @@ struct ResultCards: View {
 }
 struct ResultText: View {
     let text: String
-    var body: some View {
+    private var inner: some View {
         Text(text).font(.hanken(12.5)).foregroundColor(.ink).lineSpacing(4)
             .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
             .padding(WK.s4)
-            .background(RoundedRectangle(cornerRadius: WK.rMd).fill(Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(Color.edge, lineWidth: WK.hair))
+    }
+    var body: some View {
+        // Long results scroll INSIDE the widget instead of stretching the drop taller than the screen
+        // (same containment rule as the panel's connection list).
+        Group {
+            if text.count > 700 { ScrollView(showsIndicators: false) { inner }.frame(maxHeight: 340) }
+            else { inner }
+        }
+        .background(RoundedRectangle(cornerRadius: WK.rMd).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(Color.edge, lineWidth: WK.hair))
     }
 }
 struct WorkingCanvas: View {
@@ -323,12 +343,15 @@ struct NotchWidget: View {
         case .cards(let cap, let items):
             VStack(alignment: .leading, spacing: WK.s4) {
                 ResultCards(items: items); CaptionLine(text: cap)
-                ActionRow(openLabel: spec.openLabel, draggable: false, onOpen: onOpen, onRegen: onRegen)
+                ActionRow(openLabel: spec.openLabel, draggable: false,
+                          copyText: items.map { "\($0.label) — \($0.text)" }.joined(separator: "\n\n"),
+                          onOpen: onOpen, onRegen: onRegen)
             }
         case .text(let body):
             VStack(alignment: .leading, spacing: WK.s4) {
                 ResultText(text: body)
-                ActionRow(openLabel: spec.openLabel, draggable: false, onOpen: onOpen, onRegen: onRegen)
+                ActionRow(openLabel: spec.openLabel, draggable: false, copyText: body,
+                          onOpen: onOpen, onRegen: onRegen)
             }
         }
     }
