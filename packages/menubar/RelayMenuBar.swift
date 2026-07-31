@@ -3655,7 +3655,13 @@ struct ActionConsentDrop: View {
         case "browser", "window", "notch":
             if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
         case "god":
-            triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help using your skill. Keep it to one short question first.")
+            // The god-skill surface can't actually LOAD a skill yet (components.skills has no backing
+            // content — resolving "yc/register" finds nothing), so the old name+tagline roleplay just
+            // stalled: God spoke one line, the process exited, glow went thinking→idle = "thinking, then
+            // nothing." Prefer the wrapp's real page when it has one; roleplay only as a last resort.
+            // (Real fix later: pass components.skills to god.mjs + load the skill content there.)
+            if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+            else { triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help. Keep it to one short question first.") }
         case "batch":
             let action = l.components.workflows?.first.map { String($0.split(separator: "/").last ?? Substring($0)) } ?? "run"
             triggerGod(instruction: "Run the \(l.name) wrapp's \(action) step — call its tool through the gate. If it needs input, ask me one short question first.")
