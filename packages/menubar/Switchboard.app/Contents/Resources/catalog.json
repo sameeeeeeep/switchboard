@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 29,
+  "count": 41,
   "listings": [
     {
       "id": "bank",
@@ -681,6 +681,246 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "actions",
+      "name": "Action Items",
+      "tagline": "Notes or a transcript into a clean checklist.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/actions.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "explainthis",
+      "name": "Explain This",
+      "tagline": "Turn confusing text into plain English.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/explainthis.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "name": "Extract",
+      "tagline": "Pull key fields into a clean labeled list.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/extract.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "gist",
+      "name": "Gist",
+      "tagline": "Paste anything, get a tight TL;DR.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/gist.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "nameit",
+      "name": "Name It",
+      "tagline": "Six strong name options, each with a rationale.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/nameit.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "polish",
+      "name": "Polish",
+      "tagline": "Proofread and clarify — your voice intact.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/polish.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "recap",
+      "name": "Recap",
+      "tagline": "Long doc into TL;DR, key points, decisions, next steps.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/recap.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "rephrase",
+      "name": "Rephrase",
+      "tagline": "Rewrite text in any tone — meaning kept.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/rephrase.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "name": "Reply",
+      "tagline": "Three replies to any message — concise, warm, firm.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/reply.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "snap",
+      "name": "Snap Answer",
+      "tagline": "One question, one direct answer — no chat thread.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/snap.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "translate",
+      "name": "Translate",
+      "tagline": "Translate any text, tone preserved.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/translate.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "unjargon",
+      "name": "Unjargon",
+      "tagline": "Acronyms, legalese, and jargon into plain English.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/unjargon.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
         }
       ]
     },
