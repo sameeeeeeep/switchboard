@@ -2740,42 +2740,47 @@ struct ActionConsentDrop: View {
     //   like a notification. "Show the wrapp" flips notch→window; closing the window flips back.
     private var godWeb: GodWebWindow?
     private var driveRunning = false
-    @MainActor func driveWrappLive() {
-        let urlStr = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"] ?? "http://localhost:5188/roast.html"
-        guard let url = URL(string: urlStr) else { return }
+    private var driveName = "Roast"          // display name of the wrapp being driven
+    @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast") {
+        let envURL = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"].flatMap(URL.init(string:))
+        guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No pairing token", openLabel: "Open panel",
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
+        driveName = wrappName
         let web = GodWebWindow(url: url, token: token)
         godWeb = web
         driveRunning = true
         web.onUserClosed = { [weak self] in   // window closed mid-run → fall back to the notch surface
             guard let self, self.driveRunning else { return }
             self.hideGodStatus()
-            self.showDriveWorking("Running roast_run on your Claude…")
+            self.showDriveWorking("Running \(tool) on your Claude…")
         }
         showDriveWorking("Opening the wrapp, waiting for its tools…")
         web.open(visible: false, ready: { [weak self] in    // notch is the surface; window loads offscreen
             guard let self else { return }
-            if !(self.godWeb?.isShown ?? false) { self.showDriveWorking("Running roast_run on your Claude (may take ~30–90s)…") }
-            let target = "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
-            web.drive(tool: "roast_run", input: ["target": target]) { result in
+            if !(self.godWeb?.isShown ?? false) { self.showDriveWorking("Running \(tool) on your Claude (may take ~30–90s)…") }
+            // Every skill/wrapp tool takes ONE primary string — send it under the common keys; each
+            // tool reads the one it declared (extra keys are ignored by the execute destructuring).
+            let text = input ?? "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
+            let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text]
+            web.drive(tool: tool, input: args) { result in
                 Task { @MainActor in self.driveFinished(result) }
             }
         })
     }
     /// State 1 — the notch widget as the drive surface. Primary action flips to the window.
     @MainActor private func showDriveWorking(_ line: String) {
-        showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Show the wrapp",
+        showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "God is driving \(driveName)…", openLabel: "Show the wrapp",
             result: .working(line)), onOpen: { [weak self] in self?.driveToWindow() })
     }
     /// notch → window: the wrapp becomes the surface; the notch shrinks to the running pill.
     @MainActor private func driveToWindow() {
         hideNotchWidget()
         godWeb?.front()
-        if driveRunning { showGodStatus("Roast · running", accent: .lime, pattern: .working) }
+        if driveRunning { showGodStatus("\(driveName) · running", accent: .lime, pattern: .working) }
     }
     @MainActor private func driveFinished(_ result: Result<Any, Error>) {
         driveRunning = false
@@ -2783,20 +2788,24 @@ struct ActionConsentDrop: View {
         hideGodStatus()
         switch result {
         case .success(let v):
+            // Tools return small JSON objects with differing keys — surface the best string we find.
             let d = v as? [String: Any]
-            let roast = (d?["roast"] as? String) ?? String(describing: v)
-            let angle = (d?["angle"] as? String) ?? "The roast"
+            let title = (d?["angle"] as? String) ?? (d?["title"] as? String) ?? driveName
+            let body = ["roast", "reply", "answer", "gist", "text", "result", "summary", "explanation", "translation", "polished", "rewrite"]
+                .compactMap { d?[$0] as? String }.first
+                ?? (d?.values.compactMap { $0 as? String }.max(by: { $0.count < $1.count }))
+                ?? String(describing: v)
             if userIsOnWindow {
-                // The wrapp's own UI already shows the roast — just flash "done" at the notch, no widget.
-                showGodStatus("Roast · done", accent: .ok, pattern: .speaking)
+                // The wrapp's own UI already shows the result — just flash "done" at the notch.
+                showGodStatus("\(driveName) · done", accent: .ok, pattern: .speaking)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in self?.hideGodStatus() }
             } else {
                 // User went elsewhere (or never opened the window) → the result is a notch notification.
-                showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: angle, openLabel: "Show the wrapp",
-                    result: .text(String(roast.prefix(900)))), onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() })
+                showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: title, openLabel: "Show the wrapp",
+                    result: .text(String(body.prefix(900)))), onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() })
             }
         case .failure(let e):
-            showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "Drive failed", openLabel: "Open panel",
+            showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
                 result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
         }
@@ -3156,6 +3165,18 @@ struct ActionConsentDrop: View {
     // The gated execution — reached ONLY after the human tapped Allow.
     @MainActor private func executeGodAction(_ a: [String: Any]) {
         switch a["kind"] as? String {
+        case "drive":
+            // The VOICE wire: "make me a gist of this" → god.mjs emits [DRIVE:<wrapp> <input>] →
+            // consent Allow lands here → the widget grows from the notch while the wrapp runs.
+            let id = (a["wrapp"] as? String ?? "").lowercased()
+            let input = a["input"] as? String
+            if let l = readCatalog().first(where: { $0.id == id }), let s = l.components.ui?.url, let u = URL(string: s) {
+                driveWrappLive(pageURL: u, tool: "\(id)_run", input: input, wrappName: l.name)
+            } else {
+                showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No wrapp “\(id)”", openLabel: "Open store",
+                    result: .text("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
+            }
         case "open":
             // DWIM like god.mjs's openArgs: URL/scheme → open it; path → open the file; else it's an
             // APP NAME and needs `-a` (bare `open Calendar` looks for a file, not the app, and no-ops).
