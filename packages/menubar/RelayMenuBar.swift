@@ -2886,7 +2886,12 @@ struct ActionConsentDrop: View {
                 showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: title, openLabel: "Show the wrapp",
                     result: widgetResult(from: v)),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() },
-                    onRegen: regen)
+                    onRegen: regen,
+                    onSteer: { [weak self] chip in   // steer chips re-run the drive with the nudge folded into the input
+                        guard let self, let ld = self.lastDrive else { return }
+                        let steered = (ld.input ?? "") + "\n\n(Adjust: \(chip))"
+                        self.godWeb?.close(); self.driveWrappLive(pageURL: ld.url, tool: ld.tool, input: steered, wrappName: ld.name)
+                    })
             }
         case .failure(let e):
             showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
