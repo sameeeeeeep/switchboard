@@ -1,0 +1,28 @@
+{
+  "id": "batch",
+  "name": "Batch",
+  "tagline": "Run one prompt across a whole list.",
+  "category": "agent",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://batch.thelastprompt.ai"
+    },
+    "workflows": [
+      "batch/run"
+    ]
+  },
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
+  ]
+}

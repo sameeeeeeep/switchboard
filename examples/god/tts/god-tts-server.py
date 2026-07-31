@@ -145,6 +145,7 @@ def speak(s: Speak):
     wav = _on_gpu(_synth, s.voice, text)
     if wav is None:
         return JSONResponse({"error": f"no voice '{s.voice}'"}, status_code=404)
+    _touch()   # refresh the keep-warm window from this real use
     return Response(content=wav, media_type="audio/wav")
 
 
@@ -178,6 +179,7 @@ def openai_speech(s: OpenAISpeech):
     wav = _on_gpu(_synth, voice, text)
     if wav is None:
         return JSONResponse({"error": f"no voice '{voice}'"}, status_code=404)
+    _touch()   # refresh the keep-warm window from this real use
     return Response(content=wav, media_type="audio/wav")
 
 
@@ -191,10 +193,32 @@ def _warm():
         print(f"[god-tts] warmup failed: {e}", flush=True)
 
 
+# ── keep-warm (Ollama-style keep_alive) ──────────────────────────────────────────────────────────
+# The FIRST synth after idle is a ~22s Metal-kernel cold-compile; warm ones are ~3s. So, exactly like a
+# local model's keep_alive: for KEEP_WARM_SECONDS after the LAST real /speak, run a tiny forward pass
+# every 45s to keep the kernels hot. No usage for that window → we stop, and the GPU idles (no waste).
+KEEP_WARM_SECONDS = int(os.environ.get("GOD_TTS_KEEP_WARM", "300"))   # 5 min from last use
+_last_used = 0.0
+
+def _touch():
+    global _last_used
+    _last_used = time.time()
+
+def _keep_warm():
+    while True:
+        time.sleep(45)
+        if _last_used and (time.time() - _last_used) < KEEP_WARM_SECONDS:
+            try:
+                _on_gpu(_synth, _default_voice(), "warm")
+            except Exception as e:
+                print(f"[god-tts] keep-warm skipped: {e}", flush=True)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=int(os.environ.get("GOD_TTS_PORT", "7897")))
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
     threading.Thread(target=_warm, daemon=True).start()
+    threading.Thread(target=_keep_warm, daemon=True).start()
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

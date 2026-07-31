@@ -1,0 +1,24 @@
+{
+  "id": "retail",
+  "name": "Retail Concept",
+  "tagline": "Reality-check a retail concept.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=retail"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

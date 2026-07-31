@@ -1,0 +1,21 @@
+{
+  "id": "adpulse",
+  "name": "AdPulse",
+  "tagline": "Find the ad spend that's being wasted.",
+  "category": "agent",
+  "author": "Switchboard",
+  "components": {
+    "workflows": ["adpulse/analyze"],
+    "ui": { "kind": "web", "url": "https://adpulse.thelastprompt.ai" }
+  },
+  "surfaces": ["browser", "batch"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" }
+  ],
+  "inside": [
+    "A post-mortem on where the budget leaked",
+    "Analyze headless across accounts (batch)",
+    "Scheduled rollups when you want them"
+  ]
+}

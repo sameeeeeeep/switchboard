@@ -1,0 +1,24 @@
+{
+  "id": "hardware",
+  "name": "Hardware Reality Check",
+  "tagline": "The hard questions before you tool up.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=hardware"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

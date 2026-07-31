@@ -1,0 +1,20 @@
+{
+  "id": "autopilot",
+  "name": "Autopilot",
+  "tagline": "It plans your week and makes the moves.",
+  "category": "agent",
+  "author": "Switchboard",
+  "components": {
+    "workflows": ["autopilot/plan", "autopilot/moves", "autopilot/slate"]
+  },
+  "surfaces": ["batch"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" }
+  ],
+  "inside": [
+    "A finite move-engine — no runaway loops",
+    "Plan, then run the slate headless (batch)",
+    "Every action gated + audited by the daemon"
+  ]
+}

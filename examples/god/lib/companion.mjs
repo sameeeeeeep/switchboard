@@ -24,10 +24,13 @@ async function speakCloned(text) {
   const voice = selectedVoice();
   if (!voice) return false;
   try {
+    // The FIRST synth after an idle period is a Metal-kernel cold-compile (~20–25s); warm ones are ~3s.
+    // A 20s cap aborted exactly those cold calls → God fell back to the default `say` voice, so the
+    // clone worked "sometimes." 60s lets the cold one finish (slow but CONSISTENTLY the chosen voice).
     const res = await fetch(`http://127.0.0.1:${TTS_PORT}/speak`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ text, voice }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) return false;
     const buf = Buffer.from(await res.arrayBuffer());

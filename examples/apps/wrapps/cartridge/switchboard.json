@@ -1,0 +1,24 @@
+{
+  "id": "cartridge",
+  "name": "Cartridge",
+  "tagline": "Build a little browser game.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://cartridge.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

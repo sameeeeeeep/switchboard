@@ -1,0 +1,24 @@
+{
+  "id": "feature",
+  "name": "Feature Case",
+  "tagline": "Make the case for one feature.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=feature"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

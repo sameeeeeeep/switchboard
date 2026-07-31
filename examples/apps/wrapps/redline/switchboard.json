@@ -1,0 +1,21 @@
+{
+  "id": "redline",
+  "name": "Redline",
+  "tagline": "Mark up a landing page like a doc.",
+  "category": "agent",
+  "author": "Switchboard",
+  "components": {
+    "workflows": ["redline/audit", "redline/respond"],
+    "ui": { "kind": "web", "url": "https://redline.thelastprompt.ai" }
+  },
+  "surfaces": ["browser", "batch"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" }
+  ],
+  "inside": [
+    "A line-by-line review of any page or doc",
+    "Audit and respond as two headless workflows (batch)",
+    "Its own taste.md so the notes sound like you"
+  ]
+}

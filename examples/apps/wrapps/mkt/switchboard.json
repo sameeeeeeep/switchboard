@@ -1,0 +1,24 @@
+{
+  "id": "mkt",
+  "name": "Marketplace Validator",
+  "tagline": "Is this marketplace worth building? Find out.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=marketplace"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

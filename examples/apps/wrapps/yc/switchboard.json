@@ -1,0 +1,21 @@
+{
+  "id": "yc",
+  "name": "YC Application",
+  "tagline": "Write YC answers in the house dialect.",
+  "category": "skill",
+  "author": "Switchboard",
+  "components": {
+    "skills": ["yc/register", "yc/rfs"],
+    "ui": { "kind": "web", "url": "https://thelastprompt.ai/yc-application-composer.html" }
+  },
+  "surfaces": ["god", "browser"],
+  "requires": [
+    { "kind": "model", "class": "cloud" },
+    { "kind": "capability", "name": "screen-record", "lazy": true }
+  ],
+  "inside": [
+    "The YC register + live RFS hooks, worn as a skill",
+    "Answer conversationally — God wears the dialect",
+    "Or open the composer to draft in a page"
+  ]
+}

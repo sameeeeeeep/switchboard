@@ -1,0 +1,24 @@
+{
+  "id": "aplus",
+  "name": "A-Plus",
+  "tagline": "Amazon A+ content, in bulk.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://aplus.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}
