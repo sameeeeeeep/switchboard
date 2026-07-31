@@ -1,0 +1,20 @@
+{
+  "id": "actions",
+  "name": "Action Items",
+  "tagline": "Notes or a transcript into a clean checklist.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/actions.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

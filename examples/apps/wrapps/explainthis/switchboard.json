@@ -1,0 +1,20 @@
+{
+  "id": "explainthis",
+  "name": "Explain This",
+  "tagline": "Turn confusing text into plain English.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/explainthis.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

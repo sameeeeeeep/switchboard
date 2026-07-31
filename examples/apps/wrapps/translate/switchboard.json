@@ -1,0 +1,20 @@
+{
+  "id": "translate",
+  "name": "Translate",
+  "tagline": "Translate any text, tone preserved.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/translate.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

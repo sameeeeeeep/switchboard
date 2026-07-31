@@ -1,0 +1,20 @@
+{
+  "id": "unjargon",
+  "name": "Unjargon",
+  "tagline": "Acronyms, legalese, and jargon into plain English.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/unjargon.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

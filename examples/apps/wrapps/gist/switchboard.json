@@ -1,0 +1,20 @@
+{
+  "id": "gist",
+  "name": "Gist",
+  "tagline": "Paste anything, get a tight TL;DR.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/gist.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}
