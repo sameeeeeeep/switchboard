@@ -13,6 +13,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // the first roast from) stays visually distinct from CHOSEN (a card a human clicked) so the accent
 // never paints a machine decision (doctrine 5), and the slate gets an escape hatch (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Roast's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -375,3 +378,24 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `roast_run` runs the SAME start() a paste-and-go click runs — angles are proposed and the
+// recommended one is written, live in the DOM — then returns the finished roast for God to speak.
+// Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "roast_run",
+  description: "Roast a bit of text (a bio, brand blurb, resume, or pitch). Writes the roast live on the page and returns it.",
+  inputSchema: { target: "string — the text to roast. Required." },
+  execute: async ({ target } = {}) => {
+    const input = String(target || "").trim();
+    if (!input) throw new Error("nothing to roast — pass { target } with the text to roast");
+    if (!relay) throw new Error("Roast isn't connected to Switchboard yet");
+    await start(input);                         // proposeAngles → auto-advance roastFrom, all awaited
+    const r = state.run || {};
+    if (r.error) throw new Error(r.error);
+    if (!r.roast) throw new Error("no roast came back");
+    const angle = (r.angles || []).find((a) => a.id === r.selectedId);
+    return { roast: r.roast, angle: angle ? angle.label : null };
+  },
+});
