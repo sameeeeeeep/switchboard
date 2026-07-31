@@ -53,6 +53,19 @@ const WRAPPS = [
   { id: "rizz", html: "rizz.html", cat: "viral" },
   { id: "anthem", html: "anthem.html", cat: "viral" },
   { id: "dreamlog", html: "dreamlog.html", cat: "viral" },
+  // the daily-skills shelf (2026-08)
+  { id: "gist", html: "gist.html", cat: "skill" },
+  { id: "rephrase", html: "rephrase.html", cat: "skill" },
+  { id: "explainthis", html: "explainthis.html", cat: "skill" },
+  { id: "translate", html: "translate.html", cat: "skill" },
+  { id: "polish", html: "polish.html", cat: "skill" },
+  { id: "extract", html: "extract.html", cat: "skill" },
+  { id: "reply", html: "reply.html", cat: "skill" },
+  { id: "unjargon", html: "unjargon.html", cat: "skill" },
+  { id: "nameit", html: "nameit.html", cat: "skill" },
+  { id: "actions", html: "actions.html", cat: "skill" },
+  { id: "snap", html: "snap.html", cat: "skill" },
+  { id: "recap", html: "recap.html", cat: "skill" },
 ];
 
 const HARNESS_JSON = JSON.stringify(PROJECTS);

@@ -45,6 +45,19 @@ const CFG = {
   rizz:      { name: "Rizz",      cat: "viral", count: (d) => d.querySelectorAll(".opt").length },
   anthem:    { name: "Anthem",    cat: "viral", count: (d) => d.querySelectorAll(".opt").length },
   dreamlog:  { name: "Dreamlog",  cat: "viral", count: (d) => d.querySelectorAll(".opt").length },
+  // the daily-skills shelf: text skills stream into #out-live; reply/nameit render option cards.
+  gist:        { name: "Gist",        cat: "skill", count: (d) => skillDone(d) },
+  rephrase:    { name: "Rephrase",    cat: "skill", count: (d) => skillDone(d) },
+  explainthis: { name: "Explain This",cat: "skill", count: (d) => skillDone(d) },
+  translate:   { name: "Translate",   cat: "skill", count: (d) => skillDone(d) },
+  polish:      { name: "Polish",      cat: "skill", count: (d) => skillDone(d) },
+  extract:     { name: "Extract",     cat: "skill", count: (d) => skillDone(d) },
+  reply:       { name: "Reply",       cat: "skill", count: (d) => d.querySelectorAll("#view .opt, .opt").length || skillDone(d) },
+  unjargon:    { name: "Unjargon",    cat: "skill", count: (d) => skillDone(d) },
+  nameit:      { name: "Name It",     cat: "skill", count: (d) => d.querySelectorAll("#view .opt, .opt").length || skillDone(d) },
+  actions:     { name: "Action Items",cat: "skill", count: (d) => skillDone(d) },
+  snap:        { name: "Snap Answer", cat: "skill", count: (d) => skillDone(d) },
+  recap:       { name: "Recap",       cat: "skill", count: (d) => skillDone(d) },
 };
 const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
@@ -53,6 +66,12 @@ const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",")
 const ORDER = ONLY.length ? ONLY : FULL_ORDER;
 
 function txt(d) { try { return (d.body && d.body.innerText) || ""; } catch (_) { return ""; } }
+// A daily-skill "ran": its streamed result landed in #out-live (or a result panel) with real text.
+function skillDone(d) {
+  const o = d.querySelector("#out-live, #out, .roast-md, .md");
+  if (o && o.innerText.trim().length > 20) return 1;
+  return d.querySelectorAll(".opt").length;
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const stage = document.getElementById("stage");

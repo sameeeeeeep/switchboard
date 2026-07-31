@@ -2822,34 +2822,71 @@ struct ActionConsentDrop: View {
         godWeb?.front()
         if driveRunning { showGodStatus("\(driveName) · running", accent: .lime, pattern: .working) }
     }
+    // Map ANY wrapp tool's return object to the right widget renderer (states/edges completeness):
+    // an array-of-options → cards (reply/nameit/adgen/adforge/toon/thumbs), an image URL → image
+    // (downloaded so it's draggable), otherwise the best string → text. Never raw JSON in the notch.
+    @MainActor private func widgetResult(from v: Any) -> WidgetResult {
+        let d = v as? [String: Any]
+        // 1) card-shaped: a known array key, or any value that's an array of dicts with label/text-ish fields.
+        let arrayKeys = ["options", "replies", "concepts", "directions", "cards", "names", "angles", "ideas"]
+        let arr: [[String: Any]]? = arrayKeys.compactMap { d?[$0] as? [[String: Any]] }.first
+            ?? (d?.values.compactMap { $0 as? [[String: Any]] }.first { !$0.isEmpty })
+        if let arr = arr, !arr.isEmpty {
+            let items = arr.prefix(6).map { item -> CardItem in
+                let label = (item["label"] ?? item["name"] ?? item["title"] ?? item["angle"]) as? String ?? "Option"
+                let text = (item["text"] ?? item["preview"] ?? item["hook"] ?? item["body"] ?? item["headline"]) as? String ?? ""
+                return CardItem(label: label, text: text, rec: (item["recommended"] as? Bool) == true)
+            }
+            return .cards(caption: "\(items.count) options — one recommended.", items: Array(items))
+        }
+        // strings-array (e.g. replies:[String]) → cards too
+        if let strs = (["replies", "options", "lines"].compactMap { d?[$0] as? [String] }.first), !strs.isEmpty {
+            let items = strs.prefix(6).enumerated().map { CardItem(label: "Option \($0.offset + 1)", text: $0.element) }
+            return .cards(caption: "\(items.count) options.", items: Array(items))
+        }
+        // 2) image URL → download to a temp file so it renders + drags out
+        if let u = (["imageUrl", "url", "image", "heroUrl"].compactMap { d?[$0] as? String }.first), let url = URL(string: u) {
+            if let data = try? Data(contentsOf: url) {
+                let dir = (NSTemporaryDirectory() as NSString).appendingPathComponent("notch-canvas")
+                try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                let path = (dir as NSString).appendingPathComponent("\(UUID().uuidString).png")
+                if (try? data.write(to: URL(fileURLWithPath: path))) != nil {
+                    return .image(caption: "Generated on your Claude — drag it out.", steer: [], file: path)
+                }
+            }
+            return .text("Image ready: \(u)")   // download failed — at least surface the link
+        }
+        // 3) best string → text
+        let body = ["roast", "reply", "answer", "gist", "text", "result", "summary", "explanation", "translation", "polished", "rewrite", "song", "notes", "html"]
+            .compactMap { d?[$0] as? String }.first
+            ?? (d?.values.compactMap { $0 as? String }.max(by: { $0.count < $1.count }))
+            ?? String(describing: v)
+        return .text(String(body.prefix(3000)))
+    }
+
     @MainActor private func driveFinished(_ result: Result<Any, Error>) {
         driveRunning = false
         let userIsOnWindow = godWeb?.isFrontmost ?? false
         hideGodStatus()
         switch result {
         case .success(let v):
-            // Tools return small JSON objects with differing keys — surface the best string we find.
             let d = v as? [String: Any]
             let title = (d?["angle"] as? String) ?? (d?["title"] as? String) ?? driveName
-            let body = ["roast", "reply", "answer", "gist", "text", "result", "summary", "explanation", "translation", "polished", "rewrite"]
-                .compactMap { d?[$0] as? String }.first
-                ?? (d?.values.compactMap { $0 as? String }.max(by: { $0.count < $1.count }))
-                ?? String(describing: v)
             if userIsOnWindow {
                 // The wrapp's own UI already shows the result — just flash "done" at the notch.
                 showGodStatus("\(driveName) · done", accent: .ok, pattern: .speaking)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in self?.hideGodStatus() }
             } else {
-                // User went elsewhere (or never opened the window) → the result is a notch notification.
-                // Regenerate re-runs the SAME drive (fresh generation, same input).
+                // User went elsewhere → notification. Render by RESULT SHAPE (text · cards · image),
+                // not just as a string, so reply/nameit/ads look right, not raw JSON.
+                let regen: () -> Void = { [weak self] in
+                    guard let self, let ld = self.lastDrive else { return }
+                    self.godWeb?.close(); self.driveWrappLive(pageURL: ld.url, tool: ld.tool, input: ld.input, wrappName: ld.name)
+                }
                 showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: title, openLabel: "Show the wrapp",
-                    result: .text(String(body.prefix(2400)))),
+                    result: widgetResult(from: v)),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() },
-                    onRegen: { [weak self] in
-                        guard let self, let d = self.lastDrive else { return }
-                        self.godWeb?.close()
-                        self.driveWrappLive(pageURL: d.url, tool: d.tool, input: d.input, wrappName: d.name)
-                    })
+                    onRegen: regen)
             }
         case .failure(let e):
             showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
