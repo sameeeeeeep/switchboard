@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift -framework AppKit -framework SwiftUI
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift GodWebWindow.swift -framework AppKit -framework SwiftUI -framework WebKit
 
 APP="Switchboard.app"
 rm -rf "$APP"

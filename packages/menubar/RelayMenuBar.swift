@@ -2626,6 +2626,9 @@ struct ActionConsentDrop: View {
             it.target = self; it.representedObject = spec; menu.addItem(it)
         }
         menu.addItem(.separator())
+        let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: #selector(driveWrappFromMenu), keyEquivalent: ""); drive.target = self
+        menu.addItem(drive)
+        menu.addItem(.separator())
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
@@ -2635,6 +2638,7 @@ struct ActionConsentDrop: View {
         showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
     }
     @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
+    @objc private func driveWrappFromMenu() { driveWrappLive() }
     // ── Motion: every drop GROWS OUT OF the notch and COLLAPSES BACK into it ─────────────────────
     // The drops are clipped to NotchDropShape and pinned to screen.frame.maxY (the notch seam), so
     // scaling the content layer about its TOP-CENTRE makes the silhouette unfold downward from the
@@ -2709,6 +2713,48 @@ struct ActionConsentDrop: View {
     @MainActor func hideNotchWidget() {
         if let m = notchWidgetMonitor { NSEvent.removeMonitor(m); notchWidgetMonitor = nil }
         if let p = notchWidgetPanel { dismissToNotch(p) }
+    }
+
+    // ── LIVE drive: God opens a wrapp in the bridged webview and drives its real pipeline ────────
+    // End-to-end, no mocks: GodWebWindow loads the wrapp with window.claude bridged to the daemon,
+    // waits for the kit/webmcp __god bridge, calls the tool (the wrapp's REAL UI paints live), and
+    // the result lands in the notch widget. Dev default: roast on the granted localhost:5188 origin
+    // (serve with: cd examples/apps && node serve.mjs). GOD_DRIVE_URL overrides the page.
+    private var godWeb: GodWebWindow?
+    @MainActor func driveWrappLive() {
+        let urlStr = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"] ?? "http://localhost:5188/roast.html"
+        guard let url = URL(string: urlStr) else { return }
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No pairing token", openLabel: "Open panel",
+                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Open Roast",
+            result: .working("Opening the wrapp, waiting for its tools…")))
+        let web = GodWebWindow(url: url, token: token)
+        godWeb = web
+        web.open(ready: { [weak self] in
+            guard let self else { return }
+            self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Open Roast",
+                result: .working("Running roast_run on your Claude (may take ~30–90s)…")))
+            let target = "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
+            web.drive(tool: "roast_run", input: ["target": target]) { result in
+                Task { @MainActor in
+                    switch result {
+                    case .success(let v):
+                        let d = v as? [String: Any]
+                        let roast = (d?["roast"] as? String) ?? String(describing: v)
+                        let angle = (d?["angle"] as? String) ?? "The roast"
+                        self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: angle, openLabel: "Show the wrapp",
+                            result: .text(String(roast.prefix(900)))), onOpen: { })
+                    case .failure(let e):
+                        self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "Drive failed", openLabel: "Open panel",
+                            result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
+                            onOpen: { self.hideNotchWidget(); self.showPanel() })
+                    }
+                }
+            }
+        })
     }
 
     private func showPanel() {
