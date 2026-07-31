@@ -51,6 +51,14 @@ A pass across the catalog adds one `exposeToGod` declaration per wrapp (its prim
 ### 5. Everything emanates from the notch
 No surface fades in at a random position. Panels, the store modal, consent drops, the notch canvas — all **grow out of the notch anchor** on appear and **collapse back into it** on dismiss. A shared `presentFromNotch` / `dismissToNotch` motion (scale+offset anchored at the notch origin) applied to every transient surface, matching the existing panel grammar.
 
+## The drive state machine (built 2026-08-01)
+
+ONE drive session, TWO surfaces, never both:
+- **notch** — the widget is the surface (working state + PROJECT chip); the wrapp window loads offscreen. "Show the wrapp" flips to window mode.
+- **window** — the wrapp is the surface; the notch collapses to the small running pill. On completion the result routes by where the user IS: window frontmost → the wrapp already shows it (pill flashes "done"); user elsewhere or window closed → the result **drops from the notch like a notification**. Closing the window mid-run falls back to the notch surface.
+
+The **project chip** rides every widget header: a context-dependent command ("make me an ad") is only right if the right project is lent, so the selector lives at the moment of command — it reads/writes the same global default as the panel picker (`context-selection.json`).
+
 ## Build status & remaining
 
 | Piece | State |
