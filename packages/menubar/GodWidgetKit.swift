@@ -23,7 +23,11 @@ extension View {
 
 // ---------- shared chrome (every widget wears these) ----------
 struct WidgetHeader: View {
-    let kicker: String, title: String; var accent: Color = .ok; var onClose: () -> Void = {}
+    let kicker: String, title: String; var accent: Color = .ok
+    var projects: [(id: String, name: String)] = []      // context-first: the project the run is grounded in
+    var activeProjectId: String? = nil
+    var onSelectProject: ((String?) -> Void)? = nil
+    var onClose: () -> Void = {}
     var body: some View {
         HStack(alignment: .center, spacing: WK.s3) {
             Circle().fill(accent).frame(width: 6, height: 6)
@@ -32,8 +36,48 @@ struct WidgetHeader: View {
                 Text(title).font(.brico(14, .semibold)).foregroundColor(.ink).lineLimit(1)
             }
             Spacer(minLength: WK.s3)
+            if !projects.isEmpty {
+                ProjectChip(projects: projects, activeId: activeProjectId, onSelect: onSelectProject ?? { _ in })
+            }
             WKIconChip(icon: "xmark", action: onClose)
         }
+    }
+}
+// The PROJECT chip — a context-dependent command ("make me an ad") is only right if the right project
+// is lent, so the selector lives ON the widget, not buried in the panel. Writes the same global
+// default the panel's picker writes; self-updating via local state.
+struct ProjectChip: View {
+    let projects: [(id: String, name: String)]
+    let onSelect: (String?) -> Void
+    @State private var currentId: String?
+    init(projects: [(id: String, name: String)], activeId: String?, onSelect: @escaping (String?) -> Void) {
+        self.projects = projects; self.onSelect = onSelect; _currentId = State(initialValue: activeId)
+    }
+    private var label: String { projects.first { $0.id == currentId }?.name ?? "no project" }
+    var body: some View {
+        Menu {
+            ForEach(projects, id: \.id) { p in
+                Button(action: { currentId = p.id; onSelect(p.id) }) {
+                    if p.id == currentId { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
+                }
+            }
+            Divider()
+            Button(action: { currentId = nil; onSelect(nil) }) {
+                if currentId == nil { Label("No project", systemImage: "checkmark") } else { Text("No project") }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "folder").font(.system(size: 9, weight: .semibold))
+                Text(label).font(.hanken(10.5, .medium)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
+            }
+            .foregroundColor(currentId == nil ? .inkFaint : .inkDim)
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: WK.rSm).fill(Color.panel))
+            .overlay(RoundedRectangle(cornerRadius: WK.rSm).stroke(currentId == nil ? Color.edge : Color.lime.opacity(0.35), lineWidth: WK.hair))
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help("The project this run is grounded in — switch it before running")
     }
 }
 struct WKIconChip: View {
@@ -239,6 +283,9 @@ struct WidgetSpec {
 }
 struct NotchWidget: View {
     let spec: WidgetSpec
+    var projects: [(id: String, name: String)] = []
+    var activeProjectId: String? = nil
+    var onSelectProject: ((String?) -> Void)? = nil
     var onClose: () -> Void = {}
     var onOpen: () -> Void = {}
     var onRegen: () -> Void = {}
@@ -246,7 +293,9 @@ struct NotchWidget: View {
     var accent: Color { if case .working = spec.result { return .lime }; return .ok }
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s4) {
-            WidgetHeader(kicker: spec.kicker, title: spec.title, accent: accent, onClose: onClose)
+            WidgetHeader(kicker: spec.kicker, title: spec.title, accent: accent,
+                         projects: projects, activeProjectId: activeProjectId,
+                         onSelectProject: onSelectProject, onClose: onClose)
             WKHairline()
             renderer
         }

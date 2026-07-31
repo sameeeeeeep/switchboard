@@ -2688,7 +2688,14 @@ struct ActionConsentDrop: View {
     @MainActor func showNotchWidget(_ spec: WidgetSpec, onOpen: @escaping () -> Void = {},
                                     onRegen: @escaping () -> Void = {}, onSteer: @escaping (String) -> Void = { _ in }) {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
-        let view = NotchWidget(spec: spec, onClose: { [weak self] in self?.hideNotchWidget() },
+        // Context-first: every widget carries the PROJECT chip — the same global default the panel's
+        // picker writes, switchable right where the command runs ("make me an ad" needs the right brand).
+        model.refreshFiles()
+        let view = NotchWidget(spec: spec,
+                               projects: model.contexts.map { (id: $0.id, name: $0.name) },
+                               activeProjectId: readDefaultId(),
+                               onSelectProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
+                               onClose: { [weak self] in self?.hideNotchWidget() },
                                onOpen: onOpen, onRegen: onRegen, onSteer: onSteer)
         let host = NoInsetHostingView(rootView: view)
         if notchWidgetPanel == nil {
