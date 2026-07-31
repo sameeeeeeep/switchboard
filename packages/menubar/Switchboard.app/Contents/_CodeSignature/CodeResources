@@ -3,9 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/fonts/Doto.ttf</key>
+		<data>
+		RajF30yRdvdPR/NEPMMOs+/mHx4=
+		</data>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/fonts/Doto.ttf</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			b0/n03hTuR3zaY2qhM3i2+HJaV2IyYbmUQE0kQM31CY=
+			</data>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>

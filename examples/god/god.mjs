@@ -220,10 +220,30 @@ const isLocalModel = (m) => m.includes(":") || m.includes("/");
 // Haiku → any non-local → whatever exists. Set GOD_MODEL=<haiku id> for max speed over acuity.
 function pickVisionModel(models) {
   if (process.env.GOD_MODEL && models.includes(process.env.GOD_MODEL)) return process.env.GOD_MODEL;
+  // Economy (Settings → Mode): spend fewer tokens — reach for Haiku first, still a real vision model.
+  if (readEconomy()) {
+    const cheap = models.find((m) => /haiku/i.test(m)) || models.find((m) => /sonnet/i.test(m));
+    if (cheap) return cheap;
+  }
   return models.find((m) => /sonnet/i.test(m))
     || models.find((m) => /haiku/i.test(m))
     || models.find((m) => !isLocalModel(m))
     || models[0];
+}
+// Economy flag written by the menubar (~/.relay/economy). Read fresh each glance so a toggle takes
+// effect on the very next request — no restart.
+function readEconomy() {
+  try {
+    const v = readFileSync(join(homedir(), ".relay", "economy"), "utf8").trim().toLowerCase();
+    return v === "1" || v === "true";
+  } catch { return false; }
+}
+// The name the user set in Settings (~/.relay/profile.json → name). Empty when unset.
+function readUserName() {
+  try {
+    const p = JSON.parse(readFileSync(join(homedir(), ".relay", "profile.json"), "utf8"));
+    return typeof p?.name === "string" ? p.name.trim() : "";
+  } catch { return ""; }
 }
 
 // ── daemon lifecycle (mirrors Flow's proven plumbing) ─────────────────────────────────────────
@@ -411,7 +431,9 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
         }
       } catch (e) { log(`listTools skipped: ${e.message}`); }
     }
-    const system = `${persona.characteristic}\n\n${PROTOCOL}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "");
+    const userName = readUserName();
+    const nameLine = userName ? `\n\nThe user's name is ${userName}. Address them by name when it's natural.` : "";
+    const system = `${persona.characteristic}\n\n${PROTOCOL}${nameLine}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "");
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(" (vision)")}…`);

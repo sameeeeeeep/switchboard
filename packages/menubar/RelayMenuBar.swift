@@ -632,6 +632,8 @@ final class Model: ObservableObject {
     @Published var updateAvailable = false
     @Published var voices: [String] = []          // cloned/dropped voices in ~/.relay/voices
     @Published var selectedVoice: String = ""     // the one God speaks in (empty = macOS `say`)
+    @Published var userName: String = ""          // what God calls you (~/.relay/profile.json → name)
+    @Published var economy = false                // prefer a cheaper/faster model to spend fewer tokens
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -648,7 +650,61 @@ final class Model: ObservableObject {
         plist = plistState()
         voices = readVoices()
         selectedVoice = readSelectedVoice()
+        userName = readUserName()
+        economy = readEconomy()
     }
+}
+
+// The name God greets you by — the daemon's real source of truth, ~/.relay/profile.json (written by
+// setProfile). Empty when unset → the field shows its placeholder (the daemon falls back to the OS name).
+func readUserName() -> String {
+    let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/profile.json")
+    guard let obj = readJSON(f) as? [String: Any] else { return "" }
+    return ((obj["name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+}
+// Economy mode — a tiny ~/.relay/economy flag God reads to prefer a cheaper/faster model. Local file,
+// daemon-independent (works while it's stopped); "1"/"true" = on.
+func readEconomy() -> Bool {
+    let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/economy")
+    let v = ((try? String(contentsOfFile: f, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return v == "1" || v == "true"
+}
+
+// ---------- onboarding (docs/ONBOARDING.md) ----------
+// Where new users land the switchboard install page / the store hero. One hub; both the extension
+// rung and the first-app rung point here.
+let ONBOARD_HUB = URL(string: "https://www.thelastprompt.ai/switchboard")!
+// A DEDICATED marker (not TOKEN_FILE) so "Replay the tour" re-runs cleanly and a major bump can
+// re-onboard. Its mere presence = onboarded; deleting it re-triggers the flow.
+let ONBOARDED_FILE = (RELAY_DIR as NSString).appendingPathComponent("onboarded")
+func readOnboarded() -> Bool { FileManager.default.fileExists(atPath: ONBOARDED_FILE) }
+
+/// The onboarding state machine (docs/ONBOARDING.md §"Completeness pass"):
+///   hidden → setup (Act I: mechanical rungs) → tour (Act II: teach-by-doing) → done → hidden
+/// Setup rungs are DERIVED from live `Model` state in the view; this only holds the phase + tour step,
+/// so both the panel (UI-driven steps: the gear) and the app delegate (OS gestures: ⌃⌃, ⌃⌥) can drive it.
+@MainActor final class Onboard: ObservableObject {
+    enum Phase { case hidden, setup, tour, done }
+    enum Signal { case glance, settings, dictation }   // the real gestures the tour waits on
+    @Published var phase: Phase = .hidden
+    @Published var step = 0
+    static let tourCount = 4                            // glance · intro · settings · dictation → done
+
+    func beginSetup() { phase = .setup; step = 0 }
+    func startTour()  { phase = .tour;  step = 0 }
+    func advance()    { if step + 1 >= Onboard.tourCount { finishTour() } else { step += 1 } }
+    func finishTour() { mark(); phase = .done }         // → the "you're all set" card
+    func finish()     { mark(); phase = .hidden }       // the card's Done, or any dismiss
+
+    /// A real gesture happened — advance only if it's the one THIS step is waiting for.
+    func note(_ s: Signal) {
+        guard phase == .tour else { return }
+        switch (step, s) {
+        case (0, .glance), (2, .settings), (3, .dictation): advance()
+        default: break
+        }
+    }
+    private func mark() { try? Data("done".utf8).write(to: URL(fileURLWithPath: ONBOARDED_FILE)) }
 }
 
 // The cloned voices the user has dropped in (~/.relay/voices/<name>.wav → cloned to <name>.safetensors
@@ -704,6 +760,7 @@ struct Panel: View {
     @ObservedObject var model: Model
     @ObservedObject var ollama: OllamaMonitor
     @ObservedObject var icons: IconStore
+    @ObservedObject var onboard: Onboard
     let onToken: () -> Void
     let onLogs: () -> Void
     let onRestart: () -> Void
@@ -716,9 +773,16 @@ struct Panel: View {
     let onPickContext: (String?) -> Void // set/clear the global default context (nil = unconnected)
     let onSelectVoice: (String) -> Void  // pick God's voice (empty = macOS say)
     let onDropVoice: ([URL]) -> Void     // drop a .wav/.mp3 sample → clone it into a voice
+    let onRevoke: (String) -> Void       // remove a connected app/site by origin
+    let onSetName: (String) -> Void      // save the name God greets you by
+    let onSetEconomy: (Bool) -> Void     // economy mode: prefer a cheaper/faster model
+    let onSignIn: () -> Void             // onboarding: open Terminal + start the `claude` login
+    let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     @State private var breathe = false
     @State private var pickerOpen = false
     @State private var dropTargeted = false
+    @State private var showSettings = false      // the right pane flips to Settings (in-panel, one grammar)
+    @State private var nameDraft = ""            // the name field's working copy, committed on save
 
     private var signedOut: Bool { model.running && !model.signedIn }
     private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
@@ -808,6 +872,10 @@ struct Panel: View {
                 HStack(spacing: 8) {
                     GhostButton(icon: "link", label: "pairing", action: onToken).help("Copy the pairing token")
                     GhostButton(icon: "text.alignleft", label: "logs", action: onLogs).help("Open the daemon log")
+                    Spacer(minLength: 0)
+                    GhostButton(icon: showSettings ? "xmark" : "gearshape.fill", label: nil,
+                                action: { nameDraft = model.userName; withAnimation(.easeOut(duration: 0.14)) { showSettings.toggle() } })
+                        .help(showSettings ? "Close settings" : "Settings")
                 }
                 HStack(spacing: 8) {
                     if model.running {
@@ -902,8 +970,6 @@ struct Panel: View {
                     Rectangle().fill(Color.edge).frame(width: 1)
                     toolsColumn.frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Rectangle().fill(Color.edge).frame(height: 1)
-                voiceSection
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Daemon offline").font(.brico(15, .bold)).foregroundColor(.inkDim)
@@ -961,6 +1027,261 @@ struct Panel: View {
                 Spacer()
             }.padding(.vertical, 6).contentShape(Rectangle())
         }.buttonStyle(.plain)
+    }
+
+    // ---------- SETTINGS — the same panel grammar, one screen back from the dashboard ----------
+    // Reached from the gear in the rail; groups the personal controls (name · voice · mode · the apps
+    // you can revoke). Not a separate window — the right pane flips, a back-chevron returns.
+    private var settingsView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Button(action: { withAnimation(.easeOut(duration: 0.14)) { showSettings = false } }) {
+                    Image(systemName: "chevron.left").font(.system(size: 12, weight: .bold)).foregroundColor(.inkDim)
+                        .frame(width: 26, height: 26).background(Circle().fill(Color.panel).overlay(Circle().stroke(Color.edge, lineWidth: 1)))
+                }.buttonStyle(.plain).help("Back")
+                Text("Settings").font(.brico(18, .bold)).foregroundColor(.ink)
+                Spacer()
+            }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
+            Rectangle().fill(Color.edge).frame(height: 1)
+            nameSection
+            Rectangle().fill(Color.edge).frame(height: 1)
+            voiceSection
+            Rectangle().fill(Color.edge).frame(height: 1)
+            economySection
+            Rectangle().fill(Color.edge).frame(height: 1)
+            connectionsSection
+            Rectangle().fill(Color.edge).frame(height: 1)
+            Button(action: { showSettings = false; onboard.beginSetup() }) {
+                HStack(spacing: 9) {
+                    Image(systemName: "sparkles").font(.system(size: 12)).foregroundColor(.lime).frame(width: 18)
+                    Text("Replay the welcome tour").font(.hanken(12.5, .medium)).foregroundColor(.ink)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundColor(.inkFaint)
+                }.padding(.horizontal, 18).padding(.vertical, 15).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { nameDraft = model.userName }
+    }
+
+    // YOUR NAME — the real greeting source (~/.relay/profile.json). Commit on Enter or the save button.
+    private var nameSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("YOUR NAME").kicker()
+            HStack(spacing: 8) {
+                TextField("What should I call you?", text: $nameDraft)
+                    .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
+                    .padding(.horizontal, 11).padding(.vertical, 9)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(Color.panel)
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1)))
+                    .onSubmit(commitName)
+                GhostButton(icon: "checkmark", label: "save", action: commitName)
+                    .opacity(nameDirty ? 1 : 0.4).disabled(!nameDirty)
+            }
+            Text("God greets you by this name.").font(.hanken(10.5)).foregroundColor(.inkFaint)
+        }.padding(.horizontal, 18).padding(.vertical, 14)
+    }
+    private var nameDirty: Bool {
+        let n = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !n.isEmpty && n != model.userName
+    }
+    private func commitName() { if nameDirty { onSetName(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)) } }
+
+    // MODE — economy: one tap flips ~/.relay/economy, God then reaches for a cheaper/faster model.
+    private var economySection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("MODE").kicker()
+            Button(action: { onSetEconomy(!model.economy) }) {
+                HStack(spacing: 11) {
+                    Image(systemName: model.economy ? "leaf.fill" : "bolt.fill")
+                        .font(.system(size: 13)).foregroundColor(model.economy ? .lime : .inkDim).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.economy ? "Economy" : "Full quality").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                        Text(model.economy ? "Cheaper, faster model — spends fewer tokens." : "Best model for the job, more tokens.")
+                            .font(.hanken(10.5)).foregroundColor(.inkFaint)
+                    }
+                    Spacer(minLength: 6)
+                    RoundedRectangle(cornerRadius: 11).fill(model.economy ? Color.lime : Color.edge).frame(width: 38, height: 22)
+                        .overlay(Circle().fill(Color.page).frame(width: 16, height: 16).offset(x: model.economy ? 8 : -8))
+                        .animation(.easeOut(duration: 0.15), value: model.economy)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }.padding(.horizontal, 18).padding(.vertical, 14)
+    }
+
+    // CONNECTIONS — the apps + sites you've let in. Remove revokes access now; they re-ask next time.
+    // (claude.ai connectors themselves are inherited by the SDK and managed in Claude, not here.)
+    private var connectionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) { Text("CONNECTIONS").kicker()
+                Text("· \(model.appList.count)").font(.splMono(9.5)).foregroundColor(.inkFaint); Spacer() }
+            if model.appList.isEmpty {
+                Text("Nothing connected yet — open a wrapp and it'll ask.").font(.hanken(11)).foregroundColor(.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 0) { ForEach(model.appList) { connectionRow($0) } }
+            }
+        }.padding(.horizontal, 18).padding(.vertical, 14)
+    }
+    private func kindLabel(_ kind: AppKind) -> String {
+        switch kind { case .web: return "website"; case .native: return "app"; case .iphone: return "iPhone"; case .tab: return "browser tab" }
+    }
+    private func connectionRow(_ app: AppRow) -> some View {
+        HStack(spacing: 10) {
+            appIcon(app, size: 26)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.label).font(.hanken(12.5, .medium)).foregroundColor(.ink).lineLimit(1)
+                Text(app.tools > 0 ? "\(app.tools) tool\(app.tools == 1 ? "" : "s") · \(kindLabel(app.kind))" : kindLabel(app.kind))
+                    .font(.splMono(9)).foregroundColor(.inkFaint)
+            }
+            Spacer(minLength: 6)
+            Button(action: {
+                if app.kind == .native, let id = app.appId { onDisconnect(id) } else { onRevoke(app.id) }
+            }) {
+                Text("Remove").font(.hanken(10.5, .semibold)).foregroundColor(.danger)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7).stroke(Color.danger.opacity(0.4), lineWidth: 1))
+            }.buttonStyle(.plain).help("Revoke this connection")
+        }.padding(.vertical, 7)
+    }
+
+    // ============================ ONBOARDING (docs/ONBOARDING.md) ============================
+    // ---- Act I: the setup ladder — one rung at a time, honest observed-vs-inferred, always skippable.
+    // Action fields are kept flat (icon/label/run), not a tuple-optional — an optional-of-tuple-with-a-
+    // closure inside a ternary detonates Swift's type-checker.
+    private struct Rung { let title: String; let sub: String; let done: Bool; let inferred: Bool
+                          let icon: String?; let label: String?; let run: (() -> Void)? }
+    private func openHub() { NSWorkspace.shared.open(ONBOARD_HUB) }
+    private var rungs: [Rung] {
+        let sensesOK: Bool = GodPerm.allCases.allSatisfy { $0.granted }
+        let extOK: Bool = model.appList.contains { $0.kind == .web }   // a web app connecting proves the extension
+        let signedIn: Bool = model.signedIn && model.running
+        var out: [Rung] = []
+        out.append(Rung(title: "Switchboard running", sub: "The daemon that holds your Claude and tools.",
+                        done: model.running, inferred: false,
+                        icon: "play.fill", label: "start", run: onRestart))
+        out.append(Rung(title: "Signed in to Claude", sub: "Runs on your own Claude Code login — no key, no bill.",
+                        done: signedIn, inferred: false,
+                        icon: "arrow.right.square", label: "sign in", run: onSignIn))
+        out.append(Rung(title: "God's senses", sub: "Mic, Accessibility and Screen Recording — so ⌃⌃ can see and act.",
+                        done: sensesOK, inferred: false,
+                        icon: "hand.raised", label: "grant", run: onFixSenses))
+        out.append(Rung(title: "Browser extension", sub: "For web wrapps — injects window.claude into any page.",
+                        done: extOK, inferred: true,
+                        icon: "puzzlepiece.extension", label: "get it", run: { self.openHub() }))
+        out.append(Rung(title: "Your first app", sub: "Open the store and connect one — that's the whole point.",
+                        done: model.apps > 0, inferred: false,
+                        icon: "bag", label: "store", run: { self.openHub() }))
+        return out
+    }
+    private var firstUnmet: Int { rungs.firstIndex { !$0.done } ?? rungs.count }
+    private var setupReady: Bool { model.running && model.signedIn }   // the two hard blockers for the tour
+
+    private var setupView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 6).fill(Color.lime).frame(width: 20, height: 20)
+                    .overlay(Circle().fill(Color.rail).frame(width: 6, height: 6).offset(x: 5.5, y: -5.5))
+                    .shadow(color: Color.lime.opacity(0.4), radius: 6)
+                Text("Welcome to Switchboard").font(.brico(18, .bold)).foregroundColor(.ink)
+                Spacer()
+                Button(action: { onboard.finish() }) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundColor(.inkFaint)
+                }.buttonStyle(.plain).help("Skip onboarding")
+            }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 3)
+            Text("\(rungs.filter { $0.done }.count) of \(rungs.count) set up · a few one-time steps, then a 30-second tour.")
+                .font(.hanken(11.5)).foregroundColor(.inkDim).padding(.horizontal, 18).padding(.bottom, 13)
+            Rectangle().fill(Color.edge).frame(height: 1)
+            VStack(spacing: 0) {
+                ForEach(Array(rungs.enumerated()), id: \.offset) { i, r in
+                    rungRow(r, active: i == firstUnmet)
+                    if i < rungs.count - 1 { Rectangle().fill(Color.edge).frame(height: 1) }
+                }
+            }
+            Rectangle().fill(Color.edge).frame(height: 1)
+            HStack(spacing: 12) {
+                Button(action: { onboard.startTour() }) {
+                    HStack(spacing: 7) {
+                        Text(setupReady ? "Take the tour" : "Skip to the tour").font(.hanken(12.5, .semibold))
+                        Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(setupReady ? .page : .ink)
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(setupReady ? Color.lime : Color.clear)
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(setupReady ? Color.clear : Color.edge, lineWidth: 1)))
+                }.buttonStyle(.plain)
+                Spacer()
+            }.padding(18)
+            Spacer(minLength: 0)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    private func rungRow(_ r: Rung, active: Bool) -> some View {
+        HStack(spacing: 11) {
+            ZStack {
+                Circle().fill(r.done ? Color.lime.opacity(0.15) : Color.panel).frame(width: 24, height: 24)
+                if r.done { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundColor(.lime) }
+                else { Circle().stroke(active ? Color.lime : Color.edge, lineWidth: 1.5).frame(width: 12, height: 12) }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(r.title).font(.hanken(12.5, .semibold)).foregroundColor(r.done ? .inkDim : .ink)
+                    if r.inferred && !r.done { Text("can't auto-check").font(.splMono(8.5)).foregroundColor(.inkFaint) }
+                }
+                if active && !r.done { Text(r.sub).font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true) }
+            }
+            Spacer(minLength: 6)
+            if active, !r.done, let icon = r.icon, let label = r.label, let run = r.run {
+                GhostButton(icon: icon, label: label, action: run)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .opacity(r.done ? 0.7 : (active ? 1 : 0.45))
+    }
+
+    // ---- Act II: the practice run — teach-by-doing. Each step advances on the REAL gesture (or Skip).
+    private struct TourStep { let title: String; let hint: String; let manual: Bool }
+    private var tourSteps: [TourStep] { [
+        TourStep(title: "Press ⌃⌃", hint: "Tap Control twice — I look at your screen and help.", manual: false),
+        TourStep(title: "This is your Switchboard", hint: "Your apps, models and tools — all on your own Claude.", manual: true),
+        TourStep(title: "Open Settings", hint: "The gear, bottom-left — your name, my voice, economy mode.", manual: false),
+        TourStep(title: "Hold ⌃⌥ to talk", hint: "Hold Control-Option and speak — I type it where your cursor is.", manual: false),
+    ] }
+    private var tourStrip: some View {
+        let s = tourSteps[min(onboard.step, tourSteps.count - 1)]
+        return HStack(spacing: 12) {
+            Text("\(onboard.step + 1)/\(tourSteps.count)").font(.splMono(9.5)).foregroundColor(.inkFaint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink)
+                Text(s.hint).font(.hanken(10.5)).foregroundColor(.inkDim).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if s.manual {
+                GhostButton(icon: "arrow.right", label: "got it", action: { onboard.advance() })
+            } else {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.lime).frame(width: 5, height: 5)
+                        .opacity(breathe ? 1 : 0.3).animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: breathe)
+                    Text("try it").font(.hanken(10, .semibold)).foregroundColor(.lime)
+                }.padding(.horizontal, 9).padding(.vertical, 5).background(Capsule().stroke(Color.lime.opacity(0.4), lineWidth: 1))
+            }
+            Button(action: { onboard.advance() }) { Text("skip").font(.hanken(10)).foregroundColor(.inkFaint) }.buttonStyle(.plain)
+        }.padding(.horizontal, 18).padding(.vertical, 11).background(Color.rail)
+    }
+
+    // ---- The finish line.
+    private var doneView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Spacer(minLength: 24)
+            HStack(spacing: 11) {
+                Image(systemName: "checkmark.seal.fill").font(.system(size: 24)).foregroundColor(.lime)
+                Text("You're all set").font(.brico(20, .bold)).foregroundColor(.ink)
+            }
+            Text("Press ⌃⌃ anytime to summon me. Everything else lives in this panel — replay the tour from Settings whenever.")
+                .font(.hanken(12)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            GhostButton(icon: "checkmark", label: "done", action: { onboard.finish() })
+            Spacer(minLength: 0)
+        }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // apps — the real-icon row across the top
@@ -1077,11 +1398,27 @@ struct Panel: View {
         }.opacity(c.ok ? 1 : 0.55)
     }
 
+    @ViewBuilder private var rightPane: some View {
+        switch onboard.phase {
+        case .setup: setupView
+        case .done:  doneView
+        default:     if showSettings { settingsView } else { content }
+        }
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            rail
-            Rectangle().fill(Color.edge).frame(width: 1)
-            content
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
+                rail
+                Rectangle().fill(Color.edge).frame(width: 1)
+                rightPane
+            }
+            // Act II rides as a full-width strip UNDER the panel, so it survives a pane switch (it can
+            // watch the gear step fire over the Settings pane) and never fights the dashboard layout.
+            if onboard.phase == .tour {
+                Rectangle().fill(Color.edge).frame(height: 1)
+                tourStrip
+            }
         }
         .frame(width: 620)
         .fixedSize(horizontal: false, vertical: true)
@@ -1090,6 +1427,7 @@ struct Panel: View {
         .clipShape(NotchDropShape())   // no stroke — the black shape blends into the notch, no grey line
         .ignoresSafeArea()
         .onAppear { breathe = true }
+        .onChange(of: showSettings) { open in if open { onboard.note(.settings) } }   // tour step 2
     }
 }
 
@@ -1654,6 +1992,7 @@ struct ActionConsentDrop: View {
     private let model = Model()
     private let ollama = OllamaMonitor()
     private let icons = IconStore()
+    private let onboard = Onboard()
     private var consent: ConsentClient?
 
     // Native "Allow this app?" dialog — a real macOS alert, from the trusted Switchboard app itself.
@@ -1750,6 +2089,46 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // Remove a connected app/site by origin (web / tab / iPhone). Native apps go through
+    // disconnectNativeApp (revokes the per-app token too); everything else revokes the grant.
+    @MainActor private func revokeOrigin(_ origin: String) {
+        let name = model.appList.first { $0.id == origin }?.label ?? origin
+        let a = NSAlert()
+        a.messageText = "Remove \u{201C}\(name)\u{201D}?"
+        a.informativeText = "It loses access now. It'll ask to connect again the next time you use it."
+        a.addButton(withTitle: "Remove"); a.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        consent?.control("revoke", ["origin": origin])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
+    }
+
+    // Save the name God greets you by. Writes ~/.relay/profile.json (merge-preserving, so an avatar
+    // survives) AND asks the daemon to setProfile so a running session picks it up live.
+    @MainActor private func setUserName(_ name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return }
+        try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
+        let f = (RELAY_DIR as NSString).appendingPathComponent("profile.json")
+        var obj = (readJSON(f) as? [String: Any]) ?? [:]
+        obj["name"] = n
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: f))
+        }
+        consent?.control("setProfile", ["name": n])
+        model.refreshFiles()
+        toast("Name saved: \(n)")
+    }
+
+    // Economy mode → a tiny ~/.relay/economy flag God reads to prefer a cheaper/faster model.
+    @MainActor private func setEconomy(_ on: Bool) {
+        try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
+        let f = (RELAY_DIR as NSString).appendingPathComponent("economy")
+        try? Data((on ? "1" : "0").utf8).write(to: URL(fileURLWithPath: f))
+        model.refreshFiles()
+        toast(on ? "Economy mode on" : "Economy mode off")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerBundledFonts()
         NSApp.setActivationPolicy(.accessory)
@@ -1770,6 +2149,7 @@ struct ActionConsentDrop: View {
             model: model,
             ollama: ollama,
             icons: icons,
+            onboard: onboard,
             onToken: { [weak self] in self?.copyToken() },
             onLogs: { NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE)) },
             onRestart: { [weak self] in self?.startOrRestart() },
@@ -1781,7 +2161,12 @@ struct ActionConsentDrop: View {
             onUpdate: { [weak self] in self?.updateDaemon() },
             onPickContext: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onSelectVoice: { [weak self] name in self?.selectVoice(name) },
-            onDropVoice: { [weak self] urls in self?.dropVoices(urls) }
+            onDropVoice: { [weak self] urls in self?.dropVoices(urls) },
+            onRevoke: { [weak self] origin in self?.revokeOrigin(origin) },
+            onSetName: { [weak self] name in self?.setUserName(name) },
+            onSetEconomy: { [weak self] on in self?.setEconomy(on) },
+            onSignIn: { [weak self] in self?.startClaudeLogin() },
+            onFixSenses: { [weak self] in self?.refreshPermissionGate() }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
@@ -1838,6 +2223,9 @@ struct ActionConsentDrop: View {
         // no window — just an 18px mark appearing in a crowded menu bar. Presenting the popover
         // one time teaches where Relay lives and puts the token button on screen. Never again
         // after that (the token file exists on every later launch).
+        // Onboarding (docs/ONBOARDING.md): until they finish it, opening the panel lands on the setup
+        // ladder. Only AUTO-open on the very first run (as today) — later launches wait to be asked.
+        if !readOnboarded() { onboard.beginSetup() }
         if firstRun {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
                 guard let self, self.panel?.isVisible != true else { return }
@@ -1845,6 +2233,14 @@ struct ActionConsentDrop: View {
                 self.togglePopover()
             }
         }
+    }
+
+    // Onboarding rung 2 — the sign-in cliff. Mirror concierge.mjs: open Terminal and start `claude`.
+    @MainActor private func startClaudeLogin() {
+        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", "tell application \"Terminal\" to activate",
+                       "-e", "tell application \"Terminal\" to do script \"claude\""]
+        try? p.run()
     }
 
     @objc private func togglePopover() {
@@ -1904,6 +2300,7 @@ struct ActionConsentDrop: View {
     // off after clicking the menu-bar icon doesn't yank it shut.
     @MainActor private func maybeAutoClosePanel() {
         guard openedByHover, panel.isVisible else { return }
+        if onboard.phase == .setup || onboard.phase == .tour { return }   // don't close mid-onboarding
         let m = NSEvent.mouseLocation
         if !panel.frame.insetBy(dx: -6, dy: -6).contains(m) && !orb.frame.insetBy(dx: -6, dy: -6).contains(m) {
             hidePanel()
@@ -2032,6 +2429,7 @@ struct ActionConsentDrop: View {
             guard rec.record() else { return }
             NSSound(named: "Tink")?.play()
             dictateRecorder = rec; dictateWav = wav; dictating = true
+            onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
             showGodStatus("Dictating", accent: .cyan, pattern: .listening)
         } catch { dictating = false; godLog("dictation record failed: \(error.localizedDescription)") }
     }
@@ -2307,8 +2705,8 @@ struct ActionConsentDrop: View {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
         let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch s {
-        case "listening": setGlow(.listening)
-        case "thinking": setGlow(.thinking)
+        case "listening": setGlow(.listening); onboard.note(.glance)   // tour step 0: ⌃⌃ fired
+        case "thinking": setGlow(.thinking); onboard.note(.glance)
         case "speaking": setGlow(.speaking)
         case "consent":
             // God (still running) proposed a RUN action and is WAITING on us. Raise the same notch
