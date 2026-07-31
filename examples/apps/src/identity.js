@@ -8,6 +8,9 @@
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Identity's compose step as a page-tool the native God webview (or any WebMCP
+// host) can DRIVE — reusing the same start() a click runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -450,3 +453,33 @@ function facetCard(spec) {
   return card;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `identity_compose` runs the SAME start() a one-line-and-go click runs — all five facets draft
+// themselves live in the DOM (one recommended each) — then returns the composed persona for God.
+// Publishing to Cast is a deliberate human act (context.publish, the consent beat) and stays out.
+exposeToGod({
+  name: "identity_compose",
+  description: "Compose an AI creator persona (person, voice, look, audience, pillars — one recommended each) from a one-line brief. Fills the cards live on the page and returns the drafted persona; it does not publish it to Cast.",
+  inputSchema: { brief: "string — one line describing the creator (niche, vibe, who they're for). Required." },
+  execute: async ({ brief } = {}) => {
+    const val = String(brief || "").trim();
+    if (!val) throw new Error("nothing to compose — pass { brief } describing the creator");
+    // God may call before connect finishes, and while the context-first cold-open is still drafting.
+    // Wait for connect, then for idle, so start() doesn't early-return into an in-flight run.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Identity isn't connected to Switchboard yet");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);       // let any in-flight run finish before we take the wheel
+      await start(val);                            // draftAll — every facet, awaited
+      await waitFor(() => !running, 180000);        // and ensure the run completed
+      const r = state.run || {};
+      if (r.input === val && FACETS.some((f) => r.facets[f.key] && r.facets[f.key].options)) {
+        const persona = {};
+        for (const f of FACETS) { const d = draft(f.key); if (d) persona[f.key] = { label: d.label, text: d.text }; }
+        return { name: r.name || (persona.person && persona.person.label) || null, persona };
+      }
+    }
+    throw new Error("Identity stayed busy — try again");
+  },
+});

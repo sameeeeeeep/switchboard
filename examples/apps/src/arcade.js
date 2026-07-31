@@ -11,6 +11,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The shared decision atoms: a slate where the accent means A HUMAN CHOSE, and the model's pick is
 // only ever a neutral DRAFT (doctrine 5), plus the "none of these" exit (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Arcade's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -472,3 +475,33 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `arcade_run` runs the SAME start() the "Make the game" button runs — three concepts are pitched,
+// the recommended one is BUILT, and the playable game renders sandboxed on the page — then returns
+// the game's title. Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "arcade_run",
+  description: "Turn one line into a playable HTML5 game. Builds it live on the page (sandboxed) and returns the game's title.",
+  inputSchema: { idea: "string — one line describing the game to build. Required." },
+  execute: async ({ idea } = {}) => {
+    const line = String(idea || "").trim();
+    if (!line) throw new Error("nothing to build — pass { idea } with the game idea");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Arcade isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open (autostart builds a game starring a lent brand).
+    // start() early-returns while a run is in flight, so wait for idle, run, and confirm the settled
+    // run is OURS (same input) with a result; if a cold open shadowed us, retry.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight run finish before we take the wheel
+      await start(line);                        // proposePitches → auto-advance buildFrom, all awaited
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === line && (r.html || r.error)) {
+        if (r.error) throw new Error(r.error);
+        return { title: r.title || "your game" };
+      }
+    }
+    throw new Error("Arcade stayed busy — try again");
+  },
+});

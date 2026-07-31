@@ -5,6 +5,9 @@
 // user's own model just wrote.
 import { whenRelayReady, mountConnect, BYOPErrorCode } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose Cartridge's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE the forge — reusing the same runStream() the GENERATE button runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -692,3 +695,27 @@ function renderShelf() {
   if (c?.cart) { cart = c.cart; boot({ scroll: false, save: false }); }
   updateSaveBtn();
 })();
+
+// ---- God's hand: one page-tool, driving the real forge ------------------------------------------
+// `cartridge_run` runs the SAME runStream() the GENERATE button runs — it drops the idea into the
+// console and forges a complete, self-contained game that plays sandboxed on the page — then returns
+// the game's title. Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "cartridge_run",
+  description: "Forge a complete, self-contained HTML5 game from one idea. Generates it live on the page and returns the game's title.",
+  inputSchema: { idea: "string — one line describing the game to make. Required." },
+  execute: async ({ idea } = {}) => {
+    const line = String(idea || "").trim();
+    if (!line) throw new Error("nothing to forge — pass { idea } with the game idea");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Cartridge isn't connected to Switchboard yet");
+    await waitFor(() => !generating, 180000);   // let any in-flight generation finish first
+    const prevId = cart?.id || null;
+    $("f-idea").value = line;                    // drop the idea into the console the button reads from
+    persistForm();
+    await runStream(buildPrompt(), { fresh: true });   // reuses the wrapp's own generation pipeline
+    await waitFor(() => !generating, 180000);
+    if (!cart || !cart.html || cart.id === prevId) throw new Error("Cartridge couldn't generate a game — check the page and try again");
+    return { title: cart.title };
+  },
+});

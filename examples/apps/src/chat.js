@@ -8,6 +8,9 @@
 // hatch from the slate; every turn streams with a stop button and persists.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose chat's one action as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same send() the composer runs, so the user watches the reply stream in.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -587,3 +590,27 @@ renderChips(SAMPLES, { sample: true });
 setSugNote("sample — connect to make these yours");
 renderRail();
 renderLog();
+
+// ---- God's hand: one page-tool, driving the real chat -------------------------------------------
+// `chat_send` runs the SAME send() the composer runs — the message lands in the active thread,
+// is answered live on the user's own Claude (grounded in the lent context), streamed and persisted —
+// then returns the assistant's reply. Reused as-is by the native God webview and any WebMCP host.
+exposeToGod({
+  name: "chat_send",
+  description: "Send a message in the chat and get the reply. Answers live on the page in the active thread and returns the assistant's reply text.",
+  inputSchema: { message: "string — the message to send. Required." },
+  execute: async ({ message } = {}) => {
+    const content = String(message || "").trim();
+    if (!content) throw new Error("nothing to send — pass { message } with what to ask");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Chat isn't connected to Switchboard yet");
+    await waitFor(() => !busy, 180000);        // one chat stream at a time — let any in-flight turn finish
+    await send(content);                        // reuses the composer's own turn pipeline, awaited
+    await waitFor(() => !busy, 180000);
+    if (lastError && lastError.message) throw new Error(lastError.message);
+    const th = activeThread();
+    const last = th && th.messages[th.messages.length - 1];
+    if (!last || last.role !== "assistant" || !last.content) throw new Error("Chat produced no reply — try again");
+    return { reply: last.content };
+  },
+});

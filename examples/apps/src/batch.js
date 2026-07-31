@@ -11,6 +11,9 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountRecorder } from "./kit/recorder.js";
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Batch's one primary action (draft the whole application) as a page-tool the
+// native God webview (or any WebMCP host) can DRIVE — reusing the same start() a click runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -746,3 +749,30 @@ function questionCard(a) {
   return card;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `batch_draft` runs the SAME start() a one-line-and-go click runs — all 8 answers (one recommended
+// each) and the two video scripts draft themselves live in the DOM — then returns the assembled
+// application markdown for God to read. Drafting is not deciding: nothing is locked or published.
+exposeToGod({
+  name: "batch_draft",
+  description: "Draft a full YC application (all 8 answers, one recommended each, plus the two video scripts) from a one-line idea. Fills the cards live on the page and returns the drafted application as markdown; nothing is locked or submitted.",
+  inputSchema: { idea: "string — one line on what you're building. Required." },
+  execute: async ({ idea } = {}) => {
+    const val = String(idea || "").trim();
+    if (!val) throw new Error("nothing to draft — pass { idea } with one line on what you're building");
+    // God may call the instant the page loads — before connect finishes, and while the context-first
+    // cold-open (autostart) is still drafting. Wait for connect, then for idle, so start() doesn't
+    // early-return into an in-flight run.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Batch isn't connected to Switchboard yet");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);       // let any in-flight run finish before we take the wheel
+      await start(val);                            // draftAll — every answer + both scripts, all awaited
+      await waitFor(() => !running, 180000);        // and ensure the run completed
+      const r = state.run || {};
+      if (r.brief === val && (r.answers || []).some((a) => a.options)) return { application: applicationMd() };
+    }
+    throw new Error("Batch stayed busy — try again");
+  },
+});

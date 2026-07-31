@@ -8,6 +8,9 @@
 // the Higgsfield frame itself stays click-gated: 1 generation = 1 consent.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey, keySegment } from "./kit/storekey.js";
+// God's hands: expose Studio's shoot as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same shoot() the Shoot button runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -1013,3 +1016,29 @@ $("clear-sheet").addEventListener("click", () => {
   renderSheet();
   reflect();
 })();
+
+// ---- God's hand: one page-tool, driving the real shoot pipeline ---------------------------------
+// `studio_shoot` runs the SAME shoot() the "Shoot" button runs — one product photo develops on the
+// visitor's own Higgsfield, into the contact sheet — then returns the frame's URL. Reused as-is by
+// the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "studio_shoot",
+  description: "Shoot one product photo on your Higgsfield from a product description. Develops it into the contact sheet and returns the image URL.",
+  inputSchema: { product: "string — the product to shoot (one line). Required." },
+  execute: async ({ product } = {}) => {
+    const val = String(product || "").trim();
+    if (!val) throw new Error("nothing to shoot — pass { product } describing the product");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Studio isn't connected to Switchboard yet");
+    await waitFor(() => !shooting, 180000);            // let any in-flight shoot finish before we take the wheel
+    const inp = $("line"); if (inp) inp.value = val.slice(0, 120);
+    setProduct({ kind: "text", name: val.slice(0, 120) });
+    const scene = currentScene();
+    const before = (loadSheet()[0] || {}).id || null;
+    await shoot(scene, setup.aspect);                  // reuse the wrapp's OWN pipeline; awaited to completion
+    await waitFor(() => !shooting, 180000);
+    const top = loadSheet()[0] || null;
+    if (top && top.id !== before && top.url) return { imageUrl: top.url, scene: top.caption };
+    throw new Error("Studio couldn't develop the frame — try again");
+  },
+});

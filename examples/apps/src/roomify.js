@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
 // modifier styles. DRAFTED (what the model pitched) is never CHOSEN (what a human clicked).
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Roomify's one action as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() a click runs, so the room repaints live where God watches.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -437,6 +440,36 @@ function dirCard(d, selected, drafted) {
   if (selected) card.append(el("span", "k-by", "chosen by you"));
   return card;
 }
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `roomify_run` runs the SAME start() a restyle click runs — three directions are pitched and the
+// recommended one repaints on the user's Higgsfield (the one-go, awaited via restyle) — then returns
+// the rendered room for God to show.
+exposeToGod({
+  name: "roomify_run",
+  description: "Pitch three restyle directions for a room from one line and repaint the recommended one on the user's Higgsfield. Renders live on the page and returns the room image URL.",
+  inputSchema: { room: "string — the room + the vibe (e.g. 'small living room, cozy japandi'). Required." },
+  execute: async ({ room } = {}) => {
+    const val = String(room || "").trim();
+    if (!val) throw new Error("nothing to restyle — pass { room } with the room and the vibe");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Roomify isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle (both the pitch and any render),
+    // run our own (start awaits proposeDirections → restyle), confirm the settled run is OURS.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running && !painting, 180000);   // let any in-flight run finish
+      await start(val);                                      // proposeDirections → auto-restyle the drafted direction
+      const r = state.run || {};
+      if (r.input === val && r.dirs) {
+        const dir = (r.dirs || []).find((o) => o.id === r.draftedId);
+        if (dir && dir.imageUrl) return { imageUrl: dir.imageUrl, direction: dir.label };
+        if (dir && dir.imgError) throw new Error(dir.imgError);
+        if (r.error) throw new Error(r.error);
+      }
+    }
+    throw new Error("Roomify stayed busy — try again");
+  },
+});
 
 // Labeled sample cards (pre-connect / start screen) — the option-card look, no live render slot.
 function sampleCards() {

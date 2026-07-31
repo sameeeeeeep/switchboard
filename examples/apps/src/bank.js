@@ -6,6 +6,9 @@
 // inlined — the operator stores nothing and knows nothing.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose Bank's one action as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same ask() the "ask the brain" box runs, so the answer streams on-page.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -1226,3 +1229,26 @@ reflect();
   } else if (r && r.installed === false) notInstalled = true;
   reflect();
 })();
+
+// ---- God's hand: one page-tool, driving the real brain -----------------------------------------
+// `bank_ask` runs the SAME ask() the "ask the brain" box runs — the question is answered from the
+// user's own notes (inlined on their Claude), streamed into the page — then returns the answer.
+// Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "bank_ask",
+  description: "Ask the context bank a question, answered from the user's own notes. Streams the answer onto the page and returns it.",
+  inputSchema: { question: "string — the question to answer from the vault. Required." },
+  execute: async ({ question } = {}) => {
+    const q = String(question || "").trim();
+    if (!q) throw new Error("nothing to ask — pass { question } to answer from the vault");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Bank isn't connected to Switchboard yet");
+    await waitFor(() => !bootP, 8000);          // let the initial vault read finish so the corpus is loaded
+    await waitFor(() => !asking, 180000);       // one ask at a time — let any in-flight answer finish
+    $("ask-in").value = q;
+    await ask();                                 // reuses the brain's own ask pipeline, awaited
+    const answer = ($("ask-out").textContent || "").trim();
+    if (!answer) throw new Error("Bank couldn't answer — try again");
+    return { answer };
+  },
+});

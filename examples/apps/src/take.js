@@ -10,6 +10,9 @@ import { mountRecorder } from "./kit/recorder.js";
 // The shared decision atoms: option slates that keep DRAFTED (the machine's pick) visually distinct
 // from CHOSEN (a human clicked), plus the escape hatch. See kit/ui.js.
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Take's script step as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() the "describe your own" box runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -438,3 +441,35 @@ function render() {
   }
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `take_script` runs the SAME start() the "or describe your own" box runs — 3 beat-scripts draft
+// themselves live in the DOM (one recommended) — then returns the recommended script for God. The
+// recording itself is a deliberate human act (screen/camera capture) and stays out of this tool.
+exposeToGod({
+  name: "take_script",
+  description: "Draft a recording script (beats for a screen or camera take) from a line describing what you're recording. Renders on the page and returns the recommended script; it does not start a recording.",
+  inputSchema: { about: "string — what you're recording (e.g. 'a 40-second walkthrough of the pricing page'). Required." },
+  execute: async ({ about } = {}) => {
+    const val = String(about || "").trim();
+    if (!val) throw new Error("nothing to script — pass { about } describing what you're recording");
+    // God may call before connect finishes, and while the context-first premise pass (and its auto
+    // script) is still running. Wait for connect, then for BOTH busy flags idle, so start() doesn't
+    // early-return into an in-flight run.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Take isn't connected to Switchboard yet");
+    const idle = () => !running && !premLoading;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(idle, 180000);                 // let any premise/script pass finish first
+      await start({ id: null, label: val, text: "" }); // draftScript, awaited
+      await waitFor(idle, 180000);                  // and ensure it completed
+      const r = state.run || {};
+      if (r.input === val && (r.options || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const drafted = (r.options || []).find((o) => o.id === r.draftedId) || (r.options || [])[0];
+        return { script: drafted ? drafted.text : "", angle: drafted ? drafted.label : null };
+      }
+    }
+    throw new Error("Take stayed busy — try again");
+  },
+});

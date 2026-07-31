@@ -15,6 +15,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // Option cards come from the shared kit (src/kit/ui.js) so DRAFTED (what the model proposed) is
 // visually distinct from CHOSEN (a human clicked), and the slate carries an escape hatch.
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Storybook's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -485,3 +488,34 @@ function pageEl(book, page, idx) {
 }
 
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `storybook_run` runs the SAME start() the "Make the book" button runs — three concepts are proposed,
+// the recommended one is written and its pages render, then each page illustrates on the user's
+// Higgsfield. We wait for the WORDS (illustration continues on the page) and return the title + page
+// text. Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "storybook_run",
+  description: "Write an illustrated children's picture book from one line. Writes it live on the page and illustrates each page; returns the book title and its page text.",
+  inputSchema: { idea: "string — the story idea and who the hero is. Required." },
+  execute: async ({ idea } = {}) => {
+    const line = String(idea || "").trim();
+    if (!line) throw new Error("nothing to write — pass { idea } with the story idea and hero");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Storybook isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open (autostart writes a book about a lent brand).
+    // `running` tracks only the STAGE-1/2 text turns; the per-page illustration pass runs after. We
+    // fire start() and wait for the PAGES to be written (not the images), confirming the run is ours.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight text turn finish first
+      void start(line);                         // fire the pipeline; we wait for the words, not the art
+      const settled = await waitFor(() => { const r = state.run; return r && r.input === line && (r.book || r.error); }, 180000);
+      const r = state.run || {};
+      if (settled && r.input === line && (r.book || r.error)) {
+        if (r.error) throw new Error(r.error);
+        return { title: r.book.title, pages: r.book.pages.map((p) => p.text).filter(Boolean) };
+      }
+    }
+    throw new Error("Storybook stayed busy — try again");
+  },
+});

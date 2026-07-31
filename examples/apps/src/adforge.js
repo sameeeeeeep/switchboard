@@ -10,6 +10,9 @@ import {
   hostOf, slugId,
 } from "./store/bankit.js";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose AdForge's forge as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same forgeRun() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -1095,3 +1098,30 @@ if (state.concepts.length) {
 }
 renderEntry();
 reflect();
+
+// ---- God's hand: one page-tool, driving the real forge pipeline --------------------------------
+// `adforge_run` runs the SAME forgeRun() the "Forge concepts" button runs — three Meta ad concepts
+// forge live in the DOM, from a lent brand or a site URL — then returns them. (Casting the hero
+// image stays a separate, credit-spending click.) Reused by the native God webview and any WebMCP host.
+exposeToGod({
+  name: "adforge_run",
+  description: "Forge three Meta ad concepts from a site URL (or the lent brand). Renders them live on the page and returns them.",
+  inputSchema: { url: "string — a site to forge ads from. Optional when a brand is lent." },
+  execute: async ({ url } = {}) => {
+    const val = String(url || "").trim();
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("AdForge isn't connected to Switchboard yet");
+    const mode = val ? "url" : (lent ? "brand" : null);
+    if (!mode) throw new Error("Pass { url } to forge from a site, or lend a brand first");
+    if (mode === "url") { state.url = val; const f = $("f-url"); if (f) f.value = val; borrowSkipped = val; } // God can't click the borrow offer — go straight to the fetch
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !forging && !casting, 180000);   // let any in-flight run (incl. the context-first auto-forge) finish
+      await forgeRun({ mode });                            // reuse the wrapp's OWN pipeline; awaited to completion
+      await waitFor(() => !forging, 180000);
+      if (state.concepts.length) {
+        return { concepts: state.concepts.map((c) => ({ name: c.name, angle: c.angle, hook: c.hook, headline: c.headline, description: c.description, cta: c.cta, recommended: c.recommended })) };
+      }
+    }
+    throw new Error("AdForge stayed busy — try again");
+  },
+});

@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The shared decision atoms: the accent means A HUMAN CHOSE (doctrine 5), and every slate has an
 // exit for the answer the model never offered (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Toon's storyboard action as a page-tool the native God webview (or any WebMCP
+// host) can DRIVE — reusing the same start() a click runs; inking stays a per-panel consent on the page.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -443,3 +446,34 @@ function panelCard(t, p, i) {
   return card;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `toon_run` runs the SAME start() a draw-it click runs — the one line is storyboarded into a 4-panel
+// treatment (art style + a recurring character + four beats), live in the DOM — then returns that
+// storyboard. Inking each panel is a deliberate per-panel consent (never auto-fired), so it stays on
+// the page: God gets the full comic script and the user inks panels from the UI.
+exposeToGod({
+  name: "toon_run",
+  description: "Storyboard a one-line moment into a 4-panel comic treatment (art style + recurring character + four beats), rendered on the page. Returns the storyboard; ink each panel from the page.",
+  inputSchema: { moment: "string — the one line to turn into a comic. Required." },
+  execute: async ({ moment } = {}) => {
+    const val = String(moment || "").trim();
+    if (!val) throw new Error("nothing to draw — pass { moment } with the one line to turn into a comic");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Toon isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle, run our own, confirm the settled
+    // run is OURS with a storyboard.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running && !busyDrawing, 180000);  // let any in-flight run finish
+      await start(val);                                        // proposeTreatments (awaited)
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && (r.treatments || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const t = selectedTreatment();
+        if (t) return { style: t.label, character: t.characterName, panels: (t.panels || []).map((p) => ({ caption: p.caption, art: p.art })) };
+      }
+    }
+    throw new Error("Toon stayed busy — try again");
+  },
+});

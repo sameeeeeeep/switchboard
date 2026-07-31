@@ -8,6 +8,9 @@ import {
   hostOf, slugId,
 } from "./store/bankit.js";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose A-Plus's write pipeline as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same generateDirections()/generateStack() a click runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 // "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
@@ -1094,3 +1097,35 @@ for (const [key, m] of Object.entries(MODULES)) {
 // ---------- boot ----------
 restore();
 reflectEntry();
+
+// ---- God's hand: one page-tool, driving the real write pipeline ---------------------------------
+// `aplus_write` runs the SAME pipeline the "Generate" button starts — three directions are drafted,
+// the recommended one is picked, and the full A+ stack writes itself, live in the DOM — then returns
+// the stack. Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "aplus_write",
+  description: "Write a full Amazon A+ content stack for a product (a line or a product-page URL). Renders it live on the page and returns it.",
+  inputSchema: { product: "string — the product to write A+ content for. Optional when a brand is lent." },
+  execute: async ({ product } = {}) => {
+    const val = String(product || "").trim();
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("A-Plus isn't connected to Switchboard yet");
+    if (val) {
+      if (brand) { productChoice = CUSTOM; const c = $("f-custom"); if (c) c.value = val; reflectEntry(); }
+      else { const l = $("f-line"); if (l) l.value = val; }
+    }
+    if (!currentProduct()) throw new Error("nothing to write for — pass { product }, or lend a brand first");
+    borrowSkipped = lineUrl(); // God can't click the borrow offer — go straight to the read/write
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !busy, 180000);            // let any in-flight run (incl. the context-first cold-open) finish
+      await generateDirections();                    // reuse the wrapp's OWN stage-1 pipeline; awaited to completion
+      await waitFor(() => !busy, 180000);
+      if (!directions || !directions.length) continue;
+      const recIdx = directions.findIndex((d) => d.recommended);
+      await pickDirection(recIdx < 0 ? 0 : recIdx);  // picking auto-advances into generateStack
+      await waitFor(() => !busy, 180000);
+      if (stack) return { stack };
+    }
+    throw new Error("A-Plus stayed busy — try again");
+  },
+});

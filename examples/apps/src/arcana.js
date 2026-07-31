@@ -3,6 +3,9 @@
 // Claude reads the spread through Switchboard. The app ships only the table; no keys, no backend.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose Arcana's reading as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — dealing a fresh spread and running the same readSpread() a click runs, live in the DOM.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 // "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
@@ -650,3 +653,34 @@ ghosts();
 restore();
 renderChips();
 reflect();
+
+// ---- God's hand: one page-tool, dealing and reading a fresh spread -------------------------------
+// `arcana_run` deals a fresh three-card spread and runs the SAME readSpread() the table runs — the
+// cards flip and the reading renders live in the DOM — then returns the drawn cards and the reading.
+exposeToGod({
+  name: "arcana_run",
+  description: "Deal a fresh three-card tarot spread for a question and read it live on the page. Returns the drawn cards and the reading.",
+  inputSchema: { question: "string — the question to read for. Optional; a default is used if omitted." },
+  execute: async ({ question } = {}) => {
+    const q = String(question || "").trim();
+    const waitFor = async (cond, ms) => { const s = Date.now(); while (!cond()) { if (Date.now() - s > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Arcana isn't connected to Switchboard yet");
+    // The table may be mid auto-read on connect; wait for idle, then deal a fresh spread (which clears
+    // any prior reading) and read it — so a non-null `reading` afterwards is unambiguously ours.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !busy, 180000);
+      if (q) $("q").value = q;
+      deal(drawSpread());          // clears the old reading + deals a fresh spread
+      await readSpread();          // reads $("q").value (or the default) for the dealt spread
+      await waitFor(() => !busy, 180000);
+      if (reading && spread) {
+        return {
+          question: $("q").value.trim() || DEFAULT_Q,
+          cards: spread.map((s) => DECK[s.i].n + (s.rev ? " (reversed)" : "")),
+          reading,
+        };
+      }
+    }
+    throw new Error("The table stayed silent — try again");
+  },
+});

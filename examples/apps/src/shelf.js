@@ -15,6 +15,9 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { escapeHatch } from "./kit/ui.js";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose Shelf's triage as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same runTriage() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -932,3 +935,27 @@ function renderBoard(result, opts = {}) {
     if (savedPlay?.playbook && selectedPlan && selectedPlan.title === savedPlay.planTitle) renderPlaybook(savedPlay.playbook);
   }
 })();
+
+// ---- God's hand: one page-tool, driving the real triage pipeline --------------------------------
+// `shelf_triage` runs the SAME runTriage() the "Run triage" button runs — the board (reorder / watch
+// / dead-weight, ABC, and one-week plans) builds live in the DOM from the sheet on deck (a passed CSV,
+// the lent brand's inventory, or the demo) — then returns it. Reused by the native God webview and any WebMCP host.
+exposeToGod({
+  name: "shelf_triage",
+  description: "Triage an inventory sheet (CSV of stock + sales) into reorder / watch / dead-weight, ABC, and one-week plans. Renders the board live and returns it.",
+  inputSchema: { sheet: "string — CSV of stock + sales. Optional when a brand's inventory is lent (or the demo is used)." },
+  execute: async ({ sheet } = {}) => {
+    const csv = String(sheet || "").trim();
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Shelf isn't connected to Switchboard yet");
+    if (csv) { $("csv").value = csv; sheetSource = "user"; autoCsv = null; reparse(); }
+    if (!rows.length) throw new Error("no inventory to triage — pass { sheet } as a CSV of stock + sales");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);      // let any in-flight triage (incl. the context-first auto-triage) finish
+      await runTriage();                          // reuse the wrapp's OWN pipeline; awaited to completion
+      await waitFor(() => !running, 180000);
+      if (lastRendered && lastRendered.data) return { board: lastRendered.data };
+    }
+    throw new Error("Shelf stayed busy — try again");
+  },
+});

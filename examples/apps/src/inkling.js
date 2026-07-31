@@ -11,6 +11,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
 // modifier styles. DRAFTED (what the model sketched) is never CHOSEN (what a human clicked).
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Inkling's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -459,3 +462,40 @@ function flashCards(r) {
   return wrap;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `inkling_run` runs the SAME start() the "Draw it" button runs — three flash concepts are proposed
+// and the recommended one's line art renders on the user's Higgsfield, live in the DOM. start() fires
+// stage 2 without awaiting it (the `running` flag only guards stage 1), so this waits for stage 1 to
+// settle, then for the drafted concept's render to finish, before returning the concepts + image URLs.
+exposeToGod({
+  name: "inkling_run",
+  description: "Turn one tattoo idea into three flash concepts and render the recommended one's line art on the page via your Higgsfield. Returns the concepts and any rendered image URLs.",
+  inputSchema: { idea: "string — the tattoo idea and placement/size. Required." },
+  execute: async ({ idea } = {}) => {
+    const val = String(idea || "").trim();
+    if (!val) throw new Error("nothing to draw — pass { idea } with the tattoo idea and placement");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 120)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Inkling isn't connected to Switchboard yet");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await waitFor(() => !running, 180000);       // let any in-flight stage-1 proposal finish
+      await start(val);                             // proposeConcepts → fires the drafted flash render
+      await waitFor(() => !running, 180000);        // stage 1 settled — concepts are on screen
+      const r = state.run || {};
+      if (r.input !== val) continue;               // a cold-open shadowed us — take the wheel again
+      if (r.error && !r.concepts) throw new Error(r.error);
+      const draftedId = r.draftedId;
+      // stage 2 renders the drafted flash on the user's Higgsfield (not awaited by start) — wait for it.
+      await waitFor(() => {
+        const cur = state.run; if (!cur || cur.input !== val) return true; // bail if we were replaced
+        const c = (cur.concepts || []).find((o) => o.id === draftedId);
+        return !!(c && (c.imgStatus === "done" || c.imgStatus === "error"));
+      }, 180000);
+      const cur = state.run || {};
+      if (cur.concepts && cur.concepts.length) {
+        return { concepts: cur.concepts.map((c) => ({ style: c.style, label: c.label, text: c.text, imageUrl: c.imageUrl || null })) };
+      }
+    }
+    throw new Error("Inkling stayed busy — try again");
+  },
+});

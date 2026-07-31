@@ -6,6 +6,9 @@
 // clicks. A returning soul whose calendar day changed gets today's brief automatically.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose NATAL's read as a page-tool so the native God webview (or any WebMCP host) can
+// DRIVE it — filling the intake and running the same doFullRead() a click runs, live in the DOM.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -763,3 +766,37 @@ if (savedReading?.data && savedReading?.profile) {
   show("intake");
 }
 reflect();
+
+// ---- God's hand: one page-tool, driving the real read --------------------------------------------
+// `natal_run` fills the intake and runs the SAME doFullRead() the "Read the sky" button runs — the
+// chart is estimated and rendered live in the DOM — then returns the reading for God to speak.
+exposeToGod({
+  name: "natal_run",
+  description: "Read a natal / birth chart from birth data. Renders the chart on the page and returns it.",
+  inputSchema: {
+    date: "string — date of birth, YYYY-MM-DD. Required.",
+    place: "string — birthplace (city, country) — the rising depends on it. Required.",
+    time: "string — time of birth, HH:MM (24h). Optional; omit if unknown.",
+    name: "string — the person's name. Optional.",
+  },
+  execute: async ({ date, place, time, name } = {}) => {
+    const d = String(date || "").trim(), pl = String(place || "").trim();
+    if (!d) throw new Error("a chart needs a date of birth — pass { date } as YYYY-MM-DD");
+    if (!pl) throw new Error("a chart needs a birthplace — pass { place } (the rising depends on it)");
+    const t = String(time || "").trim();
+    const waitFor = async (cond, ms) => { const s = Date.now(); while (!cond()) { if (Date.now() - s > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("NATAL isn't connected to Switchboard yet");
+    // The page may still be running its proactive auto-read on connect — wait for idle, fill the
+    // intake, read, and confirm the settled reading is for the birth data we passed.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !busy, 180000);
+      fillForm({ name: String(name || "").trim(), date: d, time: t, unknown: !t, place: pl }, true);
+      await doFullRead();
+      await waitFor(() => !busy, 180000);
+      if (reading && reading.profile && reading.profile.date === d && reading.profile.place === pl && reading.data) {
+        return { chart: reading.data };
+      }
+    }
+    throw new Error("NATAL couldn't read that chart — check the date and place, then try again");
+  },
+});
