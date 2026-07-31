@@ -4097,10 +4097,16 @@ struct StoreView: View {
         }
     }
 
-    private func glyphTile(_ l: SBListing, _ size: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.26).fill(catTint(l.category).opacity(0.16))
-            .overlay(Image(systemName: catGlyph(l.category)).font(.system(size: size * 0.42)).foregroundColor(catTint(l.category)))
-            .frame(width: size, height: size)
+    @ViewBuilder private func glyphTile(_ l: SBListing, _ size: CGFloat) -> some View {
+        if let img = storeIcon(l.id) {
+            // the real "Instruments on the board" hardware icon (Resources/icons/<id>.png)
+            Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.26))
+        } else {
+            RoundedRectangle(cornerRadius: size * 0.26).fill(catTint(l.category).opacity(0.16))
+                .overlay(Image(systemName: catGlyph(l.category)).font(.system(size: size * 0.42)).foregroundColor(catTint(l.category)))
+                .frame(width: size, height: size)
+        }
     }
 
     @ViewBuilder private var detail: some View {
