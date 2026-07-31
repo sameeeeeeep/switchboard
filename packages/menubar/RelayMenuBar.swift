@@ -2301,9 +2301,7 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        consentPanel.alphaValue = 0
-        consentPanel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; consentPanel.animator().alphaValue = 1 }
+        presentFromNotch(consentPanel)
     }
 
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
@@ -2601,6 +2599,50 @@ struct ActionConsentDrop: View {
     @objc private func togglePopover() {
         if panel.isVisible { hidePanel() } else { openedByHover = false; showPanel() }
     }
+    // ── Motion: every drop GROWS OUT OF the notch and COLLAPSES BACK into it ─────────────────────
+    // The drops are clipped to NotchDropShape and pinned to screen.frame.maxY (the notch seam), so
+    // scaling the content layer about its TOP-CENTRE makes the silhouette unfold downward from the
+    // notch (and fold back up on dismiss) — instead of fading in at a fixed rect. One shared pair so
+    // the whole surface family moves the same way. We bake the anchor into the transform (translate→
+    // scale→translate) rather than touching the layer's anchorPoint, which AppKit manages for a
+    // layer-backed NSHostingView.
+    private func notchScale(_ s: CGFloat, _ b: NSRect) -> CATransform3D {
+        let ax = b.width / 2, ay = b.height   // top-centre in AppKit's non-flipped layer space
+        var t = CATransform3DMakeTranslation(ax, ay, 0)
+        t = CATransform3DScale(t, s, s, 1)
+        return CATransform3DTranslate(t, -ax, -ay, 0)
+    }
+    private func presentFromNotch(_ panel: NSPanel) {
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        guard let host = panel.contentView else { return }
+        host.wantsLayer = true
+        guard let layer = host.layer else { return }
+        let g = CAAnimationGroup()
+        let t = CABasicAnimation(keyPath: "transform")
+        t.fromValue = NSValue(caTransform3D: notchScale(0.04, host.bounds))
+        t.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 0.0; o.toValue = 1.0
+        g.animations = [t, o]; g.duration = 0.24
+        g.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.9, 0.24, 1)  // ease-out, slight settle
+        layer.add(g, forKey: "notchIn")
+    }
+    private func dismissToNotch(_ panel: NSPanel, then done: (() -> Void)? = nil) {
+        guard let host = panel.contentView, let layer = host.layer else { panel.orderOut(nil); done?(); return }
+        let g = CAAnimationGroup()
+        let t = CABasicAnimation(keyPath: "transform")
+        t.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+        t.toValue = NSValue(caTransform3D: notchScale(0.04, host.bounds))
+        let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 1.0; o.toValue = 0.0
+        g.animations = [t, o]; g.duration = 0.15
+        g.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        g.isRemovedOnCompletion = false; g.fillMode = .forwards
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { panel.orderOut(nil); layer.removeAnimation(forKey: "notchOut"); done?() }
+        layer.add(g, forKey: "notchOut")
+        CATransaction.commit()
+    }
+
     private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
@@ -2618,9 +2660,7 @@ struct ActionConsentDrop: View {
         // bottom = the TRUE menu-bar bottom edge (mainMenu.menuBarHeight lies on some displays). The
         // NotchPanel subclass below refuses re-constraining, so the top lands exactly here.
         panel.setFrameTopLeftPoint(NSPoint(x: x, y: screen.frame.maxY))   // top of the menu bar = screen top
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; panel.animator().alphaValue = 1 }
+        presentFromNotch(panel)   // grow out of the notch
         // transient: any click outside puts it away
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.hidePanel() }
@@ -2628,7 +2668,7 @@ struct ActionConsentDrop: View {
     }
 
     private func hidePanel() {
-        panel.orderOut(nil)
+        dismissToNotch(panel)   // collapse back into the notch
         openedByHover = false
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
     }
@@ -2716,7 +2756,7 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             gatePanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        gatePanel.orderFrontRegardless()
+        presentFromNotch(gatePanel)
     }
 
     // ⌃⌥ + click anywhere → summon God at the click point the summon gesture. A global monitor needs
@@ -2951,8 +2991,7 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             actionPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        actionPanel.alphaValue = 0; actionPanel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; actionPanel.animator().alphaValue = 1 }
+        presentFromNotch(actionPanel)
     }
 
     // The gated execution — reached ONLY after the human tapped Allow.
@@ -3241,8 +3280,7 @@ struct ActionConsentDrop: View {
         }
         orb?.orderOut(nil)   // the extended notch REPLACES the orb — don't show the 3-dot orb behind it
         if !godStatusPanel.isVisible {
-            godStatusPanel.alphaValue = 0; godStatusPanel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; godStatusPanel.animator().alphaValue = 1 }
+            presentFromNotch(godStatusPanel)
         }
     }
 
