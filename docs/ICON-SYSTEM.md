@@ -178,9 +178,11 @@ are from `examples/apps/src/store/catalog.js`.
 
 ### 5.0 New flagships
 
+> **Catalog reconciliation (2026-08-02):** the SHIPPED dictation listing is `flow` (category `tool`) — it already has a generated icon (`icons/flow.png`, a tall capsule mic with a side grille + lime live-ring). The `dictation` row below is its design synonym; use `flow` as the id. `meeting-notes`, `canvas`, `video-editor` are PLANNED — no catalog entry / no icon needed until they ship (specs in docs/STORE.md + the flagship agent report).
+
 | id | Category | `{OBJECT}` | `{LIME ELEMENT}` |
 |---|---|---|---|
-| `dictation` | Capture | a machined handheld dictation mic with a perforated acoustic grille head | lime live-ring around the grille |
+| `flow` / `dictation` | Capture | a tall machined dictation-mic capsule with a side perforated grille | lime live-ring around the grille |
 | `meeting-notes` | Capture | a round conference-table mic puck, perforated grille top | lime live-ring around the puck rim |
 | `canvas` | Make / Create | a flat machined drawing-tablet work-surface slab with a docked stylus | lime edge-lit seam down the slab's active edge |
 | `video-editor` | Make / Create | a compact editing control deck with a jog wheel and a scrub bar | lime edge-lit seam along the scrub bar |
