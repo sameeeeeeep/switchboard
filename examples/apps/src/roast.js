@@ -390,12 +390,25 @@ exposeToGod({
   execute: async ({ target } = {}) => {
     const input = String(target || "").trim();
     if (!input) throw new Error("nothing to roast — pass { target } with the text to roast");
-    if (!relay) throw new Error("Roast isn't connected to Switchboard yet");
-    await start(input);                         // proposeAngles → auto-advance roastFrom, all awaited
-    const r = state.run || {};
-    if (r.error) throw new Error(r.error);
-    if (!r.roast) throw new Error("no roast came back");
-    const angle = (r.angles || []).find((a) => a.id === r.selectedId);
-    return { roast: r.roast, angle: angle ? angle.label : null };
+    // God may call the instant the page loads — before connect finishes, and while the context-first
+    // cold-open (autostart) is still running. Wait for connect, then for idle, so start() doesn't
+    // early-return into an in-flight run. Same reason a human wouldn't click mid-cold-open.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Roast isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold-open. start() early-returns while a run is in flight,
+    // so a naive call can read the cold-open's run instead of ours. Wait for idle, run, and confirm the
+    // settled run is OURS (same input) with a result; if a cold-open shadowed us, retry.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);     // let any in-flight run finish before we take the wheel
+      await start(input);                         // proposeAngles → auto-advance roastFrom, all awaited
+      await waitFor(() => !running, 180000);      // and ensure the run completed
+      const r = state.run || {};
+      if (r.input === input && (r.roast || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const angle = (r.angles || []).find((a) => a.id === r.selectedId);
+        return { roast: r.roast, angle: angle ? angle.label : null };
+      }
+    }
+    throw new Error("Roast stayed busy — try again");
   },
 });
