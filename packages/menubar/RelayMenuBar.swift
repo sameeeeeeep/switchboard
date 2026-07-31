@@ -2636,6 +2636,17 @@ struct ActionConsentDrop: View {
         previews.submenu = sub
         menu.addItem(previews)
         menu.addItem(.separator())
+        // Capture scope — what ⌃⌃ sends God (the user's "different capture options" ask). Region /
+        // full-screen flip the persisted god-region flag; drawing/annotate is honestly marked soon.
+        let capture = NSMenuItem(title: "What God sees", action: nil, keyEquivalent: "")
+        let csub = NSMenu()
+        let region = NSMenuItem(title: "Drag a region", action: #selector(captureRegionItem), keyEquivalent: ""); region.target = self; region.state = model.regionSelect ? .on : .off
+        let full = NSMenuItem(title: "Whole screen", action: #selector(captureFullItem), keyEquivalent: ""); full.target = self; full.state = model.regionSelect ? .off : .on
+        let draw = NSMenuItem(title: "Annotate / draw — coming soon", action: nil, keyEquivalent: ""); draw.isEnabled = false
+        csub.addItem(region); csub.addItem(full); csub.addItem(.separator()); csub.addItem(draw)
+        capture.submenu = csub
+        menu.addItem(capture)
+        menu.addItem(.separator())
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
@@ -2646,6 +2657,8 @@ struct ActionConsentDrop: View {
     }
     @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
     @objc private func driveWrappFromMenu() { driveWrappLive() }
+    @objc private func captureRegionItem() { setRegion(true) }
+    @objc private func captureFullItem() { setRegion(false) }
     // The HTML capability, live: clipboard text → Claude writes HTML → offscreen render → the PNG
     // lands in the notch widget with drag-out. Sub-minute, free, on the user's own Claude.
     @objc private func diagramFromClipboardItem() {

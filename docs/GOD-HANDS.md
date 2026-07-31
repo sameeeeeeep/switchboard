@@ -59,6 +59,9 @@ ONE drive session, TWO surfaces, never both:
 
 The **project chip** rides every widget header: a context-dependent command ("make me an ad") is only right if the right project is lent, so the selector lives at the moment of command — it reads/writes the same global default as the panel picker (`context-selection.json`).
 
+## Capture scope + the hover palette
+What ⌃⌃ sends God is user-chosen: **Drag a region · Whole screen** (persisted `~/.relay/god-region`), plus **Annotate/draw** (planned). Shipped now via the menu-bar right-click → "What God sees" (reliable, verifiable — flips the region flag). The **hover-over-the-notch palette** (the same choices revealed on orb hover) is specced but deferred to a live UX pass — it changes a core interaction (hover currently opens the panel) and can't be verified without a real mouse; do it with the app in front of you, not blind.
+
 ## Build status & remaining
 
 | Piece | State |

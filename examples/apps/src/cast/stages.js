@@ -224,7 +224,31 @@ export function renderFoundation(root, ctx) {
     }
   });
   for (const facet of FACETS) root.append(facetCard(facet, ctx));
+  const adv = foundationAdvanceBar(ctx); if (adv) root.append(adv);
   root.append(gateBar(a, "foundation", ctx.go));
+}
+// One-go momentum (ideabrain's feel): once autopilot has DRAFTED every facet, the whole foundation is
+// already a valid slate — the stage gate (stageReady) is satisfied by the draft locks. But the board
+// still shows one "confirm" call-to-action per drafted facet, which reads as six gates when there are
+// really zero. This is the fast path: ONE gesture that accepts Cast's whole drafted slate (clears the
+// auto flags → the drafts become real human-confirmed locks, doctrine 5) and moves straight on to
+// Base assets. Per-facet confirm / steer / regenerate above are untouched for anyone who wants to
+// tweak a card first; this just stops the pipeline from stalling behind six identical clicks.
+function foundationAdvanceBar(ctx) {
+  const a = ctx.account, fnd = a.foundation;
+  const allPresent = FACET_IDS.every((id) => fnd.locks[id]);   // every facet has at least a draft
+  const drafts = FACET_IDS.filter((id) => fnd.auto[id]);       // …still on Cast's autopilot pick
+  if (!allPresent || !drafts.length) return null;              // nothing to fast-forward
+  const bar = el("div", "draftbar allbar");
+  const t = el("div", "dbt");
+  t.append(
+    el("b", null, "✨ Cast drafted the whole foundation."),
+    document.createTextNode(` ${drafts.length} facet${drafts.length === 1 ? "" : "s"} still on Cast's pick — accept them all and move on, or confirm / steer any card above first.`),
+  );
+  const ok = el("button", "okbtn", "Confirm all & continue →");
+  ok.onclick = () => { for (const id of FACET_IDS) delete fnd.auto[id]; ctx.save(); ctx.go("assets"); };
+  bar.append(t, ok);
+  return bar;
 }
 function facetCard(facet, ctx) {
   const a = ctx.account, fnd = a.foundation;
