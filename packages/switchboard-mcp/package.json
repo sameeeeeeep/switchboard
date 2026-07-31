@@ -1,0 +1,19 @@
+{
+  "name": "@relay/switchboard-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The reverse arrow: an MCP server that lets Claude Code (or any MCP client) run Switchboard wrapps headless, on the user's own Claude, under the same per-origin consent as the browser.",
+  "bin": {
+    "switchboard": "./switchboard-mcp.mjs"
+  },
+  "scripts": {
+    "start": "node switchboard-mcp.mjs mcp",
+    "test": "node switchboard-mcp.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.0"
+  }
+}
