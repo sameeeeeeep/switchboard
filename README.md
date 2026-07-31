@@ -71,14 +71,23 @@ notarized `.dmg`. The rule it proves: an app supplies the skin; the *user's* int
 the broker — no key, no bundled model.
 
 **[God](examples/god)** is the flagship — an ambient, screen-aware assistant that ships *inside* the
-menu-bar app. Double-tap Control, speak, release: it sees your screen (real vision through the daemon),
-answers in a voice you **clone** (on-device, Kyutai Pocket TTS on Apple's MLX — no cloud, no credits),
+menu-bar app. Double-tap Control, speak, release: it sees your screen (real vision through the daemon —
+or **drag a box while you talk** to send just one region, not the whole screen), answers in a voice you
+**clone** (on-device, Kyutai Pocket TTS on Apple's MLX — no cloud, no credits),
 and acts across your whole Mac — opening, typing, clicking — while
 **irreversible** actions (send / delete / pay) hold for a one-tap consent drop in the notch. It keeps a
 **warm session** (it remembers) and works on the **project you pick** in the menu. The notch becomes an
 LED status panel — `Listening → Thinking → Speaking`, a permissions concierge that walks you through
 mic → accessibility → screen, a second-cursor glow, and a dot-matrix wordmark. Same rule as Flow: the
 app is a skin; the intelligence *and the gate* are the broker's. Full spec: [`docs/GOD.md`](docs/GOD.md).
+
+**The wrapp store** lives in the menu bar too — a modal that lists every wrapp (web and native), shows
+what each **needs** before it runs (live-diffed against your setup), and launches it on the right
+surface: open in a browser, **activate a skill into God**, or run a workflow headless — every launch
+through the same gate. The source of truth is a per-repo `switchboard.json`, ingested into one catalog.
+Download the signed, notarized app from
+[**Releases**](https://github.com/sameeeeeeep/switchboard/releases/latest). Spec:
+[`docs/WRAPP-STORE-MODAL.md`](docs/WRAPP-STORE-MODAL.md).
 
 ## Porting existing apps
 
