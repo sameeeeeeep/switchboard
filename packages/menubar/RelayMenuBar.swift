@@ -635,6 +635,7 @@ final class Model: ObservableObject {
     @Published var userName: String = ""          // what God calls you (~/.relay/profile.json → name)
     @Published var economy = false                // prefer a cheaper/faster model to spend fewer tokens
     @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
+    @Published var shortcuts = readShortcutCfg()   // the summon / talk gesture bindings (rebindable presets)
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -654,6 +655,7 @@ final class Model: ObservableObject {
         userName = readUserName()
         economy = readEconomy()
         regionSelect = readRegionSelect()
+        shortcuts = readShortcutCfg()
     }
 }
 
@@ -680,6 +682,36 @@ func readEconomy() -> Bool {
     return v == "1" || v == "true"
 }
 
+// ---------- keyboard shortcuts (~/.relay/shortcuts.json) ----------
+// A DELIBERATELY-NARROW, mac-safe vocabulary — not free-form hotkeys. Everything rides one passive
+// `.flagsChanged` monitor (installHotKey), which only sees MODIFIERS, so the whole grammar is: summon =
+// double-tap ONE modifier; talk = hold a TWO-modifier chord. A real key+modifier hotkey would need Input
+// Monitoring / a CGEventTap; we intentionally don't go there. Rebinding therefore = pick from these presets.
+struct ShortcutCfg { var summon = "control"; var talk = "control+option" }   // defaults = the original ⌃⌃ / ⌃⌥
+let SUMMON_OPTIONS = ["control", "option", "command", "shift"]
+let TALK_OPTIONS = ["control+option", "control+command", "option+command", "control+shift", "option+shift", "command+shift"]
+func modFlag(_ s: String) -> NSEvent.ModifierFlags {
+    switch s { case "control": return .control; case "option": return .option; case "command": return .command; case "shift": return .shift; default: return [] }
+}
+func chordFlags(_ s: String) -> NSEvent.ModifierFlags {
+    s.split(separator: "+").reduce(into: NSEvent.ModifierFlags()) { $0.insert(modFlag(String($1))) }
+}
+func modGlyph(_ s: String) -> String {
+    switch s { case "control": return "⌃"; case "option": return "⌥"; case "command": return "⌘"; case "shift": return "⇧"; default: return "?" }
+}
+func talkGlyphs(_ s: String) -> String { s.split(separator: "+").map { modGlyph(String($0)) }.joined() }
+// Validated read — an out-of-vocabulary value silently falls back to the default, so a hand-edited or
+// stale file can never wedge the gesture monitor into an unmatchable state.
+func readShortcutCfg() -> ShortcutCfg {
+    let f = (RELAY_DIR as NSString).appendingPathComponent("shortcuts.json")
+    var c = ShortcutCfg()
+    if let obj = readJSON(f) as? [String: Any] {
+        if let s = obj["summon"] as? String, SUMMON_OPTIONS.contains(s) { c.summon = s }
+        if let t = obj["talk"] as? String, TALK_OPTIONS.contains(t) { c.talk = t }
+    }
+    return c
+}
+
 // ---------- onboarding (docs/ONBOARDING.md) ----------
 // Where new users land the switchboard install page / the store hero. One hub; both the extension
 // rung and the first-app rung point here.
@@ -699,6 +731,13 @@ func readOnboarded() -> Bool { FileManager.default.fileExists(atPath: ONBOARDED_
     @Published var phase: Phase = .hidden
     @Published var step = 0
     static let tourCount = 4                            // glance · intro · settings · dictation → done
+
+    // Live gesture pulses for the Settings → Shortcuts tester. Stamped whenever the real gesture is
+    // DETECTED (independent of the tour, and before any downstream guard), so the section can flash a
+    // green "detected" the instant you press — and show "used Ns ago" as proof even if summoning God
+    // reordered the panel away.
+    @Published var lastSummon: Date? = nil              // ⌃⌃ double-tap
+    @Published var lastDictate: Date? = nil             // ⌃⌥ hold
 
     func beginSetup() { phase = .setup; step = 0 }
     func startTour()  { phase = .tour;  step = 0 }
@@ -787,6 +826,7 @@ struct Panel: View {
     let onSetName: (String) -> Void      // save the name God greets you by
     let onSetEconomy: (Bool) -> Void     // economy mode: prefer a cheaper/faster model
     let onSetRegion: (Bool) -> Void      // ⌃⌃ region select: drag to pick what God sees
+    let onSetShortcut: (String, String) -> Void  // rebind a gesture ("summon"/"talk" → preset value)
     let onSignIn: () -> Void             // onboarding: open Terminal + start the `claude` login
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     let onStore: () -> Void              // open the wrapp store modal (drops from the notch)
@@ -1062,6 +1102,8 @@ struct Panel: View {
             Rectangle().fill(Color.edge).frame(height: 1)
             economySection
             Rectangle().fill(Color.edge).frame(height: 1)
+            shortcutsSection
+            Rectangle().fill(Color.edge).frame(height: 1)
             regionSection
             Rectangle().fill(Color.edge).frame(height: 1)
             connectionsSection
@@ -1123,6 +1165,104 @@ struct Panel: View {
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
         }.padding(.horizontal, 18).padding(.vertical, 14)
+    }
+
+    // KEYBOARD SHORTCUTS — the two global gestures, listed in-place with a live tester and a rebind menu.
+    // Both ride one passive modifier monitor (installHotKey) that needs Accessibility to observe keys from
+    // other apps; if it isn't trusted the gestures silently no-op, so that's the first thing we surface.
+    // Press a gesture and its row flashes "detected" (via the pulses onboard stamps on detection); once
+    // used it shows "used Ns ago" — proof it fired even if summoning God pulled focus off this panel.
+    // Rebinding is a CURATED pick, not free recording: the passive monitor only sees modifiers, so the
+    // grammar is fixed (double-tap one modifier / hold a two-modifier chord) and you choose among presets.
+    private var shortcutsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("KEYBOARD SHORTCUTS").kicker()
+            if !AXIsProcessTrusted() {
+                Button(action: onFixSenses) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundColor(.danger)
+                        Text("Shortcuts need Accessibility to work from other apps.").font(.hanken(10.5)).foregroundColor(.inkDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Text("Grant").font(.hanken(10.5, .semibold)).foregroundColor(.lime)
+                    }.padding(.horizontal, 10).padding(.vertical, 8)
+                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.danger.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.danger.opacity(0.3), lineWidth: 1)))
+                     .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+            VStack(spacing: 0) {
+                shortcutRow(glyphs: [modGlyph(model.shortcuts.summon), modGlyph(model.shortcuts.summon)],
+                            title: "Summon God", sub: "Double-tap to see, hear, help.", pulse: onboard.lastSummon) {
+                    rebindMenu(options: SUMMON_OPTIONS, current: model.shortcuts.summon,
+                               label: { "Double-tap \(modGlyph($0))" }) { onSetShortcut("summon", $0) }
+                }
+                shortcutRow(glyphs: model.shortcuts.talk.split(separator: "+").map { modGlyph(String($0)) },
+                            title: "Hold to talk", sub: "Hold to dictate at your cursor.", pulse: onboard.lastDictate) {
+                    rebindMenu(options: TALK_OPTIONS, current: model.shortcuts.talk,
+                               label: { "Hold \(talkGlyphs($0))" }) { onSetShortcut("talk", $0) }
+                }
+            }
+            Text("Global — works from any app. Press one now; it should light up here.")
+                .font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+        }.padding(.horizontal, 18).padding(.vertical, 14)
+    }
+    // A keycap chip — the glyph in a bordered square, panel-grammar.
+    private func keycap(_ s: String) -> some View {
+        Text(s).font(.splMono(12)).foregroundColor(.ink)
+            .frame(minWidth: 15).padding(.horizontal, 7).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.panel)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.edge, lineWidth: 1)))
+    }
+    private func shortcutRow<Trailing: View>(glyphs: [String], title: String, sub: String, pulse: Date?,
+                                             @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 11) {
+            HStack(spacing: 4) { ForEach(Array(glyphs.enumerated()), id: \.offset) { keycap($0.element) } }
+                .frame(width: 62, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Text(sub).font(.hanken(10.5)).foregroundColor(.inkFaint)
+            }
+            Spacer(minLength: 6)
+            // Refresh once a second so "detected" decays back to "used Ns ago" on its own.
+            TimelineView(.periodic(from: Date(), by: 1)) { ctx in testPill(pulse: pulse, now: ctx.date) }
+            trailing()
+        }.padding(.vertical, 7)
+    }
+    // The rebind picker — a compact popup of the allowed presets, current one check-marked. Mac-idiomatic
+    // Menu (not a custom recorder), which is the whole "limit what can be done" point.
+    private func rebindMenu(options: [String], current: String, label: @escaping (String) -> String,
+                            onPick: @escaping (String) -> Void) -> some View {
+        Menu {
+            ForEach(options, id: \.self) { opt in
+                Button(action: { onPick(opt) }) {
+                    if opt == current { Label(label(opt), systemImage: "checkmark") } else { Text(label(opt)) }
+                }
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3").font(.system(size: 11)).foregroundColor(.inkFaint)
+                .frame(width: 24, height: 22)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.panel)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.edge, lineWidth: 1)))
+        }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Change this shortcut")
+    }
+    @ViewBuilder private func testPill(pulse: Date?, now: Date) -> some View {
+        if let p = pulse, now.timeIntervalSince(p) < 2.2 {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
+                Text("detected").font(.hanken(10, .semibold))
+            }.foregroundColor(.lime)
+        } else if let p = pulse {
+            Text("used \(agoLabel(now.timeIntervalSince(p)))").font(.splMono(9)).foregroundColor(.inkFaint)
+        } else {
+            Text("press to test").font(.splMono(9)).foregroundColor(.inkFaint)
+        }
+    }
+    private func agoLabel(_ secs: TimeInterval) -> String {
+        let s = Int(max(0, secs))
+        if s < 60 { return "\(s)s ago" }
+        if s < 3600 { return "\(s / 60)m ago" }
+        return "\(s / 3600)h ago"
     }
 
     // ⌃⌃ REGION — when on, summoning God lets you drag a rectangle; only that part of the screen is sent.
@@ -2081,8 +2221,8 @@ struct ActionConsentDrop: View {
     private var openedByHover = false             // panel opened via orb hover (auto-close on hover-out) vs glyph click
     private var godArmed = false                  // ⌃⌥ currently held (rising-edge detector for the trigger)
     private var godRunning = false                // a God loop is in flight — don't stack another
-    private var lastCtrlTap: Date?                // ⌃⌃ double-tap detector
-    private var ctrlWasDown = false
+    private var lastCtrlTap: Date?                // summon double-tap detector (timing window)
+    private var summonWasDown = false            // edge-detect the summon modifier so a hold ≠ repeated taps
     private var godStateTimer: Timer?             // polls ~/.relay/god-state → notch listening/thinking/speaking
     private var godListening = false              // mic is recording your request
     private var recorder: AVAudioRecorder?        // in-process mic capture — makes THIS app the TCC mic client
@@ -2225,10 +2365,33 @@ struct ActionConsentDrop: View {
             req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "content-type")
             req.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
             req.timeoutInterval = 180
-            URLSession.shared.dataTask(with: req) { _, _, _ in
-                Task { @MainActor in self.selectVoice(name); self.toast("Voice ready: \(name)") }
+            URLSession.shared.dataTask(with: req) { _, resp, err in
+                let ok = err == nil && ((resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false)
+                Task { @MainActor in
+                    if ok {
+                        self.selectVoice(name); self.toast("Voice ready: \(name)")
+                    } else {
+                        // The clone engine (:7897) didn't take it — DON'T pretend it worked and leave the
+                        // user silently on the macOS `say` voice (the old bug). Drop the phantom .wav so the
+                        // voice list stays truthful, and say what's actually wrong.
+                        try? FileManager.default.removeItem(atPath: dst)
+                        self.model.refreshFiles()
+                        self.toast(self.voiceEngineHint(err))
+                    }
+                }
             }.resume()
         }
+    }
+
+    // Honest failure copy when a /clone POST to :7897 fails — the old path hid every failure behind a
+    // fake "Voice ready". Distinguish "engine not running" (the common new-user case — it's unwired) from
+    // a genuine clone error so the toast points somewhere real.
+    private func voiceEngineHint(_ err: Error?) -> String {
+        if let u = err as? URLError,
+           [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .timedOut].contains(u.code) {
+            return "Voice cloning isn't set up — the voice engine (:7897) isn't running."
+        }
+        return "Couldn't clone that voice — check the voice engine and try again."
     }
 
     // Remove a connected app/site by origin (web / tab / iPhone). Native apps go through
@@ -2280,6 +2443,21 @@ struct ActionConsentDrop: View {
         toast(on ? "God sees a region you drag" : "God sees the whole screen")
     }
 
+    // Rebind a gesture → ~/.relay/shortcuts.json. `kind` is "summon" or "talk"; `value` is one of the
+    // curated presets (validated on read). refreshFiles reloads model.shortcuts so both onFlags and the
+    // Settings keycaps pick it up live — no relaunch.
+    @MainActor private func setShortcut(_ kind: String, _ value: String) {
+        try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
+        let f = (RELAY_DIR as NSString).appendingPathComponent("shortcuts.json")
+        var obj = (readJSON(f) as? [String: Any]) ?? [:]
+        obj[kind] = value
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: f))
+        }
+        model.refreshFiles()
+        toast(kind == "summon" ? "Summon: double-tap \(modGlyph(value))" : "Talk: hold \(talkGlyphs(value))")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerBundledFonts()
         NSApp.setActivationPolicy(.accessory)
@@ -2317,6 +2495,7 @@ struct ActionConsentDrop: View {
             onSetName: { [weak self] name in self?.setUserName(name) },
             onSetEconomy: { [weak self] on in self?.setEconomy(on) },
             onSetRegion: { [weak self] on in self?.setRegion(on) },
+            onSetShortcut: { [weak self] kind, value in self?.setShortcut(kind, value) },
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
             onStore: { [weak self] in self?.showStore() }
@@ -2531,26 +2710,31 @@ struct ActionConsentDrop: View {
         }
     }
 
-    // Two gestures on one monitor:
-    //   ⌃⌥ HOLD  → dictation (raw whisper transcript pasted at the cursor — no God, no cleanup)
-    //   ⌃⌃ tap   → summon God (see/hear/help)
+    // Two gestures on one monitor, both bound from ~/.relay/shortcuts.json (defaults ⌃⌥ hold / ⌃⌃ tap):
+    //   TALK chord HOLD → dictation (raw whisper transcript pasted at the cursor — no God, no cleanup)
+    //   SUMMON modifier double-tap → summon God (see/hear/help)
     @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
-        let ctrlOpt = flags.contains(.control) && flags.contains(.option) && !flags.contains(.command) && !flags.contains(.shift)
-        // ⌃⌥ hold-to-dictate takes priority: while it's held we record; the moment either key lifts we
-        // transcribe + paste. (Ignore ⌃⌃ handling entirely while dictating.)
+        let cfg = model.shortcuts
+        let talk = chordFlags(cfg.talk)
+        let summonMod = modFlag(cfg.summon)
+        let m = flags.intersection([.control, .option, .command, .shift])
+        let talkHeld = !talk.isEmpty && m == talk
+        // The talk chord takes priority: while it's held we record; the moment either key lifts we
+        // transcribe + paste. (Ignore summon handling entirely while dictating.)
         if dictating {
-            if !ctrlOpt { stopDictationAndPaste() }
+            if !talkHeld { stopDictationAndPaste() }
             return
         }
-        if ctrlOpt { startDictation(); return }
-        let m = flags.intersection([.control, .option, .command, .shift])
-        if m == [.control] && !ctrlWasDown {
-            ctrlWasDown = true
+        if talkHeld { onboard.lastDictate = Date(); startDictation(); return }
+        // Summon = a double-tap of the single summon modifier — so it only arms when ONLY that key is
+        // down (a chord that contains it, e.g. the talk chord, never reads as a summon tap).
+        if m == summonMod && !summonWasDown {
+            summonWasDown = true
             onCtrlTap()
         } else if m.isEmpty {
-            ctrlWasDown = false
+            summonWasDown = false
         } else {
-            ctrlWasDown = flags.contains(.control)
+            summonWasDown = flags.contains(summonMod)
         }
     }
 
@@ -2622,7 +2806,7 @@ struct ActionConsentDrop: View {
         else if godRunning { cancelGod() }
         else {
             let now = Date()
-            if let last = lastCtrlTap, now.timeIntervalSince(last) < 0.5 { lastCtrlTap = nil; startListening() }
+            if let last = lastCtrlTap, now.timeIntervalSince(last) < 0.5 { lastCtrlTap = nil; onboard.lastSummon = Date(); startListening() }
             else { lastCtrlTap = now }
         }
     }
@@ -3237,7 +3421,8 @@ struct ActionConsentDrop: View {
         let listings = readCatalog()
         let view = StoreView(listings: listings, present: storePresent(),
                              onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
-                             onClose: { [weak self] in self?.hideStore() })
+                             onClose: { [weak self] in self?.hideStore() },
+                             onAddLocal: { [weak self] in self?.addLocalWrapp() })
         if storePanel == nil {
             // A free-floating modal (centred, its own shadow) — not a notch drop. The store is a
             // deliberate destination, so it earns a real window, not the ambient notch surface.
@@ -3267,6 +3452,69 @@ struct ActionConsentDrop: View {
     @MainActor private func hideStore() {
         storePanel?.orderOut(nil)
         if let m = storeMonitor { NSEvent.removeMonitor(m); storeMonitor = nil }
+    }
+
+    // D — add a local/dev wrapp without the CLI. Pick a wrapp folder (or its switchboard.json), validate
+    // it the SAME way build-catalog.mjs does (must decode, declare ≥1 surface, and satisfy the surface's
+    // component), then merge it into ~/.relay/catalog.json so it shows in the store immediately. We drop
+    // the popUpMenu-level store panel first so the open dialog isn't fighting it in z-order, and always
+    // re-present the store on the way out.
+    @MainActor private func addLocalWrapp() {
+        hideStore()
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = false
+        panel.prompt = "Add"; panel.message = "Pick a wrapp folder (or its switchboard.json)."
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let picked = panel.url else { showStore(); return }
+        // Resolve the chosen path to a manifest file.
+        var manifest = picked, isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: picked.path, isDirectory: &isDir)
+        if isDir.boolValue { manifest = picked.appendingPathComponent("switchboard.json") }
+        guard FileManager.default.fileExists(atPath: manifest.path) else {
+            storeAlert("No switchboard.json", "“\(picked.lastPathComponent)” has no switchboard.json at its top level."); showStore(); return
+        }
+        // Strict decode = guaranteed round-trippable, so merging can never wedge the whole catalog.
+        guard let data = FileManager.default.contents(atPath: manifest.path),
+              let listing = try? JSONDecoder().decode(SBListing.self, from: data) else {
+            storeAlert("Couldn't read the listing", "That switchboard.json isn't a complete wrapp listing (needs id, name, category, components, surfaces, requires)."); showStore(); return
+        }
+        if let bad = listingProblem(listing) { storeAlert("Not runnable yet", bad); showStore(); return }
+        mergeCatalog(listing)
+        toast("Added \(listing.name)")
+        showStore()
+    }
+
+    // Mirror validateListing (store.ts): a surface needs its component. Returns a human reason or nil.
+    private func listingProblem(_ l: SBListing) -> String? {
+        if l.id.isEmpty || l.name.isEmpty { return "The listing is missing an id or name." }
+        if l.surfaces.isEmpty { return "“\(l.name)” declares no surfaces — it's a runtime-only config, not a store listing." }
+        for s in l.surfaces {
+            switch s {
+            case "god": if (l.components.skills?.isEmpty ?? true) { return "Surface 'god' needs components.skills." }
+            case "batch": if (l.components.workflows?.isEmpty ?? true) { return "Surface 'batch' needs components.workflows." }
+            case "browser", "window", "notch": if l.components.ui?.url == nil { return "Surface '\(s)' needs components.ui." }
+            default: break
+            }
+        }
+        return nil
+    }
+
+    // Merge one listing into the LIVE catalog (~/.relay/catalog.json), replacing any same-id entry.
+    // Seeds from whatever the store currently shows (live-or-bundled) so adding a local wrapp preserves
+    // the rest. Re-encoded through the same Codable types → the file stays decodable by readCatalog.
+    @MainActor private func mergeCatalog(_ listing: SBListing) {
+        var listings = readCatalog().filter { $0.id != listing.id }
+        listings.append(listing)
+        let cat = SBCatalog(version: 1, count: listings.count, listings: listings)
+        try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
+        let live = (RELAY_DIR as NSString).appendingPathComponent("catalog.json")
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(cat) { try? data.write(to: URL(fileURLWithPath: live)) }
+    }
+
+    @MainActor private func storeAlert(_ title: String, _ body: String) {
+        let a = NSAlert(); a.messageText = title; a.informativeText = body; a.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true); a.runModal()
     }
 
     // Launch a listing on a surface (§3). `browser` opens the deployed UI; `god` wakes God wearing the
@@ -3396,6 +3644,7 @@ struct StoreView: View {
     let present: Present
     let onLaunch: (SBListing, String) -> Void
     let onClose: () -> Void
+    let onAddLocal: () -> Void   // D: pick a local wrapp folder → validate → merge into the catalog
     @State private var category = "All"
     @State private var selectedId: String? = nil
 
@@ -3435,6 +3684,13 @@ struct StoreView: View {
                 Text("Everything Switchboard can run for you.").font(.hanken(12)).foregroundColor(.inkDim)
             }
             Spacer(minLength: 0)
+            Button(action: onAddLocal) {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                    Text("Add local").font(.hanken(11, .semibold))
+                }.foregroundColor(.ink).padding(.horizontal, 11).padding(.vertical, 7)
+                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+            }.buttonStyle(.plain).help("Add a local wrapp folder (its switchboard.json)")
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundColor(.inkDim)
                     .frame(width: 26, height: 26).background(Circle().fill(Color.raised))
@@ -3584,10 +3840,17 @@ struct StoreView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Image(systemName: "square.grid.2x2").font(.system(size: 26)).foregroundColor(.inkFaint)
             Text("No catalog yet").font(.hanken(13, .semibold)).foregroundColor(.ink)
-            Text("Run the aggregator: node examples/apps/wrapps/build-catalog.mjs").font(.splMono(10)).foregroundColor(.inkFaint)
+            Button(action: onAddLocal) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .bold))
+                    Text("Add a local wrapp…").font(.hanken(12, .semibold))
+                }.foregroundColor(.rail).padding(.horizontal, 14).padding(.vertical, 8)
+                 .background(RoundedRectangle(cornerRadius: 9).fill(Color.lime))
+            }.buttonStyle(.plain)
+            Text("or run the aggregator: node examples/apps/wrapps/build-catalog.mjs").font(.splMono(9.5)).foregroundColor(.inkFaint)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
