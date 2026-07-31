@@ -835,6 +835,7 @@ struct Panel: View {
     @State private var dropTargeted = false
     @State private var showSettings = false      // the right pane flips to Settings (in-panel, one grammar)
     @State private var nameDraft = ""            // the name field's working copy, committed on save
+    @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
 
     private var signedOut: Bool { model.running && !model.signedIn }
     private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
@@ -1048,8 +1049,6 @@ struct Panel: View {
     // copies + clones into ~/.relay/voices; the radio writes ~/.relay/voices/selected that God reads.
     private var voiceSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) { Text("GOD'S VOICE").kicker(); Spacer()
-                if !model.selectedVoice.isEmpty { Text("· \(model.selectedVoice)").font(.splMono(9.5)).foregroundColor(.inkFaint) } }
             RoundedRectangle(cornerRadius: 9)
                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 .foregroundColor(dropTargeted ? .lime : .edge)
@@ -1069,7 +1068,7 @@ struct Panel: View {
                 voiceRow(name: "", label: "Default (macOS voice)")
                 ForEach(model.voices, id: \.self) { v in voiceRow(name: v, label: v.replacingOccurrences(of: "-", with: " ").capitalized) }
             }
-        }.padding(.horizontal, 18).padding(.vertical, 13)
+        }
     }
     private func voiceRow(name: String, label: String) -> some View {
         let selected = model.selectedVoice == name
@@ -1096,17 +1095,17 @@ struct Panel: View {
                 Spacer()
             }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
             Rectangle().fill(Color.edge).frame(height: 1)
-            nameSection
+            disclosure("name", "YOUR NAME", summary: model.userName.isEmpty ? "not set" : model.userName) { nameSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            voiceSection
+            disclosure("voice", "GOD'S VOICE", summary: model.selectedVoice.isEmpty ? "Default" : model.selectedVoice) { voiceSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            economySection
+            disclosure("mode", "MODE", summary: model.economy ? "Economy" : "Full quality") { economySection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            shortcutsSection
+            disclosure("shortcuts", "KEYBOARD SHORTCUTS", summary: shortcutSummary, warn: !AXIsProcessTrusted()) { shortcutsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            regionSection
+            disclosure("region", "WHAT GOD SEES", summary: model.regionSelect ? "Drag to select" : "Whole screen") { regionSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            connectionsSection
+            disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onboard.beginSetup() }) {
                 HStack(spacing: 9) {
@@ -1122,10 +1121,39 @@ struct Panel: View {
         .onAppear { nameDraft = model.userName }
     }
 
+    // A collapsible settings row: the kicker header stays visible with the section's current value on the
+    // right (show, don't tell), a chevron rotates, and tapping reveals the controls. Accordion — opening one
+    // closes the others — so the panel shows ~7 short rows by default instead of every control stacked tall.
+    @ViewBuilder
+    private func disclosure<Content: View>(_ id: String, _ title: String, summary: String,
+                                           warn: Bool = false, @ViewBuilder content: () -> Content) -> some View {
+        let open = openSection == id
+        Button(action: { withAnimation(.easeOut(duration: 0.16)) { openSection = open ? nil : id } }) {
+            HStack(spacing: 8) {
+                Text(title).kicker()
+                Spacer(minLength: 8)
+                if warn && !open {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                }
+                if !open && !summary.isEmpty {
+                    Text(summary).font(.splMono(9.5)).foregroundColor(.inkFaint).lineLimit(1)
+                }
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.inkFaint).rotationEffect(.degrees(open ? 0 : -90))
+            }.padding(.horizontal, 18).padding(.vertical, 13).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+        if open {
+            content().padding(.horizontal, 18).padding(.bottom, 15)
+        }
+    }
+    // Compact one-line recap of both gestures for the collapsed header.
+    private var shortcutSummary: String {
+        "\(modGlyph(model.shortcuts.summon))\(modGlyph(model.shortcuts.summon)) · \(talkGlyphs(model.shortcuts.talk))"
+    }
+
     // YOUR NAME — the real greeting source (~/.relay/profile.json). Commit on Enter or the save button.
     private var nameSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("YOUR NAME").kicker()
             HStack(spacing: 8) {
                 TextField("What should I call you?", text: $nameDraft)
                     .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
@@ -1137,7 +1165,7 @@ struct Panel: View {
                     .opacity(nameDirty ? 1 : 0.4).disabled(!nameDirty)
             }
             Text("God greets you by this name.").font(.hanken(10.5)).foregroundColor(.inkFaint)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     private var nameDirty: Bool {
         let n = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1148,7 +1176,6 @@ struct Panel: View {
     // MODE — economy: one tap flips ~/.relay/economy, God then reaches for a cheaper/faster model.
     private var economySection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("MODE").kicker()
             Button(action: { onSetEconomy(!model.economy) }) {
                 HStack(spacing: 11) {
                     Image(systemName: model.economy ? "leaf.fill" : "bolt.fill")
@@ -1164,7 +1191,7 @@ struct Panel: View {
                         .animation(.easeOut(duration: 0.15), value: model.economy)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
 
     // KEYBOARD SHORTCUTS — the two global gestures, listed in-place with a live tester and a rebind menu.
@@ -1176,7 +1203,6 @@ struct Panel: View {
     // grammar is fixed (double-tap one modifier / hold a two-modifier chord) and you choose among presets.
     private var shortcutsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("KEYBOARD SHORTCUTS").kicker()
             if !AXIsProcessTrusted() {
                 Button(action: onFixSenses) {
                     HStack(spacing: 8) {
@@ -1205,7 +1231,7 @@ struct Panel: View {
             }
             Text("Global — works from any app. Press one now; it should light up here.")
                 .font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     // A keycap chip — the glyph in a bordered square, panel-grammar.
     private func keycap(_ s: String) -> some View {
@@ -1268,7 +1294,6 @@ struct Panel: View {
     // ⌃⌃ REGION — when on, summoning God lets you drag a rectangle; only that part of the screen is sent.
     private var regionSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("WHAT GOD SEES").kicker()
             Button(action: { onSetRegion(!model.regionSelect) }) {
                 HStack(spacing: 11) {
                     Image(systemName: model.regionSelect ? "rectangle.dashed" : "rectangle.inset.filled")
@@ -1284,15 +1309,13 @@ struct Panel: View {
                         .animation(.easeOut(duration: 0.15), value: model.regionSelect)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
 
     // CONNECTIONS — the apps + sites you've let in. Remove revokes access now; they re-ask next time.
     // (claude.ai connectors themselves are inherited by the SDK and managed in Claude, not here.)
     private var connectionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) { Text("CONNECTIONS").kicker()
-                Text("· \(model.appList.count)").font(.splMono(9.5)).foregroundColor(.inkFaint); Spacer() }
             if model.appList.isEmpty {
                 Text("Nothing connected yet — open a wrapp and it'll ask.").font(.hanken(11)).foregroundColor(.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1303,7 +1326,7 @@ struct Panel: View {
                     VStack(spacing: 0) { ForEach(model.appList) { connectionRow($0) } }
                 }.frame(maxHeight: 236)
             }
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     private func kindLabel(_ kind: AppKind) -> String {
         switch kind { case .web: return "website"; case .native: return "app"; case .iphone: return "iPhone"; case .tab: return "browser tab" }
