@@ -40,9 +40,13 @@ God does not print walls of text for the user to read. It **narrates and convers
 ### 3. All wrapps expose their actions
 A pass across the catalog adds one `exposeToGod` declaration per wrapp (its primary one-go action, reusing its own pipeline; the context-first race guard where needed — see roast). Inert until a host drives it, so it's safe to land ahead of the integration. (In progress via background agents.)
 
-### 4. Two surfaces: the full window AND the notch canvas
+### 4. Two surfaces: the full window AND the notch canvas — the canvas is a WIDGET
 - **Floating window** (`GodWebWindow`) — the full wrapp UI, for anything substantial.
-- **Notch canvas** — a lightweight expanded-notch area where a *small* feature runs inline. Target flow: invoke God → select a screen region → "make an illustrative image from this" → Prism runs **in the notch** → the image appears there → **drag it out** to drop anywhere, or **open the full modal** to tweak further. The notch canvas hosts either a compact inline webview or a native result view; escalates to the full window on demand. (Reuses the existing region-select capture; drag-out via `NSItemProvider`/`NSDraggingSource`.)
+- **Notch canvas = a widget for a wrapp** (iOS/macOS widget sense). The notch is the OS-provided **frame** (one uniform `NotchDropShape` container + tokens); each wrapp provides a glanceable, interactive **subset** of itself (the one result + a couple of actions); **tap to open the full app** (the "Open in <wrapp>" escalation is a widget deep-link). It is **generic over the whole catalog**, not Prism-only — ads (adgen/adforge), a landing-page edit (marquee/redline), a video cut (reel/take), a chart (natal), a roast, a song (anthem)…
+  - **Size classes = the result-type taxonomy.** Like small/medium/large widgets: `text` = small, `image` = medium, `gallery`/`html-page`/`video` = large. Each wrapp's God-tool output maps to a renderer: `image · gallery · cards · text · document · structured · html-page · audio`.
+  - **The component system = the widget kit** — shared chrome (header · result renderer · action row with drag-out + open-full) that every wrapp's widget conforms to, so 33 widgets read as one system. Built on the existing house atoms/tokens (no duplication).
+  - **Flagship flow:** invoke God → select a screen region → "make an illustrative image from this" → Prism runs **in the notch** → the image appears → **drag it out** (`NSItemProvider`, pattern at RelayMenuBar.swift:2034) or **open the full app** to tweak. Reuses the existing region-select capture + `captureShot`.
+  - v1 = native result renderers; v2 = an inline `WKWebView` (reuse `GodWebWindow`'s shim+bridge in the notch clip) for widgets that need the live wrapp UI.
 
 ### 5. Everything emanates from the notch
 No surface fades in at a random position. Panels, the store modal, consent drops, the notch canvas — all **grow out of the notch anchor** on appear and **collapse back into it** on dismiss. A shared `presentFromNotch` / `dismissToNotch` motion (scale+offset anchored at the notch origin) applied to every transient surface, matching the existing panel grammar.
