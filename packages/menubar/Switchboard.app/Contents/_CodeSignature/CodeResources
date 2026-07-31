@@ -4,6 +4,10 @@
 <dict>
 	<key>files</key>
 	<dict>
+		<key>Resources/catalog.json</key>
+		<data>
+		aj91A31zmdkIhpets6Y+xW7b9j8=
+		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
 		RajF30yRdvdPR/NEPMMOs+/mHx4=
@@ -11,6 +15,13 @@
 	</dict>
 	<key>files2</key>
 	<dict>
+		<key>Resources/catalog.json</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Xi4o6w/cyYBaO79IOOEv+Gax3uB+bUgz0NjxTzExRCM=
+			</data>
+		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
 		<dict>
 			<key>hash2</key>

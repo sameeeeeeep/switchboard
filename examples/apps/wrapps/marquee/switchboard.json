@@ -1,0 +1,24 @@
+{
+  "id": "marquee",
+  "name": "Marquee",
+  "tagline": "A landing page that ships to a domain.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://marquee.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

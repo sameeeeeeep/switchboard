@@ -1,0 +1,773 @@
+{
+  "version": 1,
+  "count": 29,
+  "listings": [
+    {
+      "id": "bank",
+      "name": "Bank",
+      "tagline": "A second brain your wrapps can borrow from.",
+      "category": "studio",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://bank.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        },
+        {
+          "kind": "capability",
+          "name": "sb_db",
+          "lazy": true
+        }
+      ]
+    },
+    {
+      "id": "brandbrain",
+      "name": "brandbrain",
+      "tagline": "Your whole brand, one place.",
+      "category": "studio",
+      "author": "Switchboard",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        },
+        {
+          "kind": "capability",
+          "name": "sb_db",
+          "lazy": true
+        }
+      ],
+      "inside": [
+        "A living brand system — voice, palette, and positioning in one vault",
+        "Copy review that answers in your own voice",
+        "A competitor war-room you can refresh"
+      ]
+    },
+    {
+      "id": "ideabrain",
+      "name": "ideabrain",
+      "tagline": "Pressure-test an idea before you build it.",
+      "category": "studio",
+      "author": "Switchboard",
+      "components": {
+        "workflows": [
+          "ideabrain/brief"
+        ],
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "batch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ],
+      "inside": [
+        "Research → thesis → plan, grounded in your notes",
+        "A one-shot brief you can kick off headless (batch)",
+        "An investor-grade deck when the thesis holds"
+      ]
+    },
+    {
+      "id": "adpulse",
+      "name": "AdPulse",
+      "tagline": "Find the ad spend that's being wasted.",
+      "category": "agent",
+      "author": "Switchboard",
+      "components": {
+        "workflows": [
+          "adpulse/analyze"
+        ],
+        "ui": {
+          "kind": "web",
+          "url": "https://adpulse.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "batch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ],
+      "inside": [
+        "A post-mortem on where the budget leaked",
+        "Analyze headless across accounts (batch)",
+        "Scheduled rollups when you want them"
+      ]
+    },
+    {
+      "id": "autopilot",
+      "name": "Autopilot",
+      "tagline": "It plans your week and makes the moves.",
+      "category": "agent",
+      "author": "Switchboard",
+      "components": {
+        "workflows": [
+          "autopilot/plan",
+          "autopilot/moves",
+          "autopilot/slate"
+        ]
+      },
+      "surfaces": [
+        "batch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ],
+      "inside": [
+        "A finite move-engine — no runaway loops",
+        "Plan, then run the slate headless (batch)",
+        "Every action gated + audited by the daemon"
+      ]
+    },
+    {
+      "id": "batch",
+      "name": "Batch",
+      "tagline": "Run one prompt across a whole list.",
+      "category": "agent",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://batch.thelastprompt.ai"
+        },
+        "workflows": [
+          "batch/run"
+        ]
+      },
+      "surfaces": [
+        "browser",
+        "batch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ]
+    },
+    {
+      "id": "redline",
+      "name": "Redline",
+      "tagline": "Mark up a landing page like a doc.",
+      "category": "agent",
+      "author": "Switchboard",
+      "components": {
+        "workflows": [
+          "redline/audit",
+          "redline/respond"
+        ],
+        "ui": {
+          "kind": "web",
+          "url": "https://redline.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "batch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ],
+      "inside": [
+        "A line-by-line review of any page or doc",
+        "Audit and respond as two headless workflows (batch)",
+        "Its own taste.md so the notes sound like you"
+      ]
+    },
+    {
+      "id": "aplus",
+      "name": "A-Plus",
+      "tagline": "Amazon A+ content, in bulk.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://aplus.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "adforge",
+      "name": "AdForge",
+      "tagline": "Draft this week's ads from your brand.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://adforge.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "adgen",
+      "name": "Adwall",
+      "tagline": "A wall of ad variations at once.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://adgen.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "cartridge",
+      "name": "Cartridge",
+      "tagline": "Build a little browser game.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://cartridge.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "cast",
+      "name": "Cast",
+      "tagline": "A cast of personas you can direct.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://cast.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "capp",
+      "name": "Consumer App Planner",
+      "tagline": "Plan a consumer app end to end.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=app"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "feature",
+      "name": "Feature Case",
+      "tagline": "Make the case for one feature.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=feature"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "hardware",
+      "name": "Hardware Reality Check",
+      "tagline": "The hard questions before you tool up.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=hardware"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "huddle",
+      "name": "Huddle",
+      "tagline": "Get everyone on the same call, fast.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://huddle.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "name": "Identity",
+      "tagline": "A visual identity from a few words.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://identity.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "mkt",
+      "name": "Marketplace Validator",
+      "tagline": "Is this marketplace worth building? Find out.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=marketplace"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "marquee",
+      "name": "Marquee",
+      "tagline": "A landing page that ships to a domain.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://marquee.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "prism",
+      "name": "Prism",
+      "tagline": "Make an image pop on any background.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://prism.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "reel",
+      "name": "Reel",
+      "tagline": "Short-form video from a brand kit.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://reel.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "retail",
+      "name": "Retail Concept",
+      "tagline": "Reality-check a retail concept.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=retail"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "saas",
+      "name": "SaaS Thesis",
+      "tagline": "Turn a SaaS hunch into a thesis.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=saas"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "shelf",
+      "name": "Shelf",
+      "tagline": "Keep inventory honest.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://shelf.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "tagline": "Product photography on your own models.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://studio.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "take",
+      "name": "Take",
+      "tagline": "One take, many cuts.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://take.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "yc",
+      "name": "YC Application",
+      "tagline": "Write YC answers in the house dialect.",
+      "category": "skill",
+      "author": "Switchboard",
+      "components": {
+        "skills": [
+          "yc/register",
+          "yc/rfs"
+        ],
+        "ui": {
+          "kind": "web",
+          "url": "https://thelastprompt.ai/yc-application-composer.html"
+        }
+      },
+      "surfaces": [
+        "god",
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "model",
+          "class": "cloud"
+        },
+        {
+          "kind": "capability",
+          "name": "screen-record",
+          "lazy": true
+        }
+      ],
+      "inside": [
+        "The YC register + live RFS hooks, worn as a skill",
+        "Answer conversationally — God wears the dialect",
+        "Or open the composer to draft in a page"
+      ]
+    },
+    {
+      "id": "arcana",
+      "name": "Arcana",
+      "tagline": "A tarot pull with a real read.",
+      "category": "fun",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://arcana.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "natal",
+      "name": "NATAL",
+      "tagline": "Your chart, read plainly.",
+      "category": "fun",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "https://natal.thelastprompt.ai"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "local"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "natal",
+  "name": "NATAL",
+  "tagline": "Your chart, read plainly.",
+  "category": "fun",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://natal.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

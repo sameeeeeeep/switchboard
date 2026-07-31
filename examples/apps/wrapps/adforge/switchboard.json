@@ -1,0 +1,24 @@
+{
+  "id": "adforge",
+  "name": "AdForge",
+  "tagline": "Draft this week's ads from your brand.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://adforge.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

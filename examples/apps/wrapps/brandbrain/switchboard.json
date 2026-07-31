@@ -1,0 +1,21 @@
+{
+  "id": "brandbrain",
+  "name": "brandbrain",
+  "tagline": "Your whole brand, one place.",
+  "category": "studio",
+  "author": "Switchboard",
+  "components": {
+    "ui": { "kind": "web", "url": "https://brandbrain.thelastprompt.ai/build" }
+  },
+  "surfaces": ["browser"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" },
+    { "kind": "capability", "name": "sb_db", "lazy": true }
+  ],
+  "inside": [
+    "A living brand system — voice, palette, and positioning in one vault",
+    "Copy review that answers in your own voice",
+    "A competitor war-room you can refresh"
+  ]
+}

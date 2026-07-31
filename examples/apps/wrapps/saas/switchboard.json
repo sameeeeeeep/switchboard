@@ -1,0 +1,24 @@
+{
+  "id": "saas",
+  "name": "SaaS Thesis",
+  "tagline": "Turn a SaaS hunch into a thesis.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea&template=saas"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    }
+  ]
+}

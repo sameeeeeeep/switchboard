@@ -1,0 +1,29 @@
+{
+  "id": "bank",
+  "name": "Bank",
+  "tagline": "A second brain your wrapps can borrow from.",
+  "category": "studio",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "https://bank.thelastprompt.ai"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "local"
+    },
+    {
+      "kind": "capability",
+      "name": "sb_db",
+      "lazy": true
+    }
+  ]
+}
