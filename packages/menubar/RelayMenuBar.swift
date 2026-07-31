@@ -2621,13 +2621,18 @@ struct ActionConsentDrop: View {
             ("Widget — working", WidgetSpec(kicker: "PRISM · IMAGE", title: "Making an image…", openLabel: "Open in Prism", result: .working("Making an image from your selection…"))),
         ]
         let menu = NSMenu()
-        for (label, spec) in specs {
-            let it = NSMenuItem(title: label, action: #selector(previewWidgetItem(_:)), keyEquivalent: "")
-            it.target = self; it.representedObject = spec; menu.addItem(it)
-        }
-        menu.addItem(.separator())
+        // LIVE first — the real thing. Canned layout samples live in a submenu.
         let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: #selector(driveWrappFromMenu), keyEquivalent: ""); drive.target = self
         menu.addItem(drive)
+        menu.addItem(.separator())
+        let previews = NSMenuItem(title: "Widget previews (samples)", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        for (label, spec) in specs {
+            let it = NSMenuItem(title: label, action: #selector(previewWidgetItem(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = spec; sub.addItem(it)
+        }
+        previews.submenu = sub
+        menu.addItem(previews)
         menu.addItem(.separator())
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
@@ -2727,7 +2732,14 @@ struct ActionConsentDrop: View {
     // waits for the kit/webmcp __god bridge, calls the tool (the wrapp's REAL UI paints live), and
     // the result lands in the notch widget. Dev default: roast on the granted localhost:5188 origin
     // (serve with: cd examples/apps && node serve.mjs). GOD_DRIVE_URL overrides the page.
+    // ONE drive session, TWO surfaces (never both):
+    //   notch — the widget shows working/result; the wrapp window exists but stays offscreen.
+    //   window — the wrapp IS the surface; the notch collapses to the small running pill. When the
+    //   run finishes, the result routes by where the user is: window frontmost → the wrapp already
+    //   shows it (pill flashes done); user elsewhere/window closed → the result DROPS from the notch
+    //   like a notification. "Show the wrapp" flips notch→window; closing the window flips back.
     private var godWeb: GodWebWindow?
+    private var driveRunning = false
     @MainActor func driveWrappLive() {
         let urlStr = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"] ?? "http://localhost:5188/roast.html"
         guard let url = URL(string: urlStr) else { return }
@@ -2736,32 +2748,58 @@ struct ActionConsentDrop: View {
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
-        showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Open Roast",
-            result: .working("Opening the wrapp, waiting for its tools…")))
         let web = GodWebWindow(url: url, token: token)
         godWeb = web
-        web.open(ready: { [weak self] in
+        driveRunning = true
+        web.onUserClosed = { [weak self] in   // window closed mid-run → fall back to the notch surface
+            guard let self, self.driveRunning else { return }
+            self.hideGodStatus()
+            self.showDriveWorking("Running roast_run on your Claude…")
+        }
+        showDriveWorking("Opening the wrapp, waiting for its tools…")
+        web.open(visible: false, ready: { [weak self] in    // notch is the surface; window loads offscreen
             guard let self else { return }
-            self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Open Roast",
-                result: .working("Running roast_run on your Claude (may take ~30–90s)…")))
+            if !(self.godWeb?.isShown ?? false) { self.showDriveWorking("Running roast_run on your Claude (may take ~30–90s)…") }
             let target = "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
             web.drive(tool: "roast_run", input: ["target": target]) { result in
-                Task { @MainActor in
-                    switch result {
-                    case .success(let v):
-                        let d = v as? [String: Any]
-                        let roast = (d?["roast"] as? String) ?? String(describing: v)
-                        let angle = (d?["angle"] as? String) ?? "The roast"
-                        self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: angle, openLabel: "Show the wrapp",
-                            result: .text(String(roast.prefix(900)))), onOpen: { })
-                    case .failure(let e):
-                        self.showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "Drive failed", openLabel: "Open panel",
-                            result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
-                            onOpen: { self.hideNotchWidget(); self.showPanel() })
-                    }
-                }
+                Task { @MainActor in self.driveFinished(result) }
             }
         })
+    }
+    /// State 1 — the notch widget as the drive surface. Primary action flips to the window.
+    @MainActor private func showDriveWorking(_ line: String) {
+        showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "God is driving Roast…", openLabel: "Show the wrapp",
+            result: .working(line)), onOpen: { [weak self] in self?.driveToWindow() })
+    }
+    /// notch → window: the wrapp becomes the surface; the notch shrinks to the running pill.
+    @MainActor private func driveToWindow() {
+        hideNotchWidget()
+        godWeb?.front()
+        if driveRunning { showGodStatus("Roast · running", accent: .lime, pattern: .working) }
+    }
+    @MainActor private func driveFinished(_ result: Result<Any, Error>) {
+        driveRunning = false
+        let userIsOnWindow = godWeb?.isFrontmost ?? false
+        hideGodStatus()
+        switch result {
+        case .success(let v):
+            let d = v as? [String: Any]
+            let roast = (d?["roast"] as? String) ?? String(describing: v)
+            let angle = (d?["angle"] as? String) ?? "The roast"
+            if userIsOnWindow {
+                // The wrapp's own UI already shows the roast — just flash "done" at the notch, no widget.
+                showGodStatus("Roast · done", accent: .ok, pattern: .speaking)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in self?.hideGodStatus() }
+            } else {
+                // User went elsewhere (or never opened the window) → the result is a notch notification.
+                showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: angle, openLabel: "Show the wrapp",
+                    result: .text(String(roast.prefix(900)))), onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() })
+            }
+        case .failure(let e):
+            showNotchWidget(WidgetSpec(kicker: "ROAST · TEXT", title: "Drive failed", openLabel: "Open panel",
+                result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+        }
     }
 
     private func showPanel() {

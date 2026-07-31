@@ -109,7 +109,8 @@ final class GodDaemonBridge: NSObject {
 
 /// A floating window hosting one wrapp, its window.claude bridged to the daemon, drivable by God.
 @MainActor
-final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) { onUserClosed?() }
     private let window: NSWindow
     private let web: WKWebView
     private let bridge: GodDaemonBridge
@@ -143,12 +144,25 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         web.navigationDelegate = self
     }
 
-    /// Show the window and load the wrapp. `ready` fires once window.__god is available.
-    func open(ready: (() -> Void)? = nil) {
+    /// Fires when the USER closes the window (red button) — the drive falls back to the notch surface.
+    var onUserClosed: (() -> Void)?
+
+    /// Load the wrapp. `visible: false` loads it OFFSCREEN (the notch widget is the surface; the
+    /// window can be fronted later without reloading). `ready` fires once window.__god is available.
+    func open(visible: Bool = true, ready: (() -> Void)? = nil) {
         onReady = ready
-        window.makeKeyAndOrderFront(nil)
+        window.delegate = self
+        if visible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
         web.load(URLRequest(url: pageURL))
     }
+
+    /// Bring the (possibly offscreen) window forward — the notch→window surface flip.
+    func front() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+
+    /// Is the user LOOKING at the wrapp right now? Decides result routing: window frontmost → the
+    /// wrapp shows its own result; otherwise → drop it from the notch like a notification.
+    var isFrontmost: Bool { window.isVisible && window.isKeyWindow }
+    var isShown: Bool { window.isVisible }
 
     func close() { bridge.close(); window.orderOut(nil) }
 

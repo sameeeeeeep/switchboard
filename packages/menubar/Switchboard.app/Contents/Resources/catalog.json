@@ -937,7 +937,7 @@
         ],
         "ui": {
           "kind": "web",
-          "url": "https://thelastprompt.ai/yc-application-composer.html"
+          "url": "http://localhost:5188/yc-application-composer.html"
         }
       },
       "surfaces": [

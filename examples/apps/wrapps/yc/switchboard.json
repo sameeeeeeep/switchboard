@@ -5,13 +5,29 @@
   "category": "skill",
   "author": "Switchboard",
   "components": {
-    "skills": ["yc/register", "yc/rfs"],
-    "ui": { "kind": "web", "url": "https://thelastprompt.ai/yc-application-composer.html" }
+    "skills": [
+      "yc/register",
+      "yc/rfs"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/yc-application-composer.html"
+    }
   },
-  "surfaces": ["god", "browser"],
+  "surfaces": [
+    "god",
+    "browser"
+  ],
   "requires": [
-    { "kind": "model", "class": "cloud" },
-    { "kind": "capability", "name": "screen-record", "lazy": true }
+    {
+      "kind": "model",
+      "class": "cloud"
+    },
+    {
+      "kind": "capability",
+      "name": "screen-record",
+      "lazy": true
+    }
   ],
   "inside": [
     "The YC register + live RFS hooks, worn as a skill",
