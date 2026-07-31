@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 41,
+  "count": 42,
   "listings": [
     {
       "id": "bank",
@@ -394,6 +394,39 @@
           "kind": "model",
           "class": "local"
         }
+      ]
+    },
+    {
+      "id": "flow",
+      "name": "Flow",
+      "tagline": "Hold a key, talk — clean text lands at your cursor.",
+      "category": "tool",
+      "author": "Switchboard",
+      "components": {
+        "ui": {
+          "kind": "native",
+          "appId": "ai.thelastprompt.flow",
+          "download": {
+            "url": "https://thelastprompt.ai/switchboard/"
+          }
+        }
+      },
+      "surfaces": [
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "native",
+          "appId": "ai.thelastprompt.flow"
+        }
+      ],
+      "inside": [
+        "Hold the talk chord, speak, release — text pastes where your cursor is",
+        "Whisper runs on-device; the audio never leaves your machine",
+        "Cleanup on your own Claude or a local model — no key, no middleman"
       ]
     },
     {

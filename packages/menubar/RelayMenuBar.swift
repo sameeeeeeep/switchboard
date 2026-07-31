@@ -2624,6 +2624,8 @@ struct ActionConsentDrop: View {
         // LIVE first — the real thing. Canned layout samples live in a submenu.
         let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: #selector(driveWrappFromMenu), keyEquivalent: ""); drive.target = self
         menu.addItem(drive)
+        let diagram = NSMenuItem(title: "Diagram from clipboard (LIVE)", action: #selector(diagramFromClipboardItem), keyEquivalent: ""); diagram.target = self
+        menu.addItem(diagram)
         menu.addItem(.separator())
         let previews = NSMenuItem(title: "Widget previews (samples)", action: nil, keyEquivalent: "")
         let sub = NSMenu()
@@ -2644,6 +2646,33 @@ struct ActionConsentDrop: View {
     }
     @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
     @objc private func driveWrappFromMenu() { driveWrappLive() }
+    // The HTML capability, live: clipboard text → Claude writes HTML → offscreen render → the PNG
+    // lands in the notch widget with drag-out. Sub-minute, free, on the user's own Claude.
+    @objc private func diagramFromClipboardItem() {
+        let clip = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clip.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Clipboard is empty", openLabel: "Close",
+                result: .text("Copy some text first — the diagram is drawn from your clipboard.")),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Drawing a diagram…", openLabel: "Close",
+            result: .working("Claude is writing the HTML, then it renders in-notch…")),
+            onOpen: { [weak self] in self?.hideNotchWidget() })
+        HtmlCapability.shared.makeDiagram(from: clip) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let path):
+                self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "From your clipboard", openLabel: "Close",
+                    result: .image(caption: "Rendered from Claude's HTML — drag it out.", steer: [], file: path)),
+                    onOpen: { [weak self] in self?.hideNotchWidget() })
+            case .failure(let e):
+                self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Diagram failed", openLabel: "Open panel",
+                    result: .text(e.localizedDescription)),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            }
+        }
+    }
     // ── Motion: every drop GROWS OUT OF the notch and COLLAPSES BACK into it ─────────────────────
     // The drops are clipped to NotchDropShape and pinned to screen.frame.maxY (the notch seam), so
     // scaling the content layer about its TOP-CENTRE makes the silhouette unfold downward from the
@@ -3660,10 +3689,18 @@ struct ActionConsentDrop: View {
         model.refreshFiles(); ollama.refresh()
         hidePanel()
         let listings = readCatalog()
-        let view = StoreView(listings: listings, present: storePresent(),
-                             onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
-                             onClose: { [weak self] in self?.hideStore() },
-                             onAddLocal: { [weak self] in self?.addLocalWrapp() })
+        // Two-level store (docs/STORE.md): the FEATURED front page first; "See All"/Apps/Skills swap
+        // the classic full StoreView into the SAME panel, so the dismissal monitor keeps working.
+        let classic = StoreView(listings: listings, present: storePresent(),
+                                onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
+                                onClose: { [weak self] in self?.hideStore() },
+                                onAddLocal: { [weak self] in self?.addLocalWrapp() })
+        let view = StoreFrontView(
+            listings: listings,
+            icon: { id in storeIcon(id) },
+            onGet: { [weak self] l in self?.launchWrapp(l, l.surfaces.first ?? "browser") },
+            onSeeAll: { [weak self] in self?.storePanel?.contentView = NoInsetHostingView(rootView: classic) },
+            onClose: { [weak self] in self?.hideStore() })
         if storePanel == nil {
             // A free-floating modal (centred, its own shadow) — not a notch drop. The store is a
             // deliberate destination, so it earns a real window, not the ambient notch surface.
@@ -3761,11 +3798,21 @@ struct ActionConsentDrop: View {
     // Launch a listing on a surface (§3). `browser` opens the deployed UI; `god` wakes God wearing the
     // wrapp's purpose ("Activate into God"); `batch` asks God to call the wrapp's tool — which passes
     // through the SAME consent gate + audit as any RUN hand. The `window`/`notch` hosts are Phases 3–4.
+    // Concierge on open (docs/STORE.md): the notch lights up and names what just opened + what it
+    // does — a launch is a moment, not a silent NSWorkspace.open. Auto-hides; never blocks.
+    @MainActor private func concierge(_ l: SBListing) {
+        showGodStatus("\(l.name) — \(String(l.tagline.prefix(48)))", accent: .lime, pattern: .speaking)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in self?.hideGodStatus() }
+    }
+
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
         case "browser", "window", "notch":
-            if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+            if let s = l.components.ui?.url, let u = URL(string: s) {
+                NSWorkspace.shared.open(u)
+                concierge(l)   // the notch acknowledges the launch — never a silent open
+            }
         case "god":
             // The god-skill surface can't actually LOAD a skill yet (components.skills has no backing
             // content — resolving "yc/register" finds nothing), so the old name+tagline roleplay just
@@ -3803,6 +3850,18 @@ struct SBListing: Codable, Identifiable {
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 
 // Live copy first (the aggregator refreshes it), then a bundled fallback so a packaged app is never empty.
+// Per-wrapp icon art (the "Instruments on the board" renders, bundled at Resources/icons/<id>.png).
+// Cached; nil → the caller falls back to the category glyph. NSCache keeps memory honest.
+private let storeIconCache = NSCache<NSString, NSImage>()
+func storeIcon(_ id: String) -> NSImage? {
+    if let hit = storeIconCache.object(forKey: id as NSString) { return hit }
+    guard let res = Bundle.main.resourcePath else { return nil }
+    let path = (res as NSString).appendingPathComponent("icons/\(id).png")
+    guard let img = NSImage(contentsOfFile: path) else { return nil }
+    storeIconCache.setObject(img, forKey: id as NSString)
+    return img
+}
+
 func readCatalog() -> [SBListing] {
     let live = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/catalog.json")
     let bundled = (Bundle.main.resourcePath as NSString?)?.appendingPathComponent("catalog.json")

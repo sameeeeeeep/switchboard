@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift GodWebWindow.swift -framework AppKit -framework SwiftUI -framework WebKit
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift -framework AppKit -framework SwiftUI -framework WebKit
 
 APP="Switchboard.app"
 rm -rf "$APP"
@@ -20,6 +20,15 @@ if [ -f "$CATALOG" ]; then
   mkdir -p "$APP/Contents/Resources"
   cp "$CATALOG" "$APP/Contents/Resources/catalog.json"
   echo "[menubar] bundled wrapp catalog ($(node -e "console.log(require('./$CATALOG').count)" 2>/dev/null || echo '?') listings)"
+fi
+
+# Wrapp icons — the "Instruments on the board" art (docs/ICON-SYSTEM.md), one PNG per listing id.
+# Bundled if present so glyphTile can show real hardware icons; the store falls back to the
+# category SF Symbol when an icon is missing, so an empty icons/ dir is fine.
+if compgen -G "icons/*.png" >/dev/null 2>&1; then
+  mkdir -p "$APP/Contents/Resources/icons"
+  cp icons/*.png "$APP/Contents/Resources/icons/" 2>/dev/null || true
+  echo "[menubar] bundled wrapp icons ($(ls icons/*.png | wc -l | tr -d ' ') PNGs)"
 fi
 
 # House fonts (Bricolage / Hanken / Spline) — bundled if present so the panel renders in brand type;
