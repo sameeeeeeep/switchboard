@@ -2223,6 +2223,8 @@ struct ActionConsentDrop: View {
     private var actionPanel: NSPanel!             // the "God wants to act?" consent drop
     private var storePanel: NSPanel!              // the wrapp store modal (drops from the notch)
     private var storeMonitor: Any?                // click-outside dismissal for the store modal
+    private var notchWidgetPanel: NSPanel!        // the notch WIDGET — a wrapp's glanceable result under the notch
+    private var notchWidgetMonitor: Any?          // click-outside dismissal for the widget
     private var regionOverlay: NSWindow?          // the ⌃⌃ drag-to-select capture overlay (live during listening)
     private var regionView: RegionSelectView?
     private var regionMonitors: [Any] = []
@@ -2494,6 +2496,7 @@ struct ActionConsentDrop: View {
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
         statusItem.button?.target = self
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])   // right-click → widget preview menu
 
         hosting = NoInsetHostingView(rootView: Panel(
             model: model,
@@ -2597,8 +2600,41 @@ struct ActionConsentDrop: View {
     }
 
     @objc private func togglePopover() {
+        let t = NSApp.currentEvent?.type
+        if t == .rightMouseUp || t == .rightMouseDown { showWidgetPreviewMenu(); return }
         if panel.isVisible { hidePanel() } else { openedByHover = false; showPanel() }
     }
+    // Review affordance: right-click the menu-bar icon to see the notch widget across every result type.
+    @objc private func showWidgetPreviewMenu() {
+        let roast = "\"3x exited.\" Let's translate that from Founder-ese to English: three separate times, a company looked at your team, said \"we don't want the product, but fine, we'll take the people,\" and quietly absorbed you into middle management.\n\nThat's not an exit. That's being adopted. Three times. By strangers."
+        let specs: [(String, WidgetSpec)] = [
+            ("Widget — image (Prism)", WidgetSpec(kicker: "PRISM · IMAGE", title: "From your selection", openLabel: "Open in Prism",
+                result: .image(caption: "A soft editorial illustration based on your selection.", steer: ["Warmer", "More detail", "Flat vector", "Photoreal"], file: nil))),
+            ("Widget — text (Roast)", WidgetSpec(kicker: "ROAST · TEXT", title: "Acqui-Hire Alchemist", openLabel: "Open in Roast", result: .text(roast))),
+            ("Widget — cards (AdForge)", WidgetSpec(kicker: "ADFORGE · CONCEPTS", title: "This week's ads", openLabel: "Open in AdForge",
+                result: .cards(caption: "Three angles, grounded in your brand.", items: [
+                    CardItem(label: "Lead with the outcome", text: "Ship AI apps without paying for inference.", rec: true),
+                    CardItem(label: "Name the pain", text: "You already pay for Claude — why pay twice?"),
+                    CardItem(label: "Proof & specifics", text: "75% of revenue to devs, by usage.")]))),
+            ("Widget — gallery (Yearbook)", WidgetSpec(kicker: "YEARBOOK · GALLERY", title: "Through the decades", openLabel: "Open in Yearbook",
+                result: .gallery(caption: "Four eras from your photo.", items: ["Class of '77", "Class of '88", "Class of '99", "Class of '09"]))),
+            ("Widget — working", WidgetSpec(kicker: "PRISM · IMAGE", title: "Making an image…", openLabel: "Open in Prism", result: .working("Making an image from your selection…"))),
+        ]
+        let menu = NSMenu()
+        for (label, spec) in specs {
+            let it = NSMenuItem(title: label, action: #selector(previewWidgetItem(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = spec; menu.addItem(it)
+        }
+        menu.addItem(.separator())
+        let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
+        menu.addItem(open)
+        if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
+    }
+    @objc private func previewWidgetItem(_ sender: NSMenuItem) {
+        guard let spec = sender.representedObject as? WidgetSpec else { return }
+        showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
+    }
+    @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
     // ── Motion: every drop GROWS OUT OF the notch and COLLAPSES BACK into it ─────────────────────
     // The drops are clipped to NotchDropShape and pinned to screen.frame.maxY (the notch seam), so
     // scaling the content layer about its TOP-CENTRE makes the silhouette unfold downward from the
@@ -2641,6 +2677,38 @@ struct ActionConsentDrop: View {
         CATransaction.setCompletionBlock { panel.orderOut(nil); layer.removeAnimation(forKey: "notchOut"); done?() }
         layer.add(g, forKey: "notchOut")
         CATransaction.commit()
+    }
+
+    // The notch WIDGET — a wrapp's glanceable result dropped under the notch (grows from it, reusing
+    // presentFromNotch). Lazily built like the store. Close/open/regenerate/steer are wired via the view.
+    @MainActor func showNotchWidget(_ spec: WidgetSpec, onOpen: @escaping () -> Void = {},
+                                    onRegen: @escaping () -> Void = {}, onSteer: @escaping (String) -> Void = { _ in }) {
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        let view = NotchWidget(spec: spec, onClose: { [weak self] in self?.hideNotchWidget() },
+                               onOpen: onOpen, onRegen: onRegen, onSteer: onSteer)
+        let host = NoInsetHostingView(rootView: view)
+        if notchWidgetPanel == nil {
+            notchWidgetPanel = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
+                                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            notchWidgetPanel.isOpaque = false; notchWidgetPanel.backgroundColor = .clear; notchWidgetPanel.hasShadow = false
+            notchWidgetPanel.level = .popUpMenu
+            notchWidgetPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        notchWidgetPanel.contentView = host
+        let size = host.fittingSize
+        notchWidgetPanel.setContentSize(size)
+        notchWidgetPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        presentFromNotch(notchWidgetPanel)
+        if let m = notchWidgetMonitor { NSEvent.removeMonitor(m) }
+        // click OUTSIDE dismisses; clicks inside are ignored so dragging the result out doesn't close it.
+        notchWidgetMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard let self, let p = self.notchWidgetPanel, p.isVisible else { return }
+            if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideNotchWidget() } }
+        }
+    }
+    @MainActor func hideNotchWidget() {
+        if let m = notchWidgetMonitor { NSEvent.removeMonitor(m); notchWidgetMonitor = nil }
+        if let p = notchWidgetPanel { dismissToNotch(p) }
     }
 
     private func showPanel() {
@@ -3933,9 +4001,4 @@ struct FlowChips: View {
     }
 }
 
-MainActor.assumeIsolated {
-    let app = NSApplication.shared
-    let controller = RelayController()
-    app.delegate = controller
-    app.run()
-}
+// App bootstrap lives in main.swift (multi-file build requires top-level code there).
