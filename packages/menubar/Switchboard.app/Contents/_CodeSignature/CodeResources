@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		C2QJJrkn4G8P3y/MmoGZzRv4H1w=
+		daXI2JhD4ePuz9Cf3fBcyoJY5fM=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -52,6 +52,10 @@
 		<data>
 		yRZobO4IWeS0RFyKP8C8oxFXQ/o=
 		</data>
+		<key>Resources/icons/canvas.png</key>
+		<data>
+		+slUf4qUdVRgPHWjv2F1ZIUu6UY=
+		</data>
 		<key>Resources/icons/capp.png</key>
 		<data>
 		+T9wLium6nt1n2zBHcKCcsSTH7k=
@@ -63,6 +67,10 @@
 		<key>Resources/icons/cast.png</key>
 		<data>
 		xan4lINeC7HxBzse/Ff/ARo+byE=
+		</data>
+		<key>Resources/icons/cut.png</key>
+		<data>
+		7bK8uYhd4iDb0ItmVBCCC7ZfsDU=
 		</data>
 		<key>Resources/icons/explainthis.png</key>
 		<data>
@@ -103,6 +111,10 @@
 		<key>Resources/icons/marquee.png</key>
 		<data>
 		sxqrrTDKpNL33blYfXBJKopg7gg=
+		</data>
+		<key>Resources/icons/meetnotes.png</key>
+		<data>
+		QTCbQM+ZsUiKW8d5TZEuPSJ9G/U=
 		</data>
 		<key>Resources/icons/mkt.png</key>
 		<data>
@@ -187,7 +199,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			EzTzkjT1X+OYEIqDsc2RgBw6/xxu8U0mGhA9RYJknXc=
+			cdKUDNaVe3E8pDmIFJ7pSQs5C9XGH467lx2u5E3I7go=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -267,6 +279,13 @@
 			WO7xZcAu416om6eIVzXSiPodn6/NTHKwqkTo2zHB2dE=
 			</data>
 		</dict>
+		<key>Resources/icons/canvas.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			gyy5qHpjTSpRnPa6ktO6/uoQhmdlnBWG33AakARr1x8=
+			</data>
+		</dict>
 		<key>Resources/icons/capp.png</key>
 		<dict>
 			<key>hash2</key>
@@ -286,6 +305,13 @@
 			<key>hash2</key>
 			<data>
 			As0OR0xDy+a+z65NGiJIKAOgVVrzEddojaaiomdpA3M=
+			</data>
+		</dict>
+		<key>Resources/icons/cut.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			0ZN4o64Mv0zaMS59hHK7vJBlCMeSnrul0DI3nUWu01w=
 			</data>
 		</dict>
 		<key>Resources/icons/explainthis.png</key>
@@ -356,6 +382,13 @@
 			<key>hash2</key>
 			<data>
 			GRzzvA61dKe1chFhJEX5PbeV0qA52W/4B50hEhVQafk=
+			</data>
+		</dict>
+		<key>Resources/icons/meetnotes.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			YKSIqI9Wr1Yt+c7ENuD3o3KM3oLwP/xZb0tLvL9Bp24=
 			</data>
 		</dict>
 		<key>Resources/icons/mkt.png</key>
