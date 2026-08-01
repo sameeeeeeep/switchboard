@@ -33,6 +33,10 @@ export interface BackendRunContext {
   emit: (delta: StreamDelta) => void;
   /** Abort signal for cancellation (claude_cancel / kill switch). */
   signal: AbortSignal;
+  /** A prior SDK session UUID to RESUME (real warm thread — the Agent SDK threads the conversation,
+   *  incl. prior turns + prompt caching, while this turn still carries live vision). Daemon-owned and
+   *  keyed by (origin, sessionId) — never page-settable, so a page can't resume someone else's thread. */
+  resumeSessionId?: string;
 }
 
 export interface ModelBackend {
@@ -53,5 +57,5 @@ export interface ModelBackend {
   signedIn?(): Promise<boolean | undefined>;
   /** Run a (possibly agentic, possibly streaming) completion. The backend pushes deltas via
    *  ctx.emit and returns the final text. Throws on backend error; the daemon maps to BYOP. */
-  run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }>;
+  run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number }; sessionId?: string }>;
 }

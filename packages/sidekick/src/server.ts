@@ -115,6 +115,11 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private streams = new Map<string, AbortController>();
   /** Keeps every connected extension's MV3 worker alive (see start()). */
   private heartbeat: NodeJS.Timeout | null = null;
+  /** Real warm threads for stateful completions: (origin::sessionId) → the SDK's session UUID to
+   *  resume on the next turn. Daemon-owned (never page-settable), so a page can only ever continue
+   *  ITS OWN thread. This is what makes CompletionParams.sessionId real — the "God remembers across
+   *  ⌃⌃ presses" the code long claimed but never delivered (complete() used to ignore sessionId). */
+  private completionSessions = new Map<string, string>();
 
   constructor(private deps: BrokerDeps) {}
 
@@ -1001,6 +1006,11 @@ export class Broker implements ConsentPrompter, NativeHandler {
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
     const controller = new AbortController();
+    // Warm-thread continuity: when the caller tags a sessionId, resume the SDK session we minted for
+    // (origin, sessionId) last turn — the model continues the real conversation (prior turns + prompt
+    // caching), while THIS turn's attachments still carry live vision. Keyed by origin so a page can
+    // only continue its own thread.
+    const skey = params.sessionId ? `${origin}::${params.sessionId}` : null;
     const ctx = {
       origin,
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
@@ -1009,8 +1019,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
       mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments, this.gitCtxFor(origin)),
       emit: (_d: StreamDelta) => { /* one-shot: deltas discarded */ },
       signal: controller.signal,
+      resumeSessionId: skey ? this.completionSessions.get(skey) : undefined,
     };
     const out = await backend.run(params, ctx);
+    if (skey && out.sessionId) this.completionSessions.set(skey, out.sessionId);   // remember for next turn
     const text = out.text;
     const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(text);
     this.deps.gate.recordCompletion(origin, tokens);
