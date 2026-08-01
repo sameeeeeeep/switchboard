@@ -752,9 +752,10 @@
       "tools": [
         {
           "name": "imagegen_generate",
-          "description": "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL.",
+          "description": "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL. Optionally guided by a reference image.",
           "inputSchema": {
-            "prompt": "string — what to generate (subject, setting, lighting…). Required."
+            "prompt": "string — what to generate (subject, setting, lighting…). Required.",
+            "reference": "string — OPTIONAL. A data: URL of a reference image to guide the render (image-to-image)."
           }
         }
       ]

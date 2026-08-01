@@ -2856,6 +2856,14 @@ struct ActionConsentDrop: View {
     // (localhost:5188/<toolprefix>.html) instead of its deployed subdomain — so the drive origin is the
     // granted localhost:5188 (models + Higgsfield/WebFetch), which the remote origin isn't. Prefix = the
     // tool's source id (imagegen_generate → imagegen → imagegen.html). No flag file → the catalog URL.
+    // The last ⌃⌃ capture (god-shot.jpg) as a data: URL — used as an image-to-image reference when the
+    // user grabbed a region to say "make an image like THIS". nil when there's no capture on disk.
+    private func lastCaptureAsDataURL() -> String? {
+        let shot = NSTemporaryDirectory() + "god-shot.jpg"
+        guard let data = FileManager.default.contents(atPath: shot), !data.isEmpty else { return nil }
+        return "data:image/jpeg;base64," + data.base64EncodedString()
+    }
+
     private func resolveDriveURL(tool: String, fallback: URL) -> URL {
         let flag = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/dev-drive")
         guard FileManager.default.fileExists(atPath: flag) else { return fallback }
@@ -2863,7 +2871,7 @@ struct ActionConsentDrop: View {
         return URL(string: "http://localhost:5188/\(prefix).html") ?? fallback
     }
 
-    @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast") {
+    @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast", reference: String? = nil) {
         let envURL = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"].flatMap(URL.init(string:))
         guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
@@ -2900,7 +2908,9 @@ struct ActionConsentDrop: View {
                 : (!clip.isEmpty ? clip : "Help me with this — I'll tell you what I need."))
             // Every skill/wrapp tool takes ONE primary string under a key it chose — spray the common
             // keys (target/text/input/prompt/url/idea/…); the tool reads its one, ignores the rest.
-            let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text, "url": text, "content": text]
+            var args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text, "url": text, "content": text]
+            if let reference = reference { args["reference"] = reference }   // image-to-image: a wrapp that declares `reference` uses it (Prism); others ignore it
+
             let gen = self.driveGeneration
             // DON'T assume the tool is "<id>_run" — names vary (imagegen_generate, adpulse_diagnose,
             // bank_ask, identity_compose…) and the prefix is the wrapp's SOURCE id, not its catalog id
@@ -3448,7 +3458,11 @@ struct ActionConsentDrop: View {
                     // The command God picked (registry), else the wrapp's single registered tool, else the
                     // <id>_run guess — listTools discovery corrects it either way, but this starts right.
                     let cmd = (a["command"] as? String) ?? l.tools?.first?.name ?? "\(id)_run"
-                    driveWrappLive(pageURL: resolveDriveURL(tool: cmd, fallback: base), tool: cmd, input: input, wrappName: l.name)
+                    // Image-to-image: if the wrapp's tool declares a `reference` param AND the user captured
+                    // a REGION (a deliberate "make an image like THIS"), attach that ⌃⌃ capture as the reference.
+                    let wantsRef = (l.tools?.first(where: { $0.name == cmd })?.inputSchema?["reference"]) != nil
+                    let ref = (wantsRef && model.regionSelect) ? lastCaptureAsDataURL() : nil
+                    driveWrappLive(pageURL: resolveDriveURL(tool: cmd, fallback: base), tool: cmd, input: input, wrappName: l.name, reference: ref)
                 } else {
                     showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "Can't run “\(id)”", openLabel: "Open store",
                         result: .text("“\(l.name)” has neither a page nor a skill body to run.")),

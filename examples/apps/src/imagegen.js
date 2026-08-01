@@ -834,15 +834,20 @@ reflect();
 // God webview (window.__god.call) and any WebMCP host.
 exposeToGod({
   name: "imagegen_generate",
-  description: "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL.",
-  inputSchema: { prompt: "string — what to generate (subject, setting, lighting…). Required." },
-  execute: async ({ prompt } = {}) => {
+  description: "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL. Optionally guided by a reference image.",
+  inputSchema: {
+    prompt: "string — what to generate (subject, setting, lighting…). Required.",
+    reference: "string — OPTIONAL. A data: URL of a reference image to guide the render (image-to-image).",
+  },
+  execute: async ({ prompt, reference } = {}) => {
     const val = String(prompt || "").trim();
     if (!val) throw new Error("nothing to render — pass { prompt } describing the image");
+    const ref = typeof reference === "string" && reference.startsWith("data:") ? reference : null;
     const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
     if (!await waitFor(() => !!relay, 6000)) throw new Error("Prism isn't connected to Switchboard yet");
+    if (ref) referenceDataUrl = ref; // reflect it in the page UI too, so the user sees what guided it
     const before = state.shots[0] || null;
-    await renderShot(val, state.aspect, null, null); // the same hardened path the Generate button uses; awaited to completion
+    await renderShot(val, state.aspect, ref, null); // the same hardened path the Generate button uses; awaited to completion
     const top = state.shots[0] || null;
     if (top && top !== before && top.url) return { imageUrl: top.url };
     throw new Error("Prism couldn't render that — try again");
