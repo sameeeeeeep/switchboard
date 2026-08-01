@@ -113,13 +113,28 @@ function catalogBlock() {
     const listings = (Array.isArray(cat) ? cat : cat.listings || [])
       .filter((l) => l?.id && l?.components?.ui?.url);
     if (!listings.length) return "";
-    const lines = listings.slice(0, 40).map(
-      (l) => `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)} → ${l.components.ui.url}`);
+    // Each wrapp's line carries its COMMANDS from the tool registry (build-tools.mjs → catalog `tools`),
+    // so God resolves a request to the right wrapp AND — when it exposes several — the right command.
+    // Multi-command wrapps get their command names inline; single-command ones stay a clean one-liner.
+    // Cap high enough to include the SKILLS (gist/reply/nameit/…): the catalog sorts studios/agents/tools
+    // BEFORE skills, so a low cap hid every skill from God — it literally couldn't pick gist. ~60 short
+    // lines is cheap now that God's thread is warm-cached.
+    const lines = listings.slice(0, 80).map((l) => {
+      const cmds = Array.isArray(l.tools) ? l.tools : [];
+      const cmdNote = cmds.length > 1 ? `  [commands: ${cmds.map((t) => t.name).join(", ")}]` : "";
+      return `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)}${cmdNote} → ${l.components.ui.url}`;
+    });
     return "\n\nWRAPPS IN THE STORE (id — what it does → url):\n" + lines.join("\n") +
-      "\nIf the user asks for something one of these wrapps does best, say so in ONE short sentence " +
-      "and include [DRIVE:<id> <the input to run it on>] on its own line — the wrapp runs and the " +
-      "result appears as a widget in the notch. Use [OPEN:<its url>] only when they just want the " +
-      "app open. Never pretend a wrapp is already running, and never bring up this list unprompted.";
+      "\n\n*** HARD RULE — this OVERRIDES 'answer directly' above. *** When the user gives you a TASK that " +
+      "one of these wrapps does — summarize/TL;DR, reply, name/rename, rewrite/rephrase, extract, translate, " +
+      "make an image, draft ads, and the like — you MUST run the wrapp; do NOT perform the task yourself in " +
+      "prose and do NOT [POINT]. Emit [DRIVE:<id> <input>] on its own line (multi-command: [DRIVE:<id>:<command> " +
+      "<input>]) where <input> is the thing to work on (what the user spoke, or the on-screen/clipboard text " +
+      "they mean). The wrapp runs on the user's own Claude and its result becomes an INTERACTIVE widget in the " +
+      "notch — that widget IS the deliverable, far better than a spoken summary. Keep your spoken words to ONE " +
+      "short line (\"On it — running Gist.\"). ONLY answer in prose when the user asked a genuine QUESTION, or " +
+      "nothing in the list fits. Use [OPEN:<url>] only when they literally just want the app open. Never " +
+      "pretend a wrapp is already running, and never bring up this list unprompted.";
   } catch { return ""; } // no catalog / unreadable → no block, God stays quiet about the store
 }
 
@@ -156,8 +171,10 @@ const ACTION_PROTOCOL =
 // Parse the ONE action/point tag off the reply. Priority: an explicit RUN or LOCAL action over a
 // bare point. RUN captures a tool name then optional JSON args (or a bare string → {input:string}).
 function parseAction(text) {
-  const drive = /\[DRIVE:\s*([a-z0-9_-]+)\s+([^\]]+)\]/i.exec(text);
-  if (drive) return { kind: "drive", wrapp: drive[1].toLowerCase(), input: drive[2].trim() };
+  // [DRIVE:<wrapp> <input>] or [DRIVE:<wrapp>:<command> <input>] — the optional :command lets God pick
+  // one of a multi-command wrapp's tools from the registry; without it the native side auto-discovers.
+  const drive = /\[DRIVE:\s*([a-z0-9_-]+)(?::([a-z0-9_]+))?\s+([^\]]+)\]/i.exec(text);
+  if (drive) return { kind: "drive", wrapp: drive[1].toLowerCase(), command: drive[2] || null, input: drive[3].trim() };
   const run = /\[RUN:\s*([A-Za-z0-9_.:-]+)\s*(\{[\s\S]*?\}|[^\]]*?)\]/i.exec(text);
   if (run) return { kind: "run", tool: run[1].trim(), args: parseToolArgs((run[2] || "").trim()) };
   const open = /\[OPEN:([^\]]+)\]/i.exec(text);
@@ -179,7 +196,7 @@ function parseToolArgs(raw) {
   try { const v = JSON.parse(raw); return v && typeof v === "object" ? v : { input: String(v) }; }
   catch { return { input: raw }; }
 }
-const stripTags = (t) => t.replace(/\[(?:OPEN|TYPE|CLICK|KEY|POINT):[^\]]*\]/gi, "").replace(/\[RUN:[\s\S]*?\]/gi, "").trim();
+const stripTags = (t) => t.replace(/\[(?:OPEN|TYPE|CLICK|KEY|POINT|DRIVE):[^\]]*\]/gi, "").replace(/\[RUN:[\s\S]*?\]/gi, "").trim();
 
 // The desktop's size in POINTS (screencapture gives PIXELS); the ratio maps image coords → clickable
 // screen points on retina. Cheap, non-prompting.
@@ -488,13 +505,26 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
     }
     const userName = readUserName();
     const nameLine = userName ? `\n\nThe user's name is ${userName}. Address them by name when it's natural.` : "";
-    const system = `${persona.characteristic}\n\n${PROTOCOL}${nameLine}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "") + catalogBlock();
+    // A wrapp worn as a skill: the menubar's god surface resolves components.skills → the real skill
+    // body and hands us the path (GOD_SKILL). Fold it in so God actually DOES the skill in conversation
+    // (the "wrapp = skill" path, docs/GOD-HANDS.md) instead of just opening the wrapp's page.
+    let skillBlock = "";
+    try {
+      const sp = process.env.GOD_SKILL;
+      if (sp && existsSync(sp)) {
+        const body = readFileSync(sp, "utf8").trim();
+        if (body) { skillBlock = "\n\n═══ LOADED SKILL — wear this; apply it to what the user is working on ═══\n" + body; log("skill loaded"); }
+      }
+    } catch (e) { log(`skill load skipped: ${e.message}`); }
+    const system = `${persona.characteristic}\n\n${PROTOCOL}${nameLine}${projLine}${skillBlock}` + (act ? ACTION_PROTOCOL + runBlock : "") + catalogBlock();
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(" (vision)")}…`);
     const cmp = await request("claude_complete", {
       model, system, prompt: userText, maxTokens: 700,
-      sessionId: "god-native",   // WARM thread — God remembers across ⌃⌃ presses (like a brandbrain session)
+      sessionId: "god-native",   // REAL warm thread now: the daemon resumes this SDK session each ⌃⌃, so
+                                 // God remembers across presses (server.ts completionSessions + backend resume).
+                                 // Vision still rides live in `attachments` below; only the conversation threads.
       attachments: [{ handle: "screen", filename: "screen.jpg", contentType: "image/jpeg", dataUrl: shot.dataUrl }],
     });
     if (cmp.error) throw new Error(`complete: ${cmp.error.message}`);
@@ -568,6 +598,15 @@ async function main() {
   const spoken = stripTags(text);
   const action = parseAction(text);
 
+  // On a DRIVE the widget is the deliverable — God must NOT read the whole result aloud (the thing the
+  // user complained about). Speak at most one short line; if the model over-explained, fall back to a
+  // clean "Running <wrapp>…". Everything else speaks normally.
+  let toSpeak = spoken;
+  if (action && action.kind === "drive") {
+    const first = (spoken.split(/(?<=[.!?])\s+/)[0] || "").trim();
+    toSpeak = first && first.length <= 90 ? first : `Running ${action.wrapp} on that…`;
+  }
+
   console.log(`\n\x1b[1m${persona.name}\x1b[0m ${dim("· " + model)}\n${spoken || "(no reply)"}`);
   surfaceAnswer(spoken || (action ? `(no words — proposed: ${describeAction(action, shot)})` : "(God had no answer)"));
   if (!spoken && !action) loud(`✖ empty answer from ${model} — nothing to speak, nothing to do`);
@@ -586,7 +625,7 @@ async function main() {
   } catch { /* the probe is best-effort */ }
 
   godState("speaking");
-  await companion.speak(spoken || (action ? "" : "I came up empty on that one — ask me again?"));
+  await companion.speak(toSpeak || (action ? "" : "I came up empty on that one — ask me again?"));
   godState("idle");
   if (acting && action && action.kind !== "point") {
     const autonomy = process.env.GOD_AUTONOMY || (args.includes("--ask") ? "ask" : "auto"); // acts freely by default

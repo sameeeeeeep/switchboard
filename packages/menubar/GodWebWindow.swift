@@ -181,7 +181,14 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         web.callAsyncJavaScript(body, arguments: [:], in: nil, in: .page) { result in
             switch result {
             case .success(let v): completion(.success(v))
-            case .failure(let e): completion(.failure(e))
+            case .failure(let e):
+                // WebKit collapses a thrown Error into a generic "A JavaScript exception occurred"; the
+                // real message (e.g. "Prism couldn't render that", or a denied Higgsfield call) is in the
+                // WKError userInfo. Surface it so the notch shows what actually went wrong.
+                let ns = e as NSError
+                let jsMsg = (ns.userInfo["WKJavaScriptExceptionMessage"] as? String)
+                    ?? (ns.userInfo["NSLocalizedDescription"] as? String)
+                completion(.failure(jsMsg.map { GodWebError($0) } ?? e))
             }
         }
     }

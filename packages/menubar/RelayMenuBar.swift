@@ -2621,8 +2621,11 @@ struct ActionConsentDrop: View {
             ("Widget — working", WidgetSpec(kicker: "PRISM · IMAGE", title: "Making an image…", openLabel: "Open in Prism", result: .working("Making an image from your selection…"))),
         ]
         let menu = NSMenu()
-        // LIVE first — the real thing. Canned layout samples live in a submenu.
-        let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: #selector(driveWrappFromMenu), keyEquivalent: ""); drive.target = self
+        // LIVE first — the real thing. Drive ANY installed wrapp on your own Claude: pick it, give it
+        // input, its <id>_run tool runs in a hosted webview and the result lands as a notch widget.
+        // (Not roast-only anymore — the whole catalog is drivable. docs/GOD-HANDS.md "God drives ALL wrapps".)
+        let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: nil, keyEquivalent: "")
+        drive.submenu = buildDrivePickerMenu()
         menu.addItem(drive)
         let diagram = NSMenuItem(title: "Diagram from clipboard (LIVE)", action: #selector(diagramFromClipboardItem), keyEquivalent: ""); diagram.target = self
         menu.addItem(diagram)
@@ -2656,7 +2659,67 @@ struct ActionConsentDrop: View {
         showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
     }
     @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
-    @objc private func driveWrappFromMenu() { driveWrappLive() }
+
+    // A picker over the whole installed catalog — every wrapp with a page (and thus an <id>_run tool)
+    // is drivable. Grouped by category so 60+ listings stay navigable; each item carries its listing.
+    @MainActor private func buildDrivePickerMenu() -> NSMenu {
+        let menu = NSMenu()
+        // Drivable = has a page (webview drive) OR a bundled skill body (headless drive). A pure skill
+        // needs no page, so it's listed on the strength of its skill body alone.
+        let listings = readCatalog().filter { $0.components.ui?.url != nil || resolveSkillContent($0) != nil }.sorted { $0.name < $1.name }
+        guard !listings.isEmpty else {
+            let empty = NSMenuItem(title: "No wrapps installed — open the store", action: #selector(openPanelFromMenu), keyEquivalent: "")
+            empty.target = self; menu.addItem(empty); return menu
+        }
+        // Nice category order first, then anything else alphabetically.
+        let order = ["studio", "agent", "tool", "skill", "fun"]
+        let cats = Array(Set(listings.map { $0.category })).sorted {
+            let ai = order.firstIndex(of: $0) ?? order.count, bi = order.firstIndex(of: $1) ?? order.count
+            return ai == bi ? $0 < $1 : ai < bi
+        }
+        for cat in cats {
+            let inCat = listings.filter { $0.category == cat }
+            let catItem = NSMenuItem(title: cat.capitalized, action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            for l in inCat {
+                let it = NSMenuItem(title: l.name, action: #selector(driveWrappPicked(_:)), keyEquivalent: "")
+                it.target = self; it.representedObject = l; it.image = storeIcon(l.id).map { img in
+                    let c = img.copy() as! NSImage; c.size = NSSize(width: 18, height: 18); return c
+                }
+                sub.addItem(it)
+            }
+            catItem.submenu = sub
+            menu.addItem(catItem)
+        }
+        return menu
+    }
+    @objc private func driveWrappPicked(_ sender: NSMenuItem) {
+        guard let l = sender.representedObject as? SBListing else { return }
+        guard let input = promptDriveInput(for: l) else { return }   // cancelled
+        // A skill (prompt body) runs HEADLESS → notch widget; a wrapp (page + workflow) drives its page.
+        if resolveSkillContent(l) != nil {
+            driveSkillHeadless(l, input: input.isEmpty ? nil : input)
+        } else if let s = l.components.ui?.url, let base = URL(string: s) {
+            let tool = l.tools?.first?.name ?? "\(l.id)_run"   // the wrapp's registered command, not a guess
+            driveWrappLive(pageURL: resolveDriveURL(tool: tool, fallback: base), tool: tool, input: input.isEmpty ? nil : input, wrappName: l.name)
+        }
+    }
+    // Ask what to run the wrapp on. Pre-fills the clipboard (usually what the user is looking at). Returns
+    // nil on Cancel; "" means "just run it" (context-first skills that read the lent project need no text).
+    @MainActor private func promptDriveInput(for l: SBListing) -> String? {
+        let a = NSAlert()
+        a.messageText = "Drive \(l.name)"
+        a.informativeText = l.tagline.isEmpty ? "What should \(l.name) work on?" : l.tagline
+        a.addButton(withTitle: "Run"); a.addButton(withTitle: "Cancel")
+        let field = NSTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 90))
+        field.string = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        field.font = .systemFont(ofSize: 12)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 90))
+        scroll.documentView = field; scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
+        a.accessoryView = scroll
+        NSApp.activate(ignoringOtherApps: true)
+        return a.runModal() == .alertFirstButtonReturn ? field.string.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+    }
     @objc private func captureRegionItem() { setRegion(true) }
     @objc private func captureFullItem() { setRegion(false) }
     // The HTML capability, live: clipboard text → Claude writes HTML → offscreen render → the PNG
@@ -2741,7 +2804,11 @@ struct ActionConsentDrop: View {
         let view = NotchWidget(spec: spec,
                                projects: model.contexts.map { (id: $0.id, name: $0.name) },
                                activeProjectId: readDefaultId(),
-                               onSelectProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
+                               // Switching the project must actually TAKE — write the new global context, then
+                               // RE-RUN the drive so the wrapp reloads grounded in it (a context-first command
+                               // like "make me an ad" is only right for the right brand). onRegen is the drive's
+                               // own re-run; for a non-drive widget it's a no-op, so this is safe everywhere.
+                               onSelectProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles(); onRegen() },
                                onClose: { [weak self] in self?.hideNotchWidget() },
                                onOpen: onOpen, onRegen: onRegen, onSteer: onSteer)
         let host = NoInsetHostingView(rootView: view)
@@ -2785,6 +2852,17 @@ struct ActionConsentDrop: View {
     private var driveName = "Roast"          // display name of the wrapp being driven
     private var lastDrive: (url: URL, tool: String, input: String?, name: String)?   // for Regenerate
     private var driveGeneration = 0          // bumps per drive; a superseded run's late result is dropped
+    // DEV drive override: when ~/.relay/dev-drive exists, drive a wrapp's LOCAL page
+    // (localhost:5188/<toolprefix>.html) instead of its deployed subdomain — so the drive origin is the
+    // granted localhost:5188 (models + Higgsfield/WebFetch), which the remote origin isn't. Prefix = the
+    // tool's source id (imagegen_generate → imagegen → imagegen.html). No flag file → the catalog URL.
+    private func resolveDriveURL(tool: String, fallback: URL) -> URL {
+        let flag = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/dev-drive")
+        guard FileManager.default.fileExists(atPath: flag) else { return fallback }
+        let prefix = tool.split(separator: "_").first.map(String.init) ?? tool
+        return URL(string: "http://localhost:5188/\(prefix).html") ?? fallback
+    }
+
     @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast") {
         let envURL = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"].flatMap(URL.init(string:))
         guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
@@ -2813,13 +2891,41 @@ struct ActionConsentDrop: View {
             if !(self.godWeb?.isShown ?? false) { self.showDriveWorking("Running \(tool) on your Claude (may take ~30–90s)…") }
             // Every skill/wrapp tool takes ONE primary string — send it under the common keys; each
             // tool reads the one it declared (extra keys are ignored by the execute destructuring).
-            let text = input ?? "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
-            let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text]
+            // With no explicit input: roast has a canned demo bio; any OTHER wrapp falls back to the
+            // clipboard (the thing the user is most likely looking at), then a gentle nudge — never the
+            // roast bio, which only makes sense for roast.
+            let roastDemo = "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
+            let clip = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = input ?? (tool == "roast_run" ? roastDemo
+                : (!clip.isEmpty ? clip : "Help me with this — I'll tell you what I need."))
+            // Every skill/wrapp tool takes ONE primary string under a key it chose — spray the common
+            // keys (target/text/input/prompt/url/idea/…); the tool reads its one, ignores the rest.
+            let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text, "url": text, "content": text]
             let gen = self.driveGeneration
-            web.drive(tool: tool, input: args) { result in
-                Task { @MainActor in
-                    guard gen == self.driveGeneration else { return }   // superseded — drop the late result
-                    self.driveFinished(result)
+            // DON'T assume the tool is "<id>_run" — names vary (imagegen_generate, adpulse_diagnose,
+            // bank_ask, identity_compose…) and the prefix is the wrapp's SOURCE id, not its catalog id
+            // (Prism's tool is imagegen_generate). Enumerate what the page actually exposes and prefer
+            // the requested name, else its first (primary) tool. This is what makes drive work for ALL.
+            web.listTools { tools in
+                let names = tools.compactMap { $0["name"] as? String }
+                guard !names.isEmpty else {
+                    // The page exposes NO God tool (a remote studio not instrumented for God, etc.) —
+                    // never a dead end: front the real wrapp UI so the user can drive it by hand.
+                    godLog("drive: \(wrappName) exposes no God tools — showing the wrapp window instead")
+                    self.driveRunning = false
+                    self.hideNotchWidget()
+                    self.godWeb?.front()
+                    self.showGodStatus("\(wrappName) — drive it here", accent: .lime, pattern: .speaking)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.hideGodStatus() }
+                    return
+                }
+                let chosen = names.contains(tool) ? tool : (names.first ?? tool)
+                if chosen != tool { godLog("drive: '\(tool)' not exposed; using discovered tool '\(chosen)'") }
+                web.drive(tool: chosen, input: args) { result in
+                    Task { @MainActor in
+                        guard gen == self.driveGeneration else { return }   // superseded — drop the late result
+                        self.driveFinished(result)
+                    }
                 }
             }
         })
@@ -2827,7 +2933,12 @@ struct ActionConsentDrop: View {
     /// State 1 — the notch widget as the drive surface. Primary action flips to the window.
     @MainActor private func showDriveWorking(_ line: String) {
         showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "God is driving \(driveName)…", openLabel: "Show the wrapp",
-            result: .working(line)), onOpen: { [weak self] in self?.driveToWindow() })
+            result: .working(line)), onOpen: { [weak self] in self?.driveToWindow() },
+            // Switching the project mid-drive re-runs from the new context (supersedes the in-flight run).
+            onRegen: { [weak self] in
+                guard let self, let ld = self.lastDrive else { return }
+                self.godWeb?.close(); self.driveWrappLive(pageURL: ld.url, tool: ld.tool, input: ld.input, wrappName: ld.name)
+            })
     }
     /// notch → window: the wrapp becomes the surface; the notch shrinks to the running pill.
     @MainActor private func driveToWindow() {
@@ -2910,6 +3021,59 @@ struct ActionConsentDrop: View {
             showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
                 result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+        }
+    }
+
+    // The HEADLESS skill path (docs/GOD-HANDS.md, the user's "basic skills don't need a page"): a skill
+    // is a prompt, so run it with ONE gated model call on the user's own Claude and drop the result in
+    // the notch — no webview, no iframe. Same notch grammar as the page drive (working → shape-aware
+    // result, Copy/drag-out, steer chips re-run the skill), just without hosting a page. `input` nil →
+    // the clipboard (what the user is most likely looking at).
+    @MainActor func driveSkillHeadless(_ l: SBListing, input: String? = nil) {
+        guard let body = resolveSkillContent(l) else {   // no skill body → fall back to the page drive
+            if let s = l.components.ui?.url, let u = URL(string: s) { driveWrappLive(pageURL: u, tool: "\(l.id)_run", input: input, wrappName: l.name) }
+            return
+        }
+        let clip = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (input?.isEmpty == false ? input! : clip)
+        guard !text.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: "Nothing to work on", openLabel: "Close",
+                result: .text("Copy some text first, or tell \(l.name) what to work on — it runs on your clipboard.")),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        // One skill run at a time — a new ask supersedes the old (same generation guard as the page drive).
+        if driveRunning, let old = godWeb { old.onUserClosed = nil; old.close(); driveRunning = false }
+        driveGeneration += 1
+        driveName = l.name
+        let gen = driveGeneration
+        showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: "\(l.name) is working…", openLabel: "Close",
+            result: .working("Running \(l.name) on your Claude…")),
+            onOpen: { [weak self] in self?.hideNotchWidget() })
+        SkillRunner.shared.run(skillPrompt: body, input: text) { [weak self] result in
+            Task { @MainActor in
+                guard let self, gen == self.driveGeneration else { return }   // superseded — drop the late result
+                switch result {
+                case .success(let out):
+                    let rerun: (String) -> Void = { [weak self] chip in
+                        guard let self else { return }
+                        self.driveSkillHeadless(l, input: text + "\n\n(Adjust: \(chip))")
+                    }
+                    self.showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: l.name, openLabel: "Copy",
+                        result: self.widgetResult(from: ["text": out])),
+                        onOpen: { [weak self] in
+                            let pb = NSPasteboard.general; pb.clearContents(); pb.setString(out, forType: .string)
+                            self?.showGodStatus("Copied \(l.name) result", accent: .ok, pattern: .speaking)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in self?.hideGodStatus() }
+                        },
+                        onRegen: { [weak self] in self?.driveSkillHeadless(l, input: text) },
+                        onSteer: rerun)
+                case .failure(let e):
+                    self.showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: "\(l.name) failed", openLabel: "Open panel",
+                        result: .text(e.localizedDescription)),
+                        onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+                }
+            }
         }
     }
 
@@ -3215,6 +3379,10 @@ struct ActionConsentDrop: View {
         guard let data = FileManager.default.contents(atPath: path),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
         try? FileManager.default.removeItem(atPath: path)
+        // Driving an installed wrapp needs NO per-action consent — installing it WAS the consent
+        // (docs/GOD-HANDS.md #1); it runs straight into the notch. The wrapp's own write-class actions
+        // still hit the daemon gate. Only local hands God held a key for / risky actions keep the drop.
+        if (json["kind"] as? String) == "drive" { executeGodAction(json); return }
         showActionConsent(json["describe"] as? String ?? "do something", json)
     }
 
@@ -3272,8 +3440,20 @@ struct ActionConsentDrop: View {
             // consent Allow lands here → the widget grows from the notch while the wrapp runs.
             let id = (a["wrapp"] as? String ?? "").lowercased()
             let input = a["input"] as? String
-            if let l = readCatalog().first(where: { $0.id == id }), let s = l.components.ui?.url, let u = URL(string: s) {
-                driveWrappLive(pageURL: u, tool: "\(id)_run", input: input, wrappName: l.name)
+            if let l = readCatalog().first(where: { $0.id == id }) {
+                // A skill runs headless → notch widget; a wrapp drives its page. Same split as the picker.
+                if resolveSkillContent(l) != nil {
+                    driveSkillHeadless(l, input: input)
+                } else if let s = l.components.ui?.url, let base = URL(string: s) {
+                    // The command God picked (registry), else the wrapp's single registered tool, else the
+                    // <id>_run guess — listTools discovery corrects it either way, but this starts right.
+                    let cmd = (a["command"] as? String) ?? l.tools?.first?.name ?? "\(id)_run"
+                    driveWrappLive(pageURL: resolveDriveURL(tool: cmd, fallback: base), tool: cmd, input: input, wrappName: l.name)
+                } else {
+                    showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "Can't run “\(id)”", openLabel: "Open store",
+                        result: .text("“\(l.name)” has neither a page nor a skill body to run.")),
+                        onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
+                }
             } else {
                 showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No wrapp “\(id)”", openLabel: "Open store",
                     result: .text("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
@@ -3309,7 +3489,16 @@ struct ActionConsentDrop: View {
             if let combo = a["combo"] as? String, let osa = Self.keyComboOsa(combo) {
                 let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript"); p.arguments = ["-e", osa]; try? p.run()
             }
-        default: break
+        default:
+            // NEVER silently swallow an Allow. A missing/unknown kind (a stale god-action.json, an action
+            // shape this build doesn't handle) used to hit `break` and do nothing — the "clicked Allow,
+            // nothing happened" bug. Surface it in the notch so the moment is always legible.
+            let kind = (a["kind"] as? String) ?? "—"
+            let what = (a["describe"] as? String) ?? "an action I don't recognize"
+            godLog("executeGodAction: unhandled action kind '\(kind)' — \(a)")
+            showNotchWidget(WidgetSpec(kicker: "GOD · ACTION", title: "Couldn't run that", openLabel: "Open panel",
+                result: .text("God proposed “\(what)” (kind: \(kind)), but this build has no handler for it — nothing was done. If this keeps happening, the action God emitted and the app got out of sync.")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
         }
     }
 
@@ -3333,7 +3522,7 @@ struct ActionConsentDrop: View {
     // global click → handler) is proven. Every write it eventually makes still goes through the gate.
     // `preselected` carries the region/full the drag overlay committed during listening (nil = whole
     // screen). The overlay itself lives in the listening flow now, so this just captures + spawns.
-    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, preselected: RegionPick? = nil) {
+    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, preselected: RegionPick? = nil, skill: String? = nil) {
         guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
         if let p = point, let screen = NSScreen.main {
             glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)
@@ -3348,7 +3537,7 @@ struct ActionConsentDrop: View {
         let shot = NSTemporaryDirectory() + "god-shot.jpg"
         try? FileManager.default.removeItem(atPath: shot)
         captureShot(preselected ?? .full, to: shot)   // a dragged region, or the whole screen
-        spawnGod(shot: shot, point: point, audio: audio, instruction: instruction, node: node, god: god)
+        spawnGod(shot: shot, point: point, audio: audio, instruction: instruction, node: node, god: god, skill: skill)
     }
 
     // The screenshot God reasons over: whole screen (with cursor), or just the dragged region (-R x,y,w,h).
@@ -3364,7 +3553,7 @@ struct ActionConsentDrop: View {
 
     // The proven pipeline: hand god.mjs the shot (GOD_IMAGE) → vision+persona → speak; poll god-state for
     // the notch phase; gate every write. Extracted so both the whole-screen and region paths share it.
-    @MainActor private func spawnGod(shot: String, point: CGPoint?, audio: String?, instruction: String?, node: String, god: String) {
+    @MainActor private func spawnGod(shot: String, point: CGPoint?, audio: String?, instruction: String?, node: String, god: String, skill: String? = nil) {
         setGlow(.thinking)
         godStateTimer?.invalidate()
         godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -3381,6 +3570,15 @@ struct ActionConsentDrop: View {
         env["GOD_AUTONOMY"] = "auto"
         env["GOD_IMAGE"] = shot
         if let audio = audio { env["GOD_AUDIO"] = audio }
+        // A wrapp's skill worn inline: write the resolved skill body to a temp file and hand god.mjs the
+        // path (GOD_SKILL). god.mjs folds it into the system prompt so God can actually DO the skill in
+        // conversation — not just open the wrapp's page. (docs/GOD-HANDS.md, the "wrapp = skill" path.)
+        if let skill = skill, !skill.isEmpty {
+            let skillFile = NSTemporaryDirectory() + "god-skill.md"
+            if (try? skill.write(toFile: skillFile, atomically: true, encoding: .utf8)) != nil {
+                env["GOD_SKILL"] = skillFile
+            }
+        }
         if let p = point, let screen = NSScreen.main, screen.frame.width > 0, screen.frame.height > 0 {
             let fx = (p.x - screen.frame.minX) / screen.frame.width
             let fy = (screen.frame.maxY - p.y) / screen.frame.height
@@ -3878,6 +4076,22 @@ struct ActionConsentDrop: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in self?.hideGodStatus() }
     }
 
+    // Resolve a listing's components.skills refs to their bundled skill bodies (Resources/skills/<ref>.md,
+    // e.g. "yc/register" → skills/yc/register.md). Concatenated, with a header per skill so God can tell
+    // them apart. nil when the listing declares no skills or none have bundled content — the caller then
+    // falls back to the wrapp's page. This is the backing content the old god stub was missing.
+    private func resolveSkillContent(_ l: SBListing) -> String? {
+        guard let refs = l.components.skills, !refs.isEmpty, let res = Bundle.main.resourcePath else { return nil }
+        var parts: [String] = []
+        for ref in refs {
+            let path = (res as NSString).appendingPathComponent("skills/\(ref).md")
+            if let body = try? String(contentsOfFile: path, encoding: .utf8), !body.isEmpty {
+                parts.append(body.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n───\n\n")
+    }
+
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
@@ -3887,13 +4101,21 @@ struct ActionConsentDrop: View {
                 concierge(l)   // the notch acknowledges the launch — never a silent open
             }
         case "god":
-            // The god-skill surface can't actually LOAD a skill yet (components.skills has no backing
-            // content — resolving "yc/register" finds nothing), so the old name+tagline roleplay just
-            // stalled: God spoke one line, the process exited, glow went thinking→idle = "thinking, then
-            // nothing." Prefer the wrapp's real page when it has one; roleplay only as a last resort.
-            // (Real fix later: pass components.skills to god.mjs + load the skill content there.)
-            if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
-            else { triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help. Keep it to one short question first.") }
+            // The god surface = God WEARS the wrapp's skill. Resolve components.skills → the real skill
+            // body, hand it to god.mjs (GOD_SKILL) so God can actually DO the skill in conversation.
+            // Escalation to the full page stays available (its browser surface / the widget's Open).
+            // Falls back to the page-open, then a light roleplay, only when there's no skill body.
+            if let skill = resolveSkillContent(l) {
+                concierge(l)   // notch names what God just put on — never a silent activation
+                let opener = l.components.ui?.url != nil
+                    ? " If a full editor would help, tell me and I'll open the \(l.name) page."
+                    : ""
+                triggerGod(instruction: "You now have the \(l.name) skill loaded (below). Wear it: apply it to whatever I'm working on. Ask me one short question about what I'd like help with, then help in that register.\(opener)", skill: skill)
+            } else if let s = l.components.ui?.url, let u = URL(string: s) {
+                NSWorkspace.shared.open(u); concierge(l)
+            } else {
+                triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help. Keep it to one short question first.")
+            }
         case "batch":
             let action = l.components.workflows?.first.map { String($0.split(separator: "/").last ?? Substring($0)) } ?? "run"
             triggerGod(instruction: "Run the \(l.name) wrapp's \(action) step — call its tool through the gate. If it needs input, ask me one short question first.")
@@ -3915,10 +4137,15 @@ struct SBReq: Codable {
     let kind: String; let name: String?; let klass: String?; let id: String?; let appId: String?; let lazy: Bool?
     enum CodingKeys: String, CodingKey { case kind, name, klass = "class", id, appId, lazy }
 }
+// One God-callable command from the tool registry (build-tools.mjs → catalog `tools`): the command
+// (name), WHEN to use it (description), HOW to call it (inputSchema, key → "type — desc"). The native
+// drive uses this to pick the command + shape args without loading the page. Optional everywhere.
+struct SBTool: Codable { let name: String; let description: String?; let inputSchema: [String: String]? }
 struct SBListing: Codable, Identifiable {
     let id: String; let name: String; let tagline: String; let icon: String?
     let category: String; let author: String?
     let components: SBComponents; let surfaces: [String]; let requires: [SBReq]; let inside: [String]?
+    let tools: [SBTool]?
 }
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 

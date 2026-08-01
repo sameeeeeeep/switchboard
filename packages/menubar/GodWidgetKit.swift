@@ -264,26 +264,32 @@ struct ResultText: View {
         .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(Color.edge, lineWidth: WK.hair))
     }
 }
+// Honest loading state — NOT a fake image. A driving wrapp used to show a big placeholder-art box that
+// read like the result; now it's a clear "working" treatment: a live spinner + the status line, and a
+// genuinely INDETERMINATE (moving) bar. Nothing here pretends to be output.
 struct WorkingCanvas: View {
     let line: String
+    @State private var slide = false
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s3) {
-            ZStack {
-                PlaceholderArt(symbol: "wand.and.stars", tint: .lime, symbolSize: 34)
-                LinearGradient(colors: [.clear, .white.opacity(0.06), .clear], startPoint: .leading, endPoint: .trailing)
+            HStack(spacing: WK.s2) {
+                ProgressView().controlSize(.small).tint(.lime)
+                Text(line).font(.system(size: 12.5)).foregroundColor(.inkDim).lineLimit(2)
+                Spacer(minLength: 0)
             }
-            .aspectRatio(16.0/6.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: WK.rLg))
-            .overlay(RoundedRectangle(cornerRadius: WK.rLg).stroke(Color.edge, lineWidth: WK.hair))
-            CaptionLine(text: line, icon: "wand.and.stars")
+            // indeterminate bar: a lime segment sweeping left→right on a loop, so it reads as "in flight"
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.panel)
-                    Capsule().fill(LinearGradient(colors: [.lime.opacity(0.5), .lime], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: g.size.width * 0.42)
+                    Capsule().fill(LinearGradient(colors: [.lime.opacity(0.15), .lime, .lime.opacity(0.15)], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: g.size.width * 0.33)
+                        .offset(x: slide ? g.size.width * 0.67 : -g.size.width * 0.02)
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: slide)
                 }
             }.frame(height: 4)
         }
+        .padding(.vertical, WK.s2)
+        .onAppear { slide = true }
     }
 }
 
