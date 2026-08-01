@@ -29,6 +29,15 @@
           "name": "sb_db",
           "lazy": true
         }
+      ],
+      "tools": [
+        {
+          "name": "bank_ask",
+          "description": "Ask the context bank a question, answered from the user's own notes. Streams the answer onto the page and returns it.",
+          "inputSchema": {
+            "question": "string — the question to answer from the vault. Required."
+          }
+        }
       ]
     },
     {
@@ -132,6 +141,15 @@
         "A post-mortem on where the budget leaked",
         "Analyze headless across accounts (batch)",
         "Scheduled rollups when you want them"
+      ],
+      "tools": [
+        {
+          "name": "adpulse_diagnose",
+          "description": "Diagnose a Meta Ads Manager export (CSV) — health score, wins, leaks, ranked actions, and per-campaign verdicts. Renders the readout live and returns it.",
+          "inputSchema": {
+            "csv": "string — a Meta Ads Manager CSV export. Optional when data is already loaded."
+          }
+        }
       ]
     },
     {
@@ -190,6 +208,15 @@
         {
           "kind": "model",
           "class": "cloud"
+        }
+      ],
+      "tools": [
+        {
+          "name": "batch_draft",
+          "description": "Draft a full YC application (all 8 answers, one recommended each, plus the two video scripts) from a one-line idea. Fills the cards live on the page and returns the drafted application as markdown; nothing is locked or submitted.",
+          "inputSchema": {
+            "idea": "string — one line on what you're building. Required."
+          }
         }
       ]
     },
@@ -250,6 +277,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "aplus_write",
+          "description": "Write a full Amazon A+ content stack for a product (a line or a product-page URL). Renders it live on the page and returns it.",
+          "inputSchema": {
+            "product": "string — the product to write A+ content for. Optional when a brand is lent."
+          }
+        }
       ]
     },
     {
@@ -273,6 +309,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "adforge_run",
+          "description": "Forge three Meta ad concepts from a site URL (or the lent brand). Renders them live on the page and returns them.",
+          "inputSchema": {
+            "url": "string — a site to forge ads from. Optional when a brand is lent."
+          }
         }
       ]
     },
@@ -298,6 +343,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "adgen_run",
+          "description": "Draft a wall of six ad directions from a site URL (or the lent brand). Renders them live on the page and returns them.",
+          "inputSchema": {
+            "url": "string — a site to draft ad directions from. Optional when a brand is lent."
+          }
+        }
       ]
     },
     {
@@ -317,6 +371,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "canvas_run",
+          "description": "Describe a diagram, board, or layout in words and get an editable, self-contained HTML document. Renders it live on the page and returns the document HTML.",
+          "inputSchema": {
+            "prompt": "string — one line describing the diagram/board/layout to draw. Required."
+          }
         }
       ]
     },
@@ -341,6 +404,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "cartridge_run",
+          "description": "Forge a complete, self-contained HTML5 game from one idea. Generates it live on the page and returns the game's title.",
+          "inputSchema": {
+            "idea": "string — one line describing the game to make. Required."
+          }
         }
       ]
     },
@@ -409,6 +481,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "cut_run",
+          "description": "Turn a video transcript (or rough notes) into a cut plan: on-screen captions + a highlight cut list (keep MM:SS–MM:SS with a reason) + what to trim. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "transcript": "string — the video transcript or rough notes to plan a cut from. Required."
+          }
         }
       ]
     },
@@ -515,6 +596,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "huddle_ask",
+          "description": "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
+          "inputSchema": {
+            "message": "string — what to say to the call. Required."
+          }
+        }
       ]
     },
     {
@@ -538,6 +628,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "identity_compose",
+          "description": "Compose an AI creator persona (person, voice, look, audience, pillars — one recommended each) from a one-line brief. Fills the cards live on the page and returns the drafted persona; it does not publish it to Cast.",
+          "inputSchema": {
+            "brief": "string — one line describing the creator (niche, vibe, who they're for). Required."
+          }
         }
       ]
     },
@@ -587,6 +686,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "marquee_build",
+          "description": "Build a cinematic scrolling landing page from one line: writes a complete self-contained HTML page into the live preview and paints its hero on your Higgsfield. Returns the page HTML.",
+          "inputSchema": {
+            "brief": "string — one line on what the landing page is for. Required."
+          }
+        }
       ]
     },
     {
@@ -607,12 +715,21 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "meetnotes_run",
+          "description": "Turn a meeting transcript or rough notes into clean structured notes (TL;DR, decisions, action items with owners/dues, open questions). Writes it live on the page and returns it.",
+          "inputSchema": {
+            "transcript": "string — the meeting transcript or rough notes to structure. Required."
+          }
+        }
       ]
     },
     {
       "id": "prism",
       "name": "Prism",
-      "tagline": "Make an image pop on any background.",
+      "tagline": "Generate on-brand images from a prompt.",
       "category": "tool",
       "components": {
         "ui": {
@@ -630,6 +747,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "imagegen_generate",
+          "description": "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL.",
+          "inputSchema": {
+            "prompt": "string — what to generate (subject, setting, lighting…). Required."
+          }
         }
       ]
     },
@@ -654,6 +780,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "reel_generate",
+          "description": "Draft a promo/launch reel from one line: writes a 4–6 scene script and paints each scene on your Higgsfield, live on the page. Returns the scenes (title, subtitle, image URL); it does not render the final video.",
+          "inputSchema": {
+            "brief": "string — one line on what the reel is for. Required."
+          }
         }
       ]
     },
@@ -727,6 +862,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "shelf_triage",
+          "description": "Triage an inventory sheet (CSV of stock + sales) into reorder / watch / dead-weight, ABC, and one-week plans. Renders the board live and returns it.",
+          "inputSchema": {
+            "sheet": "string — CSV of stock + sales. Optional when a brand's inventory is lent (or the demo is used)."
+          }
+        }
       ]
     },
     {
@@ -750,6 +894,15 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "studio_shoot",
+          "description": "Shoot one product photo on your Higgsfield from a product description. Develops it into the contact sheet and returns the image URL.",
+          "inputSchema": {
+            "product": "string — the product to shoot (one line). Required."
+          }
         }
       ]
     },
@@ -775,6 +928,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "take_script",
+          "description": "Draft a recording script (beats for a screen or camera take) from a line describing what you're recording. Renders on the page and returns the recommended script; it does not start a recording.",
+          "inputSchema": {
+            "about": "string — what you're recording (e.g. 'a 40-second walkthrough of the pricing page'). Required."
+          }
+        }
       ]
     },
     {
@@ -794,6 +956,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "actions_run",
+          "description": "Turn meeting notes or a transcript into a clean action-item checklist (owners and due dates where implied). Writes it live on the page and returns it.",
+          "inputSchema": {
+            "notes": "string — the notes or transcript to extract action items from. Required."
+          }
         }
       ]
     },
@@ -815,6 +986,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "caption_run",
+          "description": "Write 5 social captions plus a hashtag set for a post, one marked recommended. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "about": "string — what the post or photo is. Required."
+          }
+        }
       ]
     },
     {
@@ -834,6 +1014,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "clipfix_run",
+          "description": "Clean pasted text: fix smart-quotes, unwrap hard line breaks, strip tracking params from URLs, tidy whitespace. Writes the cleaned text live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the pasted text to clean. Required."
+          }
         }
       ]
     },
@@ -855,6 +1044,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "coldemail_run",
+          "description": "Write a short, non-cringe cold email (subject + body + one clear ask) from a target and an ask. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "brief": "string — who you're emailing and the ask. Required."
+          }
+        }
       ]
     },
     {
@@ -874,6 +1072,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "commit_run",
+          "description": "Write a Conventional Commits message (typed subject + body bullets) from a diff or change summary. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "diff": "string — the diff or change summary to describe. Required."
+          }
         }
       ]
     },
@@ -895,6 +1102,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "compare_run",
+          "description": "Compare options side by side (pros/cons per option) with one recommendation. Writes the comparison live on the page and returns it.",
+          "inputSchema": {
+            "items": "string — the options to compare (e.g. 'A vs B vs C for X'). Required."
+          }
+        }
       ]
     },
     {
@@ -914,6 +1130,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "convert_run",
+          "description": "Convert data between JSON/CSV/YAML/Markdown table — infers the source, outputs the most useful target (a Markdown table if ambiguous). Writes it live on the page and returns it.",
+          "inputSchema": {
+            "data": "string — the structured data to convert. Required."
+          }
         }
       ]
     },
@@ -935,6 +1160,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "cron_run",
+          "description": "Convert a plain-English schedule to a cron expression (with a human-readable confirmation), or explain a cron expression field by field. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "schedule": "string — a schedule to convert, or a cron expression to explain. Required."
+          }
+        }
       ]
     },
     {
@@ -954,6 +1188,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "docstring_run",
+          "description": "Write a clear docstring/JSDoc for a function — params, returns, one example — in the language's own convention. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "code": "string — the function source to document. Required."
+          }
         }
       ]
     },
@@ -975,6 +1218,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "errslate_run",
+          "description": "Decode an error message or stack trace: what it means, the likely cause, and the fix. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "error": "string — the error message or stack trace to decode. Required."
+          }
+        }
       ]
     },
     {
@@ -994,6 +1246,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "explainthis_run",
+          "description": "Explain a bit of text in plain English for a smart non-expert. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to explain. Required."
+          }
         }
       ]
     },
@@ -1015,6 +1276,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "extract_run",
+          "description": "Pull the key fields and entities out of a bit of text into a clean labeled list. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to extract fields from. Required."
+          }
+        }
       ]
     },
     {
@@ -1035,6 +1305,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "formula_run",
+          "description": "Write the exact spreadsheet formula for a plain-English need (Google Sheets + Excel), with one line explaining it. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "need": "string — the spreadsheet need in plain English. Required."
+          }
+        }
       ]
     },
     {
@@ -1043,17 +1322,30 @@
       "tagline": "Paste anything, get a tight TL;DR.",
       "category": "skill",
       "components": {
+        "skills": [
+          "gist/summarize"
+        ],
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/gist.html"
         }
       },
       "surfaces": [
+        "god",
         "browser"
       ],
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "gist_run",
+          "description": "Summarize a bit of text into a tight TL;DR (2 sentences + up to 4 bullets). Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to summarize. Required."
+          }
         }
       ]
     },
@@ -1075,6 +1367,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "hooks_run",
+          "description": "Write 7 scroll-stopping opening lines (hooks) for a topic, one marked recommended. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "topic": "string — what the post/video/email is about. Required."
+          }
+        }
       ]
     },
     {
@@ -1094,6 +1395,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "nameit_run",
+          "description": "Propose six strong name options (each with a rationale) for a described product, company, feature, or project. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "description": "string — a description of the thing to name. Required."
+          }
         }
       ]
     },
@@ -1115,6 +1425,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "objection_run",
+          "description": "Reframe a sales or investor objection and draft a calm, honest response plus a one-liner. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "objection": "string — the objection you're facing. Required."
+          }
+        }
       ]
     },
     {
@@ -1134,6 +1453,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "outline_run",
+          "description": "Produce a clean hierarchical outline for a post, talk, or doc, with a suggested hook and CTA. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "topic": "string — what you're writing or presenting. Required."
+          }
         }
       ]
     },
@@ -1155,6 +1483,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "polish_run",
+          "description": "Proofread and clarify a bit of text while keeping the author's voice. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to polish. Required."
+          }
+        }
       ]
     },
     {
@@ -1174,6 +1511,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "recap_run",
+          "description": "Summarize a long doc or thread into a structured recap (TL;DR, key points, decisions, next steps). Writes it live on the page and returns it.",
+          "inputSchema": {
+            "document": "string — the long document or thread to recap. Required."
+          }
         }
       ]
     },
@@ -1195,6 +1541,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "regex_run",
+          "description": "Write a regular expression for a plain-English matching need, with 3 matching + 3 non-matching test cases and a brief breakdown. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "need": "string — describe what you need to match (and what you don't). Required."
+          }
+        }
       ]
     },
     {
@@ -1214,6 +1569,16 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "rephrase_run",
+          "description": "Rewrite a bit of text in a requested tone/length, keeping its meaning. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to rewrite. Required.",
+            "tone": "string — desired tone or length (optional)."
+          }
         }
       ]
     },
@@ -1235,6 +1600,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "reply_run",
+          "description": "Draft reply options (concise, warm, firm) to a message or thread. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "message": "string — the message or thread to reply to. Required."
+          }
+        }
       ]
     },
     {
@@ -1254,6 +1628,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "repurpose_run",
+          "description": "Rewrite one piece of content into an X thread, a LinkedIn post, an Instagram caption, and a short-form video script. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "content": "string — the content to repurpose. Required."
+          }
         }
       ]
     },
@@ -1275,6 +1658,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "shell_run",
+          "description": "Give the exact shell command(s) for a task, with each flag explained — and a warning above anything destructive. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "task": "string — describe the task you want a shell command for. Required."
+          }
+        }
       ]
     },
     {
@@ -1294,6 +1686,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "snap_run",
+          "description": "Answer a question directly and concisely on the user's own Claude. Writes the answer live on the page and returns it.",
+          "inputSchema": {
+            "question": "string — the question to answer. Required."
+          }
         }
       ]
     },
@@ -1315,6 +1716,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "spellout_run",
+          "description": "Expand a rough phrase or shorthand into a clear, well-formed sentence or short paragraph, keeping the meaning and voice. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "phrase": "string — the rough phrase to spell out. Required."
+          }
+        }
       ]
     },
     {
@@ -1334,6 +1744,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "standup_run",
+          "description": "Turn raw notes or commits into a crisp Yesterday / Today / Blockers standup. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "notes": "string — your raw notes, commits, or bullets. Required."
+          }
         }
       ]
     },
@@ -1355,6 +1774,15 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "steps_run",
+          "description": "Turn a goal into a few distinct step-by-step plans, each a numbered checklist. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "goal": "string — the goal to turn into steps. Required."
+          }
+        }
       ]
     },
     {
@@ -1374,6 +1802,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "titles_run",
+          "description": "Write 8 headline/title options for a topic across styles, one marked recommended. Writes them live on the page and returns them.",
+          "inputSchema": {
+            "topic": "string — what the piece is about. Required."
+          }
         }
       ]
     },
@@ -1395,6 +1832,16 @@
         {
           "kind": "daemon"
         }
+      ],
+      "tools": [
+        {
+          "name": "translate_run",
+          "description": "Translate a bit of text into a target language, preserving tone. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the text to translate. Required.",
+            "language": "string — target language (default: Spanish)."
+          }
+        }
       ]
     },
     {
@@ -1414,6 +1861,15 @@
       "requires": [
         {
           "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "unjargon_run",
+          "description": "Decode dense text (acronyms, legalese, jargon) into plain English. Writes it live on the page and returns it.",
+          "inputSchema": {
+            "text": "string — the dense text to decode. Required."
+          }
         }
       ]
     },
@@ -1476,6 +1932,15 @@
           "kind": "model",
           "class": "local"
         }
+      ],
+      "tools": [
+        {
+          "name": "arcana_run",
+          "description": "Deal a fresh three-card tarot spread for a question and read it live on the page. Returns the drawn cards and the reading.",
+          "inputSchema": {
+            "question": "string — the question to read for. Optional; a default is used if omitted."
+          }
+        }
       ]
     },
     {
@@ -1499,6 +1964,23 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ],
+      "tools": [
+        {
+          "name": "natal_run",
+          "description": "Read a natal / birth chart from birth data. Renders the chart on the page and returns it.",
+          "inputSchema": {
+            "date": "string — date of birth, YYYY-MM-DD. Required.",
+            "place": "string — birthplace (city, country) — the rising depends on it. Required.",
+            "time": "string — time of birth, HH:MM (24h). Optional; omit if unknown.",
+            "name": "string — the person's name. Optional."
+          }
+        },
+        {
+          "name": "string — the person's name. Optional.",
+          "description": "",
+          "inputSchema": {}
         }
       ]
     }
