@@ -1,0 +1,20 @@
+{
+  "id": "spellout",
+  "name": "Spellout",
+  "tagline": "A rough phrase into a clear line",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/spellout.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

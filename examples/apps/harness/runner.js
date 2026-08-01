@@ -61,8 +61,20 @@ const CFG = {
   recap:       { name: "Recap",       cat: "skill", count: (d) => skillDone(d) },
   meetnotes:   { name: "Meeting Notes", cat: "tool", count: (d) => skillDone(d) },
   cut:         { name: "Cut", cat: "tool", count: (d) => skillDone(d) },
+  regex: { name: "Regex", cat: "skill", count: (d) => skillDone(d) },
+  errslate: { name: "Errslate", cat: "skill", count: (d) => skillDone(d) },
+  commit: { name: "Commit", cat: "skill", count: (d) => skillDone(d) },
+  docstring: { name: "Docstring", cat: "skill", count: (d) => skillDone(d) },
+  shell: { name: "Shell", cat: "skill", count: (d) => skillDone(d) },
+  cron: { name: "Cron", cat: "skill", count: (d) => skillDone(d) },
+  steps: { name: "Steps", cat: "skill", count: (d) => d.querySelectorAll("#view .opt, .opt").length || skillDone(d) },
+  compare: { name: "Compare", cat: "skill", count: (d) => d.querySelectorAll("#view .opt, .opt").length || skillDone(d) },
+  formula: { name: "Formula", cat: "skill", count: (d) => skillDone(d) },
+  spellout: { name: "Spellout", cat: "skill", count: (d) => skillDone(d) },
+  clipfix: { name: "Clip Doctor", cat: "skill", count: (d) => skillDone(d) },
+  convert: { name: "Convert", cat: "skill", count: (d) => skillDone(d) },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut"];
+const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);
@@ -147,12 +159,14 @@ function fillForm(doc, win) {
 // (Shelf's paste-a-CSV crutch lived here. Removed 2026-07: Shelf now loads the lent project's
 // inventory — or a representative sheet off its catalogue — and auto-triages with zero input.)
 
-// Fallback for a viral wrapp that didn't cold-open: type a brand-appropriate one-liner and submit.
-function typeViralLine(doc, win, project) {
+// Fallback for a wrapp that didn't cold-open: type a one-liner and submit. Viral wrapps take a
+// brand line; skills (usesContext:null — no cold-open) take a plain task line. Same input/button
+// selectors serve both: the start <textarea> and the button.primary ("Write it 🔤" etc.).
+function typeViralLine(doc, win, project, line) {
   const brand = brandName(win, project);
   const input = doc.querySelector("#view input, .start input, .bindrow input, input[type=text], textarea");
   if (!input) return;
-  input.focus(); input.value = `a fun one for ${brand}`;
+  input.focus(); input.value = line || `a fun one for ${brand}`;
   input.dispatchEvent(new win.Event("input", { bubbles: true }));
   input.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   const btn = [...doc.querySelectorAll("#view button.primary, .start button, .bindrow button, button.primary, button")].find((b) => !b.disabled);
@@ -176,8 +190,16 @@ async function runOne(id, project) {
   while (Date.now() - t0 < 8000) {
     try { n = cfg.count(stage.contentDocument) || 0; } catch (_) { n = 0; }
     if (n >= 1) break;
-    // viral wrapps cold-open on the lent brand; if one didn't autostart, type a brand line to kick it.
-    if (cfg.cat === "viral" && !viralTyped && Date.now() - t0 > 2600) { viralTyped = true; try { typeViralLine(stage.contentDocument, stage.contentWindow, project); } catch (_) {} }
+    // viral wrapps cold-open on the lent brand; skills with usesContext:null have no cold-open at all.
+    // If nothing fired by 2.6s AND no call is in flight, type a line to kick it (skills get a task line).
+    if ((cfg.cat === "viral" || cfg.cat === "skill") && !viralTyped && Date.now() - t0 > 2600) {
+      let callsYet = 0; try { callsYet = (stage.contentWindow.__HARNESS_CALLS__ || []).length; } catch (_) {}
+      if (callsYet === 0) {
+        viralTyped = true;
+        const line = cfg.cat === "skill" ? "match all http and https URLs in a block of text" : null;
+        try { typeViralLine(stage.contentDocument, stage.contentWindow, project, line); } catch (_) {}
+      }
+    }
     await sleep(400);
   }
   let errs = [], calls = [], snap = "";

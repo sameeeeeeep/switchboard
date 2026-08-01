@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 45,
+  "count": 57,
   "listings": [
     {
       "id": "bank",
@@ -798,6 +798,146 @@
       ]
     },
     {
+      "id": "clipfix",
+      "name": "Clip Doctor",
+      "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/clipfix.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "name": "Commit",
+      "tagline": "A diff into a Conventional Commits message",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/commit.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "name": "Compare",
+      "tagline": "Options side by side, pros/cons, one pick",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/compare.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "convert",
+      "name": "Convert",
+      "tagline": "Data between JSON, CSV, YAML, and Markdown tables",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/convert.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "name": "Cron",
+      "tagline": "A schedule into a cron expression, and back to English",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/cron.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "docstring",
+      "name": "Docstring",
+      "tagline": "A function into a clear docstring/JSDoc with an example",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/docstring.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "errslate",
+      "name": "Errslate",
+      "tagline": "Decode any error or stack trace: meaning, cause, fix",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/errslate.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "explainthis",
       "name": "Explain This",
       "tagline": "Turn confusing text into plain English.",
@@ -826,6 +966,26 @@
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/extract.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "formula",
+      "name": "Formula",
+      "tagline": "Plain English into the exact spreadsheet formula",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/formula.html"
         }
       },
       "surfaces": [
@@ -918,6 +1078,26 @@
       ]
     },
     {
+      "id": "regex",
+      "name": "Regex",
+      "tagline": "A matching need into a regular expression, with test cases",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/regex.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "rephrase",
       "name": "Rephrase",
       "tagline": "Rewrite text in any tone — meaning kept.",
@@ -958,6 +1138,26 @@
       ]
     },
     {
+      "id": "shell",
+      "name": "Shell",
+      "tagline": "A task into the exact shell command, every flag explained",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/shell.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "snap",
       "name": "Snap Answer",
       "tagline": "One question, one direct answer — no chat thread.",
@@ -966,6 +1166,46 @@
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/snap.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "spellout",
+      "name": "Spellout",
+      "tagline": "A rough phrase into a clear line",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/spellout.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "steps",
+      "name": "Steps",
+      "tagline": "Name a goal, get a few step-by-step plans",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/steps.html"
         }
       },
       "surfaces": [

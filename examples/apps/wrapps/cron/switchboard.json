@@ -1,0 +1,20 @@
+{
+  "id": "cron",
+  "name": "Cron",
+  "tagline": "A schedule into a cron expression, and back to English",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/cron.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

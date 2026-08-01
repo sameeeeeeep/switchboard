@@ -69,6 +69,19 @@ const WRAPPS = [
   { id: "recap", html: "recap.html", cat: "skill" },
   { id: "meetnotes", html: "meetnotes.html", cat: "tool" },
   { id: "cut", html: "cut.html", cat: "tool" },
+  // ideation shelf batch 2 (2026-08)
+  { id: "regex", html: "regex.html", cat: "skill" },
+  { id: "errslate", html: "errslate.html", cat: "skill" },
+  { id: "commit", html: "commit.html", cat: "skill" },
+  { id: "docstring", html: "docstring.html", cat: "skill" },
+  { id: "shell", html: "shell.html", cat: "skill" },
+  { id: "cron", html: "cron.html", cat: "skill" },
+  { id: "steps", html: "steps.html", cat: "skill" },
+  { id: "compare", html: "compare.html", cat: "skill" },
+  { id: "formula", html: "formula.html", cat: "skill" },
+  { id: "spellout", html: "spellout.html", cat: "skill" },
+  { id: "clipfix", html: "clipfix.html", cat: "skill" },
+  { id: "convert", html: "convert.html", cat: "skill" },
 ];
 
 const HARNESS_JSON = JSON.stringify(PROJECTS);

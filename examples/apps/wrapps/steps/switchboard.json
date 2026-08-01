@@ -1,0 +1,20 @@
+{
+  "id": "steps",
+  "name": "Steps",
+  "tagline": "Name a goal, get a few step-by-step plans",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/steps.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

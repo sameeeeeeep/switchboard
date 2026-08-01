@@ -1,0 +1,20 @@
+{
+  "id": "regex",
+  "name": "Regex",
+  "tagline": "A matching need into a regular expression, with test cases",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/regex.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

@@ -10,14 +10,14 @@ The app is built, signed, and running (`packages/menubar/Switchboard.app`). Ever
 4. **From-notch motion** — open the panel / any consent drop / God status: they unfold from the notch seam and fold back.
 5. **Collapsible Settings** — panel → gear → 7 accordion rows, current value shown collapsed, one open at a time.
 6. **Store** — panel → store: the **featured front page** first (hero cards + "Apps we love" + "New skills" with real hardware icons + Get), **See All** → the classic grid. 42 listings, real icons on every tile.
-7. **Skills** — store → any of the 12 skills (Gist, Rephrase, Explain This, Translate, Polish, Extract, Reply, Unjargon, Name It, Action Items, Snap Answer, Recap). Or serve + open `localhost:5188/gist.html`, paste text, run — it's a granted origin, runs on your real Claude.
+7. **Skills** — store → any of the **24 skills**. First batch (Gist, Rephrase, Explain This, Translate, Polish, Extract, Reply, Unjargon, Name It, Action Items, Snap Answer, Recap) + the dev/utility batch (Regex, Errslate, Commit, Docstring, Shell, Cron, Steps, Compare, Formula, Spellout, Clip Doctor, Convert). Each has a real hardware icon on the shelf and a God-drivable `<id>_run` tool. Or serve + open `localhost:5188/gist.html`, paste text, run — it's a granted origin, runs on your real Claude.
 7b. **Flagship skill-first slices** — **Canvas** (`canvas.html`: describe → Claude writes HTML → live diagram in an iframe → download), **Meeting Notes** (`meetnotes.html`: paste a transcript → TL;DR/Decisions/Action items/Open questions), **Cut** (`cut.html`: transcript → captions + cut list). Each has a real hardware icon in the store; each driveable by God (`canvas_run`/`meetnotes_run`/`cut_run`). Stage-2 (real video/audio capture) is specced, not built.
 8. **Capture scope** — right-click → **What God sees** → Drag a region / Whole screen (checkmarked to current) — flips `~/.relay/god-region`.
 9. **Concierge on open** — launching any wrapp flashes its name + tagline at the notch (no silent open).
 10. **⌃⌃ voice** — the silent-death bug is fixed: God always speaks or writes `~/.relay/god-last-answer.txt` and logs a loud reason to `god-run.log`; it never dies mute. Try region-select + a question. Say *"gist this"* / *"make me ad concepts"* — God can emit `[DRIVE:<wrapp> <input>]` and the widget takes over (consent Allow).
 
 ## Verified automatically (not just claimed)
-- **Harness: 92/92 green** — 68 legacy wrapp runs (zero regression) + 24 skill runs.
+- **Harness: 121/121 green** (full catalog × the switchboard project) — every legacy wrapp (zero regression) + all 24 skills. The runner now drives `usesContext:null` skills (previously "no model call fired": they have no cold-open, so the driver types a task line + submits, guarded so it never double-fires a skill that already ran).
 - **Swift: 0 errors** across all 6 files (`main` · RelayMenuBar · GodWidgetKit · GodWebWindow · StoreFront · HtmlCapability); app builds + signs.
 - **Live drive proven** on real Claude earlier (roast, 2318 chars); gist/reply driven live in-harness.
 

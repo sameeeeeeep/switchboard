@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		daXI2JhD4ePuz9Cf3fBcyoJY5fM=
+		k4rErVEc/K6fYU84frlBmurnbSU=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -68,9 +68,37 @@
 		<data>
 		xan4lINeC7HxBzse/Ff/ARo+byE=
 		</data>
+		<key>Resources/icons/clipfix.png</key>
+		<data>
+		nVQ7+C3ygtNE7oJ9DCzy5/pMy3Y=
+		</data>
+		<key>Resources/icons/commit.png</key>
+		<data>
+		z9uzKMpzqlXEx0CKCx7cz9IZqN4=
+		</data>
+		<key>Resources/icons/compare.png</key>
+		<data>
+		Z2crihf9eh1rf4hP/KAqGKYKN1g=
+		</data>
+		<key>Resources/icons/convert.png</key>
+		<data>
+		izCJWZ5WOL1IxuoXZwuomiidzRs=
+		</data>
+		<key>Resources/icons/cron.png</key>
+		<data>
+		JbtSSuteozpxy24fHcHWtSXtF/I=
+		</data>
 		<key>Resources/icons/cut.png</key>
 		<data>
 		7bK8uYhd4iDb0ItmVBCCC7ZfsDU=
+		</data>
+		<key>Resources/icons/docstring.png</key>
+		<data>
+		9vT8PqZ+lCUO+y5iqn7CHzYDWFg=
+		</data>
+		<key>Resources/icons/errslate.png</key>
+		<data>
+		kJTTMx3fSXX1q5WtlG6JAYyfX3c=
 		</data>
 		<key>Resources/icons/explainthis.png</key>
 		<data>
@@ -87,6 +115,10 @@
 		<key>Resources/icons/flow.png</key>
 		<data>
 		fNUtq6GlMib1rLAfs1kdAqPW4QM=
+		</data>
+		<key>Resources/icons/formula.png</key>
+		<data>
+		dg+YDj8eAbtu8fLdwg1Lfmm6EDA=
 		</data>
 		<key>Resources/icons/gist.png</key>
 		<data>
@@ -148,6 +180,10 @@
 		<data>
 		vh0n+HFGMpYhhcvzDm+pknI5nKA=
 		</data>
+		<key>Resources/icons/regex.png</key>
+		<data>
+		Z6FaAI1n/BW0BF9xfAffvTSrvYk=
+		</data>
 		<key>Resources/icons/rephrase.png</key>
 		<data>
 		PRoLKydSZSIDn8l1At6F0IRGAdo=
@@ -168,9 +204,21 @@
 		<data>
 		USUDA/JITKty6CoAeRGNisbVojA=
 		</data>
+		<key>Resources/icons/shell.png</key>
+		<data>
+		Y4mmDPoVHCg5xpdPUvcqyYms7sE=
+		</data>
 		<key>Resources/icons/snap.png</key>
 		<data>
 		Yivx1r1luUoP6+JghUSnmUeux/8=
+		</data>
+		<key>Resources/icons/spellout.png</key>
+		<data>
+		2w9qlfw1iaB8zkriMIyrpRh+1kg=
+		</data>
+		<key>Resources/icons/steps.png</key>
+		<data>
+		ILKMWAAJQhL8ozq837kMgQ73qvg=
 		</data>
 		<key>Resources/icons/studio.png</key>
 		<data>
@@ -199,7 +247,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			cdKUDNaVe3E8pDmIFJ7pSQs5C9XGH467lx2u5E3I7go=
+			9xMSVaRtPyVdShzkbY/OJZrn10UEgh7wJqboERZwly8=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -307,11 +355,60 @@
 			As0OR0xDy+a+z65NGiJIKAOgVVrzEddojaaiomdpA3M=
 			</data>
 		</dict>
+		<key>Resources/icons/clipfix.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			e+aVjTeVGR954rnShgsuV/iqLq3DuBYeWbP7IfjdTRk=
+			</data>
+		</dict>
+		<key>Resources/icons/commit.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			h6oqdJnqwgk1XM4f5a5PVRVSg8Dv2lsx9eSO2y01Fmk=
+			</data>
+		</dict>
+		<key>Resources/icons/compare.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			N3euyg491loKXvwW+Bd94a81mh9sFgFT++tESskXC7k=
+			</data>
+		</dict>
+		<key>Resources/icons/convert.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			4UF0rcrLCwF4SqPa+Nl+4RTRQdRco+qrbRxVY0dNkW0=
+			</data>
+		</dict>
+		<key>Resources/icons/cron.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Z89ZUBxL9Z/2AtD6+mULCstjBaq8N9K6je1CCy1JTJo=
+			</data>
+		</dict>
 		<key>Resources/icons/cut.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
 			0ZN4o64Mv0zaMS59hHK7vJBlCMeSnrul0DI3nUWu01w=
+			</data>
+		</dict>
+		<key>Resources/icons/docstring.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			FiHhQQiiJniLUN6VV8RBFdi7bXpYEU6qd/lcBGgkCVE=
+			</data>
+		</dict>
+		<key>Resources/icons/errslate.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			8PRiFRkIuxOH1OdZHMQ1MnVbcxFGutbJHudKL89+N0I=
 			</data>
 		</dict>
 		<key>Resources/icons/explainthis.png</key>
@@ -340,6 +437,13 @@
 			<key>hash2</key>
 			<data>
 			hAxvzXaXD4C3XuSBsBcMNiR7x9agDJGXWhW1EAOXpNg=
+			</data>
+		</dict>
+		<key>Resources/icons/formula.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			CZQlV3IdhEPNJEcAajO7BkheCty4xrPag9Offq4PuNk=
 			</data>
 		</dict>
 		<key>Resources/icons/gist.png</key>
@@ -447,6 +551,13 @@
 			/brF2+ZVmk1HzJ+WMLrF4rlgWNWXcw5kzHUbaI1NXSs=
 			</data>
 		</dict>
+		<key>Resources/icons/regex.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			lr8tPR0cMnhcPejLnjkqFgf2Xcjcb3Mljm56uJPF3Gc=
+			</data>
+		</dict>
 		<key>Resources/icons/rephrase.png</key>
 		<dict>
 			<key>hash2</key>
@@ -482,11 +593,32 @@
 			TEusDmxELrQ3RZRsXxkDWnyVbV6yHpezF85s3dx0VcQ=
 			</data>
 		</dict>
+		<key>Resources/icons/shell.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Pj5o31Fy40KzQ+BLp3VfM7y9DC54pvXj1c3Xq3D5wwk=
+			</data>
+		</dict>
 		<key>Resources/icons/snap.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
 			q/RRbITNgab7zx1Ggxq30xliepE9M9xifQz4z9L+BSk=
+			</data>
+		</dict>
+		<key>Resources/icons/spellout.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			x42X5MakrqWZlWBLD53JGZrsNxBsSR/rW2xlSvWVP6M=
+			</data>
+		</dict>
+		<key>Resources/icons/steps.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			v8CptHH/VeezEu8zYt0R3RZDBFkR+z0VXI7lGNQz4HU=
 			</data>
 		</dict>
 		<key>Resources/icons/studio.png</key>
