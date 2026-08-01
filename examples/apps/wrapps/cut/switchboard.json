@@ -1,0 +1,20 @@
+{
+  "id": "cut",
+  "name": "Cut",
+  "tagline": "Paste a transcript — get captions + a cut list.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/cut.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

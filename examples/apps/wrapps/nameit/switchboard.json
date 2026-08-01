@@ -1,0 +1,20 @@
+{
+  "id": "nameit",
+  "name": "Name It",
+  "tagline": "Six strong name options, each with a rationale.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/nameit.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

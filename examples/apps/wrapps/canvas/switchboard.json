@@ -1,0 +1,20 @@
+{
+  "id": "canvas",
+  "name": "Canvas",
+  "tagline": "Describe it — get an editable diagram or board.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/canvas.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

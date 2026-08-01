@@ -1,0 +1,20 @@
+{
+  "id": "extract",
+  "name": "Extract",
+  "tagline": "Pull key fields into a clean labeled list.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/extract.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

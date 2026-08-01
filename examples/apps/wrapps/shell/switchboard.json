@@ -1,0 +1,20 @@
+{
+  "id": "shell",
+  "name": "Shell",
+  "tagline": "A task into the exact shell command, every flag explained",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/shell.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

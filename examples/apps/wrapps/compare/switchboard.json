@@ -1,0 +1,20 @@
+{
+  "id": "compare",
+  "name": "Compare",
+  "tagline": "Options side by side, pros/cons, one pick",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/compare.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

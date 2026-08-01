@@ -300,6 +300,24 @@
       "<body><canvas id=c width=360 height=560></canvas><script>var x=document.getElementById('c').getContext('2d');var t=0;function f(){t++;x.fillStyle='" + (palette[1] || "#0B0B0F") + "';x.fillRect(0,0,360,560);x.fillStyle='" + (palette[0] || "#5B8CFF") + "';x.fillRect(160,280+Math.sin(t/20)*80,40,40);x.fillStyle='#fff';x.font='20px system-ui';x.fillText('" + bname + "',20,40);requestAnimationFrame(f)}f();<\/script></body></html>";
   }
 
+  function htmlDiagram() {
+    // Canvas's contract: dark #000 bg, ink #E8EDF4, ONE lime #C8F250 accent, system-ui — a clean
+    // flow of labelled nodes with a lime-edged connector. Self-contained, no external URLs.
+    var nodes = (products.length ? products : [bname, "Step two", "Ship it"]).slice(0, 3);
+    var boxes = nodes.map(function (n, i) {
+      return "<div style=\"flex:1;min-width:0;border:1px solid " + (i === 1 ? "#C8F250" : "#262C38") + ";border-radius:12px;padding:18px 16px;background:#0A0C10\">" +
+        "<div style=\"font:600 15px/1.3 system-ui;color:#E8EDF4\">" + n + "</div>" +
+        "<div style=\"font:400 12px/1.5 system-ui;color:#99A3B7;margin-top:6px\">" + positioning.slice(0, 60) + "</div></div>";
+    }).join("<div style=\"align-self:center;color:#C8F250;font:700 20px/1 system-ui\">→</div>");
+    return "<!doctype html><html><head><meta charset=utf-8><title>" + bname + " — diagram</title></head>" +
+      "<body style=\"margin:0;background:#000;color:#E8EDF4;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:48px\">" +
+      "<div style=\"font:700 22px/1.2 system-ui;margin-bottom:6px\">" + bname + "</div>" +
+      "<div style=\"font:400 13px/1.5 system-ui;color:#99A3B7;margin-bottom:28px\">" + positioning.slice(0, 90) + "</div>" +
+      "<div style=\"display:flex;gap:14px;align-items:stretch\">" + boxes + "</div>" +
+      "<div style=\"margin-top:28px;font:500 11px/1 system-ui;color:#C8F250\">● flow</div>" +
+      "</body></html>";
+  }
+
   // ---- routing table (first match wins) -------------------------------------------------------
   // Each route: [test(lc,prompt), producer] where producer returns a VALUE (stringified if object/
   // array) or a special {image:true}/{video:true} marker handled below.
@@ -359,6 +377,8 @@
     [function (lc, p) { return /expert arcade game developer|self-contained html5|make this game|canvas-based/i.test(p); }, function () { return "html:" + htmlGame(); }],
     [function (lc, p) { return /invent 4 wildly different pitches|attract-mode|arcade title|single-screen arcade/i.test(p); }, function () { return cartridgePitches(); }],
     [function (lc, p) { return /scroll-driven landing page|full-viewport|intersectionobserver|sticky mini-nav|landing page's html|reveal on scroll/i.test(p); }, function () { return "html:" + htmlLanding(); }],
+    // canvas — diagram/board/layout as a self-contained HTML document
+    [function (lc, p) { return /diagram engine|lays out as a clean diagram|diagram\/board\/flow/i.test(p); }, function () { return "html:" + htmlDiagram(); }],
     // bank
     [function (lc, p) { return /chief of staff|today's brief/i.test(p); }, function () { return bankBrief(); }],
     [function (lc, p) { return /assembling their personal to-do list|open action items|at most 40 items/i.test(p); }, function () { return bankTodos(); }],

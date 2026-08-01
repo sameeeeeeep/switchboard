@@ -9,6 +9,9 @@
 // recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { collection, mountLive } from "./kit/livestore.js";
+// God's hands: expose Echo's one action as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same speak() a click runs, so the user hears it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -307,3 +310,25 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real synth -------------------------------------------
+// `echo_speak` runs the SAME speak() the "Speak" button runs — the text is synthesized on the
+// machine's LOCAL voice model and plays on the page — then reports where it ran. Nothing leaves the box.
+// Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "echo_speak",
+  description: "Speak text aloud with a local, on-device voice model. Plays the audio on the page and returns which local backend spoke it.",
+  inputSchema: { text: "string — the text to read aloud. Required." },
+  execute: async ({ text } = {}) => {
+    const val = String(text || "").trim();
+    if (!val) throw new Error("nothing to speak — pass { text } with what to say");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Echo isn't connected to Switchboard yet");
+    await waitFor(() => !speaking, 180000);   // let any in-flight synth finish before we take the mic
+    state.text = val;
+    await speak();                             // reuses the wrapp's own local-TTS pipeline, awaited
+    if (lastError) throw new Error(lastError);
+    if (!lastAudio) throw new Error("Echo produced no audio — is a local TTS available on this machine?");
+    return { spoken: true, backend: ttsBackend || "local", voice: state.voice || null };
+  },
+});

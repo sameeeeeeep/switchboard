@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 29,
+  "count": 65,
   "listings": [
     {
       "id": "bank",
@@ -301,6 +301,26 @@
       ]
     },
     {
+      "id": "canvas",
+      "name": "Canvas",
+      "tagline": "Describe it — get an editable diagram or board.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/canvas.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "cartridge",
       "name": "Cartridge",
       "tagline": "Build a little browser game.",
@@ -373,6 +393,26 @@
       ]
     },
     {
+      "id": "cut",
+      "name": "Cut",
+      "tagline": "Paste a transcript — get captions + a cut list.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/cut.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "feature",
       "name": "Feature Case",
       "tagline": "Make the case for one feature.",
@@ -394,6 +434,39 @@
           "kind": "model",
           "class": "local"
         }
+      ]
+    },
+    {
+      "id": "flow",
+      "name": "Flow",
+      "tagline": "Hold a key, talk — clean text lands at your cursor.",
+      "category": "tool",
+      "author": "Switchboard",
+      "components": {
+        "ui": {
+          "kind": "native",
+          "appId": "ai.thelastprompt.flow",
+          "download": {
+            "url": "https://thelastprompt.ai/switchboard/"
+          }
+        }
+      },
+      "surfaces": [
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "native",
+          "appId": "ai.thelastprompt.flow"
+        }
+      ],
+      "inside": [
+        "Hold the talk chord, speak, release — text pastes where your cursor is",
+        "Whisper runs on-device; the audio never leaves your machine",
+        "Cleanup on your own Claude or a local model — no key, no middleman"
       ]
     },
     {
@@ -513,6 +586,26 @@
         {
           "kind": "model",
           "class": "local"
+        }
+      ]
+    },
+    {
+      "id": "meetnotes",
+      "name": "Meeting Notes",
+      "tagline": "Paste a transcript — get notes + action items.",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/meetnotes.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
         }
       ]
     },
@@ -685,6 +778,646 @@
       ]
     },
     {
+      "id": "actions",
+      "name": "Action Items",
+      "tagline": "Notes or a transcript into a clean checklist.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/actions.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "caption",
+      "name": "Caption",
+      "tagline": "Social captions with hashtags — five options, one pick",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/caption.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "clipfix",
+      "name": "Clip Doctor",
+      "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/clipfix.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "coldemail",
+      "name": "Cold Email",
+      "tagline": "A target and an ask into a short, non-cringe cold email",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/coldemail.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "name": "Commit",
+      "tagline": "A diff into a Conventional Commits message",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/commit.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "name": "Compare",
+      "tagline": "Options side by side, pros/cons, one pick",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/compare.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "convert",
+      "name": "Convert",
+      "tagline": "Data between JSON, CSV, YAML, and Markdown tables",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/convert.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "name": "Cron",
+      "tagline": "A schedule into a cron expression, and back to English",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/cron.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "docstring",
+      "name": "Docstring",
+      "tagline": "A function into a clear docstring/JSDoc with an example",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/docstring.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "errslate",
+      "name": "Errslate",
+      "tagline": "Decode any error or stack trace: meaning, cause, fix",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/errslate.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "explainthis",
+      "name": "Explain This",
+      "tagline": "Turn confusing text into plain English.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/explainthis.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "name": "Extract",
+      "tagline": "Pull key fields into a clean labeled list.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/extract.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "formula",
+      "name": "Formula",
+      "tagline": "Plain English into the exact spreadsheet formula",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/formula.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "gist",
+      "name": "Gist",
+      "tagline": "Paste anything, get a tight TL;DR.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/gist.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "hooks",
+      "name": "Hooks",
+      "tagline": "Scroll-stopping opening lines for posts, videos, and emails",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/hooks.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "nameit",
+      "name": "Name It",
+      "tagline": "Six strong name options, each with a rationale.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/nameit.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "objection",
+      "name": "Objection",
+      "tagline": "A sales or investor objection into a calm, honest response",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/objection.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "outline",
+      "name": "Outline",
+      "tagline": "A clean structure for a post, talk, or doc",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/outline.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "polish",
+      "name": "Polish",
+      "tagline": "Proofread and clarify — your voice intact.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/polish.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "recap",
+      "name": "Recap",
+      "tagline": "Long doc into TL;DR, key points, decisions, next steps.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/recap.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "regex",
+      "name": "Regex",
+      "tagline": "A matching need into a regular expression, with test cases",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/regex.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "rephrase",
+      "name": "Rephrase",
+      "tagline": "Rewrite text in any tone — meaning kept.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/rephrase.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "name": "Reply",
+      "tagline": "Three replies to any message — concise, warm, firm.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/reply.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "repurpose",
+      "name": "Repurpose",
+      "tagline": "One piece of content, tuned for every channel",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/repurpose.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "tagline": "A task into the exact shell command, every flag explained",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/shell.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "snap",
+      "name": "Snap Answer",
+      "tagline": "One question, one direct answer — no chat thread.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/snap.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "spellout",
+      "name": "Spellout",
+      "tagline": "A rough phrase into a clear line",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/spellout.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "standup",
+      "name": "Standup",
+      "tagline": "Notes or commits into a crisp standup update",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/standup.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "steps",
+      "name": "Steps",
+      "tagline": "Name a goal, get a few step-by-step plans",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/steps.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "name": "Titles",
+      "tagline": "Headline and title options you can A/B",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/titles.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "translate",
+      "name": "Translate",
+      "tagline": "Translate any text, tone preserved.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/translate.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "unjargon",
+      "name": "Unjargon",
+      "tagline": "Acronyms, legalese, and jargon into plain English.",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/unjargon.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "yc",
       "name": "YC Application",
       "tagline": "Write YC answers in the house dialect.",
@@ -697,7 +1430,7 @@
         ],
         "ui": {
           "kind": "web",
-          "url": "https://thelastprompt.ai/yc-application-composer.html"
+          "url": "http://localhost:5188/yc-application-composer.html"
         }
       },
       "surfaces": [

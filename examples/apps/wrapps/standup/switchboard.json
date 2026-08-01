@@ -1,0 +1,20 @@
+{
+  "id": "standup",
+  "name": "Standup",
+  "tagline": "Notes or commits into a crisp standup update",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/standup.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

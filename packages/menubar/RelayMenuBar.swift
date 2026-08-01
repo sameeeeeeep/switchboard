@@ -835,6 +835,7 @@ struct Panel: View {
     @State private var dropTargeted = false
     @State private var showSettings = false      // the right pane flips to Settings (in-panel, one grammar)
     @State private var nameDraft = ""            // the name field's working copy, committed on save
+    @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
 
     private var signedOut: Bool { model.running && !model.signedIn }
     private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
@@ -1048,8 +1049,6 @@ struct Panel: View {
     // copies + clones into ~/.relay/voices; the radio writes ~/.relay/voices/selected that God reads.
     private var voiceSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) { Text("GOD'S VOICE").kicker(); Spacer()
-                if !model.selectedVoice.isEmpty { Text("· \(model.selectedVoice)").font(.splMono(9.5)).foregroundColor(.inkFaint) } }
             RoundedRectangle(cornerRadius: 9)
                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 .foregroundColor(dropTargeted ? .lime : .edge)
@@ -1069,7 +1068,7 @@ struct Panel: View {
                 voiceRow(name: "", label: "Default (macOS voice)")
                 ForEach(model.voices, id: \.self) { v in voiceRow(name: v, label: v.replacingOccurrences(of: "-", with: " ").capitalized) }
             }
-        }.padding(.horizontal, 18).padding(.vertical, 13)
+        }
     }
     private func voiceRow(name: String, label: String) -> some View {
         let selected = model.selectedVoice == name
@@ -1096,17 +1095,17 @@ struct Panel: View {
                 Spacer()
             }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
             Rectangle().fill(Color.edge).frame(height: 1)
-            nameSection
+            disclosure("name", "YOUR NAME", summary: model.userName.isEmpty ? "not set" : model.userName) { nameSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            voiceSection
+            disclosure("voice", "GOD'S VOICE", summary: model.selectedVoice.isEmpty ? "Default" : model.selectedVoice) { voiceSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            economySection
+            disclosure("mode", "MODE", summary: model.economy ? "Economy" : "Full quality") { economySection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            shortcutsSection
+            disclosure("shortcuts", "KEYBOARD SHORTCUTS", summary: shortcutSummary, warn: !AXIsProcessTrusted()) { shortcutsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            regionSection
+            disclosure("region", "WHAT GOD SEES", summary: model.regionSelect ? "Drag to select" : "Whole screen") { regionSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            connectionsSection
+            disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onboard.beginSetup() }) {
                 HStack(spacing: 9) {
@@ -1122,10 +1121,39 @@ struct Panel: View {
         .onAppear { nameDraft = model.userName }
     }
 
+    // A collapsible settings row: the kicker header stays visible with the section's current value on the
+    // right (show, don't tell), a chevron rotates, and tapping reveals the controls. Accordion — opening one
+    // closes the others — so the panel shows ~7 short rows by default instead of every control stacked tall.
+    @ViewBuilder
+    private func disclosure<Content: View>(_ id: String, _ title: String, summary: String,
+                                           warn: Bool = false, @ViewBuilder content: () -> Content) -> some View {
+        let open = openSection == id
+        Button(action: { withAnimation(.easeOut(duration: 0.16)) { openSection = open ? nil : id } }) {
+            HStack(spacing: 8) {
+                Text(title).kicker()
+                Spacer(minLength: 8)
+                if warn && !open {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                }
+                if !open && !summary.isEmpty {
+                    Text(summary).font(.splMono(9.5)).foregroundColor(.inkFaint).lineLimit(1)
+                }
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.inkFaint).rotationEffect(.degrees(open ? 0 : -90))
+            }.padding(.horizontal, 18).padding(.vertical, 13).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+        if open {
+            content().padding(.horizontal, 18).padding(.bottom, 15)
+        }
+    }
+    // Compact one-line recap of both gestures for the collapsed header.
+    private var shortcutSummary: String {
+        "\(modGlyph(model.shortcuts.summon))\(modGlyph(model.shortcuts.summon)) · \(talkGlyphs(model.shortcuts.talk))"
+    }
+
     // YOUR NAME — the real greeting source (~/.relay/profile.json). Commit on Enter or the save button.
     private var nameSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("YOUR NAME").kicker()
             HStack(spacing: 8) {
                 TextField("What should I call you?", text: $nameDraft)
                     .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
@@ -1137,7 +1165,7 @@ struct Panel: View {
                     .opacity(nameDirty ? 1 : 0.4).disabled(!nameDirty)
             }
             Text("God greets you by this name.").font(.hanken(10.5)).foregroundColor(.inkFaint)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     private var nameDirty: Bool {
         let n = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1148,7 +1176,6 @@ struct Panel: View {
     // MODE — economy: one tap flips ~/.relay/economy, God then reaches for a cheaper/faster model.
     private var economySection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("MODE").kicker()
             Button(action: { onSetEconomy(!model.economy) }) {
                 HStack(spacing: 11) {
                     Image(systemName: model.economy ? "leaf.fill" : "bolt.fill")
@@ -1164,7 +1191,7 @@ struct Panel: View {
                         .animation(.easeOut(duration: 0.15), value: model.economy)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
 
     // KEYBOARD SHORTCUTS — the two global gestures, listed in-place with a live tester and a rebind menu.
@@ -1176,7 +1203,6 @@ struct Panel: View {
     // grammar is fixed (double-tap one modifier / hold a two-modifier chord) and you choose among presets.
     private var shortcutsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("KEYBOARD SHORTCUTS").kicker()
             if !AXIsProcessTrusted() {
                 Button(action: onFixSenses) {
                     HStack(spacing: 8) {
@@ -1205,7 +1231,7 @@ struct Panel: View {
             }
             Text("Global — works from any app. Press one now; it should light up here.")
                 .font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     // A keycap chip — the glyph in a bordered square, panel-grammar.
     private func keycap(_ s: String) -> some View {
@@ -1268,7 +1294,6 @@ struct Panel: View {
     // ⌃⌃ REGION — when on, summoning God lets you drag a rectangle; only that part of the screen is sent.
     private var regionSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("WHAT GOD SEES").kicker()
             Button(action: { onSetRegion(!model.regionSelect) }) {
                 HStack(spacing: 11) {
                     Image(systemName: model.regionSelect ? "rectangle.dashed" : "rectangle.inset.filled")
@@ -1284,15 +1309,13 @@ struct Panel: View {
                         .animation(.easeOut(duration: 0.15), value: model.regionSelect)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
 
     // CONNECTIONS — the apps + sites you've let in. Remove revokes access now; they re-ask next time.
     // (claude.ai connectors themselves are inherited by the SDK and managed in Claude, not here.)
     private var connectionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) { Text("CONNECTIONS").kicker()
-                Text("· \(model.appList.count)").font(.splMono(9.5)).foregroundColor(.inkFaint); Spacer() }
             if model.appList.isEmpty {
                 Text("Nothing connected yet — open a wrapp and it'll ask.").font(.hanken(11)).foregroundColor(.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1303,7 +1326,7 @@ struct Panel: View {
                     VStack(spacing: 0) { ForEach(model.appList) { connectionRow($0) } }
                 }.frame(maxHeight: 236)
             }
-        }.padding(.horizontal, 18).padding(.vertical, 14)
+        }
     }
     private func kindLabel(_ kind: AppKind) -> String {
         switch kind { case .web: return "website"; case .native: return "app"; case .iphone: return "iPhone"; case .tab: return "browser tab" }
@@ -2200,6 +2223,8 @@ struct ActionConsentDrop: View {
     private var actionPanel: NSPanel!             // the "God wants to act?" consent drop
     private var storePanel: NSPanel!              // the wrapp store modal (drops from the notch)
     private var storeMonitor: Any?                // click-outside dismissal for the store modal
+    private var notchWidgetPanel: NSPanel!        // the notch WIDGET — a wrapp's glanceable result under the notch
+    private var notchWidgetMonitor: Any?          // click-outside dismissal for the widget
     private var regionOverlay: NSWindow?          // the ⌃⌃ drag-to-select capture overlay (live during listening)
     private var regionView: RegionSelectView?
     private var regionMonitors: [Any] = []
@@ -2278,9 +2303,7 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        consentPanel.alphaValue = 0
-        consentPanel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; consentPanel.animator().alphaValue = 1 }
+        presentFromNotch(consentPanel)
     }
 
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
@@ -2473,6 +2496,7 @@ struct ActionConsentDrop: View {
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
         statusItem.button?.target = self
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])   // right-click → widget preview menu
 
         hosting = NoInsetHostingView(rootView: Panel(
             model: model,
@@ -2576,8 +2600,319 @@ struct ActionConsentDrop: View {
     }
 
     @objc private func togglePopover() {
+        let t = NSApp.currentEvent?.type
+        if t == .rightMouseUp || t == .rightMouseDown { showWidgetPreviewMenu(); return }
         if panel.isVisible { hidePanel() } else { openedByHover = false; showPanel() }
     }
+    // Review affordance: right-click the menu-bar icon to see the notch widget across every result type.
+    @objc private func showWidgetPreviewMenu() {
+        let roast = "\"3x exited.\" Let's translate that from Founder-ese to English: three separate times, a company looked at your team, said \"we don't want the product, but fine, we'll take the people,\" and quietly absorbed you into middle management.\n\nThat's not an exit. That's being adopted. Three times. By strangers."
+        let specs: [(String, WidgetSpec)] = [
+            ("Widget — image (Prism)", WidgetSpec(kicker: "PRISM · IMAGE", title: "From your selection", openLabel: "Open in Prism",
+                result: .image(caption: "A soft editorial illustration based on your selection.", steer: ["Warmer", "More detail", "Flat vector", "Photoreal"], file: nil))),
+            ("Widget — text (Roast)", WidgetSpec(kicker: "ROAST · TEXT", title: "Acqui-Hire Alchemist", openLabel: "Open in Roast", result: .text(roast))),
+            ("Widget — cards (AdForge)", WidgetSpec(kicker: "ADFORGE · CONCEPTS", title: "This week's ads", openLabel: "Open in AdForge",
+                result: .cards(caption: "Three angles, grounded in your brand.", items: [
+                    CardItem(label: "Lead with the outcome", text: "Ship AI apps without paying for inference.", rec: true),
+                    CardItem(label: "Name the pain", text: "You already pay for Claude — why pay twice?"),
+                    CardItem(label: "Proof & specifics", text: "75% of revenue to devs, by usage.")]))),
+            ("Widget — gallery (Yearbook)", WidgetSpec(kicker: "YEARBOOK · GALLERY", title: "Through the decades", openLabel: "Open in Yearbook",
+                result: .gallery(caption: "Four eras from your photo.", items: ["Class of '77", "Class of '88", "Class of '99", "Class of '09"]))),
+            ("Widget — working", WidgetSpec(kicker: "PRISM · IMAGE", title: "Making an image…", openLabel: "Open in Prism", result: .working("Making an image from your selection…"))),
+        ]
+        let menu = NSMenu()
+        // LIVE first — the real thing. Canned layout samples live in a submenu.
+        let drive = NSMenuItem(title: "Drive a wrapp (LIVE — real Claude)", action: #selector(driveWrappFromMenu), keyEquivalent: ""); drive.target = self
+        menu.addItem(drive)
+        let diagram = NSMenuItem(title: "Diagram from clipboard (LIVE)", action: #selector(diagramFromClipboardItem), keyEquivalent: ""); diagram.target = self
+        menu.addItem(diagram)
+        menu.addItem(.separator())
+        let previews = NSMenuItem(title: "Widget previews (samples)", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        for (label, spec) in specs {
+            let it = NSMenuItem(title: label, action: #selector(previewWidgetItem(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = spec; sub.addItem(it)
+        }
+        previews.submenu = sub
+        menu.addItem(previews)
+        menu.addItem(.separator())
+        // Capture scope — what ⌃⌃ sends God (the user's "different capture options" ask). Region /
+        // full-screen flip the persisted god-region flag; drawing/annotate is honestly marked soon.
+        let capture = NSMenuItem(title: "What God sees", action: nil, keyEquivalent: "")
+        let csub = NSMenu()
+        let region = NSMenuItem(title: "Drag a region", action: #selector(captureRegionItem), keyEquivalent: ""); region.target = self; region.state = model.regionSelect ? .on : .off
+        let full = NSMenuItem(title: "Whole screen", action: #selector(captureFullItem), keyEquivalent: ""); full.target = self; full.state = model.regionSelect ? .off : .on
+        let draw = NSMenuItem(title: "Annotate / draw — coming soon", action: nil, keyEquivalent: ""); draw.isEnabled = false
+        csub.addItem(region); csub.addItem(full); csub.addItem(.separator()); csub.addItem(draw)
+        capture.submenu = csub
+        menu.addItem(capture)
+        menu.addItem(.separator())
+        let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
+        menu.addItem(open)
+        if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
+    }
+    @objc private func previewWidgetItem(_ sender: NSMenuItem) {
+        guard let spec = sender.representedObject as? WidgetSpec else { return }
+        showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
+    }
+    @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
+    @objc private func driveWrappFromMenu() { driveWrappLive() }
+    @objc private func captureRegionItem() { setRegion(true) }
+    @objc private func captureFullItem() { setRegion(false) }
+    // The HTML capability, live: clipboard text → Claude writes HTML → offscreen render → the PNG
+    // lands in the notch widget with drag-out. Sub-minute, free, on the user's own Claude.
+    @objc private func diagramFromClipboardItem() {
+        let clip = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clip.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Clipboard is empty", openLabel: "Close",
+                result: .text("Copy some text first — the diagram is drawn from your clipboard.")),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Drawing a diagram…", openLabel: "Close",
+            result: .working("Claude is writing the HTML, then it renders in-notch…")),
+            onOpen: { [weak self] in self?.hideNotchWidget() })
+        HtmlCapability.shared.makeDiagram(from: clip) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let path):
+                self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "From your clipboard", openLabel: "Close",
+                    result: .image(caption: "Rendered from Claude's HTML — drag it out.", steer: [], file: path)),
+                    onOpen: { [weak self] in self?.hideNotchWidget() })
+            case .failure(let e):
+                self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Diagram failed", openLabel: "Open panel",
+                    result: .text(e.localizedDescription)),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            }
+        }
+    }
+    // ── Motion: every drop GROWS OUT OF the notch and COLLAPSES BACK into it ─────────────────────
+    // The drops are clipped to NotchDropShape and pinned to screen.frame.maxY (the notch seam), so
+    // scaling the content layer about its TOP-CENTRE makes the silhouette unfold downward from the
+    // notch (and fold back up on dismiss) — instead of fading in at a fixed rect. One shared pair so
+    // the whole surface family moves the same way. We bake the anchor into the transform (translate→
+    // scale→translate) rather than touching the layer's anchorPoint, which AppKit manages for a
+    // layer-backed NSHostingView.
+    private func notchScale(_ s: CGFloat, _ b: NSRect) -> CATransform3D {
+        let ax = b.width / 2, ay = b.height   // top-centre in AppKit's non-flipped layer space
+        var t = CATransform3DMakeTranslation(ax, ay, 0)
+        t = CATransform3DScale(t, s, s, 1)
+        return CATransform3DTranslate(t, -ax, -ay, 0)
+    }
+    private func presentFromNotch(_ panel: NSPanel) {
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        guard let host = panel.contentView else { return }
+        host.wantsLayer = true
+        guard let layer = host.layer else { return }
+        let g = CAAnimationGroup()
+        let t = CABasicAnimation(keyPath: "transform")
+        t.fromValue = NSValue(caTransform3D: notchScale(0.04, host.bounds))
+        t.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 0.0; o.toValue = 1.0
+        g.animations = [t, o]; g.duration = 0.24
+        g.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.9, 0.24, 1)  // ease-out, slight settle
+        layer.add(g, forKey: "notchIn")
+    }
+    private func dismissToNotch(_ panel: NSPanel, then done: (() -> Void)? = nil) {
+        guard let host = panel.contentView, let layer = host.layer else { panel.orderOut(nil); done?(); return }
+        let g = CAAnimationGroup()
+        let t = CABasicAnimation(keyPath: "transform")
+        t.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+        t.toValue = NSValue(caTransform3D: notchScale(0.04, host.bounds))
+        let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 1.0; o.toValue = 0.0
+        g.animations = [t, o]; g.duration = 0.15
+        g.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        g.isRemovedOnCompletion = false; g.fillMode = .forwards
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { panel.orderOut(nil); layer.removeAnimation(forKey: "notchOut"); done?() }
+        layer.add(g, forKey: "notchOut")
+        CATransaction.commit()
+    }
+
+    // The notch WIDGET — a wrapp's glanceable result dropped under the notch (grows from it, reusing
+    // presentFromNotch). Lazily built like the store. Close/open/regenerate/steer are wired via the view.
+    @MainActor func showNotchWidget(_ spec: WidgetSpec, onOpen: @escaping () -> Void = {},
+                                    onRegen: @escaping () -> Void = {}, onSteer: @escaping (String) -> Void = { _ in }) {
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        // Context-first: every widget carries the PROJECT chip — the same global default the panel's
+        // picker writes, switchable right where the command runs ("make me an ad" needs the right brand).
+        model.refreshFiles()
+        let view = NotchWidget(spec: spec,
+                               projects: model.contexts.map { (id: $0.id, name: $0.name) },
+                               activeProjectId: readDefaultId(),
+                               onSelectProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
+                               onClose: { [weak self] in self?.hideNotchWidget() },
+                               onOpen: onOpen, onRegen: onRegen, onSteer: onSteer)
+        let host = NoInsetHostingView(rootView: view)
+        if notchWidgetPanel == nil {
+            notchWidgetPanel = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
+                                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            notchWidgetPanel.isOpaque = false; notchWidgetPanel.backgroundColor = .clear; notchWidgetPanel.hasShadow = false
+            notchWidgetPanel.level = .popUpMenu
+            notchWidgetPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        notchWidgetPanel.contentView = host
+        let size = host.fittingSize
+        notchWidgetPanel.setContentSize(size)
+        notchWidgetPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
+        presentFromNotch(notchWidgetPanel)
+        if let m = notchWidgetMonitor { NSEvent.removeMonitor(m) }
+        // click OUTSIDE dismisses; clicks inside are ignored so dragging the result out doesn't close it.
+        notchWidgetMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard let self, let p = self.notchWidgetPanel, p.isVisible else { return }
+            if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideNotchWidget() } }
+        }
+    }
+    @MainActor func hideNotchWidget() {
+        if let m = notchWidgetMonitor { NSEvent.removeMonitor(m); notchWidgetMonitor = nil }
+        if let p = notchWidgetPanel { dismissToNotch(p) }
+    }
+
+    // ── LIVE drive: God opens a wrapp in the bridged webview and drives its real pipeline ────────
+    // End-to-end, no mocks: GodWebWindow loads the wrapp with window.claude bridged to the daemon,
+    // waits for the kit/webmcp __god bridge, calls the tool (the wrapp's REAL UI paints live), and
+    // the result lands in the notch widget. Dev default: roast on the granted localhost:5188 origin
+    // (serve with: cd examples/apps && node serve.mjs). GOD_DRIVE_URL overrides the page.
+    // ONE drive session, TWO surfaces (never both):
+    //   notch — the widget shows working/result; the wrapp window exists but stays offscreen.
+    //   window — the wrapp IS the surface; the notch collapses to the small running pill. When the
+    //   run finishes, the result routes by where the user is: window frontmost → the wrapp already
+    //   shows it (pill flashes done); user elsewhere/window closed → the result DROPS from the notch
+    //   like a notification. "Show the wrapp" flips notch→window; closing the window flips back.
+    private var godWeb: GodWebWindow?
+    private var driveRunning = false
+    private var driveName = "Roast"          // display name of the wrapp being driven
+    private var lastDrive: (url: URL, tool: String, input: String?, name: String)?   // for Regenerate
+    private var driveGeneration = 0          // bumps per drive; a superseded run's late result is dropped
+    @MainActor func driveWrappLive(pageURL: URL? = nil, tool: String = "roast_run", input: String? = nil, wrappName: String = "Roast") {
+        let envURL = ProcessInfo.processInfo.environment["GOD_DRIVE_URL"].flatMap(URL.init(string:))
+        guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No pairing token", openLabel: "Open panel",
+                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        // One drive at a time — a new ask SUPERSEDES the old run (its window closes; its late result
+        // is dropped by the generation check below), never two widgets fighting over the notch.
+        if driveRunning, let old = godWeb { old.onUserClosed = nil; old.close() }
+        driveGeneration += 1
+        lastDrive = (url, tool, input, wrappName)
+        driveName = wrappName
+        let web = GodWebWindow(url: url, token: token)
+        godWeb = web
+        driveRunning = true
+        web.onUserClosed = { [weak self] in   // window closed mid-run → fall back to the notch surface
+            guard let self, self.driveRunning else { return }
+            self.hideGodStatus()
+            self.showDriveWorking("Running \(tool) on your Claude…")
+        }
+        showDriveWorking("Opening the wrapp, waiting for its tools…")
+        web.open(visible: false, ready: { [weak self] in    // notch is the surface; window loads offscreen
+            guard let self else { return }
+            if !(self.godWeb?.isShown ?? false) { self.showDriveWorking("Running \(tool) on your Claude (may take ~30–90s)…") }
+            // Every skill/wrapp tool takes ONE primary string — send it under the common keys; each
+            // tool reads the one it declared (extra keys are ignored by the execute destructuring).
+            let text = input ?? "Serial founder. 3x exited (all acqui-hires). Building the Uber for artisanal ice. Ex-Google (intern). We're not a company, we're a movement."
+            let args: [String: Any] = ["target": text, "text": text, "input": text, "prompt": text, "question": text, "idea": text, "message": text]
+            let gen = self.driveGeneration
+            web.drive(tool: tool, input: args) { result in
+                Task { @MainActor in
+                    guard gen == self.driveGeneration else { return }   // superseded — drop the late result
+                    self.driveFinished(result)
+                }
+            }
+        })
+    }
+    /// State 1 — the notch widget as the drive surface. Primary action flips to the window.
+    @MainActor private func showDriveWorking(_ line: String) {
+        showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "God is driving \(driveName)…", openLabel: "Show the wrapp",
+            result: .working(line)), onOpen: { [weak self] in self?.driveToWindow() })
+    }
+    /// notch → window: the wrapp becomes the surface; the notch shrinks to the running pill.
+    @MainActor private func driveToWindow() {
+        hideNotchWidget()
+        godWeb?.front()
+        if driveRunning { showGodStatus("\(driveName) · running", accent: .lime, pattern: .working) }
+    }
+    // Map ANY wrapp tool's return object to the right widget renderer (states/edges completeness):
+    // an array-of-options → cards (reply/nameit/adgen/adforge/toon/thumbs), an image URL → image
+    // (downloaded so it's draggable), otherwise the best string → text. Never raw JSON in the notch.
+    @MainActor private func widgetResult(from v: Any) -> WidgetResult {
+        let d = v as? [String: Any]
+        // 1) card-shaped: a known array key, or any value that's an array of dicts with label/text-ish fields.
+        let arrayKeys = ["options", "replies", "concepts", "directions", "cards", "names", "angles", "ideas"]
+        let arr: [[String: Any]]? = arrayKeys.compactMap { d?[$0] as? [[String: Any]] }.first
+            ?? (d?.values.compactMap { $0 as? [[String: Any]] }.first { !$0.isEmpty })
+        if let arr = arr, !arr.isEmpty {
+            let items = arr.prefix(6).map { item -> CardItem in
+                let label = (item["label"] ?? item["name"] ?? item["title"] ?? item["angle"]) as? String ?? "Option"
+                let text = (item["text"] ?? item["preview"] ?? item["hook"] ?? item["body"] ?? item["headline"]) as? String ?? ""
+                return CardItem(label: label, text: text, rec: (item["recommended"] as? Bool) == true)
+            }
+            return .cards(caption: "\(items.count) options — one recommended.", items: Array(items))
+        }
+        // strings-array (e.g. replies:[String]) → cards too
+        if let strs = (["replies", "options", "lines"].compactMap { d?[$0] as? [String] }.first), !strs.isEmpty {
+            let items = strs.prefix(6).enumerated().map { CardItem(label: "Option \($0.offset + 1)", text: $0.element) }
+            return .cards(caption: "\(items.count) options.", items: Array(items))
+        }
+        // 2) image URL → download to a temp file so it renders + drags out
+        if let u = (["imageUrl", "url", "image", "heroUrl"].compactMap { d?[$0] as? String }.first), let url = URL(string: u) {
+            if let data = try? Data(contentsOf: url) {
+                let dir = (NSTemporaryDirectory() as NSString).appendingPathComponent("notch-canvas")
+                try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                let path = (dir as NSString).appendingPathComponent("\(UUID().uuidString).png")
+                if (try? data.write(to: URL(fileURLWithPath: path))) != nil {
+                    return .image(caption: "Generated on your Claude — drag it out.", steer: [], file: path)
+                }
+            }
+            return .text("Image ready: \(u)")   // download failed — at least surface the link
+        }
+        // 3) best string → text
+        let body = ["roast", "reply", "answer", "gist", "text", "result", "summary", "explanation", "translation", "polished", "rewrite", "song", "notes", "html"]
+            .compactMap { d?[$0] as? String }.first
+            ?? (d?.values.compactMap { $0 as? String }.max(by: { $0.count < $1.count }))
+            ?? String(describing: v)
+        return .text(String(body.prefix(3000)))
+    }
+
+    @MainActor private func driveFinished(_ result: Result<Any, Error>) {
+        driveRunning = false
+        let userIsOnWindow = godWeb?.isFrontmost ?? false
+        hideGodStatus()
+        switch result {
+        case .success(let v):
+            let d = v as? [String: Any]
+            let title = (d?["angle"] as? String) ?? (d?["title"] as? String) ?? driveName
+            if userIsOnWindow {
+                // The wrapp's own UI already shows the result — just flash "done" at the notch.
+                showGodStatus("\(driveName) · done", accent: .ok, pattern: .speaking)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in self?.hideGodStatus() }
+            } else {
+                // User went elsewhere → notification. Render by RESULT SHAPE (text · cards · image),
+                // not just as a string, so reply/nameit/ads look right, not raw JSON.
+                let regen: () -> Void = { [weak self] in
+                    guard let self, let ld = self.lastDrive else { return }
+                    self.godWeb?.close(); self.driveWrappLive(pageURL: ld.url, tool: ld.tool, input: ld.input, wrappName: ld.name)
+                }
+                showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: title, openLabel: "Show the wrapp",
+                    result: widgetResult(from: v)),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.godWeb?.front() },
+                    onRegen: regen,
+                    onSteer: { [weak self] chip in   // steer chips re-run the drive with the nudge folded into the input
+                        guard let self, let ld = self.lastDrive else { return }
+                        let steered = (ld.input ?? "") + "\n\n(Adjust: \(chip))"
+                        self.godWeb?.close(); self.driveWrappLive(pageURL: ld.url, tool: ld.tool, input: steered, wrappName: ld.name)
+                    })
+            }
+        case .failure(let e):
+            showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
+                result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+        }
+    }
+
     private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
@@ -2595,9 +2930,7 @@ struct ActionConsentDrop: View {
         // bottom = the TRUE menu-bar bottom edge (mainMenu.menuBarHeight lies on some displays). The
         // NotchPanel subclass below refuses re-constraining, so the top lands exactly here.
         panel.setFrameTopLeftPoint(NSPoint(x: x, y: screen.frame.maxY))   // top of the menu bar = screen top
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; panel.animator().alphaValue = 1 }
+        presentFromNotch(panel)   // grow out of the notch
         // transient: any click outside puts it away
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.hidePanel() }
@@ -2605,7 +2938,7 @@ struct ActionConsentDrop: View {
     }
 
     private func hidePanel() {
-        panel.orderOut(nil)
+        dismissToNotch(panel)   // collapse back into the notch
         openedByHover = false
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
     }
@@ -2693,7 +3026,7 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             gatePanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        gatePanel.orderFrontRegardless()
+        presentFromNotch(gatePanel)
     }
 
     // ⌃⌥ + click anywhere → summon God at the click point the summon gesture. A global monitor needs
@@ -2928,13 +3261,24 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             actionPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY))
         }
-        actionPanel.alphaValue = 0; actionPanel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; actionPanel.animator().alphaValue = 1 }
+        presentFromNotch(actionPanel)
     }
 
     // The gated execution — reached ONLY after the human tapped Allow.
     @MainActor private func executeGodAction(_ a: [String: Any]) {
         switch a["kind"] as? String {
+        case "drive":
+            // The VOICE wire: "make me a gist of this" → god.mjs emits [DRIVE:<wrapp> <input>] →
+            // consent Allow lands here → the widget grows from the notch while the wrapp runs.
+            let id = (a["wrapp"] as? String ?? "").lowercased()
+            let input = a["input"] as? String
+            if let l = readCatalog().first(where: { $0.id == id }), let s = l.components.ui?.url, let u = URL(string: s) {
+                driveWrappLive(pageURL: u, tool: "\(id)_run", input: input, wrappName: l.name)
+            } else {
+                showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No wrapp “\(id)”", openLabel: "Open store",
+                    result: .text("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
+            }
         case "open":
             // DWIM like god.mjs's openArgs: URL/scheme → open it; path → open the file; else it's an
             // APP NAME and needs `-a` (bare `open Calendar` looks for a file, not the app, and no-ops).
@@ -3218,8 +3562,7 @@ struct ActionConsentDrop: View {
         }
         orb?.orderOut(nil)   // the extended notch REPLACES the orb — don't show the 3-dot orb behind it
         if !godStatusPanel.isVisible {
-            godStatusPanel.alphaValue = 0; godStatusPanel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; godStatusPanel.animator().alphaValue = 1 }
+            presentFromNotch(godStatusPanel)
         }
     }
 
@@ -3419,10 +3762,18 @@ struct ActionConsentDrop: View {
         model.refreshFiles(); ollama.refresh()
         hidePanel()
         let listings = readCatalog()
-        let view = StoreView(listings: listings, present: storePresent(),
-                             onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
-                             onClose: { [weak self] in self?.hideStore() },
-                             onAddLocal: { [weak self] in self?.addLocalWrapp() })
+        // Two-level store (docs/STORE.md): the FEATURED front page first; "See All"/Apps/Skills swap
+        // the classic full StoreView into the SAME panel, so the dismissal monitor keeps working.
+        let classic = StoreView(listings: listings, present: storePresent(),
+                                onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
+                                onClose: { [weak self] in self?.hideStore() },
+                                onAddLocal: { [weak self] in self?.addLocalWrapp() })
+        let view = StoreFrontView(
+            listings: listings,
+            icon: { id in storeIcon(id) },
+            onGet: { [weak self] l in self?.launchWrapp(l, l.surfaces.first ?? "browser") },
+            onSeeAll: { [weak self] in self?.storePanel?.contentView = NoInsetHostingView(rootView: classic) },
+            onClose: { [weak self] in self?.hideStore() })
         if storePanel == nil {
             // A free-floating modal (centred, its own shadow) — not a notch drop. The store is a
             // deliberate destination, so it earns a real window, not the ambient notch surface.
@@ -3520,13 +3871,29 @@ struct ActionConsentDrop: View {
     // Launch a listing on a surface (§3). `browser` opens the deployed UI; `god` wakes God wearing the
     // wrapp's purpose ("Activate into God"); `batch` asks God to call the wrapp's tool — which passes
     // through the SAME consent gate + audit as any RUN hand. The `window`/`notch` hosts are Phases 3–4.
+    // Concierge on open (docs/STORE.md): the notch lights up and names what just opened + what it
+    // does — a launch is a moment, not a silent NSWorkspace.open. Auto-hides; never blocks.
+    @MainActor private func concierge(_ l: SBListing) {
+        showGodStatus("\(l.name) — \(String(l.tagline.prefix(48)))", accent: .lime, pattern: .speaking)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { [weak self] in self?.hideGodStatus() }
+    }
+
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
         case "browser", "window", "notch":
-            if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+            if let s = l.components.ui?.url, let u = URL(string: s) {
+                NSWorkspace.shared.open(u)
+                concierge(l)   // the notch acknowledges the launch — never a silent open
+            }
         case "god":
-            triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help using your skill. Keep it to one short question first.")
+            // The god-skill surface can't actually LOAD a skill yet (components.skills has no backing
+            // content — resolving "yc/register" finds nothing), so the old name+tagline roleplay just
+            // stalled: God spoke one line, the process exited, glow went thinking→idle = "thinking, then
+            // nothing." Prefer the wrapp's real page when it has one; roleplay only as a last resort.
+            // (Real fix later: pass components.skills to god.mjs + load the skill content there.)
+            if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+            else { triggerGod(instruction: "You are now the \(l.name) assistant. \(l.tagline) Ask me what I'd like to do, then help. Keep it to one short question first.") }
         case "batch":
             let action = l.components.workflows?.first.map { String($0.split(separator: "/").last ?? Substring($0)) } ?? "run"
             triggerGod(instruction: "Run the \(l.name) wrapp's \(action) step — call its tool through the gate. If it needs input, ask me one short question first.")
@@ -3556,6 +3923,18 @@ struct SBListing: Codable, Identifiable {
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 
 // Live copy first (the aggregator refreshes it), then a bundled fallback so a packaged app is never empty.
+// Per-wrapp icon art (the "Instruments on the board" renders, bundled at Resources/icons/<id>.png).
+// Cached; nil → the caller falls back to the category glyph. NSCache keeps memory honest.
+private let storeIconCache = NSCache<NSString, NSImage>()
+func storeIcon(_ id: String) -> NSImage? {
+    if let hit = storeIconCache.object(forKey: id as NSString) { return hit }
+    guard let res = Bundle.main.resourcePath else { return nil }
+    let path = (res as NSString).appendingPathComponent("icons/\(id).png")
+    guard let img = NSImage(contentsOfFile: path) else { return nil }
+    storeIconCache.setObject(img, forKey: id as NSString)
+    return img
+}
+
 func readCatalog() -> [SBListing] {
     let live = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/catalog.json")
     let bundled = (Bundle.main.resourcePath as NSString?)?.appendingPathComponent("catalog.json")
@@ -3736,10 +4115,16 @@ struct StoreView: View {
         }
     }
 
-    private func glyphTile(_ l: SBListing, _ size: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.26).fill(catTint(l.category).opacity(0.16))
-            .overlay(Image(systemName: catGlyph(l.category)).font(.system(size: size * 0.42)).foregroundColor(catTint(l.category)))
-            .frame(width: size, height: size)
+    @ViewBuilder private func glyphTile(_ l: SBListing, _ size: CGFloat) -> some View {
+        if let img = storeIcon(l.id) {
+            // the real "Instruments on the board" hardware icon (Resources/icons/<id>.png)
+            Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.26))
+        } else {
+            RoundedRectangle(cornerRadius: size * 0.26).fill(catTint(l.category).opacity(0.16))
+                .overlay(Image(systemName: catGlyph(l.category)).font(.system(size: size * 0.42)).foregroundColor(catTint(l.category)))
+                .frame(width: size, height: size)
+        }
     }
 
     @ViewBuilder private var detail: some View {
@@ -3872,9 +4257,4 @@ struct FlowChips: View {
     }
 }
 
-MainActor.assumeIsolated {
-    let app = NSApplication.shared
-    let controller = RelayController()
-    app.delegate = controller
-    app.run()
-}
+// App bootstrap lives in main.swift (multi-file build requires top-level code there).

@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // the first lines from) stays visually distinct from CHOSEN (a card a human clicked) so the accent
 // never paints a machine decision (doctrine 5), and the slate gets an escape hatch (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Rizz's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -424,3 +427,32 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `rizz_run` runs the SAME start() the "Rizz it" button runs — strategies are proposed and the
+// recommended one's lines are written, live in the DOM — then returns the send-ready lines.
+exposeToGod({
+  name: "rizz_run",
+  description: "Get send-ready dating-app lines for a situation (their bio, their last message, or the vibe). Writes them live on the page and returns them.",
+  inputSchema: { situation: "string — the situation to work with. Required." },
+  execute: async ({ situation } = {}) => {
+    const val = String(situation || "").trim();
+    if (!val) throw new Error("nothing to work with — pass { situation } with their bio, their last message, or the vibe");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Rizz isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold-open; start() early-returns while a run is in flight,
+    // so wait for idle, run, and confirm the settled run is OURS (same input) before returning.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);
+      await start(val);
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && ((r.lines && r.lines.length) || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const strat = (r.strategies || []).find((s) => s.id === r.selectedId);
+        return { lines: r.lines, vibe: strat ? strat.label : null };
+      }
+    }
+    throw new Error("Rizz stayed busy — try again");
+  },
+});

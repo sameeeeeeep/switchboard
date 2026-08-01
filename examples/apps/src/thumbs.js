@@ -19,6 +19,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
 // modifier styles. DRAFTED (what the director bet on) is never CHOSEN (what a human clicked).
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Thumbs' concept-draft action as a page-tool the native God webview (or any WebMCP
+// host) can DRIVE — reusing the same start() a click runs; rendering a thumbnail stays a per-card consent.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -444,3 +447,33 @@ function conceptCard(c) {
   return card;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `thumbs_run` runs the SAME start() a make-thumbnails click runs — three thumbnail concepts are drafted
+// (composition + a big ALL-CAPS overlay + the emotion it sells), live in the DOM — then returns them.
+// Rendering the actual 16:9 thumbnail spends a Higgsfield credit (one click, one consent, never
+// auto-fired), so it stays on the page: God gets the concepts and the user renders from the UI.
+exposeToGod({
+  name: "thumbs_run",
+  description: "Draft three click-worthy YouTube thumbnail concepts from a video title (composition + big text overlay + emotion), rendered on the page. Returns the concepts; render each on your Higgsfield from the page.",
+  inputSchema: { title: "string — the video title (e.g. \"I tried the world's spiciest ramen\"). Required." },
+  execute: async ({ title } = {}) => {
+    const val = String(title || "").trim();
+    if (!val) throw new Error("no title — pass { title } with the video title to make thumbnails for");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Thumbs isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle, run our own, confirm the settled
+    // run is OURS with concepts.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight concept draft finish
+      await start(val);                         // proposeConcepts (awaited)
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && (r.concepts || r.error)) {
+        if (r.error) throw new Error(r.error);
+        return { concepts: (r.concepts || []).map((c) => ({ label: c.label, overlay: c.overlay, emotion: c.emotion, composition: c.composition })) };
+      }
+    }
+    throw new Error("Thumbs stayed busy — try again");
+  },
+});

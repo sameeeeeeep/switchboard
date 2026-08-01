@@ -1,0 +1,20 @@
+{
+  "id": "formula",
+  "name": "Formula",
+  "tagline": "Plain English into the exact spreadsheet formula",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/formula.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

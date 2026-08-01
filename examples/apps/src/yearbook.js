@@ -10,6 +10,9 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The shared "none of these — say what you'd do instead" exit (doctrine 4).
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Yearbook's one action as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() a click runs, so the portraits develop live where God watches.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -495,3 +498,32 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `yearbook_run` runs the SAME start() a shoot click runs — retro yearbook eras are proposed and every
+// portrait develops on the user's Higgsfield (the one-go, all awaited via developAll) — then returns
+// the developed portraits for God to show.
+exposeToGod({
+  name: "yearbook_run",
+  description: "Shoot a subject as retro yearbook portraits across the decades on the user's Higgsfield. Develops them live on the page and returns the portrait URLs.",
+  inputSchema: { subject: "string — one line about who to yearbook (e.g. 'my roommate Dev, curly hair, always in a hoodie'). Required." },
+  execute: async ({ subject } = {}) => {
+    const val = String(subject || "").trim();
+    if (!val) throw new Error("nothing to shoot — pass { subject } with one line about who to yearbook");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Yearbook isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle, run our own (start awaits both the
+    // era proposal AND developAll), confirm the settled run is OURS with developed portraits.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight era proposal finish
+      await start(val);                         // proposeEras → developAll — all awaited
+      const r = state.run || {};
+      if (r.input === val && r.eras) {
+        const portraits = r.eras.map((e) => ({ era: e.label, imageUrl: e.imageUrl || null, error: e.imgError || null }));
+        if (portraits.some((p) => p.imageUrl)) return { portraits };
+        if (r.error) throw new Error(r.error);
+      }
+    }
+    throw new Error("Yearbook stayed busy — try again");
+  },
+});

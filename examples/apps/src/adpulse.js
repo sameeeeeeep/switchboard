@@ -6,6 +6,9 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { escapeHatch } from "./kit/ui.js";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose AdPulse's diagnosis as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same analyse() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -1007,3 +1010,30 @@ function persist() {
   if (report) renderReport();
   reflect();
 })();
+
+// ---- God's hand: one page-tool, driving the real diagnosis -------------------------------------
+// `adpulse_diagnose` runs the SAME analyse() the "Diagnose" button runs — the post-mortem (score,
+// wins, leaks, ranked actions, per-campaign verdicts) builds live in the DOM from the data on deck
+// (a passed CSV export, a live pull, or the demo month) — then returns it. Reused by the native God
+// webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "adpulse_diagnose",
+  description: "Diagnose a Meta Ads Manager export (CSV) — health score, wins, leaks, ranked actions, and per-campaign verdicts. Renders the readout live and returns it.",
+  inputSchema: { csv: "string — a Meta Ads Manager CSV export. Optional when data is already loaded." },
+  execute: async ({ csv } = {}) => {
+    const data = String(csv || "").trim();
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("AdPulse isn't connected to Switchboard yet");
+    if (data) { $("csv-in").value = data; ingest(data, "pasted"); }
+    if (!rows || !rows.length) throw new Error("no campaign data — pass { csv } as a Meta Ads Manager export");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !analysing && !pulling, 180000);   // let any in-flight pull/diagnosis (incl. the cold-open) finish
+      await analyse();                                       // reuse the wrapp's OWN pipeline; awaited to completion
+      await waitFor(() => !analysing, 180000);
+      if (report && reportFor && reportFor.csvSig === csvSig()) {
+        return { score: report.score, headline: report.headline, wins: report.wins, leaks: report.leaks, actions: report.actions, campaigns: report.campaigns };
+      }
+    }
+    throw new Error("AdPulse stayed busy — try again");
+  },
+});

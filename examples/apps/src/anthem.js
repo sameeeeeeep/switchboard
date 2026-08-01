@@ -11,6 +11,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The shared decision atom. optionCards() keeps the accent for a human click and renders the
 // model's pick as a neutral DRAFT; its `escape` option is the way out of the menu. (doctrine 4 + 5)
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Anthem's one action as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() a click runs, so the song writes itself where God watches.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -373,3 +376,33 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `anthem_run` runs the SAME start() a write-it click runs — concepts are sketched and the full song is
+// written from the recommended one (lyrics + a copy-ready generation prompt), streamed live in the DOM
+// — then returns it for God to speak or share. Text-only; audio rendering is a Pro extension.
+exposeToGod({
+  name: "anthem_run",
+  description: "Write an original song (structured lyrics + a copy-ready generation prompt) about a person, moment, or brand. Writes it live on the page and returns it.",
+  inputSchema: { subject: "string — what the song is about (a person, a moment, or a brand). Required." },
+  execute: async ({ subject } = {}) => {
+    const val = String(subject || "").trim();
+    if (!val) throw new Error("nothing to write about — pass { subject } with a person, moment, or brand");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Anthem isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle, run our own (start awaits the
+    // concepts AND writeSong), confirm the settled run is OURS with a song.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight run finish
+      await start(val);                         // proposeConcepts → auto-advance writeSong, all awaited
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && (r.song || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const c = (r.concepts || []).find((o) => o.id === r.selectedId);
+        return { song: r.song, concept: c ? c.label : null };
+      }
+    }
+    throw new Error("Anthem stayed busy — try again");
+  },
+});

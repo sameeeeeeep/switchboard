@@ -1,0 +1,20 @@
+{
+  "id": "convert",
+  "name": "Convert",
+  "tagline": "Data between JSON, CSV, YAML, and Markdown tables",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/convert.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

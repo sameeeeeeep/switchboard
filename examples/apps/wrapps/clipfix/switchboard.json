@@ -1,0 +1,20 @@
+{
+  "id": "clipfix",
+  "name": "Clip Doctor",
+  "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/clipfix.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

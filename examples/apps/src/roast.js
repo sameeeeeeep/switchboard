@@ -13,6 +13,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // the first roast from) stays visually distinct from CHOSEN (a card a human clicked) so the accent
 // never paints a machine decision (doctrine 5), and the slate gets an escape hatch (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Roast's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -375,3 +378,37 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `roast_run` runs the SAME start() a paste-and-go click runs — angles are proposed and the
+// recommended one is written, live in the DOM — then returns the finished roast for God to speak.
+// Reused as-is by the native God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "roast_run",
+  description: "Roast a bit of text (a bio, brand blurb, resume, or pitch). Writes the roast live on the page and returns it.",
+  inputSchema: { target: "string — the text to roast. Required." },
+  execute: async ({ target } = {}) => {
+    const input = String(target || "").trim();
+    if (!input) throw new Error("nothing to roast — pass { target } with the text to roast");
+    // God may call the instant the page loads — before connect finishes, and while the context-first
+    // cold-open (autostart) is still running. Wait for connect, then for idle, so start() doesn't
+    // early-return into an in-flight run. Same reason a human wouldn't click mid-cold-open.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Roast isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold-open. start() early-returns while a run is in flight,
+    // so a naive call can read the cold-open's run instead of ours. Wait for idle, run, and confirm the
+    // settled run is OURS (same input) with a result; if a cold-open shadowed us, retry.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);     // let any in-flight run finish before we take the wheel
+      await start(input);                         // proposeAngles → auto-advance roastFrom, all awaited
+      await waitFor(() => !running, 180000);      // and ensure the run completed
+      const r = state.run || {};
+      if (r.input === input && (r.roast || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const angle = (r.angles || []).find((a) => a.id === r.selectedId);
+        return { roast: r.roast, angle: angle ? angle.label : null };
+      }
+    }
+    throw new Error("Roast stayed busy — try again");
+  },
+});

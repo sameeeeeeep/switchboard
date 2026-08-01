@@ -1,0 +1,20 @@
+{
+  "id": "commit",
+  "name": "Commit",
+  "tagline": "A diff into a Conventional Commits message",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/commit.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

@@ -11,6 +11,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
 // styling the portrait cards below use to keep the model's pick out of the accent state.
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Petrait's one action as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() a click runs, so the user watches the portrait paint itself.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -436,3 +439,34 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `petrait_run` runs the SAME start() a describe-and-paint click runs — concepts are dreamt up and the
+// recommended one paints itself, live in the DOM — then returns the finished portrait for God to show.
+exposeToGod({
+  name: "petrait_run",
+  description: "Dream up regal portrait concepts of a pet from one line and paint the recommended one on the user's Higgsfield. Renders live on the page and returns the portrait URL.",
+  inputSchema: { pet: "string — one line about the pet (e.g. 'a grumpy orange tabby named Biscuit'). Required." },
+  execute: async ({ pet } = {}) => {
+    const val = String(pet || "").trim();
+    if (!val) throw new Error("nothing to paint — pass { pet } with one line about the pet");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Petrait isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold open. Wait for idle, run our own, confirm the settled
+    // run is OURS, then wait for the drafted portrait (auto-painted by the one-go) to finish developing.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight concept run finish before we take the wheel
+      await start(val);                         // proposeConcepts → auto-paint the drafted concept
+      await waitFor(() => !running, 180000);    // concepts settled
+      const r = state.run || {};
+      if (r.input === val && r.concepts) {
+        const id = r.draftedId;
+        await waitFor(() => { const c = (r.concepts || []).find((o) => o.id === id); return !!c && !c.painting && (c.imageUrl || c.imgError); }, 180000);
+        const c = (r.concepts || []).find((o) => o.id === id);
+        if (c && c.imageUrl) return { imageUrl: c.imageUrl, concept: c.label };
+        if (c && c.imgError) throw new Error(c.imgError);
+      }
+    }
+    throw new Error("Petrait stayed busy — try again");
+  },
+});

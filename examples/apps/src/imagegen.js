@@ -8,6 +8,9 @@
 // Higgsfield credits behind a per-action consent, never auto-fired.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { migrateLocalKey } from "./kit/storekey.js";
+// God's hands: expose Prism's render as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it — reusing the same renderShot() the Generate button runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -824,3 +827,24 @@ renderGrid();
 renderConcepts();
 renderStarters();
 reflect();
+
+// ---- God's hand: one page-tool, driving the real render path ------------------------------------
+// `imagegen_generate` runs the SAME renderShot() the "Generate" button runs — an image renders on
+// the visitor's own Higgsfield, live in the grid — then returns its URL. Reused as-is by the native
+// God webview (window.__god.call) and any WebMCP host.
+exposeToGod({
+  name: "imagegen_generate",
+  description: "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL.",
+  inputSchema: { prompt: "string — what to generate (subject, setting, lighting…). Required." },
+  execute: async ({ prompt } = {}) => {
+    const val = String(prompt || "").trim();
+    if (!val) throw new Error("nothing to render — pass { prompt } describing the image");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Prism isn't connected to Switchboard yet");
+    const before = state.shots[0] || null;
+    await renderShot(val, state.aspect, null, null); // the same hardened path the Generate button uses; awaited to completion
+    const top = state.shots[0] || null;
+    if (top && top !== before && top.url) return { imageUrl: top.url };
+    throw new Error("Prism couldn't render that — try again");
+  },
+});

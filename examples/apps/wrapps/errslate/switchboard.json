@@ -1,0 +1,20 @@
+{
+  "id": "errslate",
+  "name": "Errslate",
+  "tagline": "Decode any error or stack trace: meaning, cause, fix",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/errslate.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

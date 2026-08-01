@@ -1,0 +1,20 @@
+{
+  "id": "docstring",
+  "name": "Docstring",
+  "tagline": "A function into a clear docstring/JSDoc with an example",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/docstring.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

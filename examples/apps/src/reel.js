@@ -6,6 +6,9 @@
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { renderScenesToVideo } from "./kit/capture.js";
+// God's hands: expose Reel's generate step as a page-tool the native God webview (or any WebMCP host)
+// can DRIVE — reusing the same start() a click runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -351,3 +354,32 @@ function sceneCard(sc) {
   return card;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `reel_generate` runs the SAME start() a one-line-and-go click runs — the scene script writes itself
+// and each scene is painted on the user's Higgsfield, live in the DOM — then returns the scenes for
+// God. Rendering the .webm is a deliberate human act (the "render video" button) and stays out.
+exposeToGod({
+  name: "reel_generate",
+  description: "Draft a promo/launch reel from one line: writes a 4–6 scene script and paints each scene on your Higgsfield, live on the page. Returns the scenes (title, subtitle, image URL); it does not render the final video.",
+  inputSchema: { brief: "string — one line on what the reel is for. Required." },
+  execute: async ({ brief } = {}) => {
+    const val = String(brief || "").trim();
+    if (!val) throw new Error("nothing to make — pass { brief } with one line on what the reel is for");
+    // God may call before connect finishes, and while the context-first cold-open is still scripting
+    // and painting. Wait for connect, then for idle, so start() doesn't early-return into a live run.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Reel isn't connected to Switchboard yet");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);       // let any in-flight run finish before we take the wheel
+      await start(val);                            // script → paintAll, all the way through painting
+      await waitFor(() => !running, 180000);        // and ensure scripting + painting completed
+      const r = state.run || {};
+      if (r.input === val && (r.scenes || r.error)) {
+        if (r.error) throw new Error(r.error);
+        return { scenes: (r.scenes || []).map((s) => ({ title: s.title, subtitle: s.subtitle, imageBrief: s.imageBrief, imageUrl: s.imageUrl || null, seconds: s.seconds })) };
+      }
+    }
+    throw new Error("Reel stayed busy — try again");
+  },
+});

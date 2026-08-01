@@ -1,0 +1,20 @@
+{
+  "id": "rephrase",
+  "name": "Rephrase",
+  "tagline": "Rewrite text in any tone — meaning kept.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/rephrase.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "recap",
+  "name": "Recap",
+  "tagline": "Long doc into TL;DR, key points, decisions, next steps.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/recap.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

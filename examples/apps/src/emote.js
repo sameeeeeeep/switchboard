@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The escape hatch comes from the shared kit (src/kit/ui.js), which also injects the drafted-card
 // styling the pack cards below use to keep the model's pick out of the accent state.
 import { escapeHatch } from "./kit/ui.js";
+// God's hands: expose Emote's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -499,3 +502,41 @@ function stickerTile(pack, c, i) {
   return tile;
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `emote_run` runs the SAME start() the "Make pack" button runs — pack styles are proposed and the
+// recommended one die-cuts its six transparent stickers on the user's Higgsfield, live in the DOM.
+// start() fires stage 2 without awaiting it (the `running` flag only guards stage 1), so this waits
+// for stage 1 to settle, then for every sticker cell to finish, before returning the image URLs.
+exposeToGod({
+  name: "emote_run",
+  description: "Turn a one-line character description into a die-cut sticker pack, drawn on the page via your Higgsfield. Returns the sticker image URLs.",
+  inputSchema: { character: "string — one line describing the character or mascot. Required." },
+  execute: async ({ character } = {}) => {
+    const val = String(character || "").trim();
+    if (!val) throw new Error("nothing to draw — pass { character } describing the character");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 120)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Emote isn't connected to Switchboard yet");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await waitFor(() => !running, 180000);       // let any in-flight stage-1 proposal finish
+      await start(val);                             // proposePacks → fires the drafted pack's die-cut loop
+      await waitFor(() => !running, 180000);        // stage 1 settled — packs are on screen
+      const r = state.run || {};
+      if (r.input !== val) continue;               // a cold-open shadowed us — take the wheel again
+      if (r.error && !r.packs) throw new Error(r.error);
+      const packId = r.activeId || r.draftedId;
+      // stage 2 — the die-cut loop populates r.stickers[packId]; wait until each of the six settles.
+      await waitFor(() => {
+        const cur = state.run; if (!cur || cur.input !== val) return true; // bail if we were replaced
+        const cells = cur.stickers && cur.stickers[packId];
+        return !!(cells && cells.length && cells.every((c) => c.status === "done" || c.status === "err"));
+      }, 180000);
+      const cur = state.run || {};
+      const pack = (cur.packs || []).find((p) => p.id === packId);
+      const cells = (cur.stickers && cur.stickers[packId]) || [];
+      const stickers = cells.filter((c) => c.status === "done" && c.url).map((c) => ({ emote: c.emote, url: c.url }));
+      if (stickers.length) return { pack: pack ? pack.label : null, stickers };
+    }
+    throw new Error("Emote couldn't die-cut the pack — try again");
+  },
+});

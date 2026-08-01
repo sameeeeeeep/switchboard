@@ -1,0 +1,20 @@
+{
+  "id": "objection",
+  "name": "Objection",
+  "tagline": "A sales or investor objection into a calm, honest response",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/objection.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

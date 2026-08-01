@@ -28,7 +28,7 @@
  * real ~/.relay. In production it attaches to the menubar daemon instead.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, fstatSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -78,6 +78,51 @@ function activeProject() {
 }
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
+// ── every run must end OBSERVABLY ──────────────────────────────────────────────────────────────
+// The silent-death bug: a failed `claude_complete` threw straight past speak() to process.exit —
+// the notch said "thinking", then nothing. No voice, no file, no marker. These two helpers are the
+// contract that replaces it: `loud` puts a grep-able ✖/✦ marker in ~/.relay/god-run.log (stderr IS
+// that log when the app spawned us; TTY runs append by hand), and `surfaceAnswer` leaves the final
+// text — answer or failure reason — in ~/.relay/god-last-answer.txt, so even a mute God is legible.
+const RUN_LOG = join(REAL_RELAY, "god-run.log");
+// When the app spawned us, stderr already IS god-run.log (Swift wires both) — appending again would
+// double-write AND race the inherited fd's offset. Compare dev/ino instead of guessing from TTY-ness:
+// mirror the marker into the log only when stderr is genuinely somewhere else (terminal, pipe, tests).
+function stderrIsRunLog() {
+  try { const a = fstatSync(2), b = statSync(RUN_LOG); return a.dev === b.dev && a.ino === b.ino; }
+  catch { return false; }
+}
+function loud(marker) {
+  console.error(`[god] ${marker}`);
+  if (!stderrIsRunLog()) {
+    try { appendFileSync(RUN_LOG, `[god] ${marker}\n`); } catch { /* best effort */ }
+  }
+}
+function surfaceAnswer(text) {
+  try { writeFileSync(join(REAL_RELAY, "god-last-answer.txt"), String(text)); } catch { /* best effort */ }
+}
+
+// ── the store shelf ────────────────────────────────────────────────────────────────────────────
+// God knows the CATALOG, not just what's running: ~/.relay/catalog.json (the menubar's store
+// aggregate — may not exist yet). One tight line per wrapp so the model can honestly point the user
+// at the right tool and [OPEN:] it, instead of pretending or improvising. Kept token-tight:
+// taglines clipped to 60 chars, at most 40 entries.
+function catalogBlock() {
+  try {
+    const cat = JSON.parse(readFileSync(join(REAL_RELAY, "catalog.json"), "utf8"));
+    const listings = (Array.isArray(cat) ? cat : cat.listings || [])
+      .filter((l) => l?.id && l?.components?.ui?.url);
+    if (!listings.length) return "";
+    const lines = listings.slice(0, 40).map(
+      (l) => `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)} → ${l.components.ui.url}`);
+    return "\n\nWRAPPS IN THE STORE (id — what it does → url):\n" + lines.join("\n") +
+      "\nIf the user asks for something one of these wrapps does best, say so in ONE short sentence " +
+      "and include [DRIVE:<id> <the input to run it on>] on its own line — the wrapp runs and the " +
+      "result appears as a widget in the notch. Use [OPEN:<its url>] only when they just want the " +
+      "app open. Never pretend a wrapp is already running, and never bring up this list unprompted.";
+  } catch { return ""; } // no catalog / unreadable → no block, God stays quiet about the store
+}
+
 // The operating protocol — appended to EVERY persona so a persona file can never widen power.
 // It fixes two things the soul must not control: screen text is untrusted, and how to point.
 const PROTOCOL =
@@ -104,12 +149,15 @@ const ACTION_PROTOCOL =
   "  [CLICK:x,y:label]               — click an on-screen element (pixel coords in THIS image)\n" +
   "  [KEY:<combo>]                   — press keys, e.g. cmd+s, return, cmd+shift+4\n" +
   "  [RUN:<tool> <json args>]        — run one of the tools listed under RUNNABLE TOOLS below\n" +
+  "  [DRIVE:<wrapp-id> <input>]      — run a store wrapp on that input; the result appears as a widget in the notch\n" +
   "Prefer OPEN, RUN, or POINT over raw CLICK/KEY when a cleaner route exists. Never propose a " +
   "destructive action. If no action is warranted, just use [POINT:x,y:label] or no tag.";
 
 // Parse the ONE action/point tag off the reply. Priority: an explicit RUN or LOCAL action over a
 // bare point. RUN captures a tool name then optional JSON args (or a bare string → {input:string}).
 function parseAction(text) {
+  const drive = /\[DRIVE:\s*([a-z0-9_-]+)\s+([^\]]+)\]/i.exec(text);
+  if (drive) return { kind: "drive", wrapp: drive[1].toLowerCase(), input: drive[2].trim() };
   const run = /\[RUN:\s*([A-Za-z0-9_.:-]+)\s*(\{[\s\S]*?\}|[^\]]*?)\]/i.exec(text);
   if (run) return { kind: "run", tool: run[1].trim(), args: parseToolArgs((run[2] || "").trim()) };
   const open = /\[OPEN:([^\]]+)\]/i.exec(text);
@@ -142,6 +190,7 @@ function screenPointsSize() {
 }
 function prettyTool(name) { return String(name).replace(/^mcp__[^_]+__/, "").replace(/^wrapp__/, "").replace(/__/g, " · "); }
 function describeAction(a, shot) {
+  if (a.kind === "drive") return `drive the ${a.wrapp} wrapp — “${String(a.input).slice(0, 50)}”`;
   if (a.kind === "open") return `open ${a.target}`;
   if (a.kind === "type") return `type: “${a.text.slice(0, 60)}”`;
   if (a.kind === "key") return `press ${a.combo}`;
@@ -175,6 +224,11 @@ function openArgs(target) {
 // prompt, or the notch consent drop). `reg` is needed only for RUN (the daemon tool call).
 async function runAction(a, shot, reg) {
   if (process.env.GOD_DRYRUN === "1") return `[dry-run] would ${describeAction(a, shot)}`; // headless harness: no side effects
+  if (a.kind === "drive") {
+    // Swift owns the drive (widget in the notch): hand it off like a local action and exit.
+    try { writeFileSync(join(REAL_RELAY, "god-action.json"), JSON.stringify({ ...a, describe: describeAction(a, shot) })); } catch { /* best effort */ }
+    return `handed “drive ${a.wrapp}” to the notch — the widget takes it from here`;
+  }
   if (a.kind === "open") { spawnSync("open", openArgs(a.target)); return `opened ${a.target}`; }
   if (a.kind === "type") { spawnSync("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(a.text)}`]); return `typed`; }
   if (a.kind === "key") { const osa = keyComboOsa(a.combo); if (!osa) return `couldn't parse key combo “${a.combo}”`; spawnSync("osascript", ["-e", osa]); return `pressed ${a.combo}`; }
@@ -384,8 +438,9 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
     const audioFile = process.env.GOD_AUDIO;   // a pre-recorded clip (the app records the mic, passes the path)
     if (audioFile && existsSync(audioFile)) {
       const trx = await request("claude_transcribe", { audio: `data:audio/wav;base64,${readFileSync(audioFile).toString("base64")}`, language: "en" });
-      if (!trx.error && trx.result?.text?.trim()) prompt = trx.result.text.trim();
-      log(`heard: "${prompt}"`);
+      const heard = (!trx.error && trx.result?.text?.trim()) || "";
+      if (heard) { prompt = heard; log(`heard: "${prompt}"`); }
+      else loud(`✖ transcribe ${trx.error ? `failed: ${trx.error.message}` : "heard nothing (empty transcript)"} — continuing with the default glance`);
     } else if (useMic) {
       const wav = await record();
       const trx = await request("claude_transcribe", { audio: wavToDataUrl(wav), language: "en" });
@@ -433,7 +488,7 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
     }
     const userName = readUserName();
     const nameLine = userName ? `\n\nThe user's name is ${userName}. Address them by name when it's natural.` : "";
-    const system = `${persona.characteristic}\n\n${PROTOCOL}${nameLine}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "");
+    const system = `${persona.characteristic}\n\n${PROTOCOL}${nameLine}${projLine}` + (act ? ACTION_PROTOCOL + runBlock : "") + catalogBlock();
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(" (vision)")}…`);
@@ -489,16 +544,50 @@ async function main() {
   log(`${persona.cursor.glyph} ${persona.name}: ${persona.greeting}`);
 
   const acting = cmd === "act"; // `act` lets God DO one thing (open/type/click) — behind a confirm
-  const { text, model, shot } = await ask(reg, persona, { instruction, useMic, region, act: acting });
+
+  // THE SILENT-DEATH FIX. ask() can fail mid-flight (daemon denies claude_complete — e.g. "Claude
+  // Code isn't signed in" —, no model, screencapture). It used to throw straight to process.exit:
+  // notch on "thinking", then nothing. Now a failure is a REPLY: God speaks the reason, leaves it
+  // in god-last-answer.txt, and stamps a ✖ marker in god-run.log. Never silent again.
+  let asked;
+  try {
+    asked = await ask(reg, persona, { instruction, useMic, region, act: acting });
+  } catch (e) {
+    const reason = (e?.message || String(e)).replace(/^complete:\s*/, "");
+    loud(`✖ GOD FAILED before answering: ${reason}`);
+    const friendly = `I couldn't answer — ${reason}`;
+    surfaceAnswer(friendly);
+    console.log(`\n\x1b[1m${persona.name}\x1b[0m\n${friendly}`);
+    godState("speaking");
+    try { await companion.speak(friendly); } catch { /* even the voice failed — file + marker remain */ }
+    godState("idle");
+    process.exitCode = 1;
+    return;
+  }
+  const { text, model, shot } = asked;
   const spoken = stripTags(text);
+  const action = parseAction(text);
 
   console.log(`\n\x1b[1m${persona.name}\x1b[0m ${dim("· " + model)}\n${spoken || "(no reply)"}`);
+  surfaceAnswer(spoken || (action ? `(no words — proposed: ${describeAction(action, shot)})` : "(God had no answer)"));
+  if (!spoken && !action) loud(`✖ empty answer from ${model} — nothing to speak, nothing to do`);
   spawnSync("pbcopy", [], { input: spoken }); // leave the reply on the clipboard
-  godState("speaking");
-  await companion.speak(spoken);
-  godState("idle");
 
-  const action = parseAction(text);
+  // One honest line when the cloned-voice server is down. speak() falls back to `say` so God still
+  // talks — but "why did it go quiet / change voice" must be answerable from the log.
+  try {
+    const voiceSel = join(REAL_RELAY, "voices", "selected");
+    if (existsSync(voiceSel) && readFileSync(voiceSel, "utf8").trim()) {
+      const port = process.env.GOD_TTS_PORT || "7897";
+      const up = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) })
+        .then((r) => r.ok).catch(() => false);
+      if (!up) loud(`✖ god-tts (:${port}) not responding — falling back to the system voice`);
+    }
+  } catch { /* the probe is best-effort */ }
+
+  godState("speaking");
+  await companion.speak(spoken || (action ? "" : "I came up empty on that one — ask me again?"));
+  godState("idle");
   if (acting && action && action.kind !== "point") {
     const autonomy = process.env.GOD_AUTONOMY || (args.includes("--ask") ? "ask" : "auto"); // acts freely by default
     const risky = isRisky(action, spoken);
@@ -538,6 +627,9 @@ async function main() {
   } else if (action && action.kind === "point") {
     companion.point(action, shot.w, shot.h);
   }
+
+  // The run's closing stamp — grep `✦ run complete` (or a ✖) in god-run.log; every run has one.
+  loud(`✦ run complete — ${spoken ? `spoke ${spoken.length} chars` : "no words"}${action ? `, tag: ${action.kind}` : ""}`);
 }
 
 // The RUN consent round-trip (app path). Publish the proposed tool call + flip God's state to
@@ -573,8 +665,21 @@ async function awaitNotchConsent(action, shot) {
 // the pure parse/dispatch helpers) must NOT kick off the daemon + pipeline.
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  main().then(() => { daemonProc?.kill("SIGKILL"); process.exit(0); })
-    .catch((e) => { console.error("\n❌", e.message); daemonProc?.kill("SIGKILL"); process.exit(1); });
+  main().then(() => { daemonProc?.kill("SIGKILL"); process.exit(process.exitCode || 0); })
+    .catch((e) => {
+      // The safety net for deaths OUTSIDE the ask pipeline (daemon boot, registration, arg errors).
+      // Same contract as in-main failures: a ✖ marker, the reason in god-last-answer.txt, the notch
+      // state reset, and a best-effort voice line — God never just vanishes.
+      const reason = e?.message || String(e);
+      console.error("\n❌", reason);
+      loud(`✖ GOD DIED: ${reason}`);
+      surfaceAnswer(`I couldn't finish — ${reason}`);
+      godState("idle");
+      if (!process.env.GOD_MUTE && process.env.GOD_DRYRUN !== "1") {
+        try { spawnSync("say", [`I couldn't finish — ${reason}`.slice(0, 200)]); } catch { /* mute is survivable; silence in the LOG isn't */ }
+      }
+      daemonProc?.kill("SIGKILL"); process.exit(1);
+    });
 }
 
-export { parseAction, parseToolArgs, describeAction, runAction, keyComboOsa, prettyTool };
+export { parseAction, parseToolArgs, describeAction, runAction, keyComboOsa, prettyTool, catalogBlock };

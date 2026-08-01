@@ -1,0 +1,20 @@
+{
+  "id": "snap",
+  "name": "Snap Answer",
+  "tagline": "One question, one direct answer — no chat thread.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/snap.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

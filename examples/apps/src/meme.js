@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // visually distinct from CHOSEN (a card a human clicked) — the accent is never worn by a machine
 // decision (doctrine 5) — and so the slate carries an escape hatch (doctrine 4).
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Meme's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -505,3 +508,35 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `meme_run` runs the SAME start() the "Meme it" button runs — concepts are written and the
+// recommended one is DRAWN (deterministic SVG) live in the DOM — then returns the concepts.
+exposeToGod({
+  name: "meme_run",
+  description: "Write meme concepts for a topic (or brand angle) and draw the recommended one on the page. Returns the concepts (format + captions).",
+  inputSchema: { topic: "string — the topic or angle to meme. Required." },
+  execute: async ({ topic } = {}) => {
+    const val = String(topic || "").trim();
+    if (!val) throw new Error("nothing to meme — pass { topic } with the topic or angle");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Meme isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold-open; start() early-returns while a run is in flight,
+    // so wait for idle, run, and confirm the settled run is OURS (same input) before returning.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);
+      await start(val);
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && ((r.concepts && r.concepts.length) || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const drafted = (r.concepts || []).find((c) => c.id === r.draftedId);
+        return {
+          concepts: (r.concepts || []).map((c) => ({ format: c.format, captions: c.captions, recommended: !!c.recommended })),
+          drawn: drafted ? { format: drafted.format, captions: drafted.captions } : null,
+        };
+      }
+    }
+    throw new Error("Meme stayed busy — try again");
+  },
+});

@@ -1,0 +1,20 @@
+{
+  "id": "polish",
+  "name": "Polish",
+  "tagline": "Proofread and clarify — your voice intact.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/polish.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

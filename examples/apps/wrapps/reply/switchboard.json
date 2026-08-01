@@ -1,0 +1,20 @@
+{
+  "id": "reply",
+  "name": "Reply",
+  "tagline": "Three replies to any message — concise, warm, firm.",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/reply.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

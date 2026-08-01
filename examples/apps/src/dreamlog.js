@@ -12,6 +12,9 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // The shared decision atom. optionCards() keeps the accent for a human click and renders the
 // model's pick as a neutral DRAFT; its `escape` option is the way out of the menu. (doctrine 4 + 5)
 import { optionCards } from "./kit/ui.js";
+// God's hands: expose Dreamlog's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -429,3 +432,32 @@ function render() {
   view.append(col);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `dreamlog_run` runs the SAME start() the "Interpret" button runs — lenses are proposed and the
+// recommended one is written, live in the DOM — then returns the finished reading for God to speak.
+exposeToGod({
+  name: "dreamlog_run",
+  description: "Interpret a dream. Writes the reading live on the page and returns it.",
+  inputSchema: { dream: "string — the dream to interpret, in the dreamer's own words. Required." },
+  execute: async ({ dream } = {}) => {
+    const val = String(dream || "").trim();
+    if (!val) throw new Error("nothing to interpret — pass { dream } with the dream to read");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Dreamlog isn't connected to Switchboard yet");
+    // God may call DURING the context-first cold-open; start() early-returns while a run is in flight,
+    // so wait for idle, run, and confirm the settled run is OURS (same input) before returning.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);
+      await start(val);
+      await waitFor(() => !running, 180000);
+      const r = state.run || {};
+      if (r.input === val && (r.reading || r.error)) {
+        if (r.error) throw new Error(r.error);
+        const lens = (r.lenses || []).find((l) => l.id === r.selectedId);
+        return { reading: r.reading, lens: lens ? lens.label : null };
+      }
+    }
+    throw new Error("Dreamlog stayed busy — try again");
+  },
+});

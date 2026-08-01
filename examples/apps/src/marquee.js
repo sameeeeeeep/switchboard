@@ -6,6 +6,9 @@
 //
 // Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// God's hands: expose Marquee's generate step as a page-tool the native God webview (or any WebMCP
+// host) can DRIVE — reusing the same start() a click runs.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -354,3 +357,34 @@ function render() {
   }
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `marquee_build` runs the SAME start() a one-line-and-go click runs — the full scroll-driven landing
+// page writes itself into the live preview and the hero is painted on the user's Higgsfield — then
+// returns the page HTML for God. Refining the page is a follow-on human act and stays out of this tool.
+exposeToGod({
+  name: "marquee_build",
+  description: "Build a cinematic scrolling landing page from one line: writes a complete self-contained HTML page into the live preview and paints its hero on your Higgsfield. Returns the page HTML.",
+  inputSchema: { brief: "string — one line on what the landing page is for. Required." },
+  execute: async ({ brief } = {}) => {
+    const val = String(brief || "").trim();
+    if (!val) throw new Error("nothing to build — pass { brief } with one line on what the page is for");
+    // God may call before connect finishes, and while the context-first cold-open is still writing
+    // the page and painting the hero. paintHero runs after generate WITHOUT the running flag, so treat
+    // a non-empty status as busy too — wait for connect, then for the page AND hero to settle.
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Marquee isn't connected to Switchboard yet");
+    const idle = () => !running && !(state.run && state.run.status);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(idle, 180000);                 // let any in-flight write + hero paint finish first
+      await start(val);                            // generate → paintHero
+      await waitFor(idle, 180000);                  // and ensure the page wrote and the hero settled
+      const r = state.run || {};
+      if (r.input === val && (r.html || r.error)) {
+        if (r.error) throw new Error(r.error);
+        return { html: r.html, heroUrl: r.heroUrl || null };
+      }
+    }
+    throw new Error("Marquee stayed busy — try again");
+  },
+});

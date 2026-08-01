@@ -1,0 +1,20 @@
+{
+  "id": "meetnotes",
+  "name": "Meeting Notes",
+  "tagline": "Paste a transcript — get notes + action items.",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/meetnotes.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

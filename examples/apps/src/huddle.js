@@ -10,6 +10,9 @@ import { mountSpeaker } from "./kit/speaker.js";
 // The shared decision atoms. optionCards() keeps the accent for a human click and renders the
 // model's ★ as a neutral DRAFT; escapeHatch() is the way out of the menu. (doctrine 4 + 5)
 import { optionCards, escapeHatch } from "./kit/ui.js";
+// God's hands: expose Huddle's one action as a page-tool so the native God webview (or any WebMCP
+// host) can DRIVE the call — reusing the same ask() the composer runs, so the user watches it happen.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -423,3 +426,33 @@ function render() {
   if (!running) setTimeout(() => input.focus(), 30);
 }
 render();
+
+// ---- God's hand: one page-tool, driving the real call -------------------------------------------
+// `huddle_ask` runs the SAME ask() the composer runs — the message goes to the warm claude_session
+// grounded in the lent context (and any bound folder), the reply streams into the transcript and is
+// spoken on-device — then returns Claude's reply. Reused as-is by the native God webview and WebMCP.
+exposeToGod({
+  name: "huddle_ask",
+  description: "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
+  inputSchema: { message: "string — what to say to the call. Required." },
+  execute: async ({ message } = {}) => {
+    const line = String(message || "").trim();
+    if (!line) throw new Error("nothing to say — pass { message } with what to ask the call");
+    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+    if (!await waitFor(() => !!relay, 6000)) throw new Error("Huddle isn't connected to Switchboard yet");
+    // God may call DURING the cold open (openCall asks the ★ opener on its own). ask() early-returns
+    // while a turn is in flight, so wait for idle, ask, wait for idle, and read the reply we produced.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => !running, 180000);   // let any in-flight turn (incl. the cold-open ★) finish
+      const before = session.turns.length;
+      await ask(line);                          // reuses the call's own turn pipeline, awaited
+      await waitFor(() => !running, 180000);
+      if (session.error) throw new Error(session.error);
+      const last = session.turns[session.turns.length - 1];
+      if (session.turns.length > before && last && last.role === "assistant" && !last.pending && last.text) {
+        return { reply: last.text };
+      }
+    }
+    throw new Error("Huddle stayed busy — try again");
+  },
+});
