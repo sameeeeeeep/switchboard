@@ -16,6 +16,7 @@ const CFG = {
   studio:    { name: "Studio",    cat: "founder-stack", count: (d) => d.querySelectorAll("#look-cards .look:not(.skeleton)").length },
   reel:      { name: "Reel",      cat: "founder-stack", count: (d) => d.querySelectorAll(".q-card.scene").length || (/the scenes/i.test(txt(d)) ? 1 : 0) },
   marquee:   { name: "Marquee",   cat: "founder-stack", count: (d) => { const f = d.getElementById("mq-frame"); return f && ((f.srcdoc || f.getAttribute("srcdoc") || "").length > 60) ? 1 : 0; } },
+  canvas:    { name: "Canvas",     cat: "tool", count: (d) => { const f = d.getElementById("cv-frame") || d.querySelector("iframe"); return f && ((f.srcdoc || f.getAttribute("srcdoc") || "").length > 60) ? 1 : 0; } },
   take:      { name: "Take",      cat: "founder-stack", count: (d) => /the script/i.test(txt(d)) ? d.querySelectorAll("#view .opt").length || 1 : 0 },
   identity:  { name: "Identity",  cat: "founder-stack", count: (d) => d.querySelectorAll("#view .q-card .opt, #view .opt").length },
   batch:     { name: "Batch",     cat: "founder-stack", count: (d) => d.querySelectorAll("#view .q-card").length },
@@ -59,7 +60,7 @@ const CFG = {
   snap:        { name: "Snap Answer", cat: "skill", count: (d) => skillDone(d) },
   recap:       { name: "Recap",       cat: "skill", count: (d) => skillDone(d) },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap"];
+const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);

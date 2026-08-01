@@ -28,6 +28,7 @@ const WRAPPS = [
   { id: "studio", html: "studio.html", cat: "founder-stack" },
   { id: "reel", html: "reel.html", cat: "founder-stack" },
   { id: "marquee", html: "marquee.html", cat: "founder-stack" },
+  { id: "canvas", html: "canvas.html", cat: "tool" },
   { id: "take", html: "take.html", cat: "founder-stack" },
   { id: "identity", html: "identity.html", cat: "founder-stack" },
   { id: "batch", html: "batch.html", cat: "founder-stack" },
