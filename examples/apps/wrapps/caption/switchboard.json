@@ -1,0 +1,20 @@
+{
+  "id": "caption",
+  "name": "Caption",
+  "tagline": "Social captions with hashtags — five options, one pick",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/caption.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "titles",
+  "name": "Titles",
+  "tagline": "Headline and title options you can A/B",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/titles.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

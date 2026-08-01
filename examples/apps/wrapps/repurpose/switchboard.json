@@ -1,0 +1,20 @@
+{
+  "id": "repurpose",
+  "name": "Repurpose",
+  "tagline": "One piece of content, tuned for every channel",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/repurpose.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

@@ -73,8 +73,13 @@ const CFG = {
   spellout: { name: "Spellout", cat: "skill", count: (d) => skillDone(d) },
   clipfix: { name: "Clip Doctor", cat: "skill", count: (d) => skillDone(d) },
   convert: { name: "Convert", cat: "skill", count: (d) => skillDone(d) },
+  hooks: { name: "Hooks", cat: "skill", count: (d) => skillDone(d) },
+  repurpose: { name: "Repurpose", cat: "skill", count: (d) => skillDone(d) },
+  caption: { name: "Caption", cat: "skill", count: (d) => skillDone(d) },
+  titles: { name: "Titles", cat: "skill", count: (d) => skillDone(d) },
+  outline: { name: "Outline", cat: "skill", count: (d) => skillDone(d) },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert"];
+const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert", "hooks", "repurpose", "caption", "titles", "outline"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);

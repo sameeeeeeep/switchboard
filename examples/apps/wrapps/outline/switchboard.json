@@ -1,0 +1,20 @@
+{
+  "id": "outline",
+  "name": "Outline",
+  "tagline": "A clean structure for a post, talk, or doc",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/outline.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}

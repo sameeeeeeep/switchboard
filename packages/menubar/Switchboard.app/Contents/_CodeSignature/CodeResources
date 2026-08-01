@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		k4rErVEc/K6fYU84frlBmurnbSU=
+		Hn0fC4XrXZK9D8C9aNc4MCnwH2E=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -59,6 +59,10 @@
 		<key>Resources/icons/capp.png</key>
 		<data>
 		+T9wLium6nt1n2zBHcKCcsSTH7k=
+		</data>
+		<key>Resources/icons/caption.png</key>
+		<data>
+		FoCe+d72wIO2lJwQC+HVEIRQaiY=
 		</data>
 		<key>Resources/icons/cartridge.png</key>
 		<data>
@@ -128,6 +132,10 @@
 		<data>
 		2WiUzPJqZ+m9hnI+FI/Z9IMeWek=
 		</data>
+		<key>Resources/icons/hooks.png</key>
+		<data>
+		TRBc9A8v2U6uqjSWoi6Mg8XJ2jQ=
+		</data>
 		<key>Resources/icons/huddle.png</key>
 		<data>
 		ICZrVrvnkQujZavkxgzEkC1ryqk=
@@ -160,6 +168,10 @@
 		<data>
 		XS/xwE+5PW+eDMsO/IVI2/DV/N4=
 		</data>
+		<key>Resources/icons/outline.png</key>
+		<data>
+		VBC64yBmGJSDAcWEpY1kCYl6EY8=
+		</data>
 		<key>Resources/icons/polish.png</key>
 		<data>
 		GmbusiwgbOXXYyUxE66Mn3Alhg8=
@@ -191,6 +203,10 @@
 		<key>Resources/icons/reply.png</key>
 		<data>
 		EuCIqGEXU04fQrtNX/deohzYNFQ=
+		</data>
+		<key>Resources/icons/repurpose.png</key>
+		<data>
+		Hfl0JWPlD/1klls1PZJlSGrn+jE=
 		</data>
 		<key>Resources/icons/retail.png</key>
 		<data>
@@ -228,6 +244,10 @@
 		<data>
 		tdEwWC3xCVmoDzImGOWxsPMGgaA=
 		</data>
+		<key>Resources/icons/titles.png</key>
+		<data>
+		lwv8pBSazCv3bdjGr4rQ4pxRKhE=
+		</data>
 		<key>Resources/icons/translate.png</key>
 		<data>
 		H/Y88QUA2gAQTmwtskejpGeJ1Ns=
@@ -247,7 +267,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			9xMSVaRtPyVdShzkbY/OJZrn10UEgh7wJqboERZwly8=
+			oUy5KG8f7E4YTFKeeUPOqcysZJTlg7+nQXeqEwbetRI=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -339,6 +359,13 @@
 			<key>hash2</key>
 			<data>
 			gDq4QLJS7lL9u/LofiJkHPsQZbm9pybd7opEQchf5ck=
+			</data>
+		</dict>
+		<key>Resources/icons/caption.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			RjXenbcQxVGy2sNlMgWMgRDqet8e/VSf4qVi25xllM4=
 			</data>
 		</dict>
 		<key>Resources/icons/cartridge.png</key>
@@ -460,6 +487,13 @@
 			K8Vzd5XW4ggJMOQTiJSGoucD5ZNSOZq6jQkIjjEL7wY=
 			</data>
 		</dict>
+		<key>Resources/icons/hooks.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			98o6k+ptYN689/78OtCbRb0gRZg3PyLPYcBPzoMH+uA=
+			</data>
+		</dict>
 		<key>Resources/icons/huddle.png</key>
 		<dict>
 			<key>hash2</key>
@@ -516,6 +550,13 @@
 			V4nvcfG30XlwqM8tYFrmAhL2ow4Jm0HCHra+R69nyXk=
 			</data>
 		</dict>
+		<key>Resources/icons/outline.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			wLyfnU8jLBrzPnzPzUP3tsU/dROCP31FskTTZtO/zYY=
+			</data>
+		</dict>
 		<key>Resources/icons/polish.png</key>
 		<dict>
 			<key>hash2</key>
@@ -570,6 +611,13 @@
 			<key>hash2</key>
 			<data>
 			JxsTBeTm/fyUeBnXenVOlu51KNo0O/4SZ6HOmuOhYuM=
+			</data>
+		</dict>
+		<key>Resources/icons/repurpose.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			fkfYg4zqGMJ5vtIwueSjXuAFqy4MpxQPClfZEsLl4n8=
 			</data>
 		</dict>
 		<key>Resources/icons/retail.png</key>
@@ -633,6 +681,13 @@
 			<key>hash2</key>
 			<data>
 			4pYLM3D6ebH4OphTxDJJMZFO3NknWPeVfzX/PDDYDVg=
+			</data>
+		</dict>
+		<key>Resources/icons/titles.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			9YAEYG88Rk4C+64BYquZQpQvEMNPrWwtBp5EvZPW6Ik=
 			</data>
 		</dict>
 		<key>Resources/icons/translate.png</key>

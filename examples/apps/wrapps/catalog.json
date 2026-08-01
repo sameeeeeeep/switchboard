@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 57,
+  "count": 62,
   "listings": [
     {
       "id": "bank",
@@ -798,6 +798,26 @@
       ]
     },
     {
+      "id": "caption",
+      "name": "Caption",
+      "tagline": "Social captions with hashtags — five options, one pick",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/caption.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "clipfix",
       "name": "Clip Doctor",
       "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
@@ -1018,6 +1038,26 @@
       ]
     },
     {
+      "id": "hooks",
+      "name": "Hooks",
+      "tagline": "Scroll-stopping opening lines for posts, videos, and emails",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/hooks.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "nameit",
       "name": "Name It",
       "tagline": "Six strong name options, each with a rationale.",
@@ -1026,6 +1066,26 @@
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/nameit.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "outline",
+      "name": "Outline",
+      "tagline": "A clean structure for a post, talk, or doc",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/outline.html"
         }
       },
       "surfaces": [
@@ -1138,6 +1198,26 @@
       ]
     },
     {
+      "id": "repurpose",
+      "name": "Repurpose",
+      "tagline": "One piece of content, tuned for every channel",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/repurpose.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "shell",
       "name": "Shell",
       "tagline": "A task into the exact shell command, every flag explained",
@@ -1206,6 +1286,26 @@
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/steps.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "name": "Titles",
+      "tagline": "Headline and title options you can A/B",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/titles.html"
         }
       },
       "surfaces": [
