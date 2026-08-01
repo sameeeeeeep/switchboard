@@ -83,8 +83,11 @@ app is a skin; the intelligence *and the gate* are the broker's. Full spec: [`do
 
 **The wrapp store** lives in the menu bar too — a modal that lists every wrapp (web and native), shows
 what each **needs** before it runs (live-diffed against your setup), and launches it on the right
-surface: open in a browser, **activate a skill into God**, or run a workflow headless — every launch
-through the same gate. The source of truth is a per-repo `switchboard.json`, ingested into one catalog.
+surface: open in a browser or run a workflow headless — every launch through the same gate. God can
+also **drive** a wrapp live: each wrapp exposes its actions as page-tools (`<id>_run`), so God runs
+one on your real Claude and the result lands as a notch widget. (Loading a skill *into* God's own
+context — so it gains the ability rather than driving the page — is designed, next up.) The source of
+truth is a per-repo `switchboard.json`, ingested into one catalog.
 Download the signed, notarized app from
 [**Releases**](https://github.com/sameeeeeeep/switchboard/releases/latest). Spec:
 [`docs/WRAPP-STORE-MODAL.md`](docs/WRAPP-STORE-MODAL.md).
@@ -142,7 +145,7 @@ no injection into the page). Packs are a data registry — adding one is one ent
 | [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
 | [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
 | [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS) |
+| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS); the flagships **Canvas / Meeting Notes / Cut**; and a **32-skill shelf** (daily · dev/utility · creator · founder), each a single-input skill that runs on your Claude and is God-drivable. 65 listings total. |
 | [`examples/flow`](examples/flow) | **Flow** — the native dictation app (menu-bar Swift + notarized DMG); the "beyond the browser" demo |
 | [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
 
