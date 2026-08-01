@@ -87,6 +87,9 @@ const WRAPPS = [
   { id: "caption", html: "caption.html", cat: "skill" },
   { id: "titles", html: "titles.html", cat: "skill" },
   { id: "outline", html: "outline.html", cat: "skill" },
+  { id: "standup", html: "standup.html", cat: "skill" },
+  { id: "objection", html: "objection.html", cat: "skill" },
+  { id: "coldemail", html: "coldemail.html", cat: "skill" },
 ];
 
 const HARNESS_JSON = JSON.stringify(PROJECTS);

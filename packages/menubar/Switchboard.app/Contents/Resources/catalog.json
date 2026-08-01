@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 62,
+  "count": 65,
   "listings": [
     {
       "id": "bank",
@@ -838,6 +838,26 @@
       ]
     },
     {
+      "id": "coldemail",
+      "name": "Cold Email",
+      "tagline": "A target and an ask into a short, non-cringe cold email",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/coldemail.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "commit",
       "name": "Commit",
       "tagline": "A diff into a Conventional Commits message",
@@ -1078,6 +1098,26 @@
       ]
     },
     {
+      "id": "objection",
+      "name": "Objection",
+      "tagline": "A sales or investor objection into a calm, honest response",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/objection.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
       "id": "outline",
       "name": "Outline",
       "tagline": "A clean structure for a post, talk, or doc",
@@ -1266,6 +1306,26 @@
         "ui": {
           "kind": "web",
           "url": "http://localhost:5188/spellout.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ]
+    },
+    {
+      "id": "standup",
+      "name": "Standup",
+      "tagline": "Notes or commits into a crisp standup update",
+      "category": "skill",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/standup.html"
         }
       },
       "surfaces": [

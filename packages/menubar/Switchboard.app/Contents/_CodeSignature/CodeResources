@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		Hn0fC4XrXZK9D8C9aNc4MCnwH2E=
+		njHoaSYxy1+y/9xCV0zlCC183Tk=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -75,6 +75,10 @@
 		<key>Resources/icons/clipfix.png</key>
 		<data>
 		nVQ7+C3ygtNE7oJ9DCzy5/pMy3Y=
+		</data>
+		<key>Resources/icons/coldemail.png</key>
+		<data>
+		/a43hrhJ6LoKx0HwCAnm/qR4N6s=
 		</data>
 		<key>Resources/icons/commit.png</key>
 		<data>
@@ -168,6 +172,10 @@
 		<data>
 		XS/xwE+5PW+eDMsO/IVI2/DV/N4=
 		</data>
+		<key>Resources/icons/objection.png</key>
+		<data>
+		Eihnqt/DiIxpD84fkFto4UZFHT4=
+		</data>
 		<key>Resources/icons/outline.png</key>
 		<data>
 		VBC64yBmGJSDAcWEpY1kCYl6EY8=
@@ -232,6 +240,10 @@
 		<data>
 		2w9qlfw1iaB8zkriMIyrpRh+1kg=
 		</data>
+		<key>Resources/icons/standup.png</key>
+		<data>
+		givq4JlAgrGYFDDv51pPz0zCSao=
+		</data>
 		<key>Resources/icons/steps.png</key>
 		<data>
 		ILKMWAAJQhL8ozq837kMgQ73qvg=
@@ -267,7 +279,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			oUy5KG8f7E4YTFKeeUPOqcysZJTlg7+nQXeqEwbetRI=
+			3hOZFU3Wfxe5oN6ZVdNHMSVkc0/Fvz+q2Lq7MmzC0xE=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -387,6 +399,13 @@
 			<key>hash2</key>
 			<data>
 			e+aVjTeVGR954rnShgsuV/iqLq3DuBYeWbP7IfjdTRk=
+			</data>
+		</dict>
+		<key>Resources/icons/coldemail.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			v/bBwcyFIhrxg2iDQ1jYJJACVRy+/pTMr4nkp/Qhd10=
 			</data>
 		</dict>
 		<key>Resources/icons/commit.png</key>
@@ -550,6 +569,13 @@
 			V4nvcfG30XlwqM8tYFrmAhL2ow4Jm0HCHra+R69nyXk=
 			</data>
 		</dict>
+		<key>Resources/icons/objection.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			e5RQqEac9HK7eZ6jUf9GMctQptCG/MMyH4NCtim0ZZs=
+			</data>
+		</dict>
 		<key>Resources/icons/outline.png</key>
 		<dict>
 			<key>hash2</key>
@@ -660,6 +686,13 @@
 			<key>hash2</key>
 			<data>
 			x42X5MakrqWZlWBLD53JGZrsNxBsSR/rW2xlSvWVP6M=
+			</data>
+		</dict>
+		<key>Resources/icons/standup.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			dMD8j0SEMzDk5AXVf+8gO35AOb4oqlZK9CfKodMXjqI=
 			</data>
 		</dict>
 		<key>Resources/icons/steps.png</key>

@@ -1,0 +1,20 @@
+{
+  "id": "coldemail",
+  "name": "Cold Email",
+  "tagline": "A target and an ask into a short, non-cringe cold email",
+  "category": "skill",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/coldemail.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ]
+}
