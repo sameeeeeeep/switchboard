@@ -1103,7 +1103,7 @@ struct Panel: View {
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("shortcuts", "KEYBOARD SHORTCUTS", summary: shortcutSummary, warn: !AXIsProcessTrusted()) { shortcutsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            disclosure("region", "WHAT GOD SEES", summary: model.regionSelect ? "Drag to select" : "Whole screen") { regionSection }
+            disclosure("region", "WHAT GOD SEES", summary: "fn-click · fn-drag · drop") { regionSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
@@ -1291,24 +1291,24 @@ struct Panel: View {
         return "\(s / 3600)h ago"
     }
 
-    // ⌃⌃ REGION — when on, summoning God lets you drag a rectangle; only that part of the screen is sent.
+    // ⌃⌃ CAPTURE — capture is explicit + fn-gated now, so the pointer stays free while you talk. This is
+    // just the legend for what you can do during a ⌃⌃: nothing (whole screen), fn+click, fn+drag, or drop.
+    private func captureRow(_ icon: String, _ title: String, _ sub: String) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: icon).font(.system(size: 13)).foregroundColor(.inkDim).frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Text(sub).font(.hanken(10.5)).foregroundColor(.inkFaint)
+            }
+            Spacer(minLength: 6)
+        }
+    }
     private var regionSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Button(action: { onSetRegion(!model.regionSelect) }) {
-                HStack(spacing: 11) {
-                    Image(systemName: model.regionSelect ? "rectangle.dashed" : "rectangle.inset.filled")
-                        .font(.system(size: 13)).foregroundColor(model.regionSelect ? .lime : .inkDim).frame(width: 18)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.regionSelect ? "Drag to select" : "Whole screen").font(.hanken(13, .semibold)).foregroundColor(.ink)
-                        Text(model.regionSelect ? "On ⌃⌃: drag a box · click = whole screen · esc = none." : "God sees your full screen on ⌃⌃.")
-                            .font(.hanken(10.5)).foregroundColor(.inkFaint)
-                    }
-                    Spacer(minLength: 6)
-                    RoundedRectangle(cornerRadius: 11).fill(model.regionSelect ? Color.lime : Color.edge).frame(width: 38, height: 22)
-                        .overlay(Circle().fill(Color.page).frame(width: 16, height: 16).offset(x: model.regionSelect ? 8 : -8))
-                        .animation(.easeOut(duration: 0.15), value: model.regionSelect)
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 10) {
+            captureRow("rectangle.inset.filled", "Just talk", "God sees your whole screen — the default.")
+            captureRow("cursorarrow.click", "fn + click", "Grab the whole screen, deliberately.")
+            captureRow("rectangle.dashed", "fn + drag", "Rubber-band a region of the screen.")
+            captureRow("doc.badge.plus", "Drop a file on the notch", "Give God a file as reference while you talk.")
         }
     }
 
@@ -1892,12 +1892,22 @@ struct GodStatusDrop: View {
     let label: String
     let accent: Color
     let pattern: DotMatrix.Pattern
+    var fileRef: String? = nil   // a dropped reference file — shown as a chip BELOW the phase, inside the notch
     var body: some View {
-        HStack(spacing: 12) {
-            Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
-            DotMatrix(pattern: pattern, accent: accent)
+        VStack(spacing: 7) {
+            HStack(spacing: 12) {
+                Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
+                DotMatrix(pattern: pattern, accent: accent)
+            }
+            if let f = fileRef {
+                HStack(spacing: 5) {
+                    Image(systemName: "paperclip").font(.system(size: 9, weight: .semibold)).foregroundColor(.lime)
+                    Text(f).font(.hanken(10.5, .medium)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.middle)
+                }
+                .frame(maxWidth: 240)
+            }
         }
-        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 15)
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, fileRef == nil ? 15 : 12)
         .frame(minWidth: 130)
         .padding(.horizontal, 14)   // room for the notch "ears" (the shape flares to full width at top)
         .background(Color.page)
@@ -2181,6 +2191,78 @@ final class NoInsetHostingView<V: View>: NSHostingView<V> {
     override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
 }
 
+// The FULL NOTCH as a DROP TARGET: while you talk to God, a drop-zone panel spans the notch so you can
+// drag a file onto it (a normal, no-fn drag) — God's next ⌃⌃ gets it as reference (the GOD_FILE plumbing).
+// A plain NSView (not a SwiftUI hosting view) for reliable drag hit-testing. Faint dashed hint; lights up
+// lime when a file is over it. onDrop fires with the dropped path.
+final class FileDropView: NSView {
+    var onDrop: ((String) -> Void)?
+    var visualWidth: CGFloat = 0   // draw the notch outline this wide, centered; the whole view is the (wider) drop target
+    var attached = false { didSet { needsDisplay = true } }   // a file is in → hide the border but keep the hit area (drop another to replace)
+    private var hot = false
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Accept both modern file URLs AND the legacy filenames type — Dock stacks (Downloads) and some
+        // sources hand files over as one or the other; registering only .fileURL missed them.
+        registerForDraggedTypes([.fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType")])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    private func fileURLs(_ s: NSDraggingInfo) -> [URL] {
+        let pb = s.draggingPasteboard
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { return urls }
+        if let names = pb.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String], !names.isEmpty { return names.map { URL(fileURLWithPath: $0) } }
+        return []
+    }
+    override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation {
+        let ok = !fileURLs(s).isEmpty
+        hot = ok; needsDisplay = true; return ok ? .copy : []   // NO NSApp.activate — that silenced the global ⌃⌃ monitor
+    }
+    override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { fileURLs(s).isEmpty ? [] : .copy }
+    override func draggingExited(_ s: NSDraggingInfo?) { hot = false; needsDisplay = true }
+    override func prepareForDragOperation(_ s: NSDraggingInfo) -> Bool { !fileURLs(s).isEmpty }
+    override func performDragOperation(_ s: NSDraggingInfo) -> Bool {
+        hot = false; needsDisplay = true
+        guard let u = fileURLs(s).first else { return false }
+        onDrop?(u.path); return true
+    }
+    // The NOTCH silhouette (NotchDropShape ported to NSView coords, y-up): flat top flush to the menubar,
+    // concave "ears" flaring in at the top corners, straight sides, convex rounded bottom. The stroke omits
+    // the top edge (it sits against the bar). So the drop hint reads as a dashed twin of the notch itself.
+    private func notchPath(closed: Bool) -> NSBezierPath {
+        let vw = visualWidth > 40 ? min(visualWidth, bounds.width) : bounds.width
+        let ox = (bounds.width - vw) / 2   // centre the notch outline within the wider hit area
+        let w = vw, h = bounds.height
+        let e = min(14, w / 2), b = min(20, (w - 2 * e) / 2)
+        func q(_ p: NSBezierPath, _ to: NSPoint, _ c: NSPoint) { p.curve(to: to, controlPoint1: c, controlPoint2: c) }
+        func P(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: ox + x, y: y) }   // ox centres it in the hit area
+        let p = NSBezierPath()
+        p.move(to: P(w, h))                                   // top-right (on the bar)
+        q(p, P(w - e, h - e), P(w - e, h))                    // right ear: curves down & in
+        p.line(to: P(w - e, b))                              // right side (inset by the ear)
+        q(p, P(w - e - b, 0), P(w - e, 0))                    // convex bottom-right
+        p.line(to: P(e + b, 0))                             // bottom edge
+        q(p, P(e, b), P(e, 0))                                // convex bottom-left
+        p.line(to: P(e, h - e))                             // left side
+        q(p, P(0, h), P(e, h))                                // left ear: curves up & out
+        if closed { p.line(to: P(w, h)); p.close() }         // add the top only for the fill
+        return p
+    }
+    override func draw(_ dirty: NSRect) {
+        if attached && !hot { return }   // a file is in — no visible border, but the hit area stays live for a replacement
+        if hot { NSColor(srgbRed: 0.78, green: 0.95, blue: 0.31, alpha: 0.18).setFill(); notchPath(closed: true).fill() }
+        let outline = notchPath(closed: false)
+        NSColor(srgbRed: 0.78, green: 0.95, blue: 0.31, alpha: hot ? 0.95 : 0.30).setStroke()
+        outline.lineWidth = hot ? 2 : 1.2
+        outline.setLineDash([5, 4], count: 2, phase: 0); outline.stroke()
+    }
+}
+
+// A panel that can become key so it reliably receives a drag from another app (Finder). Non-activating
+// still — normal clicks don't steal focus; only a file drag (which calls NSApp.activate above) does.
+final class DropPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 // ---------- app shell ----------
 @MainActor
 // God wants to DO something irreversible — the notch consent drop (notch-native). Everything else
@@ -2232,7 +2314,10 @@ struct ActionConsentDrop: View {
     private var regionMonitors: [Any] = []
     private var regionStart: NSPoint?
     private var regionMoved = false
-    private var regionCommitted: RegionPick = .full   // whole screen unless you draw a box
+    private var fnCaptureActive = false               // an fn+click/fn+drag capture gesture is in progress
+    private var lastGodCaptureIntentional = false     // the last ⌃⌃ did an explicit fn capture → usable as an image reference
+    private var regionCommitted: RegionPick = .full   // whole screen unless an fn gesture picks a region
+    private var notchDropPanel: NSPanel?              // the full-notch file drop zone, live during listening
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
     private var hosting: NSHostingView<Panel>!
@@ -2260,8 +2345,10 @@ struct ActionConsentDrop: View {
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
+    private var godStatusFileRef: String?         // filename of the dropped reference shown in the pill (re-render when it changes)
     private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
+    private var godAttachedFile: String?          // a file the user attached for God — the NEXT ⌃⌃ passes it as GOD_FILE, then it clears (one-shot)
     private var clickMonitor: Any?
     private var hotKeyMonitor: Any?
     private var eventTap: CFMachPort?
@@ -2641,16 +2728,27 @@ struct ActionConsentDrop: View {
         previews.submenu = sub
         menu.addItem(previews)
         menu.addItem(.separator())
-        // Capture scope — what ⌃⌃ sends God (the user's "different capture options" ask). Region /
-        // full-screen flip the persisted god-region flag; drawing/annotate is honestly marked soon.
+        // Capture is explicit + fn-gated now (pointer stays free to drop a file). This submenu is just a
+        // legend for the gestures you can do during a ⌃⌃; annotate-the-grab is honestly marked soon.
         let capture = NSMenuItem(title: "What God sees", action: nil, keyEquivalent: "")
         let csub = NSMenu()
-        let region = NSMenuItem(title: "Drag a region", action: #selector(captureRegionItem), keyEquivalent: ""); region.target = self; region.state = model.regionSelect ? .on : .off
-        let full = NSMenuItem(title: "Whole screen", action: #selector(captureFullItem), keyEquivalent: ""); full.target = self; full.state = model.regionSelect ? .off : .on
-        let draw = NSMenuItem(title: "Annotate / draw — coming soon", action: nil, keyEquivalent: ""); draw.isEnabled = false
-        csub.addItem(region); csub.addItem(full); csub.addItem(.separator()); csub.addItem(draw)
+        for line in ["Just talk → whole screen", "fn + click → grab whole screen", "fn + drag → grab a region", "Drop a file on the notch → reference"] {
+            let it = NSMenuItem(title: line, action: nil, keyEquivalent: ""); it.isEnabled = false; csub.addItem(it)
+        }
+        csub.addItem(.separator())
+        let draw = NSMenuItem(title: "Annotate the grab — coming soon", action: nil, keyEquivalent: ""); draw.isEnabled = false
+        csub.addItem(draw)
         capture.submenu = csub
         menu.addItem(capture)
+        // A FILE as context for God's next ⌃⌃ (the file analog of "make an image like THIS") is attached by
+        // DRAGGING it onto the notch — not a picker. When one's staged, show it here with a way to clear.
+        if let f = godAttachedFile {
+            let cur = NSMenuItem(title: "Reference file: \((f as NSString).lastPathComponent) — click to clear", action: #selector(clearAttachedFileForGod), keyEquivalent: ""); cur.target = self
+            menu.addItem(cur)
+        } else {
+            let hint = NSMenuItem(title: "Drop a file on the notch to give God a reference", action: nil, keyEquivalent: ""); hint.isEnabled = false
+            menu.addItem(hint)
+        }
         menu.addItem(.separator())
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
@@ -2661,6 +2759,30 @@ struct ActionConsentDrop: View {
         showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
     }
     @objc private func openPanelFromMenu() { openedByHover = false; showPanel() }
+
+    // Give God a FILE as context for the next ⌃⌃ (the file analog of the reference-image drive). Pick any
+    // file; god.mjs inlines text/PDF content into the prompt as UNTRUSTED reference data, or SEES an image.
+    // Stored, not consumed here — spawnGod passes it as GOD_FILE on the next task and clears it (one-shot).
+    // A file was DROPPED on the notch — stage it as the one-shot reference for God's next ⌃⌃. If a
+    // ⌃⌃ session is already listening, it rides THIS ask; otherwise the next one. A brief lime flash +
+    // toast confirms the drop landed (the user is usually mid-sentence, so make it visible).
+    @MainActor private func acceptDroppedFile(_ path: String) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        godAttachedFile = path
+        godLog("acceptDroppedFile: \(path)")
+        NSSound(named: "Tink")?.play()
+        // Hide the dashed border but KEEP the (invisible) hit area — drop another file to replace it.
+        (notchDropPanel?.contentView as? FileDropView)?.attached = true
+        if godListening {
+            updateGodStatusDrop(glowModel.state)         // re-render the Listening pill → the file chip shows below it
+        } else {
+            toast("Attached \((path as NSString).lastPathComponent) — God will use it")
+        }
+    }
+    @MainActor @objc private func clearAttachedFileForGod() {
+        godAttachedFile = nil
+        toast("Cleared attached file")
+    }
 
     // A picker over the whole installed catalog — every wrapp with a page (and thus an <id>_run tool)
     // is drivable. Grouped by category so 60+ listings stay navigable; each item carries its listing.
@@ -3351,7 +3473,8 @@ struct ActionConsentDrop: View {
             guard rec.record() else { throw NSError(domain: "god", code: 1, userInfo: [NSLocalizedDescriptionKey: "record() returned false"]) }
             NSSound(named: "Tink")?.play()
             recorder = rec; recWav = wav; godListening = true; setGlow(.listening)
-            if model.regionSelect { showRegionOverlay() }   // draw your region WHILE you talk
+            installCaptureGestureMonitors()   // pointer stays free; fn+click = full, fn+drag = region, drag a file = reference
+            showNotchDropZone()               // the full notch becomes a file-drop target while you talk
         } catch {
             godLog("mic capture failed: \(error.localizedDescription) — looking without voice")
             godListening = false; triggerGod(at: NSEvent.mouseLocation)
@@ -3365,10 +3488,12 @@ struct ActionConsentDrop: View {
         godListening = false
         NSSound(named: "Pop")?.play()
         recorder?.stop(); recorder = nil
-        // Consume whatever region you drew during listening (nil when the overlay wasn't up = whole screen).
-        let pick: RegionPick? = regionOverlay != nil ? regionCommitted : nil
-        hideRegionOverlay()
-        triggerGod(at: NSEvent.mouseLocation, audio: recWav, preselected: pick)
+        // What God sees is now EXPLICIT: only an fn grab shares the screen. A plain ⌃⌃ (no gesture) is
+        // voice-only — no screenshot at all — the screen is an opt-in reference, like a dropped file.
+        let pick: RegionPick? = regionCommitted
+        let grabbed = lastGodCaptureIntentional
+        hideRegionOverlay(); hideNotchDropZone()
+        triggerGod(at: NSEvent.mouseLocation, audio: recWav, preselected: pick, useScreen: grabbed)
     }
 
     // single ⌃ while God works → abort the loop. Must fully reset EVERY moving part (recorder, child
@@ -3376,7 +3501,7 @@ struct ActionConsentDrop: View {
     @MainActor private func cancelGod() {
         godLog("cancelled")
         NSSound(named: "Pop")?.play()
-        hideRegionOverlay()
+        hideRegionOverlay(); hideNotchDropZone()
         recorder?.stop(); recorder = nil; godListening = false
         godProc?.terminate(); godProc = nil
         godStateTimer?.invalidate()
@@ -3460,10 +3585,10 @@ struct ActionConsentDrop: View {
                     // The command God picked (registry), else the wrapp's single registered tool, else the
                     // <id>_run guess — listTools discovery corrects it either way, but this starts right.
                     let cmd = (a["command"] as? String) ?? l.tools?.first?.name ?? "\(id)_run"
-                    // Image-to-image: if the wrapp's tool declares a `reference` param AND the user captured
-                    // a REGION (a deliberate "make an image like THIS"), attach that ⌃⌃ capture as the reference.
+                    // Image-to-image: if the wrapp's tool declares a `reference` param AND the user made an
+                    // explicit fn capture this ⌃⌃ (a deliberate "make an image like THIS"), attach that grab.
                     let wantsRef = (l.tools?.first(where: { $0.name == cmd })?.inputSchema?["reference"]) != nil
-                    let ref = (wantsRef && model.regionSelect) ? lastCaptureAsDataURL() : nil
+                    let ref = (wantsRef && lastGodCaptureIntentional) ? lastCaptureAsDataURL() : nil
                     driveWrappLive(pageURL: resolveDriveURL(tool: cmd, fallback: base), tool: cmd, input: input, wrappName: l.name, reference: ref)
                 } else {
                     showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "Can't run “\(id)”", openLabel: "Open store",
@@ -3538,7 +3663,7 @@ struct ActionConsentDrop: View {
     // global click → handler) is proven. Every write it eventually makes still goes through the gate.
     // `preselected` carries the region/full the drag overlay committed during listening (nil = whole
     // screen). The overlay itself lives in the listening flow now, so this just captures + spawns.
-    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, preselected: RegionPick? = nil, skill: String? = nil) {
+    @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, preselected: RegionPick? = nil, skill: String? = nil, useScreen: Bool = true) {
         guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
         if let p = point, let screen = NSScreen.main {
             glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)
@@ -3552,8 +3677,8 @@ struct ActionConsentDrop: View {
         godRunning = true
         let shot = NSTemporaryDirectory() + "god-shot.jpg"
         try? FileManager.default.removeItem(atPath: shot)
-        captureShot(preselected ?? .full, to: shot)   // a dragged region, or the whole screen
-        spawnGod(shot: shot, point: point, audio: audio, instruction: instruction, node: node, god: god, skill: skill)
+        if useScreen { captureShot(preselected ?? .full, to: shot) }   // only when the user grabbed it (fn+click/drag)
+        spawnGod(shot: shot, point: point, audio: audio, instruction: instruction, node: node, god: god, skill: skill, useScreen: useScreen)
     }
 
     // The screenshot God reasons over: whole screen (with cursor), or just the dragged region (-R x,y,w,h).
@@ -3569,7 +3694,7 @@ struct ActionConsentDrop: View {
 
     // The proven pipeline: hand god.mjs the shot (GOD_IMAGE) → vision+persona → speak; poll god-state for
     // the notch phase; gate every write. Extracted so both the whole-screen and region paths share it.
-    @MainActor private func spawnGod(shot: String, point: CGPoint?, audio: String?, instruction: String?, node: String, god: String, skill: String? = nil) {
+    @MainActor private func spawnGod(shot: String, point: CGPoint?, audio: String?, instruction: String?, node: String, god: String, skill: String? = nil, useScreen: Bool = true) {
         setGlow(.thinking)
         godStateTimer?.invalidate()
         godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -3584,7 +3709,8 @@ struct ActionConsentDrop: View {
         var env = ProcessInfo.processInfo.environment
         env["GOD_ATTACH"] = "1"
         env["GOD_AUTONOMY"] = "auto"
-        env["GOD_IMAGE"] = shot
+        // No screen unless the user explicitly grabbed one (fn+click/drag). A plain ⌃⌃ is voice-only.
+        if useScreen { env["GOD_IMAGE"] = shot } else { env["GOD_NO_SCREEN"] = "1" }
         if let audio = audio { env["GOD_AUDIO"] = audio }
         // A wrapp's skill worn inline: write the resolved skill body to a temp file and hand god.mjs the
         // path (GOD_SKILL). god.mjs folds it into the system prompt so God can actually DO the skill in
@@ -3595,6 +3721,14 @@ struct ActionConsentDrop: View {
                 env["GOD_SKILL"] = skillFile
             }
         }
+        // A file the user attached for God (the file analog of the screenshot): the NEXT ⌃⌃ hands god.mjs
+        // its path (GOD_FILE) — text folds into the prompt as untrusted reference data, an image is SEEN.
+        // One-shot: clear it after spawning so an attach applies to exactly the next task, not forever.
+        if let f = godAttachedFile, FileManager.default.fileExists(atPath: f) {
+            env["GOD_FILE"] = f
+            godLog("spawnGod: attaching file \(f)")
+        }
+        godAttachedFile = nil
         if let p = point, let screen = NSScreen.main, screen.frame.width > 0, screen.frame.height > 0 {
             let fx = (p.x - screen.frame.minX) / screen.frame.width
             let fy = (screen.frame.maxY - p.y) / screen.frame.height
@@ -3613,39 +3747,86 @@ struct ActionConsentDrop: View {
     // Ride a click-through selection overlay on top DURING listening, so you draw WHILE you talk. It
     // never takes focus (ignoresMouseEvents), so the ⌃-to-send monitor keeps firing; we watch the mouse
     // with GLOBAL monitors (same passive approach as ⌃⌃) and read `regionCommitted` when you tap ⌃.
-    @MainActor private func showRegionOverlay() {
-        guard regionOverlay == nil, let screen = NSScreen.main else { return }
-        let view = RegionSelectView(frame: NSRect(origin: .zero, size: screen.frame.size))
-        let win = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        win.isOpaque = false; win.backgroundColor = .clear; win.hasShadow = false
-        win.level = .screenSaver; win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        win.ignoresMouseEvents = true               // click-through → never steals focus from your work
-        win.contentView = view
-        win.setFrame(screen.frame, display: true)
-        win.orderFrontRegardless()
-        regionOverlay = win; regionView = view
-        regionStart = nil; regionMoved = false; regionCommitted = .full
-
+    // Capture is EXPLICIT and fn-gated now, so ⌃⌃ leaves the pointer FREE — you can drag a file onto the
+    // notch WHILE talking (a normal, no-fn drag is left completely alone so it can be a file-drop). During
+    // listening we passively watch the mouse: fn+click grabs the WHOLE screen, fn+drag rubber-bands a
+    // region. No fn gesture at all → God just sees the full screen. The draw overlay only appears DURING
+    // an active fn+drag, so nothing sits over the notch to block a drop.
+    @MainActor private func installCaptureGestureMonitors() {
+        guard regionMonitors.isEmpty, let screen = NSScreen.main else { return }
+        regionStart = nil; regionMoved = false; regionCommitted = .full; fnCaptureActive = false; lastGodCaptureIntentional = false
         let toView: (NSPoint) -> NSPoint = { NSPoint(x: $0.x - screen.frame.minX, y: $0.y - screen.frame.minY) }
         func add(_ mask: NSEvent.EventTypeMask, _ h: @escaping (NSEvent) -> Void) {
             if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: h) { regionMonitors.append(m) }
         }
-        add(.leftMouseDown) { [weak self] _ in
+        add(.leftMouseDown) { [weak self] e in
             guard let self else { return }
-            self.regionStart = toView(NSEvent.mouseLocation); self.regionMoved = false; self.regionView?.setSel(.zero)
+            guard e.modifierFlags.contains(.function) else { return }   // no fn → free pointer (file-drop, clicks pass through)
+            self.fnCaptureActive = true
+            self.regionStart = toView(NSEvent.mouseLocation); self.regionMoved = false
+            self.ensureRegionOverlay(screen); self.regionView?.setSel(.zero)
         }
         add(.leftMouseDragged) { [weak self] _ in
-            guard let self, let s = self.regionStart else { return }
+            guard let self, self.fnCaptureActive, let s = self.regionStart else { return }
             let p = toView(NSEvent.mouseLocation)
             if hypot(p.x - s.x, p.y - s.y) > 6 { self.regionMoved = true }
             self.regionView?.setSel(NSRect(x: min(s.x, p.x), y: min(s.y, p.y), width: abs(p.x - s.x), height: abs(p.y - s.y)))
         }
         add(.leftMouseUp) { [weak self] _ in
-            guard let self, let v = self.regionView else { return }
-            if self.regionMoved, v.sel.width > 8, v.sel.height > 8 { self.regionCommitted = .region(v.captureRect()) }
-            else { self.regionCommitted = .full; v.setSel(v.bounds) }   // a click → whole screen (box around it)
+            guard let self, self.fnCaptureActive else { return }
+            self.fnCaptureActive = false
+            self.lastGodCaptureIntentional = true                        // an explicit grab → usable as an image reference
+            if self.regionMoved, let v = self.regionView, v.sel.width > 8, v.sel.height > 8 {
+                self.regionCommitted = .region(v.captureRect())          // fn+drag → that region
+            } else {
+                self.regionCommitted = .full                             // fn+click (no drag) → whole screen
+            }
+            self.regionOverlay?.orderOut(nil); self.regionOverlay = nil; self.regionView = nil
         }
         add(.keyDown) { [weak self] e in if e.keyCode == 53 { Task { @MainActor in self?.cancelGod() } } }   // Esc → cancel
+    }
+
+    // The full-notch DROP ZONE — a panel spanning the notch, live only while listening, so you can drag a
+    // file onto it as you talk. Faint dashed hint; lime when a file's over it. Drop → the one-shot GOD_FILE.
+    @MainActor private func showNotchDropZone() {
+        guard notchDropPanel == nil, let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        // A STANDALONE transparent overlay laid over the notch. Key lesson: the drop only takes when the
+        // hit area is GENEROUS (wider than the pill) — exactly overlapping the pill's window lost the drag.
+        // So the panel/hit-area is wide; the dashed NOTCH outline is DRAWN narrower + centred to match the
+        // pill visually. Its own window, above the pill, catches the file.
+        let pillW = (godStatusPanel?.isVisible == true && godStatusPanel.frame.width > 40) ? godStatusPanel.frame.width : 190
+        let hitW = pillW + 56, h: CGFloat = 50
+        let frame = NSRect(x: screen.frame.midX - hitW / 2, y: screen.frame.maxY - h, width: hitW, height: h)
+        let panel = DropPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
+        panel.level = .popUpMenu   // the level the drop worked at before
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        let view = FileDropView(frame: NSRect(x: 0, y: 0, width: hitW, height: h))
+        view.visualWidth = pillW
+        // A near-invisible fill over the WHOLE hit area — a clear window only receives a drop where it has
+        // opaque content, so without this the drop only lands on the drawn dashed lines (the bug you saw).
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
+        view.onDrop = { [weak self] path in Task { @MainActor in self?.acceptDroppedFile(path) } }
+        panel.contentView = view
+        panel.orderFrontRegardless()
+        notchDropPanel = panel
+    }
+    @MainActor private func hideNotchDropZone() { notchDropPanel?.orderOut(nil); notchDropPanel = nil }
+
+    // The draw surface for an fn+drag — created lazily (ONLY while a region is being dragged) so nothing
+    // sits over the notch during normal listening, which would block a file-drop. Click-through.
+    @MainActor private func ensureRegionOverlay(_ screen: NSScreen) {
+        guard regionOverlay == nil else { return }
+        let view = RegionSelectView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        let win = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        win.isOpaque = false; win.backgroundColor = .clear; win.hasShadow = false
+        win.level = .screenSaver; win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        win.ignoresMouseEvents = true
+        win.contentView = view
+        win.setFrame(screen.frame, display: true)
+        win.orderFrontRegardless()
+        regionOverlay = win; regionView = view
     }
 
     @MainActor private func hideRegionOverlay() {
@@ -3759,16 +3940,17 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor private func showGodStatus(_ label: String, accent: Color, pattern: DotMatrix.Pattern) {
-        // Same label already showing → do nothing, so the poll (every 0.25s) doesn't restart the
-        // waveform animation each tick. Only (re)build the drop when the phase actually changes.
-        if godStatusLabel == label, godStatusPanel?.isVisible == true { return }
-        godStatusLabel = label
+        // Same label AND same attached-file → do nothing, so the poll (every 0.25s) doesn't restart the
+        // waveform animation each tick. Re-render when the phase OR the dropped file changes.
+        let fileRef = godAttachedFile.map { ($0 as NSString).lastPathComponent }
+        if godStatusLabel == label, godStatusFileRef == fileRef, godStatusPanel?.isVisible == true { return }
+        godStatusLabel = label; godStatusFileRef = fileRef
         if godStatusPanel == nil {
             godStatusPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             godStatusPanel.isOpaque = false; godStatusPanel.backgroundColor = .clear; godStatusPanel.hasShadow = false
             godStatusPanel.level = .popUpMenu; godStatusPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         }
-        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern))
+        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern, fileRef: fileRef))
         let size = godStatusPanel.contentView!.fittingSize
         godStatusPanel.setContentSize(size)
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
