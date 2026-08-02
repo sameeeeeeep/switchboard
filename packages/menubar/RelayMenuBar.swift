@@ -1893,11 +1893,20 @@ struct GodStatusDrop: View {
     let accent: Color
     let pattern: DotMatrix.Pattern
     var fileRef: String? = nil   // a dropped reference file — shown as a chip BELOW the phase, inside the notch
+    // Context-first: the project this run is grounded in, switchable RIGHT as God works (the user's ask —
+    // choose the project from a dropdown in the thinking pill). Empty projects → the chip is hidden.
+    var projects: [(id: String, name: String)] = []
+    var activeProjectId: String? = nil
+    var onSelectProject: ((String?) -> Void)? = nil
+    private var hasExtras: Bool { fileRef != nil || (!projects.isEmpty && onSelectProject != nil) }
     var body: some View {
         VStack(spacing: 7) {
             HStack(spacing: 12) {
                 Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
                 DotMatrix(pattern: pattern, accent: accent)
+            }
+            if !projects.isEmpty, let onSelect = onSelectProject {
+                ProjectChip(projects: projects, activeId: activeProjectId, onSelect: onSelect)
             }
             if let f = fileRef {
                 HStack(spacing: 5) {
@@ -1907,7 +1916,7 @@ struct GodStatusDrop: View {
                 .frame(maxWidth: 240)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, fileRef == nil ? 15 : 12)
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, hasExtras ? 12 : 15)
         .frame(minWidth: 130)
         .padding(.horizontal, 14)   // room for the notch "ears" (the shape flares to full width at top)
         .background(Color.page)
@@ -2346,6 +2355,9 @@ struct ActionConsentDrop: View {
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
     private var godStatusFileRef: String?         // filename of the dropped reference shown in the pill (re-render when it changes)
+    private var godStatusProject: String?         // active project id shown in the pill (re-render when the user switches it)
+    private var lastGodAudio: String?             // the last voice turn's clip — so switching the project can RE-RUN it grounded anew
+    private var lastGodUseScreen = true
     private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
     private var godAttachedFile: String?          // a file the user attached for God — the NEXT ⌃⌃ passes it as GOD_FILE, then it clears (one-shot)
@@ -3665,6 +3677,7 @@ struct ActionConsentDrop: View {
     // screen). The overlay itself lives in the listening flow now, so this just captures + spawns.
     @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, preselected: RegionPick? = nil, skill: String? = nil, useScreen: Bool = true) {
         guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
+        lastGodAudio = audio; lastGodUseScreen = useScreen   // remembered so a mid-run project switch can re-run this turn
         if let p = point, let screen = NSScreen.main {
             glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)
         }
@@ -3739,7 +3752,13 @@ struct ActionConsentDrop: View {
         let runLog = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-run.log")
         FileManager.default.createFile(atPath: runLog, contents: nil)
         if let fh = FileHandle(forWritingAtPath: runLog) { proc.standardOutput = fh; proc.standardError = fh }
-        proc.terminationHandler = { [weak self] _ in Task { @MainActor in self?.godProc = nil; self?.godStateTimer?.invalidate(); self?.godRunning = false; self?.glowModel.target = nil; self?.setGlow(.idle); self?.checkPendingAction() } }
+        proc.terminationHandler = { [weak self] p in Task { @MainActor in
+            // A newer run may have replaced us (e.g. a mid-run project switch cancelled this one and
+            // re-triggered). If so, THIS stale process's exit must NOT reset the live run — otherwise it
+            // shuts the notch out from under it. Only the current process's termination cleans up.
+            guard let self, self.godProc === p else { return }
+            self.godProc = nil; self.godStateTimer?.invalidate(); self.godRunning = false; self.glowModel.target = nil; self.setGlow(.idle); self.checkPendingAction()
+        } }
         godProc = proc
         do { try proc.run() } catch { godLog("spawn failed: \(error)"); godProc = nil; godStateTimer?.invalidate(); godRunning = false; glowModel.target = nil; setGlow(.idle) }
     }
@@ -3940,17 +3959,42 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor private func showGodStatus(_ label: String, accent: Color, pattern: DotMatrix.Pattern) {
-        // Same label AND same attached-file → do nothing, so the poll (every 0.25s) doesn't restart the
-        // waveform animation each tick. Re-render when the phase OR the dropped file changes.
+        // Re-render only when the phase, the dropped file, OR the active project changes — so the 0.25s
+        // poll doesn't restart the waveform each tick. The project chip rides the WORKING phases (not
+        // listening — the drop zone + talking own that pill).
         let fileRef = godAttachedFile.map { ($0 as NSString).lastPathComponent }
-        if godStatusLabel == label, godStatusFileRef == fileRef, godStatusPanel?.isVisible == true { return }
-        godStatusLabel = label; godStatusFileRef = fileRef
+        // ONLY on God's request phases — not Listening, not Dictating/Transcribing (raw ⌃⌥), not the
+        // drive-status pills. The chip's re-run only makes sense while God is working on a spoken ask.
+        let showProjects = (label == "Thinking" || label == "Speaking")
+        let activeProj = showProjects ? readDefaultId() : nil
+        if godStatusLabel == label, godStatusFileRef == fileRef, godStatusProject == activeProj, godStatusPanel?.isVisible == true { return }
+        godStatusLabel = label; godStatusFileRef = fileRef; godStatusProject = activeProj
+        if showProjects { model.refreshFiles() }   // freshen the project list only when we're (re)building the pill
+        let projs: [(id: String, name: String)] = showProjects ? model.contexts.map { (id: $0.id, name: $0.name) } : []
+        // Switch the project from the dropdown → set it globally AND re-run the in-flight turn grounded in
+        // it (context-first: "make me an ad" is only right for the right brand). Voice turns re-run with the
+        // same clip; other turns just reflect the new project.
+        let onSel: ((String?) -> Void)? = projs.isEmpty ? nil : { [weak self] id in
+            guard let self else { return }
+            writeGlobalContext(id); self.model.refreshFiles()
+            if self.godRunning, let audio = self.lastGodAudio {
+                // Quiet re-run (no cancel sound / idle flicker): kill the in-flight process — its stale
+                // exit is ignored by the identity-guarded terminationHandler — and re-trigger the SAME
+                // clip; god.mjs picks up the new project from context-selection.json. Glow stays working.
+                let useScreen = self.lastGodUseScreen, region = self.regionCommitted
+                self.godProc?.terminate(); self.godProc = nil
+                self.godStateTimer?.invalidate(); self.godRunning = false
+                self.triggerGod(at: NSEvent.mouseLocation, audio: audio, preselected: region, useScreen: useScreen)
+            } else {
+                self.updateGodStatusDrop(self.glowModel.state)   // no in-flight run — just reflect the new project
+            }
+        }
         if godStatusPanel == nil {
             godStatusPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             godStatusPanel.isOpaque = false; godStatusPanel.backgroundColor = .clear; godStatusPanel.hasShadow = false
             godStatusPanel.level = .popUpMenu; godStatusPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         }
-        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern, fileRef: fileRef))
+        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern, fileRef: fileRef, projects: projs, activeProjectId: activeProj, onSelectProject: onSel))
         let size = godStatusPanel.contentView!.fittingSize
         godStatusPanel.setContentSize(size)
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
