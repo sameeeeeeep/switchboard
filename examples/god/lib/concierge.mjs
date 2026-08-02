@@ -126,8 +126,14 @@ export async function runOnboard(persona, companion) {
   // ── awake ────────────────────────────────────────────────────────────────────────────────────────
   const ready = signedIn() && (await daemonUp());
   console.log(`\n${ready ? g("✦ God is awake.") : y("• Almost — finish sign-in + daemon and the AI wakes up.")}`);
-  await say(ready ? "I'm awake. Ask me anything about what's on your screen." : "Almost there. Finish signing in and I'll wake up.");
-  if (ready) console.log(dim('   Try:  node god.mjs look "what should I do on this screen?"'));
+  await say(ready
+    ? "I'm awake. Just tell me what you need — summarize this, make me an image, draft an ad — and I'll run the right app on your own Claude and drop the result in your notch. I remember what we talked about, too."
+    : "Almost there. Finish signing in and I'll wake up.");
+  if (ready) {
+    console.log(dim('   Press ⌃⌃ and say what you want — I run the right app, the result lands in your notch:'));
+    console.log(dim('     "summarize this"  ·  "make me an image of …"  ·  "draft an ad for …"  ·  "reply to this"'));
+    console.log(dim('   Or ask about your screen:  node god.mjs look "what should I do here?"'));
+  }
   rl.close();
   return { ready, ...(await observe()) };
 }

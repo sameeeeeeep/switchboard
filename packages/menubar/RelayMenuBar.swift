@@ -1447,6 +1447,8 @@ struct Panel: View {
     private struct TourStep { let title: String; let hint: String; let manual: Bool }
     private var tourSteps: [TourStep] { [
         TourStep(title: "Press ⌃⌃", hint: "Tap Control twice — I look at your screen and help.", manual: false),
+        TourStep(title: "Ask me to make something", hint: "Press ⌃⌃ and say it — \"make me an image\", \"summarize this\", \"draft an ad\". I run the right app on your Claude; the result lands in your notch to copy or drag out.", manual: false),
+        TourStep(title: "I remember", hint: "Keep going — answer my question, ask a follow-up. I stay in the conversation across ⌃⌃ presses.", manual: false),
         TourStep(title: "This is your Switchboard", hint: "Your apps, models and tools — all on your own Claude.", manual: true),
         TourStep(title: "Open Settings", hint: "The gear, bottom-left — your name, my voice, economy mode.", manual: false),
         TourStep(title: "Hold ⌃⌥ to talk", hint: "Hold Control-Option and speak — I type it where your cursor is.", manual: false),
