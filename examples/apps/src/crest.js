@@ -422,7 +422,7 @@ function buildFoundationPrompt(brief, prefs) {
     `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
     prefsPromptBlock(prefs),
     "Respond with ONLY a JSON object — no prose before or after, no markdown fences — in exactly this shape:",
-    '{"name":string (the brand name, cleaned up),"positioning":string (one line, <= 90 chars),"personality":[string,string,string] (exactly 3 single evocative words),"voice":string (a short phrase),"palette":[string] (3-4 hex colors like "#1A2B3C" that genuinely suit this brand),"rationale":string (one line on the logo direction this foundation implies)}',
+    '{"name":string (the brand name, cleaned up),"positioning":string (one line, <= 90 chars),"personality":[string,string,string] (exactly 3 single evocative words),"voice":string (a short phrase),"palette":[string] (3-4 hex colors like "#1A2B3C" that genuinely suit this brand),"rationale":string (one line on the logo direction this foundation implies),"analogy":string (a short "reads like X meets Y" line naming TWO well-known brands as TONAL touchstones — reference/comparison only, do NOT reproduce them)}',
   ].filter(Boolean).join("\n\n");
 }
 function coerceFoundation(f) {
@@ -440,6 +440,7 @@ function coerceFoundation(f) {
     voice: String(f.voice || "").trim(),
     palette: pal,
     rationale: String(f.rationale || "").trim(),
+    analogy: String(f.analogy || "").trim(),
   };
 }
 
@@ -454,8 +455,9 @@ function buildDirectionsPrompt(f, prefs) {
     `PALETTE: ${f.palette.join(", ")}`,
     prefsPromptBlock(prefs),
     "Each direction must take a genuinely different formal approach — e.g. wordmark, monogram, symbol + wordmark, abstract mark.",
+    "For EACH direction, name 2-3 well-known brands as REFERENCE touchstones that use that same approach well (e.g. a wordmark direction → 'like Google, Stripe'; an emblem → 'like Starbucks, Harley'). Reference/comparison ONLY — never reproduce a real logo. This helps the user picture it.",
     "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
-    '{"directions":[exactly 3 items, each {"name":string (2-4 words),"approach":string (the mark type + form, one short line),"rationale":string (why it fits this brand, one line),"recommended":boolean}]}',
+    '{"directions":[exactly 3 items, each {"name":string (2-4 words),"approach":string (the mark type + form, one short line),"rationale":string (why it fits this brand, one line),"references":[2-3 well-known brand names as touchstones],"recommended":boolean}]}',
     'Exactly ONE direction must have "recommended": true.',
   ].filter(Boolean).join("\n\n");
 }
@@ -465,7 +467,7 @@ function coerceDirections(o) {
     if (!d || typeof d !== "object") return null;
     const name = String(d.name || "").trim();
     if (!name) return null;
-    return { id: uid(), name, approach: String(d.approach || "").trim(), rationale: String(d.rationale || "").trim(), recommended: !!d.recommended };
+    return { id: uid(), name, approach: String(d.approach || "").trim(), rationale: String(d.rationale || "").trim(), references: (Array.isArray(d.references) ? d.references : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 3), recommended: !!d.recommended };
   }).filter(Boolean).slice(0, 3);
   if (list.length < 2) return null;
   const rec = list.findIndex((d) => d.recommended);
@@ -680,7 +682,7 @@ function render() {
     const sec = el("div", "sect-block");
     sec.append(el("div", "kicker sect", "directions — pick one, or keep the recommended"));
     sec.append(optionCards(
-      r.directions.map((d) => ({ id: d.id, label: d.name, text: (d.approach ? d.approach : "") + (d.rationale ? "\n" + d.rationale : ""), recommended: d.recommended })),
+      r.directions.map((d) => ({ id: d.id, label: d.name, text: (d.approach ? d.approach : "") + (d.rationale ? "\n" + d.rationale : "") + (d.references && d.references.length ? "\n↳ like " + d.references.join(" · ") : ""), recommended: d.recommended })),
       r.chosenDirId,
       (opt) => chooseDirection(opt.id),
     ));
@@ -744,6 +746,7 @@ function foundationCard(f) {
   const meta = el("div", "found-meta");
   const pers = el("div", "fm"); pers.append(el("span", "fm-k", "personality"), el("span", "fm-v", f.personality.join(" · "))); meta.append(pers);
   if (f.voice) { const v = el("div", "fm"); v.append(el("span", "fm-k", "voice"), el("span", "fm-v", f.voice)); meta.append(v); }
+  if (f.analogy) { const a = el("div", "fm"); a.append(el("span", "fm-k", "reads like"), el("span", "fm-v", f.analogy)); meta.append(a); }
   card.append(meta);
   if (f.rationale) card.append(el("div", "found-rat", f.rationale));
   return card;
@@ -1026,8 +1029,9 @@ async function runBrandSystem() {
       `SEED PALETTE: ${(f.palette || []).join(", ")}`,
       prefsPromptBlock(r.prefs),
       avoidClause(r.prefs),
+      "For EACH palette and EACH font pairing, add a short 'ref' naming a well-known brand whose colour/typography has a similar FEEL (reference/comparison only, never reproduce) — it helps the user picture the choice and trust it.",
       "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
-      '{"palettes":[3 items, each {"name":string,"primary":"#hex","secondary":"#hex","ink":"#hex","bg":"#hex","accent":"#hex"}],"fonts":[3 items, each {"name":string,"display":string (a REAL free Google Font family),"body":string (a REAL free Google Font family)}],"taglines":[3 short strings],"voice":string}',
+      '{"palettes":[3 items, each {"name":string,"primary":"#hex","secondary":"#hex","ink":"#hex","bg":"#hex","accent":"#hex","ref":string (like <brand>)}],"fonts":[3 items, each {"name":string,"display":string (a REAL free Google Font family),"body":string (a REAL free Google Font family),"ref":string (like <brand>)}],"taglines":[3 short strings],"voice":string}',
       "Palettes must genuinely suit this brand and RESPECT the avoid list. Fonts must be real, FREE Google Fonts (e.g. Bricolage Grotesque, Space Grotesk, Inter, Hanken Grotesk, Fraunces, Work Sans, Sora, Manrope) — never a paid or fictional family.",
     ].filter(Boolean).join("\n\n");
     const o = await askJson([prompt]);
@@ -1060,7 +1064,7 @@ function kitBlock() {
     const card = el("div", "palcard" + (i === r.kit.pIdx ? " sel" : "")); card.onclick = () => { r.kit.pIdx = i; void saveState(); render(); };
     const sw = el("div", "palsw");
     for (const role of ["primary", "secondary", "ink", "bg", "accent"]) { const c = el("span", "pchip"); c.style.background = pal[role] || "#000"; c.title = role + " " + (pal[role] || ""); sw.append(c); }
-    card.append(sw); card.append(el("div", "pallabel", pal.name || ("Palette " + (i + 1)))); pg.append(card);
+    card.append(sw); card.append(el("div", "pallabel", pal.name || ("Palette " + (i + 1)))); if (pal.ref) card.append(el("div", "optref", "↳ " + pal.ref)); pg.append(card);
   });
   sec.append(pg);
   // font picker
@@ -1071,7 +1075,7 @@ function kitBlock() {
     const card = el("div", "fontcard" + (i === r.kit.fIdx ? " sel" : "")); card.onclick = () => { r.kit.fIdx = i; void saveState(); render(); };
     const d = el("div", "fspec-d"); d.textContent = "Aa"; d.style.fontFamily = '"' + (fp.display || "sans-serif") + '", sans-serif';
     const bd = el("div", "fspec-b"); bd.textContent = "The quick brown fox jumps"; bd.style.fontFamily = '"' + (fp.body || "sans-serif") + '", sans-serif';
-    card.append(d, bd, el("div", "fontlabel", (fp.display || "") + " · " + (fp.body || ""))); fg.append(card);
+    card.append(d, bd, el("div", "fontlabel", (fp.display || "") + " · " + (fp.body || ""))); if (fp.ref) card.append(el("div", "optref", "↳ " + fp.ref)); fg.append(card);
   });
   sec.append(fg);
   const ex = el("div", "kit-export");
