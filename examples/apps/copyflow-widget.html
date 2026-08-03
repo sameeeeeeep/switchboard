@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CopyFlow · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E; --blue:#7DE0FF;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .rt{border:1px solid var(--edge);border-radius:10px;background:var(--panel);padding:9px 11px;display:flex;flex-direction:column;gap:3px;}
+      .rt.rec{border-color:color-mix(in srgb,var(--accent) 40%,var(--edge));}
+      .rt-top{display:flex;align-items:center;gap:7px;}
+      .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-faint);}
+      .dot-active{background:var(--ok);box-shadow:0 0 7px var(--ok);}
+      .dot-idle{background:var(--ink-dim);}
+      .dot-running{background:var(--blue);box-shadow:0 0 7px var(--blue);}
+      .dot-failed{background:var(--danger);box-shadow:0 0 7px var(--danger);}
+      .dot-waiting{background:var(--warn);box-shadow:0 0 7px var(--warn);}
+      .rt-n{font:600 12px/1 var(--sans);color:var(--ink);}
+      .rt-meta{font:400 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .empty{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border:1.5px dashed var(--edge);border-radius:12px;padding:22px 16px;background:var(--inset);}
+      .empty-ic{font:700 20px/1 var(--sans);color:var(--accent);letter-spacing:.1em;}
+      .empty-t{font:600 13px/1.2 var(--sans);color:var(--ink);}
+      .empty-s{font:400 11px/1.4 var(--sans);color:var(--ink-dim);max-width:340px;}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
+      .open{font:600 11px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:9px 12px;cursor:pointer;align-self:flex-start;}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .bd{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+      .badge.off .bd{background:var(--warn);box-shadow:0 0 7px var(--warn);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name">Copy<em>Flow</em></span><span class="kicker">routines glance</span></div>
+      <div id="out"><div class="status"><div class="scan"></div><span>reading routines…</span></div></div>
+      <div class="badge" id="badge"><span class="bd"></span><span id="badge-t">checking the routines engine…</span></div>
+    </div>
+
+    <script type="module">
+      // A self-contained glance of the user's routines. Can't bundle the SDK, so we talk to the raw
+      // BYOP provider (window.claude) directly — the same object @relay/sdk wraps. EVERY routine_* verb
+      // is feature-detected against claude_capabilities().methods; when the routines engine isn't in this
+      // tree yet, we degrade to an HONEST "waiting for the routines engine" state and never fake a run.
+      const SCOPE = { reason: "CopyFlow widget — glance at the routines running on your behalf", models: ["sonnet"] };
+      const msg = (e) => String(e?.message || e).slice(0, 200);
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const out = document.getElementById("out"), badge = document.getElementById("badge"), badgeT = document.getElementById("badge-t");
+
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        if (!grantP) grantP = (async () => {
+          try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {}
+          return p.request({ method: "claude_connect", params: SCOPE });
+        })();
+        return grantP;
+      }
+      async function hasMethod(p, name) {
+        try { const c = await p.request({ method: "claude_capabilities" }); return Array.isArray(c?.methods) && c.methods.includes(name); } catch { return false; }
+      }
+      async function storageGet(p, key) {
+        try { const r = await p.request({ method: "claude_storage", params: { op: "get", key } }); const v = (r && (r.value ?? r.data ?? r)); return typeof v === "string" ? v : (v == null ? null : JSON.stringify(v)); } catch { return null; }
+      }
+      function normStatus(s) {
+        const x = (s && typeof s === "object") ? s : {};
+        const state = ["active","idle","running","failed","waiting"].includes(x.state) ? x.state : "idle";
+        return { state, lastRun: x.lastRun || null, nextRun: x.nextRun || null, outcome: x.outcome || "", off: !!x.off, step: x.step || null };
+      }
+      function statusMeta(s) {
+        if (s.state === "waiting") return "waiting for engine";
+        if (s.state === "running") return "running… " + (s.step ? "(" + s.step + ")" : "");
+        if (s.state === "failed") return "⚠ failed" + (s.outcome ? " · " + s.outcome : "");
+        if (s.lastRun) return "last " + s.lastRun + (s.outcome ? " · " + s.outcome : "");
+        if (s.nextRun) return "next " + s.nextRun;
+        return s.outcome || "idle";
+      }
+      function stepSummary(def) {
+        const chans = (def.steps || []).map((s) => s.id || s.channel).filter(Boolean);
+        return chans.length ? chans.join(" → ") : "no steps";
+      }
+      function openCopyFlow() { try { window.__openWrapp ? window.__openWrapp("copyflow") : window.open("/copyflow.html", "_blank"); } catch { window.open("/copyflow.html", "_blank"); } }
+
+      async function loadRoutines(p) {
+        if (await hasMethod(p, "routine_list")) {
+          try {
+            const o = await p.request({ method: "routine_list", params: {} });
+            const defs = Array.isArray(o?.definitions) ? o.definitions : (Array.isArray(o?.routines) ? o.routines : []);
+            const status = (o && o.status && typeof o.status === "object") ? o.status : {};
+            return { engine: true, rows: defs.map((def) => ({ def, status: normStatus(status[def.id]) })) };
+          } catch {}
+        }
+        // no engine — read the wrapp's local index (same key src/copyflow.js writes: <origin> "copyflow-routines")
+        let idx = [];
+        try { const raw = await storageGet(p, "copyflow-routines"); idx = raw ? JSON.parse(raw) : []; } catch { idx = []; }
+        return { engine: false, rows: (Array.isArray(idx) ? idx : []).map((def) => ({ def, status: { state: "waiting", lastRun: null, nextRun: null, outcome: "" } })) };
+      }
+
+      function setBadge(engine) {
+        badge.className = "badge" + (engine ? "" : " off");
+        badgeT.textContent = engine ? "routines engine · live" : "waiting for the routines engine";
+      }
+      function showErr(t) { out.textContent = ""; out.append(mk("div", "err", t)); }
+      function showEmpty(engine) {
+        out.textContent = "";
+        const e = mk("div", "empty");
+        e.append(mk("div", "empty-ic", "⧉"));
+        e.append(mk("div", "empty-t", "No routines yet"));
+        e.append(mk("div", "empty-s", "Record a 2-step workflow in CopyFlow — your Claude generalizes it into a routine that runs itself."));
+        const b = mk("button", "open", "Open CopyFlow"); b.onclick = openCopyFlow; e.append(b);
+        out.append(e);
+        setBadge(engine);
+      }
+
+      async function run() {
+        try {
+          const p = await waitForProvider();
+          if (!p) { showErr("Switchboard isn't connected — open this widget from the notch."); setBadge(false); return; }
+          await ensureGrant(p);
+          const { engine, rows } = await loadRoutines(p);
+          setBadge(engine);
+          if (!rows.length) { showEmpty(engine); return; }
+          out.textContent = "";
+          rows.slice(0, 6).forEach(({ def, status }) => {
+            const card = mk("div", "rt" + (status.state === "running" || status.state === "active" ? " rec" : ""));
+            const top = mk("div", "rt-top");
+            top.append(mk("span", "dot dot-" + status.state));
+            top.append(mk("span", "rt-n", def.title || def.id));
+            card.append(top);
+            card.append(mk("div", "rt-meta", statusMeta(status) + " · " + stepSummary(def) + (status.off ? " · paused" : "")));
+            out.append(card);
+          });
+          const btn = mk("button", "open", "Open CopyFlow"); btn.onclick = openCopyFlow; out.append(btn);
+        } catch (e) { showErr(msg(e)); setBadge(false); }
+      }
+      run();
+    </script>
+  </body>
+</html>

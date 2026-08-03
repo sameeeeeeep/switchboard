@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		SBo3apW8p/U7yfKT7+VKB3PebEQ=
+		6MvBj9RJ7SSA8YXWoHbw0Sx3z8Q=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -92,6 +92,10 @@
 		<data>
 		izCJWZ5WOL1IxuoXZwuomiidzRs=
 		</data>
+		<key>Resources/icons/crest.png</key>
+		<data>
+		3RKX/TpHOV40cOGyIrsZ5HWYYEs=
+		</data>
 		<key>Resources/icons/cron.png</key>
 		<data>
 		JbtSSuteozpxy24fHcHWtSXtF/I=
@@ -100,9 +104,17 @@
 		<data>
 		7bK8uYhd4iDb0ItmVBCCC7ZfsDU=
 		</data>
+		<key>Resources/icons/deck.png</key>
+		<data>
+		QTGrh2ggkMgKfamy5YnaJfhNmo4=
+		</data>
 		<key>Resources/icons/docstring.png</key>
 		<data>
 		9vT8PqZ+lCUO+y5iqn7CHzYDWFg=
+		</data>
+		<key>Resources/icons/dub.png</key>
+		<data>
+		hNEcDD5KV1RN1PcSv2Sku3TRf+8=
 		</data>
 		<key>Resources/icons/errslate.png</key>
 		<data>
@@ -146,7 +158,7 @@
 		</data>
 		<key>Resources/icons/huddle.png</key>
 		<data>
-		ICZrVrvnkQujZavkxgzEkC1ryqk=
+		k5AyaImVllo5bx4B2fW9OUF2Gzs=
 		</data>
 		<key>Resources/icons/ideabrain.png</key>
 		<data>
@@ -295,7 +307,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			p6xWXwdB7OdhAwMenL+Xaih1g9rX4wcMa/5efUpjDMo=
+			DUa3ppUg0hAvIJ60SXEfvCMKEoI397UR/zHm/9GRliA=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -445,6 +457,13 @@
 			4UF0rcrLCwF4SqPa+Nl+4RTRQdRco+qrbRxVY0dNkW0=
 			</data>
 		</dict>
+		<key>Resources/icons/crest.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			LLEFhp6LpqSknZp1dBUEfoMVtM6F2heLq1JBxlaaYTQ=
+			</data>
+		</dict>
 		<key>Resources/icons/cron.png</key>
 		<dict>
 			<key>hash2</key>
@@ -459,11 +478,25 @@
 			0ZN4o64Mv0zaMS59hHK7vJBlCMeSnrul0DI3nUWu01w=
 			</data>
 		</dict>
+		<key>Resources/icons/deck.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Zid+OfYKBCg2GTQ94+dkqbHUCV8Ua2zKqS16zi/J4kg=
+			</data>
+		</dict>
 		<key>Resources/icons/docstring.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
 			FiHhQQiiJniLUN6VV8RBFdi7bXpYEU6qd/lcBGgkCVE=
+			</data>
+		</dict>
+		<key>Resources/icons/dub.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ue79Ithrl58eL8QcXWGbfGV/TDOcWR83ksRuFs6UuYc=
 			</data>
 		</dict>
 		<key>Resources/icons/errslate.png</key>
@@ -540,7 +573,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			MNGkjlqd5oIHYnSI+AkJJCLIuAxGbPNJv6F6iY2UPMI=
+			tttOZjJVce1V9v1+2US6FO5ElxyayQddjHc58U1FjwI=
 			</data>
 		</dict>
 		<key>Resources/icons/ideabrain.png</key>
