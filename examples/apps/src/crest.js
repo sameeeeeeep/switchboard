@@ -322,21 +322,32 @@ async function start(brief) {
 
 function setStatus(t) { const r = state.run; if (r) r.status = t; const live = $("crest-live"); if (live) live.textContent = t; }
 
+// STEP 1 — one brief in → parse it into a small, PRE-SEEDED FORM (name · sector · qualities ·
+// audience · avoid). Stop there: the human glances/tweaks, then hits Generate. This is the whole
+// input surface — one field however big or small, seeded into an editable form.
 async function runPipeline() {
   const r = state.run; if (!r || !relay) return;
   running = true; r.error = null;
   try {
-    // 0 — PREFERENCES — parse the brief into structured, EDITABLE preferences BEFORE the
-    // foundation so the avoid-list + qualities thread through every downstream generation.
-    if (!r.prefs) {
-      r.stage = "foundation"; setStatus("reading your preferences…"); render();
-      try {
-        const ptext = await streamText({ prompt: buildPrefsPrompt(r.brief), maxTokens: 700 });
-        r.prefs = coercePrefs(parseJson(ptext));
-      } catch { r.prefs = coercePrefs(null); }
-      await saveState(); render();
-    }
+    r.stage = "prefs"; setStatus("reading your brief…"); render();
+    try {
+      const ptext = await streamText({ prompt: buildPrefsPrompt(r.brief), maxTokens: 800 });
+      r.prefs = coercePrefs(parseJson(ptext));
+    } catch { r.prefs = coercePrefs(null); }
+    r.stage = "form"; r.status = "";     // CHECKPOINT — the pre-seeded form; wait for Generate.
+    await saveState(); render();
+  } catch (e) {
+    r.error = msg(e); r.status = "";
+    await saveState(); render();
+  } finally { running = false; }
+}
 
+// STEP 2 — from the (possibly-edited) form, generate the whole seeded identity in one go:
+// foundation → recommended direction (chosen) → recommended style (chosen) → four wireframe marks.
+async function generateIdentity() {
+  const r = state.run; if (!r || !relay || running) return;
+  running = true; r.error = null;
+  try {
     // 1 — FOUNDATION
     r.stage = "foundation"; setStatus("reading the brief…"); render();
     const ftext = await streamText({ prompt: buildFoundationPrompt(r.brief, r.prefs), maxTokens: 900 },
@@ -383,6 +394,8 @@ function buildPrefsPrompt(brief) {
     "You are Crest, a brand strategist. Parse the brief below into structured brand preferences that will steer every downstream generation. Infer sensibly — do not just echo literal words.",
     `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
     "Extract:",
+    "- name: the brand name, cleaned up (best guess from the brief).",
+    "- sector: the industry / what it is, one short phrase (e.g. 'cross-cultural community', 'B2B fintech', 'specialty coffee').",
     "- qualities: 3-6 adjectives the identity must FEEL (expand what the brief implies).",
     "- avoid: 3-6 things to steer AWAY from — clichés, over-used symbols, colors, and registers this brand should NOT resemble. Infer category-appropriate ones even if unstated (e.g. a cross-cultural community brief should avoid flags, globes, handshakes; a fintech brief should avoid looking like a bank or consultancy).",
     "- styleHints: 0-4 visual looks the brief implies (e.g. 'monoline', 'heritage badge', 'flat geometric', 'gradient').",
@@ -390,13 +403,15 @@ function buildPrefsPrompt(brief) {
     "- ambition: one short phrase on reach/scale (one city → global; community ↔ professional).",
     "- taglineNeed: boolean — does the name likely need a descriptor/tagline?",
     "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
-    '{"qualities":[string],"avoid":[string],"styleHints":[string],"audiences":[string],"ambition":string,"taglineNeed":boolean}',
+    '{"name":string,"sector":string,"qualities":[string],"avoid":[string],"styleHints":[string],"audiences":[string],"ambition":string,"taglineNeed":boolean}',
   ].join("\n\n");
 }
 function coercePrefs(p) {
   const arr = (a) => (Array.isArray(a) ? a : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 8);
   if (!p || typeof p !== "object") p = {};
   return {
+    name: String(p.name || "").trim(),
+    sector: String(p.sector || "").trim(),
     qualities: arr(p.qualities),
     avoid: arr(p.avoid),
     styleHints: arr(p.styleHints),
@@ -409,6 +424,7 @@ function coercePrefs(p) {
 function prefsPromptBlock(prefs) {
   if (!prefs) return "";
   const lines = [];
+  if (prefs.sector) lines.push(`SECTOR: ${prefs.sector}. (Ground references in this sector, plus one cross-sector analogy.)`);
   if (prefs.qualities && prefs.qualities.length) lines.push(`REQUIRED QUALITIES (the identity must feel these): ${prefs.qualities.join(", ")}.`);
   if (prefs.styleHints && prefs.styleHints.length) lines.push(`STYLE HINTS the brief implies: ${prefs.styleHints.join(", ")}.`);
   if (prefs.audiences && prefs.audiences.length) lines.push(`AUDIENCES: ${prefs.audiences.join(", ")}.`);
@@ -425,6 +441,7 @@ function avoidClause(prefs) {
 function buildFoundationPrompt(brief, prefs) {
   return [
     "You are Crest, a brand designer. From the brief below, define a compact brand foundation to anchor a logo.",
+    prefs && prefs.name ? `The brand is named "${prefs.name}"` + (prefs.sector ? ` — ${prefs.sector}.` : ".") : "",
     `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
     prefsPromptBlock(prefs),
     "Respond with ONLY a JSON object — no prose before or after, no markdown fences — in exactly this shape:",
@@ -676,12 +693,16 @@ function render() {
     col.append(t);
   }
 
-  // 1 — FOUNDATION
+  // STEP 1 — the pre-seeded FORM checkpoint (one brief → a small editable form → Generate). Stop here.
+  if (r.stage === "prefs" && !r.prefs) { const b = liveSection("Reading your brief"); b.append(researching(r.status || "extracting your preferences…")); col.append(b); view.append(col); return; }
+  if (r.stage === "form" && r.prefs && !r.foundation) { col.append(formPanel(r.prefs)); view.append(col); return; }
+
+  // 1 — FOUNDATION (after Generate)
   if (r.foundation) col.append(foundationCard(r.foundation));
   else if (r.stage === "foundation") { const b = liveSection("Foundation"); b.append(researching(r.status || "reading the brief…")); col.append(b); }
 
-  // 1b — PREFERENCES (editable; extracted from the brief, threaded into every generation)
-  if (r.prefs) col.append(prefsPanel(r.prefs));
+  // 1b — preferences (compact, editable) once the identity exists
+  if (r.prefs && r.foundation) col.append(prefsPanel(r.prefs));
 
   // 2 — DIRECTIONS
   if (r.directions) {
@@ -780,6 +801,23 @@ function prefChipGroup(title, list, accent) {
   chips.append(addWrap);
   grp.append(chips);
   return grp;
+}
+// The pre-seeded FORM: one brief → a small editable form the user can glance/tweak, then Generate.
+function formPanel(prefs) {
+  const card = el("div", "prefs formcard");
+  card.append(el("div", "kicker sect", "your brief, read into a form — tweak anything, then generate"));
+  const row = el("div", "formrow");
+  const mk = (k, ph, val, set) => { const ff = el("div", "ff"); ff.append(el("label", "ff-k kicker", k)); const i = el("input", "ff-i"); i.type = "text"; i.value = val || ""; i.placeholder = ph; i.oninput = () => set(i.value); ff.append(i); return ff; };
+  row.append(mk("brand name", "Brand name", prefs.name, (v) => { prefs.name = v; }));
+  row.append(mk("sector / what it is", "e.g. cross-cultural community", prefs.sector, (v) => { prefs.sector = v; }));
+  card.append(row);
+  card.append(prefChipGroup("qualities — the identity must feel", prefs.qualities));
+  card.append(prefChipGroup("audiences", prefs.audiences));
+  card.append(prefChipGroup("avoid — hard no's (clichés · colors · symbols · registers)", prefs.avoid, true));
+  const g = el("div", "kit-export");
+  const gen = el("button", "primary", "✦ Generate my identity"); gen.disabled = running; gen.onclick = () => { void saveState(); void generateIdentity(); };
+  g.append(gen); card.append(g);
+  return card;
 }
 function prefsPanel(prefs) {
   const card = el("div", "prefs");
