@@ -2854,6 +2854,7 @@ final class FileDropView: NSView {
     }
     override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation {
         let ok = !fileURLs(s).isEmpty
+        godLog("drop: draggingEntered files=\(fileURLs(s).count) accept=\(ok)")   // diagnostic: proves the overlay receives the drag
         hot = ok; needsDisplay = true; return ok ? .copy : []   // NO NSApp.activate — that silenced the global ⌃⌃ monitor
     }
     override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { fileURLs(s).isEmpty ? [] : .copy }
@@ -5220,7 +5221,11 @@ struct ActionConsentDrop: View {
         // the panel/hit-area is wider; the dashed outline is DRAWN at the pill's exact width/height (below).
         let panel = DropPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
-        panel.level = .popUpMenu   // the level the drop worked at before
+        // ABOVE the status pill (both were .popUpMenu and overlap in the centre, so a drop ON the visible
+        // pill — the natural target — hit the pill, which doesn't accept drags, and only the invisible
+        // padding worked). A strictly higher level keeps the drop overlay on top through every pill
+        // re-render, so dropping right on the pill takes. (Still below the .screenSaver glow.)
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 2)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         let view = FileDropView(frame: .zero)
         // A near-invisible fill over the WHOLE hit area — a clear window only receives a drop where it has
