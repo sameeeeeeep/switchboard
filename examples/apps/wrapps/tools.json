@@ -172,6 +172,30 @@
       }
     }
   ],
+  "copyflow": [
+    {
+      "name": "copyflow_record",
+      "description": "Author a routine from a 2-step demo: step 1 fetches JSON from a URL, step 2 appends a row of values to a target. CopyFlow saves the recording trace, generalizes it into a parameterized routine with the user's Claude, and shows it on the Review view for the user to confirm. Returns the compiled routine JSON (NOT yet confirmed — confirming is the user's standing grant).",
+      "inputSchema": {
+        "fetchUrl": "string — the URL step 1 fetches JSON from. Required.",
+        "appendTarget": "string — where step 2 appends the row (a sheet id / connector target). Required.",
+        "appendValues": "string — the new row's values, comma-separated or a JSON array. Optional.",
+        "title": "string — a name for the routine. Optional.",
+        "fetchIntent": "string — plain-language description of step 1. Optional.",
+        "appendIntent": "string — plain-language description of step 2. Optional."
+      }
+    }
+  ],
+  "crest": [
+    {
+      "name": "crest_run",
+      "description": "Turn a one-line brand brief into a logo: a brand foundation, three directions (one recommended), a chosen visual style, and four concrete marks (SVG wireframe + a real image rendered on your Higgsfield). Runs live on the page and returns the result.",
+      "inputSchema": {
+        "brief": "string — brand name + what it does / who it's for / any vibe. Required.",
+        "style": "string — OPTIONAL. One of: 3D isometric, flat, monoline, monochrome, 2D illustrative, pixel art, gradient, bold, emblem, geometric, negative space, retro. Defaults to the recommended style."
+      }
+    }
+  ],
   "cron": [
     {
       "name": "cron_run",
