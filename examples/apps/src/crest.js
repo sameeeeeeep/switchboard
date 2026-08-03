@@ -697,6 +697,9 @@ function render() {
   // kept shelf
   if (r.kept && r.kept.length) col.append(keptShelf());
 
+  // 5 — BRAND KIT (appears once at least one mark is kept): pick palette + fonts → designed PDF
+  if (r.kept && r.kept.length) col.append(kitBlock());
+
   view.append(col);
 }
 
@@ -990,6 +993,132 @@ function keptShelf() {
 }
 
 function scrollToTop() { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ } }
+
+// ============================================================================================
+// BRAND KIT — pick a palette + font pairing (options, one recommended), then export a designed PDF.
+// Wireframe-first stays: this runs only when the user asks ("Build my brand kit"); no auto spend.
+// ============================================================================================
+const GF_FAM = (fam) => "https://fonts.googleapis.com/css2?family=" + encodeURIComponent(String(fam || "").trim()).replace(/%20/g, "+") + ":wght@400;600;700&display=swap";
+function loadFontPair(fp) {
+  if (!fp) return;
+  for (const fam of [fp.display, fp.body]) {
+    if (!fam) continue;
+    const id = "gf-" + String(fam).replace(/\W+/g, "");
+    if (document.getElementById(id)) continue;
+    const l = el("link"); l.id = id; l.rel = "stylesheet"; l.href = GF_FAM(fam); document.head.append(l);
+  }
+}
+function hexToRgb(h) { h = String(h || "").replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h || "0", 16) || 0; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgbToCmyk(r, g, b) { r /= 255; g /= 255; b /= 255; const k = 1 - Math.max(r, g, b); if (k >= 1) return [0, 0, 0, 100]; return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k].map((v) => Math.round(v * 100)); }
+
+async function runBrandSystem() {
+  const r = state.run; if (!r || !relay || !r.foundation || running) return;
+  running = true; r.kit = r.kit || {}; r.kit.loading = true; r.kit.error = null; render();
+  try {
+    const f = r.foundation;
+    const prompt = [
+      "You are Crest, a brand designer. Propose the VISUAL SYSTEM options for this brand's starter kit — the user will pick.",
+      `BRAND: ${f.name} — ${f.positioning || ""}`,
+      `PERSONALITY: ${(f.personality || []).join(", ")}`,
+      `SEED PALETTE: ${(f.palette || []).join(", ")}`,
+      prefsPromptBlock(r.prefs),
+      avoidClause(r.prefs),
+      "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
+      '{"palettes":[3 items, each {"name":string,"primary":"#hex","secondary":"#hex","ink":"#hex","bg":"#hex","accent":"#hex"}],"fonts":[3 items, each {"name":string,"display":string (a REAL free Google Font family),"body":string (a REAL free Google Font family)}],"taglines":[3 short strings],"voice":string}',
+      "Palettes must genuinely suit this brand and RESPECT the avoid list. Fonts must be real, FREE Google Fonts (e.g. Bricolage Grotesque, Space Grotesk, Inter, Hanken Grotesk, Fraunces, Work Sans, Sora, Manrope) — never a paid or fictional family.",
+    ].filter(Boolean).join("\n\n");
+    const o = await askJson([prompt]);
+    r.kit.palettes = Array.isArray(o.palettes) ? o.palettes.slice(0, 3) : [];
+    r.kit.fonts = Array.isArray(o.fonts) ? o.fonts.slice(0, 3) : [];
+    r.kit.taglines = Array.isArray(o.taglines) ? o.taglines.slice(0, 3) : [];
+    r.kit.voice = String(o.voice || f.voice || "");
+    r.kit.pIdx = 0; r.kit.fIdx = 0; r.kit.loading = false;
+    r.kit.fonts.forEach(loadFontPair);
+    await saveState();
+  } catch (e) { r.kit.error = msg(e); r.kit.loading = false; }
+  finally { running = false; render(); }
+}
+
+function kitBlock() {
+  const r = state.run; const sec = el("div", "sect-block kit");
+  sec.append(el("div", "kicker sect", "brand kit — pick your system, then export"));
+  if (!r.kit || (!r.kit.palettes && !r.kit.loading && !r.kit.error)) {
+    const intro = el("div", "kit-intro");
+    intro.append(el("div", "kit-introtext", "Turn your kept mark into a starter brand kit — palettes and fonts to choose from, then a designed PDF you can hand off."));
+    const b = el("button", "primary", "✦ Build my brand kit"); b.disabled = running; b.onclick = () => void runBrandSystem();
+    intro.append(b); sec.append(intro); return sec;
+  }
+  if (r.kit.loading) { sec.append(researching("composing palettes & fonts…")); return sec; }
+  if (r.kit.error) { sec.append(el("div", "err", r.kit.error)); const t = el("button", "act", "try again"); t.onclick = () => void runBrandSystem(); sec.append(t); return sec; }
+  // palette picker
+  sec.append(el("div", "kicker sub", "palette — pick one"));
+  const pg = el("div", "palgrid");
+  (r.kit.palettes || []).forEach((pal, i) => {
+    const card = el("div", "palcard" + (i === r.kit.pIdx ? " sel" : "")); card.onclick = () => { r.kit.pIdx = i; void saveState(); render(); };
+    const sw = el("div", "palsw");
+    for (const role of ["primary", "secondary", "ink", "bg", "accent"]) { const c = el("span", "pchip"); c.style.background = pal[role] || "#000"; c.title = role + " " + (pal[role] || ""); sw.append(c); }
+    card.append(sw); card.append(el("div", "pallabel", pal.name || ("Palette " + (i + 1)))); pg.append(card);
+  });
+  sec.append(pg);
+  // font picker
+  sec.append(el("div", "kicker sub", "type — pick a pairing"));
+  const fg = el("div", "fontgrid");
+  (r.kit.fonts || []).forEach((fp, i) => {
+    loadFontPair(fp);
+    const card = el("div", "fontcard" + (i === r.kit.fIdx ? " sel" : "")); card.onclick = () => { r.kit.fIdx = i; void saveState(); render(); };
+    const d = el("div", "fspec-d"); d.textContent = "Aa"; d.style.fontFamily = '"' + (fp.display || "sans-serif") + '", sans-serif';
+    const bd = el("div", "fspec-b"); bd.textContent = "The quick brown fox jumps"; bd.style.fontFamily = '"' + (fp.body || "sans-serif") + '", sans-serif';
+    card.append(d, bd, el("div", "fontlabel", (fp.display || "") + " · " + (fp.body || ""))); fg.append(card);
+  });
+  sec.append(fg);
+  const ex = el("div", "kit-export");
+  const pdf = el("button", "primary", "⬇ Export brand kit (PDF)"); pdf.disabled = running; pdf.onclick = () => void buildKitPdf();
+  ex.append(pdf);
+  sec.append(ex);
+  return sec;
+}
+
+function kitMarkHtml(big) {
+  const r = state.run; const k = (r.kept && r.kept[0]);
+  if (!k) return "";
+  const sz = big ? 220 : 120;
+  if (k.imageUrl) return '<img src="' + k.imageUrl + '" crossorigin="anonymous" style="max-width:' + sz + 'px;max-height:' + sz + 'px;object-fit:contain">';
+  if (k.svg) return '<div style="width:' + sz + 'px">' + sanitizeSvg(k.svg) + "</div>";
+  return "";
+}
+function buildKitHtml() {
+  const r = state.run, f = r.foundation, kit = r.kit;
+  const pal = (kit.palettes || [])[kit.pIdx || 0] || {};
+  const fp = (kit.fonts || [])[kit.fIdx || 0] || {};
+  const ink = pal.ink || "#101014", bg = pal.bg || "#ffffff", accent = pal.accent || "#C8F250";
+  const roles = [["Primary", pal.primary], ["Secondary", pal.secondary], ["Ink", pal.ink], ["Background", pal.bg], ["Accent", pal.accent]].filter((x) => x[1]);
+  const swatchPage = roles.map(([name, hex]) => {
+    const [R, G, B] = hexToRgb(hex); const [C, M, Y, K] = rgbToCmyk(R, G, B);
+    return '<div style="display:flex;align-items:center;gap:16px;margin:10px 0"><div style="width:64px;height:64px;border-radius:10px;background:' + hex + ';border:1px solid rgba(0,0,0,.12)"></div><div><div style="font:600 14px ' + (fp.display || "sans-serif") + '">' + name + '</div><div style="font:400 12px/1.7 monospace;color:#555">HEX ' + String(hex).toUpperCase() + " · RGB " + R + "," + G + "," + B + " · CMYK " + C + "," + M + "," + Y + "," + K + "</div></div></div>";
+  }).join("");
+  const df = '"' + (fp.display || "Georgia") + '", sans-serif', bf = '"' + (fp.body || "Georgia") + '", sans-serif';
+  const tags = (kit.taglines || []).map((t) => "<li>" + stripTags(t) + "</li>").join("");
+  const page = (inner) => '<section style="width:794px;min-height:1000px;box-sizing:border-box;padding:56px;background:' + bg + ';color:' + ink + ';page-break-after:always">' + inner + "</section>";
+  return '<div style="background:' + bg + '">'
+    + page('<div style="font:600 12px monospace;letter-spacing:.2em;text-transform:uppercase;color:' + accent + '">Brand kit</div><h1 style="font:700 46px/1.05 ' + df + ';margin:8px 0 0">' + stripTags(f.name) + '</h1><div style="font:400 16px ' + bf + ';color:' + ink + ';opacity:.8;margin-top:8px">' + stripTags(f.positioning || "") + '</div><div style="margin-top:120px;display:flex;justify-content:center">' + kitMarkHtml(true) + "</div>")
+    + page('<h2 style="font:700 28px ' + df + '">Logo</h2><div style="margin-top:24px;display:flex;gap:24px;flex-wrap:wrap"><div style="flex:1;min-width:220px;border:1px solid rgba(0,0,0,.1);border-radius:14px;padding:32px;display:flex;justify-content:center;align-items:center;background:' + bg + '">' + kitMarkHtml(true) + '</div><div style="flex:1;min-width:220px;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:32px;display:flex;justify-content:center;align-items:center;background:' + ink + '">' + kitMarkHtml(true) + '</div></div><p style="font:400 13px/1.7 ' + bf + ';margin-top:20px;opacity:.8">Keep clear space around the mark equal to the height of its counter. Minimum size 24&nbsp;px on screen / 8&nbsp;mm in print. The mark must remain recognizable in one color and at avatar size.</p>')
+    + page('<h2 style="font:700 28px ' + df + '">Colour</h2><div style="margin-top:20px">' + swatchPage + "</div>")
+    + page('<h2 style="font:700 28px ' + df + '">Type</h2><div style="margin-top:24px"><div style="font:600 12px monospace;letter-spacing:.15em;text-transform:uppercase;opacity:.5">Display — ' + stripTags(fp.display || "") + '</div><div style="font:700 52px ' + df + ';margin:6px 0 22px">' + stripTags(f.name) + '</div><div style="font:600 12px monospace;letter-spacing:.15em;text-transform:uppercase;opacity:.5">Body — ' + stripTags(fp.body || "") + '</div><div style="font:400 16px/1.6 ' + bf + ';margin-top:6px;max-width:560px">The quick brown fox jumps over the lazy dog. A warm, human voice for a community that spans people, ideas and opportunity. Both are free Google Fonts with system fallbacks.</div></div>')
+    + page('<h2 style="font:700 28px ' + df + '">Voice & taglines</h2><p style="font:400 15px/1.7 ' + bf + ';margin-top:18px;max-width:600px">' + stripTags(kit.voice || f.voice || "") + '</p><ul style="font:600 18px/2 ' + df + ';margin-top:18px">' + tags + '</ul><p style="font:400 12px ' + bf + ';opacity:.6;margin-top:8px">The brand works fine without a tagline.</p>')
+    + "</div>";
+}
+async function buildKitPdf() {
+  const r = state.run; if (!r || !r.kit || !r.kit.palettes) return;
+  if (!window.html2pdf) { toast("PDF library still loading — try again in a moment", true); return; }
+  toast("Composing your brand-kit PDF…");
+  const holder = el("div"); holder.style.position = "fixed"; holder.style.left = "-99999px"; holder.style.top = "0";
+  holder.innerHTML = buildKitHtml(); document.body.append(holder);
+  try {
+    await window.html2pdf().set({ margin: 0, filename: (r.foundation?.name || "brand") + "-kit.pdf", image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: null }, jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait" } }).from(holder.firstElementChild).save();
+    toast("Brand kit downloaded ✓");
+  } catch (e) { toast("PDF export failed: " + msg(e), true); }
+  finally { holder.remove(); }
+}
 
 render();
 
