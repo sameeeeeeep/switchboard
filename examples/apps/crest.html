@@ -114,6 +114,16 @@
       .svgwrap svg { width: 78%; height: 78%; }
       .svg-empty { font: 500 10px/1 var(--mono); color: var(--ink-faint); }
       .tile-img img, .markimg { width: 100%; height: 100%; object-fit: contain; display: block; }
+      /* image pane states (wireframe-first: idle → opt-in render) */
+      .img-idle, .img-load, .img-err { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 10px; text-align: center; }
+      .img-idle .statusline, .img-load .statusline { font: 500 10.5px/1.3 var(--mono); color: var(--ink-dim); }
+      .renderbtn { font: 600 12px/1 var(--sans); border-radius: 9px; padding: 9px 13px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--page); }
+      .renderbtn:hover { filter: brightness(1.08); }
+      .renderbtn:disabled { opacity: .5; cursor: default; }
+      .img-note { font: 400 8.5px/1.3 var(--mono); color: var(--ink-faint); }
+      .img-err .emsg { font: 400 10px/1.4 var(--mono); color: var(--danger); }
+      .img-acts { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+      .img-acts .mini, .img-acts a.mini { text-decoration: none; }
       .tile-foot { display: flex; gap: 8px; margin-top: 12px; }
       .mini { font: 500 11px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 7px 11px; cursor: pointer; transition: border-color .15s, color .15s; }
       .mini:hover { border-color: var(--accent); color: var(--ink); }

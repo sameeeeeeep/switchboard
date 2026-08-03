@@ -462,7 +462,9 @@ async function runLogos(opts = {}) {
   } finally {
     running = false;
     render();
-    if (state.run && state.run.logos) void renderLogoImages();
+    // WIREFRAME-FIRST: do NOT auto-spend Higgsfield renders. The four SVG wireframes show instantly
+    // (free); the user renders an image only for the marks they like (per-tile "✦ Render image"),
+    // conserving image credits.
   }
 }
 
@@ -515,7 +517,7 @@ async function regenerateOne(lo) {
     toast(msg(e), true);
   } finally {
     running = false; render();
-    if (lo.svg || lo.imagePrompt) void reRenderOne(lo);
+    // wireframe-first: a fresh wireframe only — the user opts into the image render per tile.
   }
 }
 
@@ -612,8 +614,8 @@ function startBox() {
   const startBox = el("div", "start");
   const row = el("div", "bindrow");
   const input = el("textarea");
-  input.rows = 3;
-  input.placeholder = "describe your brand — name, what it does, who it's for, any vibe…";
+  input.rows = 8;
+  input.placeholder = "Paste your full brief, or describe your brand — name, what it does, who it's for, the qualities it should feel, and anything to avoid. The more detail, the better Crest can extract your preferences.";
   const go = () => { if (input.value.trim()) void start(input.value); };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); });
   const btn = el("button", "primary", "Make the logo ✦"); btn.onclick = go;
@@ -779,10 +781,19 @@ function paintTileImg(lo) {
     const rr = el("button", "mini", "retry"); rr.onclick = () => void reRenderOne(lo);
     e.append(rr);
     host.append(e);
-  } else {
+  } else if (lo.imgStatus === "rendering") {
     const load = el("div", "img-load");
-    load.append(el("div", "scan"), el("div", "statusline", lo.imgStatus === "rendering" ? "rendering on your Higgsfield…" : "queued…"));
+    load.append(el("div", "scan"), el("div", "statusline", "rendering on your Higgsfield…"));
     host.append(load);
+  } else {
+    // WIREFRAME-FIRST: queued = no image spent yet. Show the opt-in render button so credits are
+    // only used on marks the user likes.
+    const idle = el("div", "img-idle");
+    idle.append(el("div", "statusline", "like the wireframe?"));
+    const btn = el("button", "renderbtn", "✦ Render image"); btn.disabled = running; btn.onclick = () => void reRenderOne(lo);
+    idle.append(btn);
+    idle.append(el("div", "img-note", "spends one Higgsfield render"));
+    host.append(idle);
   }
 }
 
