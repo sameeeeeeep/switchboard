@@ -81,7 +81,11 @@ const WRAPPS = [
   { id: "formula", html: "formula.html", cat: "skill" },
   { id: "spellout", html: "spellout.html", cat: "skill" },
   { id: "clipfix", html: "clipfix.html", cat: "skill" },
-  { id: "convert", html: "convert.html", cat: "skill" },
+  { id: "convert", html: "convert.html", cat: "tool" },
+  // NON-AI device-light tools (2026-08) — pure in-tab, zero model, zero network at runtime.
+  { id: "pdftools", html: "pdftools.html", cat: "tool" },
+  { id: "qr", html: "qr.html", cat: "tool" },
+  { id: "palette", html: "palette.html", cat: "tool" },
   { id: "hooks", html: "hooks.html", cat: "skill" },
   { id: "repurpose", html: "repurpose.html", cat: "skill" },
   { id: "caption", html: "caption.html", cat: "skill" },

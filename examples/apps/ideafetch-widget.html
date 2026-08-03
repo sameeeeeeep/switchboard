@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ideafetch · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:10px 12px;outline:none;resize:vertical;min-height:70px;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;gap:9px;align-items:center;justify-content:flex-end;}
+      .go{font:600 12.5px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 16px;cursor:pointer;transition:filter .15s,opacity .15s;}
+      .go:hover{filter:brightness(1.08);} .go:disabled{opacity:.45;cursor:default;}
+      .out{display:flex;flex-direction:column;gap:9px;}
+      .opt{position:relative;border:1px solid var(--edge);background:var(--panel);border-radius:13px;padding:12px 13px;display:flex;flex-direction:column;gap:6px;}
+      .opt.rec{border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));}
+      .opt .tag{display:inline-block;font:500 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;padding:3px 7px;align-self:flex-start;}
+      .opt .olabel{font:600 13px/1.3 var(--sans);color:var(--ink);}
+      .opt .otext{font:400 12.5px/1.5 var(--sans);color:var(--ink-sec);white-space:pre-wrap;word-break:break-word;}
+      .steps{display:flex;flex-direction:column;gap:3px;margin-top:2px;}
+      .steps .s{font:400 12px/1.4 var(--sans);color:var(--ink-dim);}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;flex:none;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .err{color:var(--danger);font:400 11.5px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .foot{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .foot .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name">Idea<em>fetch</em></span><span class="kicker">on your claude</span></div>
+      <div>
+        <label class="flabel" for="paste">Paste your about copy, positioning, or deck notes</label>
+        <textarea id="paste" autofocus placeholder="Paste the messy version — Ideafetch structures it into positioning you can use."></textarea>
+      </div>
+      <div class="row"><button id="go" class="go">Read it</button></div>
+      <div class="out" id="out"><div class="placeholder">Paste your own material — get it structured into 3 readings, in your own words.</div></div>
+      <div class="foot"><span class="dot"></span>Structured on your own Claude · nothing fetched, nothing sent</div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q != null && q !== "") return q; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        if (typeof w === "string" && w.trim()) return w;
+        return "";
+      }
+      const SCOPE = { reason: "Ideafetch widget — structure pasted material into positioning readings, on your own Claude", models: ["sonnet"] };
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        if (!grantP) grantP = (async () => { try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {} return p.request({ method: "claude_connect", params: SCOPE }); })();
+        return grantP;
+      }
+      async function streamPrompt(p, params, onText) {
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        return new Promise((resolve, reject) => {
+          let text = "", settled = false;
+          const cleanup = () => { settled = true; try { p.removeListener("delta", handler); } catch {} clearTimeout(timer); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onText && onText(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          const timer = setTimeout(() => { if (!settled) { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); } }, 180000);
+          p.on("delta", handler);
+        });
+      }
+      async function ask(prompt, onText) {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        await ensureGrant(p);
+        return streamPrompt(p, { prompt, model: "sonnet", maxTokens: 3000 }, onText);
+      }
+
+      // mirrors src/ideafetch.js pastePrompt
+      function buildPrompt(body) {
+        return [
+          "You are ideafetch's reader. The user pasted their own material (about copy, a deck, a positioning doc). No fetch — read only this.",
+          `PASTED:\n"""\n${body.slice(0, 16000)}\n"""`,
+          "Structure it into positioning language, audience cues and goals in the USER'S OWN WORDS. Return ONLY this JSON:",
+          '{"facts":{"name":"","summary":""},"readings":[{"lens":"In their own words","summary":"","state":"","nextSteps":[""],"recommended":true},{"lens":"The buyer\'s view","summary":"","state":"","nextSteps":[""],"recommended":false},{"lens":"The tight version","summary":"","state":"","nextSteps":[""],"recommended":false}]}',
+        ].join("\n\n");
+      }
+      function parseJson(text) {
+        let t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+        const s = t.indexOf("{"), e = t.lastIndexOf("}");
+        if (s === -1 || e <= s) return null;
+        try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
+      }
+      const $ = (id) => document.getElementById(id);
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const out = $("out"), pasteEl = $("paste"), goEl = $("go");
+      let busy = false;
+      function readingCard(r) {
+        const card = mk("div", "opt" + (r.recommended ? " rec" : ""));
+        if (r.recommended) card.append(mk("span", "tag", "recommended"));
+        card.append(mk("div", "olabel", String(r.lens || "Reading")));
+        if (r.summary) card.append(mk("div", "otext", String(r.summary)));
+        const steps = Array.isArray(r.nextSteps) ? r.nextSteps.filter(Boolean) : [];
+        if (steps.length) { const box = mk("div", "steps"); for (const s of steps.slice(0, 4)) box.append(mk("div", "s", "→ " + String(s))); card.append(box); }
+        return card;
+      }
+      async function run() {
+        const body = pasteEl.value.trim(); if (!body || busy) { if (!body) pasteEl.focus(); return; }
+        busy = true; goEl.disabled = true; out.textContent = "";
+        const st = mk("div", "status"); st.append(mk("div", "scan"), mk("span", null, "structuring it on your Claude…")); out.append(st);
+        try {
+          const raw = await ask(buildPrompt(body));
+          const d = parseJson(raw);
+          out.textContent = "";
+          if (!d) throw new Error("couldn't read a structure back — try pasting a bit more");
+          const readings = Array.isArray(d.readings) ? d.readings : [];
+          if (readings.length) { for (const r of readings.slice(0, 3)) out.append(readingCard(r)); }
+          else { // graceful fallback for a plain object
+            const card = mk("div", "opt");
+            card.append(mk("div", "olabel", String((d.facts && d.facts.name) || d.title || d.name || "Reading")));
+            const body2 = String((d.facts && d.facts.summary) || d.summary || d.body || "");
+            if (body2) card.append(mk("div", "otext", body2)); out.append(card);
+          }
+        } catch (e) { out.textContent = ""; out.append(mk("div", "err", String(e?.message || e).slice(0, 200))); }
+        finally { busy = false; goEl.disabled = false; }
+      }
+      goEl.addEventListener("click", run);
+      const seed = injectedText(); if (seed) pasteEl.value = seed;
+      pasteEl.focus();
+    </script>
+  </body>
+</html>

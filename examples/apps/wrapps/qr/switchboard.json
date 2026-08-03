@@ -1,0 +1,28 @@
+{
+  "id": "qr",
+  "name": "QR",
+  "tagline": "Make a QR code from text or a URL — on your device, no AI",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/qr.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

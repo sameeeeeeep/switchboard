@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reel · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      .row{display:flex;align-items:center;gap:10px;}
+      input.line{flex:1;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.4 var(--sans);padding:11px 12px;outline:none;}
+      input.line:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:999px;padding:10px 16px;cursor:pointer;transition:opacity .15s;white-space:nowrap;}
+      .go:disabled{opacity:.4;cursor:default;}
+      .act{font:500 10px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:6px 10px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .scenes{display:flex;flex-direction:column;gap:8px;}
+      .scene{border:1px solid var(--edge);border-radius:11px;background:var(--panel);padding:10px 11px;display:flex;gap:11px;align-items:flex-start;}
+      .thumb{width:74px;height:74px;border-radius:8px;flex:none;background:var(--inset);border:1px solid var(--edge);object-fit:cover;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+      .thumb img{width:100%;height:100%;object-fit:cover;}
+      .sbody{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px;}
+      .stitle{font:600 12px/1.2 var(--sans);}
+      .ssub{font:400 11px/1.35 var(--sans);color:var(--ink-sec);}
+      .sbrief{font:400 10px/1.35 var(--mono);color:var(--ink-faint);}
+      .ssecs{font:500 9px/1 var(--mono);color:var(--ink-dim);}
+      .scan{height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:scan 1.1s linear infinite;width:60%;}
+      @keyframes scan{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      .statusrow{display:flex;align-items:center;gap:9px;font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Reel</em></span><span class="kicker">script + scenes</span></div>
+      <div class="row">
+        <input id="line" class="line" type="text" autofocus placeholder="one line — what's the reel for?" />
+        <button class="go" id="go">Script it ▸</button>
+      </div>
+      <div id="out"><div class="placeholder">One line in — Reel scripts 4–6 scenes on your Claude, then you paint any scene on your Higgsfield.</div></div>
+      <div class="badge"><span class="dot"></span>Script on your Claude · scenes on your Higgsfield</div>
+    </div>
+
+    <script type="module">
+      // ===== window.claude bridge — the SAME provider the full page's SDK wraps =====================
+      const SCOPE = { reason: "Reel — script a promo reel and paint scenes on your Higgsfield", models: ["sonnet"], tools: ["mcp__claude_ai_Higgsfield__*"] };
+      function providerNow(){ const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function whenProvider(ms = 4000){ return new Promise((res) => { const now = providerNow(); if (now) return res(now); let done = false; const on = () => { if (done) return; done = true; cleanup(); res(providerNow()); }; const t = setTimeout(() => { if (done) return; done = true; cleanup(); res(providerNow()); }, ms); function cleanup(){ clearTimeout(t); window.removeEventListener("claude#initialized", on); } window.addEventListener("claude#initialized", on); }); }
+      let _relay = null;
+      async function relay(){
+        if (_relay) return _relay;
+        const p = await whenProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this from the Switchboard notch.");
+        let grant = null; try { grant = await p.request({ method: "claude_permissions" }); } catch {}
+        if (!grant) { try { grant = await p.request({ method: "claude_connect", params: SCOPE }); } catch (e) { throw new Error("connect failed: " + (e?.message || e)); } }
+        _relay = {
+          async *stream(params){ const { streamId } = await p.request({ method: "claude_stream", params }); const q = []; let notify = null, ended = false; const h = (pl) => { if (!pl || pl.streamId !== streamId) return; q.push(pl); if (pl.type === "done" || pl.type === "error") ended = true; notify && notify(); }; p.on("delta", h); try { while (true) { if (!q.length) { if (ended) break; await new Promise((r) => (notify = r)); notify = null; continue; } yield q.shift(); } } finally { p.removeListener("delta", h); } },
+        };
+        return _relay;
+      }
+      async function streamText(params, onProgress){ const r = await relay(); let acc = ""; for await (const d of r.stream(params)) { if (d.type === "text") { acc += d.text; onProgress && onProgress(acc); } else if (d.type === "error") throw new Error(d.error?.message || "stream error"); } return acc; }
+      function parseJsonArray(text){ const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim(); const s = t.indexOf("["), e = t.lastIndexOf("]"); if (s === -1 || e <= s) return null; try { const a = JSON.parse(t.slice(s, e + 1)); return Array.isArray(a) ? a : null; } catch { return null; } }
+
+      // ---- injected-input contract ----
+      function injectedText(){ try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {} const w = window.__widgetInput; if (typeof w === "string" && w.trim()) return w; if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text; return ""; }
+
+      // ===== APP — compact of Reel's primary action (reel_generate: script the scenes) ===============
+      // Reuses reel.js's exact script prompt (askJsonArray) + genImage instruction. Scripting runs on the
+      // visitor's Claude; each scene is painted one click at a time on their Higgsfield.
+      const IMG_URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const extractUrl = (t) => { const m = (t || "").match(IMG_URL_RE); return m ? (m[1] || m[2] || m[0]) : null; };
+      let running = false, scenes = null;
+
+      async function script(){
+        const input = $("line").value.trim();
+        if (!input || running) { if (!input) $("line").focus(); return; }
+        running = true; $("go").disabled = true; $("go").textContent = "Scripting…";
+        const out = $("out"); out.textContent = "";
+        const st = el("div", "statusrow"); st.append(el("div", "scan"), el("span", null, "scripting the scenes on your Claude…")); out.append(st);
+        try {
+          const raw = await streamText({ prompt: [
+            "You are Reel, scripting a short vertical-friendly promo/launch reel on the founder's own Claude.",
+            `THE BRIEF (ground truth): "${input}"`,
+            "Write 4–6 scenes that build to one call to action. Each scene: a punchy on-screen TITLE (≤6 words), a SUBTITLE line (≤12 words), an IMAGE brief (a vivid, on-brand visual — no text in the image), and seconds (2–4).",
+            'Return ONLY a JSON array — no prose, no fences. Each element: {"title":<≤6 words>,"subtitle":<≤12 words>,"imageBrief":<vivid visual, no text>,"seconds":<2-4>}',
+          ].join("\n\n") });
+          const arr = parseJsonArray(raw);
+          if (!arr || !arr.length) throw new Error("no scenes came back — try again");
+          scenes = arr.slice(0, 6).map((s) => ({ title: String(s.title || "").slice(0, 60), subtitle: String(s.subtitle || "").slice(0, 120), imageBrief: String(s.imageBrief || "").slice(0, 300), seconds: Math.min(4, Math.max(2, Number(s.seconds) || 3)), imageUrl: null, painting: false }));
+          renderScenes();
+        } catch (e) { out.textContent = ""; out.append(el("div", "err", String(e?.message || e))); }
+        finally { running = false; $("go").disabled = false; $("go").textContent = "Script it ▸"; }
+      }
+
+      function renderScenes(){
+        const out = $("out"); out.textContent = "";
+        const list = el("div", "scenes");
+        scenes.forEach((sc, i) => {
+          const card = el("div", "scene");
+          const thumb = el("div", "thumb");
+          if (sc.imageUrl) { const img = el("img"); img.src = sc.imageUrl; img.alt = sc.title; thumb.append(img); }
+          else if (sc.painting) { thumb.append(el("div", "scan")); }
+          else { const b = el("button", "act", "paint ▸"); b.onclick = () => paint(i); thumb.textContent = ""; thumb.append(b); }
+          const body = el("div", "sbody");
+          body.append(el("div", "stitle", sc.title));
+          if (sc.subtitle) body.append(el("div", "ssub", sc.subtitle));
+          body.append(el("div", "sbrief", "▸ " + sc.imageBrief), el("div", "ssecs", sc.seconds + "s"));
+          card.append(thumb, body); list.append(card);
+        });
+        out.append(list);
+      }
+
+      async function paint(i){
+        const sc = scenes[i]; if (!sc || sc.painting || sc.imageUrl) return;
+        sc.painting = true; renderScenes();
+        try {
+          const instruction = `Use the Higgsfield generate_image tool to generate an image of: "${sc.imageBrief}. Cinematic, on-brand, no text overlays.", aspect_ratio "16:9". Wait for it to finish (poll job status if needed), then reply with ONLY the final image URL on its own line.`;
+          const r = await relay(); let url = null, acc = "";
+          for await (const d of r.stream({ prompt: instruction, agentic: true })) {
+            if (d.type === "tool_result" && d.result?.ok) { const t = (d.result.content ?? []).map((x) => x.text ?? "").join(""); const u = extractUrl(t); if (u) url = u; }
+            else if (d.type === "text") acc += d.text;
+            else if (d.type === "error") throw new Error(d.error?.message || "stream error");
+          }
+          url = url || extractUrl(acc);
+          if (!url) throw new Error("no image");
+          sc.imageUrl = url;
+        } catch { /* leave the paint button so it can be retried */ }
+        finally { sc.painting = false; renderScenes(); }
+      }
+
+      $("go").addEventListener("click", script);
+      $("line").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); script(); } });
+      const seed = injectedText(); if (seed) $("line").value = seed;
+      $("line").focus();
+    </script>
+  </body>
+</html>

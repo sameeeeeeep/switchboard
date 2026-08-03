@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resize · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      .dz{border:1px dashed var(--edge);border-radius:12px;background:var(--inset);padding:26px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+      .dz:hover,.dz.over{border-color:var(--accent);background:#0d1005;}
+      .dz .big{font:500 13px/1.3 var(--sans);color:var(--ink-sec);}
+      .dz .sub{font:400 11px/1.4 var(--mono);color:var(--ink-faint);margin-top:5px;}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--edge);flex:none;}
+      .fname{font:500 11px/1.3 var(--mono);color:var(--ink-sec);}
+      .dim{font:400 10px/1.3 var(--mono);color:var(--ink-faint);}
+      .grow{flex:1;}
+      .seg{display:inline-flex;background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px;flex-wrap:wrap;}
+      .segbtn{font:500 11px/1 var(--sans);background:none;border:0;color:var(--ink-sec);border-radius:6px;padding:6px 10px;cursor:pointer;}
+      .segbtn.on{background:var(--accent);color:var(--page);font-weight:600;}
+      .field{display:flex;flex-direction:column;gap:6px;}
+      input[type=number]{width:96px;background:var(--inset);border:1px solid var(--edge);border-radius:8px;color:var(--ink);font:400 12px/1 var(--mono);padding:8px 10px;outline:none;}
+      input[type=number]:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .primary{font:600 12px/1 var(--sans);border-radius:999px;padding:8px 15px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:var(--page);}
+      .out{border:1px solid var(--edge);border-radius:11px;background:var(--panel);padding:11px;display:flex;align-items:center;gap:11px;}
+      .out img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--edge);flex:none;}
+      .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .nobadge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Resize</em></span><span class="kicker">on your device</span></div>
+      <div id="stage"></div>
+      <div class="nobadge"><span class="dot"></span>Re-encoded on your device · strips EXIF/GPS · no AI · no upload</div>
+    </div>
+    <input id="file" type="file" accept="image/*" hidden />
+
+    <script type="module">
+      // ---- injected-input contract ----
+      function injectedSrc() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return { url: q }; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object") {
+          if (typeof w.dataUrl === "string" && w.dataUrl) return { url: w.dataUrl, name: w.filename };
+          if (typeof w.text === "string" && /^(data:|https?:|blob:)/.test(w.text)) return { url: w.text, name: w.filename };
+        }
+        return null;
+      }
+
+      // ---- core pipeline copied from src/resize.js (pure canvas, model-free) ----
+      const FORMATS = [{ mime:"image/jpeg", label:"JPEG", ext:"jpg" },{ mime:"image/png", label:"PNG", ext:"png" },{ mime:"image/webp", label:"WebP", ext:"webp" }];
+      const MODES = [{ id:"long", label:"Longest", unit:"px", def:1600 },{ id:"width", label:"Width", unit:"px", def:1200 },{ id:"percent", label:"Percent", unit:"%", def:50 }];
+      let mode = "long", value = 1600, format = "image/jpeg", quality = 0.82;
+      const fmtBytes = (n) => !Number.isFinite(n) ? "—" : n < 1024 ? n + " B" : n < 1048576 ? (n/1024).toFixed(1) + " KB" : (n/1048576).toFixed(2) + " MB";
+
+      function targetDims(sw, sh) {
+        if (mode === "percent") { const p = Math.max(1, Math.min(400, value)) / 100; return { w: Math.max(1, Math.round(sw*p)), h: Math.max(1, Math.round(sh*p)) }; }
+        if (mode === "width") { const w = Math.max(1, Math.min(20000, value)); return { w, h: Math.max(1, Math.round(sh*(w/sw))) }; }
+        const cap = Math.max(1, Math.min(20000, value)), longer = Math.max(sw, sh), scale = Math.min(1, cap/longer);
+        return { w: Math.max(1, Math.round(sw*scale)), h: Math.max(1, Math.round(sh*scale)) };
+      }
+      function makeCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+      function drawResized(bitmap, tW, tH) {
+        let cur = bitmap, curW = bitmap.width, curH = bitmap.height;
+        while (curW > tW*2 && curH > tH*2) {
+          const nW = Math.max(tW, Math.floor(curW/2)), nH = Math.max(tH, Math.floor(curH/2));
+          const tmp = makeCanvas(nW, nH), c = tmp.getContext("2d");
+          c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high"; c.drawImage(cur, 0, 0, nW, nH);
+          cur = tmp; curW = nW; curH = nH;
+        }
+        const out = makeCanvas(tW, tH), octx = out.getContext("2d");
+        octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = "high";
+        if (format === "image/jpeg") { octx.fillStyle = "#fff"; octx.fillRect(0, 0, tW, tH); }
+        octx.drawImage(cur, 0, 0, tW, tH);
+        return out;
+      }
+      function canvasToBlob(canvas, mime, q) { return new Promise((res, rej) => canvas.toBlob((b) => b ? res(b) : rej(new Error("encode failed")), mime, q)); }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage"), fileEl = $("file");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let source = null, result = null, busy = false;
+
+      function render() {
+        stage.textContent = "";
+        if (!source) {
+          const dz = mk("div", "dz");
+          dz.append(mk("div", "big", "Drop an image, or click to pick"), mk("div", "sub", "Resized & re-encoded entirely on your device"));
+          dz.onclick = () => fileEl.click();
+          dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+          dz.ondragleave = () => dz.classList.remove("over");
+          dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) loadFile(f); };
+          stage.append(dz);
+          return;
+        }
+        // header row
+        const bar = mk("div", "row");
+        const th = mk("img", "thumb"); th.src = source.url;
+        const meta = mk("div", "field"); meta.append(mk("span", "fname", source.name), mk("span", "dim", `${source.w}×${source.h} · ${fmtBytes(source.bytes)}`));
+        bar.append(th, meta, mk("span", "grow"));
+        const swap = mk("button", "act", "× new"); swap.onclick = () => { source = null; result = null; render(); };
+        bar.append(swap);
+        stage.append(bar);
+        // controls
+        const ctl = mk("div", "row"); ctl.style.marginTop = "10px";
+        const mseg = mk("div", "seg");
+        for (const m of MODES) { const b = mk("button", "segbtn" + (mode === m.id ? " on" : ""), m.label); b.onclick = () => { mode = m.id; value = m.def; render(); run(); }; mseg.append(b); }
+        ctl.append(mseg);
+        const num = mk("input"); num.type = "number"; num.value = String(value); num.min = "1";
+        num.oninput = () => { value = Number(num.value) || value; };
+        num.onchange = () => run();
+        const unit = mk("span", "dim", MODES.find((m) => m.id === mode).unit);
+        ctl.append(num, unit);
+        stage.append(ctl);
+        // format row
+        const frow = mk("div", "row"); frow.style.marginTop = "10px";
+        const fseg = mk("div", "seg");
+        for (const f of FORMATS) { const b = mk("button", "segbtn" + (format === f.mime ? " on" : ""), f.label); b.onclick = () => { format = f.mime; render(); run(); }; fseg.append(b); }
+        frow.append(fseg, mk("span", "grow"));
+        const runBtn = mk("button", "primary", "Resize"); runBtn.onclick = run;
+        frow.append(runBtn);
+        stage.append(frow);
+        // result
+        if (result) {
+          const out = mk("div", "out"); out.style.marginTop = "11px";
+          const img = mk("img"); img.src = result.url; out.append(img);
+          const info = mk("div", "field");
+          info.append(mk("span", "fname", `${result.w}×${result.h}`), mk("span", "dim", `${fmtBytes(result.bytes)}${source.bytes ? " · " + Math.round((1 - result.bytes/source.bytes)*100) + "% smaller" : ""}`));
+          out.append(info, mk("span", "grow"));
+          const dl = mk("button", "primary", "Download"); dl.onclick = download;
+          out.append(dl);
+          stage.append(out);
+        }
+      }
+      async function loadFile(file) {
+        if (!file || !/^image\//.test(file.type || "")) return;
+        try {
+          const bitmap = await createImageBitmap(file);
+          if (source?.url) URL.revokeObjectURL(source.url);
+          source = { bitmap, name: file.name || "image", bytes: file.size, w: bitmap.width, h: bitmap.height, url: URL.createObjectURL(file) };
+          value = MODES.find((m) => m.id === mode).def;
+          render(); run();
+        } catch {}
+      }
+      async function loadUrl(url, name) {
+        try {
+          const blob = await (await fetch(url)).blob();
+          const bitmap = await createImageBitmap(blob);
+          source = { bitmap, name: name || "image", bytes: blob.size, w: bitmap.width, h: bitmap.height, url: URL.createObjectURL(blob) };
+          render(); run();
+        } catch {}
+      }
+      async function run() {
+        if (!source || busy) return;
+        busy = true;
+        try {
+          const { w, h } = targetDims(source.w, source.h);
+          const canvas = drawResized(source.bitmap, w, h);
+          const blob = await canvasToBlob(canvas, format, quality);
+          if (result?.url) URL.revokeObjectURL(result.url);
+          result = { blob, url: URL.createObjectURL(blob), w, h, bytes: blob.size };
+        } catch {} finally { busy = false; render(); }
+      }
+      function download() {
+        if (!result) return;
+        const ext = FORMATS.find((f) => f.mime === format)?.ext || "img";
+        const base = (source.name || "image").replace(/\.[^.]+$/, "");
+        const a = mk("a"); a.href = result.url; a.download = `${base}-${result.w}x${result.h}.${ext}`; a.click();
+      }
+      fileEl.onchange = () => { if (fileEl.files?.[0]) loadFile(fileEl.files[0]); fileEl.value = ""; };
+
+      render();
+      const seed = injectedSrc();
+      if (seed && seed.url) loadUrl(seed.url, seed.name);
+    </script>
+  </body>
+</html>

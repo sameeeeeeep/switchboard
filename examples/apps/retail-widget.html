@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Retail · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --warn:#F2C94C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .row{display:flex;align-items:center;gap:10px;}
+      input.line{flex:1;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.4 var(--sans);padding:11px 12px;outline:none;}
+      input.line:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:999px;padding:10px 16px;cursor:pointer;transition:opacity .15s;white-space:nowrap;}
+      .go:disabled{opacity:.4;cursor:default;}
+      .verdict{border:1px solid var(--edge);border-radius:12px;background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:9px;}
+      .vtop{display:flex;align-items:center;gap:9px;}
+      .stance{font:600 9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid var(--edge);}
+      .stance.go{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--edge));}
+      .stance.caution{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--edge));}
+      .stance.no{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--edge));}
+      .headline{font:600 14px/1.3 var(--sans);}
+      .rows{display:flex;flex-direction:column;gap:7px;}
+      .frow{display:flex;gap:9px;align-items:baseline;}
+      .fk{font:500 9px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);width:104px;flex:none;}
+      .fv{font:400 12px/1.4 var(--sans);color:var(--ink-sec);min-width:0;}
+      .bet{font:500 12px/1.45 var(--sans);color:var(--ink);border-left:2px solid var(--accent);padding-left:9px;}
+      .risk{font:400 11px/1.4 var(--mono);color:var(--warn);}
+      .statusrow{display:flex;align-items:center;gap:9px;font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:scan 1.1s linear infinite;width:60%;}
+      @keyframes scan{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Retail</em></span><span class="kicker">before you sign the lease</span></div>
+      <div class="row">
+        <input id="idea" class="line" type="text" autofocus placeholder="the physical-space idea — e.g. a specialty coffee bar in Pune" />
+        <button class="go" id="go">Pressure-test ▸</button>
+      </div>
+      <div id="out"><div class="placeholder">One line on the space — Retail does the honest maths: location, unit economics, footfall, format.</div></div>
+      <div class="badge"><span class="dot"></span>Real-numbers pressure-test on your own Claude</div>
+    </div>
+
+    <script type="module">
+      // ===== window.claude bridge — the SAME provider the full page's SDK wraps =====================
+      const SCOPE = { reason: "Retail — pressure-test a physical-space idea on your own Claude", models: ["sonnet"] };
+      function providerNow(){ const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function whenProvider(ms = 4000){ return new Promise((res) => { const now = providerNow(); if (now) return res(now); let done = false; const on = () => { if (done) return; done = true; cleanup(); res(providerNow()); }; const t = setTimeout(() => { if (done) return; done = true; cleanup(); res(providerNow()); }, ms); function cleanup(){ clearTimeout(t); window.removeEventListener("claude#initialized", on); } window.addEventListener("claude#initialized", on); }); }
+      let _relay = null;
+      async function relay(){
+        if (_relay) return _relay;
+        const p = await whenProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this from the Switchboard notch.");
+        let grant = null; try { grant = await p.request({ method: "claude_permissions" }); } catch {}
+        if (!grant) { try { grant = await p.request({ method: "claude_connect", params: SCOPE }); } catch (e) { throw new Error("connect failed: " + (e?.message || e)); } }
+        _relay = { async *stream(params){ const { streamId } = await p.request({ method: "claude_stream", params }); const q = []; let notify = null, ended = false; const h = (pl) => { if (!pl || pl.streamId !== streamId) return; q.push(pl); if (pl.type === "done" || pl.type === "error") ended = true; notify && notify(); }; p.on("delta", h); try { while (true) { if (!q.length) { if (ended) break; await new Promise((r) => (notify = r)); notify = null; continue; } yield q.shift(); } } finally { p.removeListener("delta", h); } } };
+        return _relay;
+      }
+      async function streamText(params){ const r = await relay(); let acc = ""; for await (const d of r.stream(params)) { if (d.type === "text") acc += d.text; else if (d.type === "error") throw new Error(d.error?.message || "stream error"); } return acc; }
+
+      // ---- injected-input contract ----
+      function injectedText(){ try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {} const w = window.__widgetInput; if (typeof w === "string" && w.trim()) return w; if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text; return ""; }
+
+      // ===== APP — the Retail idea-studio verdict, notch-sized ========================================
+      // Retail = brandbrain's physical-space idea studio: location, unit economics, ops, footfall — the
+      // maths of a space, done honestly. One line → one grounded verdict with the bet worth making.
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const FIELDS = [["location", "Location"], ["unitEconomics", "Unit economics"], ["footfall", "Footfall"], ["format", "Format & footprint"]];
+      let busy = false;
+
+      function buildPrompt(idea){
+        return [
+          "You are Retail, the physical-space analyst inside brandbrain. A founder is about to sign a lease. Blunt, numerate, honest — you use real-world benchmarks (rent-to-revenue %, covers/footfall per day, break-even), and you never talk them into a hopeful spreadsheet.",
+          `THE IDEA (ground truth): "${idea}"`,
+          "Lay out the real options — location, format, footprint — then commit to ONE and say why that's the bet worth making. Ground every claim in plausible numbers (rent-to-revenue, covers or units per day to break even, staffing, margin).",
+          "Respond with ONLY a JSON object — no prose, no markdown fences — exactly this shape:",
+          '{"stance":"GO"|"CAUTION"|"NO","headline":"one sharp sentence — the verdict","location":"the location call, with a rent-to-revenue or footfall number","unitEconomics":"break-even in covers/units per day and the margin that gets there","footfall":"the demand read — who walks in, how often","format":"the format & footprint that fits the maths","bet":"the one bet worth making, in a sentence","risk":"the single biggest risk that sinks it"}',
+          '- stance is GO only when the maths clears break-even with margin; CAUTION when it is close or unproven; NO when the rent-to-revenue never works.',
+        ].join("\n");
+      }
+
+      function render(d){
+        const out = $("out"); out.textContent = "";
+        const v = el("div", "verdict");
+        const top = el("div", "vtop");
+        const stance = String(d.stance || "").toUpperCase();
+        const cls = stance === "GO" ? "go" : stance === "NO" ? "no" : "caution";
+        top.append(el("span", "stance " + cls, stance || "READ"));
+        v.append(top);
+        if (d.headline) v.append(el("div", "headline", d.headline));
+        const rows = el("div", "rows");
+        for (const [key, label] of FIELDS) { if (!d[key]) continue; const r = el("div", "frow"); r.append(el("div", "fk", label), el("div", "fv", String(d[key]))); rows.append(r); }
+        if (rows.children.length) v.append(rows);
+        if (d.bet) v.append(el("div", "bet", "The bet — " + d.bet));
+        if (d.risk) v.append(el("div", "risk", "▲ risk — " + d.risk));
+        out.append(v);
+      }
+
+      async function run(){
+        const idea = $("idea").value.trim();
+        if (!idea || busy) { if (!idea) $("idea").focus(); return; }
+        busy = true; $("go").disabled = true; $("go").textContent = "Testing…";
+        const out = $("out"); out.textContent = "";
+        const st = el("div", "statusrow"); st.append(el("div", "scan"), el("span", null, "doing the maths on your Claude…")); out.append(st);
+        try {
+          const raw = await streamText({ prompt: buildPrompt(idea) });
+          const m = raw.match(/\{[\s\S]*\}/);
+          if (!m) throw new Error("the analyst replied without a verdict — try again.");
+          let d; try { d = JSON.parse(m[0]); } catch { throw new Error("the verdict came back smudged (bad JSON) — try again."); }
+          render(d);
+        } catch (e) { out.textContent = ""; out.append(el("div", "err", String(e?.message || e))); }
+        finally { busy = false; $("go").disabled = false; $("go").textContent = "Pressure-test ▸"; }
+      }
+      $("go").addEventListener("click", run);
+      $("idea").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+      const seed = injectedText(); if (seed) $("idea").value = seed;
+      $("idea").focus();
+    </script>
+  </body>
+</html>

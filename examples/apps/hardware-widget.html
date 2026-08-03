@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hardware Check · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F2C14E; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .row{display:flex;align-items:flex-end;gap:9px;}
+      .grow{flex:1;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.45 var(--sans);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .go{flex:none;font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 15px;cursor:pointer;transition:filter .15s;}
+      .go:hover{filter:brightness(1.06);} .go:disabled{opacity:.5;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{display:flex;align-items:center;gap:9px;font:500 11px/1 var(--mono);color:var(--ink-sec);padding:3px 0;}
+      .dot3{width:26px;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent),transparent);background-size:200% 100%;animation:sweep 1.1s linear infinite;}
+      @keyframes sweep{to{background-position:-200% 0;}}
+      .card{border:1px solid var(--edge);border-radius:12px;background:var(--panel);padding:13px 14px;display:flex;flex-direction:column;gap:10px;}
+      .verdict{display:flex;align-items:center;gap:9px;}
+      .badge{font:600 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid;}
+      .badge.holds{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 55%,transparent);background:color-mix(in srgb,var(--ok) 12%,transparent);}
+      .badge.shaky{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,transparent);background:color-mix(in srgb,var(--warn) 12%,transparent);}
+      .badge.weak{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:color-mix(in srgb,var(--danger) 12%,transparent);}
+      .hl{font:600 15px/1.3 var(--sans);letter-spacing:-.01em;}
+      .lines{display:flex;flex-direction:column;gap:9px;}
+      .line{display:flex;flex-direction:column;gap:2px;}
+      .line .k{font:500 9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);}
+      .line .v{font:400 12.5px/1.45 var(--sans);color:var(--ink-sec);}
+      .line.risk .v{color:var(--ink);}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .aibadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .aibadge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Hardware</em> Check</span><span class="kicker">on your Claude</span></div>
+      <div>
+        <label class="flabel" for="in">The hardware idea — one line</label>
+        <div class="row">
+          <textarea id="in" rows="2" autofocus placeholder="e.g. a wearable that tracks hydration from sweat…"></textarea>
+          <button class="go" id="go">Pressure-test</button>
+        </div>
+        <div class="hint" style="margin-top:6px;">⌘/Ctrl + Enter · the hard questions before you tool up</div>
+      </div>
+      <div id="out"></div>
+      <div class="aibadge"><span class="dot"></span>Runs on your own Claude · no key · nothing leaves but your prompt</div>
+    </div>
+
+    <script type="module">
+      // window.claude bridge — verified pattern (provider-race wait + best-effort/timeout connect).
+      const SCOPE = { reason: "Hardware Check — pressure-tests whether a hardware idea is worth tooling up for, on your own Claude", models: ["sonnet"], tools: [] };
+      const STREAM_TIMEOUT_MS = 180000;
+      function provider() { const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function waitForProvider(timeoutMs = 4000) {
+        const now = provider(); if (now) return Promise.resolve(now);
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); window.removeEventListener("claude#initialized", onInit); resolve(provider()); };
+          const onInit = () => finish();
+          const poll = setInterval(() => { if (provider()) finish(); }, 80);
+          const timer = setTimeout(finish, timeoutMs);
+          window.addEventListener("claude#initialized", onInit);
+        });
+      }
+      let grant = null, connectTried = false;
+      async function ensure() {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't here — open this widget in the notch (window.claude is missing).");
+        if (!grant && !connectTried) {
+          connectTried = true;
+          grant = await p.request({ method: "claude_permissions" }).catch(() => null);
+          if (!grant) { const timeout = new Promise((r) => setTimeout(() => r(null), 1500)); grant = await Promise.race([p.request({ method: "claude_connect", params: SCOPE }).catch(() => null), timeout]); }
+        }
+        return p;
+      }
+      async function streamText(params, onProgress) {
+        const p = await ensure();
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        let text = "";
+        return await new Promise((resolve, reject) => {
+          let timer = null;
+          const cleanup = () => { clearTimeout(timer); p.removeListener("delta", handler); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onProgress && onProgress(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error(d.error?.message || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve(text); }
+          };
+          p.on("delta", handler);
+          timer = setTimeout(() => { cleanup(); reject(new Error("Switchboard didn't respond — is the sidekick running?")); }, STREAM_TIMEOUT_MS);
+        });
+      }
+      function parseJson(text) {
+        const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+        const s = t.indexOf("{"), e = t.lastIndexOf("}");
+        if (s === -1 || e <= s) return null;
+        try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
+      }
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const msg = (e) => String(e?.message || e).slice(0, 200);
+      const inEl = $("in"), out = $("out"), goBtn = $("go");
+      let running = false;
+
+      async function run() {
+        const idea = inEl.value.trim();
+        if (!idea) { inEl.focus(); return; }
+        if (running) return;
+        running = true; goBtn.disabled = true; render({ status: "asking the hard questions…" });
+        try {
+          const text = await streamText({
+            model: "sonnet", effort: "low", maxTokens: 900,
+            prompt: [
+              "You are Hardware Check. Before a founder tools up on a hardware idea, find where it BREAKS — the physics, the BOM cost, the manufacturing/certification reality, the moat — not where it shines. Never hype.",
+              `THE IDEA: "${idea}"`,
+              "Return ONLY this JSON (no prose, no fences):",
+              `{"stance":"holds|shaky|weak","headline":"<=8 words — the verdict","risk":"one line: the single hardest question / what could kill it (physics, unit cost, certification, or timing)","wedge":"one line: the part that is genuinely real","whynow":"one line: why the timing is right (or empty if it isn't)"}`,
+            ].join("\n\n"),
+          });
+          const p = parseJson(text);
+          if (!p) throw new Error("couldn't read a verdict — try again");
+          render({ verdict: {
+            stance: ["holds", "shaky", "weak"].includes(p.stance) ? p.stance : "shaky",
+            headline: String(p.headline || "Pressure-tested").slice(0, 80),
+            risk: String(p.risk || "").slice(0, 240),
+            wedge: String(p.wedge || "").slice(0, 240),
+            whynow: String(p.whynow || "").slice(0, 240),
+          } });
+        } catch (e) { render({ error: msg(e) }); }
+        finally { running = false; goBtn.disabled = false; }
+      }
+
+      function render(s) {
+        out.textContent = "";
+        if (s?.status) { const r = el("div", "scan"); r.append(el("span", "dot3"), el("span", null, s.status)); out.append(r); return; }
+        if (s?.error) { const box = el("div", "card"); box.append(el("div", "err", s.error)); const retry = el("button", "act", "try again"); retry.onclick = () => void run(); box.append(retry); out.append(box); return; }
+        if (s?.verdict) {
+          const v = s.verdict, card = el("div", "card");
+          const vr = el("div", "verdict");
+          vr.append(el("span", "badge " + v.stance, v.stance), el("span", "hl", v.headline));
+          card.append(vr);
+          const lines = el("div", "lines");
+          if (v.risk) { const l = el("div", "line risk"); l.append(el("span", "k", "the hard question"), el("span", "v", v.risk)); lines.append(l); }
+          if (v.wedge) { const l = el("div", "line"); l.append(el("span", "k", "what's real"), el("span", "v", v.wedge)); lines.append(l); }
+          if (v.whynow) { const l = el("div", "line"); l.append(el("span", "k", "why now"), el("span", "v", v.whynow)); lines.append(l); }
+          card.append(lines);
+          const bar = el("div", "row"); bar.style.alignItems = "center";
+          const cp = el("button", "act", "copy"); cp.onclick = () => navigator.clipboard?.writeText(`${v.stance.toUpperCase()} — ${v.headline}\n\nThe hard question: ${v.risk}\nWhat's real: ${v.wedge}\nWhy now: ${v.whynow}`).catch(() => {});
+          const again = el("button", "act", "× new"); again.onclick = () => { out.textContent = ""; inEl.focus(); };
+          bar.append(cp, again); card.append(bar);
+          out.append(card); return;
+        }
+      }
+
+      goBtn.onclick = () => void run();
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void run(); } });
+      const seed = injectedText();
+      if (seed) { inEl.value = seed; void run(); }
+      inEl.focus();
+    </script>
+  </body>
+</html>

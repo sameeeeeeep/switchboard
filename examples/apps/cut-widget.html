@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cut · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 12px/1.5 var(--mono);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:9px;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:10px 16px;cursor:pointer;transition:opacity .13s;}
+      .go:hover{opacity:.9;} .go:disabled{background:var(--raised);color:var(--ink-faint);cursor:not-allowed;}
+      .grow{flex:1;}
+      .stat{font:500 11px/1.4 var(--mono);color:var(--ink-sec);display:flex;align-items:center;gap:8px;}
+      .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.1s ease-in-out infinite;}
+      @keyframes blink{50%{opacity:.25;}}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .out{border:1px solid var(--edge);border-radius:12px;background:var(--panel);padding:12px 14px;font:400 12px/1.6 var(--sans);color:var(--ink-sec);max-height:280px;overflow:auto;}
+      .out b{color:var(--ink);font-weight:600;}
+      .out a{color:var(--accent);}
+      .toolrow{display:flex;align-items:center;gap:8px;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .conn{font:500 10px/1.4 var(--mono);color:var(--ink-dim);}
+      .conn a{color:var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Cut</em></span><span class="kicker">cut plan · your claude</span></div>
+      <div>
+        <label class="flabel" for="in">Paste a video transcript (timestamps help) or rough notes</label>
+        <textarea id="in" rows="4" autofocus placeholder="00:00 hey everyone, today we're testing…&#10;00:42 the surprising part was…"></textarea>
+      </div>
+      <div class="row">
+        <span class="grow"></span>
+        <button id="go" class="go">Cut it ✂️</button>
+      </div>
+      <div id="stat" class="stat" hidden><span class="dot"></span><span id="stat-line">Cutting…</span></div>
+      <div id="errbox" class="err" hidden></div>
+      <div id="out" class="out" hidden></div>
+      <div class="toolrow" id="toolrow" hidden>
+        <button class="act" id="copy-all">⧉ copy cut plan</button>
+        <span class="grow"></span>
+        <span class="conn" id="conn"></span>
+      </div>
+      <div class="conn" id="conn-idle"></div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+      const PROVIDER = "claude";
+      const SCOPE = { reason: "Cut — read a transcript you paste and draft captions + a cut list on your own Claude", tools: [], models: ["sonnet"] };
+      function rawProvider() { const p = window[PROVIDER]; return p && p.isRelay ? p : null; }
+      function whenProvider(ms = 2500) { const n = rawProvider(); if (n) return Promise.resolve(n); return new Promise((res) => { const done = () => { clearTimeout(t); res(rawProvider()); }; const t = setTimeout(done, ms); window.addEventListener(`${PROVIDER}#initialized`, done, { once: true }); }); }
+      async function ensureConnected(p) { try { const g = await p.request({ method: "claude_permissions" }); if (g) return true; } catch {} try { const g = await p.request({ method: "claude_connect", params: SCOPE }); return !!g; } catch { return false; } }
+      function streamText(p, params, onP) {
+        return new Promise(async (resolve, reject) => {
+          let streamId; try { ({ streamId } = await p.request({ method: "claude_stream", params })); } catch (e) { reject(e); return; }
+          let text = "";
+          const h = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onP && onP("text", text); }
+            else if (d.type === "done") { cleanup(); resolve(text || (d.result && d.result.text) || ""); }
+            else if (d.type === "error") { cleanup(); const e = new Error(d.error && d.error.message || "stream error"); e.code = d.error && d.error.code; reject(e); }
+          };
+          function cleanup() { try { p.removeListener("delta", h); } catch {} }
+          p.on("delta", h);
+        });
+      }
+      // markdown-lite → safe HTML (escape first, then a few inline patterns) — mirrors src/cut.js mdLite
+      function mdLite(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+          .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+          .replace(/^\s*[-*]\s+/gm, "• ")
+          .replace(/\n/g, "<br>");
+      }
+
+      // ---- prompt (reuses src/cut.js run() prompt: Captions / Cut list / Trim) ----
+      function buildPrompt(transcript) {
+        return [
+          "You are a video editor's assistant. From the transcript below, produce a cut plan the creator can act on.",
+          'THE TRANSCRIPT:\n"""' + transcript.slice(0, 12000) + '"""',
+          "Produce Markdown with EXACTLY these bold-heading sections, in order: **Captions** (short punchy on-screen lines, one per beat — bullets), **Cut list** (bullets, each `- keep MM:SS–MM:SS — why it earns the cut`; use the timestamps present in the transcript, and if none are given, estimate ranges from reading order and say so once), **Trim** (bullets — what to drop and why). Be faithful to the source; never invent quotes, claims, or moments that aren't there.",
+        ].join("\n\n");
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const inEl = $("in"), goEl = $("go"), out = $("out"), stat = $("stat"), statLine = $("stat-line"), errbox = $("errbox");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let busy = false, provider = null, outText = "";
+
+      function idleConn() {
+        const c = $("conn-idle"); c.textContent = "";
+        if (provider) { c.textContent = "connected — planned on your Claude, nothing uploaded"; return; }
+        c.append("everything runs on your own Claude — ");
+        const a = mk("a", null, "get Switchboard"); a.href = "https://thelastprompt.ai/switchboard/"; a.target = "_blank"; a.rel = "noreferrer"; c.append(a);
+      }
+      function setBusy(on, line) { busy = on; stat.hidden = !on; if (on) { errbox.hidden = true; statLine.textContent = line || "Cutting…"; } goEl.disabled = on || !inEl.value.trim(); }
+      function showError(err) {
+        errbox.hidden = false; const msg = String(err?.message || err), code = err?.code;
+        if (code === 4290) errbox.textContent = "Budget cap reached — raise it in the Switchboard panel, or try tomorrow.";
+        else if (code === 4900) errbox.textContent = "Your Claude is unreachable — start the Switchboard daemon, then retry.";
+        else errbox.textContent = "Couldn't cut — " + msg.slice(0, 160);
+      }
+      async function run() {
+        const transcript = inEl.value.trim(); if (busy || !transcript) return;
+        provider = provider || await whenProvider();
+        if (!provider) { showError(new Error("Switchboard isn't connected — open this inside the notch, or install the sidekick.")); return; }
+        setBusy(true, "Connecting…");
+        if (!await ensureConnected(provider)) { setBusy(false); showError(new Error("Connect declined — approve the Switchboard grant to cut.")); return; }
+        setBusy(true, "Reading the transcript, planning the cut…");
+        out.hidden = false; out.textContent = ""; $("toolrow").hidden = true;
+        try {
+          outText = await streamText(provider, { prompt: buildPrompt(transcript), maxTokens: 1600 }, (k, v) => { if (k === "text") { outText = v; out.innerHTML = mdLite(v); statLine.textContent = "Planning the cut… " + (v.length / 1024).toFixed(1) + " kb"; } });
+          outText = outText.trim(); out.innerHTML = mdLite(outText);
+          $("toolrow").hidden = false; $("conn").textContent = "planned on your Claude";
+        } catch (err) { showError(err); out.hidden = true; }
+        finally { setBusy(false); idleConn(); }
+      }
+      $("copy-all").addEventListener("click", async () => { if (!outText) return; try { await navigator.clipboard.writeText(outText); } catch {} });
+      goEl.addEventListener("click", run);
+      inEl.addEventListener("input", () => { goEl.disabled = busy || !inEl.value.trim(); });
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
+
+      const seed = injectedText(); if (seed) inEl.value = seed;
+      goEl.disabled = !inEl.value.trim();
+      whenProvider(2500).then((p) => { provider = p; idleConn(); });
+      idleConn(); inEl.focus();
+    </script>
+  </body>
+</html>

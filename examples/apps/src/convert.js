@@ -1,56 +1,38 @@
-// CONVERT — paste data in one shape (JSON, CSV, YAML, or a Markdown table) and get it converted to
-// the most useful other shape, on the visitor's OWN Claude. The operator holds no key, pays for no
-// inference, and never sees the user's data — Switchboard brokers everything.
+// CONVERT — a NON-AI widget. Paste data in one shape (CSV, JSON, or YAML) and get it converted to
+// another shape — entirely IN THE TAB. No model, no cloud round-trip, no cost, no egress. The bytes
+// never leave the browser process. Where `convert` once burned a cloud Claude call to reshape data
+// (DESIGN-SYSTEM.md gap #3/#5), it is now pure client-side parsing: papaparse for CSV, js-yaml for
+// YAML, JSON.parse/stringify for JSON. L0 engine tier, zero network.
 //
-// This file is TEMPLATE PLUMBING + the app. Everything between here and the "APP LOGIC" line is
-// proven idiom (distilled from recap.js) — keep it byte-identical. Edit the CONFIG block and
-// everything below APP LOGIC.
-//
-// House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
-// recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
-import { whenRelayReady, mountConnect } from "@relay/sdk";
-// Option cards come from the shared kit (src/kit/ui.js): DRAFTED stays visually distinct from CHOSEN
-// so the accent never paints a machine decision (doctrine 5), and any slate gets an escape hatch.
-import { optionCards } from "./kit/ui.js";
-// God's hands: expose Convert's one action as a page-tool so the native God webview (or any WebMCP
-// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
-import { exposeToGod } from "./kit/webmcp.js";
+// It still mounts the standard connect chip for IDENTITY consistency with the rest of the store — but
+// the whole pipeline runs BEFORE and WITHOUT any connection. `scope.models` is empty and there is not
+// a single relay.stream()/relay.complete() call in this file: that IS the proof it never touches an
+// LLM. Same doctrine as resize.js — single input, one primary action, house design system, steerable.
+import { mountConnect, whenRelayReady } from "@relay/sdk";
+// God's hands: expose the convert action as a page-tool so the native God webview (or any WebMCP host)
+// can DRIVE it headlessly — reusing the exact pipeline a click runs. Still zero model.
+import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
+// Vendored, self-contained parsers (bundled at build time; run in-tab, no CDN, no network).
+import Papa from "./vendor/papaparse.cjs";
+import * as YAML from "./vendor/js-yaml.esm.mjs";
 
-// ==== CONFIG — every new wrapp edits this block =============================================
-const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
+// ==== CONFIG ================================================================================
 const APP = {
-  id: "convert",                                // = build.mjs entry name = ./dist/<id>.js in the html
+  id: "convert",
   name: "Convert",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
-    reason: "Convert — converts data between JSON/CSV/YAML/Markdown table on your own Claude",
-    models: ["sonnet"],
-    tools: [],                                  // text-only; no tools, no image gen
+    reason: "Convert — converts data between CSV/JSON/YAML entirely on your device. No AI, no cost.",
+    models: [],   // ← NON-AI: never requests a model. This emptiness is load-bearing.
+    tools: [],
   },
-  usesContext: null,                            // single-input utility — no lent context, no cold open
+  usesContext: null,
 };
 
-// ==== dom + string helpers ==================================================================
+// ==== dom + helpers =========================================================================
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const uid = () => Math.random().toString(36).slice(2, 9);
-const msg = (e) => String(e?.message || e).slice(0, 160);
-function stripTags(s) { return String(s || "").replace(/<[^>]+>/g, ""); }
-function mdLite(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/(^|[\s(])((https?:\/\/[^\s<)]+))/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/^\s*[-*]\s+/gm, "• ");
-}
-function sanitizeSvg(svg) {
-  return String(svg || "")
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(href|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, "");
-}
+const msg = (e) => String(e?.message || e).slice(0, 200);
 let toastT = null;
 function toast(text, err) {
   clearTimeout(toastT);
@@ -60,275 +42,283 @@ function toast(text, err) {
   toastT = setTimeout(() => t.remove(), 3200);
 }
 
-// ==== connect (standard chip + returning-user probe) ========================================
+// ==== connect (identity only — the tool works with NO connection) ===========================
 let relay = null;
 let notInstalled = false;
-let brand = null;         // the ONE lent context, when APP.usesContext === "single"
-let wired = false;
-
 mountConnect($("chip-dock"), {
   scope: APP.scope,
   context: APP.usesContext,
   installUrl: APP.installUrl,
-  onConnect: (r) => { relay = r; wire(r); void onReady(); },
-  onDisconnect: () => { relay = null; render(); },
-  onProjectChange: () => { void syncContext(); },
+  onConnect: (r) => { relay = r; },
+  onDisconnect: () => { relay = null; },
 });
 (async () => {
-  const r = await whenRelayReady(2000, { installUrl: APP.installUrl });
-  if (r && "connect" in r) { const grant = await r.permissions().catch(() => null); if (grant) { relay = r; wire(r); void onReady(); return; } }
+  const r = await whenRelayReady(1500, { installUrl: APP.installUrl });
+  if (r && "connect" in r) { const grant = await r.permissions().catch(() => null); if (grant) relay = r; }
   else if (r && r.installed === false) notInstalled = true;
-  render();
 })();
-function wire(r) { if (wired) return; wired = true; r.on("permissionsChanged", () => void syncContext()); }
-// onReady fires TWICE by design — mountConnect's onConnect AND the returning-user probe,
-// whichever wins the race. Hydrating from storage on BOTH passes is a real (timing-dependent) bug:
-// the second pass re-reads the run the first pass just saved, REPLACING the in-memory object the
-// running pipeline still holds a reference to. The pipeline then finishes into a detached orphan and
-// the UI sits forever on a run that never completes. Hydrate once.
-let hydrated = false;
-async function onReady() {
-  await syncContext();
-  if (!hydrated) { hydrated = true; await loadState(); }
-  render(); autostart();
-}
 
-// CONTEXT-FIRST: the moment a context is lent, everything derives from it — options from
-// data.products, tone from data.voice, colors from data.palette (FLAT hex strings — see
-// docs/CONTEXT-KINDS.md). Hardcoded samples are allowed ONLY pre-connect, visibly labeled.
-async function syncContext() {
-  if (!relay) return;
-  if (APP.usesContext === "single") brand = await relay.context.active().catch(() => null);
-  render();
+// ==== settings (localStorage — works OFFLINE, no daemon needed) ==============================
+const SETTINGS_KEY = APP.id + "-settings";
+const DEFAULTS = { to: "json" };
+let settings = loadSettings();
+function loadSettings() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") }; }
+  catch { return { ...DEFAULTS }; }
 }
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 
-// ==== per-origin state (values are opaque STRINGS — store JSON) =============================
-let state = { run: null };
-async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } }
-async function saveState() { try { await relay.storage.set(APP.id + "-state", JSON.stringify(state)); } catch { /* non-fatal */ } }
+// ==== APP LOGIC — the pure in-tab conversion pipeline ═══════════════════════════════════════
+// Everything here is deterministic parse/serialize. No fetch, no stream, no model.
 
-// ==== llm helpers — the EXACT stream contract; never guess these shapes =====================
-// relay.stream(params) is an async iterator of deltas:
-//   { type:"text", text }  { type:"tool_proposed", call }  { type:"tool_result", result }
-//   { type:"error", error:{ message } }  { type:"done", result }
-// relay.complete(params) resolves { text, usage, stopReason }.
-const STREAM_TIMEOUT_MS = 180000;
-async function streamText(params, onProgress) {
-  const it = relay.stream(params);
-  let text = "", settled = false, timer = null;
-  try {
-    return await Promise.race([
-      (async () => {
-        for await (const d of it) {
-          if (d.type === "text") { text += d.text; onProgress && onProgress({ text }); }
-          else if (d.type === "tool_proposed") { onProgress && onProgress({ tool: d.call?.name }); }
-          else if (d.type === "error") throw new Error(d.error?.message || "stream error");
-        }
-        settled = true;
-        return text;
-      })(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          if (settled) return;
-          try { it.return?.(); } catch { /* already closed */ }
-          reject(new Error("Switchboard didn't respond — is the sidekick running? Reload this tab and try again."));
-        }, STREAM_TIMEOUT_MS);
-      }),
-    ]);
-  } finally { clearTimeout(timer); }
-}
-async function askJson(parts) { return parseJson(await streamText({ prompt: parts.filter(Boolean).join("\n\n") })); }
-async function askJsonArray(parts) { return parseJsonArray(await streamText({ prompt: parts.filter(Boolean).join("\n\n") })); }
-function parseJson(text) {
-  const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
-  const s = t.indexOf("{"), e = t.lastIndexOf("}");
-  if (s === -1 || e <= s) return null;
-  try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
-}
-function parseJsonArray(text) {
-  const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
-  const s = t.indexOf("["), e = t.lastIndexOf("]");
-  if (s === -1 || e <= s) return null;
-  try { const a = JSON.parse(t.slice(s, e + 1)); return Array.isArray(a) ? a : null; } catch { return null; }
-}
-// Image generation on the USER'S Higgsfield (agentic; needs HIGGSFIELD in the granted tools).
-const IMG_URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
-async function genImage(promptText) {
-  const instruction = `Use the Higgsfield generate_image tool to generate an image of: "${promptText}", aspect_ratio "16:9". Wait for it to finish (poll job status if needed), then reply with ONLY the final image URL on its own line.`;
-  let url = null, acc = "";
-  for await (const d of relay.stream({ prompt: instruction, agentic: true })) {
-    if (d.type === "tool_result" && d.result?.ok) { const t = (d.result.content ?? []).map((x) => x.text ?? "").join(""); const m = t.match(IMG_URL_RE); if (m) url = m[1] || m[2] || m[0]; }
-    else if (d.type === "text") acc += d.text;
-    else if (d.type === "error") throw new Error(d.error.message);
-  }
-  if (!url) { const m = acc.match(IMG_URL_RE); if (m) url = m[1] || m[2] || m[0]; }
-  return url;
-}
-
-// ==== house UI atoms ========================================================================
-// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
-// names, plus the drafted-vs-chosen distinction and the escape hatch).
-function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
-function steerRow(onSteer, chips) {
-  const wrap = el("div", "steer");
-  wrap.append(el("span", "kicker", "not quite? steer it"));
-  const row1 = el("div", "chips");
-  for (const s of (chips || STEER_CHIPS)) { const c = el("button", "chip", s); c.onclick = () => onSteer(s); row1.append(c); }
-  wrap.append(row1);
-  const row = el("div", "row");
-  const box = el("div", "box");
-  const input = el("input"); input.placeholder = "tell it what to change…";
-  const send = () => { const t = input.value.trim(); if (!t) return; input.value = ""; onSteer(t); };
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
-  box.append(input);
-  const btn = el("button", "send", "send"); btn.onclick = send;
-  row.append(box, btn); wrap.append(row);
-  return wrap;
-}
-function connectSteps() {
-  const card = el("div", "steps-card");
-  const steps = el("div", "steps");
-  const s1 = el("div"); s1.innerHTML = notInstalled
-    ? "<b>1</b> · Install Switchboard (button, top-right)"
-    : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  const s2 = el("div"); s2.innerHTML = "<b>2</b> · One paste in — the pipeline runs itself";
-  const s3 = el("div"); s3.innerHTML = "<b>3</b> · Read it, steer anywhere, keep what you like";
-  steps.append(s1, s2, s3);
-  card.append(steps);
-  return card;
-}
-
-// ==== APP LOGIC ═════════════════════════════════════════════════════════════════════════════
-// CONVERT — paste structured data (JSON, CSV, YAML, or a Markdown table) → one stage infers the
-// source format and outputs the most useful target (a Markdown table when ambiguous), streamed live.
-// Steering re-converts (as JSON, as CSV, as YAML…). Text-only — no tools.
-
-const STEER_CHIPS = ["as JSON", "as CSV", "as YAML", "as Markdown table"];
-// Pre-connect ONLY — a visibly-labeled sample so the empty state isn't dead. Gone the moment Claude connects.
+const FORMATS = [
+  { id: "csv", label: "CSV" },
+  { id: "json", label: "JSON" },
+  { id: "yaml", label: "YAML" },
+];
 const SAMPLE = "name,role,city\nAda,Engineer,London\nGrace,Admiral,New York";
-let running = false;
 
-function autostart() {
-  // No cold open — this is a single-input utility with no lent context. Guarded on brand so if a
-  // context is ever lent it stays inert.
-  if (state.run) return;
-  if (brand) { /* utility wrapp — nothing to autostart */ }
+/** Sniff the source format from the raw text. Deterministic, order matters:
+ *  JSON (starts with { or [ and parses) → CSV (delimiter-consistent rows) → YAML (key: value / - list).
+ *  Returns 'csv' | 'json' | 'yaml' | null. */
+function detectFormat(text) {
+  const t = String(text || "").trim();
+  if (!t) return null;
+  // JSON — the least ambiguous: a strict parse of a {…}/[…] body.
+  if (t[0] === "{" || t[0] === "[") { try { JSON.parse(t); return "json"; } catch { /* not json */ } }
+  const lines = t.split(/\r?\n/).filter((l) => l.trim());
+  const looksCsv = lines.length >= 1 && /[,\t;]/.test(lines[0]);
+  const looksYaml = /^\s*[\w"'.\- ]+\s*:\s/.test(t) || /^\s*-\s+/.test(t);
+  // CSV wins when the header row and at least one more row share a delimiter and yield >1 column.
+  if (looksCsv) {
+    const res = Papa.parse(t, { skipEmptyLines: true });
+    const cols = (res.data[0] || []).length;
+    const consistent = res.data.length >= 1 && cols > 1;
+    if (consistent && !looksYamlDominant(t)) return "csv";
+  }
+  if (looksYaml) { try { const v = YAML.load(t); if (v && typeof v === "object") return "yaml"; } catch { /* not yaml */ } }
+  if (looksCsv) return "csv";
+  // last resorts
+  try { JSON.parse(t); return "json"; } catch { /* */ }
+  try { const v = YAML.load(t); if (v !== undefined && v !== null) return "yaml"; } catch { /* */ }
+  return null;
+}
+// A block that is mostly `key: value` lines and has no comma-shaped header is YAML, not CSV.
+function looksYamlDominant(t) {
+  const lines = t.split(/\r?\n/).filter((l) => l.trim());
+  const kv = lines.filter((l) => /^\s*[\w"'.\- ]+\s*:\s/.test(l) && !/,/.test(l)).length;
+  return kv >= lines.length && lines.length > 0;
 }
 
-async function start(input, fromContext) {
-  if (!relay || running) return;
-  input = String(input || "").trim();
-  if (!input) { toast("Paste the data to convert first.", true); return; }
-  state.run = { id: uid(), input, fromContext: !!fromContext, steers: [], out: "", status: "", error: null };
-  await saveState(); render();
-  await run();
+/** Parse raw text of a known format into a plain JS value. */
+function parseInput(text, from) {
+  const t = String(text || "").trim();
+  if (from === "json") return JSON.parse(t);
+  if (from === "yaml") { const v = YAML.load(t); if (v === undefined) throw new Error("empty YAML"); return v; }
+  if (from === "csv") {
+    const r = Papa.parse(t, { header: true, dynamicTyping: true, skipEmptyLines: true });
+    if ((!r.data || !r.data.length) && r.errors && r.errors.length) throw new Error(r.errors[0].message);
+    return r.data;
+  }
+  throw new Error("unknown source format: " + from);
 }
 
-async function run(steer) {
-  const r = state.run; if (!r || !relay || running) return;
-  if (steer) r.steers.push(steer);
-  running = true; r.error = null; r.out = ""; r.status = "converting…"; render();
-  try {
-    const text = await streamText({
-      prompt: [
-        `You are ${APP.name}. Convert the data below between formats.`,
-        `THE DATA:\n"""${r.input.slice(0, 12000)}"""`,
-        r.steers.length ? `Steering (apply the latest — this names the target format): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
-        "Infer the source format (JSON, CSV, YAML, or a Markdown table). Unless the steering names a target, output the most useful OTHER format; if the best target is ambiguous, output a clean Markdown table. Preserve every value faithfully — never drop, reorder, or invent fields. Return ONLY the converted data inside a single fenced code block (or as the Markdown table) — no commentary before or after.",
-      ].filter(Boolean).join("\n\n"),
-      maxTokens: 2000,
-    }, (p) => { if (p.text) { r.out = p.text; const live = $("out-live"); if (live) live.innerHTML = mdLite(r.out); } });
-    r.out = text.trim();
-  } catch (e) { r.error = msg(e); }
-  finally { running = false; r.status = ""; await saveState(); render(); }
+/** Serialize a JS value into the target format. CSV flattens nested cells to JSON strings so a
+ *  round-trip stays lossless-ish rather than rendering "[object Object]". */
+function serialize(data, to) {
+  if (to === "json") return JSON.stringify(data, null, 2);
+  if (to === "yaml") return YAML.dump(data, { noRefs: true, lineWidth: 120 }).replace(/\n$/, "");
+  if (to === "csv") return toCsv(data);
+  throw new Error("unknown target format: " + to);
+}
+function toCsv(data) {
+  let rows = Array.isArray(data) ? data : [data];
+  if (!rows.length) return "";
+  const allPrimitive = rows.every((r) => r === null || typeof r !== "object");
+  if (allPrimitive) return Papa.unparse(rows.map((v) => ({ value: v })));
+  const clean = rows.map((r) => {
+    if (r === null || typeof r !== "object") return { value: r };
+    const o = {};
+    for (const k of Object.keys(r)) { const v = r[k]; o[k] = v !== null && typeof v === "object" ? JSON.stringify(v) : v; }
+    return o;
+  });
+  return Papa.unparse(clean);
 }
 
-async function copyOut() {
-  const r = state.run; if (!r || !r.out) return;
-  try { await navigator.clipboard.writeText(r.out); toast("Converted data copied ✓"); }
-  catch { toast("Couldn't copy.", true); }
+/** The one pipeline: raw text + optional source hint + target → converted text. Pure + model-free.
+ *  Exposed for the UI, the God tool, and the in-tab verification harness. */
+function convert(text, to, from) {
+  const src = from && FORMATS.some((f) => f.id === from) ? from : detectFormat(text);
+  if (!src) throw new Error("Couldn't detect the input format — paste CSV, JSON, or YAML.");
+  const target = to || (src === "json" ? "yaml" : "json");
+  const data = parseInput(text, src);
+  const out = serialize(data, target);
+  return { from: src, to: target, output: out };
 }
 
 // ==== render ================================================================================
+let lastInput = "";
+let result = null;   // { from, to, output }
+
+function run() {
+  const ta = $("conv-in");
+  const text = (ta ? ta.value : lastInput) || "";
+  lastInput = text;
+  if (!text.trim()) { toast("Paste some CSV, JSON, or YAML first.", true); return; }
+  try {
+    result = convert(text, settings.to);
+    render();
+  } catch (e) { result = { error: msg(e) }; render(); }
+}
+
 function render() {
   const hero = $("hero"), view = $("view");
-  const r = state.run;
-  hero.hidden = !!r;
+  hero.hidden = false;   // utility: hero stays; the work sits below
   view.textContent = "";
 
-  if (!relay) {
-    view.append(connectSteps());
-    const s = el("div", "sample");
-    s.append(el("div", "kicker", "sample data (connect to convert your own)"));
-    s.append(el("div", "sample-text", SAMPLE));
-    view.append(s);
-    return;
+  const wrap = el("div", "work");
+
+  // input
+  const inField = el("div", "field");
+  inField.append(el("label", "flabel", "Paste data"));
+  const ta = el("textarea"); ta.id = "conv-in"; ta.rows = 7; ta.className = "conv-ta";
+  ta.placeholder = "paste CSV, JSON, or YAML…";
+  ta.value = lastInput || "";
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
+  ta.addEventListener("input", () => { lastInput = ta.value; });
+  inField.append(ta);
+  inField.append(el("div", "fhint", "auto-detects the source · ⌘/Ctrl + Enter to convert"));
+  wrap.append(inField);
+
+  // target format + run
+  const ctl = el("div", "ctlrow");
+  const fmtField = el("div", "field");
+  fmtField.append(el("label", "flabel", "Convert to"));
+  const seg = el("div", "seg");
+  for (const f of FORMATS) {
+    const b = el("button", "segbtn" + (settings.to === f.id ? " on" : ""), f.label);
+    b.onclick = () => { settings.to = f.id; saveSettings(); if (lastInput.trim()) run(); else render(); };
+    seg.append(b);
+  }
+  fmtField.append(seg);
+  ctl.append(fmtField);
+  const runBtn = el("button", "primary", "Convert 🔄"); runBtn.onclick = run;
+  ctl.append(runBtn);
+  wrap.append(ctl);
+
+  // sample loader when empty
+  if (!lastInput.trim() && !result) {
+    const s = el("button", "act", "load a sample");
+    s.onclick = () => { lastInput = SAMPLE; render(); run(); };
+    wrap.append(s);
   }
 
-  if (!r) {
-    const startBox = el("div", "start");
-    const row = el("div", "bindrow");
-    const input = el("textarea");
-    input.rows = 4;
-    input.placeholder = "paste JSON, CSV, YAML, or a Markdown table…";
-    const go = () => { if (input.value.trim()) void start(input.value); };
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); });
-    const btn = el("button", "primary", "Convert it 🔄"); btn.onclick = go;
-    row.append(input, btn);
-    startBox.append(row);
-    startBox.append(el("div", "hint", "⌘/Ctrl + Enter · infers the source · steer the target format"));
-    view.append(startBox);
-    setTimeout(() => input.focus(), 30);
-    return;
+  // output
+  if (result) {
+    const out = el("div", "outcard");
+    if (result.error) {
+      out.append(el("div", "err", result.error));
+    } else {
+      const bar = el("div", "outbar");
+      bar.append(el("span", "kicker", `${result.from} → ${result.to}`), el("span", "grow"));
+      const cp = el("button", "act", "copy"); cp.onclick = () => copyOut();
+      const dl = el("button", "act", "download"); dl.onclick = () => download();
+      bar.append(cp, dl);
+      out.append(bar);
+      const pre = el("pre", "md out-md conv-out"); pre.id = "conv-out"; pre.textContent = result.output;
+      out.append(pre);
+    }
+    wrap.append(out);
   }
 
-  const col = el("div", "run");
-  const bar = el("div", "runbar");
-  bar.append(el("span", "kicker", "converting"), el("span", "run-input", r.input), el("span", "grow"));
-  const cp = el("button", "act", "copy"); cp.onclick = () => void copyOut(); cp.disabled = !r.out;
-  const redo = el("button", "act", "× new"); redo.onclick = () => { state.run = null; void saveState(); render(); };
-  bar.append(cp, redo);
-  col.append(bar);
+  wrap.append(badge());
+  view.append(wrap);
+}
 
-  if (r.status) col.append(researching(r.status));
-  if (r.error) {
-    col.append(el("div", "err", r.error));
-    const t = el("button", "act", "try again");
-    t.onclick = () => void run();
-    col.append(t);
-  }
-  if (r.out) {
-    col.append(el("div", "kicker sect", "converted"));
-    const m = el("div", "md out-md"); m.id = "out-live"; m.innerHTML = mdLite(r.out);
-    col.append(m);
-    if (!running) col.append(steerRow((s) => void run(s)));
-  }
-  view.append(col);
+async function copyOut() {
+  if (!result || !result.output) return;
+  try { await navigator.clipboard.writeText(result.output); toast("Converted data copied ✓"); }
+  catch { toast("Couldn't copy.", true); }
+}
+function download() {
+  if (!result || !result.output) return;
+  const ext = result.to === "yaml" ? "yaml" : result.to;
+  const mime = result.to === "json" ? "application/json" : result.to === "csv" ? "text/csv" : "text/yaml";
+  const blob = new Blob([result.output], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = el("a"); a.href = url; a.download = `converted.${ext}`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function badge() {
+  const b = el("div", "nobadge");
+  b.append(el("span", "dot"), el("span", null, "Runs fully on your device · no AI · no upload · no cost"));
+  return b;
 }
 render();
 
-// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
-// `convert_run` runs the SAME start() a paste-and-go click runs — the converted data streams live in
-// the DOM — then returns it for God to paste back.
+// ---- God's hand: one page-tool, driving the real pipeline, still ZERO model ------------------------
 exposeToGod({
   name: "convert_run",
-  description: "Convert data between JSON/CSV/YAML/Markdown table — infers the source, outputs the most useful target (a Markdown table if ambiguous). Writes it live on the page and returns it.",
-  inputSchema: { data: "string — the structured data to convert. Required." },
-  execute: async ({ data } = {}) => {
-    const input = String(data || "").trim();
-    if (!input) throw new Error("nothing to convert — pass { data } with the structured data");
-    const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
-    if (!await waitFor(() => !!relay, 6000)) throw new Error("Convert isn't connected to Switchboard yet");
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await waitFor(() => !running, 180000);
-      await start(input);
-      await waitFor(() => !running, 180000);
-      const r = state.run || {};
-      if (r.input === input && (r.out || r.error)) {
-        if (r.error) throw new Error(r.error);
-        return { output: r.out };
-      }
-    }
-    throw new Error("Convert stayed busy — try again");
+  description: "Convert data between CSV/JSON/YAML entirely on-device (no AI). Auto-detects the source; give a target format. Writes it on the page and returns the converted text.",
+  inputSchema: {
+    input: "string — the data to convert (CSV, JSON, or YAML). Required.",
+    from: "string — source format hint 'csv'|'json'|'yaml'. Optional; auto-detected when omitted.",
+    to: "string — target format 'csv'|'json'|'yaml'. Default: JSON (or YAML when the source is JSON).",
+  },
+  execute: async (input = {}) => {
+    const text = String(input.input || "").trim();
+    if (!text) throw new Error("nothing to convert — pass { input } with the data");
+    const to = input.to && FORMATS.some((f) => f.id === input.to) ? input.to : settings.to;
+    const from = input.from && FORMATS.some((f) => f.id === input.from) ? input.from : undefined;
+    const r = convert(text, to, from);
+    // drive the visible UI so a watching God webview sees it happen
+    lastInput = text; settings.to = r.to; result = r; try { render(); } catch { /* headless */ }
+    return { output: r.output, from: r.from, to: r.to };
   },
 });
+
+// ---- The GLANCE: a `text` widget (docs/WIDGETS.md §4.2) — the CONVERTED output + a "no AI" badge ----
+// Accepts an optional file/text the notch launcher hands over; converts it with the SAME pipeline and
+// returns just the result (never the picker UI). With nothing to convert it shows a prompt state.
+function widgetTextFrom(input) {
+  // Accept { text } | { input } | a dropped file's decoded text | { dataUrl } (data: URL → text).
+  if (typeof input === "string") return input;
+  if (input && typeof input === "object") {
+    if (typeof input.text === "string" && input.text.trim()) return input.text;
+    if (typeof input.input === "string" && input.input.trim()) return input.input;
+    if (typeof input.content === "string" && input.content.trim()) return input.content;
+    const du = String(input.dataUrl || "");
+    const m = /^data:[^,]*?(;base64)?,(.*)$/s.exec(du);
+    if (m) { try { return m[1] ? decodeURIComponent(escape(atob(m[2]))) : decodeURIComponent(m[2]); } catch { return ""; } }
+  }
+  return "";
+}
+exposeWidget((input) => {
+  const text = (widgetTextFrom(input) || lastInput || "").trim();
+  if (!text) {
+    return {
+      kicker: "CONVERT · CSV · JSON · YAML", title: "Drop or paste data",
+      openLabel: "Open Convert", shape: "text",
+      result: { body: "Hand me CSV, JSON, or YAML — I convert it on your device.", caption: "no AI · on your device" },
+    };
+  }
+  try {
+    const r = convert(text, settings.to);
+    const rows = Array.isArray(parseInput(text, r.from)) ? parseInput(text, r.from).length : 1;
+    return {
+      kicker: `CONVERT · ${r.from.toUpperCase()} → ${r.to.toUpperCase()}`,
+      title: `${rows} row${rows === 1 ? "" : "s"} converted`,
+      openLabel: "Open Convert", shape: "text", copyText: r.output,
+      result: { body: r.output, caption: `${rows} row${rows === 1 ? "" : "s"} · no AI · on your device` },
+    };
+  } catch (e) {
+    return {
+      kicker: "CONVERT", title: "Couldn't read that", openLabel: "Open Convert", shape: "text",
+      result: { body: msg(e), caption: "no AI · on your device" },
+    };
+  }
+});
+
+// ---- In-tab verification hook (used by the headless proof; harmless in production) -----------------
+try { (typeof window !== "undefined" ? window : globalThis).__convertTest = { convert, detectFormat, parseInput, serialize, FORMATS }; } catch { /* ignore */ }

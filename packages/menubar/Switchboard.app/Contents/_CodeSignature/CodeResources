@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		DMfHbj8zZtUmQVcCp0YEAD5e5g0=
+		SBo3apW8p/U7yfKT7+VKB3PebEQ=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -131,6 +131,10 @@
 		<key>Resources/icons/gist.png</key>
 		<data>
 		WlufpOn0vb624H/o475/jY32zDY=
+		</data>
+		<key>Resources/icons/god.png</key>
+		<data>
+		qc8/CbH+UDSzjnN3rGqCKhQOHdc=
 		</data>
 		<key>Resources/icons/hardware.png</key>
 		<data>
@@ -291,7 +295,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			usE4k8eGundg37ZCMUpzv6QNBUlMSZwTputhaCpvtwc=
+			p6xWXwdB7OdhAwMenL+Xaih1g9rX4wcMa/5efUpjDMo=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -509,6 +513,13 @@
 			<key>hash2</key>
 			<data>
 			KpGQoKwKAIM9wv8C3KRs+Fv+NaunyoTLosVl+0EqRsE=
+			</data>
+		</dict>
+		<key>Resources/icons/god.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			t/sXAZWCI4+MDsUiy7igXgHJzYc793pKGd193X3Fie0=
 			</data>
 		</dict>
 		<key>Resources/icons/hardware.png</key>

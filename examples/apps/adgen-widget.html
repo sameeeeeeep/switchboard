@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Adwall · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .in{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.4 var(--sans);padding:11px 12px;outline:none;}
+      .in:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:9px;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:10px 16px;cursor:pointer;transition:opacity .13s;}
+      .go:hover{opacity:.9;} .go:disabled{background:var(--raised);color:var(--ink-faint);cursor:not-allowed;}
+      .stat{font:500 11px/1.4 var(--mono);color:var(--ink-sec);display:flex;align-items:center;gap:8px;}
+      .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.1s ease-in-out infinite;}
+      @keyframes blink{50%{opacity:.25;}}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .wall{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      .tile{border:1px solid var(--edge);border-radius:11px;background:var(--panel);padding:11px 12px;display:flex;flex-direction:column;gap:5px;}
+      .tile.rec{border-color:var(--accent);background:var(--accent-soft);}
+      .ttop{display:flex;align-items:center;gap:6px;}
+      .tname{font:600 11.5px/1.2 var(--sans);}
+      .fmt{font:500 8.5px/1 var(--mono);color:var(--ink-dim);border:1px solid var(--edge);border-radius:999px;padding:3px 6px;margin-left:auto;}
+      .fmt.sel{color:var(--page);background:var(--accent);border-color:var(--accent);}
+      .thead{font:500 12px/1.3 var(--sans);color:var(--ink);}
+      .tangle{font:400 9px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);}
+      .tprompt{font:400 10px/1.4 var(--sans);color:var(--ink-dim);max-height:52px;overflow:hidden;}
+      .conn{font:500 10px/1.4 var(--mono);color:var(--ink-dim);}
+      .conn a{color:var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Adwall</em></span><span class="kicker">6 ad directions · your claude</span></div>
+      <div>
+        <label class="flabel" for="in">A site URL, or a brand/product in one line</label>
+        <div class="row">
+          <input id="in" class="in" type="text" autofocus placeholder="allbirds.com — or: merino wool sneakers for hot commutes" />
+          <button id="go" class="go">Draft 6</button>
+        </div>
+      </div>
+      <div id="stat" class="stat" hidden><span class="dot"></span><span id="stat-line">Drafting…</span></div>
+      <div id="errbox" class="err" hidden></div>
+      <div id="wall" class="wall" hidden></div>
+      <div class="conn" id="conn-idle"></div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+      const PROVIDER = "claude";
+      const SCOPE = { reason: "draft a wall of 6 ad directions from a site or brand on your own Claude", tools: ["WebFetch"], models: ["sonnet"], contextKinds: ["brand"] };
+      function rawProvider() { const p = window[PROVIDER]; return p && p.isRelay ? p : null; }
+      function whenProvider(ms = 2500) { const n = rawProvider(); if (n) return Promise.resolve(n); return new Promise((res) => { const done = () => { clearTimeout(t); res(rawProvider()); }; const t = setTimeout(done, ms); window.addEventListener(`${PROVIDER}#initialized`, done, { once: true }); }); }
+      async function ensureConnected(p) { try { const g = await p.request({ method: "claude_permissions" }); if (g) return true; } catch {} try { const g = await p.request({ method: "claude_connect", params: SCOPE }); return !!g; } catch { return false; } }
+      function streamText(p, params, onP) {
+        return new Promise(async (resolve, reject) => {
+          let streamId; try { ({ streamId } = await p.request({ method: "claude_stream", params })); } catch (e) { reject(e); return; }
+          let text = "";
+          const h = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onP && onP("text", text); }
+            else if (d.type === "tool_proposed") { onP && onP("tool", d.call && d.call.name); }
+            else if (d.type === "done") { cleanup(); resolve(text || (d.result && d.result.text) || ""); }
+            else if (d.type === "error") { cleanup(); const e = new Error(d.error && d.error.message || "stream error"); e.code = d.error && d.error.code; reject(e); }
+          };
+          function cleanup() { try { p.removeListener("delta", h); } catch {} }
+          p.on("delta", h);
+        });
+      }
+      function parseObj(t) { const m = String(t).replace(/```(?:json)?/gi, "").match(/\{[\s\S]*\}/); if (!m) throw new Error("PARSE"); try { return JSON.parse(m[0]); } catch { throw new Error("PARSE"); } }
+      const str = (v, fb = "") => (typeof v === "string" && v.trim() ? v.trim() : fb);
+
+      // ---- prompt (reuses src/adgen.js WALL_SHAPE) ----
+      const WALL_SHAPE = '{"directions":[exactly 6 items, each {"name":string (2-4 word direction name),"angle":string (2-4 word strategic angle label),"headline":string (max 40 characters of ad headline),"imagePrompt":string (vivid art-direction: subject, setting, light, mood; no text, no logos),"format":"1:1"|"9:16"|"16:9","recommended":boolean}]}';
+      const FMTS = ["1:1", "9:16", "16:9"];
+      function urlOf(line) { const m = String(line).match(/https?:\/\/\S+/i); if (m) return m[0]; if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(String(line).trim())) return "https://" + String(line).trim(); return ""; }
+      function buildPrompt(input) {
+        const url = urlOf(input);
+        return [
+          "You are an ad creative director filling a wall of 6 distinct visual ad directions.",
+          url ? ("FIRST: use the WebFetch tool to read " + url + " for the real product, voice and palette. Never invent claims the site doesn't support.") : ("The brief: " + input),
+          "Make the six genuinely different in angle and visual — mix formats across the wall — and mark exactly one recommended.",
+          "Respond with ONLY one JSON object — no prose, no markdown fences — shaped exactly:\n" + WALL_SHAPE,
+        ].filter(Boolean).join("\n\n");
+      }
+      function normalize(d) {
+        if (!d || !Array.isArray(d.directions) || !d.directions.length) throw new Error("INCOMPLETE");
+        const list = d.directions.slice(0, 6).map((x) => ({
+          name: str(x?.name, "Direction"), angle: str(x?.angle), headline: str(x?.headline, "—").slice(0, 48),
+          imagePrompt: str(x?.imagePrompt), format: FMTS.includes(x?.format) ? x.format : "1:1", recommended: x?.recommended === true,
+        }));
+        if (!list.some((x) => x.recommended)) list[0].recommended = true;
+        return list;
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const inEl = $("in"), goEl = $("go"), wall = $("wall"), stat = $("stat"), statLine = $("stat-line"), errbox = $("errbox");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let busy = false, provider = null;
+
+      function idleConn() {
+        const c = $("conn-idle"); c.textContent = "";
+        if (provider) { c.textContent = "connected — renders each pick on your Higgsfield in the full app"; return; }
+        c.append("everything runs on your own Claude — ");
+        const a = mk("a", null, "get Switchboard"); a.href = "https://thelastprompt.ai/switchboard/"; a.target = "_blank"; a.rel = "noreferrer"; c.append(a);
+      }
+      function setBusy(on, line) { busy = on; stat.hidden = !on; if (on) { errbox.hidden = true; statLine.textContent = line || "Drafting…"; } goEl.disabled = on || !inEl.value.trim(); }
+      function showError(err) {
+        errbox.hidden = false; const msg = String(err?.message || err), code = err?.code;
+        if (code === 4290) errbox.textContent = "Budget cap reached — raise it in the Switchboard panel, or try tomorrow.";
+        else if (code === 4900) errbox.textContent = "Your Claude is unreachable — start the Switchboard daemon, then retry.";
+        else if (msg === "PARSE" || msg === "INCOMPLETE") errbox.textContent = "Reply didn't parse cleanly — hit Draft 6 again.";
+        else errbox.textContent = "Couldn't draft — " + msg.slice(0, 160);
+      }
+      function render(list) {
+        wall.textContent = ""; wall.hidden = false;
+        for (const d of list) {
+          const tile = mk("div", "tile" + (d.recommended ? " rec" : ""));
+          const top = mk("div", "ttop");
+          top.append(mk("span", "tname", d.name), mk("span", "fmt" + (d.recommended ? " sel" : ""), d.format));
+          tile.append(top);
+          if (d.angle) tile.append(mk("div", "tangle", d.angle));
+          tile.append(mk("div", "thead", d.headline));
+          if (d.imagePrompt) tile.append(mk("div", "tprompt", d.imagePrompt));
+          wall.append(tile);
+        }
+      }
+      async function run() {
+        const input = inEl.value.trim(); if (busy || !input) return;
+        provider = provider || await whenProvider();
+        if (!provider) { showError(new Error("Switchboard isn't connected — open this inside the notch, or install the sidekick.")); return; }
+        setBusy(true, "Connecting…");
+        if (!await ensureConnected(provider)) { setBusy(false); showError(new Error("Connect declined — approve the Switchboard grant to draft.")); return; }
+        setBusy(true, urlOf(input) ? "Reading the site…" : "Drafting the wall…");
+        try {
+          const text = await streamText(provider, { prompt: buildPrompt(input), agentic: true }, (k, v) => {
+            if (k === "tool" && v === "WebFetch") statLine.textContent = "Reading the site (WebFetch)…";
+            else if (k === "text") statLine.textContent = "Drafting the wall… " + (v.length / 1024).toFixed(1) + " kb";
+          });
+          render(normalize(parseObj(text)));
+        } catch (err) { showError(err); }
+        finally { setBusy(false); idleConn(); }
+      }
+      goEl.addEventListener("click", run);
+      inEl.addEventListener("input", () => { goEl.disabled = busy || !inEl.value.trim(); });
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+
+      const seed = injectedText(); if (seed) inEl.value = seed;
+      goEl.disabled = !inEl.value.trim();
+      whenProvider(2500).then((p) => { provider = p; idleConn(); });
+      idleConn(); inEl.focus();
+    </script>
+  </body>
+</html>

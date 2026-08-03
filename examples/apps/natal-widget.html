@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Natal · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --star:#9BB4FF; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--star);box-shadow:0 0 10px rgba(155,180,255,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--star);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      .grid{display:flex;gap:8px;flex-wrap:wrap;}
+      input.f{background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 12px/1.4 var(--sans);padding:9px 11px;outline:none;}
+      input.f:focus{border-color:color-mix(in srgb,var(--star) 55%,var(--edge));}
+      #date{width:130px;} #time{width:96px;} #name{flex:1;min-width:120px;} #place{flex:1;min-width:150px;}
+      .chk{display:inline-flex;align-items:center;gap:6px;font:400 11px/1 var(--mono);color:var(--ink-dim);cursor:pointer;}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .grow{flex:1;}
+      .go{font:600 12px/1 var(--sans);background:var(--star);color:var(--page);border:0;border-radius:999px;padding:9px 16px;cursor:pointer;transition:opacity .15s;}
+      .go:disabled{opacity:.4;cursor:default;}
+      .bigrow{display:flex;gap:8px;}
+      .big{flex:1;border:1px solid var(--edge);border-radius:10px;background:var(--panel);padding:9px 10px;}
+      .big .k{font:500 8px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);}
+      .big .s{font:600 14px/1.2 var(--sans);color:var(--star);margin-top:3px;}
+      .big .g{font:400 10px/1.35 var(--sans);color:var(--ink-sec);margin-top:3px;}
+      .today{border:1px solid var(--edge);border-radius:11px;background:var(--panel);padding:11px;}
+      .today .tt{font:600 12px/1.2 var(--sans);}
+      .today .tb{font:400 11.5px/1.5 var(--sans);color:var(--ink-sec);margin-top:4px;}
+      .pin{font:500 12px/1.45 var(--sans);color:var(--ink);border-left:2px solid var(--star);padding-left:9px;}
+      .placements{display:flex;flex-wrap:wrap;gap:6px;}
+      .pl{border:1px solid var(--edge);border-radius:999px;background:var(--inset);padding:5px 10px;font:400 10px/1.2 var(--mono);color:var(--ink-sec);}
+      .pl b{color:var(--ink);font-weight:600;}
+      .statusrow{display:flex;align-items:center;gap:9px;font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--star),transparent);background-size:200% 100%;animation:scan 1.1s linear infinite;width:60%;}
+      @keyframes scan{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Natal</em></span><span class="kicker">birth chart</span></div>
+      <div class="grid">
+        <input id="name" class="f" type="text" placeholder="name (optional)" />
+        <input id="date" class="f" type="text" autofocus placeholder="YYYY-MM-DD" />
+        <input id="time" class="f" type="text" placeholder="HH:MM" />
+      </div>
+      <div class="grid">
+        <input id="place" class="f" type="text" placeholder="birthplace — city, country" />
+        <label class="chk"><input id="unknown" type="checkbox" /> time unknown</label>
+        <span class="grow"></span>
+        <button class="go" id="go">Read ▸</button>
+      </div>
+      <div id="out"><div class="placeholder">Date + birthplace (time sharpens the rising) — the chart reads on your own Claude.</div></div>
+      <div class="badge"><span class="dot"></span>Runs on your own Claude · nothing sent anywhere else</div>
+    </div>
+
+    <script type="module">
+      // ===== window.claude bridge — the SAME provider the full page's SDK wraps =====================
+      const SCOPE = { reason: "Natal — read a birth chart on your own Claude", models: ["sonnet"] };
+      function providerNow(){ const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function whenProvider(ms = 4000){ return new Promise((res) => { const now = providerNow(); if (now) return res(now); let done = false; const on = () => { if (done) return; done = true; cleanup(); res(providerNow()); }; const t = setTimeout(() => { if (done) return; done = true; cleanup(); res(providerNow()); }, ms); function cleanup(){ clearTimeout(t); window.removeEventListener("claude#initialized", on); } window.addEventListener("claude#initialized", on); }); }
+      let _relay = null;
+      async function relay(){
+        if (_relay) return _relay;
+        const p = await whenProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this from the Switchboard notch.");
+        let grant = null; try { grant = await p.request({ method: "claude_permissions" }); } catch {}
+        if (!grant) { try { grant = await p.request({ method: "claude_connect", params: SCOPE }); } catch (e) { throw new Error("connect failed: " + (e?.message || e)); } }
+        _relay = { async *stream(params){ const { streamId } = await p.request({ method: "claude_stream", params }); const q = []; let notify = null, ended = false; const h = (pl) => { if (!pl || pl.streamId !== streamId) return; q.push(pl); if (pl.type === "done" || pl.type === "error") ended = true; notify && notify(); }; p.on("delta", h); try { while (true) { if (!q.length) { if (ended) break; await new Promise((r) => (notify = r)); notify = null; continue; } yield q.shift(); } } finally { p.removeListener("delta", h); } } };
+        return _relay;
+      }
+      async function streamText(params){ const r = await relay(); let acc = ""; for await (const d of r.stream(params)) { if (d.type === "text") acc += d.text; else if (d.type === "error") throw new Error(d.error?.message || "stream error"); } return acc; }
+
+      // ---- injected-input contract (best-effort: fills the date if a date-looking string arrives) ----
+      function injectedText(){ try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {} const w = window.__widgetInput; if (typeof w === "string" && w.trim()) return w; if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text; return ""; }
+
+      // ===== APP — compact of Natal's primary action (natal_run) =====================================
+      // Natal's own fullPrompt + Co-Star voice (src/natal.js). One web-free reading on the visitor's Claude.
+      const VOICE = [
+        "VOICE — this is law:",
+        "Co-Star register. Blunt. Spare. Oddly specific. Second person. Zero hedging. Zero mysticism-kitsch. No emoji. Short sentences that stop.",
+        "Never explain astrology. Never define a term. No caveats, no comfort, no 'perhaps'. Deliver verdicts.",
+      ].join("\n");
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const dateLine = (ms) => new Date(ms).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      let busy = false;
+
+      function fullPrompt(p){
+        const born = p.unknown ? `born ${p.date}, birth time unknown, in ${p.place}` : `born ${p.date} at ${p.time} local time in ${p.place}`;
+        return [
+          `You are NATAL, a natal-chart reader. Subject: ${p.name || "the querent"}, ${born}.`,
+          `From your own knowledge, estimate the APPROXIMATE sun and moon${p.unknown ? "" : " and rising"} sign for this birth data. You have no ephemeris tools; approximation is expected. The sun sign is reliable, the moon is a best estimate${p.unknown ? "" : ", the rising follows from the time and place"}.`,
+          p.unknown ? `The birth time is unknown, so the rising sign CANNOT be computed. Set "rising" to null. Do not guess it.` : `The birth time is known, so "rising" is REQUIRED — never null.`,
+          `Today is ${dateLine(Date.now())}.`,
+          VOICE,
+          `Respond with ONLY one JSON object. No prose, no markdown fences, no backticks. Exactly this shape:`,
+          `{"sun":{"sign":"Scorpio","gloss":"one blunt sentence"},"moon":{"sign":"...","gloss":"one blunt sentence"},"rising":${p.unknown ? "null" : `{"sign":"...","gloss":"one blunt sentence"}`},"placements":[{"planet":"Mercury","glyph":"☿","sign":"...","oneLiner":"one blunt sentence"}],"today":{"title":"three to six word headline","body":"2-4 sentences about today for this chart"},"pin":"one devastating one-liner about this person"}`,
+          `"placements" must contain 5 to 7 entries — Mercury, Venus, Mars, plus a few of Jupiter/Saturn/Uranus/Neptune/Pluto. Do not repeat sun, moon, or rising. "sign" values are capitalized sign names (Aries through Pisces). "glyph" is the planet's unicode glyph.`,
+        ].filter(Boolean).join("\n\n");
+      }
+
+      function bigCard(k, obj){ const c = el("div", "big"); c.append(el("div", "k", k)); if (!obj || !obj.sign) { c.append(el("div", "s", "—")); return c; } c.append(el("div", "s", obj.sign)); if (obj.gloss) c.append(el("div", "g", obj.gloss)); return c; }
+
+      function render(d){
+        const out = $("out"); out.textContent = "";
+        const bigrow = el("div", "bigrow");
+        bigrow.append(bigCard("sun", d.sun), bigCard("moon", d.moon), bigCard("rising", d.rising));
+        out.append(bigrow);
+        const pls = Array.isArray(d.placements) ? d.placements : [];
+        if (pls.length) { const wrap = el("div", "placements"); pls.slice(0, 7).forEach((pl) => { const t = el("div", "pl"); t.append(el("b", null, (pl.glyph ? pl.glyph + " " : "") + (pl.planet || ""))); t.append(document.createTextNode(" " + (pl.sign || ""))); t.title = pl.oneLiner || ""; wrap.append(t); }); out.append(wrap); }
+        if (d.today && (d.today.title || d.today.body)) { const t = el("div", "today"); if (d.today.title) t.append(el("div", "tt", d.today.title)); if (d.today.body) t.append(el("div", "tb", d.today.body)); out.append(t); }
+        if (d.pin) out.append(el("div", "pin", d.pin));
+      }
+
+      async function read(){
+        const date = $("date").value.trim(), place = $("place").value.trim();
+        if (!date) { $("date").focus(); return; }
+        if (!place) { $("place").focus(); return; }
+        if (busy) return;
+        const p = { name: $("name").value.trim(), date, place, time: $("time").value.trim(), unknown: $("unknown").checked || !$("time").value.trim() };
+        busy = true; $("go").disabled = true; $("go").textContent = "Reading…";
+        const out = $("out"); out.textContent = "";
+        const st = el("div", "statusrow"); st.append(el("div", "scan"), el("span", null, "reading the sky…")); out.append(st);
+        try {
+          const raw = await streamText({ prompt: fullPrompt(p) });
+          const m = raw.match(/\{[\s\S]*\}/);
+          if (!m) throw new Error("the sky returned prose, not data — Read again.");
+          const d = JSON.parse(m[0]);
+          if (!d?.sun?.sign || !d?.moon?.sign) throw new Error("incomplete reading — Read again.");
+          render(d);
+        } catch (e) { out.textContent = ""; out.append(el("div", "err", String(e?.message || e))); }
+        finally { busy = false; $("go").disabled = false; $("go").textContent = "Read ▸"; }
+      }
+      $("go").addEventListener("click", read);
+      for (const id of ["name", "date", "time", "place"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); read(); } });
+      const seed = injectedText(); if (seed && /\d{4}-\d{2}-\d{2}/.test(seed)) { const m = seed.match(/\d{4}-\d{2}-\d{2}/); $("date").value = m[0]; }
+      $("date").focus();
+    </script>
+  </body>
+</html>

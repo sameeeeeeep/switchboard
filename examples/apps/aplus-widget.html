@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A-Plus · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .in{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.4 var(--sans);padding:11px 12px;outline:none;}
+      .in:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:9px;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:10px 16px;cursor:pointer;transition:opacity .13s;}
+      .go:hover{opacity:.9;} .go:disabled{background:var(--raised);color:var(--ink-faint);cursor:not-allowed;}
+      .grow{flex:1;}
+      .stat{font:500 11px/1.4 var(--mono);color:var(--ink-sec);display:flex;align-items:center;gap:8px;}
+      .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.1s ease-in-out infinite;}
+      @keyframes blink{50%{opacity:.25;}}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .out{border:1px solid var(--edge);border-radius:12px;background:var(--panel);overflow:hidden;}
+      .hero{padding:16px;background:linear-gradient(118deg,#22262C,#3E444D 48%,#7E8791);}
+      .hero h2{margin:0 0 6px;font:700 18px/1.2 var(--sans);color:#fff;letter-spacing:-.01em;}
+      .hero p{margin:0;font:400 12px/1.45 var(--sans);color:rgba(255,255,255,.92);}
+      .feats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--edge-soft);}
+      .feat{background:var(--panel);padding:11px 12px;display:flex;gap:9px;align-items:flex-start;}
+      .feat .ic{font-size:18px;line-height:1;flex:none;}
+      .feat .ft{font:600 11.5px/1.3 var(--sans);color:var(--ink);}
+      .feat .fb{font:400 10.5px/1.4 var(--sans);color:var(--ink-dim);margin-top:2px;}
+      .terms{display:flex;flex-wrap:wrap;gap:6px;padding:11px 12px;border-top:1px solid var(--edge-soft);}
+      .term{font:400 10.5px/1 var(--mono);background:var(--raised);border:1px solid var(--edge);color:var(--ink-sec);border-radius:999px;padding:6px 9px;cursor:pointer;transition:border-color .13s,color .13s;}
+      .term:hover{border-color:var(--accent);color:var(--accent);}
+      .term.copied{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+      .tools{display:flex;gap:7px;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .conn{font:500 10px/1.4 var(--mono);color:var(--ink-dim);}
+      .conn a{color:var(--accent);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);padding:14px;}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>A-Plus</em></span><span class="kicker">amazon a+ · your claude</span></div>
+      <div>
+        <label class="flabel" for="in">Product — one line, or a product-page URL</label>
+        <div class="row">
+          <input id="in" class="in" type="text" autofocus placeholder="Copper tongue cleaner, 2-pack — pure copper, flexible handle" />
+          <button id="go" class="go">Write A+</button>
+        </div>
+      </div>
+      <div id="stat" class="stat" hidden><span class="dot"></span><span id="stat-line">Writing…</span></div>
+      <div id="errbox" class="err" hidden></div>
+      <div id="out" class="out" hidden></div>
+      <div class="row" id="toolrow" hidden>
+        <div class="tools"><button class="act" id="copy-all">⧉ copy all</button></div>
+        <span class="grow"></span>
+        <span class="conn" id="conn"></span>
+      </div>
+      <div class="conn" id="conn-idle"></div>
+    </div>
+
+    <script type="module">
+      // ---- injected-input contract: ?input=<url-encoded> OR window.__widgetInput { text, dataUrl?, filename? }
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+
+      // ---- minimal window.claude bridge (same provider @relay/sdk wraps: request/on/removeListener) ----
+      const PROVIDER = "claude";
+      const SCOPE = { reason: "write your Amazon A+ content from a product line or page", tools: ["WebFetch"], models: ["sonnet"], contextKinds: ["brand"] };
+      function rawProvider() { const p = window[PROVIDER]; return p && p.isRelay ? p : null; }
+      function whenProvider(ms = 2500) {
+        const now = rawProvider(); if (now) return Promise.resolve(now);
+        return new Promise((res) => {
+          const done = () => { clearTimeout(t); res(rawProvider()); };
+          const t = setTimeout(done, ms);
+          window.addEventListener(`${PROVIDER}#initialized`, done, { once: true });
+        });
+      }
+      async function ensureConnected(p) {
+        try { const g = await p.request({ method: "claude_permissions" }); if (g) return true; } catch {}
+        try { const g = await p.request({ method: "claude_connect", params: SCOPE }); return !!g; } catch { return false; }
+      }
+      // stream deltas, accumulate text, resolve on done — mirrors src/aplus.js streamJSON()
+      function streamText(p, params, onProgress) {
+        return new Promise(async (resolve, reject) => {
+          let streamId;
+          try { ({ streamId } = await p.request({ method: "claude_stream", params })); }
+          catch (e) { reject(e); return; }
+          let text = "";
+          const handler = (payload) => {
+            if (!payload || payload.streamId !== streamId) return;
+            if (payload.type === "text") { text += payload.text; onProgress?.("text", text); }
+            else if (payload.type === "tool_proposed") { onProgress?.("tool", payload.call?.name); }
+            else if (payload.type === "done") { cleanup(); resolve(text || payload.result?.text || ""); }
+            else if (payload.type === "error") { cleanup(); const err = new Error(payload.error?.message || "stream error"); err.code = payload.error?.code; reject(err); }
+          };
+          function cleanup() { try { p.removeListener("delta", handler); } catch {} }
+          p.on("delta", handler);
+        });
+      }
+      function parseJson(text) {
+        const m = String(text).replace(/```(?:json)?/gi, "").match(/\{[\s\S]*\}/);
+        if (!m) throw new Error("PARSE");
+        try { return JSON.parse(m[0]); } catch { throw new Error("PARSE"); }
+      }
+
+      // ---- prompt (compact one-go stack; reuses src/aplus.js SHAPE + fetchStep idea) ----
+      function urlOf(line) {
+        const m = String(line).match(/https?:\/\/\S+/i); if (m) return m[0];
+        if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(String(line).trim())) return "https://" + String(line).trim();
+        return "";
+      }
+      const SHAPE = [
+        "{",
+        '"heroHeadline": string — the big banner line, <= 9 words, benefit-first, sentence case,',
+        '"heroSub": string — one supporting sentence, <= 28 words,',
+        '"features": exactly 4 of {"emoji": exactly one emoji, "title": 2-5 words, "body": 1-2 sentences (<= 24 words)},',
+        '"searchTerms": 8 to 12 lowercase buyer search phrases, 2-4 words each, no punctuation, no duplicates, no brand names',
+        "}",
+      ].join("\n");
+      function buildPrompt(product) {
+        const url = urlOf(product);
+        return [
+          "You are a senior Amazon listing copywriter writing an A+ (Enhanced Brand Content) hero + feature stack.",
+          url ? ("FIRST: use the WebFetch tool to read " + url + " and pull real materials, dimensions, claims and voice. Fold what you learn in; never invent specs the page does not support. Then write the JSON.") : "",
+          "PRODUCT: " + product,
+          'Write tight, concrete, conversion-focused retail copy. Ban "elevate", "game-changer", "unleash" and empty superlatives.',
+          "Respond with ONLY one JSON object — no prose, no markdown fences — shaped exactly:\n" + SHAPE,
+        ].filter(Boolean).join("\n\n");
+      }
+      function normalize(d) {
+        const str = (v, fb = "") => (typeof v === "string" && v.trim() ? v.trim() : fb);
+        if (!d || !str(d.heroHeadline) || !Array.isArray(d.features) || !d.features.length) throw new Error("INCOMPLETE");
+        return {
+          heroHeadline: str(d.heroHeadline),
+          heroSub: str(d.heroSub),
+          features: d.features.slice(0, 4).map((f) => ({ emoji: str(f?.emoji, "✦"), title: str(f?.title, "Feature"), body: str(f?.body) })),
+          searchTerms: (Array.isArray(d.searchTerms) ? d.searchTerms : []).map((t) => str(String(t))).filter(Boolean).slice(0, 12),
+        };
+      }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const inEl = $("in"), goEl = $("go"), out = $("out"), stat = $("stat"), statLine = $("stat-line"), errbox = $("errbox");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let busy = false, stack = null, provider = null;
+
+      function idleConn() {
+        const c = $("conn-idle");
+        c.textContent = "";
+        if (provider) { c.textContent = "connected — writes on your Claude, the app never sees a key"; return; }
+        c.append("everything runs on your own Claude — ");
+        const a = mk("a", null, "get Switchboard"); a.href = "https://thelastprompt.ai/switchboard/"; a.target = "_blank"; a.rel = "noreferrer";
+        c.append(a);
+      }
+      function setBusy(on, line) {
+        busy = on; stat.hidden = !on; if (on) { errbox.hidden = true; statLine.textContent = line || "Writing…"; }
+        goEl.disabled = on || !inEl.value.trim();
+      }
+      function showError(err) {
+        errbox.hidden = false;
+        const msg = String(err?.message || err), code = err?.code;
+        if (code === 4290) errbox.textContent = "Budget cap reached — raise it in the Switchboard panel, or try tomorrow.";
+        else if (code === 4900) errbox.textContent = "Your Claude is unreachable — start the Switchboard daemon, then retry.";
+        else if (msg === "PARSE") errbox.textContent = "That reply wasn't clean JSON — hit Write A+ again.";
+        else if (msg === "INCOMPLETE") errbox.textContent = "Reply came back missing pieces — try again.";
+        else errbox.textContent = "Couldn't write — " + msg.slice(0, 160);
+      }
+      function render() {
+        out.textContent = ""; out.hidden = false; $("toolrow").hidden = false;
+        const hero = mk("div", "hero");
+        hero.append(mk("h2", null, stack.heroHeadline));
+        if (stack.heroSub) hero.append(mk("p", null, stack.heroSub));
+        out.append(hero);
+        const fg = mk("div", "feats");
+        for (const f of stack.features) {
+          const box = mk("div", "feat");
+          box.append(mk("span", "ic", f.emoji));
+          const col = mk("div"); col.append(mk("div", "ft", f.title), mk("div", "fb", f.body));
+          box.append(col); fg.append(box);
+        }
+        out.append(fg);
+        if (stack.searchTerms.length) {
+          const tw = mk("div", "terms");
+          for (const t of stack.searchTerms) {
+            const b = mk("button", "term", t);
+            b.onclick = async () => { try { await navigator.clipboard.writeText(t); } catch {} b.classList.add("copied"); setTimeout(() => b.classList.remove("copied"), 1000); };
+            tw.append(b);
+          }
+          out.append(tw);
+        }
+        $("conn").textContent = "written on your Claude";
+      }
+      function stackText() {
+        const L = ["A+ CONTENT — " + (inEl.value.trim() || "product"), "", "== HERO ==", stack.heroHeadline];
+        if (stack.heroSub) L.push(stack.heroSub);
+        L.push("", "== FEATURES ==");
+        stack.features.forEach((f, i) => L.push((i + 1) + ") " + f.title, f.body, ""));
+        L.push("== BACKEND SEARCH TERMS ==", stack.searchTerms.join(" "));
+        return L.join("\n");
+      }
+
+      async function run() {
+        const product = inEl.value.trim();
+        if (busy || !product) return;
+        provider = provider || await whenProvider();
+        if (!provider) { showError(new Error("Switchboard isn't connected — open this inside the notch, or install the sidekick.")); return; }
+        setBusy(true, "Connecting…");
+        const ok = await ensureConnected(provider);
+        if (!ok) { setBusy(false); showError(new Error("Connect declined — approve the Switchboard grant to write.")); return; }
+        const url = urlOf(product);
+        setBusy(true, url ? "Reading the product page…" : "Writing the A+ stack…");
+        try {
+          const text = await streamText(provider, { prompt: buildPrompt(product), agentic: true }, (kind, v) => {
+            if (kind === "tool" && v === "WebFetch") statLine.textContent = "Reading your product page (WebFetch)…";
+            else if (kind === "text") statLine.textContent = "Writing the A+ stack… " + (v.length / 1024).toFixed(1) + " kb";
+          });
+          stack = normalize(parseJson(text));
+          render();
+        } catch (err) { showError(err); }
+        finally { setBusy(false); idleConn(); }
+      }
+
+      goEl.addEventListener("click", run);
+      inEl.addEventListener("input", () => { goEl.disabled = busy || !inEl.value.trim(); });
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+
+      // boot: pre-fill injected input, probe provider so the idle line reflects connection
+      const seed = injectedText();
+      if (seed) inEl.value = seed;
+      goEl.disabled = !inEl.value.trim();
+      whenProvider(2500).then((p) => { provider = p; idleConn(); });
+      idleConn();
+      inEl.focus();
+    </script>
+  </body>
+</html>

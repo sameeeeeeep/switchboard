@@ -60,3 +60,70 @@ export function exposeToGod(tools) {
   try { g.dispatchEvent(new Event("god:tools")); } catch (_) {}
   return g.__god;
 }
+
+// ─────────────────────────── exposeWidget — the GLANCE (docs/WIDGETS.md, Option B) ───────────────────────────
+//
+// A widget is NOT a shrunk page — it is the wrapp's ONE answer, declared as DATA in one of the finite
+// `WidgetResult` shapes, which the NATIVE GodWidgetKit renders (no webview, nothing idle in the notch).
+// This is the wrapp side of the contract (P1): the wrapp publishes a purpose-built glance; the daemon
+// fetches it once and hands the payload to `NotchWidget`, which reuses `widgetResult(from:)` wholesale.
+//
+// A wrapp declares its glance as EITHER a static spec OR a producer function. The producer takes an
+// OPTIONAL input — a dropped file / data: URL / text the notch launcher hands over — and returns the
+// glance for THAT input; with no input it returns a minimal "drop something" prompt state. Same design
+// as exposeToGod: the producer reuses the wrapp's own pipeline, so there is one source of truth.
+//
+//   exposeWidget((input) => ({
+//     kicker: "CONVERT · CSV → JSON",         // WidgetHeader eyebrow (rendered uppercase/mono)
+//     title:  "2 rows converted",             // WidgetHeader title
+//     openLabel: "Open Convert",              // the "Open in…" ActionRow button
+//     shape: "text",                          // one of: working · text · image · cards · gallery
+//     result: { body: "…", caption: "no AI · on your device" },
+//     copyText: "…",                          // optional — what the Copy action puts on the clipboard
+//     file: { name, dataUrl, bytes },         // optional — a drag-out/download artifact (any shape)
+//   }));
+//
+// The five shapes' `result` fields (mirror GodWidgetKit.swift:299 / WIDGETS.md §5):
+//   working  { line }
+//   text     { body, caption? }
+//   image    { caption, steer?[], file }                       file = { name, dataUrl, bytes }
+//   gallery  { caption, items:[{ label?, dataUrl, … }] }
+//   cards    { caption, items:[{ label, text, recommended?, swatch? }] }
+//
+/**
+ * @typedef {{ kicker?:string, title?:string, openLabel?:string, shape:string, result:object,
+ *             copyText?:string, file?:object }} WidgetSpec
+ * @param {WidgetSpec | ((input:any)=>WidgetSpec|Promise<WidgetSpec>)} specOrFn
+ * @returns {{ get:(input:any)=>Promise<WidgetSpec> }|undefined}
+ */
+export function exposeWidget(specOrFn) {
+  if (!specOrFn) return;
+  const produce = typeof specOrFn === "function" ? specOrFn : () => specOrFn;
+  const SHAPES = ["working", "text", "image", "cards", "gallery"];
+
+  // Normalize + validate a produced payload so the native renderer always gets a well-formed shape.
+  const normalize = (spec) => {
+    const s = spec && typeof spec === "object" ? spec : {};
+    const shape = SHAPES.includes(s.shape) ? s.shape : "text";
+    const result = s.result && typeof s.result === "object" ? s.result : { body: "" };
+    return {
+      kicker: s.kicker || "",
+      title: s.title || "",
+      openLabel: s.openLabel || "Open",
+      shape,
+      result,
+      ...(s.copyText != null ? { copyText: String(s.copyText) } : {}),
+      ...(s.file ? { file: s.file } : {}),
+    };
+  };
+
+  const g = typeof window !== "undefined" ? window : globalThis;
+  // The native bridge: a host calls __godWidget.get(input) to fetch this wrapp's glance. `input` is
+  // optional — { file, dataUrl, text, … } handed over by the notch launcher (e.g. a dropped PDF).
+  g.__godWidget = {
+    get: async (input) => normalize(await produce(input || {})),
+  };
+  // Let a host that attached before load know the widget is declared now.
+  try { g.dispatchEvent(new Event("god:widget")); } catch (_) {}
+  return g.__godWidget;
+}

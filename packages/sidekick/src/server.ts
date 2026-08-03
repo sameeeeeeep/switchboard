@@ -24,6 +24,8 @@ import type {
   TranscribeParams,
   SbBrandParams,
   SbBrandResult,
+  GuideRunParams,
+  GuideResult,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
@@ -49,6 +51,7 @@ import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 import { localSTT, sttAvailable } from "./media/stt.js";
+import { runGuide } from "./guide/runner.js";
 import { registerAppToken, removeAppToken } from "./config.js";
 import type { NativeHandler } from "./native/listener.js";
 
@@ -284,6 +287,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
         return this.transcribe(origin, env.params as TranscribeParams);
       case "sb_brand":
         return this.sbBrand(origin, env.params as SbBrandParams);
+      case "guide_run":
+        return this.guideRun(origin, env.params as GuideRunParams);
       case "claude_permissions":
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
@@ -313,7 +318,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand"],
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand", "guide_run"],
       // Enumerating consumers (the panel, feature-detect) see the ALLOWED set — a model the user
       // disabled in Settings → Models never even appears as a choice (docs/MODEL-SELECTION.md §4c).
       models: this.deps.backends.allowedModels(),
@@ -373,6 +378,64 @@ export class Broker implements ConsentPrompter, NativeHandler {
     } catch (e) {
       this.deps.audit.record({ origin, kind: "tool_call", toolName: "sb_brand", outcome: "denied", note: String((e as Error).message).slice(0, 80) });
       throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "brand extraction failed");
+    }
+  }
+
+  /** guide_run — drive a GUIDED CURSOR-WALKTHROUGH on the user's screen (onboarding / setup / how-to
+   *  / guided-test). Unlike speak/transcribe/sb_brand (local reads, no per-call consent), a guide is
+   *  WRITE-CLASS: it takes over the cursor + keyboard, so every run is gated by the SAME per-action
+   *  write-consent path a write tool call hits (`requestWriteConsent` → the "«origin» wants to …"
+   *  card the human must click — no prompt injection can satisfy it). Once approved the daemon hands
+   *  the steps to the native runtime via ~/.relay/guide-run.json and waits for guide-result.json.
+   *  Only ONE guide runs at a time (there's a single on-screen cursor); a second is refused. */
+  private guideRunning = false;
+  private async guideRun(origin: string, params: GuideRunParams): Promise<GuideResult> {
+    // NOTE: unlike the data-touching verbs, a guide is gated by its PER-RUN consent alone, NOT by a
+    // standing origin grant. A guide reads/writes NO user data — it only floats captions by the cursor
+    // and collects pass/fail keypresses — so there's nothing a grant would protect. Requiring a prior
+    // Connect would also make the flagship case impossible: onboarding a user (remote Claude included)
+    // who hasn't connected anything YET. The human's per-run "Allow?" click is the whole gate.
+    // Validate: at least one step, each with real text. Default mode "tour"; synthesize missing ids.
+    const rawSteps = Array.isArray(params?.steps) ? params.steps : [];
+    const steps = rawSteps
+      .filter((s) => s && typeof s.text === "string" && s.text.trim().length > 0)
+      .map((s, i) => ({
+        id: (typeof s.id === "string" && s.id.trim()) ? s.id.trim() : `step-${i + 1}`,
+        text: s.text.trim(),
+        ...(typeof s.hint === "string" && s.hint.trim() ? { hint: s.hint.trim() } : {}),
+      }));
+    if (steps.length === 0) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "guide_run needs at least one step with text");
+    const mode: "test" | "tour" = params?.mode === "test" ? "test" : "tour";
+    const title = (typeof params?.title === "string" && params.title.trim()) ? params.title.trim() : "Guided walkthrough";
+
+    // One cursor, one guide. Refuse a second rather than fight over the pointer.
+    if (this.guideRunning) throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "a guide is already running — finish or abort it first");
+    this.guideRunning = true;
+    try {
+      // Consent — reuse the per-action write-consent path (intrusive: hands over cursor + keyboard).
+      // The card names the origin and the action; the args carry the human-readable title/mode/steps.
+      const approved = await this.requestWriteConsent({
+        id: randomUUID(),
+        origin,
+        tool: { name: "guide_run", arguments: { title, mode, steps: steps.length } },
+        reason: "write-action",
+      });
+      if (!approved) {
+        this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "denied", note: `consent declined · ${title}` });
+        throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "the guide was declined");
+      }
+      const result = await runGuide({ title, mode, steps });
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "ok", note: `${mode} · ${title} · ${result.outcome} (${result.passed}/${result.total})` });
+      return result;
+    } catch (e) {
+      if (e instanceof ProviderError) {
+        this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: e.code === BYOPErrorCode.CONSENT_DENIED ? "denied" : "error", note: String(e.message).slice(0, 80) });
+        throw e;
+      }
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "error", note: String((e as Error).message).slice(0, 80) });
+      throw new ProviderError(BYOPErrorCode.NO_GUIDE_RUNTIME, "the guide failed to run");
+    } finally {
+      this.guideRunning = false;
     }
   }
 

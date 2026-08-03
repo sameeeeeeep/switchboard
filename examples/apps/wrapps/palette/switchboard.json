@@ -1,0 +1,28 @@
+{
+  "id": "palette",
+  "name": "Palette",
+  "tagline": "Pull a color palette from any image — on your device, no AI",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/palette.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

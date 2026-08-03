@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meeting Notes · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+      .grow{flex:1;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 12px/1.5 var(--mono);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .go{flex:none;font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 15px;cursor:pointer;transition:filter .15s;}
+      .go:hover{filter:brightness(1.06);} .go:disabled{opacity:.5;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);} .act:disabled{opacity:.5;cursor:default;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{display:flex;align-items:center;gap:9px;font:500 11px/1 var(--mono);color:var(--ink-sec);padding:3px 0;}
+      .dot3{width:26px;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent),transparent);background-size:200% 100%;animation:sweep 1.1s linear infinite;}
+      @keyframes sweep{to{background-position:-200% 0;}}
+      .card{border:1px solid var(--edge);border-radius:12px;background:var(--panel);overflow:hidden;}
+      .outbar{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--edge-soft);}
+      .md{padding:12px 13px;font:400 12.5px/1.6 var(--sans);color:var(--ink-sec);max-height:300px;overflow:auto;}
+      .md b{color:var(--ink);font-weight:600;} .md a{color:var(--accent);}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);padding:11px;}
+      .sample{border:1px dashed var(--edge);border-radius:10px;padding:10px 11px;}
+      .sample .st{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .aibadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .aibadge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Meeting</em> Notes</span><span class="kicker">on your Claude</span></div>
+      <div>
+        <label class="flabel" for="in">Paste a transcript or rough notes</label>
+        <div class="row" style="align-items:flex-end;">
+          <textarea id="in" rows="4" autofocus placeholder="paste a meeting transcript or rough notes…"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button class="go" id="go">Make notes</button>
+          <button class="act" id="sample">sample</button>
+          <span class="grow"></span>
+          <span class="hint">⌘/Ctrl + Enter</span>
+        </div>
+      </div>
+      <div id="out"></div>
+      <div class="aibadge"><span class="dot"></span>Runs on your own Claude · no key · nothing leaves but your prompt</div>
+    </div>
+
+    <script type="module">
+      // ============================================================================================
+      // window.claude bridge — verified pattern from feature-widget.html (provider-race wait +
+      // best-effort/timeout connect so it never hangs). The notch host injects window.claude.
+      // ============================================================================================
+      const SCOPE = { reason: "Meeting Notes — structures a transcript into clean notes + action items on your own Claude", models: ["sonnet"], tools: [] };
+      const STREAM_TIMEOUT_MS = 180000;
+      function provider() { const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function waitForProvider(timeoutMs = 4000) {
+        const now = provider(); if (now) return Promise.resolve(now);
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); window.removeEventListener("claude#initialized", onInit); resolve(provider()); };
+          const onInit = () => finish();
+          const poll = setInterval(() => { if (provider()) finish(); }, 80);
+          const timer = setTimeout(finish, timeoutMs);
+          window.addEventListener("claude#initialized", onInit);
+        });
+      }
+      let grant = null, connectTried = false;
+      async function ensure() {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't here — open this widget in the notch (window.claude is missing).");
+        if (!grant && !connectTried) {
+          connectTried = true;
+          grant = await p.request({ method: "claude_permissions" }).catch(() => null);
+          if (!grant) { const timeout = new Promise((r) => setTimeout(() => r(null), 1500)); grant = await Promise.race([p.request({ method: "claude_connect", params: SCOPE }).catch(() => null), timeout]); }
+        }
+        return p;
+      }
+      async function streamText(params, onProgress) {
+        const p = await ensure();
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        let text = "";
+        return await new Promise((resolve, reject) => {
+          let timer = null;
+          const cleanup = () => { clearTimeout(timer); p.removeListener("delta", handler); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onProgress && onProgress(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error(d.error?.message || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve(text); }
+          };
+          p.on("delta", handler);
+          timer = setTimeout(() => { cleanup(); reject(new Error("Switchboard didn't respond — is the sidekick running?")); }, STREAM_TIMEOUT_MS);
+        });
+      }
+      function mdLite(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+          .replace(/^\s*[-*]\s+\[ \]\s+/gm, "☐ ").replace(/^\s*[-*]\s+\[x\]\s+/gim, "☑ ")
+          .replace(/^\s*[-*]\s+/gm, "• ")
+          .replace(/\n/g, "<br>");
+      }
+
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+
+      const SAMPLE = "Standup, 9:05. Priya: the billing migration is blocked on the Stripe webhook — needs the new signing secret from ops. Dev says he can get it by Thursday. We agreed to ship the pricing page behind a flag first, then flip it Monday. Open question: do we grandfather existing annual plans? Nobody was sure — Maya to check with legal. Also churn is up 4%, someone should look at the invoice bug this week.";
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const msg = (e) => String(e?.message || e).slice(0, 200);
+      const inEl = $("in"), out = $("out"), goBtn = $("go");
+      let running = false, lastOut = "";
+
+      async function run() {
+        const input = inEl.value.trim();
+        if (!input) { inEl.focus(); return; }
+        if (running) return;
+        running = true; goBtn.disabled = true; renderStatus("reading and structuring…");
+        try {
+          const live = renderLive();
+          const text = await streamText({
+            model: "sonnet", maxTokens: 1600,
+            prompt: [
+              "You are a meeting scribe. From the transcript/notes below, produce clean, structured meeting notes someone can act on.",
+              `THE TRANSCRIPT:\n"""${input.slice(0, 14000)}"""`,
+              "Use EXACTLY these markdown sections, in order, each as a bold heading: **TL;DR** (2-3 bullets), **Decisions** (bullets — write 'None stated' if none), **Action items** (checkbox bullets `- [ ] task — owner (due)`, filling owner/due only where implied), **Open questions** (bullets). Be faithful; don't invent decisions, owners, or facts.",
+            ].join("\n\n"),
+          }, (t) => { lastOut = t; live.innerHTML = mdLite(t); });
+          lastOut = text.trim();
+          renderDone(lastOut);
+        } catch (e) { renderErr(msg(e)); }
+        finally { running = false; goBtn.disabled = false; }
+      }
+
+      function renderStatus(s) { out.textContent = ""; const r = el("div", "scan"); r.append(el("span", "dot3"), el("span", null, s)); out.append(r); }
+      function renderLive() { out.textContent = ""; const c = el("div", "card"); const m = el("div", "md"); m.innerHTML = "…"; c.append(m); out.append(c); return m; }
+      function renderErr(t) { out.textContent = ""; const c = el("div", "card"); c.append(el("div", "err", t)); const b = el("button", "act", "try again"); b.style.margin = "0 11px 11px"; b.onclick = () => void run(); c.append(b); out.append(c); }
+      function renderDone(text) {
+        out.textContent = "";
+        const c = el("div", "card");
+        const bar = el("div", "outbar");
+        bar.append(el("span", "kicker", "the notes"), el("span", "grow"));
+        const cp = el("button", "act", "copy"); cp.onclick = () => navigator.clipboard?.writeText(text).catch(() => {});
+        const nw = el("button", "act", "× new"); nw.onclick = () => { out.textContent = ""; inEl.value = ""; inEl.focus(); };
+        bar.append(cp, nw); c.append(bar);
+        const m = el("div", "md"); m.innerHTML = mdLite(text); c.append(m);
+        out.append(c);
+      }
+
+      goBtn.onclick = () => void run();
+      $("sample").onclick = () => { inEl.value = SAMPLE; void run(); };
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void run(); } });
+
+      const seed = injectedText();
+      if (seed) { inEl.value = seed; void run(); }
+      inEl.focus();
+    </script>
+  </body>
+</html>

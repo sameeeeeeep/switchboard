@@ -938,7 +938,9 @@ struct Panel: View {
         let corner = size * 0.22   // one superellipse ratio for every app/wrapp icon tile (NOTCH-DESIGN §5/§7)
         switch app.kind {
         case .native:
-            if let icon = app.icon {
+            // God has no installed .app (nativeAppIcon → nil), but it ships a bundled store icon —
+            // resolve icons/god.png the same way web wrapps resolve their art, before the dashed fallback.
+            if let icon = app.icon ?? (app.appId == GOD_APP_ID ? storeIcon("god") : nil) {
                 Image(nsImage: icon).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
                     .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: corner))
             } else {
@@ -1023,7 +1025,7 @@ struct Panel: View {
                     GhostButton(icon: showSettings ? "xmark" : "gearshape.fill", label: nil,
                                 action: { nameDraft = model.userName; withAnimation(.easeOut(duration: 0.14)) { showSettings.toggle() } })
                         .help(showSettings ? "Close settings" : "Settings")
-                    GhostButton(icon: "power", label: nil, action: onQuit).help("Quit this app; the daemon keeps running")
+                    SBButton(icon: "power", style: .danger, action: onQuit).help("Quit this app; the daemon keeps running")
                 }
             }
         }
@@ -1101,14 +1103,12 @@ struct Panel: View {
                 Rectangle().fill(Color.edge).frame(height: 1)
             }
             if model.running {
+                // Three horizontal card rails, one grammar (the dot-row divider is gone — plain hairlines now).
                 appsRow
-                // USE C: the ONE dotted divider (apps ↔ models/tools) — every other seam stays a hairline.
-                DotRowDivider().padding(.horizontal, 18).padding(.vertical, 5)
-                HStack(alignment: .top, spacing: 0) {
-                    modelsColumn.frame(maxWidth: .infinity, alignment: .leading)
-                    Rectangle().fill(Color.edge).frame(width: 1)
-                    toolsColumn.frame(maxWidth: .infinity, alignment: .leading)
-                }
+                Rectangle().fill(Color.edge).frame(height: 1).opacity(0.7)
+                commandCentreSection
+                Rectangle().fill(Color.edge).frame(height: 1).opacity(0.7)
+                toolsSection
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Daemon offline").font(.brico(15, .bold)).foregroundColor(.inkDim)
@@ -1680,31 +1680,53 @@ struct Panel: View {
     }
 
     // apps — the real-icon row across the top
+    private var storeCapsule: some View {
+        Button(action: onStore) {
+            HStack(spacing: 5) {
+                Image(systemName: "square.grid.2x2.fill").font(.system(size: 9))
+                Text("STORE").font(.splMono(9.5)).kerning(0.8)
+                Image(systemName: "arrow.up.forward").font(.system(size: 8, weight: .bold))
+            }
+            .foregroundColor(.lime)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(Capsule().fill(Color.lime.opacity(0.12)))
+        }.buttonStyle(.plain).help("Browse every wrapp you can run")
+    }
+    // A connected app's status: active (behind the current activity) · ready (seen recently) · idle (quiet).
+    private func appStatus(_ app: AppRow) -> AppStatus {
+        if model.working, let l = model.last, l.origin == app.id { return .active }
+        if Date().timeIntervalSince1970 - app.lastSeen < 120 { return .ready }
+        return .idle
+    }
+    // Removing works for EVERY app kind now (native → disconnect, web/tab/iphone → revoke by origin) — the
+    // web-app ✕ used to be reachable only from Settings.
+    private func removeAction(_ app: AppRow) -> (() -> Void)? {
+        if app.kind == .native, let id = app.appId { return { onDisconnect(id) } }
+        return { onRevoke(app.id) }
+    }
     private var appsRow: some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Text("CONNECTED APPS").kicker(); Text("· \(model.apps)").font(.splMono(9.5)).foregroundColor(.inkFaint)
-                Spacer()
-                Button(action: onStore) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 9))
-                        Text("STORE").font(.splMono(9.5)).kerning(0.8)
-                        Image(systemName: "arrow.up.forward").font(.system(size: 8, weight: .bold))
-                    }
-                    .foregroundColor(.lime)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(Color.lime.opacity(0.12)))
-                }.buttonStyle(.plain).help("Browse every wrapp you can run")
-            }
+                Spacer(); storeCapsule
+            }.padding(.trailing, 18)
             if model.appList.isEmpty {
-                Text("No apps yet — open a wrapp and it'll ask to connect.").font(.hanken(11.5)).foregroundColor(.inkFaint)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("No apps yet — open a wrapp and it'll ask to connect.").font(.label).foregroundColor(.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true).padding(.trailing, 18)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 14) { ForEach(model.appList) { appTile($0) } }.padding(.trailing, 18)
+                HDragScroll(height: 118) {
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(model.appList) { app in
+                            AppCardView(
+                                icon: AnyView(appIcon(app, size: 38)
+                                    .overlay(alignment: .bottomTrailing) { platformBadge(app.kind).offset(x: 4, y: 4) }),
+                                label: app.label, status: appStatus(app), dim: app.kind == .tab,
+                                onRemove: removeAction(app))
+                        }
+                    }.padding(.trailing, 18).padding(.vertical, 2)
                 }
             }
-        }.padding(.horizontal, 18).padding(.vertical, 16)
+        }.padding(.leading, 18).padding(.vertical, 16)
     }
     @ViewBuilder private func platformBadge(_ kind: AppKind) -> some View {
         let sym: String = { switch kind {
@@ -1715,102 +1737,109 @@ struct Panel: View {
             Image(systemName: sym).font(.system(size: 8, weight: .semibold)).foregroundColor(.inkDim)
         }.frame(width: 15, height: 15)
     }
-    private func appTile(_ app: AppRow) -> some View {
-        VStack(spacing: 7) {
-            ZStack(alignment: .topTrailing) {
-                // USE D: a per-tile hover ripple — a small lamp field fades in behind the icon on hover only,
-                // invisible at rest (pure affordance, one live element already spent on the hero beacon).
-                TileIconWithRipple(icon: AnyView(
-                    appIcon(app, size: 44).overlay(alignment: .bottomTrailing) { platformBadge(app.kind).offset(x: 4, y: 4) }
-                ))
-                if app.kind == .native, let id = app.appId {
-                    Button(action: { onDisconnect(id) }) {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 13))
-                            .foregroundColor(.inkFaint).background(Circle().fill(Color.page).frame(width: 11, height: 11))
-                    }.buttonStyle(.plain).offset(x: 6, y: -6).help("Disconnect this app")
-                }
-            }
-            Text(app.label).font(.hanken(10.5, .medium)).foregroundColor(app.kind == .tab ? .inkFaint : .inkDim).lineLimit(1).frame(width: 60)
-        }.frame(width: 60)
-    }
 
-    // models — cloud + local, one accent for the loaded model
-    private var modelsColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack { Text("MODELS").kicker(); Spacer()
-                if ollama.up && ollama.loadedCount > 0 {
-                    Text("\(ollama.loadedCount) loaded · \(String(format: "%.1f GB", ollama.totalVramGB))").font(.splMono(9.5)).foregroundColor(.inkDim)
-                }
-            }.padding(.bottom, 12)
-            HStack(spacing: 8) {
-                IconView(store: icons, key: "conn:claude", hosts: ["claude.ai"], symbol: "sparkle",
-                         tint: model.signedIn ? .lime : .danger, bg: Color.panel, size: 15, corner: 4)
-                Text(model.signedIn ? "CLAUDE CODE" : "CLAUDE CODE · SIGNED OUT").font(.splMono(9)).kerning(0.4)
-                    .foregroundColor(model.signedIn ? .inkDim : .danger)
-            }.padding(.bottom, 8)
-            FlowLayout(spacing: 6) {
-                ForEach(["Opus 4.8", "Sonnet", "Haiku"], id: \.self) { t in
-                    modelChip(t, live: false, dim: !model.signedIn, mono: false, detail: nil, onUnload: nil)
-                }
-            }.padding(.bottom, 14)
-            HStack(spacing: 8) {
-                ZStack { RoundedRectangle(cornerRadius: 4).fill(Color.raised)
-                    Image(systemName: "cpu").font(.system(size: 9)).foregroundColor(.inkDim) }.frame(width: 15, height: 15)
-                Text(ollama.up ? "OLLAMA" : "OLLAMA · NOT RUNNING").font(.splMono(9)).kerning(0.4).foregroundColor(.inkDim)
-            }.padding(.bottom, 8)
-            if ollama.up && !ollama.models.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(ollama.models) { m in
-                        modelChip(m.name, live: m.loaded, dim: !m.loaded, mono: true,
-                                  detail: m.loaded ? (m.expiresIn.isEmpty ? String(format: "%.1fGB", m.vramGB) : m.expiresIn) : (m.sizeGB > 0 ? String(format: "%.1fGB", m.sizeGB) : nil),
-                                  onUnload: m.loaded ? { ollama.unload(m.name) } : nil)
-                    }
-                }
-            } else if ollama.up {
-                Text("No local models — pull one with `ollama pull`").font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
-            }
-        }.padding(18)
+    // ---------- COMMAND CENTRE — pick the model right here (task #5). Tapping a card allows/denies it in
+    // ~/.relay/models.json (the SAME deny-list Settings writes; a denied model is used by nothing — God or any
+    // wrapp); the last model of a class stays locked ON. Loaded local models keep an ⏏ to free memory. ----
+    private var commandMeta: String {
+        let cloud = model.signedIn ? "Claude Code" : "signed out"
+        if ollama.up && ollama.loadedCount > 0 { return "\(cloud) · \(ollama.loadedCount) local loaded" }
+        return cloud
     }
-    private func modelChip(_ name: String, live: Bool, dim: Bool, mono: Bool, detail: String?, onUnload: (() -> Void)?) -> some View {
-        HStack(spacing: 7) {
-            if live { Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.5), radius: 3) }
-            Text(name).font(mono ? .splMono(11) : .hanken(11, .medium)).foregroundColor(dim ? .inkFaint : .ink).lineLimit(1)
-            if let d = detail { Text(d).font(.splMono(9)).foregroundColor(.inkFaint) }
-            if let u = onUnload {
-                Button(action: u) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.danger) }
-                    .buttonStyle(.plain).help("Unload now, free the memory")
+    private var commandCentreSection: some View {
+        let cloudCanons = cloudModels.map { $0.canon }
+        let localCanons = ollama.models.map { canonicalModelId($0.name) }
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("COMMAND CENTRE").kicker(); Text("· model").font(.splMono(9.5)).foregroundColor(.inkFaint)
+                Spacer(); Text(commandMeta).font(.splMono(9.5)).foregroundColor(.inkDim)
+            }.padding(.trailing, 18)
+            HDragScroll(height: 68) {
+                HStack(spacing: 10) {
+                    ForEach(cloudModels, id: \.canon) { m in
+                        modelCard(name: m.name, canon: m.canon, provider: "claude", detail: "cloud",
+                                  offline: !model.signedIn, live: false, classCanons: cloudCanons, onUnload: nil)
+                    }
+                    if !ollama.models.isEmpty {
+                        Rectangle().fill(Color.edge).frame(width: 1, height: 46).padding(.horizontal, 2)   // a hairline provider seam — never dots
+                        ForEach(ollama.models) { m in
+                            modelCard(name: m.name, canon: canonicalModelId(m.name), provider: "ollama",
+                                      detail: m.loaded ? (m.expiresIn.isEmpty ? String(format: "%.1fGB", m.vramGB) : m.expiresIn) : (m.sizeGB > 0 ? String(format: "%.1fGB", m.sizeGB) : "local"),
+                                      offline: !ollama.up, live: m.loaded, classCanons: localCanons,
+                                      onUnload: m.loaded ? { ollama.unload(m.name) } : nil)
+                        }
+                    } else if ollama.up {
+                        Text("No local models\n`ollama pull`").font(.monoSm).foregroundColor(.inkFaint)
+                            .frame(width: 130, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 11).sbCard()
+                    }
+                }.padding(.trailing, 18).padding(.vertical, 2)
+            }
+        }.padding(.leading, 18).padding(.vertical, 14)
+    }
+    private func modelCard(name: String, canon: String, provider: String, detail: String,
+                           offline: Bool, live: Bool, classCanons: [String], onUnload: (() -> Void)?) -> some View {
+        let enabled = !model.disabledModels.contains(canon)
+        let enabledInClass = classCanons.filter { !model.disabledModels.contains($0) }
+        let locked = enabled && enabledInClass.count <= 1     // last one on in its class → can't turn it off
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                if live { Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.5), radius: 3) }
+                Image(systemName: provider == "claude" ? "sparkle" : "cpu").font(.system(size: 9)).foregroundColor(.inkDim)
+                Text(name).font(provider == "ollama" ? .splMono(11) : .hanken(12, .semibold))
+                    .foregroundColor(enabled ? .ink : .inkFaint).lineLimit(1)
+            }
+            HStack(spacing: 6) {
+                Text(offline ? (provider == "claude" ? "signed out" : "offline") : detail).font(.monoSm).foregroundColor(.inkFaint)
+                Spacer(minLength: 6)
+                if let u = onUnload {
+                    Button(action: u) { Image(systemName: "eject.fill").font(.system(size: 9)).foregroundColor(.inkFaint) }
+                        .buttonStyle(.plain).help("Unload now, free the memory")
+                }
+                if locked {
+                    HStack(spacing: 3) { Image(systemName: "lock.fill").font(.system(size: 8)); Text("ON").font(.splMono(9)).kerning(0.6) }.foregroundColor(.inkFaint)
+                } else {
+                    Text(enabled ? "ON" : "OFF").font(.splMono(9)).kerning(0.8).foregroundColor(enabled ? .lime : .inkFaint)
+                }
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(live ? Color.lime.opacity(0.09) : Color.panel)
-            .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(live ? Color.lime.opacity(0.45) : Color.edge, lineWidth: 1)))
-        .opacity(dim ? 0.5 : 1)
+        .frame(width: 130, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .sbCard(active: enabled)
+        .opacity(enabled ? (offline ? 0.6 : 1) : 0.5)
+        .contentShape(Rectangle())
+        .onTapGesture { if !locked { onSetModelDisabled(name, enabled) } }
+        .help(locked ? "At least one \(provider == "claude" ? "cloud" : "local") model stays on"
+                     : (enabled ? "Tap to turn off — nothing will use it" : "Tap to turn on"))
     }
 
-    // tools — real brand logos, a tidy vertical list
-    private var toolsColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack { Text("TOOLS").kicker(); Spacer()
-                Text("\(model.toolCount)").font(.splMono(9.5)).foregroundColor(.inkFaint) }.padding(.bottom, 12)
+    // tools — real brand logos, a horizontal card rail (matching apps + command centre, one grammar)
+    private var toolsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("TOOLS").kicker(); Text("· \(model.connectors.count) connector\(model.connectors.count == 1 ? "" : "s")").font(.splMono(9.5)).foregroundColor(.inkFaint)
+                Spacer(); Text("\(model.toolCount) tools").font(.splMono(9.5)).foregroundColor(.inkDim)
+            }.padding(.trailing, 18)
             if model.connectors.isEmpty {
-                Text("Warming up…").font(.hanken(11)).foregroundColor(.inkFaint)
+                Text("Warming up…").font(.label).foregroundColor(.inkFaint).padding(.trailing, 18)
             } else {
-                // Cap the tool list so a 20+ connector wall scrolls in place, not down the whole panel.
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 9) { ForEach(model.connectors) { toolRow($0) } }
-                }.frame(maxHeight: 208)
+                HDragScroll(height: 88) {
+                    HStack(spacing: 10) { ForEach(model.connectors) { toolCard($0) } }.padding(.trailing, 18).padding(.vertical, 2)
+                }
             }
-        }.padding(18)
+        }.padding(.leading, 18).padding(.vertical, 14)
     }
-    private func toolRow(_ c: Connector) -> some View {
-        HStack(spacing: 9) {
+    private func toolCard(_ c: Connector) -> some View {
+        VStack(spacing: 8) {
             IconView(store: icons, key: "conn:" + normalizeConnector(c.name),
                      hosts: connectorDomain(c.name).map { [$0] } ?? [], symbol: connectorSymbol(c.name),
-                     tint: c.ok ? .inkDim : .inkFaint, bg: Color.panel, size: 22, corner: 6)
-            Text(c.name).font(.hanken(12)).foregroundColor(c.ok ? .ink : .inkDim).lineLimit(1)
-            Spacer(minLength: 6)
-            if c.tools > 0 { Text("\(c.tools)").font(.splMono(9)).foregroundColor(.inkFaint) }
-        }.opacity(c.ok ? 1 : 0.55)
+                     tint: c.ok ? .inkDim : .inkFaint, bg: Color.panel, size: 26, corner: 6)
+            Text(c.name).font(.label).foregroundColor(c.ok ? .ink : .inkDim).lineLimit(1)
+            Text(c.ok ? "· \(c.tools) tools" : "offline").font(.monoSm).foregroundColor(c.ok ? .inkFaint : .danger)
+        }
+        .frame(width: 100)
+        .padding(.horizontal, 10).padding(.vertical, 11)
+        .sbCard()
+        .opacity(c.ok ? 1 : 0.55)
     }
 
     @ViewBuilder private var rightPane: some View {
@@ -1917,9 +1946,15 @@ struct WKWebViewHolder: NSViewRepresentable {
 /// The notch drop that hosts a wrapp's LIVE web widget: shared notch chrome (silhouette · Color.page · one
 /// lime accent) × the wrapp's WKWebView. A slim header carries the kicker + a close chip; the web content
 /// fills a fixed glance-sized frame below it.
+// The web widget's live content height (measured from the page's document.body.scrollHeight), so the notch
+// sizes to the widget instead of a fixed 300px block of empty space — and grows as results render.
+@MainActor final class NotchWebHeight: ObservableObject { @Published var content: CGFloat = 200 }
+let notchWebMaxH: CGFloat = 620   // beyond this the widget scrolls internally (keeps the drop on-screen)
+
 struct NotchWebDrop: View {
     let web: NSView
     let title: String
+    @ObservedObject var height: NotchWebHeight
     var onClose: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s3) {
@@ -1934,7 +1969,7 @@ struct NotchWebDrop: View {
             }
             WKHairline()
             WKWebViewHolder(web: web)
-                .frame(width: WK.width - 2 * (WK.ear + WK.padH), height: 300)
+                .frame(width: WK.width - 2 * (WK.ear + WK.padH), height: max(90, min(height.content, notchWebMaxH)))
                 .clipShape(RoundedRectangle(cornerRadius: SBr.md))
                 .overlay(RoundedRectangle(cornerRadius: SBr.md).stroke(Color.edge, lineWidth: WK.hair))
         }
@@ -2429,25 +2464,189 @@ struct PermissionGateCard: View {
     }
 }
 
-struct GhostButton: View {
-    let icon: String
-    let label: String?
+// ================= THE SHARED CONTROL KIT (NOTCH-DESIGN §9 / DESIGN-SYSTEM meta-fix) =================
+// The structural cause of the "AI-sloppy" read was that every surface re-invented its controls (six
+// buttons, four chips, N cards). These are the ONE of each — a panel COMPOSES from them instead of
+// hand-rolling, so the drift becomes unspellable. All three panel rails (apps · command centre · tools)
+// wear `sbCard`; every button routes through `SBButton`.
+
+enum SBButtonStyle { case primary, ghost, danger }
+struct SBButton: View {
+    var icon: String? = nil
+    var label: String? = nil
+    var style: SBButtonStyle = .ghost
     let action: () -> Void
     @State private var hover = false
+    private var fill: Color { switch style {
+        case .primary: return .lime
+        case .ghost:   return hover ? .raised : .panel
+        case .danger:  return hover ? Color.danger.opacity(0.12) : .clear } }
+    private var stroke: Color { switch style {
+        case .primary: return .lime
+        case .ghost:   return .edge
+        case .danger:  return Color.danger.opacity(0.55) } }
+    private var ink: Color { switch style {
+        case .primary: return .page
+        case .ghost:   return hover ? .ink : .inkDim
+        case .danger:  return .danger } }
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                if let l = label { Text(l).font(.hanken(10.5, .medium)).lineLimit(1).fixedSize() }
+                if let i = icon { Image(systemName: i).font(.system(size: 10, weight: .semibold)) }
+                if let l = label { Text(l).font(.label).lineLimit(1).fixedSize() }
             }
-            .fixedSize() // never let the row compress a control into wrapped/truncated text
-            .foregroundColor(hover ? .ink : .inkDim)
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(hover ? Color.raised : Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.edge, lineWidth: 1))
+            .fixedSize() // never let a row compress a control into wrapped/truncated text
+            .foregroundColor(ink)
+            .padding(.horizontal, label == nil ? 7 : 10).padding(.vertical, 6).frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: SBr.xs).fill(fill))
+            .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .focusable(false) // click-driven popover — the OS focus ring is noise here
+        .onHover { hover = $0 }
+    }
+}
+// Retained as a thin alias so existing call-sites need zero churn — there is now ONE button implementation.
+struct GhostButton: View {
+    let icon: String; let label: String?; let action: () -> Void
+    var body: some View { SBButton(icon: icon, label: label, style: .ghost, action: action) }
+}
+
+struct SBChip: View {
+    var label: String; var detail: String? = nil; var active: Bool = false; var mono: Bool = false
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label).font(mono ? .splMono(11) : .label).foregroundColor(active ? .ink : .inkDim).lineLimit(1)
+            if let d = detail { Text(d).font(.monoSm).foregroundColor(.inkFaint) }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(active ? Color.lime.opacity(0.09) : Color.panel)
+            .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(active ? Color.lime.opacity(0.45) : Color.edge, lineWidth: 1)))
+    }
+}
+
+struct SBIconTile: View {
+    var symbol: String; var tint: Color = .inkDim; var fill: Color = .panel; var size: CGFloat = 26
+    var body: some View {
+        ZStack { RoundedRectangle(cornerRadius: size * 0.22).fill(fill)
+            Image(systemName: symbol).font(.system(size: size * 0.44)).foregroundColor(tint) }
+            .frame(width: size, height: size)
+    }
+}
+
+extension View {
+    // The one small-card chrome: panel fill (raised on hover) + the single hairline, lime when active. Every
+    // card in the panel's three horizontal rails wears this — no bespoke card backgrounds anywhere.
+    func sbCard(active: Bool = false, hover: Bool = false) -> some View {
+        background(RoundedRectangle(cornerRadius: SBr.sm).fill(active ? Color.lime.opacity(0.10) : (hover ? Color.raised : Color.panel))
+            .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(active ? Color.lime.opacity(0.45) : Color.edge, lineWidth: 1)))
+    }
+}
+
+// A horizontal card rail that ALSO pans on left-click-drag (a "hand tool") — so mouse users without a
+// trackpad can scroll the panel's rails, not just two-finger swipe. Wraps NSScrollView + a left-button
+// pan recognizer; a plain click still reaches the hosted SwiftUI buttons because the recognizer only
+// engages past a few px of movement. `height` pins the rail's row height (the cards define their width).
+// An NSScrollView that REPORTS its height to SwiftUI (else the representable gets compressed and clips the
+// cards — the "panel got short / rows cut off" bug). Width stays flexible so the rail fills the panel.
+final class FixedHeightScrollView: NSScrollView {
+    var pinnedHeight: CGFloat = 0
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: pinnedHeight) }
+}
+struct HDragScroll<Content: View>: NSViewRepresentable {
+    let height: CGFloat
+    @ViewBuilder var content: () -> Content
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = FixedHeightScrollView()
+        scroll.pinnedHeight = height
+        scroll.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        scroll.setContentCompressionResistancePriority(.required, for: .vertical)
+        scroll.hasHorizontalScroller = false; scroll.hasVerticalScroller = false
+        scroll.drawsBackground = false; scroll.backgroundColor = .clear
+        scroll.horizontalScrollElasticity = .allowed; scroll.verticalScrollElasticity = .none
+        scroll.automaticallyAdjustsContentInsets = false
+        let host = NoInsetHostingView(rootView: AnyView(content()))
+        host.translatesAutoresizingMaskIntoConstraints = true
+        scroll.documentView = host
+        let pan = NSPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.onPan(_:)))
+        pan.buttonMask = 0x1
+        scroll.contentView.addGestureRecognizer(pan)
+        context.coordinator.scroll = scroll
+        return scroll
+    }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let host = scroll.documentView as? NoInsetHostingView<AnyView> else { return }
+        host.rootView = AnyView(content())
+        host.layoutSubtreeIfNeeded()
+        let w = max(host.fittingSize.width, scroll.contentView.bounds.width)
+        host.frame = NSRect(x: 0, y: 0, width: w, height: height)
+    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator {
+        weak var scroll: NSScrollView?
+        private var last: CGFloat = 0
+        @objc func onPan(_ g: NSPanGestureRecognizer) {
+            guard let scroll = scroll, let doc = scroll.documentView else { return }
+            let t = g.translation(in: doc).x
+            if g.state == .began { last = 0 }
+            let dx = t - last; last = t
+            let clip = scroll.contentView
+            let maxX = max(0, doc.frame.width - clip.bounds.width)
+            var o = clip.bounds.origin; o.x = min(maxX, max(0, o.x - dx))
+            clip.scroll(to: o); scroll.reflectScrolledClipView(clip)
+        }
+    }
+}
+
+// A connected-app's per-app STATUS — the founder's ask: "connected / active / idle" must be legible at a glance.
+enum AppStatus { case active, ready, idle }
+struct StatusPill: View {
+    let status: AppStatus
+    var body: some View {
+        let (c, t): (Color, String) = {
+            switch status {
+            case .active: return (.lime, "active")   // behind the current activity
+            case .ready:  return (.lime, "ready")    // connected + seen recently
+            case .idle:   return (.inkFaint, "idle") // connected, quiet
+            }
+        }()
+        return HStack(spacing: 4) {
+            Circle().fill(c).frame(width: 5, height: 5)
+                .shadow(color: status == .active ? Color.lime.opacity(0.6) : .clear, radius: status == .active ? 3 : 0)
+            Text(t).font(.splMono(9)).kerning(0.5).textCase(.uppercase).foregroundColor(status == .idle ? .inkFaint : c)
+        }
+    }
+}
+
+// A connected-app card. The ✕ lives as a top-trailing OVERLAY on the padded card, inset — so it can NEVER be
+// clipped the way the old offset-outside-the-tile ✕ was. Reveals on hover; works for every app kind now.
+struct AppCardView: View {
+    let icon: AnyView
+    let label: String
+    let status: AppStatus
+    let dim: Bool                    // a raw browser tab reads faint
+    let onRemove: (() -> Void)?
+    @State private var hover = false
+    var body: some View {
+        VStack(spacing: 8) {
+            icon
+            Text(label).font(.label).foregroundColor(dim ? .inkFaint : .ink).lineLimit(1)
+            StatusPill(status: status)
+        }
+        .frame(width: 84)
+        .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 9)
+        .sbCard(hover: hover)
+        .overlay(alignment: .topTrailing) {
+            // Always visible (not hover-gated) — SwiftUI .onHover is unreliable inside the NSScrollView-backed
+            // HDragScroll, and the founder's ask was for the ✕ to be VISIBLE, not clipped. Subtle at rest.
+            if let r = onRemove {
+                Button(action: r) {
+                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundColor(.inkFaint)
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Color.raised).overlay(Circle().stroke(Color.edge, lineWidth: 1)))
+                }.buttonStyle(.plain).help("Disconnect this app").padding(4)
+            }
+        }
         .onHover { hover = $0 }
     }
 }
@@ -2511,6 +2710,14 @@ final class NotchPanel: NSPanel {
 // between the black menu bar and the black drop body. Bleeding the top edge 1pt above the seam tucks it
 // behind the bar (the edge is meant to be invisible against it anyway), so no rounding direction shows a gap.
 let notchTopBleed: CGFloat = 1
+
+// Like NotchPanel (which is final), but CAN become key — the ⌥⌥ launcher's search field needs to accept
+// typing. Non-activating, so it never steals app focus; the notch shape comes from the SwiftUI content.
+final class LauncherPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
 
 // ── ⌃⌃ region select: draw WHILE you talk ────────────────────────────────────────────────────────
 // When "What God sees → Drag to select" is on, a click-through overlay rides on top DURING listening:
@@ -2717,6 +2924,7 @@ struct ActionConsentDrop: View {
     private var notchWebPanel: NSPanel!           // the notch WEB widget host — a wrapp's live web widget under the notch
     private var notchWebHost: NotchWidgetWebHost?  // the WKWebView + window.claude→daemon bridge for the web widget
     private var notchWebMonitor: Any?             // click-outside dismissal for the web widget
+    private var notchWebKeyMonitor: Any?          // Esc dismissal for the web widget
     private var regionOverlay: NSWindow?          // the ⌃⌃ drag-to-select capture overlay (live during listening)
     private var regionView: RegionSelectView?
     private var regionMonitors: [Any] = []
@@ -3093,6 +3301,7 @@ struct ActionConsentDrop: View {
         }
         installHotKey()
         installGlow()
+        CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
 
@@ -3472,7 +3681,7 @@ struct ActionConsentDrop: View {
     // Loads the page in a WKWebView with window.claude bridged to the daemon (NotchWidgetWebHost), clipped
     // to the notch silhouette. The new `ideabrain` / `resize` web widgets render here for real. Behind a
     // right-click "Preview widget" entry for now (testable without wiring every store listing).
-    @MainActor func showNotchWidgetWeb(url: URL, widgetId: String, title: String) {
+    @MainActor func showNotchWidgetWeb(url: URL, widgetId: String, title: String, input: [String: Any]? = nil) {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             // No pairing token → the bridge can't auth; fall back to the honest sample widget with the reason.
@@ -3482,13 +3691,16 @@ struct ActionConsentDrop: View {
             return
         }
         notchWebHost?.close()
-        let host = NotchWidgetWebHost(url: url, widgetId: widgetId, token: token, port: PORT)
+        let host = NotchWidgetWebHost(url: url, widgetId: widgetId, token: token, port: PORT, input: input)
         notchWebHost = host
-        let drop = NotchWebDrop(web: host.webView, title: title, onClose: { [weak self] in self?.hideNotchWidgetWeb() })
+        let heightModel = NotchWebHeight()
+        let drop = NotchWebDrop(web: host.webView, title: title, height: heightModel, onClose: { [weak self] in self?.hideNotchWidgetWeb() })
         let hosting = NoInsetHostingView(rootView: drop)
         if notchWebPanel == nil {
-            notchWebPanel = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 380),
-                                       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            // Key-capable (LauncherPanel) so the widget's text fields can hold first-responder — a plain
+            // non-key NotchPanel is exactly why the QR field lost focus on every keystroke.
+            notchWebPanel = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 380),
+                                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             notchWebPanel.isOpaque = false; notchWebPanel.backgroundColor = .clear; notchWebPanel.hasShadow = false
             notchWebPanel.level = .popUpMenu
             notchWebPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
@@ -3497,17 +3709,40 @@ struct ActionConsentDrop: View {
         let size = hosting.fittingSize
         notchWebPanel.setContentSize(size)
         notchWebPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        notchWebPanel.makeKeyAndOrderFront(nil)
+        notchWebPanel.makeFirstResponder(host.webView)   // keyboard focus → the widget's webview, so its fields type
         presentFromNotch(notchWebPanel)
         host.load()
+        // Size the notch to the widget's real content height (kills the dead space) and re-fit as it grows.
+        host.onHeight = { [weak self, weak hosting] h in
+            guard let self, let hosting, let p = self.notchWebPanel, p.isVisible else { return }
+            let clamped = max(90, min(h, notchWebMaxH))
+            guard abs(heightModel.content - clamped) > 2 else { return }
+            heightModel.content = clamped
+            DispatchQueue.main.async {
+                let sz = hosting.fittingSize
+                p.setContentSize(sz)
+                if let screen = p.screen ?? NSScreen.main {
+                    p.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - sz.width / 2, y: screen.frame.maxY + notchTopBleed))
+                }
+            }
+        }
+        // Drop-safe dismiss: close on a genuine outside click-UP (not mouse-DOWN, so a file drag onto the widget
+        // survives) OR Esc. (A drag's terminal event is a drag session, not a plain mouseUp — so drops don't close it.)
         if let m = notchWebMonitor { NSEvent.removeMonitor(m) }
-        // Click OUTSIDE dismisses; clicks INSIDE reach the webview (the widget is interactive).
-        notchWebMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        if let k = notchWebKeyMonitor { NSEvent.removeMonitor(k) }
+        notchWebMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp]) { [weak self] _ in
             guard let self, let p = self.notchWebPanel, p.isVisible else { return }
             if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideNotchWidgetWeb() } }
+        }
+        notchWebKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+            if ev.keyCode == 53 { Task { @MainActor in self?.hideNotchWidgetWeb() }; return nil }   // Esc
+            return ev
         }
     }
     @MainActor func hideNotchWidgetWeb() {
         if let m = notchWebMonitor { NSEvent.removeMonitor(m); notchWebMonitor = nil }
+        if let k = notchWebKeyMonitor { NSEvent.removeMonitor(k); notchWebKeyMonitor = nil }
         notchWebHost?.close(); notchWebHost = nil
         if let p = notchWebPanel { dismissToNotch(p) }
     }
@@ -3631,6 +3866,190 @@ struct ActionConsentDrop: View {
         hideNotchWidget()
         godWeb?.front()
         if driveRunning { showGodStatus("\(driveName) · running", accent: .lime, pattern: .working) }
+    }
+
+    // ══ ⌥⌥ LAUNCHER — app-first (sibling to ⌃⌃ voice): double-tap Option → app grid + project + file intake.
+    //    Click an app → run its WIDGET surface (window.__godWidget.get(input)) with a dropped file as input. ══
+    private var launcherPanel: LauncherPanel?
+    private var launcherMonitor: Any?
+    private var launcherKeyMonitor: Any?
+    private var optWasDown = false
+    private var lastOptTap: Date?
+
+    @MainActor private func onOptTap() {
+        let now = Date()
+        if let last = lastOptTap, now.timeIntervalSince(last) < 0.5 { lastOptTap = nil; toggleLauncher() }
+        else { lastOptTap = now }
+    }
+    @MainActor private func toggleLauncher() {
+        if launcherPanel?.isVisible == true { hideLauncher() } else { showLauncher() }
+    }
+    @MainActor func showLauncher() {
+        guard model.running else { showPanel(); return }
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        model.refreshFiles()
+        let listings = readCatalog().filter { $0.category != "skill" }   // apps, not à-la-carte skills
+        let view = NotchLauncherView(
+            listings: listings,
+            projects: readContexts(),
+            activeProjectId: readDefaultId(),
+            onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
+            onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
+            onClose: { [weak self] in self?.hideLauncher() })
+        let host = NoInsetHostingView(rootView: view)
+        if launcherPanel == nil {
+            let p = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 420),
+                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false
+            p.level = .popUpMenu
+            p.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+            launcherPanel = p
+        }
+        launcherPanel!.contentView = host
+        let size = host.fittingSize
+        launcherPanel!.setContentSize(size)
+        launcherPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        launcherPanel!.makeKeyAndOrderFront(nil)
+        presentFromNotch(launcherPanel!)
+        // Close on a genuine outside click-UP (a file drag's mouse-DOWN is outside but its drop is a drag
+        // session, not a plain mouseUp — so drops survive) OR Esc. This is the drop-safe dismiss.
+        if let m = launcherMonitor { NSEvent.removeMonitor(m) }
+        if let k = launcherKeyMonitor { NSEvent.removeMonitor(k) }
+        launcherMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp]) { [weak self] _ in
+            guard let self, let p = self.launcherPanel, p.isVisible else { return }
+            if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideLauncher() } }
+        }
+        launcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+            if ev.keyCode == 53 { Task { @MainActor in self?.hideLauncher() }; return nil }   // Esc
+            return ev
+        }
+    }
+    @MainActor func hideLauncher() {
+        if let m = launcherMonitor { NSEvent.removeMonitor(m); launcherMonitor = nil }
+        if let k = launcherKeyMonitor { NSEvent.removeMonitor(k); launcherKeyMonitor = nil }
+        if let p = launcherPanel { dismissToNotch(p) }
+    }
+
+    // ── the native WIDGET HOST — load a wrapp offscreen, call __godWidget.get(input), render the notch widget ──
+    private func mimeForExt(_ ext: String) -> String {
+        switch ext {
+        case "pdf": return "application/pdf"
+        case "png": return "image/png"; case "jpg", "jpeg": return "image/jpeg"; case "gif": return "image/gif"; case "webp": return "image/webp"
+        case "csv": return "text/csv"; case "tsv": return "text/tab-separated-values"
+        case "json": return "application/json"; case "yaml", "yml": return "application/yaml"
+        case "txt", "md": return "text/plain"
+        default: return "application/octet-stream"
+        }
+    }
+    private func widgetInput(from fileURL: URL?) -> [String: Any] {
+        guard let f = fileURL else { return [:] }
+        var input: [String: Any] = ["file": f.lastPathComponent, "filename": f.lastPathComponent]
+        if let data = try? Data(contentsOf: f) {
+            let ext = f.pathExtension.lowercased()
+            input["dataUrl"] = "data:\(mimeForExt(ext));base64," + data.base64EncodedString()
+            if ["csv", "tsv", "json", "yaml", "yml", "txt", "md"].contains(ext), let s = String(data: data, encoding: .utf8) { input["text"] = s }
+        }
+        return input
+    }
+    // Wrapps that ship a compact interactive <id>-widget.html (type in the notch → live result).
+    private let interactiveWidgetIds: Set<String> = [
+        // non-AI (client-side)
+        "qr", "convert", "palette", "pdftools", "resize",
+        // AI wrapps — compact interactive widget.html driven via the notch host's window.claude bridge
+        "adforge", "adgen", "adpulse", "aplus", "arcana", "autopilot", "bank", "batch", "brandbrain",
+        "canvas", "capp", "cartridge", "cast", "cut", "feature", "hardware", "ideabrain", "ideafetch",
+        "meetnotes", "natal", "prism", "reachout", "redline", "reel", "retail", "shelf", "studio", "take",
+        "saas", "flow", "huddle", "identity", "mkt", "marquee",
+    ]
+    @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
+        // Interactive path: render the wrapp's compact <id>-widget.html LIVE in the notch, with the launcher's
+        // dropped file injected as window.__widgetInput. (Others fall through to the glance __godWidget path.)
+        if interactiveWidgetIds.contains(l.id), let wurl = URL(string: "http://localhost:5188/\(l.id)-widget.html") {
+            showNotchWidgetWeb(url: wurl, widgetId: l.id, title: l.name, input: widgetInput(from: fileURL))
+            return
+        }
+        let fallback = URL(string: "http://localhost:5188/\(l.id).html")!
+        let url = resolveDriveURL(tool: l.id, fallback: fallback)
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: l.name.uppercased(), title: "No pairing token", openLabel: "Open panel",
+                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        if driveRunning, let old = godWeb { old.onUserClosed = nil; old.close() }
+        driveGeneration += 1
+        driveName = l.name
+        let web = GodWebWindow(url: url, token: token)
+        godWeb = web
+        driveRunning = true
+        showDriveWorking("Opening \(l.name)…")
+        let args = widgetInput(from: fileURL)
+        let gen = driveGeneration
+        web.open(visible: false, ready: { [weak self] in
+            guard let self else { return }
+            web.getWidget(input: args) { result in
+                Task { @MainActor in
+                    guard gen == self.driveGeneration else { return }
+                    self.driveRunning = false
+                    switch result {
+                    case .success(let v): self.presentWrappWidget(v, listing: l, url: url)
+                    case .failure(let e):
+                        self.showNotchWidget(WidgetSpec(kicker: l.name.uppercased(), title: "Couldn't run \(l.name)", openLabel: "Open \(l.name)",
+                            result: .text(String("\(e)".prefix(300)))), onOpen: { self.hideNotchWidget(); NSWorkspace.shared.open(url) })
+                    }
+                }
+            }
+        })
+    }
+    @MainActor private func presentWrappWidget(_ v: Any, listing l: SBListing, url: URL) {
+        guard let d = v as? [String: Any] else {
+            showNotchWidget(WidgetSpec(kicker: l.name.uppercased(), title: l.name, openLabel: "Open \(l.name)", result: widgetResult(from: v)),
+                onOpen: { [weak self] in self?.hideNotchWidget(); NSWorkspace.shared.open(url) })
+            return
+        }
+        let kicker = (d["kicker"] as? String) ?? l.name.uppercased()
+        let title = (d["title"] as? String) ?? l.name
+        let openLabel = (d["openLabel"] as? String) ?? "Open \(l.name)"
+        let result = mapWidgetPayload(shape: (d["shape"] as? String) ?? "", result: d["result"], top: d)
+        showNotchWidget(WidgetSpec(kicker: kicker, title: title, openLabel: openLabel, result: result),
+            onOpen: { [weak self] in self?.hideNotchWidget(); NSWorkspace.shared.open(url) })
+    }
+    // decode a data: URL (a string, or a {dataUrl}/{name,dataUrl}) to a temp file → a local path (image / drag-out).
+    private func dataURLToTemp(_ any: Any?, ext: String = "bin") -> String? {
+        var dataUrl: String? = any as? String
+        if dataUrl == nil, let o = any as? [String: Any] { dataUrl = o["dataUrl"] as? String }
+        guard let s = dataUrl, s.hasPrefix("data:"), let comma = s.firstIndex(of: ",") else { return nil }
+        guard let data = Data(base64Encoded: String(s[s.index(after: comma)...])) else { return nil }
+        let realExt = s.contains("application/pdf") ? "pdf" : (s.contains("image/png") ? "png" : (s.contains("image/jpeg") ? "jpg" : ext))
+        let dir = (NSTemporaryDirectory() as NSString).appendingPathComponent("notch-widget")
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = (dir as NSString).appendingPathComponent("\(UUID().uuidString).\(realExt)")
+        return (try? data.write(to: URL(fileURLWithPath: path))) != nil ? path : nil
+    }
+    @MainActor private func mapWidgetPayload(shape: String, result: Any?, top: [String: Any]) -> WidgetResult {
+        let r = result as? [String: Any] ?? [:]
+        switch shape {
+        case "text":
+            return .text(String(((r["body"] as? String) ?? (r["text"] as? String) ?? "").prefix(3000)))
+        case "image":
+            let caption = (r["caption"] as? String) ?? "On your device — drag it out."
+            let steer = (r["steer"] as? [String]) ?? []
+            let path = dataURLToTemp(r["file"], ext: "png") ?? dataURLToTemp(r["dataUrl"], ext: "png") ?? dataURLToTemp(top["file"], ext: "png")
+            return .image(caption: caption, steer: steer, file: path)
+        case "cards":
+            let caption = (r["caption"] as? String) ?? ""
+            let items = (r["items"] as? [[String: Any]] ?? []).prefix(8).map {
+                CardItem(label: ($0["label"] as? String) ?? "", text: ($0["text"] as? String) ?? "", rec: ($0["recommended"] as? Bool) == true)
+            }
+            return .cards(caption: caption, items: Array(items))
+        case "gallery":
+            let caption = (r["caption"] as? String) ?? ""
+            let items = (r["items"] as? [String]) ?? (r["items"] as? [[String: Any]])?.compactMap { self.dataURLToTemp($0, ext: "png") } ?? []
+            return .gallery(caption: caption, items: items)
+        case "working":
+            return .working((r["line"] as? String) ?? "Working…")
+        default:
+            return widgetResult(from: top)
+        }
     }
     // Map ANY wrapp tool's return object to the right widget renderer (states/edges completeness):
     // an array-of-options → cards (reply/nameit/adgen/adforge/toon/thumbs), an image URL → image
@@ -3897,6 +4316,8 @@ struct ActionConsentDrop: View {
     //   TALK chord HOLD → dictation (raw whisper transcript pasted at the cursor — no God, no cleanup)
     //   SUMMON modifier double-tap → summon God (see/hear/help)
     @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
+        // NOTE: dictation (⌃⌥) stays LIVE during a guide on purpose — the guide's own signals are fn+arrow
+        // keys (CursorGuide owns them), so they never collide, and the user can DICTATE feedback mid-guide.
         let cfg = model.shortcuts
         let talk = chordFlags(cfg.talk)
         let summonMod = modFlag(cfg.summon)
@@ -3919,6 +4340,15 @@ struct ActionConsentDrop: View {
         } else {
             summonWasDown = flags.contains(summonMod)
         }
+        // ⌥⌥ launcher — double-tap Option ALONE (so the ⌃⌥ dictation chord, which also holds Option, never counts).
+        if m == [.option] && !optWasDown {
+            optWasDown = true
+            onOptTap()
+        } else if m.isEmpty {
+            optWasDown = false
+        } else {
+            optWasDown = m.contains(.option)
+        }
     }
 
     // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —
@@ -3938,20 +4368,32 @@ struct ActionConsentDrop: View {
         guard !godRunning, !godListening else { return }   // don't collide with a God summon
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { refreshPermissionGate(); return }
         guard whisperCliPath() != nil, whisperModelPath() != nil else { toast("Dictation needs whisper.cpp — brew install whisper-cpp + a ggml model in ~/.relay/models"); return }
+        // Paint the pill FIRST. AVAudioRecorder init + record() synchronously blocks the main thread while
+        // the mic hardware + TCC client cold-activate (~100–300ms), so if we set it up before showing the
+        // status the "Dictating" pill can't paint until this func returns and feels laggy. Flip the state and
+        // show the pill now, then defer the blocking recorder setup to the next runloop tick so the pill
+        // actually paints in between.
+        dictating = true
+        NSSound(named: "Tink")?.play()
+        showGodStatus("Dictating", accent: .lime, pattern: .listening)
+        onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
         let wav = NSTemporaryDirectory() + "god-dictate.wav"
         try? FileManager.default.removeItem(atPath: wav)
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: 16000.0, AVNumberOfChannelsKey: 1,
             AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
         ]
-        do {
-            let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
-            guard rec.record() else { return }
-            NSSound(named: "Tink")?.play()
-            dictateRecorder = rec; dictateWav = wav; dictating = true
-            onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
-            showGodStatus("Dictating", accent: .lime, pattern: .listening)
-        } catch { dictating = false; godLog("dictation record failed: \(error.localizedDescription)") }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // The user may have released ⌃⌥ before this tick ran — stopDictationAndPaste() already flipped
+            // `dictating` false (and hid the pill). Don't spin up a recorder we'd immediately abandon.
+            guard self.dictating else { return }
+            do {
+                let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
+                guard rec.record() else { self.dictating = false; self.hideGodStatus(); godLog("dictation record() returned false"); return }
+                self.dictateRecorder = rec; self.dictateWav = wav
+            } catch { self.dictating = false; self.hideGodStatus(); godLog("dictation record failed: \(error.localizedDescription)") }
+        }
     }
 
     @MainActor private func stopDictationAndPaste() {

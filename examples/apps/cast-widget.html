@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cast · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .in{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.4 var(--sans);padding:11px 12px;outline:none;}
+      .in:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:9px;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:10px 16px;cursor:pointer;transition:opacity .13s;}
+      .go:hover{opacity:.9;} .go:disabled{background:var(--raised);color:var(--ink-faint);cursor:not-allowed;}
+      .stat{font:500 11px/1.4 var(--mono);color:var(--ink-sec);display:flex;align-items:center;gap:8px;}
+      .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1.1s ease-in-out infinite;}
+      @keyframes blink{50%{opacity:.25;}}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .cards{display:flex;flex-direction:column;gap:8px;}
+      .card{border:1px solid var(--edge);border-radius:11px;background:var(--panel);padding:12px 13px;}
+      .card.rec{border-color:var(--accent);background:var(--accent-soft);}
+      .ctop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+      .pname{font:600 14px/1.2 var(--sans);}
+      .psub{font:400 11px/1.3 var(--mono);color:var(--ink-dim);}
+      .tag{font:500 8.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--page);background:var(--accent);border-radius:999px;padding:4px 7px;margin-left:auto;}
+      .why{font:400 11.5px/1.5 var(--sans);color:var(--ink-sec);margin-top:6px;}
+      .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+      .chip{font:400 10px/1 var(--mono);background:var(--raised);border:1px solid var(--edge);color:var(--ink-sec);border-radius:999px;padding:5px 9px;}
+      .conn{font:500 10px/1.4 var(--mono);color:var(--ink-dim);}
+      .conn a{color:var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Cast</em></span><span class="kicker">persona · your claude</span></div>
+      <div>
+        <label class="flabel" for="in">The niche — who should own this account?</label>
+        <div class="row">
+          <input id="in" class="in" type="text" autofocus placeholder="sustainable skincare — small-batch, science-forward" />
+          <button id="go" class="go">Cast 3</button>
+        </div>
+      </div>
+      <div id="stat" class="stat" hidden><span class="dot"></span><span id="stat-line">Casting…</span></div>
+      <div id="errbox" class="err" hidden></div>
+      <div id="cards" class="cards" hidden></div>
+      <div class="conn" id="conn-idle"></div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+      const PROVIDER = "claude";
+      const SCOPE = { reason: "Cast — propose real-feeling creator personas for a niche on your own Claude", tools: ["WebSearch", "WebFetch"], models: ["sonnet"], contextKinds: ["brand", "persona"] };
+      function rawProvider() { const p = window[PROVIDER]; return p && p.isRelay ? p : null; }
+      function whenProvider(ms = 2500) { const n = rawProvider(); if (n) return Promise.resolve(n); return new Promise((res) => { const done = () => { clearTimeout(t); res(rawProvider()); }; const t = setTimeout(done, ms); window.addEventListener(`${PROVIDER}#initialized`, done, { once: true }); }); }
+      async function ensureConnected(p) { try { const g = await p.request({ method: "claude_permissions" }); if (g) return true; } catch {} try { const g = await p.request({ method: "claude_connect", params: SCOPE }); return !!g; } catch { return false; } }
+      function streamText(p, params, onP) {
+        return new Promise(async (resolve, reject) => {
+          let streamId; try { ({ streamId } = await p.request({ method: "claude_stream", params })); } catch (e) { reject(e); return; }
+          let text = "";
+          const h = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onP && onP("text", text); }
+            else if (d.type === "done") { cleanup(); resolve(text || (d.result && d.result.text) || ""); }
+            else if (d.type === "error") { cleanup(); const e = new Error(d.error && d.error.message || "stream error"); e.code = d.error && d.error.code; reject(e); }
+          };
+          function cleanup() { try { p.removeListener("delta", h); } catch {} }
+          p.on("delta", h);
+        });
+      }
+      function parseArr(t) { const s = String(t).replace(/```(?:json)?/gi, ""); const a = s.indexOf("["), b = s.lastIndexOf("]"); if (a < 0 || b <= a) throw new Error("PARSE"); try { const v = JSON.parse(s.slice(a, b + 1)); if (!Array.isArray(v)) throw 0; return v; } catch { throw new Error("PARSE"); } }
+      const str = (v, fb = "") => (typeof v === "string" && v.trim() ? v.trim() : fb);
+
+      // ---- prompt (reuses src/cast/spec.js "persona" facet fields + option-card shape) ----
+      function buildPrompt(niche) {
+        const shape = '{"title","subtitle","body","chips":[3 short strings],"recommended":bool}';
+        return [
+          "You are Cast, casting the human creator behind a social account for this niche: " + niche + ".",
+          "Propose 3 DISTINCT HUMAN creators who could credibly own this niche. Each card: title = a real first+last name; subtitle = their one-line identity (age-ish, where they are, what they did before); body = why this person is a sharp fit for the niche in one sentence; chips = 3 personality traits. Never name them after any brand. Make the three genuinely different people, not variations of one.",
+          "Mark exactly one option recommended.",
+          "Reply with ONLY a JSON array of 3 objects shaped " + shape + ". No prose, no markdown fences.",
+        ].join("\n\n");
+      }
+      function normalize(arr) {
+        if (!Array.isArray(arr) || !arr.length) throw new Error("INCOMPLETE");
+        const list = arr.slice(0, 3).map((o) => ({
+          title: str(o?.title, "Creator"), subtitle: str(o?.subtitle), body: str(o?.body),
+          chips: (Array.isArray(o?.chips) ? o.chips : []).map((c) => str(String(c))).filter(Boolean).slice(0, 3),
+          recommended: o?.recommended === true,
+        }));
+        if (!list.some((o) => o.recommended)) list[0].recommended = true;
+        return list;
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const inEl = $("in"), goEl = $("go"), cards = $("cards"), stat = $("stat"), statLine = $("stat-line"), errbox = $("errbox");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let busy = false, provider = null;
+
+      function idleConn() {
+        const c = $("conn-idle"); c.textContent = "";
+        if (provider) { c.textContent = "connected — personas cast on your Claude"; return; }
+        c.append("everything runs on your own Claude — ");
+        const a = mk("a", null, "get Switchboard"); a.href = "https://thelastprompt.ai/switchboard/"; a.target = "_blank"; a.rel = "noreferrer"; c.append(a);
+      }
+      function setBusy(on, line) { busy = on; stat.hidden = !on; if (on) { errbox.hidden = true; statLine.textContent = line || "Casting…"; } goEl.disabled = on || !inEl.value.trim(); }
+      function showError(err) {
+        errbox.hidden = false; const msg = String(err?.message || err), code = err?.code;
+        if (code === 4290) errbox.textContent = "Budget cap reached — raise it in the Switchboard panel, or try tomorrow.";
+        else if (code === 4900) errbox.textContent = "Your Claude is unreachable — start the Switchboard daemon, then retry.";
+        else if (msg === "PARSE" || msg === "INCOMPLETE") errbox.textContent = "Reply didn't parse cleanly — hit Cast 3 again.";
+        else errbox.textContent = "Couldn't cast — " + msg.slice(0, 160);
+      }
+      function render(list) {
+        cards.textContent = ""; cards.hidden = false;
+        for (const o of list) {
+          const card = mk("div", "card" + (o.recommended ? " rec" : ""));
+          const top = mk("div", "ctop");
+          top.append(mk("span", "pname", o.title));
+          if (o.subtitle) top.append(mk("span", "psub", o.subtitle));
+          if (o.recommended) top.append(mk("span", "tag", "recommended"));
+          card.append(top);
+          if (o.body) card.append(mk("div", "why", o.body));
+          if (o.chips.length) { const cw = mk("div", "chips"); for (const ch of o.chips) cw.append(mk("span", "chip", ch)); card.append(cw); }
+          cards.append(card);
+        }
+      }
+      async function run() {
+        const niche = inEl.value.trim(); if (busy || !niche) return;
+        provider = provider || await whenProvider();
+        if (!provider) { showError(new Error("Switchboard isn't connected — open this inside the notch, or install the sidekick.")); return; }
+        setBusy(true, "Connecting…");
+        if (!await ensureConnected(provider)) { setBusy(false); showError(new Error("Connect declined — approve the Switchboard grant to cast.")); return; }
+        setBusy(true, "Casting the person…");
+        try {
+          const text = await streamText(provider, { prompt: buildPrompt(niche), agentic: true }, (k, v) => { if (k === "text") statLine.textContent = "Casting the person… " + (v.length / 1024).toFixed(1) + " kb"; });
+          render(normalize(parseArr(text)));
+        } catch (err) { showError(err); }
+        finally { setBusy(false); idleConn(); }
+      }
+      goEl.addEventListener("click", run);
+      inEl.addEventListener("input", () => { goEl.disabled = busy || !inEl.value.trim(); });
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+
+      const seed = injectedText(); if (seed) inEl.value = seed;
+      goEl.disabled = !inEl.value.trim();
+      whenProvider(2500).then((p) => { provider = p; idleConn(); });
+      idleConn(); inEl.focus();
+    </script>
+  </body>
+</html>
