@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:10px 12px;outline:none;resize:vertical;min-height:70px;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;gap:9px;align-items:center;}
+      .grow{flex:1;}
+      .go{font:600 12.5px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 16px;cursor:pointer;transition:filter .15s,opacity .15s;}
+      .go:hover{filter:brightness(1.08);} .go:disabled{opacity:.45;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);} .act:disabled{opacity:.5;cursor:default;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .md{font:400 13px/1.65 var(--sans);color:var(--ink);white-space:pre-wrap;word-break:break-word;border:1px solid var(--edge);background:var(--panel);border-radius:12px;padding:13px;min-height:20px;}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;flex:none;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .err{color:var(--danger);font:400 11.5px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .foot{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .foot .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Flow</em></span><span class="kicker">on your claude</span></div>
+      <div>
+        <label class="flabel" for="in">Rough text — paste a transcript or spoken draft</label>
+        <textarea id="in" autofocus placeholder="um so basically i think we should like ship the thing next week and uh see how it goes you know"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <span class="hint grow">⌘/Ctrl + Enter · fixes grammar, cuts filler, keeps your meaning</span>
+          <button id="go" class="go">Clean up</button>
+        </div>
+      </div>
+      <div>
+        <label class="flabel" for="out" id="outlabel" hidden>Cleaned</label>
+        <div class="md" id="out"><span class="placeholder">Cleaned-up text lands here — same meaning, tighter words.</span></div>
+      </div>
+      <div class="row">
+        <button class="act" id="copy" hidden>copy</button>
+        <span class="foot grow" style="justify-content:flex-end;"><span class="dot"></span>Cleaned on your own Claude · nothing leaves but your text</span>
+      </div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q != null && q !== "") return q; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        if (typeof w === "string" && w.trim()) return w;
+        return "";
+      }
+      // ================= window.claude bridge (raw BYOP provider the notch host injects) =================
+      const SCOPE = { reason: "Flow widget — clean up a rough transcript into tight text, on your own Claude", models: ["sonnet"] };
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        if (!grantP) grantP = (async () => { try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {} return p.request({ method: "claude_connect", params: SCOPE }); })();
+        return grantP;
+      }
+      async function streamPrompt(p, params, onText) {
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        return new Promise((resolve, reject) => {
+          let text = "", settled = false;
+          const cleanup = () => { settled = true; try { p.removeListener("delta", handler); } catch {} clearTimeout(timer); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onText && onText(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          const timer = setTimeout(() => { if (!settled) { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); } }, 180000);
+          p.on("delta", handler);
+        });
+      }
+      async function ask(prompt, system, onText) {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        await ensureGrant(p);
+        return streamPrompt(p, { prompt, system, model: "sonnet", maxTokens: 1600 }, onText);
+      }
+
+      // ---- flow cleanup pass (the dictation cleanup src/flow.js does at the cursor) ----
+      const SYSTEM = "You clean up dictated or spoken text. Fix grammar, punctuation and capitalization; remove filler words (um, uh, like, you know), false starts and stutters; keep the speaker's exact meaning, tone and word choices. Do NOT add new ideas, do NOT summarize, do NOT answer questions in the text — only clean it. Return ONLY the cleaned text, nothing else.";
+
+      const $ = (id) => document.getElementById(id);
+      const inEl = $("in"), out = $("out"), goEl = $("go"), copyEl = $("copy"), outLabel = $("outlabel");
+      let busy = false, last = "";
+      async function run() {
+        const t = inEl.value.trim(); if (!t || busy) { if (!t) inEl.focus(); return; }
+        busy = true; goEl.disabled = true; copyEl.hidden = true;
+        out.innerHTML = ""; const st = document.createElement("div"); st.className = "status";
+        st.innerHTML = '<div class="scan"></div><span>cleaning it up…</span>'; out.append(st);
+        try {
+          let first = true;
+          last = await ask(t, SYSTEM, (text) => { if (first) { out.textContent = ""; first = false; outLabel.hidden = false; } out.textContent = text; });
+          if (first) { out.textContent = "(nothing came back — try again)"; }
+          else { copyEl.hidden = false; }
+        } catch (e) { out.innerHTML = ""; const er = document.createElement("div"); er.className = "err"; er.textContent = String(e?.message || e).slice(0, 200); out.append(er); }
+        finally { busy = false; goEl.disabled = false; }
+      }
+      goEl.addEventListener("click", run);
+      copyEl.addEventListener("click", () => { navigator.clipboard?.writeText(last).catch(() => {}); copyEl.textContent = "copied ✓"; setTimeout(() => (copyEl.textContent = "copy"), 1400); });
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
+      const seed = injectedText(); if (seed) { inEl.value = seed; void run(); }
+      inEl.focus();
+    </script>
+  </body>
+</html>

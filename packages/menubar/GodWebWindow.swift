@@ -193,10 +193,28 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         }
     }
 
+    /// Call the wrapp's WIDGET surface — window.__godWidget.get(input) → a WidgetResult-shaped payload
+    /// (the ⌥⌥ launcher path). Same wire as drive(), but the glance surface instead of a God tool.
+    func getWidget(input: [String: Any], _ completion: @escaping (Result<Any, Error>) -> Void) {
+        guard let inputJSON = GodWebWindow.jsonStr(input) else { completion(.failure(GodWebError("bad input"))); return }
+        let body = "return (window.__godWidget && window.__godWidget.get) ? await window.__godWidget.get(\(inputJSON)) : null;"
+        web.callAsyncJavaScript(body, arguments: [:], in: nil, in: .page) { result in
+            switch result {
+            case .success(let v): completion(.success(v))
+            case .failure(let e):
+                let ns = e as NSError
+                let jsMsg = (ns.userInfo["WKJavaScriptExceptionMessage"] as? String) ?? (ns.userInfo["NSLocalizedDescription"] as? String)
+                completion(.failure(jsMsg.map { GodWebError($0) } ?? e))
+            }
+        }
+    }
+
     // MARK: WKNavigationDelegate
     func webView(_ w: WKWebView, didFinish nav: WKNavigation!) { pollReady(80) }
     private func pollReady(_ n: Int) {
-        web.evaluateJavaScript("!!(window.__god && typeof window.__god.call === 'function')") { [weak self] res, _ in
+        // Ready when EITHER bridge is present: __god (drive) OR __godWidget (widget) — a non-AI wrapp may
+        // expose only the widget surface.
+        web.evaluateJavaScript("!!((window.__god && typeof window.__god.call === 'function') || (window.__godWidget && typeof window.__godWidget.get === 'function'))") { [weak self] res, _ in
             guard let self else { return }
             if (res as? Bool) == true { self.onReady?() }
             else if n > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self.pollReady(n - 1) } }
@@ -254,12 +272,16 @@ final class NotchWidgetWebHost: NSObject, WKNavigationDelegate, WKScriptMessageH
     ///   - url: the wrapp's widget-surface page (deployed URL or a granted localhost origin for dev).
     ///   - widgetId: a stable id for this widget → the `native@widget:<id>` principal.
     ///   - token: the daemon pairing token (~/.relay/pairing-token).
-    init(url: URL, widgetId: String, token: String, port: UInt16 = 8787) {
+    init(url: URL, widgetId: String, token: String, port: UInt16 = 8787, input: [String: Any]? = nil) {
         pageURL = url
         principal = "native@widget:\(widgetId)"
         bridge = GodDaemonBridge(port: port, token: token)
         let ucc = WKUserContentController()
         ucc.addUserScript(WKUserScript(source: GOD_SHIM_JS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // Hand the launcher's staged file/text to the widget BEFORE its own script runs (window.__widgetInput).
+        if let input = input, !input.isEmpty, let json = GodWebWindow.jsonStr(input) {
+            ucc.addUserScript(WKUserScript(source: "window.__widgetInput = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         let cfg = WKWebViewConfiguration(); cfg.userContentController = ucc
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 360), configuration: cfg)
         webView.setValue(false, forKey: "drawsBackground")   // let the notch-drop black show through the page's transparent areas
@@ -273,10 +295,27 @@ final class NotchWidgetWebHost: NSObject, WKNavigationDelegate, WKScriptMessageH
     }
 
     func load() { webView.load(URLRequest(url: pageURL)) }
-    func close() { bridge.close() }
+    func close() { bridge.close(); heightTimer?.invalidate(); heightTimer = nil }
+
+    /// Reports the widget page's live content height so the notch fits it (no dead space) + grows as results render.
+    var onHeight: ((CGFloat) -> Void)?
+    private var heightTimer: Timer?
 
     // MARK: WKNavigationDelegate — signal the page rendered (the drop can settle its size).
-    func webView(_ w: WKWebView, didFinish nav: WKNavigation!) { onReady?() }
+    func webView(_ w: WKWebView, didFinish nav: WKNavigation!) { onReady?(); startHeightPoll() }
+    private func startHeightPoll() {
+        heightTimer?.invalidate()
+        heightTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.webView.evaluateJavaScript("Math.ceil(document.body.scrollHeight||0)") { res, _ in
+                    guard let n = res as? NSNumber else { return }
+                    let h = CGFloat(n.doubleValue)
+                    if h > 0 { MainActor.assumeIsolated { self.onHeight?(h) } }
+                }
+            }
+        }
+    }
 
     // MARK: WKScriptMessageHandler — page → native → daemon → page, stamped with the native@widget principal.
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {

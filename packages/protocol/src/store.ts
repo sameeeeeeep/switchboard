@@ -51,7 +51,10 @@ export interface WrappComponents {
 /** A capability the daemon provides, gated per-origin (docs/CAPABILITIES.md + God's-eye/TTS). */
 export type CapabilityName =
   | "sb_db" | "sb_http" | "sb_secrets" | "sb_exec"
-  | "sb_speak" | "vision" | "screen-record";
+  | "sb_speak" | "vision" | "screen-record"
+  // guide — drive a guided cursor-walkthrough on the user's screen (guide_run). Write-class:
+  // every run is per-run consent-gated, so a wrapp that needs it declares it here.
+  | "guide";
 
 /** What must hold before a wrapp runs. Diffed against `PresentState` by `resolveRequirements`.
  *  `lazy: true` (a capability only needed by one feature, e.g. `screen-record` for auto-demo capture)

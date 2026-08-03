@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Marquee · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .in{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:10px 12px;outline:none;}
+      .in:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;gap:9px;align-items:center;}
+      .grow{flex:1;}
+      .go{font:600 12.5px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 16px;cursor:pointer;transition:filter .15s,opacity .15s;}
+      .go:hover{filter:brightness(1.08);} .go:disabled{opacity:.45;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);} .act:disabled{opacity:.5;cursor:default;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .mq-wrap{border:1px solid var(--edge);border-radius:12px;overflow:hidden;background:var(--inset);}
+      .mq-frame{width:100%;height:320px;border:0;display:block;background:#fff;}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;flex:none;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .err{color:var(--danger);font:400 11.5px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);padding:13px;display:block;}
+      .foot{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .foot .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Marquee</em></span><span class="kicker">on your claude</span></div>
+      <div>
+        <label class="flabel" for="q">The landing page — one line</label>
+        <div class="row">
+          <input id="q" class="in grow" type="text" autofocus placeholder="a cinematic page for a sleep-tracking ring" />
+          <button id="go" class="go">Build the page</button>
+        </div>
+        <div class="hint" style="margin-top:6px;">⏎ · a scroll-driven landing page writes itself, live</div>
+      </div>
+      <div id="status"></div>
+      <div class="mq-wrap"><iframe id="mq-frame" class="mq-frame" sandbox="allow-scripts allow-same-origin"></iframe></div>
+      <div class="row">
+        <button class="act" id="dl" hidden>⬇ download .html</button>
+        <button class="act" id="regen" hidden>↻ regenerate</button>
+        <span class="foot grow" style="justify-content:flex-end;"><span class="dot"></span>Written on your own Claude · the page is yours</span>
+      </div>
+    </div>
+
+    <script type="module">
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q != null && q !== "") return q; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        if (typeof w === "string" && w.trim()) return w;
+        return "";
+      }
+      // ================= window.claude bridge (raw BYOP provider the notch host injects) =================
+      const SCOPE = { reason: "Marquee widget — write a cinematic scrolling landing page on your own Claude", models: ["sonnet"] };
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        if (!grantP) grantP = (async () => { try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {} return p.request({ method: "claude_connect", params: SCOPE }); })();
+        return grantP;
+      }
+      async function streamPrompt(p, params, onText) {
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        return new Promise((resolve, reject) => {
+          let text = "", settled = false;
+          const cleanup = () => { settled = true; try { p.removeListener("delta", handler); } catch {} clearTimeout(timer); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onText && onText(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          const timer = setTimeout(() => { if (!settled) { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); } }, 180000);
+          p.on("delta", handler);
+        });
+      }
+      async function ask(prompt, onText) {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        await ensureGrant(p);
+        return streamPrompt(p, { prompt, model: "sonnet", maxTokens: 8000 }, onText);
+      }
+      function stripFences(s) { return String(s || "").replace(/^```[a-z]*\n?/i, "").replace(/\n?```\s*$/i, "").trim(); }
+
+      // ---- marquee generate() prompt (mirrors src/marquee.js — image gen skipped to stay token-light) ----
+      function buildPrompt(brief) {
+        return [
+          "You are Marquee, writing a complete, cinematic, SCROLL-DRIVEN landing page as a single self-contained HTML document (inline CSS + a little inline JS; no external files except fonts from Google Fonts).",
+          `THE BRIEF: "${brief}"`,
+          "Requirements: 5-7 FULL-VIEWPORT (100vh) sections stacked vertically; each reveals on scroll (IntersectionObserver toggling a class, with CSS transitions — fade + rise). Big display type, generous whitespace, one accent color, a sticky mini-nav, a final call-to-action. Feel: premium, editorial, a little dreamy — like a landing page that plays like a video as you scroll. Use a placeholder hero (a full-bleed <div> with a background gradient). NO lorem ipsum — write real copy from the brief.",
+          "Return ONLY the HTML document, starting with <!doctype html>. No prose, no fences.",
+        ].join("\n\n");
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const qEl = $("q"), goEl = $("go"), statusEl = $("status"), frame = $("mq-frame"), dlEl = $("dl"), regenEl = $("regen");
+      let busy = false, html = "", lastBrief = "";
+      function setStatus(t) { statusEl.innerHTML = ""; if (t) { const s = document.createElement("div"); s.className = "status"; s.innerHTML = '<div class="scan"></div><span>' + t + "</span>"; statusEl.append(s); } }
+      function setError(t) { statusEl.innerHTML = ""; const e = document.createElement("div"); e.className = "err"; e.textContent = String(t).slice(0, 200); statusEl.append(e); }
+
+      async function run(brief) {
+        brief = String(brief || qEl.value).trim(); if (!brief || busy) { if (!brief) qEl.focus(); return; }
+        busy = true; goEl.disabled = true; lastBrief = brief; dlEl.hidden = true; regenEl.hidden = true;
+        setStatus("writing the page…"); frame.srcdoc = "";
+        try {
+          let acc = "";
+          acc = await ask(buildPrompt(brief), (text) => { html = stripFences(text); if (text.length % 400 < 40) frame.srcdoc = html; });
+          html = stripFences(acc);
+          if (!/<[a-z]/i.test(html)) throw new Error("the page didn't come back as HTML — try again");
+          frame.srcdoc = html;
+          setStatus("");
+          dlEl.hidden = false; regenEl.hidden = false;
+        } catch (e) { setError(e?.message || e); }
+        finally { busy = false; goEl.disabled = false; }
+      }
+      function download() {
+        if (!html) return;
+        const blob = new Blob([html], { type: "text/html" });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "landing.html"; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      }
+      goEl.addEventListener("click", () => run());
+      qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+      dlEl.addEventListener("click", download);
+      regenEl.addEventListener("click", () => run(lastBrief));
+      const seed = injectedText(); if (seed) { qEl.value = seed; void run(seed); }
+      qEl.focus();
+    </script>
+  </body>
+</html>

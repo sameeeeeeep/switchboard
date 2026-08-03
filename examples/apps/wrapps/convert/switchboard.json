@@ -1,8 +1,8 @@
 {
   "id": "convert",
   "name": "Convert",
-  "tagline": "Data between JSON, CSV, YAML, and Markdown tables",
-  "category": "skill",
+  "tagline": "CSV, JSON & YAML — converted on your device, no AI",
+  "category": "tool",
   "components": {
     "ui": {
       "kind": "web",
@@ -10,11 +10,19 @@
     }
   },
   "surfaces": [
-    "browser"
+    "browser",
+    "notch"
   ],
   "requires": [
     {
       "kind": "daemon"
     }
-  ]
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
 }

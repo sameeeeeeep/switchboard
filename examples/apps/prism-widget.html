@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prism · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:11px 12px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .seg{display:inline-flex;background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px;}
+      .segbtn{font:500 11px/1 var(--sans);background:none;border:0;color:var(--ink-sec);border-radius:6px;padding:6px 11px;cursor:pointer;transition:background .15s,color .15s;}
+      .segbtn:hover{color:var(--ink);} .segbtn.on{background:var(--accent);color:var(--page);font-weight:600;}
+      .grow{flex:1;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:999px;padding:9px 16px;cursor:pointer;transition:opacity .15s;}
+      .go:disabled{opacity:.4;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;text-decoration:none;display:inline-block;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .out{border:1px solid var(--edge);border-radius:12px;background:var(--panel);overflow:hidden;position:relative;}
+      .shot{display:block;width:100%;background:var(--inset);}
+      .shot img{display:block;width:100%;border-radius:0;}
+      .load{padding:30px 14px;text-align:center;}
+      .scan{height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:scan 1.1s linear infinite;margin:0 auto 12px;width:70%;}
+      @keyframes scan{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      .statusline{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .outbar{display:flex;align-items:center;gap:8px;padding:8px 11px;border-top:1px solid var(--edge-soft);}
+      .cap{font:400 10px/1.4 var(--mono);color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);padding:12px;}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);padding:14px;}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Prism</em></span><span class="kicker">your Higgsfield</span></div>
+      <div>
+        <label class="flabel" for="p">Describe the image</label>
+        <textarea id="p" rows="2" autofocus placeholder="subject, setting, lighting… e.g. a single hero product on a stone pedestal, soft window light"></textarea>
+      </div>
+      <div class="row">
+        <span class="flabel">Aspect</span>
+        <div class="seg" id="aspect"></div>
+        <span class="grow"></span>
+        <button class="go" id="go">Generate ▸</button>
+      </div>
+      <div class="out" id="out"><div class="placeholder">Type a prompt and hit Generate — it renders on your own Higgsfield.</div></div>
+      <div class="badge"><span class="dot"></span>Runs on your Claude + Higgsfield · one image per click</div>
+    </div>
+
+    <script type="module">
+      // ================= window.claude bridge — the SAME provider the full page's SDK wraps ==========
+      // Provider surface (packages/menubar/GodWebWindow.swift · harness/provider.js): request({method,
+      // params})→Promise, on/removeListener("delta"), isRelay, claude#initialized. We reproduce the
+      // SDK's relay.stream()/relay.complete() on top of it so the action runs exactly as the page's does.
+      const SCOPE = { reason: "Prism — generate an image on your Higgsfield", models: ["sonnet"], tools: ["mcp__claude_ai_Higgsfield__*"] };
+      function providerNow(){ const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function whenProvider(ms = 4000){
+        return new Promise((res) => {
+          const now = providerNow(); if (now) return res(now);
+          let done = false;
+          const on = () => { if (done) return; done = true; cleanup(); res(providerNow()); };
+          const t = setTimeout(() => { if (done) return; done = true; cleanup(); res(providerNow()); }, ms);
+          function cleanup(){ clearTimeout(t); window.removeEventListener("claude#initialized", on); }
+          window.addEventListener("claude#initialized", on);
+        });
+      }
+      let _relay = null;
+      async function relay(){
+        if (_relay) return _relay;
+        const p = await whenProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this from the Switchboard notch.");
+        let grant = null;
+        try { grant = await p.request({ method: "claude_permissions" }); } catch {}
+        if (!grant) { try { grant = await p.request({ method: "claude_connect", params: SCOPE }); } catch (e) { throw new Error("connect failed: " + (e?.message || e)); } }
+        _relay = {
+          async *stream(params){
+            const { streamId } = await p.request({ method: "claude_stream", params });
+            const q = []; let notify = null, ended = false;
+            const h = (pl) => { if (!pl || pl.streamId !== streamId) return; q.push(pl); if (pl.type === "done" || pl.type === "error") ended = true; notify && notify(); };
+            p.on("delta", h);
+            try { while (true) { if (!q.length) { if (ended) break; await new Promise((r) => (notify = r)); notify = null; continue; } yield q.shift(); } }
+            finally { p.removeListener("delta", h); }
+          },
+          complete: (params) => p.request({ method: "claude_complete", params }),
+        };
+        return _relay;
+      }
+
+      // ---- injected-input contract: ?input=<url-encoded> OR window.__widgetInput { text, dataUrl?, filename? }
+      function injectedText(){
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        return "";
+      }
+
+      // ================= APP — a compact of Prism's primary action (imagegen_generate) ================
+      // One prompt → one image on the visitor's Higgsfield, via the SAME agentic instruction imagegen.js
+      // (and reel.js genImage) send: "Use generate_image …, reply with ONLY the final image URL".
+      const IMG_URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
+      const ASPECTS = ["1:1", "16:9", "9:16"];
+      let aspect = "1:1", busy = false;
+      const $ = (id) => document.getElementById(id);
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const resultText = (d) => (d.result?.content ?? []).map((c) => c.text ?? "").join("");
+      const extractUrl = (t) => { const m = (t || "").match(IMG_URL_RE); return m ? (m[1] || m[2] || m[0]) : null; };
+
+      const seg = $("aspect");
+      for (const a of ASPECTS) { const b = mk("button", "segbtn" + (a === aspect ? " on" : ""), a); b.onclick = () => { aspect = a; [...seg.children].forEach((c) => c.classList.toggle("on", c.textContent === a)); }; seg.append(b); }
+
+      function status(text){ const s = $("out").querySelector(".statusline"); if (s) s.textContent = text; }
+
+      async function generate(){
+        const prompt = $("p").value.trim();
+        if (!prompt || busy) { if (!prompt) $("p").focus(); return; }
+        busy = true; $("go").disabled = true; $("go").textContent = "Rendering…";
+        const out = $("out"); out.textContent = "";
+        out.append(mk("div", "load")); out.querySelector(".load").append(mk("div", "scan"), mk("div", "statusline", "queued…"));
+        try {
+          const r = await relay();
+          const instruction = `Use the Higgsfield generate_image tool to generate an image of: "${prompt}", aspect_ratio "${aspect}". Wait for it to finish (poll the job status if needed), then reply with ONLY the final image URL on its own line.`;
+          let url = null, acc = "";
+          status("generating on your Higgsfield…");
+          for await (const d of r.stream({ prompt: instruction, agentic: true })) {
+            if (d.type === "tool_proposed") { const n = d.call?.name || ""; if (n.endsWith("generate_image")) status("generating (approve if asked)…"); else if (/status|display|wait/.test(n)) status("rendering…"); }
+            else if (d.type === "tool_result") { if (d.result?.ok) { const u = extractUrl(resultText(d)); if (u) url = u; } }
+            else if (d.type === "text") acc += d.text;
+            else if (d.type === "error") throw new Error(d.error?.message || "the stream was blocked");
+          }
+          url = url || extractUrl(acc);
+          if (!url) throw new Error("No image came back — try Generate again.");
+          out.textContent = "";
+          const shot = mk("div", "shot"); const img = mk("img"); img.src = url; img.alt = prompt; img.loading = "lazy";
+          img.addEventListener("error", () => { out.textContent = ""; out.append(mk("div", "err", "The image link expired — Generate again.")); });
+          shot.append(img); out.append(shot);
+          const bar = mk("div", "outbar");
+          bar.append(mk("span", "cap", prompt.slice(0, 60) + " · " + aspect), mk("span", "grow"));
+          const open = mk("a", "act", "open ↗"); open.href = url; open.target = "_blank"; open.rel = "noreferrer";
+          const cp = mk("button", "act", "copy url"); cp.onclick = () => navigator.clipboard?.writeText(url).catch(() => {});
+          bar.append(open, cp); out.append(bar);
+        } catch (e) {
+          out.textContent = ""; out.append(mk("div", "err", String(e?.message || e)));
+        } finally {
+          busy = false; $("go").disabled = false; $("go").textContent = "Generate ▸";
+        }
+      }
+      $("go").addEventListener("click", generate);
+      $("p").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); generate(); } });
+
+      const seed = injectedText(); if (seed) $("p").value = seed;
+      $("p").focus();
+    </script>
+  </body>
+</html>

@@ -27,6 +27,10 @@ export const BYOPErrorCode = {
   PROVIDER_UNAVAILABLE: 4900,
   /** Backend error (model/tool failed for a non-policy reason). */
   BACKEND_ERROR: 4500,
+  /** guide_run: the on-machine guide runtime never picked up the run (the menubar app isn't
+   *  running), or the guide timed out waiting for the human to finish. The wrapp/agent shows
+   *  "open Switchboard and try again", not a stack trace. */
+  NO_GUIDE_RUNTIME: 4510,
 } as const;
 
 export type BYOPErrorCode = (typeof BYOPErrorCode)[keyof typeof BYOPErrorCode];

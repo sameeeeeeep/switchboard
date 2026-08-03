@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 68,
+  "count": 71,
   "listings": [
     {
       "id": "bank",
@@ -561,6 +561,45 @@
       ]
     },
     {
+      "id": "convert",
+      "name": "Convert",
+      "tagline": "CSV, JSON & YAML — converted on your device, no AI",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/convert.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "convert_run",
+          "description": "Convert data between CSV/JSON/YAML entirely on-device (no AI). Auto-detects the source; give a target format. Writes it on the page and returns the converted text.",
+          "inputSchema": {
+            "input": "string — the data to convert (CSV, JSON, or YAML). Required.",
+            "from": "string — source format hint 'csv'|'json'|'yaml'. Optional; auto-detected when omitted.",
+            "to": "string — target format 'csv'|'json'|'yaml'. Default: JSON (or YAML when the source is JSON)."
+          }
+        }
+      ]
+    },
+    {
       "id": "cut",
       "name": "Cut",
       "tagline": "Paste a transcript — get captions + a cut list.",
@@ -823,6 +862,88 @@
       ]
     },
     {
+      "id": "palette",
+      "name": "Palette",
+      "tagline": "Pull a color palette from any image — on your device, no AI",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/palette.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "palette_extract",
+          "description": "Extract a color palette (dominant colors as HEX) from an image entirely on-device (no AI). Give a data: URL; returns the swatches as HEX + RGB.",
+          "inputSchema": {
+            "dataUrl": "string — the source image as a data: URL (or bare base64). Required.",
+            "count": "number — how many colors to extract (4, 6, 8, or 12). Default 6."
+          }
+        },
+        {
+          "name": "image",
+          "description": "",
+          "inputSchema": {}
+        }
+      ]
+    },
+    {
+      "id": "pdftools",
+      "name": "PDF Tools",
+      "tagline": "Merge, split & compress PDFs — on your device, no AI",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/pdftools.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L1",
+        "downloadBytes": 524288,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "pdftools_run",
+          "description": "Merge, split, or compress PDFs entirely on-device (no AI). Pass PDFs as data: URLs; returns the resulting PDF(s) as data: URLs.",
+          "inputSchema": {
+            "mode": "string — 'merge' | 'split' | 'compress'. Required.",
+            "files": "string[] — the source PDFs as data: URLs. Merge needs 2+; split/compress use the first.",
+            "range": "string — split page range, e.g. '1-3,5' (blank = all pages). Optional."
+          }
+        }
+      ]
+    },
+    {
       "id": "prism",
       "name": "Prism",
       "tagline": "Generate on-brand images from a prompt.",
@@ -853,6 +974,50 @@
             "prompt": "string — what to generate (subject, setting, lighting…). Required.",
             "reference": "string — OPTIONAL. A data: URL of a reference image to guide the render (image-to-image)."
           }
+        }
+      ]
+    },
+    {
+      "id": "qr",
+      "name": "QR",
+      "tagline": "Make a QR code from text or a URL — on your device, no AI",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/qr.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "qr_make",
+          "description": "Generate a QR code from text or a URL entirely on-device (no AI). Returns the QR as an SVG string and a PNG data: URL.",
+          "inputSchema": {
+            "text": "string — the text or URL to encode. Required.",
+            "level": "string — error correction 'L'|'M'|'Q'|'H'. Default 'M'.",
+            "size": "number — pixel size of the output. Default 320."
+          }
+        },
+        {
+          "name": "qr.png",
+          "description": "",
+          "inputSchema": {}
         }
       ]
     },
@@ -1247,35 +1412,6 @@
           "description": "Compare options side by side (pros/cons per option) with one recommendation. Writes the comparison live on the page and returns it.",
           "inputSchema": {
             "items": "string — the options to compare (e.g. 'A vs B vs C for X'). Required."
-          }
-        }
-      ]
-    },
-    {
-      "id": "convert",
-      "name": "Convert",
-      "tagline": "Data between JSON, CSV, YAML, and Markdown tables",
-      "category": "skill",
-      "components": {
-        "ui": {
-          "kind": "web",
-          "url": "http://localhost:5188/convert.html"
-        }
-      },
-      "surfaces": [
-        "browser"
-      ],
-      "requires": [
-        {
-          "kind": "daemon"
-        }
-      ],
-      "tools": [
-        {
-          "name": "convert_run",
-          "description": "Convert data between JSON/CSV/YAML/Markdown table — infers the source, outputs the most useful target (a Markdown table if ambiguous). Writes it live on the page and returns it.",
-          "inputSchema": {
-            "data": "string — the structured data to convert. Required."
           }
         }
       ]

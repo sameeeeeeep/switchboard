@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shelf · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --warn:#F2C94C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 11px/1.5 var(--mono);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+      .grow{flex:1;}
+      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:999px;padding:9px 16px;cursor:pointer;transition:opacity .15s;}
+      .go:disabled{opacity:.4;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .strip{display:flex;gap:8px;}
+      .stat{flex:1;border:1px solid var(--edge);border-radius:9px;background:var(--inset);padding:8px 10px;}
+      .stat .k{font:500 8px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);}
+      .stat .v{font:600 15px/1.2 var(--mono);color:var(--ink);margin-top:3px;}
+      .stat.dead .v{color:var(--danger);}
+      .summary{font:400 12px/1.45 var(--sans);color:var(--ink-sec);border-left:2px solid var(--edge);padding-left:9px;}
+      .cols{display:flex;gap:8px;}
+      .col{flex:1;min-width:0;}
+      .colh{font:500 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;}
+      .colh.reorder{color:var(--ok);} .colh.watch{color:var(--warn);} .colh.dead{color:var(--danger);}
+      .tag{border:1px solid var(--edge);border-radius:8px;background:var(--panel);padding:6px 7px;margin-bottom:5px;}
+      .tag .s{font:600 10px/1.2 var(--mono);}
+      .tag .n{font:400 10px/1.25 var(--sans);color:var(--ink-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .plan{border:1px solid color-mix(in srgb,var(--accent) 40%,var(--edge));border-radius:10px;background:var(--panel);padding:9px 11px;}
+      .plan .pt{font:600 12px/1.2 var(--sans);} .plan .pt em{font-style:normal;color:var(--accent);font:500 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;margin-left:7px;}
+      .plan .pa{font:400 11px/1.35 var(--sans);color:var(--ink-sec);margin-top:3px;}
+      .plan ul{margin:6px 0 0;padding-left:16px;} .plan li{font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .statusrow{display:flex;align-items:center;gap:9px;font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:scan 1.1s linear infinite;width:60%;}
+      @keyframes scan{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
+      .badge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Shelf</em></span><span class="kicker">inventory triage</span></div>
+      <div>
+        <label class="flabel" for="csv">Stock + sales sheet (CSV)</label>
+        <textarea id="csv" rows="4" autofocus placeholder="SKU,Product,On hand,Avg weekly sales,Unit cost,Price,Lead time…"></textarea>
+      </div>
+      <div class="row">
+        <button class="act" id="sample">sample sheet</button>
+        <span class="grow"></span>
+        <button class="go" id="go">Triage ▸</button>
+      </div>
+      <div id="out"></div>
+      <div class="badge"><span class="dot"></span>Counts on your device · triage on your own Claude</div>
+    </div>
+
+    <script type="module">
+      // ===== window.claude bridge — the SAME provider the full page's SDK wraps =====================
+      const SCOPE = { reason: "Shelf — triage your inventory on your own Claude", models: ["sonnet"] };
+      function providerNow(){ const p = window.claude; return (p && p.isRelay) ? p : null; }
+      function whenProvider(ms = 4000){ return new Promise((res) => { const now = providerNow(); if (now) return res(now); let done = false; const on = () => { if (done) return; done = true; cleanup(); res(providerNow()); }; const t = setTimeout(() => { if (done) return; done = true; cleanup(); res(providerNow()); }, ms); function cleanup(){ clearTimeout(t); window.removeEventListener("claude#initialized", on); } window.addEventListener("claude#initialized", on); }); }
+      let _relay = null;
+      async function relay(){
+        if (_relay) return _relay;
+        const p = await whenProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this from the Switchboard notch.");
+        let grant = null; try { grant = await p.request({ method: "claude_permissions" }); } catch {}
+        if (!grant) { try { grant = await p.request({ method: "claude_connect", params: SCOPE }); } catch (e) { throw new Error("connect failed: " + (e?.message || e)); } }
+        _relay = { async *stream(params){ const { streamId } = await p.request({ method: "claude_stream", params }); const q = []; let notify = null, ended = false; const h = (pl) => { if (!pl || pl.streamId !== streamId) return; q.push(pl); if (pl.type === "done" || pl.type === "error") ended = true; notify && notify(); }; p.on("delta", h); try { while (true) { if (!q.length) { if (ended) break; await new Promise((r) => (notify = r)); notify = null; continue; } yield q.shift(); } } finally { p.removeListener("delta", h); } } };
+        return _relay;
+      }
+      async function streamText(params, onProgress){ const r = await relay(); let acc = ""; for await (const d of r.stream(params)) { if (d.type === "text") { acc += d.text; onProgress && onProgress(acc); } else if (d.type === "error") throw new Error(d.error?.message || "stream error"); } return acc; }
+
+      // ---- injected-input contract (CSV can arrive as text or a data: URL) ----
+      function injectedText(){
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object") { if (typeof w.text === "string" && w.text.trim()) return w.text; const m = /^data:[^,]*?(;base64)?,(.*)$/s.exec(String(w.dataUrl || "")); if (m) { try { return m[1] ? decodeURIComponent(escape(atob(m[2]))) : decodeURIComponent(m[2]); } catch {} } }
+        return "";
+      }
+
+      // ===== APP — compact of Shelf's primary action (shelf_triage) ==================================
+      // The triage prompt is Shelf's own (src/shelf.js buildPrompt), trimmed for a notch-sized board.
+      const SAMPLE = `SKU,Product,On hand,Avg weekly sales,Unit cost,Price,Lead time
+VCS-10,Vitamin C Serum,96,84,210,649,21
+SPF-50,Daily SPF 50 Gel,140,120,165,499,18
+HYA-02,Hyaluronic Serum,210,32,190,599,21
+RET-03,Retinol Night Cream,160,24,260,799,28
+CHR-01,Charcoal Peel-Off Mask,420,0,95,299,30
+GLD-24,24K Gold Sheet Mask,380,0.2,180,599,45
+BRD-77,Beard Growth Oil,240,0,120,399,21`;
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const fmtINR = (n) => "₹" + new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
+      const arr = (v) => (Array.isArray(v) ? v : []);
+      const num = (v) => { const n = Number(String(v ?? "").replace(/[^\d.-]/g, "")); return Number.isFinite(n) ? n : null; };
+      let busy = false;
+
+      function buildPrompt(csv){
+        return [
+          "You are the sharpest inventory foreman a small e-commerce brand ever hired. Blunt, numerate, practical. Currency: INR.",
+          "Stock + sales sheet (CSV columns: sku,product,on_hand,avg_weekly_sales,unit_cost_inr,price_inr,lead_time_days):",
+          csv,
+          "",
+          "Ground rules: weeks_of_cover = on_hand / avg_weekly_sales; a SKU is a stockout risk when weeks_of_cover < lead_time_days/7; dead = avg_weekly_sales near zero with stock on hand; orderQty covers lead-time demand plus ~4 weeks buffer minus stock on hand, rounded.",
+          "Respond with ONLY a JSON object — no prose, no fences — exactly this shape:",
+          '{"summary":"two plain-talk sentences","cashLockedInDead":0,"reorderNow":[{"sku":"","product":"","orderQty":0}],"watch":[{"sku":"","product":""}],"deadWeight":[{"sku":"","product":"","recoverable":0}],"plans":[{"title":"","angle":"","moves":[""],"recommended":false}]}',
+          "- reorderNow / watch / deadWeight: only real SKUs from the sheet. plans: exactly 3 genuinely different one-week playbooks, EXACTLY ONE recommended:true; title ≤4 words, angle one sentence, moves 2-3 concrete moves quoting real SKUs.",
+        ].join("\n");
+      }
+
+      function renderBoard(d){
+        const out = $("out"); out.textContent = "";
+        const strip = el("div", "strip");
+        const cash = num(d.cashLockedInDead);
+        strip.append(
+          stat("reorder", arr(d.reorderNow).length, ""),
+          stat("watch", arr(d.watch).length, ""),
+          statDead("cash in dead", cash != null ? fmtINR(cash) : "—"),
+        );
+        out.append(strip);
+        if (d.summary) out.append(el("div", "summary", String(d.summary)));
+        const cols = el("div", "cols");
+        cols.append(col("reorder", "reorder now", arr(d.reorderNow), (it) => it.orderQty != null ? "order " + it.orderQty : ""));
+        cols.append(col("watch", "watch", arr(d.watch), () => ""));
+        cols.append(col("dead", "dead weight", arr(d.deadWeight), (it) => num(it.recoverable) != null ? "≈" + fmtINR(num(it.recoverable)) : ""));
+        out.append(cols);
+        const plans = arr(d.plans);
+        const rec = plans.find((p) => p.recommended) || plans[0];
+        if (rec) {
+          const pc = el("div", "plan");
+          const pt = el("div", "pt"); pt.append(document.createTextNode(String(rec.title || "Plan"))); pt.append(el("em", null, "recommended")); pc.append(pt);
+          if (rec.angle) pc.append(el("div", "pa", String(rec.angle)));
+          const ul = el("ul"); arr(rec.moves).slice(0, 3).forEach((m) => ul.append(el("li", null, String(m)))); if (ul.children.length) pc.append(ul);
+          out.append(pc);
+        }
+      }
+      function stat(kind, v, tag){ const s = el("div", "stat"); s.append(el("div", "k", kind === "reorder" ? "reorder" : "watch"), el("div", "v", String(v))); return s; }
+      function statDead(k, v){ const s = el("div", "stat dead"); s.append(el("div", "k", k), el("div", "v", v)); return s; }
+      function col(kind, label, items, tagFn){
+        const c = el("div", "col"); c.append(el("div", "colh " + kind, label + (items.length ? " · " + items.length : "")));
+        if (!items.length) { c.append(el("div", "tag")).append(el("div", "n", "— clear")); return c; }
+        items.slice(0, 4).forEach((it) => { const t = el("div", "tag"); const top = el("div", "s"); top.textContent = String(it.sku || "?"); const tg = tagFn(it); if (tg) top.textContent += "  " + tg; t.append(top, el("div", "n", String(it.product || ""))); c.append(t); });
+        return c;
+      }
+
+      async function triage(){
+        const csv = $("csv").value.trim();
+        if (!csv || busy) { if (!csv) $("csv").focus(); return; }
+        busy = true; $("go").disabled = true; $("go").textContent = "Triaging…";
+        const out = $("out"); out.textContent = "";
+        const st = el("div", "statusrow"); st.append(el("div", "scan"), el("span", null, "the foreman is counting…")); out.append(st);
+        try {
+          const raw = await streamText({ prompt: buildPrompt(csv) });
+          const m = raw.match(/\{[\s\S]*\}/);
+          if (!m) throw new Error("the model replied without a board — Triage again.");
+          let data; try { data = JSON.parse(m[0]); } catch { throw new Error("the board came back smudged (bad JSON) — Triage again."); }
+          renderBoard(data);
+        } catch (e) { out.textContent = ""; out.append(el("div", "err", String(e?.message || e))); }
+        finally { busy = false; $("go").disabled = false; $("go").textContent = "Triage ▸"; }
+      }
+      $("go").addEventListener("click", triage);
+      $("sample").addEventListener("click", () => { $("csv").value = SAMPLE; $("csv").focus(); });
+      $("csv").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); triage(); } });
+
+      const seed = injectedText(); if (seed) $("csv").value = seed;
+      $("csv").focus();
+    </script>
+  </body>
+</html>

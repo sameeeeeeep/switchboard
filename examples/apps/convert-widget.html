@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Convert · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 12px/1.5 var(--mono);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .seg{display:inline-flex;background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px;}
+      .segbtn{font:500 11px/1 var(--sans);background:none;border:0;color:var(--ink-sec);border-radius:6px;padding:6px 12px;cursor:pointer;transition:background .15s,color .15s;}
+      .segbtn:hover{color:var(--ink);} .segbtn.on{background:var(--accent);color:var(--page);font-weight:600;}
+      .grow{flex:1;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .out{border:1px solid var(--edge);border-radius:11px;background:var(--panel);overflow:hidden;}
+      .outbar{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--edge-soft);}
+      pre.md{margin:0;padding:11px;font:400 12px/1.5 var(--mono);color:var(--ink-sec);max-height:180px;overflow:auto;white-space:pre;}
+      .err{color:var(--danger);font:400 12px/1.5 var(--mono);padding:11px;}
+      .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .nobadge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Convert</em></span><span class="kicker">csv · json · yaml</span></div>
+      <div>
+        <label class="flabel" for="ta">Paste data — auto-detects the source</label>
+        <textarea id="ta" rows="5" autofocus placeholder="paste CSV, JSON, or YAML…"></textarea>
+      </div>
+      <div class="row">
+        <span class="flabel">Convert to</span>
+        <div class="seg" id="fmt"></div>
+        <span class="grow"></span>
+        <button class="act" id="sample">sample</button>
+      </div>
+      <div class="out" id="out" hidden></div>
+      <div class="nobadge"><span class="dot"></span>Runs fully on your device · no AI · no upload</div>
+    </div>
+
+    <script type="module">
+      import * as YAML from "./src/vendor/js-yaml.esm.mjs";
+
+      // ---- injected-input contract ----
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+        const w = window.__widgetInput;
+        if (typeof w === "string" && w.trim()) return w;
+        if (w && typeof w === "object") {
+          if (typeof w.text === "string" && w.text.trim()) return w.text;
+          const m = /^data:[^,]*?(;base64)?,(.*)$/s.exec(String(w.dataUrl || ""));
+          if (m) { try { return m[1] ? decodeURIComponent(escape(atob(m[2]))) : decodeURIComponent(m[2]); } catch {} }
+        }
+        return "";
+      }
+
+      const FORMATS = [{ id:"csv", label:"CSV" },{ id:"json", label:"JSON" },{ id:"yaml", label:"YAML" }];
+      const SAMPLE = "name,role,city\nAda,Engineer,London\nGrace,Admiral,New York";
+      let to = "json";
+      const msg = (e) => String(e?.message || e).slice(0, 160);
+
+      // ---- compact CSV (replaces papaparse; RFC-4180-ish: quotes, commas, newlines) ----
+      function parseCsv(text) {
+        const rows = []; let row = [], field = "", i = 0, q = false; const s = String(text).replace(/\r\n?/g, "\n");
+        while (i < s.length) {
+          const c = s[i];
+          if (q) {
+            if (c === '"') { if (s[i+1] === '"') { field += '"'; i += 2; continue; } q = false; i++; continue; }
+            field += c; i++; continue;
+          }
+          if (c === '"') { q = true; i++; continue; }
+          if (c === ",") { row.push(field); field = ""; i++; continue; }
+          if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+          field += c; i++;
+        }
+        if (field.length || row.length) { row.push(field); rows.push(row); }
+        const clean = rows.filter((r) => r.length && !(r.length === 1 && r[0].trim() === ""));
+        if (!clean.length) return [];
+        const header = clean[0];
+        return clean.slice(1).map((r) => { const o = {}; header.forEach((h, j) => { let v = r[j] ?? ""; o[h] = coerce(v); }); return o; });
+      }
+      function coerce(v) { if (v === "") return ""; if (v === "true") return true; if (v === "false") return false; if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v); return v; }
+      function toCsv(data) {
+        let rows = Array.isArray(data) ? data : [data]; if (!rows.length) return "";
+        const allPrim = rows.every((r) => r === null || typeof r !== "object");
+        if (allPrim) rows = rows.map((v) => ({ value: v }));
+        const keys = [...new Set(rows.flatMap((r) => (r && typeof r === "object" ? Object.keys(r) : ["value"])))];
+        const esc = (v) => { if (v === null || v === undefined) return ""; if (typeof v === "object") v = JSON.stringify(v); v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+        return [keys.join(","), ...rows.map((r) => keys.map((k) => esc(r && typeof r === "object" ? r[k] : r)).join(","))].join("\n");
+      }
+
+      function detectFormat(text) {
+        const t = String(text || "").trim(); if (!t) return null;
+        if (t[0] === "{" || t[0] === "[") { try { JSON.parse(t); return "json"; } catch {} }
+        const lines = t.split(/\n/).filter((l) => l.trim());
+        const looksCsv = lines.length >= 1 && /[,\t;]/.test(lines[0]);
+        const kvOnly = lines.length > 0 && lines.every((l) => /^\s*[\w"'.\- ]+\s*:\s/.test(l) && !/,/.test(l));
+        const looksYaml = /^\s*[\w"'.\- ]+\s*:\s/.test(t) || /^\s*-\s+/.test(t);
+        if (looksCsv && !kvOnly) return "csv";
+        if (looksYaml) { try { const v = YAML.load(t); if (v && typeof v === "object") return "yaml"; } catch {} }
+        if (looksCsv) return "csv";
+        try { JSON.parse(t); return "json"; } catch {}
+        try { const v = YAML.load(t); if (v != null) return "yaml"; } catch {}
+        return null;
+      }
+      function parseInput(text, from) {
+        const t = String(text || "").trim();
+        if (from === "json") return JSON.parse(t);
+        if (from === "yaml") { const v = YAML.load(t); if (v === undefined) throw new Error("empty YAML"); return v; }
+        if (from === "csv") return parseCsv(t);
+        throw new Error("unknown source: " + from);
+      }
+      function serialize(data, tgt) {
+        if (tgt === "json") return JSON.stringify(data, null, 2);
+        if (tgt === "yaml") return YAML.dump(data, { noRefs: true, lineWidth: 120 }).replace(/\n$/, "");
+        if (tgt === "csv") return toCsv(data);
+        throw new Error("unknown target: " + tgt);
+      }
+      function convert(text, tgt) {
+        const src = detectFormat(text);
+        if (!src) throw new Error("Couldn't detect the format — paste CSV, JSON, or YAML.");
+        const target = tgt || (src === "json" ? "yaml" : "json");
+        return { from: src, to: target, output: serialize(parseInput(text, src), target) };
+      }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const ta = $("ta"), out = $("out"), fmtSeg = $("fmt");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let result = null;
+      for (const f of FORMATS) {
+        const b = mk("button", "segbtn" + (to === f.id ? " on" : ""), f.label);
+        b.onclick = () => { to = f.id; [...fmtSeg.children].forEach((c) => c.classList.toggle("on", c.textContent === f.label)); if (ta.value.trim()) run(); };
+        fmtSeg.append(b);
+      }
+      function run() {
+        if (!ta.value.trim()) { out.hidden = true; return; }
+        out.hidden = false; out.textContent = "";
+        try {
+          result = convert(ta.value, to);
+          const bar = mk("div", "outbar");
+          bar.append(mk("span", "kicker", `${result.from} → ${result.to}`), mk("span", "grow"));
+          const cp = mk("button", "act", "copy"); cp.onclick = () => navigator.clipboard?.writeText(result.output).catch(() => {});
+          const dl = mk("button", "act", "download"); dl.onclick = download;
+          bar.append(cp, dl); out.append(bar);
+          out.append(mk("pre", "md", result.output));
+        } catch (e) { out.append(mk("div", "err", msg(e))); }
+      }
+      function download() {
+        if (!result) return;
+        const ext = result.to === "yaml" ? "yaml" : result.to;
+        const mime = result.to === "json" ? "application/json" : result.to === "csv" ? "text/csv" : "text/yaml";
+        const u = URL.createObjectURL(new Blob([result.output], { type: mime }));
+        const a = mk("a"); a.href = u; a.download = "converted." + ext; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000);
+      }
+      let t = null;
+      ta.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 200); });
+      ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
+      $("sample").onclick = () => { ta.value = SAMPLE; run(); ta.focus(); };
+
+      const seed = injectedText();
+      if (seed) ta.value = seed;
+      if (ta.value.trim()) run();
+      ta.focus();
+    </script>
+  </body>
+</html>

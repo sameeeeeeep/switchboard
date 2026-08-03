@@ -72,7 +72,47 @@ const CFG = {
   formula: { name: "Formula", cat: "skill", count: (d) => skillDone(d) },
   spellout: { name: "Spellout", cat: "skill", count: (d) => skillDone(d) },
   clipfix: { name: "Clip Doctor", cat: "skill", count: (d) => skillDone(d) },
-  convert: { name: "Convert", cat: "skill", count: (d) => skillDone(d) },
+  // Convert is now NON-AI (pure in-tab CSV/JSON/YAML). No model call ever fires, so drive it here:
+  // paste valid CSV, click Convert, then assert the converted text rendered into #conv-out.
+  convert: { name: "Convert", cat: "tool", count: (d) => {
+    if (!d.__conv_kick) {
+      const ta = d.getElementById("conv-in");
+      if (ta) {
+        d.__conv_kick = true;
+        ta.value = "name,role,city\nAda,Engineer,London\nGrace,Admiral,New York";
+        const btn = [...d.querySelectorAll("button")].find((b) => /convert/i.test(b.textContent || ""));
+        if (btn) try { btn.click(); } catch (_) {}
+      }
+    }
+    const out = d.getElementById("conv-out");
+    return out && (out.textContent || "").trim().length > 10 ? 1 : 0;
+  } },
+  // PDF Tools — NON-AI (pdf-lib). Drive via the wrapp's own test hook: generate two sample PDFs,
+  // merge them, then assert a downloadable result row rendered into #pdf-out.
+  pdftools: { name: "PDF Tools", cat: "tool", count: (d) => {
+    const w = d.defaultView;
+    if (!d.__pdf_kick && w && w.__pdfToolsTest) { d.__pdf_kick = true; try { w.__pdfToolsTest.harnessRun(); } catch (_) {} }
+    const out = d.getElementById("pdf-out");
+    return out && out.querySelectorAll(".pdf-result a[download]").length ? 1 : 0;
+  } },
+  // QR — NON-AI (tiny QR encoder). Type a URL, assert a rendered <canvas> + download links appear.
+  qr: { name: "QR", cat: "tool", count: (d) => {
+    if (!d.__qr_kick) {
+      const inp = d.getElementById("qr-in");
+      if (inp) { d.__qr_kick = true; inp.value = "https://thelastprompt.ai/switchboard/"; inp.dispatchEvent(new (d.defaultView.Event)("input", { bubbles: true })); }
+    }
+    const c = d.getElementById("qr-canvas");
+    const dl = d.querySelectorAll("#qr-out a[download]").length;
+    return c && c.width > 0 && dl >= 2 ? 1 : 0;
+  } },
+  // Palette — NON-AI (canvas median-cut). Drive via the wrapp's own test hook: synthesize a banded
+  // image, extract its palette, then assert rendered swatch cards + copy actions appear.
+  palette: { name: "Palette", cat: "tool", count: (d) => {
+    const w = d.defaultView;
+    if (!d.__pal_kick && w && w.__paletteTest) { d.__pal_kick = true; try { w.__paletteTest.harnessRun(); } catch (_) {} }
+    const grid = d.getElementById("swatch-grid");
+    return grid && grid.querySelectorAll(".swatch").length ? 1 : 0;
+  } },
   hooks: { name: "Hooks", cat: "skill", count: (d) => skillDone(d) },
   repurpose: { name: "Repurpose", cat: "skill", count: (d) => skillDone(d) },
   caption: { name: "Caption", cat: "skill", count: (d) => skillDone(d) },
@@ -91,7 +131,7 @@ const CFG = {
     return 0;
   } },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert", "hooks", "repurpose", "caption", "titles", "outline", "standup", "objection", "coldemail", "ideabrain"];
+const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert", "pdftools", "qr", "palette", "hooks", "repurpose", "caption", "titles", "outline", "standup", "objection", "coldemail", "ideabrain"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);

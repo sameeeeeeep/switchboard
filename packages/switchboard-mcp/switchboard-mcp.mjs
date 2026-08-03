@@ -23,6 +23,11 @@ import { withDaemon, daemonSbForOrigin, daemonAvailable, readPairingToken, WS_UR
 import { mockSb } from "./mock-sb.mjs";
 import { scaffoldWrapp } from "./scaffold.mjs";
 
+// The origin the daemon attributes a connector-driven guide to (shown on the "Allow?" card). A guide
+// is gated by its per-run human consent, not a standing grant, so this is an honest audit label —
+// "a Claude, via the Switchboard connector" — not a claim to be some deployed wrapp.
+const GUIDE_ORIGIN = "switchboard-connector";
+
 const ok = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }] });
 const fail = (message, extra) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, error: message, ...extra }) }] });
 
@@ -124,6 +129,49 @@ async function main() {
     async ({ idea, name, dir }) => {
       try { return ok(scaffoldWrapp({ idea, name, dir })); }
       catch (e) { return fail(String(e?.message || e)); }
+    },
+  );
+
+  // guide_run — the reverse arrow for HANDS-ON help: let a Claude (even a remote one on claude.ai)
+  // walk the user through steps on their OWN screen. The daemon consent-gates each run (the human
+  // clicks "Allow" once, seeing the title) and the native runtime floats each caption by the cursor;
+  // the human signals pass/fail/next. Brokered end-to-end — the model never touches the machine
+  // directly, only proposes steps the human physically confirms.
+  server.registerTool(
+    "guide_run",
+    {
+      title: "Guide the user through steps on their screen",
+      description:
+        "Walk the user through steps on their screen — onboarding, setup, a how-to, or a guided test. " +
+        "The Switchboard app floats each step's caption by the user's cursor; the user signals pass/next, fail, or abort, " +
+        "and this returns per-step results. Use for 'walk me through…', 'set this up for me', 'show me how to…', or 'test this flow'. " +
+        "Every run asks the user to Allow it first (it briefly guides their cursor). Requires the Switchboard daemon + app to be running on their Mac.",
+      inputSchema: {
+        title: z.string().describe("What this walkthrough is — shown at the Allow prompt and as the heading, e.g. 'Connect your first wrapp'. Required."),
+        mode: z.enum(["tour", "test"]).optional().describe("'tour' (default) = teach/guide; 'test' = pass/fail each step (a guided test)."),
+        steps: z.array(z.object({
+          id: z.string().optional().describe("stable step id (auto-generated if omitted)"),
+          text: z.string().describe("the caption shown by the cursor, e.g. 'Click Connect, top-right'"),
+          hint: z.string().optional().describe("optional secondary line: where to look / what 'done' means"),
+        })).min(1).describe("ordered steps; at least one. Required."),
+      },
+    },
+    async ({ title, mode: guideMode, steps }) => {
+      // A guide drives the REAL cursor — there is no honest mock. If the daemon isn't reachable,
+      // say so plainly rather than pretend (the make-it-loud rule).
+      if (mode !== "daemon") {
+        return fail("guide_run needs the live Switchboard daemon + app running on this Mac (it drives the real cursor). It has no mock.");
+      }
+      try {
+        // Attribute the run to the connector origin; the daemon consent-gates each run by title, so
+        // no standing per-origin grant is required (a guide touches no user data — see server.ts).
+        const result = await withDaemon((conn) =>
+          conn.request(GUIDE_ORIGIN, "guide_run", { title, mode: guideMode ?? "tour", steps }),
+        );
+        return ok({ ok: true, tool: "guide_run", ...result });
+      } catch (e) {
+        return fail(String(e?.message || e), { tool: "guide_run" });
+      }
     },
   );
 

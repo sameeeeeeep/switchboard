@@ -118,6 +118,50 @@ export interface SbBrandResult {
   reachable: boolean;
 }
 
+/** guide_run — drive a GUIDED CURSOR-WALKTHROUGH on the user's machine: onboarding, setup, a
+ *  how-to, or a guided test. The daemon validates + CONSENT-GATES (a guide takes over the cursor +
+ *  keyboard, so it's write-class), then hands the steps to the on-machine runtime (the menubar app's
+ *  CursorGuide, which floats each step's caption by the pointer). The human signals pass/next
+ *  (⌃⌥) · fail (⌃⌥⇧) · abort (Esc); the daemon waits for the run to finish and returns per-step
+ *  verdicts. Exposed through the switchboard connector too, so even a remote Claude (claude.ai) can
+ *  walk the user through something on their own screen. See CursorGuide.swift + guide-run.json IPC. */
+export interface GuideStep {
+  /** Stable id for the step; synthesized ("step-1", …) if omitted. */
+  id?: string;
+  /** The caption shown by the cursor, e.g. "Click the Connect button top-right". */
+  text: string;
+  /** Optional secondary line (where to look / what "done" means). */
+  hint?: string;
+}
+export interface GuideRunParams {
+  /** What this walkthrough is, shown at consent and as the run's heading, e.g. "Connect your first wrapp". */
+  title: string;
+  /** "tour" = teach/guide (verdicts are just "done"); "test" = pass/fail each step (guided test). Default "tour". */
+  mode?: "test" | "tour";
+  /** Ordered steps. At least one required. */
+  steps: GuideStep[];
+}
+/** One step's outcome. `verdict` is "done" in tour mode; "passed"/"failed"/"skipped" in test mode. */
+export interface GuideStepResult {
+  id: string;
+  text: string;
+  verdict: string;
+  /** ISO timestamp the user acted on this step. */
+  notedAt: string;
+}
+/** The unified result the runtime writes (guide-result.json) for BOTH modes. */
+export interface GuideResult {
+  title: string;
+  mode: "test" | "tour";
+  /** "completed" = the user reached the end; "aborted" = Esc / bailed early. */
+  outcome: "completed" | "aborted";
+  passed: number;
+  failed: number;
+  skipped: number;
+  total: number;
+  results: GuideStepResult[];
+}
+
 /** The typed method table: each method's params and result. */
 export interface BYOPMethods {
   /** Feature-detect. No permission required. */
@@ -161,6 +205,9 @@ export interface BYOPMethods {
   /** Read a brand's public website into provenance-tagged facts, server-side (no CORS). Requires a
    *  grant; GET-only on public pages (read posture) so no per-call consent. See docs/BRAND-EXTRACTION.md. */
   sb_brand: { params: SbBrandParams; result: SbBrandResult };
+  /** Drive a guided cursor-walkthrough on the user's screen (onboarding/setup/how-to/guided-test).
+   *  Requires a grant AND a per-run consent (write-class: it takes over the cursor + keyboard). */
+  guide_run: { params: GuideRunParams; result: GuideResult };
   /** The setup ladder, answered by the EXTENSION locally — never forwarded to the daemon, no
    *  grant required, resolves fast (<1s) even when the daemon is unreachable or unpaired. The
    *  chip/widget render install → unreachable → unpaired → disconnected → connected from this;

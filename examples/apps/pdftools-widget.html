@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Tools · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      .seg{display:inline-flex;background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px;}
+      .segbtn{font:500 11px/1 var(--sans);background:none;border:0;color:var(--ink-sec);border-radius:6px;padding:6px 13px;cursor:pointer;}
+      .segbtn.on{background:var(--accent);color:var(--page);font-weight:600;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .dz{border:1px dashed var(--edge);border-radius:12px;background:var(--inset);padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+      .dz:hover,.dz.over{border-color:var(--accent);background:#0d1005;}
+      .dz .big{font:500 12px/1.3 var(--sans);color:var(--ink-sec);}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .grow{flex:1;}
+      .files{display:flex;flex-direction:column;gap:5px;}
+      .frow{display:flex;align-items:center;gap:9px;background:var(--inset);border:1px solid var(--edge-soft);border-radius:8px;padding:7px 10px;}
+      .frow .fn{font:500 11px/1 var(--mono);color:var(--ink-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .frow .fd{font:400 10px/1 var(--mono);color:var(--ink-faint);}
+      input[type=text]{width:120px;background:var(--inset);border:1px solid var(--edge);border-radius:8px;color:var(--ink);font:400 12px/1 var(--mono);padding:8px 10px;outline:none;}
+      input[type=text]:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .primary{font:600 12px/1 var(--sans);border-radius:999px;padding:9px 16px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:var(--page);}
+      .primary:disabled{opacity:.45;cursor:default;}
+      .res{display:flex;flex-direction:column;gap:5px;}
+      .rrow{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:8px 11px;}
+      .rrow .rn{font:600 11px/1 var(--mono);color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .rrow .rd{font:400 10px/1 var(--mono);color:var(--ink-faint);}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .nobadge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>PDF Tools</em></span><span class="kicker">on your device</span></div>
+      <div class="row"><div class="seg" id="modes"></div><span class="hint" id="modehint"></span></div>
+      <div id="stage"></div>
+      <div id="err" class="err" hidden></div>
+      <div class="nobadge"><span class="dot"></span>PDFs never leave your device · no AI · no upload</div>
+    </div>
+    <input id="file" type="file" accept="application/pdf" multiple hidden />
+
+    <script type="module">
+      import { PDFDocument } from "./src/vendor/pdf-lib.esm.min.js";
+
+      // ---- injected-input contract: ?input=<dataUrl> OR window.__widgetInput { dataUrl?, filename? } ----
+      function injectedFiles() {
+        const list = [];
+        try { const q = new URLSearchParams(location.search).get("input"); if (q && q.startsWith("data:")) list.push({ url: q, name: "input.pdf" }); } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object") {
+          if (typeof w.dataUrl === "string" && w.dataUrl) list.push({ url: w.dataUrl, name: w.filename || "input.pdf" });
+          if (Array.isArray(w.files)) for (const f of w.files) if (f?.dataUrl) list.push({ url: f.dataUrl, name: f.filename || f.name || "input.pdf" });
+        }
+        return list;
+      }
+
+      // ---- core pipeline copied from src/pdftools.js (pdf-lib, model-free) ----
+      const MODES = [
+        { id:"merge", label:"Merge", hint:"combine 2+ PDFs into one, in order" },
+        { id:"split", label:"Split", hint:"break one PDF into single-page PDFs (optional range)" },
+        { id:"compress", label:"Compress", hint:"re-save with object streams + stripped metadata" },
+      ];
+      let mode = "merge", files = [], results = [], range = "", running = false;
+      const fmtBytes = (n) => !Number.isFinite(n) ? "—" : n < 1024 ? n + " B" : n < 1048576 ? (n/1024).toFixed(1) + " KB" : (n/1048576).toFixed(2) + " MB";
+      const msg = (e) => String(e?.message || e).slice(0, 160);
+
+      function parseRange(spec, total) {
+        const s = String(spec || "").trim();
+        if (!s) return Array.from({ length: total }, (_, i) => i);
+        const out = new Set();
+        for (const part of s.split(",").map((p) => p.trim()).filter(Boolean)) {
+          const m = /^(\d+)?\s*-\s*(\d+)?$/.exec(part);
+          if (m) { const a = m[1] ? +m[1] : 1, b = m[2] ? +m[2] : total; for (let i = a; i <= b; i++) if (i >= 1 && i <= total) out.add(i - 1); }
+          else if (/^\d+$/.test(part)) { const i = +part; if (i >= 1 && i <= total) out.add(i - 1); }
+        }
+        return [...out].sort((x, y) => x - y);
+      }
+      async function mergePdfs(bufs) {
+        if (bufs.length < 2) throw new Error("Merge needs at least 2 PDFs.");
+        const out = await PDFDocument.create();
+        for (const buf of bufs) { const doc = await PDFDocument.load(buf, { ignoreEncryption: true }); const pages = await out.copyPages(doc, doc.getPageIndices()); pages.forEach((p) => out.addPage(p)); }
+        return [{ name: "merged.pdf", bytes: await out.save({ useObjectStreams: true }), pages: out.getPageCount() }];
+      }
+      async function splitPdf(buf, rangeSpec) {
+        const doc = await PDFDocument.load(buf, { ignoreEncryption: true }), total = doc.getPageCount();
+        const idxs = parseRange(rangeSpec, total);
+        if (!idxs.length) throw new Error("That range selects no pages (this PDF has " + total + ").");
+        const out = [];
+        for (const i of idxs) { const one = await PDFDocument.create(); const [pg] = await one.copyPages(doc, [i]); one.addPage(pg); out.push({ name: `page-${i+1}.pdf`, bytes: await one.save({ useObjectStreams: true }), pages: 1 }); }
+        return out;
+      }
+      async function compressPdf(buf) {
+        const doc = await PDFDocument.load(buf, { ignoreEncryption: true, updateMetadata: false });
+        try { doc.setTitle(""); doc.setAuthor(""); doc.setSubject(""); doc.setKeywords([]); doc.setProducer(""); doc.setCreator(""); } catch {}
+        return [{ name: "compressed.pdf", bytes: await doc.save({ useObjectStreams: true, addDefaultPage: false }), pages: doc.getPageCount() }];
+      }
+      async function runPipeline(m, bufs, rangeSpec) {
+        if (m === "merge") return mergePdfs(bufs);
+        if (m === "split") return splitPdf(bufs[0], rangeSpec);
+        return compressPdf(bufs[0]);
+      }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage"), fileEl = $("file"), modesEl = $("modes"), hintEl = $("modehint"), errEl = $("err");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      function setErr(t) { if (t) { errEl.hidden = false; errEl.textContent = t; } else { errEl.hidden = true; errEl.textContent = ""; } }
+
+      for (const m of MODES) { const b = mk("button", "segbtn" + (mode === m.id ? " on" : ""), m.label); b.onclick = () => { mode = m.id; results = []; [...modesEl.children].forEach((c) => c.classList.toggle("on", c.textContent === m.label)); render(); }; modesEl.append(b); }
+
+      function render() {
+        hintEl.textContent = MODES.find((m) => m.id === mode).hint;
+        stage.textContent = "";
+        const dz = mk("div", "dz");
+        dz.append(mk("div", "big", files.length ? "Add more PDFs, or click to pick" : (mode === "merge" ? "Drop 2+ PDFs, or click to pick" : "Drop a PDF, or click to pick")));
+        dz.onclick = () => fileEl.click();
+        dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+        dz.ondragleave = () => dz.classList.remove("over");
+        dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("over"); if (e.dataTransfer?.files?.length) loadFiles(e.dataTransfer.files); };
+        stage.append(dz);
+
+        if (files.length) {
+          const fl = mk("div", "files"); fl.style.marginTop = "10px";
+          for (const f of files) { const r = mk("div", "frow"); r.append(mk("span", "fn", f.name), mk("span", "grow"), mk("span", "fd", `${f.pages}p · ${fmtBytes(f.bytes)}`)); fl.append(r); }
+          stage.append(fl);
+
+          const ctl = mk("div", "row"); ctl.style.marginTop = "10px";
+          if (mode === "split") {
+            const inp = mk("input"); inp.type = "text"; inp.placeholder = "all pages · e.g. 1-3,5"; inp.value = range;
+            inp.oninput = () => { range = inp.value; }; ctl.append(mk("span", "flabel", "Pages"), inp);
+          }
+          ctl.append(mk("span", "grow"));
+          const clr = mk("button", "act", "clear"); clr.onclick = () => { files = []; results = []; setErr(""); render(); };
+          const runBtn = mk("button", "primary", MODES.find((m) => m.id === mode).label); runBtn.disabled = running || (mode === "merge" && files.length < 2);
+          runBtn.textContent = running ? "Working…" : (mode === "merge" ? "Merge PDFs" : mode === "split" ? "Split PDF" : "Compress PDF");
+          runBtn.onclick = run;
+          ctl.append(clr, runBtn);
+          stage.append(ctl);
+        }
+
+        if (results.length) {
+          const rl = mk("div", "res"); rl.style.marginTop = "11px";
+          for (const r of results) {
+            const row = mk("div", "rrow"); row.append(mk("span", "rn", r.name), mk("span", "rd", `${r.pages}p · ${fmtBytes(r.bytes.length ?? r.bytes.byteLength)}`));
+            const dl = mk("button", "act", "download ⬇"); dl.onclick = () => downloadOne(r); row.append(dl); rl.append(row);
+          }
+          stage.append(rl);
+        }
+      }
+      async function loadFiles(fileList) {
+        setErr("");
+        for (const f of fileList) {
+          if (!/pdf$/i.test(f.type) && !/\.pdf$/i.test(f.name || "")) continue;
+          try { const buffer = await f.arrayBuffer(); const doc = await PDFDocument.load(buffer.slice(0), { ignoreEncryption: true }); files.push({ name: f.name || "document.pdf", bytes: f.size ?? buffer.byteLength, buffer, pages: doc.getPageCount() }); }
+          catch (e) { setErr("Couldn't read " + (f.name || "a file") + " — " + msg(e)); }
+        }
+        results = []; render();
+      }
+      async function run() {
+        if (running || !files.length) return;
+        running = true; setErr(""); render();
+        try { results = await runPipeline(mode, files.map((f) => f.buffer.slice(0)), range); }
+        catch (e) { setErr(msg(e)); results = []; }
+        finally { running = false; render(); }
+      }
+      function downloadOne(r) {
+        const u = URL.createObjectURL(new Blob([r.bytes], { type: "application/pdf" }));
+        const a = mk("a"); a.href = u; a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000);
+      }
+      fileEl.onchange = () => { if (fileEl.files?.length) loadFiles(fileEl.files); fileEl.value = ""; };
+
+      render();
+      (async () => {
+        const seeds = injectedFiles();
+        if (!seeds.length) return;
+        const fl = [];
+        for (const s of seeds) { try { const blob = await (await fetch(s.url)).blob(); fl.push(new File([blob], s.name, { type: "application/pdf" })); } catch {} }
+        if (fl.length) loadFiles(fl);
+      })();
+    </script>
+  </body>
+</html>

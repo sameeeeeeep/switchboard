@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Palette · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);}
+      .dz{border:1px dashed var(--edge);border-radius:12px;background:var(--inset);padding:26px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+      .dz:hover,.dz.over{border-color:var(--accent);background:#0d1005;}
+      .dz .big{font:500 13px/1.3 var(--sans);color:var(--ink-sec);}
+      .dz .sub{font:400 11px/1.4 var(--mono);color:var(--ink-faint);margin-top:5px;}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .thumb{width:34px;height:34px;border-radius:7px;object-fit:cover;border:1px solid var(--edge);flex:none;}
+      .fname{font:500 11px/1 var(--mono);color:var(--ink-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .grow{flex:1;}
+      .seg{display:inline-flex;background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px;}
+      .segbtn{font:500 11px/1 var(--sans);background:none;border:0;color:var(--ink-sec);border-radius:6px;padding:5px 9px;cursor:pointer;}
+      .segbtn.on{background:var(--accent);color:var(--page);font-weight:600;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:6px 11px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .sw-row{display:flex;flex-wrap:wrap;gap:7px;}
+      .sw{flex:1 1 78px;min-width:70px;border-radius:9px;border:1px solid var(--edge);padding:9px 8px 8px;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:transform .1s;}
+      .sw:hover{transform:translateY(-1px);}
+      .sw .hex{font:600 11px/1 var(--mono);letter-spacing:.02em;}
+      .sw .rgb{font:400 9px/1 var(--mono);opacity:.72;}
+      .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .nobadge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Palette</em></span><span class="kicker">on your device</span></div>
+      <div id="stage"></div>
+      <div class="nobadge"><span class="dot"></span>Pixels never leave your device · no AI · no upload</div>
+    </div>
+    <input id="file" type="file" accept="image/*" hidden />
+
+    <script type="module">
+      // ---- injected-input contract: ?input=<dataUrl|url> OR window.__widgetInput { dataUrl?, text?, filename? }
+      function injectedSrc() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q) return { url: q }; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object") {
+          if (typeof w.dataUrl === "string" && w.dataUrl) return { url: w.dataUrl, name: w.filename };
+          if (typeof w.text === "string" && /^(data:|https?:|blob:)/.test(w.text)) return { url: w.text, name: w.filename };
+        }
+        return null;
+      }
+
+      // ---- core pipeline copied from src/palette.js (pure median-cut, model-free) ----
+      const COUNTS = [4, 6, 8, 12], SAMPLE_EDGE = 160;
+      let count = 6;
+      const clamp8 = (n) => n < 0 ? 0 : n > 255 ? 255 : n | 0;
+      const toHex = (r, g, b) => "#" + [r, g, b].map((c) => clamp8(c).toString(16).padStart(2, "0")).join("").toUpperCase();
+      const toRgb = (r, g, b) => `rgb(${clamp8(r)}, ${clamp8(g)}, ${clamp8(b)})`;
+      const lum = (r, g, b) => (0.2126*r + 0.7152*g + 0.0722*b) / 255;
+      const inkOn = (r, g, b) => lum(r, g, b) > 0.56 ? "#0A0C10" : "#FFFFFF";
+      function samplePixels(bitmap) {
+        const scale = Math.min(1, SAMPLE_EDGE / Math.max(bitmap.width, bitmap.height));
+        const w = Math.max(1, Math.round(bitmap.width * scale)), h = Math.max(1, Math.round(bitmap.height * scale));
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h).data, px = [];
+        for (let i = 0; i < data.length; i += 4) { if (data[i+3] < 125) continue; px.push(data[i], data[i+1], data[i+2]); }
+        return px;
+      }
+      function range(n) { const a = new Array(n); for (let i = 0; i < n; i++) a[i] = i; return a; }
+      function makeBox(px, idx) {
+        let rMin=255,rMax=0,gMin=255,gMax=0,bMin=255,bMax=0;
+        for (const i of idx) { const r=px[i*3],g=px[i*3+1],b=px[i*3+2]; if(r<rMin)rMin=r;if(r>rMax)rMax=r;if(g<gMin)gMin=g;if(g>gMax)gMax=g;if(b<bMin)bMin=b;if(b>bMax)bMax=b; }
+        const rS=rMax-rMin,gS=gMax-gMin,bS=bMax-bMin, ch = rS>=gS&&rS>=bS?0:gS>=bS?1:2;
+        return { idx, ch, spread: Math.max(rS,gS,bS) };
+      }
+      function splitBox(px, box) { const ch=box.ch, sorted=box.idx.slice().sort((i,j)=>px[i*3+ch]-px[j*3+ch]), mid=sorted.length>>1; return [makeBox(px,sorted.slice(0,mid)), makeBox(px,sorted.slice(mid))]; }
+      function avg(px, idx) { if(!idx.length) return null; let r=0,g=0,b=0; for(const i of idx){r+=px[i*3];g+=px[i*3+1];b+=px[i*3+2];} const n=idx.length; return {r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)}; }
+      function medianCut(px, k) {
+        const n = px.length/3; if(!n) return [];
+        let boxes = [makeBox(px, range(n))];
+        while (boxes.length < k) {
+          let bi=-1, best=-1;
+          for (let i=0;i<boxes.length;i++) if (boxes[i].idx.length>1 && boxes[i].spread>best){best=boxes[i].spread;bi=i;}
+          if (bi<0) break;
+          const [a,b] = splitBox(px, boxes[bi]); boxes.splice(bi,1,a,b);
+        }
+        return boxes.map((box)=>({color:avg(px,box.idx),pop:box.idx.length})).filter((c)=>c.color).sort((x,y)=>y.pop-x.pop).map((c)=>c.color);
+      }
+      function extractPalette(bitmap, k) {
+        return medianCut(samplePixels(bitmap), COUNTS.includes(k)?k:6).map(({r,g,b})=>({hex:toHex(r,g,b),rgb:toRgb(r,g,b),ink:inkOn(r,g,b)}));
+      }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage"), fileEl = $("file");
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      let source = null, swatches = [];
+
+      function render() {
+        stage.textContent = "";
+        if (!source) {
+          const dz = mk("div", "dz");
+          dz.append(mk("div", "big", "Drop an image, or click to pick"), mk("div", "sub", "PNG · JPEG · WebP · GIF — colors extracted on your device"));
+          dz.onclick = () => fileEl.click();
+          dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+          dz.ondragleave = () => dz.classList.remove("over");
+          dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) loadFile(f); };
+          stage.append(dz);
+          return;
+        }
+        const bar = mk("div", "row");
+        const th = mk("img", "thumb"); th.src = source.url; bar.append(th, mk("span", "fname", source.name), mk("span", "grow"));
+        const seg = mk("div", "seg");
+        for (const c of COUNTS) { const b = mk("button", "segbtn" + (count === c ? " on" : ""), String(c)); b.onclick = () => { count = c; run(); }; seg.append(b); }
+        bar.append(seg);
+        const swap = mk("button", "act", "× new"); swap.onclick = () => { source = null; swatches = []; render(); };
+        bar.append(swap);
+        stage.append(bar);
+        const row = mk("div", "sw-row"); row.style.marginTop = "11px";
+        for (const s of swatches) {
+          const sw = mk("div", "sw"); sw.style.background = s.hex; sw.style.color = s.ink;
+          sw.append(mk("span", "hex", s.hex), mk("span", "rgb", s.rgb));
+          sw.title = "click to copy " + s.hex;
+          sw.onclick = () => navigator.clipboard?.writeText(s.hex).catch(() => {});
+          row.append(sw);
+        }
+        stage.append(row);
+      }
+      async function loadFile(file) {
+        if (!file || !/^image\//.test(file.type || "")) return;
+        try {
+          const bitmap = await createImageBitmap(file);
+          if (source?.url) URL.revokeObjectURL(source.url);
+          source = { bitmap, name: file.name || "image", url: URL.createObjectURL(file) };
+          run();
+        } catch {}
+      }
+      async function loadUrl(url, name) {
+        try {
+          const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+          source = { bitmap, name: name || "image", url };
+          run();
+        } catch {}
+      }
+      function run() { if (!source) return; try { swatches = extractPalette(source.bitmap, count); } catch { swatches = []; } render(); }
+      fileEl.onchange = () => { if (fileEl.files?.[0]) loadFile(fileEl.files[0]); fileEl.value = ""; };
+
+      render();
+      const seed = injectedSrc();
+      if (seed && seed.url) loadUrl(seed.url, seed.name);
+    </script>
+  </body>
+</html>

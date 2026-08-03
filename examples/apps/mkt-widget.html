@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Marketplace Validator · widget</title>
+    <style>
+      /* Notch widget tokens — compact, dark, one system. */
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F2C14E; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      .row{display:flex;align-items:flex-end;gap:9px;}
+      .grow{flex:1;}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.45 var(--sans);padding:10px 11px;outline:none;resize:vertical;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .go{flex:none;font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 15px;cursor:pointer;transition:filter .15s;}
+      .go:hover{filter:brightness(1.06);} .go:disabled{opacity:.5;cursor:default;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;}
+      .act:hover{border-color:var(--accent);color:var(--ink);} .act:disabled{opacity:.5;cursor:default;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .scan{display:flex;align-items:center;gap:9px;font:500 11px/1 var(--mono);color:var(--ink-sec);padding:3px 0;}
+      .dot3{width:26px;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent),transparent);background-size:200% 100%;animation:sweep 1.1s linear infinite;}
+      @keyframes sweep{to{background-position:-200% 0;}}
+      .card{border:1px solid var(--edge);border-radius:12px;background:var(--panel);padding:13px 14px;display:flex;flex-direction:column;gap:10px;}
+      .verdict{display:flex;align-items:center;gap:9px;}
+      .badge{font:600 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid;}
+      .badge.holds{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 55%,transparent);background:color-mix(in srgb,var(--ok) 12%,transparent);}
+      .badge.shaky{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,transparent);background:color-mix(in srgb,var(--warn) 12%,transparent);}
+      .badge.weak{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:color-mix(in srgb,var(--danger) 12%,transparent);}
+      .hl{font:600 15px/1.3 var(--sans);letter-spacing:-.01em;}
+      .lines{display:flex;flex-direction:column;gap:9px;}
+      .line{display:flex;flex-direction:column;gap:2px;}
+      .line .k{font:500 9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);}
+      .line .v{font:400 12.5px/1.45 var(--sans);color:var(--ink-sec);}
+      .line.case .v{color:var(--ink);}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .aibadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .aibadge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name"><em>Marketplace</em> Validator</span><span class="kicker">on your Claude</span></div>
+      <div>
+        <label class="flabel" for="in">The marketplace — one line</label>
+        <div class="row">
+          <textarea id="in" rows="2" autofocus placeholder="e.g. a marketplace to buy billboard slots by the minute…"></textarea>
+          <button class="go" id="go">Validate</button>
+        </div>
+        <div class="hint" style="margin-top:6px;">⌘/Ctrl + Enter · verdict, what's real, the risk, why now</div>
+      </div>
+      <div id="out"></div>
+      <div class="aibadge"><span class="dot"></span>Runs on your own Claude · no key · nothing leaves but your prompt</div>
+    </div>
+
+    <script type="module">
+      // ============================================================================================
+      // window.claude bridge — the notch host injects `window.claude` (the raw BYOP provider the full
+      // Marketplace Validator page uses via @relay/sdk). We talk to it directly: connect once, then stream.
+      // ============================================================================================
+      const SCOPE = { reason: "Marketplace Validator — pressure-tests whether a two-sided marketplace is worth building, on your own Claude", models: ["sonnet"], tools: [] };
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      // The extension injects window.claude at document_start but it can land a beat AFTER our module
+      // runs (it fires a `claude#initialized` event when ready) — so never declare it absent on the
+      // first synchronous look; wait briefly, exactly like @relay/sdk's whenRelayReady.
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        // Best-effort grant: reuse a standing grant, else kick a connect. The daemon authorizes the
+        // stream call on its own — that's the real gate — so we never block the model call forever.
+        if (!grantP) grantP = (async () => { try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {} return p.request({ method: "claude_connect", params: SCOPE }); })();
+        return grantP;
+      }
+      // Streamed completion — await claude_stream for the id, THEN attach the delta handler (SDK order).
+      async function streamPrompt(p, params, onText) {
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        return new Promise((resolve, reject) => {
+          let text = "", settled = false;
+          const cleanup = () => { settled = true; try { p.removeListener("delta", handler); } catch {} clearTimeout(timer); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onText && onText(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          const timer = setTimeout(() => { if (!settled) { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); } }, 180000);
+          p.on("delta", handler);
+        });
+      }
+      async function ask(prompt, onText) {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        await ensureGrant(p);
+        return streamPrompt(p, { prompt, model: "sonnet", maxTokens: 900 }, onText);
+      }
+      function parseJson(text) {
+        const t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+        const s = t.indexOf("{"), e = t.lastIndexOf("}");
+        if (s === -1 || e <= s) return null;
+        try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
+      }
+
+      // ---- injected-input contract ----
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q != null && q !== "") return q; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        if (typeof w === "string" && w.trim()) return w;
+        return "";
+      }
+
+      // ---- primary action: the verdict (a compact single-pass reuse of ideabrain's validate, marketplace template) ----
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const msg = (e) => String(e?.message || e).slice(0, 200);
+      const inEl = $("in"), out = $("out"), goBtn = $("go");
+      let running = false;
+
+      async function run() {
+        const idea = inEl.value.trim();
+        if (!idea) { inEl.focus(); return; }
+        if (running) return;
+        running = true; goBtn.disabled = true; render({ status: "pressure-testing the riskiest assumption…" });
+        try {
+          const text = await ask([
+            "You are ideabrain, validating a two-sided MARKETPLACE idea for a founder. Pressure-test it — find where it BREAKS, not where it shines. Reason over real alternatives, whether both sides can be seeded, whether the timing is right, and the single riskiest assumption the whole thesis rests on. Never hype.",
+            `THE MARKETPLACE: "${idea}"`,
+            "Return ONLY this JSON (no prose, no fences):",
+            `{"stance":"holds|shaky|weak","headline":"<=8 words — the verdict, never hype","wedge":"one line: the part that is genuinely real","risk":"one line: the single biggest risk / what could kill it","whynow":"one line: why the timing is right (or empty if it isn't)"}`,
+          ].join("\n\n"));
+          const p = parseJson(text);
+          if (!p) throw new Error("couldn't read a verdict — try again");
+          render({ verdict: {
+            stance: ["holds", "shaky", "weak"].includes(p.stance) ? p.stance : "shaky",
+            headline: String(p.headline || "Thesis pressure-tested").slice(0, 80),
+            wedge: String(p.wedge || "").slice(0, 240),
+            risk: String(p.risk || "").slice(0, 240),
+            whynow: String(p.whynow || "").slice(0, 240),
+          }, idea });
+        } catch (e) { render({ error: msg(e), idea }); }
+        finally { running = false; goBtn.disabled = false; }
+      }
+
+      function render(s) {
+        out.textContent = "";
+        if (s?.status) { const r = el("div", "scan"); r.append(el("span", "dot3"), el("span", null, s.status)); out.append(r); return; }
+        if (s?.error) {
+          const box = el("div", "card"); box.append(el("div", "err", s.error));
+          const retry = el("button", "act", "try again"); retry.onclick = () => void run(); box.append(retry);
+          out.append(box); return;
+        }
+        if (s?.verdict) {
+          const v = s.verdict, card = el("div", "card");
+          const vr = el("div", "verdict");
+          vr.append(el("span", "badge " + v.stance, v.stance === "holds" ? "holds up" : v.stance === "weak" ? "weak" : "shaky"));
+          vr.append(el("span", "hl", v.headline));
+          card.append(vr);
+          const lines = el("div", "lines");
+          if (v.wedge) { const l = el("div", "line case"); l.append(el("span", "k", "what's real"), el("span", "v", v.wedge)); lines.append(l); }
+          if (v.risk) { const l = el("div", "line"); l.append(el("span", "k", "the risk"), el("span", "v", v.risk)); lines.append(l); }
+          if (v.whynow) { const l = el("div", "line"); l.append(el("span", "k", "why now"), el("span", "v", v.whynow)); lines.append(l); }
+          card.append(lines);
+          const bar = el("div", "row"); bar.style.alignItems = "center";
+          const cp = el("button", "act", "copy"); cp.onclick = () => navigator.clipboard?.writeText(`${v.stance.toUpperCase()} — ${v.headline}\n\nWhat's real: ${v.wedge}\nThe risk: ${v.risk}\nWhy now: ${v.whynow}`).catch(() => {});
+          const again = el("button", "act", "× new"); again.onclick = () => { out.textContent = ""; inEl.focus(); };
+          bar.append(cp, again); card.append(bar);
+          out.append(card); return;
+        }
+      }
+
+      goBtn.onclick = () => void run();
+      inEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void run(); } });
+
+      const seed = injectedText();
+      if (seed) { inEl.value = seed; void run(); }
+      inEl.focus();
+    </script>
+  </body>
+</html>

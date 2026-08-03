@@ -164,9 +164,11 @@
   "convert": [
     {
       "name": "convert_run",
-      "description": "Convert data between JSON/CSV/YAML/Markdown table — infers the source, outputs the most useful target (a Markdown table if ambiguous). Writes it live on the page and returns it.",
+      "description": "Convert data between CSV/JSON/YAML entirely on-device (no AI). Auto-detects the source; give a target format. Writes it on the page and returns the converted text.",
       "inputSchema": {
-        "data": "string — the structured data to convert. Required."
+        "input": "string — the data to convert (CSV, JSON, or YAML). Required.",
+        "from": "string — source format hint 'csv'|'json'|'yaml'. Optional; auto-detected when omitted.",
+        "to": "string — target format 'csv'|'json'|'yaml'. Default: JSON (or YAML when the source is JSON)."
       }
     }
   ],
@@ -395,6 +397,32 @@
       }
     }
   ],
+  "palette": [
+    {
+      "name": "palette_extract",
+      "description": "Extract a color palette (dominant colors as HEX) from an image entirely on-device (no AI). Give a data: URL; returns the swatches as HEX + RGB.",
+      "inputSchema": {
+        "dataUrl": "string — the source image as a data: URL (or bare base64). Required.",
+        "count": "number — how many colors to extract (4, 6, 8, or 12). Default 6."
+      }
+    },
+    {
+      "name": "image",
+      "description": "",
+      "inputSchema": {}
+    }
+  ],
+  "pdftools": [
+    {
+      "name": "pdftools_run",
+      "description": "Merge, split, or compress PDFs entirely on-device (no AI). Pass PDFs as data: URLs; returns the resulting PDF(s) as data: URLs.",
+      "inputSchema": {
+        "mode": "string — 'merge' | 'split' | 'compress'. Required.",
+        "files": "string[] — the source PDFs as data: URLs. Merge needs 2+; split/compress use the first.",
+        "range": "string — split page range, e.g. '1-3,5' (blank = all pages). Optional."
+      }
+    }
+  ],
   "petrait": [
     {
       "name": "petrait_run",
@@ -411,6 +439,22 @@
       "inputSchema": {
         "text": "string — the text to polish. Required."
       }
+    }
+  ],
+  "qr": [
+    {
+      "name": "qr_make",
+      "description": "Generate a QR code from text or a URL entirely on-device (no AI). Returns the QR as an SVG string and a PNG data: URL.",
+      "inputSchema": {
+        "text": "string — the text or URL to encode. Required.",
+        "level": "string — error correction 'L'|'M'|'Q'|'H'. Default 'M'.",
+        "size": "number — pixel size of the output. Default 320."
+      }
+    },
+    {
+      "name": "qr.png",
+      "description": "",
+      "inputSchema": {}
     }
   ],
   "reachout": [

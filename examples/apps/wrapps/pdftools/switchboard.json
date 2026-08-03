@@ -1,0 +1,28 @@
+{
+  "id": "pdftools",
+  "name": "PDF Tools",
+  "tagline": "Merge, split & compress PDFs — on your device, no AI",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/pdftools.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L1",
+    "downloadBytes": 524288,
+    "background": false,
+    "needsModel": false
+  }
+}
