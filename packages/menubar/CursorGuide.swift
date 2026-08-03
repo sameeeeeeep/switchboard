@@ -256,6 +256,11 @@ final class CursorGuide {
     var onFeedbackBegin: ((_ stepId: String) -> Void)?   // raise fn-drag capture + the notch note field
     var onFeedbackEnd:   (() -> Void)?                    // tear the capture UI down
 
+    // Spoken concierge: RelayController wires these to God's voice (Pocket-TTS on :7897, macOS say
+    // fallback). In .tour mode each step is read aloud as it appears, so the guide talks you through it.
+    var onSpeak: ((String) -> Void)?     // speak a line (interrupts any in-flight speech)
+    var onStopSpeak: (() -> Void)?       // silence on teardown/abort
+
     // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
     // never changes it — it just opens capture.
     private func beginFeedback() {
@@ -421,6 +426,7 @@ final class CursorGuide {
         model.hint = s.hint
         model.progress = "\(idx + 1)/\(steps.count)"
         model.canBack = idx > 0
+        if mode == .tour { onSpeak?(s.text) }   // the concierge reads the step aloud (tour only)
     }
 
     // MARK: signals
@@ -570,6 +576,7 @@ final class CursorGuide {
 
     private func teardown() {
         isActive = false
+        onStopSpeak?()          // silence the concierge voice when the guide ends
         model.visible = false
         model.done = nil
         model.flash = nil

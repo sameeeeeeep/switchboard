@@ -3363,6 +3363,9 @@ struct ActionConsentDrop: View {
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
+        // Spoken concierge: the welcome tour reads each step aloud in God's voice.
+        CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
+        CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
 
@@ -4390,39 +4393,125 @@ struct ActionConsentDrop: View {
     // no isActive guard), so the practice actually works. Canonical copy: examples/apps/onboarding/
     // onboarding-tour.json (kept in sync; inlined here so the app has no runtime file dependency).
     @MainActor private func startWelcomeTour() {
-        let steps: [[String: Any]] = [
-            ["id": "grant-mic",
-             "text": "A card just dropped from the notch asking for your mic. Click Allow — that's the ear that hears you when you hold a key and talk.",
-             "hint": "If the system window doesn't appear, the card opens System Settings — flip the Switchboard toggle on."],
-            ["id": "grant-accessibility",
-             "text": "Next card: Accessibility. Drag the Switchboard chip into the list (or hit Open) and switch it on — this is the hand that points, clicks and types for you.",
-             "hint": "macOS has no one-click grant here, so you add Switchboard to the list yourself. The card waits."],
-            ["id": "grant-screen",
-             "text": "Last one: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
-             "hint": "Grant it and the permission cards are done — the notch orb goes quiet. Press → to keep going."],
-            ["id": "practice-summon",
-             "text": "Now tap Control twice — ⌃⌃. The orb wakes, listens, and you can just say what you need. Try it, then press → .",
-             "hint": "This is your summon. Anytime, anywhere — ⌃⌃ and start talking."],
-            ["id": "practice-dictation",
-             "text": "Put your cursor in any text field, then hold ⌃⌥ and speak. Let go and your words land right where the cursor is. Press → when you've watched it type.",
-             "hint": "Hold to talk, release to drop the text. No send button, no window — just your voice into the page."],
-            ["id": "practice-launcher",
-             "text": "Last trick: double-tap Option — ⌥⌥ — to throw open the launcher. Every app and tool, one keystroke away. Give it a tap, then press → to finish.",
-             "hint": "⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. That's the whole keyboard. You're set."]
-        ]
+        var steps: [[String: Any]] = []
+        // ── Welcome
+        steps.append(["id": "welcome",
+            "text": "Welcome to Switchboard. Ninety seconds and you'll be running AI on your own Mac — no new subscription, nothing leaving your machine. Press → to begin.",
+            "hint": "I ride beside your cursor the whole way. → to go on, esc to leave anytime."])
+        // ── Access — only the permissions not yet granted (a returning user skips these)
+        for p in GodPerm.allCases where !p.granted {
+            switch p {
+            case .mic:
+                steps.append(["id": "grant-mic",
+                    "text": "A card just dropped from the notch asking for your mic. Click Allow — that's the ear that hears you when you hold a key and talk.",
+                    "hint": "If no system window appears, the card opens System Settings — flip the Switchboard toggle on."])
+            case .accessibility:
+                steps.append(["id": "grant-accessibility",
+                    "text": "Next card: Accessibility. Drag the Switchboard chip into the list (or hit Open) and switch it on — this is the hand that points, clicks and types for you.",
+                    "hint": "macOS has no one-click grant here, so you add Switchboard yourself. The card waits."])
+            case .screen:
+                steps.append(["id": "grant-screen",
+                    "text": "Last permission: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
+                    "hint": "Grant it and the cards are done — the orb goes quiet. → to keep going."])
+            }
+        }
+        // ── Your Claude — only if signed out
+        if model.running && !model.signedIn {
+            steps.append(["id": "sign-in",
+                "text": "Switchboard runs on YOUR Claude — the plan you already pay for, no API key, no extra bill. I've opened Terminal; run the `claude` command there to sign in, then come back and press →.",
+                "hint": "This is the one time you touch a terminal. Once you're in, the menu-bar dot turns lime."])
+        }
+        // ── The three keys (hotkeys stay live during a guide, so this is real practice)
+        steps.append(["id": "key-summon",
+            "text": "Now the three keys. Tap Control twice — ⌃⌃ — and just say what you need. The orb wakes and listens. Try it, then →.",
+            "hint": "This is your summon. Anywhere, anytime: ⌃⌃ and talk."])
+        steps.append(["id": "key-dictation",
+            "text": "Put your cursor in any text field, hold ⌃⌥ and speak. Let go — your words land right where the cursor is. → when you've watched it type.",
+            "hint": "Hold to talk, release to drop. Your voice into any app, no window."])
+        steps.append(["id": "key-launcher",
+            "text": "Double-tap Option — ⌥⌥ — to throw open the launcher: every app and tool, one keystroke away. Give it a tap, then →.",
+            "hint": "⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ launch. That's the whole keyboard."])
+        // ── First project (seeded demo so it's never a blank slate)
+        steps.append(["id": "first-project",
+            "text": "See the project chip in the pill? A project is the context every app borrows — your brand, your notes, your world. I set up a demo one so nothing's blank. Click the chip to see it, then →.",
+            "hint": "Later, make your own — every app re-grounds to whatever project you pick."])
+        // ── First wrapp (AI) — honest whether or not the demo context has deep data yet
+        steps.append(["id": "first-wrapp",
+            "text": "Let's run something real. Open the launcher (⌥⌥) and click ideabrain — give it a rough idea and watch it think out loud on your own Claude. → once you've seen a result.",
+            "hint": "That's a wrapp: a skin over your Claude. No key, no setup — it just runs."])
+        // ── First non-AI tool (instant win, zero setup, private by construction)
+        steps.append(["id": "first-tool",
+            "text": "Not everything needs AI. Open the launcher again and try QR — it makes a code instantly, right on your Mac, no model, nothing sent anywhere. → when you've got one.",
+            "hint": "The non-AI tools are free and private by construction — pure device-light utilities."])
+        // ── Background tasks
+        steps.append(["id": "background",
+            "text": "Long jobs don't block you — they run in the background. You'll see them in the panel's Running rail and get a little notch nudge when they finish. Click the menu-bar dot to peek, then →.",
+            "hint": "Everything connected and running lives in the panel."])
+        // ── What's next
+        steps.append(["id": "done",
+            "text": "That's the whole app: ⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. Browse the store for more apps, skills and tools whenever you like. You're set — go make something.",
+            "hint": "Replay this anytime from the menu-bar dot → Replay the welcome tour."])
+
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
         let f = (RELAY_DIR as NSString).appendingPathComponent("guide-run.json")
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
             try? data.write(to: URL(fileURLWithPath: f), options: .atomic)
         }
-        // Surface the REAL permission cards so steps 1-3 have a live Grant button under the floating guide.
+        seedExampleProject()           // so the "first project / first wrapp" steps aren't a blank slate
+        // Surface the REAL permission cards so the access steps have a live Grant button under the guide.
         gateDismissed = false          // clear any prior dismissal so the concierge cards can show
         refreshPermissionGate()
         // Presence == onboarded (matches Onboard.mark semantics), so first-run auto-open doesn't re-fire.
         try? Data("done".utf8).write(to: URL(fileURLWithPath: ONBOARDED_FILE))
     }
     @objc private func replayWelcomeTour() { startWelcomeTour() }
+
+    // The spoken concierge — read a tour line aloud in God's SELECTED voice (Pocket-TTS clone server on
+    // :7897, the exact path God uses), with macOS `say` as the fallback. Interrupts any in-flight line so
+    // advancing a step cuts the previous one. Off the main thread (network + audio). Kept intentionally
+    // small; it mirrors previewVoice's wire.
+    private var guideVoiceProc: Process?
+    @MainActor private func speakGuideLine(_ text: String) {
+        stopGuideSpeech()
+        let line = text.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "\n", with: " ")
+        guard !line.isEmpty else { return }
+        let name = (try? String(contentsOfFile: (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/selected"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            func sayIt() {
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/say"); p.arguments = [line]
+                Task { @MainActor in self?.guideVoiceProc = p }; try? p.run()
+            }
+            guard !name.isEmpty else { sayIt(); return }
+            let wav = NSTemporaryDirectory() + "guide-vo.wav"
+            try? FileManager.default.removeItem(atPath: wav)
+            let body = "{\"text\":\"\(line)\",\"voice\":\"\(name)\"}"
+            let curl = Process(); curl.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+            curl.arguments = ["-s", "-m", "25", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
+            try? curl.run(); curl.waitUntilExit()
+            let sz = (try? FileManager.default.attributesOfItem(atPath: wav)[.size] as? Int) ?? 0
+            if sz > 1000 {
+                let play = Process(); play.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); play.arguments = [wav]
+                Task { @MainActor in self?.guideVoiceProc = play }; try? play.run()
+            } else { sayIt() }   // clone server down → macOS voice
+        }
+    }
+    @MainActor private func stopGuideSpeech() {
+        guideVoiceProc?.terminate(); guideVoiceProc = nil
+    }
+
+    // Give a brand-new user something to try instantly: a lightweight demo project so the first-project
+    // and first-wrapp tour steps aren't a blank slate. Only seeds when the user has NO contexts of their
+    // own, and only makes it the default if no default is set — never clobbers real work. Reversible:
+    // the user can delete it from the project chip. (Rich pre-built example CONTENT is a Bank-redo item.)
+    @MainActor private func seedExampleProject() {
+        guard readContexts().isEmpty else { return }
+        let demo: [[String: Any]] = [["id": "demo-project", "name": "Demo project", "kind": "project"]]
+        if let data = try? JSONSerialization.data(withJSONObject: demo, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: CONTEXTS_FILE), options: .atomic)
+        }
+        if readDefaultId() == nil { writeGlobalContext("demo-project") }
+    }
 
     // Show the Accessibility onboarding card while the app isn't trusted (unless dismissed this
     // session); auto-hide the instant it's granted. AXIsProcessTrusted() is the honest, non-prompting read.
