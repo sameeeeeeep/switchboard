@@ -354,10 +354,12 @@ async function runPipeline() {
     if (!dirs) throw new Error("The directions came back malformed — hit ‘try again’.");
     r.directions = dirs;
     const rec = dirs.find((d) => d.recommended) || dirs[0];
-    r.activeDirId = rec.id;          // marks will use the recommended direction; human can switch
-    r.styleId = recommendStyle(f, r.prefs);   // seed a highlighted default style — NOT chosen yet
-    r.styleIds = [r.styleId];        // FEATURE 2: multi-select — the recommended style starts selected
-    r.stage = "style";               // 3 — STYLE PICKER: stop here; the human chooses the look
+    r.activeDirId = rec.id;          // marks use the recommended direction; the human can switch
+    r.chosenDirId = rec.id;          // the default path CHOOSES it (brandbrain-style: a seeded default, not a blank)
+    r.styleId = recommendStyle(f, r.prefs);   // the recommended style…
+    r.styleIds = [r.styleId];        // …starts selected (multi-select set of 1)
+    r.styleChosen = true;            // AUTO-SEED THE DEFAULT PATH: don't stop for a pick — run it
+    r.stage = "logos";               // …straight through to the four (wireframe) marks
     r.status = "";
     await saveState(); render();
   } catch (e) {
@@ -365,6 +367,10 @@ async function runPipeline() {
     await saveState(); render();
   } finally {
     running = false;
+    // Continue the seeded default path: generate the four wireframe marks with the recommended
+    // direction + style so a well-thought-out brief yields a COMPLETE, navigable starter identity on
+    // one page — every branch pre-chosen, all editable, images still opt-in (wireframe-first).
+    if (state.run && state.run.stage === "logos" && !state.run.logos && !state.run.error) void runLogos();
   }
 }
 
@@ -455,9 +461,9 @@ function buildDirectionsPrompt(f, prefs) {
     `PALETTE: ${f.palette.join(", ")}`,
     prefsPromptBlock(prefs),
     "Each direction must take a genuinely different formal approach — e.g. wordmark, monogram, symbol + wordmark, abstract mark.",
-    "For EACH direction, name 2-3 well-known brands as REFERENCE touchstones that use that same approach well (e.g. a wordmark direction → 'like Google, Stripe'; an emblem → 'like Starbucks, Harley'). Reference/comparison ONLY — never reproduce a real logo. This helps the user picture it.",
+    "For EACH direction, give REFERENCE touchstones that help the user picture it AND social-proof it — a MIX of: (a) at least one brand from the SAME SECTOR/industry as this brand (a recognizable peer that uses this approach), and (b) at least one CROSS-SECTOR analogy from a different domain whose pattern fits (e.g. a community club borrowing the membership warmth of a great airline loyalty brand, or a fintech borrowing a toy brand's playfulness). Reference/comparison ONLY — never reproduce a real logo.",
     "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
-    '{"directions":[exactly 3 items, each {"name":string (2-4 words),"approach":string (the mark type + form, one short line),"rationale":string (why it fits this brand, one line),"references":[2-3 well-known brand names as touchstones],"recommended":boolean}]}',
+    '{"directions":[exactly 3 items, each {"name":string (2-4 words),"approach":string (the mark type + form, one short line),"rationale":string (why it fits this brand, one line),"references":[2-3 touchstones — at least one same-sector peer and one cross-sector analogy, each a short phrase like "Stripe (fintech)" or "Duolingo\'s play"],"recommended":boolean}]}',
     'Exactly ONE direction must have "recommended": true.',
   ].filter(Boolean).join("\n\n");
 }
