@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ideabrain — one line in, a validated project out</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* NOTCH WIDGET (docs/NOTCH-PANEL.md): pure black, drops from the notch, glanceable — a progress
+         card, not a chat. Uses the house "Atlas cockpit" tokens (brandbrain) but on a black notch
+         ground, ONE lime accent, Bricolage display / Hanken body / Spline mono numerals. */
+      :root {
+        --page: #000; --panel: #0C0E12; --inset: #08090C; --raised: #14171E;
+        --edge: #23283340; --edge-soft: #191d26;
+        --ink: #F0F3F8; --ink-sec: #B4BECE; --ink-dim: #8A93A6; --ink-faint: #626C7E;
+        --accent: #C8F250; --accent-soft: #1c220b;
+        --ok: #3DD68C; --warn: #F5B23B; --danger: #FF5C86; --blue: #7DE0FF;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; min-height: 100%; }
+      body { background: var(--page); color: var(--ink); font: 13px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      button { font-family: inherit; }
+      .kicker { font: 500 9.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
+
+      /* the notch shell — squared top, rounded bottom, hugging the notch */
+      .notch { max-width: 400px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+      header { display: flex; align-items: center; gap: 10px; padding: 11px 16px 9px; }
+      .word { font: 700 15px/1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 7px; }
+      .word .mk { width: 15px; height: 15px; border-radius: 5px; background: var(--accent); box-shadow: 0 0 12px rgba(200,242,80,.45); }
+      .word em { font-style: normal; color: var(--accent); }
+      #chip-dock { margin-left: auto; }
+      main { padding: 4px 16px 24px; }
+
+      .hero { padding: 6px 0 12px; }
+      .hero h1 { font: 700 20px/1.1 var(--display); letter-spacing: -0.02em; margin: 0 0 6px; }
+      .hero h1 em { font-style: normal; color: var(--accent); }
+      .hero p { color: var(--ink-sec); margin: 0; font-size: 12.5px; }
+
+      /* pre-connect */
+      .steps { font: 400 11.5px/1.85 var(--mono); color: var(--ink-faint); margin-top: 4px; }
+      .steps b { color: var(--accent); font-weight: 500; margin-right: 5px; }
+      .sample { margin-top: 14px; border: 1px dashed var(--edge-soft); border-radius: 12px; padding: 10px 12px; background: var(--inset); }
+      .sample .kicker { display: block; margin-bottom: 6px; color: var(--ink-faint); }
+      .sample-text { font: 400 12px/1.5 var(--sans); color: var(--ink-dim); font-style: italic; }
+
+      /* STATE 1 — prompt */
+      .prompt .ctx { font: 500 10.5px/1 var(--mono); color: var(--accent); margin-bottom: 8px; }
+      .field { display: flex; flex-direction: column; gap: 8px; }
+      .field textarea { width: 100%; background: var(--inset); border: 1px solid var(--edge); border-radius: 11px; color: var(--ink); font: 400 13.5px/1.45 var(--sans); padding: 11px 12px; outline: none; resize: none; }
+      .field textarea:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+      .primary { font: 600 13px/1 var(--sans); border-radius: 10px; padding: 11px 15px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: #0a0a0a; transition: filter .15s, opacity .15s; }
+      .primary:hover { filter: brightness(1.08); }
+      .primary:disabled { opacity: .5; cursor: default; }
+      .primary.sm { padding: 8px 14px; font-size: 12px; }
+      .hint { font: 400 10px/1.4 var(--mono); color: var(--ink-faint); margin-top: 8px; }
+
+      /* the running card */
+      .card { border: 1px solid var(--edge-soft); background: var(--panel); border-radius: 14px; padding: 12px 13px 13px; }
+      .topbar { display: flex; align-items: center; gap: 8px; padding-bottom: 9px; margin-bottom: 10px; border-bottom: 1px solid var(--edge-soft); }
+      .idea-line { font: 400 11.5px/1.3 var(--sans); color: var(--ink-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+      .grow { flex: 1; }
+      .act { font: 500 11px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 6px 10px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .act:hover { border-color: var(--accent); color: var(--ink); }
+      .act:disabled { opacity: .45; cursor: default; }
+
+      /* STATE 2 — instant read */
+      .readhead { display: flex; align-items: baseline; gap: 6px; }
+      .readhead .cat { font: 600 13px/1.2 var(--display); color: var(--accent); }
+      .readhead .dot { color: var(--ink-faint); }
+      .readhead .sub { font: 500 10.5px/1 var(--mono); color: var(--ink-dim); text-transform: uppercase; letter-spacing: .08em; }
+      .oneliner { font: 400 14px/1.4 var(--sans); color: var(--ink); margin: 8px 0 10px; }
+      .facts { display: flex; flex-direction: column; gap: 5px; }
+      .fact { display: flex; gap: 8px; font: 400 12px/1.4 var(--sans); }
+      .fact .fk { flex: none; width: 66px; color: var(--ink-faint); font: 500 10px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding-top: 1px; }
+      .fact .fv { color: var(--ink-sec); }
+      .maps { font: 500 11px/1 var(--mono); color: var(--ink-dim); margin: 12px 0 10px; }
+      .actions { display: flex; gap: 8px; align-items: center; }
+
+      /* STATE 3 — pulse */
+      .pulse { margin-top: 4px; }
+      .pips { display: flex; gap: 6px; margin-bottom: 9px; }
+      .pip { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--edge); background: transparent; transition: background .3s, border-color .3s, box-shadow .3s; }
+      .pip.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px rgba(200,242,80,.5); }
+      .pip.web.on { background: var(--blue); border-color: var(--blue); box-shadow: 0 0 8px rgba(125,224,255,.5); }
+      .stages { font: 400 11px/1.5 var(--mono); color: var(--ink-dim); }
+      .now { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: 500 11.5px/1.4 var(--mono); color: var(--ink-sec); }
+      .scan { position: relative; width: 24px; height: 5px; border-radius: 3px; background: var(--inset); overflow: hidden; flex: none; }
+      .scan::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scan 1.1s linear infinite; }
+      @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+      /* STATE 4 — verdict */
+      .verdict { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .verdict .vmark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--sans); flex: none; }
+      .verdict.holds .vmark { background: var(--ok); color: #04120b; }
+      .verdict.shaky .vmark { background: var(--warn); color: #1a1200; }
+      .verdict.weak .vmark { background: var(--danger); color: #1a0008; }
+      .verdict .vhead { font: 700 15px/1.2 var(--display); letter-spacing: -0.01em; color: var(--ink); }
+      .riskrow { display: flex; gap: 8px; font: 400 12px/1.45 var(--sans); margin-bottom: 6px; }
+      .riskrow .rk { flex: none; width: 66px; color: var(--ink-faint); font: 500 10px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding-top: 1px; }
+      .riskrow .rv { color: var(--ink-sec); }
+      .signals { margin: 10px 0 12px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--edge-soft); padding-top: 10px; }
+      .sig { font: 400 11.5px/1.45 var(--sans); color: var(--ink-dim); }
+      .sig b { color: var(--ink-sec); font: 500 10px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .06em; margin-right: 5px; }
+      .sig .g { filter: saturate(1.2); }
+      .artefacts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 11px; }
+      .setproj { width: 100%; font: 600 12.5px/1 var(--sans); border-radius: 10px; padding: 11px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); transition: background .15s; }
+      .setproj:hover { background: color-mix(in srgb, var(--accent) 22%, var(--inset)); }
+      .setproj.done { border-color: var(--edge); background: var(--inset); color: var(--ink-dim); cursor: default; }
+
+      .err { color: var(--danger); font: 400 11.5px/1.5 var(--mono); margin-top: 10px; }
+      .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--edge); color: var(--ink); font: 500 12px/1.4 var(--sans); padding: 10px 14px; border-radius: 10px; box-shadow: 0 14px 40px -14px rgba(0,0,0,.8); z-index: 200; max-width: 88vw; text-align: center; }
+      .toast.err { border-color: var(--danger); color: #ffd6e2; }
+    </style>
+  </head>
+  <body>
+    <div class="notch">
+      <header>
+        <span class="word"><span class="mk"></span>idea<em>brain</em></span>
+        <div id="chip-dock"></div>
+      </header>
+      <main>
+        <section class="hero" id="hero">
+          <h1>I have an <em>idea.</em></h1>
+          <p>One line in. Your own Claude reads the category, pressure-tests the thesis, and hands back a verdict that names the risk — not the hype. Then set it as your project. The operator holds no key and never sees your data.</p>
+        </section>
+        <div id="view"></div>
+      </main>
+    </div>
+    <script type="module" src="./dist/ideabrain.js"></script>
+  </body>
+</html>

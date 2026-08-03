@@ -14,12 +14,13 @@ import batch from "../../examples/apps/src/core/batch.core.js";
 import redline from "../../examples/apps/src/core/redline.core.js";
 import autopilot from "../../examples/apps/src/core/autopilot.core.js";
 import ideabrain from "../../examples/apps/src/core/ideabrain.core.js";
+import reachout from "../../examples/apps/src/core/reachout.core.js";
 
 /** @typedef {{ name:string, summary:string, input:object, output:object, run:(input:any, sb:any)=>Promise<any> }} WrappAction */
 /** @typedef {{ name:string, title?:string, origin:string, scope?:object, actions:WrappAction[] }} WrappManifest */
 
 /** @type {WrappManifest[]} */
-export const MANIFESTS = [adpulse, batch, redline, autopilot, ideabrain];
+export const MANIFESTS = [adpulse, batch, redline, autopilot, ideabrain, reachout];
 
 /** MCP tool name for an action, namespaced so two wrapps can't collide: wrapp__<wrapp>__<action>. */
 export const toolName = (wrapp, action) => `wrapp__${wrapp}__${action}`;

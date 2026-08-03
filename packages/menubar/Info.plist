@@ -21,7 +21,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>God opens apps, types, and presses the keys you approve — every action asks first, in the notch.</string>
+	<string>God opens apps, types, and presses the keys you approve — every action asks first, in the notch. If you opt in, Switchboard also reads your active browser tab's address locally to suggest relevant tools. Nothing leaves your Mac unasked.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Switchboard — BYO-Claude</string>
 	<key>NSMicrophoneUsageDescription</key>

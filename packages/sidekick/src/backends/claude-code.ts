@@ -108,6 +108,10 @@ function imageSourceFromDataUrl(dataUrl: string): { media_type: string; data: st
   if (!m) return null;
   const [, mediaType, data] = m;
   if (!mediaType || !data || !mediaType.startsWith("image/")) return null;
+  // The Anthropic vision API only decodes jpeg/png/gif/webp. A caller that hands us HEIC/HEIF (an
+  // iPhone photo) would otherwise fail the WHOLE completion; skip it instead (text-safe). God already
+  // transcodes HEIC→JPEG before sending, so this only guards other callers (extension, bridge).
+  if (mediaType === "image/heic" || mediaType === "image/heif") return null;
   return { media_type: mediaType, data };
 }
 
@@ -234,9 +238,15 @@ export class ClaudeCodeBackend implements ModelBackend {
             ctx.emit({ type: "tool_result", call, result: { ok: !block.is_error, content } });
           }
         } else if (msg.type === "result") {
-          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string; session_id?: string };
+          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string; session_id?: string };
           if (r.session_id) sdkSessionId = r.session_id;   // capture for resume next turn
-          if (r.usage) { inputTokens = r.usage.input_tokens ?? 0; outputTokens = r.usage.output_tokens ?? 0; }
+          if (r.usage) {
+            // Count CACHED input too — cache-creation + cache-read are real consumed input the budget must
+            // see. Reading only input_tokens undercounted by ~77x (e.g. 451 reported vs 34,585 consumed),
+            // making per-day budgets wildly too permissive. (OpenAI-shaped backends already total correctly.)
+            inputTokens = (r.usage.input_tokens ?? 0) + (r.usage.cache_creation_input_tokens ?? 0) + (r.usage.cache_read_input_tokens ?? 0);
+            outputTokens = r.usage.output_tokens ?? 0;
+          }
           // The SDK reports failures IN the result message, not by throwing — an unread is_error
           // meant "not signed in" surfaced as a generic backend error (or worse, empty success).
           if (r.is_error || (r.subtype && r.subtype !== "success")) {

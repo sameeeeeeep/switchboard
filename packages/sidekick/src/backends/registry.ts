@@ -2,7 +2,8 @@ import type { ModelBackend } from "./types.js";
 import { ClaudeCodeBackend } from "./claude-code.js";
 import { LocalOpenAIBackend } from "./local-openai.js";
 import { OpenRouterBackend } from "./openrouter.js";
-import { loadCloudConfig } from "../config.js";
+import { loadCloudConfig, loadModelPrefs } from "../config.js";
+import { canonicalModel } from "../security/grant-store.js";
 
 /**
  * Routes a model id to the backend that serves it. Claude Code is always registered; local
@@ -65,6 +66,56 @@ export class BackendRegistry {
 
   async models(): Promise<string[]> {
     return [...this.modelToBackend.keys()];
+  }
+
+  // ── User model selection (docs/MODEL-SELECTION.md §3) ─────────────────────────────────────────
+  // The CAPABILITY set is the raw truth of what backends serve (never filtered — used for gate
+  // legality + as the pool of substitution targets). The ALLOWED set = capability set − the user's
+  // deny-list (~/.relay/models.json). Every surface that CHOOSES a model reads the allowed set; the
+  // run-time completion path SUBSTITUTES a disabled request down to an allowed one before the gate.
+  // Prefs are read fresh each call (like economy) so a Settings toggle needs no restart.
+
+  /** The raw capability set — every model a healthy backend serves right now. Sync (the data is the
+   *  already-built model→backend map). */
+  capabilityModels(): string[] {
+    return [...this.modelToBackend.keys()];
+  }
+
+  private disabledSet(): Set<string> {
+    return new Set(loadModelPrefs().disabled);
+  }
+
+  /** Is this model NOT on the user's deny-list? (Canonical compare, so disabling "opus" also catches
+   *  "claude-opus-4-8".) A model the user never disabled is allowed even if offline — substitution
+   *  only ever fires for a DISABLED request, never merely an offline one. */
+  isAllowed(model: string): boolean {
+    return !this.disabledSet().has(canonicalModel(model));
+  }
+
+  /** Capability set minus the deny-list, honoring the health map already baked into the model map.
+   *  BELT-AND-SUSPENDERS (§5 "all models disabled"): if the deny-list would empty the allowed set,
+   *  fall back to the full capability set — the daemon warns but NEVER bricks. */
+  allowedModels(): string[] {
+    const all = this.capabilityModels();
+    const disabled = this.disabledSet();
+    const allowed = all.filter((m) => !disabled.has(canonicalModel(m)));
+    return allowed.length ? allowed : all;
+  }
+
+  /** First candidate that isn't disabled (canonical compare), or undefined. */
+  firstAllowed(candidates: string[]): string | undefined {
+    const disabled = this.disabledSet();
+    return candidates.find((m) => !disabled.has(canonicalModel(m)));
+  }
+
+  /** Which CLASS of backend serves a model — so substitution can preserve the class of work:
+   *  "claude" (vision + agentic), "hosted" (third-party, never a SILENT substitute), "local" (an
+   *  Ollama-style runner: non-multimodal, can't drive the tool loop). null = not currently served. */
+  backendKindOf(model: string): "claude" | "hosted" | "local" | null {
+    const b = this.modelToBackend.get(model);
+    if (!b) return null;
+    if (b.hosted) return "hosted";
+    return b.id === "claude-code" ? "claude" : "local";
   }
 
   /** Models served by HOSTED backends (prompts leave the machine) — the panel badges these so the

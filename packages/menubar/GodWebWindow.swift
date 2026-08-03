@@ -231,6 +231,67 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
 
 struct GodWebError: Error { let msg: String; init(_ m: String) { msg = m } }
 
+// ── NATIVE NOTCH-WIDGET WEB HOST ───────────────────────────────────────────────────────────────────
+// A wrapp can ship a WIDGET surface (a web page built to render inside the notch drop). This host loads
+// that URL in a WKWebView and injects window.claude — REUSING the exact GodWebWindow bridge (GOD_SHIM_JS
+// page→native→daemon→page + GodDaemonBridge over the loopback WS with the pairing token). The one
+// difference is the PRINCIPAL: instead of the wrapp's web origin, every request is stamped
+// `native@widget:<id>` (the native-gateway pattern — a per-widget principal the daemon gates/audits on
+// its own). The daemon prompts for consent on first write-class use, exactly like any native app.
+//
+// This is a rendering surface, not a window: the caller embeds `webView` in the notch panel (clipped to
+// NotchDropShape). Behind a right-click "Preview widget" entry for now, so it's testable without wiring
+// every store listing to a widget URL.
+@MainActor
+final class NotchWidgetWebHost: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    let webView: WKWebView
+    private let bridge: GodDaemonBridge
+    private let principal: String            // native@widget:<id> — the authoritative isolation key
+    private let pageURL: URL
+    var onReady: (() -> Void)?
+
+    /// - Parameters:
+    ///   - url: the wrapp's widget-surface page (deployed URL or a granted localhost origin for dev).
+    ///   - widgetId: a stable id for this widget → the `native@widget:<id>` principal.
+    ///   - token: the daemon pairing token (~/.relay/pairing-token).
+    init(url: URL, widgetId: String, token: String, port: UInt16 = 8787) {
+        pageURL = url
+        principal = "native@widget:\(widgetId)"
+        bridge = GodDaemonBridge(port: port, token: token)
+        let ucc = WKUserContentController()
+        ucc.addUserScript(WKUserScript(source: GOD_SHIM_JS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let cfg = WKWebViewConfiguration(); cfg.userContentController = ucc
+        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 360), configuration: cfg)
+        webView.setValue(false, forKey: "drawsBackground")   // let the notch-drop black show through the page's transparent areas
+        super.init()
+        ucc.add(self, name: "relay")
+        bridge.onEvent = { [weak self] ev, payload in
+            guard let self, let json = GodWebWindow.jsonStr(payload) else { return }
+            DispatchQueue.main.async { self.webView.evaluateJavaScript("window.__relayEmit(\(GodWebWindow.jsStr(ev)), \(json))", completionHandler: nil) }
+        }
+        webView.navigationDelegate = self
+    }
+
+    func load() { webView.load(URLRequest(url: pageURL)) }
+    func close() { bridge.close() }
+
+    // MARK: WKNavigationDelegate — signal the page rendered (the drop can settle its size).
+    func webView(_ w: WKWebView, didFinish nav: WKNavigation!) { onReady?() }
+
+    // MARK: WKScriptMessageHandler — page → native → daemon → page, stamped with the native@widget principal.
+    func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "relay", let body = message.body as? [String: Any],
+              let id = body["id"] as? String, let method = body["method"] as? String else { return }
+        let params = body["params"] as? [String: Any] ?? [:]
+        bridge.request(origin: principal, method: method, params: params) { [weak self] result, err in
+            guard let self else { return }
+            let env: [String: Any] = ["id": id, "result": result ?? NSNull(), "error": err ?? NSNull()]
+            guard let json = GodWebWindow.jsonStr(env) else { return }
+            DispatchQueue.main.async { self.webView.evaluateJavaScript("window.__relayResolve(\(json))", completionHandler: nil) }
+        }
+    }
+}
+
 // ── INTEGRATION TODO (next) ──────────────────────────────────────────────────────────────────────
 // 1. Add this file to packages/menubar/build.sh's swiftc line (compile alongside RelayMenuBar.swift).
 // 2. Wire a trigger: God's loop (or the store "give God this" toggle) opens a GodWebWindow for a

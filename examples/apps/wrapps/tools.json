@@ -287,6 +287,15 @@
       }
     }
   ],
+  "ideabrain": [
+    {
+      "name": "ideabrain_validate",
+      "description": "Pressure-test a one-line startup idea: reads it into a brief, runs a validation pass, and returns a verdict that states the risk (not hype). Writes it live on the page.",
+      "inputSchema": {
+        "idea": "string — one line describing the idea to validate. Required."
+      }
+    }
+  ],
   "identity": [
     {
       "name": "identity_compose",
@@ -404,6 +413,15 @@
       }
     }
   ],
+  "reachout": [
+    {
+      "name": "reachout_draft",
+      "description": "Draft and stage (as Gmail DRAFTS — never sends) the next due outreach touches for the active Reachout campaign. Renders the board live and returns a summary.",
+      "inputSchema": {
+        "campaignId": "string — optional; defaults to the active campaign."
+      }
+    }
+  ],
   "recap": [
     {
       "name": "recap_run",
@@ -456,6 +474,20 @@
       "description": "Rewrite one piece of content into an X thread, a LinkedIn post, an Instagram caption, and a short-form video script. Writes them live on the page and returns them.",
       "inputSchema": {
         "content": "string — the content to repurpose. Required."
+      }
+    }
+  ],
+  "resize": [
+    {
+      "name": "resize_image",
+      "description": "Resize/convert/compress an image entirely on-device (no AI). Give a data: URL and target size/format; returns the resized image as a data: URL. mode: 'long'|'width'|'percent'.",
+      "inputSchema": {
+        "dataUrl": "string — the source image as a data: URL (or bare base64). Required.",
+        "mode": "string — 'long' (cap longest side), 'width' (exact width), or 'percent'. Default 'long'.",
+        "value": "number — px for long/width. Default 1600.",
+        "percent": "number — scale % when mode='percent'. Default 50.",
+        "format": "string — 'image/jpeg' | 'image/png' | 'image/webp'. Default 'image/jpeg'.",
+        "quality": "number — 0.1–1 for lossy formats. Default 0.82."
       }
     }
   ],

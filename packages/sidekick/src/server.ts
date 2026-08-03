@@ -22,12 +22,18 @@ import type {
   ToolDescriptor,
   ConnectorInventory,
   TranscribeParams,
+  SbBrandParams,
+  SbBrandResult,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
 import type { GrantStore } from "./security/grant-store.js";
+import { canonicalModel } from "./security/grant-store.js";
+// The daemon-side brand extractor — reuses the deterministic parser in @relay/bank-mcp (brand.mjs)
+// over a server-to-server fetch (no CORS). Powers the sb_brand capability.
+import { extractBrand } from "@relay/bank-mcp/brand-extract.mjs";
 import type { BudgetLedger } from "./security/budgets.js";
 import type { AuditLog } from "./security/audit-log.js";
 import type { ConsentPrompter, PerActionConsentRequest } from "./security/consent.js";
@@ -276,6 +282,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
         return this.speak(origin, env.params as SpeakParams);
       case "claude_transcribe":
         return this.transcribe(origin, env.params as TranscribeParams);
+      case "sb_brand":
+        return this.sbBrand(origin, env.params as SbBrandParams);
       case "claude_permissions":
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
@@ -305,8 +313,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe"],
-      models: await this.deps.backends.models(),
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand"],
+      // Enumerating consumers (the panel, feature-detect) see the ALLOWED set — a model the user
+      // disabled in Settings → Models never even appears as a choice (docs/MODEL-SELECTION.md §4c).
+      models: this.deps.backends.allowedModels(),
       backends: await this.deps.backends.onlineIds(),
       signedIn: await this.deps.backends.signedIn(),
       agentic: true,
@@ -347,6 +357,25 @@ export class Broker implements ConsentPrompter, NativeHandler {
     }
   }
 
+  /** sb_brand — read a brand's PUBLIC website into provenance-tagged facts, SERVER-SIDE (no browser
+   *  CORS). Reuses the deterministic parser in @relay/bank-mcp (brand.mjs) over a server-to-server
+   *  fetch: colours come from the site's own CSS, products from /products.json — never a model's
+   *  guess. GET-only on public pages ⇒ read posture, so a connected origin may call it freely (audited,
+   *  no per-action consent), like the local speak/transcribe verbs. SSRF + byte-budget guards live in
+   *  the extractor (safeUrl / PRIVATE_HOST / MAX_BYTES). See docs/BRAND-EXTRACTION.md + IDEAFETCH.md. */
+  private async sbBrand(origin: string, params: SbBrandParams): Promise<SbBrandResult> {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before reading a brand");
+    if (!params?.url || typeof params.url !== "string") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "sb_brand requires a url");
+    try {
+      const brand = await extractBrand({ url: params.url, name: params.name });
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "sb_brand", outcome: brand.reachable ? "ok" : "error", note: `${brand.domain || params.url}${brand.reachable ? ` · ${brand.palette.length} colours · ${brand.products.length} products` : " · unreachable"}` });
+      return brand;
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: "sb_brand", outcome: "denied", note: String((e as Error).message).slice(0, 80) });
+      throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, "brand extraction failed");
+    }
+  }
+
   // ── Native (direct-principal) surface ────────────────────────────────────────────────────────
   // Served on the SEPARATE native listener, never this Broker's extension socket. A native app
   // proves identity with its own per-app token; the daemon stamps `native@<appId>` and routes the
@@ -374,7 +403,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
     if (scope?.connectors) tools.push({ name: "mcp__*", access: "write" as const });
     // Default to granting whatever models are online so the app can run cleanup completions. The
     // user's own compute; the app never sees a key. Callers may pass an explicit narrower list.
-    const models = scope?.models ?? await this.deps.backends.models();
+    // God ENUMERATES (it doesn't hard-code a model), so its default grant is the ALLOWED set — a
+    // disabled model is never even a candidate for it (docs/MODEL-SELECTION.md §4c).
+    const models = scope?.models ?? this.deps.backends.allowedModels();
     this.deps.grants.upsert(principal, { models, tools, budgets: undefined });
     if (scope?.connectors) this.deps.grants.setMode(principal, "trust");
     this.deps.audit.record({ origin: principal, kind: "request", method: "registerNativeApp", outcome: "ok", note: appId });
@@ -965,13 +996,17 @@ export class Broker implements ConsentPrompter, NativeHandler {
     if (!req.sessionId) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "session requires a sessionId");
     if (req.op === "end") { this.deps.sessions.end(origin, req.sessionId); return { ok: true }; }
     if (req.op !== "send") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, `unknown session op ${(req as any).op}`);
+    // Global allow/deny (docs/MODEL-SELECTION.md §4b): substitute a disabled model down to an allowed
+    // one before the gate. A session is a read-only warm thread (no attachments/agentic here), so the
+    // substitute needs neither vision nor the tool loop.
+    const model = this.withModelPreference({ prompt: req.prompt ?? "", model: req.model }).model;
     // Gate the turn exactly like a completion: model in scope + rate/token budget.
-    this.deps.gate.assertCompletionAllowed(origin, req.model, 4096);
+    this.deps.gate.assertCompletionAllowed(origin, model, 4096);
     // A session may use ONLY the web reads the origin already granted — never a write tool.
     const granted = new Set(grant.tools.map((t) => t.name));
     const allowedReadTools = ["WebSearch", "WebFetch"].filter((t) => granted.has(t));
     const text = await this.deps.sessions.send(origin, req.sessionId, req.prompt ?? "", {
-      system: req.system, model: req.model, effort: req.effort, allowedReadTools,
+      system: req.system, model, effort: req.effort, allowedReadTools,
     });
     this.deps.gate.recordCompletion(origin, estimateTokens(text ?? ""));
     return { ok: true, text };
@@ -997,11 +1032,67 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  always a granted model (enforced at set-time), so assertCompletionAllowed still passes. */
   private withModelOverride(origin: string, params: CompletionParams): CompletionParams {
     const override = this.deps.grants.get(origin)?.modelOverride;
-    return override ? { ...params, model: override } : params;
+    // Precedence (docs/MODEL-SELECTION.md §6/§7): a GLOBAL disable beats a per-site pin. If the pinned
+    // model has since been turned off in Settings → Models, don't resurrect it — fall through to
+    // withModelPreference, which substitutes the app's originally-requested model to an allowed one.
+    return override && this.deps.backends.isAllowed(override) ? { ...params, model: override } : params;
+  }
+
+  /** Apply the user's global model deny-list (docs/MODEL-SELECTION.md §4b). If the requested model is
+   *  disabled, SUBSTITUTE a capability-preserving allowed model before the gate — the wrapp never
+   *  learns (same contract as withModelOverride). Runs AFTER withModelOverride and BEFORE backendFor +
+   *  assertCompletionAllowed, so the gate validates the model that will actually run. The substitute is
+   *  drawn from the origin's full granted capability set, so allowsModel() still passes — no widening. */
+  private withModelPreference(params: CompletionParams): CompletionParams {
+    const requested = params.model;
+    if (!requested || this.deps.backends.isAllowed(requested)) return params; // omitted default / allowed ⇒ untouched
+    const sub = this.chooseAllowedSubstitute(requested, { vision: !!params.attachments?.length, agentic: !!params.agentic });
+    if (!sub) {
+      throw new ProviderError(
+        BYOPErrorCode.NO_ALLOWED_MODEL,
+        params.agentic
+          ? "every model that can run this (a tool loop needs Claude, not a local model) is turned off — re-enable one in Settings → Models"
+          : "every model that can run this is turned off — re-enable one in Settings → Models",
+      );
+    }
+    return { ...params, model: sub };
+  }
+
+  /** Capability-aware substitute for a DISABLED requested model (docs/MODEL-SELECTION.md §4d). Preserves
+   *  the class of work: vision/agentic never route onto a local runner (non-multimodal, can't drive the
+   *  tool loop); a hosted model is never a SILENT substitute unless the request was itself hosted
+   *  (keeping faith with backendFor's no-silent-hosted rule). Prefers an allowed Claude model near the
+   *  requested tier (opus→sonnet→haiku ladder). undefined ⇒ nothing qualifies ⇒ NO_ALLOWED_MODEL. */
+  private chooseAllowedSubstitute(requested: string, opts: { vision: boolean; agentic: boolean }): string | undefined {
+    const reg = this.deps.backends;
+    const requestedKind = reg.backendKindOf(requested);
+    const forbidLocal = opts.vision || opts.agentic;
+    const candidates = reg.allowedModels().filter((m) => {
+      const k = reg.backendKindOf(m);
+      if (!k) return false;                                        // not currently served
+      if (forbidLocal && k === "local") return false;             // never vision/agentic on a local runner
+      if (k === "hosted" && requestedKind !== "hosted") return false; // no silent hosted substitute
+      return true;
+    });
+    if (!candidates.length) return undefined;
+    // Prefer a Claude model near the requested tier: start at the requested rung, then walk the ladder.
+    const claude = candidates.filter((m) => reg.backendKindOf(m) === "claude");
+    const ladder = ["opus", "sonnet", "haiku"];
+    const want = canonicalModel(requested);
+    if (ladder.includes(want)) {
+      const start = ladder.indexOf(want);
+      const order = [...ladder.slice(start), ...ladder.slice(0, start)];
+      for (const tier of order) {
+        const hit = claude.find((m) => canonicalModel(m) === tier);
+        if (hit) return hit;
+      }
+    }
+    return claude[0] ?? candidates[0];
   }
 
   private async complete(origin: string, params: CompletionParams) {
-    params = this.withModelOverride(origin, params);
+    params = this.withModelOverride(origin, params);    // per-site pin (if still allowed)
+    params = this.withModelPreference(params);          // global allow/deny + substitution
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
@@ -1043,7 +1134,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
   }
 
   private async startStream(origin: string, params: CompletionParams, ws: WebSocket): Promise<{ streamId: string }> {
-    params = this.withModelOverride(origin, params);
+    params = this.withModelOverride(origin, params);    // per-site pin (if still allowed)
+    params = this.withModelPreference(params);          // global allow/deny + substitution
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);

@@ -1,0 +1,22 @@
+{
+  "id": "ideafetch",
+  "name": "ideafetch",
+  "tagline": "Point at what you already built — it becomes your project.",
+  "category": "studio",
+  "author": "Switchboard",
+  "components": {
+    "workflows": ["ideafetch/define"],
+    "ui": { "kind": "web", "url": "https://ideafetch.thelastprompt.ai" }
+  },
+  "surfaces": ["browser", "batch"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" },
+    { "kind": "capability", "name": "sb_brand", "lazy": true }
+  ],
+  "inside": [
+    "Read a website, repo, folder, URL or paste — real bytes, never a guess",
+    "Multi-select what your project actually is — you assert, the model only structures",
+    "One kind:project/brand context every wrapp opens pre-loaded"
+  ]
+}

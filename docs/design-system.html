@@ -1,0 +1,286 @@
+<title>Switchboard — one language, every surface</title>
+<style>
+  /* Committed to the notch world: pure-black surface, single accent. This UI is black by design
+     (the seam with the menu bar must vanish), so this page deliberately lives in one theme. */
+  :root{
+    --page:#000000; --rail:#0A0A0B; --panel:#141416; --raised:#1E1E21; --edge:#282829;
+    --ink:#E8EDF4; --inkDim:#9A9AA2; --inkFaint:#6C6C74;
+    --lime:#C8F250; --indigo:#5B8DEF; --danger:#FF2D6E;
+    --mono: ui-monospace, "SF Mono", "Spline Sans Mono", Menlo, monospace;
+    --sans: -apple-system, "Hanken Grotesk", "Inter", system-ui, sans-serif;
+    --disp: "Bricolage Grotesque", "Space Grotesk", var(--sans);
+    --maxw: 1080px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:
+      radial-gradient(120% 60% at 50% -10%, #0d0d0f 0%, #000 60%) fixed,
+      var(--page);
+    color:var(--ink);font-family:var(--sans);line-height:1.5;
+    font-size:15px;letter-spacing:.005em;padding:0 20px 96px;}
+  .wrap{max-width:var(--maxw);margin:0 auto}
+  a{color:var(--lime);text-decoration:none}
+
+  .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--inkFaint);}
+  h1{font-family:var(--disp);font-weight:800;letter-spacing:-.02em;line-height:1.02;
+    font-size:clamp(30px,5vw,52px);margin:.35em 0 .2em;text-wrap:balance}
+  h2{font-family:var(--disp);font-weight:800;letter-spacing:-.015em;font-size:clamp(20px,2.6vw,26px);
+    margin:0 0 2px;text-wrap:balance}
+  h3{font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:-.01em;margin:0}
+  .sub{color:var(--inkDim);max-width:60ch}
+  .mono{font-family:var(--mono)}
+
+  /* ---- hero ---- */
+  header.hero{padding:74px 0 30px;position:relative}
+  .notch{position:relative;width:280px;max-width:80vw;height:132px;margin:0 auto 26px;
+    background:var(--page);
+    clip-path:polygon(0 0, 100% 0,
+      calc(100% - 14px) 14px, calc(100% - 14px) calc(100% - 22px),
+      calc(100% - 36px) 100%, 36px 100%, 14px calc(100% - 22px), 14px 14px);
+    /* the ears are simplified as straight bevels for CSS; the Swift shape uses concave quad curves */
+    border-bottom:1px solid var(--edge);
+    display:flex;align-items:center;justify-content:center;gap:14px;}
+  .notch::after{content:"";position:absolute;inset:0;pointer-events:none;
+    box-shadow:0 0 0 1px #1a1a1c inset}
+  #lamp{display:block}
+  .phase{font-family:var(--sans);font-weight:600;font-size:13px;color:var(--ink)}
+  .heroline{text-align:center}
+  .heroline .kicker{color:var(--lime)}
+  .lede{color:var(--inkDim);max-width:56ch;margin:14px auto 0;text-align:center;font-size:16px}
+
+  /* ---- section scaffold ---- */
+  section{padding:44px 0 8px;border-top:1px solid var(--edge);margin-top:44px}
+  section > .kicker{display:block;margin-bottom:14px}
+  .lead{color:var(--inkDim);max-width:64ch;margin:6px 0 26px}
+
+  /* ---- the IA ladder ---- */
+  .ladder{display:flex;flex-direction:column;gap:10px}
+  .rung{display:grid;grid-template-columns:150px 1fr;gap:0;border:1px solid var(--edge);
+    border-radius:12px;overflow:hidden;background:linear-gradient(var(--panel),var(--rail))}
+  .rung .name{padding:16px;border-right:1px solid var(--edge);display:flex;flex-direction:column;gap:6px;
+    background:var(--page)}
+  .rung .name b{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:-.01em}
+  .rung .name .src{font-family:var(--mono);font-size:10px;color:var(--inkFaint)}
+  .tier{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    padding:2px 7px;border-radius:999px;width:max-content;border:1px solid var(--edge);color:var(--inkDim)}
+  .tier.glance{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,transparent)}
+  .rung .body{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 22px}
+  .rung .body .job{grid-column:1/-1;color:var(--ink);font-weight:600}
+  .rung .body .col .lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--inkFaint);display:block;margin-bottom:2px}
+  .rung .body .col.dont .lab{color:color-mix(in srgb,var(--danger) 70%,var(--inkFaint))}
+  .rung .body .col p{margin:0;color:var(--inkDim);font-size:13.5px}
+  .arrow{color:var(--inkFaint);text-align:center;font-family:var(--mono);font-size:11px;margin:-4px 0}
+
+  /* ---- primitives grid ---- */
+  .prims{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .prim{border:1px solid var(--edge);border-radius:12px;background:var(--panel);padding:16px;
+    display:flex;flex-direction:column;gap:8px;min-height:130px}
+  .prim .swatch{height:34px;border-radius:8px;border:1px solid var(--edge);display:flex;align-items:center;
+    gap:6px;padding:0 8px;background:var(--rail)}
+  .dot{width:9px;height:9px;border-radius:999px;display:inline-block}
+  .prim p{margin:0;color:var(--inkDim);font-size:13px}
+  .prim .tag{font-family:var(--mono);font-size:10px;color:var(--inkFaint)}
+
+  /* ---- anatomy strip ---- */
+  .anatomy{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--edge);
+    border-radius:14px;overflow:hidden}
+  .face{padding:18px 16px;border-right:1px solid var(--edge);background:linear-gradient(var(--panel),var(--rail))}
+  .face:last-child{border-right:0}
+  .face .kicker{color:var(--lime)}
+  .face .mini{margin-top:12px;border:1px solid var(--edge);border-radius:10px;background:var(--page);
+    padding:12px;min-height:96px;display:flex;flex-direction:column;gap:7px;justify-content:center}
+  .face h3{margin-bottom:4px}
+  .face p{margin:6px 0 0;color:var(--inkDim);font-size:12.5px}
+  .chip{font-family:var(--mono);font-size:10px;color:var(--inkDim);border:1px solid var(--edge);
+    border-radius:6px;padding:3px 7px;width:max-content;background:var(--rail)}
+  .tile{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#8fae2e,#4a5f18)}
+  .btn{font-family:var(--sans);font-size:11px;font-weight:600;color:#000;background:var(--lime);
+    border-radius:7px;padding:5px 10px;width:max-content}
+  .imgbox{height:40px;border-radius:8px;border:1px solid var(--edge);
+    background:linear-gradient(135deg,color-mix(in srgb,var(--lime) 22%,transparent),var(--raised),var(--panel));
+    display:flex;align-items:center;justify-content:center;color:color-mix(in srgb,var(--lime) 85%,#fff);font-size:15px}
+  .thru{text-align:center;color:var(--inkFaint);font-family:var(--mono);font-size:11px;margin-top:14px}
+  .thru b{color:var(--lime)}
+
+  /* ---- footer note ---- */
+  .foot{margin-top:52px;border-top:1px solid var(--edge);padding-top:20px;color:var(--inkFaint);
+    font-size:12.5px;font-family:var(--mono)}
+  @media (max-width:720px){
+    .rung{grid-template-columns:1fr}.rung .name{border-right:0;border-bottom:1px solid var(--edge)}
+    .rung .body{grid-template-columns:1fr}.anatomy{grid-template-columns:1fr 1fr}
+  }
+  @media (prefers-reduced-motion:reduce){#lamp{opacity:.9}}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="notch" aria-hidden="true">
+      <span class="phase">thinking</span>
+      <canvas id="lamp" width="84" height="60"></canvas>
+    </div>
+    <div class="heroline">
+      <span class="kicker">Switchboard · design system</span>
+      <h1>One language,<br>learned once.</h1>
+      <p class="lede">Every surface is the same black notch growing from the seam, lit by the same
+        lamp field, pulled by the same single lime accent. 65+ wrapps, 8 surfaces, one product.</p>
+    </div>
+  </header>
+
+  <section id="ia">
+    <span class="kicker">01 · what shows where</span>
+    <h2>The surface ladder</h2>
+    <p class="lead">A progressive-disclosure ladder anchored at the notch seam. Each rung shows more and
+      costs more attention; each escalates to the next by one gesture. The <b>must-not</b> column is the
+      anti-clutter rule that keeps a glance a glance.</p>
+
+    <div class="ladder" id="ladder"></div>
+  </section>
+
+  <section id="prims">
+    <span class="kicker">02 · shared primitives</span>
+    <h2>The atoms every wrapp inherits</h2>
+    <p class="lead">A wrapp <em>fills</em> these; it never redefines them. That is why 65 wrapps read as
+      one system — consistency by construction, not by review.</p>
+    <div class="prims" id="primgrid"></div>
+  </section>
+
+  <section id="anatomy">
+    <span class="kicker">03 · one wrapp, four faces</span>
+    <h2>Anatomy across surfaces</h2>
+    <p class="lead">The same wrapp — here Prism, the image tool — met at four attention-distances. Because
+      all four compose from the primitives above, they are unmistakably the same wrapp.</p>
+    <div class="anatomy">
+      <div class="face">
+        <span class="kicker">store card</span>
+        <div class="mini">
+          <div style="display:flex;gap:9px;align-items:center">
+            <div class="tile"></div>
+            <div><h3>Prism</h3><p style="margin:0">make an image from this</p></div>
+          </div>
+          <div class="btn">Get</div>
+          <div class="chip">no AI cost shown before install</div>
+        </div>
+      </div>
+      <div class="face">
+        <span class="kicker">God skill</span>
+        <div class="mini">
+          <div class="chip mono">__god.list() → prism_run</div>
+          <p>Driven by voice. Install <b style="color:var(--lime)">is</b> the grant (wildcard).</p>
+        </div>
+      </div>
+      <div class="face">
+        <span class="kicker">notch widget</span>
+        <div class="mini">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span class="dot" style="background:var(--lime)"></span>
+            <span class="mono" style="font-size:10px;color:var(--inkFaint)">PRISM</span>
+          </div>
+          <div class="imgbox">✦</div>
+          <div style="display:flex;gap:6px"><span class="chip">drag out</span><span class="btn">Open ▸</span></div>
+        </div>
+      </div>
+      <div class="face">
+        <span class="kicker">full page</span>
+        <div class="mini">
+          <h3>Prism</h3>
+          <p>Its own skin — but the same header grammar, the same lime, the same DotMatrix loader.</p>
+        </div>
+      </div>
+    </div>
+    <p class="thru">the through-line is the <b>shared primitives</b> — icon-tile · lime · DotMatrix · result shape · action row</p>
+  </section>
+
+  <p class="foot">
+    Companion to docs/DESIGN-SYSTEM.md · grounded in RelayMenuBar.swift (NotchDropShape, DotMatrix,
+    GodStatusDrop, OrbView, Panel), GodWidgetKit.swift, AmbientCanvas.swift, StoreFrontView.swift,
+    protocol/store.ts, kit/webmcp.js. Committed to a single dark theme — this surface is black by design.
+  </p>
+</div>
+
+<script>
+// ── the lamp field: DotMatrix.brightness ported verbatim from RelayMenuBar.swift:1941 (thinking pattern)
+(function(){
+  const cv = document.getElementById('lamp'); if(!cv) return;
+  const ctx = cv.getContext('2d');
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const cols=7, rows=5, dot=3, gap=(cv.width-cols*dot)/(cols-1);
+  cv.width*=dpr; cv.height*=dpr; ctx.scale(dpr,dpr);
+  const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+  function bright(c,r,t){ // thinking: a diagonal band sweeping across
+    const s = 0.5 + 0.5*Math.sin((c+r)*0.6 - t*3.0);
+    return 0.14 + 0.86*(s*s*s);
+  }
+  function frame(ms){
+    const t = ms/1000;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      ctx.globalAlpha = reduce ? bright(c,r,0) : bright(c,r,t);
+      ctx.fillStyle = '#C8F250';
+      const x=c*(dot+gap), y=r*(dot+gap);
+      ctx.beginPath(); ctx.arc(x+dot/2,y+dot/2,dot/2,0,7); ctx.fill();
+    }
+    if(!reduce) requestAnimationFrame(frame);
+  }
+  if(reduce) frame(0); else requestAnimationFrame(frame);
+})();
+
+// ── data-driven ladder + primitives (kept in JS so the structure is legible + editable)
+const rungs = [
+  {n:"Orb", src:"OrbView:1805", tier:"glance", job:"Ambient presence + health at a glance",
+   belongs:"3 health-tinted dots (idle) or a breathing “working” pill",
+   dont:"No text, no menu, no result — only the dot↔pill morph", to:"→ Panel (hover) · Pill (⌃⌃)"},
+  {n:"Ambient canvas", src:"AmbientCanvas.swift", tier:"glance", job:"Offer 1–3 locally-sensed next actions",
+   belongs:"kicker AMBIENT·<ctx> + ≤3 rows + ✕",
+   dont:"Never >3 rows, no result, no network/model. Defers when God takes the notch", to:"→ Wrapp window (pick)"},
+  {n:"Notch pill", src:"GodStatusDrop:2016", tier:"glance", job:"Show God’s live phase while it works",
+   belongs:"phase label + DotMatrix + project chip + ref chips",
+   dont:"No result rendering, no walls of text — God narrates by voice", to:"→ Widget (on result) · Window"},
+  {n:"Notch widget", src:"NotchWidget (kit)", tier:"glance", job:"Deliver ONE glanceable result + 1–2 actions",
+   belongs:"header + one result shape + action row (drag·copy·open)",
+   dont:"Never a second result, never a scroll marathon, no bespoke chrome", to:"→ Wrapp window (Open in…)"},
+  {n:"Panel", src:"Panel:859", tier:"", job:"The status dashboard + control plane",
+   belongs:"hero · context picker · connected apps · models│tools · daemon controls",
+   dont:"Not a settings app; ≤2 columns; push depth to the Store", to:"→ Store · Bank"},
+  {n:"Wrapp window", src:"GodWebWindow / tab", tier:"", job:"The full app — dwell + deep work",
+   belongs:"the wrapp’s own full UI (its skin)",
+   dont:"Can’t fork the accent, the loader, or the header grammar", to:"↔ Widget (result drops back)"},
+  {n:"Bank", src:"bank.html", tier:"", job:"Where a project is established, shown, edited",
+   belongs:"active-project hero + 4 facets · establish · tasks · brain",
+   dont:"Not a file browser; only .md you own; blank facet = CTA, never fabricated", to:"→ lends context everywhere"},
+  {n:"Store", src:"StoreFrontView.swift", tier:"", job:"Browse · install · give-God-hands",
+   belongs:"featured · “Apps we love” · “New skills” · resource profile",
+   dont:"Never installs silently; never hides weight/egress", to:"→ Window (Get) · God (add hand)"},
+];
+document.getElementById('ladder').innerHTML = rungs.map((r,i)=>`
+  <div class="rung">
+    <div class="name">
+      <span class="tier ${r.tier}">${r.tier==='glance'?'glance':'dwell / act'}</span>
+      <b>${r.n}</b><span class="src">${r.src}</span>
+    </div>
+    <div class="body">
+      <div class="job">${r.job}</div>
+      <div class="col"><span class="lab">belongs</span><p>${r.belongs}</p></div>
+      <div class="col dont"><span class="lab">must not</span><p>${r.dont}</p></div>
+      <div class="col" style="grid-column:1/-1"><span class="lab">escalates</span><p class="mono" style="font-size:12px">${r.to}</p></div>
+    </div>
+  </div>`).join('') ;
+
+const prims = [
+  {t:"Silhouette", tag:"NotchDropShape", d:"Ear 14, botR 20/22/24, pure-black fill. The seam with the bar vanishes.", sw:'<span style="font-family:var(--mono);font-size:10px;color:var(--inkDim)">▁ every drop grows from here ▁</span>'},
+  {t:"Lamp field", tag:"DotMatrix · 4 patterns", d:"The ONLY loader/liveness idiom. listening·thinking·speaking·working. No spinners.", sw:'<span class="dot" style="background:var(--lime)"></span><span class="dot" style="background:var(--lime);opacity:.5"></span><span class="dot" style="background:var(--lime);opacity:.25"></span><span class="dot" style="background:var(--lime);opacity:.6"></span>'},
+  {t:"One accent", tag:"lime C8F250", d:"The only eye-pull. Indigo = local-only; danger = destructive. Nothing else.", sw:'<span class="dot" style="background:var(--lime)"></span><span class="dot" style="background:var(--indigo)"></span><span class="dot" style="background:var(--danger)"></span><span class="tag">+2 counted exceptions</span>'},
+  {t:"Result shapes", tag:"the finite set", d:"image · text · cards · gallery · working. If it fits none, that’s a smell to resolve.", sw:'<span class="tag">image · text · cards · gallery</span>'},
+  {t:"Store card", tag:"StoreFrontView", d:"icon-tile (size·0.22) · name · tagline · Get + resource profile before install.", sw:'<span class="tile" style="width:20px;height:20px"></span><span class="tag">icon · name · Get</span>'},
+  {t:"God-drive", tag:"exposeToGod()", d:"One declaration → WebMCP tool + native bridge. Install = the grant. Voice-first.", sw:'<span class="tag">one decl · drives the real UI</span>'},
+  {t:"Size classes", tag:"iOS-widget grammar", d:"text = small · image = medium · gallery/cards/html = large. Shape IS the size.", sw:'<span class="tag">small · medium · large</span>'},
+];
+document.getElementById('primgrid').innerHTML = prims.map(p=>`
+  <div class="prim">
+    <div class="swatch">${p.sw}</div>
+    <h3>${p.t}</h3>
+    <p>${p.d}</p>
+    <span class="tag">${p.tag}</span>
+  </div>`).join('');
+</script>

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — Notch drops redesign</title>
+<style>
+  :root{
+    --page:#000000; --rail:#0A0A0B; --panel:#141416; --raised:#1E1E21;
+    --edge:#282829; --ink:#E8EDF4; --inkDim:#9A9AA2; --inkFaint:#6C6C74;
+    --lime:#C8F250; --localInk:#5B8DEF; --danger:#FF2D6E;
+    --f-display:'Bricolage Grotesque','Space Grotesk',system-ui,sans-serif;
+    --f-sans:'Hanken Grotesk','Inter',system-ui,sans-serif;
+    --f-mono:'Spline Sans Mono','SF Mono',ui-monospace,monospace;
+    --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;
+    --r-xs:7px;--r-sm:12px;--r-md:16px;--r-lg:20px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(1100px 640px at 50% -8%, #0d0d0f 0%, #060607 46%, #020203 100%);
+    color:var(--ink);font-family:var(--f-sans);-webkit-font-smoothing:antialiased;
+    min-height:100vh;padding:40px 24px 72px;display:flex;flex-direction:column;align-items:center;
+  }
+  .page-head{max-width:680px;text-align:center;margin-bottom:34px}
+  .page-head .eyebrow{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--inkFaint);margin-bottom:10px}
+  .page-head h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em}
+  .page-head p{font-size:12px;color:var(--inkDim);margin-top:8px;line-height:1.55}
+
+  .grid{display:flex;flex-wrap:wrap;gap:44px 56px;justify-content:center;align-items:flex-start;max-width:1120px}
+  .cell{display:flex;flex-direction:column;align-items:center}
+  .caption{margin-top:16px;text-align:center;max-width:300px}
+  .caption .k{font-family:var(--f-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--inkFaint)}
+  .caption .t{font-size:12px;color:var(--inkDim);margin-top:6px;line-height:1.5}
+
+  /* menubar seam so each reads as dropping from the notch */
+  .seam{width:100%;height:20px;background:var(--page);border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:center}
+  .seam i{width:4px;height:4px;border-radius:50%;background:var(--inkFaint);margin:0 2px}
+  .drop-host{filter:drop-shadow(0 24px 48px rgba(0,0,0,.5))}
+
+  /* NotchDropShape clip — parameterised per drop via inline clip-path */
+  .drop{position:relative;background:var(--page)}
+  .drop .edge{position:absolute;inset:0;pointer-events:none}
+
+  /* ---------- 1. GOD PILL (GodStatusDrop) ---------- */
+  .god{width:360px}
+  .god .body{padding:16px 20px 18px}
+  .god .phase{display:flex;align-items:center;gap:12px}
+  #godlamp{width:56px;height:40px;display:block}
+  .god .label{font-family:var(--f-display);font-weight:700;font-size:18px;color:var(--lime)}
+  .god .sub{font-family:var(--f-mono);font-size:9px;color:var(--inkFaint);margin-top:2px}
+  .god .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .refchip{display:inline-flex;align-items:center;gap:5px;padding:3px 6px 3px 5px;border-radius:999px;
+    background:rgba(255,255,255,.06);max-width:180px}
+  .refchip .thumb{width:22px;height:15px;border-radius:3px;flex:0 0 auto;
+    background:linear-gradient(135deg,#3a4a2a,#20301a);border:1px solid color-mix(in srgb,var(--lime) 50%,transparent)}
+  .refchip .doc{width:14px;text-align:center;color:var(--lime);font-size:9px}
+  .refchip .nm{font-size:10.5px;font-weight:500;color:var(--inkDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .refchip .x{color:var(--inkFaint);font-size:8px;font-weight:700}
+  .god .projrow{margin-top:12px;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-xs);
+    background:var(--panel);border:1px solid var(--edge)}
+  .god .projrow .ico{color:var(--inkDim);font-size:11px}
+  .god .projrow .nm{font-size:11px;color:var(--ink)}
+  .god .projrow .chev{margin-left:auto;color:var(--inkFaint);font-size:9px}
+  .god .projrow .tag{font-family:var(--f-mono);font-size:8px;letter-spacing:.1em;color:var(--inkFaint);
+    border:1px solid var(--edge);border-radius:4px;padding:1px 4px}
+
+  /* ---------- 2. RESULT WIDGET (NotchWidget) ---------- */
+  .widget{width:340px}
+  .widget .body{padding:16px 18px 16px}
+  .w-head{display:flex;align-items:center;gap:8px}
+  .w-head .k{font-family:var(--f-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkFaint)}
+  .w-head .live{margin-left:auto}
+  #wlamp{width:36px;height:16px;display:block}
+  .w-title{font-family:var(--f-display);font-weight:700;font-size:18px;margin-top:8px;letter-spacing:-.01em}
+  .w-media{margin-top:12px;height:150px;border-radius:var(--r-md);overflow:hidden;position:relative;
+    background:
+      radial-gradient(120px 90px at 30% 30%, rgba(200,242,80,.35), transparent 60%),
+      radial-gradient(160px 120px at 78% 70%, rgba(91,141,239,.4), transparent 62%),
+      linear-gradient(135deg,#171a12,#0c0d10 60%,#0a0c14);
+    border:1px solid var(--edge)}
+  .w-media .grain{position:absolute;inset:0;opacity:.5}
+  .w-actions{display:flex;align-items:center;gap:8px;margin-top:14px}
+  .btn{height:30px;padding:0 14px;border-radius:var(--r-xs);font-size:11px;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;cursor:default;border:1px solid transparent}
+  .btn.primary{background:var(--lime);color:var(--page)}
+  .btn.ghost{background:var(--panel);border-color:var(--edge);color:var(--inkDim)}
+  .btn.ghost:hover{background:var(--raised);color:var(--ink)}
+  .w-actions .spacer{flex:1}
+
+  /* ---------- 3. AMBIENT CANVAS (AmbientCanvas) ---------- */
+  .ambient{width:360px}
+  .ambient .body{padding:15px 20px 18px}
+  .a-head{display:flex;align-items:center;gap:9px}
+  #alamp{width:40px;height:20px;display:block}
+  .a-head .k{font-family:var(--f-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--inkFaint)}
+  .a-head .watching{margin-left:auto;font-family:var(--f-mono);font-size:8.5px;color:var(--inkFaint);display:flex;align-items:center;gap:5px}
+  .a-head .watching .d{width:5px;height:5px;border-radius:50%;background:var(--lime)}
+  .a-title{font-size:13px;color:var(--ink);margin-top:11px;line-height:1.45}
+  .a-title b{color:var(--lime);font-weight:600}
+  .a-suggest{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+  .sug{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--r-sm);
+    background:var(--panel);border:1px solid var(--edge);cursor:default;transition:background .15s,border-color .15s}
+  .sug:hover{background:var(--raised);border-color:color-mix(in srgb,var(--lime) 40%,transparent)}
+  .sug .ico{width:26px;height:26px;border-radius:var(--r-xs);flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    font-family:var(--f-display);font-weight:700;font-size:13px;color:#0b0b0c}
+  .sug .txt{min-width:0}
+  .sug .txt .n{font-size:12px;font-weight:600;color:var(--ink)}
+  .sug .txt .d{font-size:10.5px;color:var(--inkFaint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sug .go{margin-left:auto;color:var(--inkFaint);font-size:11px}
+  .a-dismiss{margin-top:12px;font-family:var(--f-mono);font-size:9px;color:var(--inkFaint);text-align:center}
+
+  .legend{max-width:720px;margin-top:40px;font-size:11px;color:var(--inkFaint);line-height:1.65;text-align:center}
+  .legend b{color:var(--inkDim);font-weight:600}
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <div class="eyebrow">Switchboard · Notch drops</div>
+    <h1>God pill · result widget · ambient canvas</h1>
+    <p>Three glance surfaces, one silhouette (NotchDropShape) and one language. God's phase is told by the dot-matrix <em>pattern</em>, never a second hue — listening VU, thinking sweep, speaking wave, working ripple — all lime.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1. GOD PILL -->
+    <div class="cell">
+      <div class="drop-host">
+        <div class="seam"><i></i><i></i><i></i></div>
+        <div class="drop god" id="godDrop">
+          <div class="body">
+            <div class="phase">
+              <canvas id="godlamp" width="112" height="80"></canvas>
+              <div>
+                <div class="label" id="godLabel">Thinking…</div>
+                <div class="sub">on your Claude · Opus 4.8</div>
+              </div>
+            </div>
+            <div class="chips">
+              <span class="refchip"><span class="thumb"></span><span class="nm">Screen — hero.png</span><span class="x">✕</span></span>
+              <span class="refchip"><span class="doc">▤</span><span class="nm">brief.md</span><span class="x">✕</span></span>
+            </div>
+            <div class="projrow">
+              <span class="ico">▤</span>
+              <span class="nm">Often — Q3 launch</span>
+              <span class="tag">PROJECT</span>
+              <span class="chev">▾</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <div class="k">GodStatusDrop</div>
+        <div class="t">The live phase, with staged reference chips (screenshot + file) and a switch-mid-run project chip. Tap the lamp to cycle phase.</div>
+      </div>
+    </div>
+
+    <!-- 2. RESULT WIDGET -->
+    <div class="cell">
+      <div class="drop-host">
+        <div class="seam"><i></i><i></i><i></i></div>
+        <div class="drop widget" id="widgetDrop">
+          <div class="body">
+            <div class="w-head">
+              <span class="k">Prism · Image</span>
+              <span class="live"><canvas id="wlamp" width="72" height="32"></canvas></span>
+            </div>
+            <div class="w-title">From your selection</div>
+            <div class="w-media"><canvas class="grain" id="wgrain" width="300" height="150"></canvas></div>
+            <div class="w-actions">
+              <span class="btn primary">Open in Prism</span>
+              <span class="btn ghost">⧉ Copy</span>
+              <span class="spacer"></span>
+              <span class="btn ghost" title="Drag out">⤢</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <div class="k">NotchWidget</div>
+        <div class="t">A wrapp's glanceable result — kicker, title, result media at radius-md, one primary button. The header lamp is the only liveness.</div>
+      </div>
+    </div>
+
+    <!-- 3. AMBIENT CANVAS -->
+    <div class="cell">
+      <div class="drop-host">
+        <div class="seam"><i></i><i></i><i></i></div>
+        <div class="drop ambient" id="ambientDrop">
+          <div class="body">
+            <div class="a-head">
+              <canvas id="alamp" width="80" height="40"></canvas>
+              <span class="k">This tab</span>
+              <span class="watching"><span class="d"></span>watching · local</span>
+            </div>
+            <div class="a-title">You're on a <b>vendor quote</b>. Want to log it to the product canvas?</div>
+            <div class="a-suggest">
+              <div class="sug">
+                <span class="ico" style="background:#3DD6C4">S</span>
+                <span class="txt"><div class="n">Sync to nailinit</div><div class="d">pull price · MOQ · terms</div></span>
+                <span class="go">↗</span>
+              </div>
+              <div class="sug">
+                <span class="ico" style="background:#F4C24B">A</span>
+                <span class="txt"><div class="n">Draft a counter</div><div class="d">AdForge · negotiation reply</div></span>
+                <span class="go">↗</span>
+              </div>
+            </div>
+            <div class="a-dismiss">esc to dismiss · never leaves this Mac</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <div class="k">AmbientCanvas</div>
+        <div class="t">Contextual suggestions from what's on screen. The lamp field is the "watching" indicator — a slow working ripple, local-only.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="legend">
+    <b>Same clip, same tokens.</b> Every drop uses the concave-ear NotchDropShape (ear 14) so it reads as the physical notch growing down —
+    only the bottom radius and content differ. <b>One accent:</b> lime carries liveness and primary action; phase is disambiguated by
+    <b>dot-matrix pattern</b>, not colour. Reference thumbnails and result media are <em>content</em>, exempt from the single-accent rule.
+    All motion honors <b>prefers-reduced-motion</b>.
+  </p>
+
+<script>
+(function(){
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LIME=[200,242,80];
+
+  function clipFor(w,h,ear,botR){
+    const e=Math.min(ear,w/2), b=Math.min(botR,(w-2*e)/2);
+    return `path('M0,0 L${w},0 Q${w-e},0 ${w-e},${e} L${w-e},${h-b} Q${w-e},${h} ${w-e-b},${h} L${e+b},${h} Q${e},${h} ${e},${h-b} L${e},${e} Q${e},0 0,0 Z')`;
+  }
+  // apply clip once laid out (need real heights)
+  function applyClip(id,ear,botR){
+    const el=document.getElementById(id);
+    const r=el.getBoundingClientRect();
+    const c=clipFor(Math.round(r.width),Math.round(r.height),ear,botR);
+    el.style.clipPath=c; el.style.webkitClipPath=c;
+  }
+
+  function brightness(pattern,c,r,cols,rows,t){
+    const cx=c,rx=r,mid=(rows-1)/2;
+    switch(pattern){
+      case 'listening':{const h=1+2*(0.5+0.5*Math.sin(t*3+cx*0.7));return Math.abs(rx-mid)<=h?1:0.1;}
+      case 'speaking':{const wave=mid+(mid-0.15)*Math.sin(t*4.2+cx*0.95);return Math.abs(rx-wave)<0.85?1:0.1;}
+      case 'thinking':{const s=0.5+0.5*Math.sin((cx+rx)*0.6-t*3);return 0.14+0.86*(s*s*s);}
+      case 'working':default:return 0.16+0.84*(0.5+0.5*Math.sin(cx*0.55-t*2.6));
+    }
+  }
+  function matrix(canvas,opt){
+    const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+    const cols=opt.cols,rows=opt.rows,gapX=W/cols,gapY=H/rows;
+    const dot=Math.min(gapX,gapY)*0.34*(opt.dotScale||1);
+    const st={pattern:opt.pattern,rgb:opt.rgb||LIME,speed:opt.speed||1,base:opt.baseOpacity||1};
+    function draw(time){
+      const t=(time||0)/1000*st.speed; ctx.clearRect(0,0,W,H);
+      for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+        const b=brightness(st.pattern,c,r,cols,rows,t);
+        ctx.beginPath();ctx.arc(gapX*(c+0.5),gapY*(r+0.5),dot,0,7);
+        ctx.fillStyle=`rgba(${st.rgb[0]},${st.rgb[1]},${st.rgb[2]},${(b*st.base).toFixed(3)})`;ctx.fill();
+      }
+    }
+    if(reduce)draw(1400); else (function loop(ts){draw(ts);requestAnimationFrame(loop);})();
+    return st;
+  }
+
+  // God pill — thinking, cycle on tap
+  const god=matrix(document.getElementById('godlamp'),{cols:7,rows:5,pattern:'thinking',dotScale:1.1});
+  const phases=[['Thinking…','thinking'],['Listening…','listening'],['Speaking…','speaking'],['Working…','working']];
+  let pi=0; const godLabel=document.getElementById('godLabel');
+  document.getElementById('godlamp').style.cursor='pointer';
+  document.getElementById('godlamp').addEventListener('click',()=>{pi=(pi+1)%phases.length;godLabel.textContent=phases[pi][0];god.pattern=phases[pi][1];});
+
+  // widget header lamp (speaking = "just finished / result ready")
+  matrix(document.getElementById('wlamp'),{cols:9,rows:3,pattern:'speaking',dotScale:0.9});
+  // widget media grain — faint working field over the art
+  matrix(document.getElementById('wgrain'),{cols:40,rows:20,pattern:'working',speed:0.5,dotScale:0.6,baseOpacity:0.07});
+
+  // ambient watching lamp — slow working ripple
+  matrix(document.getElementById('alamp'),{cols:8,rows:4,pattern:'working',speed:0.55,dotScale:0.95,baseOpacity:0.85});
+
+  function clipAll(){
+    applyClip('godDrop',14,22);
+    applyClip('widgetDrop',14,24);
+    applyClip('ambientDrop',14,24);
+  }
+  window.addEventListener('load',clipAll);
+  window.addEventListener('resize',clipAll);
+  clipAll();
+})();
+</script>
+</body>
+</html>

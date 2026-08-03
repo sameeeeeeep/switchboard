@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — Panel redesign</title>
+<style>
+  :root{
+    /* §2.1 canonical tokens */
+    --page:#000000; --rail:#0A0A0B; --panel:#141416; --raised:#1E1E21;
+    --edge:#282829; --ink:#E8EDF4; --inkDim:#9A9AA2; --inkFaint:#6C6C74;
+    --lime:#C8F250; --localInk:#5B8DEF; --danger:#FF2D6E;
+    /* type */
+    --f-display:'Bricolage Grotesque','Space Grotesk',system-ui,sans-serif;
+    --f-sans:'Hanken Grotesk','Inter',system-ui,sans-serif;
+    --f-mono:'Spline Sans Mono','SF Mono',ui-monospace,monospace;
+    --f-word:'Doto','Bricolage Grotesque',var(--f-mono);
+    /* 4pt grid */
+    --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;
+    /* radii */
+    --r-xs:7px;--r-sm:12px;--r-md:16px;--r-lg:20px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #0d0d0f 0%, #060607 45%, #020203 100%);
+    color:var(--ink); font-family:var(--f-sans);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    min-height:100%; display:flex; flex-direction:column; align-items:center;
+    padding:40px 24px 72px;
+  }
+  .page-head{max-width:660px;text-align:center;margin-bottom:28px}
+  .page-head .eyebrow{
+    font-family:var(--f-mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--inkFaint);margin-bottom:10px;
+  }
+  .page-head h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;color:var(--ink)}
+  .page-head p{font-size:12px;color:var(--inkDim);margin-top:8px;line-height:1.55}
+
+  /* ---- the menu-bar seam + notch, so the panel reads as DROPPING from it ---- */
+  .stage{position:relative;display:flex;flex-direction:column;align-items:center}
+  .menubar{
+    width:760px;max-width:92vw;height:24px;background:var(--page);border-radius:6px 6px 0 0;
+    display:flex;align-items:center;justify-content:center;position:relative;
+  }
+  .menubar .lamps{display:flex;gap:3px}
+  .menubar .lamps i{width:5px;height:5px;border-radius:50%;background:var(--lime);display:block}
+  .menubar .clock{position:absolute;right:14px;font-family:var(--f-mono);font-size:9px;color:var(--inkFaint)}
+  .menubar .menus{position:absolute;left:14px;font-family:var(--f-sans);font-size:10px;color:var(--inkFaint);display:flex;gap:12px}
+
+  /* ---- the panel: NotchDropShape silhouette, 620×468, clipped ---- */
+  .panel-wrap{position:relative;filter:drop-shadow(0 30px 60px rgba(0,0,0,.55))}
+  .panel{
+    width:620px;height:468px;position:relative;background:var(--page);overflow:hidden;
+    -webkit-clip-path:path('M0,0 L620,0 Q606,0 606,14 L606,448 Q606,468 586,468 L34,468 Q14,468 14,448 L14,14 Q14,0 0,0 Z');
+    clip-path:path('M0,0 L620,0 Q606,0 606,14 L606,448 Q606,468 586,468 L34,468 Q14,468 14,448 L14,14 Q14,0 0,0 Z');
+    display:flex;
+  }
+  /* living background dot-field — reacts to daemon state, ultra-low opacity so content stays legible */
+  #bgfield{position:absolute;inset:0;width:620px;height:468px;pointer-events:none;opacity:.9}
+
+  /* ================= LEFT RAIL ================= */
+  .rail{
+    position:relative;z-index:2;width:206px;flex:0 0 206px;background:var(--rail);
+    padding:var(--s5);padding-top:var(--s6);display:flex;flex-direction:column;
+    border-right:1px solid var(--edge);
+  }
+  .wordmark{display:flex;align-items:center;gap:9px}
+  .mark{
+    width:17px;height:17px;border-radius:5px;background:var(--lime);position:relative;flex:0 0 auto;
+  }
+  .mark::after{content:"";position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:var(--rail)}
+  .wordmark .name{font-family:var(--f-word);font-weight:800;font-size:11px;letter-spacing:.5px;color:var(--ink)}
+  .health{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--lime)}
+
+  /* hero: the operator's lamp field IS the liveness indicator */
+  .hero{margin-top:32px}
+  .hero-top{display:flex;align-items:center;gap:11px}
+  #herolamp{width:44px;height:32px;display:block}
+  .hero-title{font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.01em;color:var(--lime);line-height:1}
+  .hero .activity{margin-top:16px;display:flex;gap:8px;align-items:flex-start}
+  .hero .act-ico{width:20px;height:20px;border-radius:6px;flex:0 0 auto;background:var(--panel);
+    display:flex;align-items:center;justify-content:center;font-size:11px}
+  .hero .act-text{font-size:11px;line-height:1.4}
+  .hero .act-text b{color:var(--inkDim);font-weight:600}
+  .hero .act-text span{color:var(--inkFaint)}
+  .hero .ago{font-family:var(--f-mono);font-size:9px;color:var(--inkFaint);margin-top:6px;margin-left:28px}
+
+  .kicker{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--inkFaint)}
+
+  /* context selector */
+  .context{margin-top:24px}
+  .ctx-box{margin-top:8px;display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel);
+    border:1px solid var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,transparent);border-radius:var(--r-xs)}
+  .ctx-box .ico{color:var(--inkDim);font-size:12px;width:16px;text-align:center}
+  .ctx-box .nm{font-size:12px;font-weight:500;color:var(--ink)}
+  .ctx-box .chev{margin-left:auto;color:var(--inkFaint);font-size:9px}
+
+  .spacer{flex:1 1 auto;min-height:24px}
+
+  /* daemon controls */
+  .daemon .row{display:flex;gap:8px;margin-top:8px}
+  .ghost{
+    display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:var(--r-xs);
+    background:var(--panel);border:1px solid var(--edge);color:var(--inkDim);
+    font-size:11px;font-weight:500;cursor:default;transition:background .15s,border-color .15s,color .15s;
+  }
+  .ghost:hover{background:var(--raised);color:var(--ink)}
+  .ghost.icon-only{width:26px;padding:0;justify-content:center}
+  .ghost .g{font-size:11px;line-height:1}
+  .daemon .kicker{margin-bottom:2px}
+
+  /* ================= RIGHT CONTENT ================= */
+  .content{position:relative;z-index:2;flex:1 1 auto;display:flex;flex-direction:column;min-width:0}
+  .divider{height:1px;background:var(--edge);flex:0 0 auto}
+  /* one divider rendered as a faint dot-row — the brand breathing through structure */
+  .dot-divider{height:1px;flex:0 0 auto;
+    background-image:radial-gradient(circle,var(--edge) 1px,transparent 1px);
+    background-size:6px 1px;background-repeat:repeat-x;background-position:0 0;opacity:.9}
+
+  .section{padding:var(--s4) var(--s5)}
+  .sec-head{display:flex;align-items:center;gap:6px;margin-bottom:13px}
+  .sec-head .count{font-family:var(--f-mono);font-size:9.5px;color:var(--inkFaint)}
+  .store-btn{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;
+    background:color-mix(in srgb,var(--lime) 12%,transparent);color:var(--lime);
+    font-family:var(--f-mono);font-size:9.5px;letter-spacing:.08em;cursor:default}
+  .store-btn:hover{background:color-mix(in srgb,var(--lime) 20%,transparent)}
+
+  /* connected apps */
+  .apps{display:flex;gap:14px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .apps::-webkit-scrollbar{display:none}
+  .app{width:60px;flex:0 0 60px;text-align:center;cursor:default}
+  .tile{position:relative;width:44px;height:44px;margin:0 auto;border-radius:10px;/* 44*.22≈10 */
+    display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:17px;
+    color:#0b0b0c;overflow:hidden;transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+  .app:hover .tile{transform:translateY(-2px)}
+  /* per-tile hover dot-ripple canvas sits behind glyph */
+  .tile canvas{position:absolute;inset:0;width:44px;height:44px;opacity:0;transition:opacity .2s}
+  .app:hover .tile canvas{opacity:.5}
+  .tile .glyph{position:relative;z-index:1}
+  .badge{position:absolute;right:-4px;bottom:-4px;width:15px;height:15px;border-radius:50%;
+    background:var(--page);border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;
+    font-size:7px;color:var(--inkDim);z-index:2}
+  .app .lbl{margin-top:7px;font-size:10.5px;font-weight:500;color:var(--inkDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* models | tools split */
+  .split{display:flex;flex:1 1 auto;min-height:0}
+  .col{flex:1 1 0;min-width:0;padding:var(--s5)}
+  .col.models{border-right:1px solid var(--edge)}
+  .col-head{display:flex;align-items:center;margin-bottom:12px}
+  .col-head .meta{margin-left:auto;font-family:var(--f-mono);font-size:9.5px;color:var(--inkDim)}
+  .provider{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+  .provider .p-ico{width:15px;height:15px;border-radius:4px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--inkDim)}
+  .provider .p-name{font-family:var(--f-mono);font-size:9px;letter-spacing:.04em;color:var(--inkDim)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:var(--r-sm);
+    background:var(--panel);border:1px solid var(--edge);font-size:11px;font-weight:500;color:var(--ink)}
+  .chip.mono{font-family:var(--f-mono);font-weight:400}
+  .chip .det{font-family:var(--f-mono);font-size:9px;color:var(--inkFaint)}
+  .chip.live{background:color-mix(in srgb,var(--lime) 9%,transparent);border-color:color-mix(in srgb,var(--lime) 45%,transparent)}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:var(--lime)}
+  .chip.dim{opacity:.5}
+
+  .tools{display:flex;flex-direction:column;gap:9px;max-height:196px;overflow:auto;scrollbar-width:none}
+  .tools::-webkit-scrollbar{display:none}
+  .tool{display:flex;align-items:center;gap:9px}
+  .tool .t-ico{width:22px;height:22px;border-radius:6px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:11px;flex:0 0 auto}
+  .tool .t-name{font-size:12px;color:var(--ink)}
+  .tool .t-count{margin-left:auto;font-family:var(--f-mono);font-size:9px;color:var(--inkFaint)}
+
+  /* mockup state control (not part of the product chrome) */
+  .controls{margin-top:26px;display:flex;gap:8px;align-items:center;color:var(--inkFaint);font-family:var(--f-mono);font-size:10px}
+  .controls .seg{display:flex;border:1px solid var(--edge);border-radius:999px;overflow:hidden}
+  .controls button{background:transparent;border:0;color:var(--inkDim);font-family:var(--f-mono);font-size:10px;
+    padding:6px 12px;cursor:pointer}
+  .controls button.on{background:var(--raised);color:var(--lime)}
+  .legend{max-width:640px;margin-top:22px;font-size:11px;color:var(--inkFaint);line-height:1.6;text-align:center}
+  .legend b{color:var(--inkDim);font-weight:600}
+  @media (prefers-reduced-motion: reduce){ .app:hover .tile{transform:none} }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <div class="eyebrow">Switchboard · Notch surface</div>
+    <h1>The Panel — sleeker, intentional</h1>
+    <p>One lime accent · one 4pt grid · one type scale — and the switchboard's lamp field woven through as living texture, liveness, and structure. Toggle the state below to watch it breathe.</p>
+  </div>
+
+  <div class="stage">
+    <div class="menubar">
+      <div class="menus"><span>Finder</span><span>File</span><span>Edit</span></div>
+      <div class="lamps"><i></i><i></i><i></i></div>
+      <div class="clock">9:41</div>
+    </div>
+
+    <div class="panel-wrap">
+      <div class="panel">
+        <canvas id="bgfield" width="620" height="468"></canvas>
+
+        <!-- LEFT RAIL -->
+        <aside class="rail">
+          <div class="wordmark">
+            <span class="mark"></span>
+            <span class="name">SWITCHBOARD</span>
+            <span class="health"></span>
+          </div>
+
+          <div class="hero">
+            <div class="hero-top">
+              <canvas id="herolamp" width="88" height="64"></canvas>
+              <div class="hero-title" id="heroTitle">Idle</div>
+            </div>
+            <div class="activity">
+              <div class="act-ico">✦</div>
+              <div class="act-text"><b>God</b> <span>ran a completion</span></div>
+            </div>
+            <div class="ago">2m ago</div>
+          </div>
+
+          <div class="context">
+            <div class="kicker">Context</div>
+            <div class="ctx-box">
+              <span class="ico">▤</span>
+              <span class="nm">Often — Q3 launch</span>
+              <span class="chev">▾</span>
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="daemon">
+            <div class="kicker">Daemon</div>
+            <div class="row">
+              <span class="ghost"><span class="g">⚯</span>pairing</span>
+              <span class="ghost"><span class="g">☰</span>logs</span>
+            </div>
+            <div class="row">
+              <span class="ghost icon-only" title="Restart"><span class="g">⟳</span></span>
+              <span class="ghost icon-only" title="Stop"><span class="g">■</span></span>
+              <span style="flex:1"></span>
+              <span class="ghost icon-only" title="Settings"><span class="g">⚙</span></span>
+              <span class="ghost icon-only" title="Quit"><span class="g">⏻</span></span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- RIGHT CONTENT -->
+        <main class="content">
+          <!-- connected apps -->
+          <section class="section">
+            <div class="sec-head">
+              <span class="kicker">Connected apps</span>
+              <span class="count">· 8</span>
+              <span class="store-btn">▦ STORE ↗</span>
+            </div>
+            <div class="apps" id="apps"></div>
+          </section>
+
+          <div class="dot-divider"></div>
+
+          <!-- models | tools -->
+          <div class="split">
+            <section class="col models">
+              <div class="col-head"><span class="kicker">Models</span><span class="meta">1 loaded · 4.9 GB</span></div>
+
+              <div class="provider">
+                <span class="p-ico" style="color:var(--lime)">✶</span>
+                <span class="p-name">CLAUDE CODE</span>
+              </div>
+              <div class="chips">
+                <span class="chip">Opus 4.8</span>
+                <span class="chip">Sonnet</span>
+                <span class="chip">Haiku</span>
+              </div>
+
+              <div class="provider">
+                <span class="p-ico">▚</span>
+                <span class="p-name">OLLAMA</span>
+              </div>
+              <div class="chips">
+                <span class="chip mono live"><span class="dot"></span>llama3.1:8b <span class="det">4.9GB</span></span>
+                <span class="chip mono dim">qwen2.5:14b <span class="det">9.0GB</span></span>
+                <span class="chip mono dim">deepseek-r1:7b <span class="det">4.7GB</span></span>
+              </div>
+            </section>
+
+            <section class="col tools">
+              <div class="col-head"><span class="kicker">Tools</span><span class="meta">69</span></div>
+              <div class="tools" id="tools"></div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="controls">
+      <span>daemon state</span>
+      <div class="seg" id="stateSeg">
+        <button data-state="idle" class="on">Idle</button>
+        <button data-state="working">Working</button>
+        <button data-state="signedout">Signed out</button>
+      </div>
+    </div>
+
+    <p class="legend">
+      <b>Dot-matrix as branding, five ways:</b> the panel background is a living lamp field that speeds up when the daemon works ·
+      the hero liveness beacon is a real 7×5 operator matrix (thinking sweep at idle, working ripple when busy, danger VU when signed out) ·
+      the apps ↔ models divider is a dot-row, not a hairline · each app tile ripples a lamp field on hover · content stays fully legible.
+      Honors <b>prefers-reduced-motion</b> (still mid-frames).
+    </p>
+  </div>
+
+<script>
+(function(){
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LIME=[200,242,80], DANGER=[255,45,110], INK=[154,154,162];
+
+  // ---- shared DotMatrix brightness fn (ported from RelayMenuBar.swift DotMatrix) ----
+  function brightness(pattern,c,r,cols,rows,t){
+    const cx=c, rx=r, mid=(rows-1)/2;
+    switch(pattern){
+      case 'listening':{ const h=1+2*(0.5+0.5*Math.sin(t*3+cx*0.7)); return Math.abs(rx-mid)<=h?1:0.1; }
+      case 'speaking':{ const wave=mid+(mid-0.15)*Math.sin(t*4.2+cx*0.95); return Math.abs(rx-wave)<0.85?1:0.1; }
+      case 'thinking':{ const s=0.5+0.5*Math.sin((cx+rx)*0.6-t*3); return 0.14+0.86*(s*s*s); }
+      case 'working': default: return 0.16+0.84*(0.5+0.5*Math.sin(cx*0.55-t*2.6));
+    }
+  }
+
+  function makeMatrix(canvas,{cols,rows,rgb,pattern,speed=1,dotScale=1,baseOpacity=1}){
+    const ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const gapX=W/cols, gapY=H/rows, dot=Math.min(gapX,gapY)*0.34*dotScale;
+    const state={pattern,rgb,speed};
+    function draw(time){
+      const t=(time||0)/1000*state.speed;
+      ctx.clearRect(0,0,W,H);
+      for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+          const b=brightness(state.pattern,c,r,cols,rows,t);
+          ctx.beginPath();
+          ctx.arc(gapX*(c+0.5),gapY*(r+0.5),dot,0,7);
+          ctx.fillStyle='rgba('+state.rgb[0]+','+state.rgb[1]+','+state.rgb[2]+','+(b*baseOpacity).toFixed(3)+')';
+          ctx.fill();
+        }
+      }
+    }
+    let raf;
+    function loop(ts){ draw(ts); raf=requestAnimationFrame(loop); }
+    if(reduce){ draw(1400); } else { raf=requestAnimationFrame(loop); }
+    return state;
+  }
+
+  // background living field — big, ultra-faint
+  const bg=makeMatrix(document.getElementById('bgfield'),
+    {cols:52,rows:40,rgb:LIME,pattern:'working',speed:0.35,dotScale:0.7,baseOpacity:0.05});
+
+  // hero lamp field
+  const hero=makeMatrix(document.getElementById('herolamp'),
+    {cols:7,rows:5,rgb:LIME,pattern:'thinking',speed:1,dotScale:1.15,baseOpacity:1});
+
+  // ---- connected apps (real wrapps + native God) ----
+  const APPS=[
+    {n:'God',g:'✦',bg:'#C8F250',plat:'▤',tint:'#0b0b0c'},
+    {n:'Bank',g:'B',bg:'#5B8DEF',plat:'◍',tint:'#04060b'},
+    {n:'Redline',g:'R',bg:'#FF6B6B',plat:'◍',tint:'#1a0505'},
+    {n:'AdForge',g:'A',bg:'#F4C24B',plat:'◍',tint:'#171200'},
+    {n:'Prism',g:'P',bg:'#9B7BEF',plat:'◍',tint:'#0d0717'},
+    {n:'Roast',g:'🔥',bg:'#2A2A2E',plat:'◍',tint:'#fff'},
+    {n:'Cast',g:'C',bg:'#3DD6C4',plat:'◍',tint:'#04120f'},
+    {n:'Yearbook',g:'Y',bg:'#E8905B',plat:'◍',tint:'#180a02'},
+  ];
+  const appsEl=document.getElementById('apps');
+  APPS.forEach(a=>{
+    const el=document.createElement('div'); el.className='app';
+    const tile=document.createElement('div'); tile.className='tile'; tile.style.background=a.bg;
+    const cv=document.createElement('canvas'); cv.width=44; cv.height=44;
+    const gl=document.createElement('span'); gl.className='glyph'; gl.textContent=a.g; gl.style.color=a.tint;
+    const bd=document.createElement('span'); bd.className='badge'; bd.textContent=a.plat;
+    tile.appendChild(cv); tile.appendChild(gl); tile.appendChild(bd);
+    const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=a.n;
+    el.appendChild(tile); el.appendChild(lbl); appsEl.appendChild(el);
+    // per-tile hover ripple
+    makeMatrix(cv,{cols:6,rows:6,rgb:[10,11,12],pattern:'working',speed:1.4,dotScale:0.8,baseOpacity:0.5});
+  });
+
+  // ---- tools ----
+  const TOOLS=[
+    {n:'Gmail',c:12,g:'✉'},{n:'ClickUp',c:18,g:'✓'},{n:'Granola',c:5,g:'◲'},
+    {n:'Shopify',c:22,g:'⬢'},{n:'Google Drive',c:8,g:'△'},{n:'Hugging Face',c:4,g:'⤳'},
+  ];
+  const toolsEl=document.getElementById('tools');
+  TOOLS.forEach(t=>{
+    const row=document.createElement('div'); row.className='tool';
+    row.innerHTML='<span class="t-ico">'+t.g+'</span><span class="t-name">'+t.n+'</span><span class="t-count">'+t.c+'</span>';
+    toolsEl.appendChild(row);
+  });
+
+  // ---- state control: the panel reacts ----
+  const heroTitle=document.getElementById('heroTitle');
+  const seg=document.getElementById('stateSeg');
+  function setState(s){
+    seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.state===s));
+    if(s==='working'){
+      heroTitle.textContent='Working'; heroTitle.style.color='var(--lime)';
+      hero.pattern='working'; hero.rgb=LIME;
+      bg.pattern='working'; bg.speed=0.9; bg.rgb=LIME;
+    } else if(s==='signedout'){
+      heroTitle.textContent='Sign in'; heroTitle.style.color='var(--danger)';
+      hero.pattern='listening'; hero.rgb=DANGER;
+      bg.pattern='listening'; bg.speed=0.5; bg.rgb=DANGER;
+    } else {
+      heroTitle.textContent='Idle'; heroTitle.style.color='var(--lime)';
+      hero.pattern='thinking'; hero.rgb=LIME;
+      bg.pattern='working'; bg.speed=0.35; bg.rgb=LIME;
+    }
+  }
+  seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) setState(b.dataset.state); });
+  setState('idle');
+})();
+</script>
+</body>
+</html>
