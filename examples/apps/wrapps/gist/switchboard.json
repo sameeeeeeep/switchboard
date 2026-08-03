@@ -4,12 +4,16 @@
   "tagline": "Paste anything, get a tight TL;DR.",
   "category": "skill",
   "components": {
+    "skills": [
+      "gist/summarize"
+    ],
     "ui": {
       "kind": "web",
       "url": "http://localhost:5188/gist.html"
     }
   },
   "surfaces": [
+    "god",
     "browser"
   ],
   "requires": [

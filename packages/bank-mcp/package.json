@@ -7,6 +7,11 @@
   "bin": {
     "bank-mcp": "./bank-mcp.mjs"
   },
+  "exports": {
+    "./brand-extract.mjs": { "types": "./brand-extract.d.ts", "default": "./brand-extract.mjs" },
+    "./site.mjs": "./site.mjs",
+    "./brand.mjs": "./brand.mjs"
+  },
   "scripts": {
     "test": "node tasks.test.mjs && node project.test.mjs && node brand.test.mjs"
   },

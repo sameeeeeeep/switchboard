@@ -1,0 +1,27 @@
+{
+  "id": "resize",
+  "name": "Resize",
+  "tagline": "Resize, convert & compress images — on your device, no AI",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/resize.html"
+    }
+  },
+  "surfaces": [
+    "browser"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

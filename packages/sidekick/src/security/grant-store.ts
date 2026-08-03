@@ -99,6 +99,24 @@ export class GrantStore {
     return g;
   }
 
+  /** Sweep every grant and clear any per-site `modelOverride` that has since been globally DISABLED
+   *  (docs/MODEL-SELECTION.md §5 "Disable a model that a per-site override pins" — global disable wins).
+   *  `disabled` is the canonical deny-list. Returns how many overrides were cleared. Idempotent; the
+   *  runtime path also refuses a disabled override lazily, so this is the persistent cleanup half. */
+  clearDisabledOverrides(disabled: string[]): number {
+    const deny = new Set(disabled.map(canonicalModel));
+    let cleared = 0;
+    for (const g of this.grants.values()) {
+      if (g.modelOverride && deny.has(canonicalModel(g.modelOverride))) {
+        g.modelOverride = undefined;
+        g.updatedAt = Date.now();
+        cleared++;
+      }
+    }
+    if (cleared) this.persist();
+    return cleared;
+  }
+
   /** Set an origin's trust mode (ask/trust/readonly). User-driven, out of band. */
   setMode(origin: string, mode: OriginGrant["mode"]): OriginGrant | null {
     const g = this.grants.get(origin);

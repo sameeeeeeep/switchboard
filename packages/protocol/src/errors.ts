@@ -9,6 +9,11 @@ export const BYOPErrorCode = {
   UNAUTHORIZED: 4100,
   /** Method exists but the origin's scope doesn't cover it (model/tool not granted). */
   SCOPE_EXCEEDED: 4110,
+  /** Every model capable of this work is turned OFF in the user's model deny-list
+   *  (~/.relay/models.json). Distinct from SCOPE_EXCEEDED: the model IS granted, the user just
+   *  globally disabled it (and every allowed substitute) — see docs/MODEL-SELECTION.md §5. The
+   *  surface shows "re-enable one in Settings → Models", not a stack trace. */
+  NO_ALLOWED_MODEL: 4111,
   /** A per-action write consent was denied by the user. */
   CONSENT_DENIED: 4120,
   /** Budget or rate limit hit (tokens/day or calls/min). */

@@ -3,6 +3,7 @@ import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { canonicalModel } from "./security/grant-store.js";
 
 /**
  * Daemon configuration + runtime state directory. The daemon binds to loopback only and
@@ -16,6 +17,11 @@ export const RELAY_DIR = process.env.RELAY_DIR || join(homedir(), ".relay");
 const TOKEN_FILE = join(RELAY_DIR, "pairing-token");
 const PROFILE_FILE = join(RELAY_DIR, "profile.json");
 const CLOUD_FILE = join(RELAY_DIR, "cloud.json");
+/** The user's model DENY-LIST (docs/MODEL-SELECTION.md §2). A deny-list, not an allow-list, so a
+ *  newly installed Claude/Ollama model is enabled by DEFAULT — the file stays tiny (usually
+ *  {"disabled":[]}) and the user never re-approves models they didn't turn off. Ids stored canonical
+ *  (opus/sonnet/haiku folded) so a disable of "opus" also catches a wrapp asking for "claude-opus-4-8". */
+const MODELS_FILE = join(RELAY_DIR, "models.json");
 /** Per-app tokens for DIRECT-principal (native) clients. SEPARATE from the extension's single
  *  pairing token: each entry is one app's own secret, mapping token → appId, and grants NO
  *  origin-stamping power (unlike the pairing token). Absent by default ⇒ no native apps registered. */
@@ -76,6 +82,38 @@ export function saveCloudConfig(patch: Partial<CloudConfig>): CloudConfig {
   if (!merged.openrouterKey) { writeCredential(CLOUD_FILE, JSON.stringify({ off: true }, null, 2)); return {}; }
   writeCredential(CLOUD_FILE, JSON.stringify({ ...merged, off: false }, null, 2));
   return loadCloudConfig();
+}
+
+/** The user's model deny-list. `disabled` holds CANONICAL ids (opus/sonnet/haiku folded; Ollama ids
+ *  like "llama3:8b" pass through). Empty ⇒ everything on. */
+export interface ModelPrefs {
+  disabled: string[];
+}
+
+/** Load the model deny-list, canonicalizing on read so comparisons are exact. Never throws; a missing
+ *  or malformed file degrades to {disabled:[]} (everything on). Read FRESH on each use (like economy)
+ *  so a Settings toggle takes effect on the very next glance/completion — no daemon restart. */
+export function loadModelPrefs(): ModelPrefs {
+  ensureDir();
+  try {
+    if (existsSync(MODELS_FILE)) {
+      const raw = JSON.parse(readFileSync(MODELS_FILE, "utf8"));
+      const disabled = Array.isArray(raw?.disabled)
+        ? [...new Set((raw.disabled as unknown[]).filter((x): x is string => typeof x === "string" && !!x).map(canonicalModel))]
+        : [];
+      return { disabled };
+    }
+  } catch { /* malformed ⇒ no preference (everything on) */ }
+  return { disabled: [] };
+}
+
+/** Persist the model deny-list (canonicalized). The menubar Settings UI is the usual writer (mirrors
+ *  economy); this exists for symmetry + any daemon/CLI path. */
+export function saveModelPrefs(prefs: ModelPrefs): ModelPrefs {
+  ensureDir();
+  const disabled = [...new Set((prefs.disabled ?? []).filter((x): x is string => typeof x === "string" && !!x).map(canonicalModel))];
+  writeCredential(MODELS_FILE, JSON.stringify({ disabled }, null, 2));
+  return { disabled };
 }
 
 /** The paired user's public identity — a display name (and optional avatar) any connected app can

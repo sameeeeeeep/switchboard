@@ -1,0 +1,48 @@
+{
+  "id": "reachout",
+  "name": "Reachout",
+  "tagline": "A lead list into personalized outreach, drafted on your Claude — never auto-sent.",
+  "category": "agent",
+  "author": "Switchboard",
+  "components": {
+    "workflows": [
+      "reachout/draftSequence",
+      "reachout/stageNextTouch"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/reachout.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    },
+    {
+      "kind": "connector",
+      "id": "gmail"
+    }
+  ],
+  "inside": [
+    "A personalized N-touch sequence per lead, grounded in your ICP + a real hook",
+    "Staged as Gmail drafts — every send stays a human click (draft-not-send)",
+    "The cadence auto-advances as a routine while you're away (routine #2)"
+  ],
+  "tools": [
+    {
+      "name": "reachout_draft",
+      "description": "Draft/stage the next due outreach touches for a campaign, grounded in the ICP + each lead's hook. Renders the campaign board live and returns what was drafted. Stages Gmail DRAFTS only — it never sends.",
+      "inputSchema": {
+        "campaignId": "string — the campaign to advance. Required."
+      }
+    }
+  ]
+}

@@ -90,6 +90,8 @@ const WRAPPS = [
   { id: "standup", html: "standup.html", cat: "skill" },
   { id: "objection", html: "objection.html", cat: "skill" },
   { id: "coldemail", html: "coldemail.html", cat: "skill" },
+  // ideabrain "I have an idea" widget (2026-08) — idea-first, no cold-open; the runner types the idea line.
+  { id: "ideabrain", html: "ideabrain.html", cat: "studio" },
 ];
 
 const HARNESS_JSON = JSON.stringify(PROJECTS);

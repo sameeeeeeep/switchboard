@@ -20,7 +20,7 @@ function selectedVoice() {
     return existsSync(f) ? readFileSync(f, "utf8").trim() : "";
   } catch { return ""; }
 }
-async function speakCloned(text) {
+async function speakCloned(text, onPlay) {
   const voice = selectedVoice();
   if (!voice) return false;
   try {
@@ -37,6 +37,7 @@ async function speakCloned(text) {
     if (!buf.length) return false;
     const wav = join(mkdtempSync(join(tmpdir(), "god-tts-")), "v.wav");
     writeFileSync(wav, buf);
+    onPlay?.();   // synthesis is done — audio is about to sound, flip the notch to "Speaking" now
     await new Promise((r) => { const p = spawn("afplay", [wav]); p.on("close", r); p.on("error", r); });
     return true;
   } catch { return false; }
@@ -44,7 +45,7 @@ async function speakCloned(text) {
 
 // A god's voice: render the persona voice, drench it in cathedral reverb (ffmpeg multi-tap echo),
 // play it back. Rate-agnostic (no pitch math). Returns false if ffmpeg/afplay aren't around → plain `say`.
-async function speakDivine(voice, text) {
+async function speakDivine(voice, text, onPlay) {
   try {
     const dir = mkdtempSync(join(tmpdir(), "god-voice-"));
     const aiff = join(dir, "v.aiff"), wav = join(dir, "v.wav");
@@ -53,6 +54,7 @@ async function speakDivine(voice, text) {
     const fx = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", aiff,
       "-af", "aecho=0.9:0.82:26:0.15", wav]);
     if (fx.status !== 0) return false;
+    onPlay?.();   // rendered — about to sound
     await new Promise((res) => { const p = spawn("afplay", [wav]); p.on("close", res); p.on("error", res); });
     return true;
   } catch { return false; }
@@ -74,13 +76,17 @@ export function makeCompanion(persona) {
     /** The voice. Persona-scoped so a different God literally SOUNDS different. macOS `say -v`
      *  now; the daemon's `claude_speak` (cloned / connector voices) is the drop-in upgrade. Falls
      *  back to the default voice if the persona's voice isn't installed — a God never goes mute. */
-    async speak(text) {
+    // `onPlay` fires the instant audio actually begins — AFTER synthesis (which can be 3–20s for a
+    // cloned voice). The caller uses it to flip the notch from "Almost done…" to "Speaking" only when
+    // there's real sound, so the pill never says "Speaking" over a silent synth wait.
+    async speak(text, onPlay) {
       if (!text || process.env.GOD_MUTE) return; // GOD_MUTE: skip audio (tests, quiet rooms)
-      if (await speakCloned(text)) return;       // a Settings-selected CLONED voice wins if it's up
+      if (await speakCloned(text, onPlay)) return;       // a Settings-selected CLONED voice wins if it's up
       const divine = persona.voiceFx === "divine" || process.env.GOD_DIVINE === "1";
-      if (divine && (await speakDivine(persona.voice, text))) return; // reverb-drenched god's voice
+      if (divine && (await speakDivine(persona.voice, text, onPlay))) return; // reverb-drenched god's voice
       const say = (voiceArgs) =>
         new Promise((res) => {
+          onPlay?.();   // `say` streams as it speaks — synthesis + playback are one step
           const p = spawn("say", [...voiceArgs, text]);
           p.on("close", (c) => res(c === 0));
           p.on("error", () => res(false));

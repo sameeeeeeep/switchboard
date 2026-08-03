@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Switchboard — Product Film</title>
+<!--
+  SWITCHBOARD · PRODUCT FILM  (standalone prototype for the landing page)
+  Self-contained: no CDN, no external assets. All CSS/JS inline, illustration is inline SVG.
+  Design tokens are lifted straight from:
+    · the-last-prompt/switchboard/index.html   (the landing chrome: --void, --phosphor, --paper, --line, mono)
+    · packages/menubar/GodWidgetKit.swift + RelayMenuBar.swift  (the notch widget + NotchDropShape + lime #C8F250)
+  Fonts: the real landing loads JetBrains Mono + Doto via Google Fonts. To stay CDN-free this prototype
+  falls back to the system mono / sans stack — swap the --mono / --sans vars when integrating.
+-->
+<style>
+  :root{
+    /* ---- landing chrome (phosphor register) ---- */
+    --void:#050807; --panel:#0a0f0c; --line:#16221b; --line-bright:#234433;
+    --phosphor:#3dff88; --phosphor-dim:#1d7a45; --paper:#cfe3d6; --muted:#7fa18d; --faint:#48604f;
+    /* ---- the notch widget (warm-lime cockpit — matches GodWidgetKit) ---- */
+    --wpage:#000000; --wpanel:#141416; --wraised:#1E1E21; --wedge:#282829;
+    --wink:#E8EDF4; --winkdim:#9A9AA2; --winkfaint:#6C6C74; --wlime:#C8F250; --wok:#3DD68C;
+    --mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+    --sans:'Instrument Sans',system-ui,-apple-system,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--void);color:var(--paper);font-family:var(--sans);
+    background-image:radial-gradient(var(--line) 1px, transparent 1px);background-size:30px 30px;
+    -webkit-font-smoothing:antialiased;display:grid;place-items:center;min-height:100vh;overflow:hidden;
+  }
+
+  /* ---- responsive fit: the stage is a fixed pixel canvas (so clip-path px math holds),
+         scaled to the viewport by JS via --fit ---- */
+  .fit{width:940px;height:600px;transform:scale(var(--fit,1));transform-origin:center center}
+  .stage{
+    position:relative;width:940px;height:600px;border-radius:18px;overflow:hidden;
+    box-shadow:0 40px 120px -40px rgba(0,0,0,.9),0 0 0 1px rgba(61,255,136,.06);
+  }
+
+  /* ---- macOS desktop ---- */
+  .desktop{position:absolute;inset:0;
+    background:
+      radial-gradient(120% 90% at 78% 8%, rgba(61,255,136,.10), transparent 60%),
+      radial-gradient(90% 70% at 12% 100%, rgba(31,122,69,.18), transparent 55%),
+      linear-gradient(160deg,#08110d 0%,#050807 60%,#03060a 100%);
+  }
+  .desktop::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 100% at 50% 50%, transparent 55%, rgba(0,0,0,.55));}
+
+  /* ---- menubar + notch ---- */
+  .menubar{position:absolute;top:0;left:0;right:0;height:28px;z-index:20;
+    display:flex;align-items:center;gap:16px;padding:0 16px;
+    font-family:var(--mono);font-size:11px;letter-spacing:.02em;color:rgba(207,227,214,.72);
+    background:rgba(5,8,7,.55);backdrop-filter:blur(8px);border-bottom:1px solid rgba(22,34,27,.7);}
+  .menubar .mk{color:var(--phosphor);font-weight:700}
+  .menubar .sp{flex:1}
+  .menubar .rt{display:flex;gap:14px;opacity:.8}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:30;
+    width:210px;height:30px;background:#000;border-radius:0 0 15px 15px;
+    display:flex;align-items:center;justify-content:center;gap:9px;
+    box-shadow:0 2px 8px rgba(0,0,0,.6);}
+  .orb{width:9px;height:9px;border-radius:50%;background:#20241f;transition:background .4s, box-shadow .4s;}
+  .orb.live{background:var(--wlime);box-shadow:0 0 10px var(--wlime),0 0 20px rgba(200,242,80,.5);
+    animation:orbpulse 1.3s ease-in-out infinite;}
+  .orb-lbl{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--winkfaint);opacity:0;transition:opacity .4s;white-space:nowrap;}
+  .orb-lbl.on{opacity:1;color:var(--wlime)}
+  @keyframes orbpulse{50%{box-shadow:0 0 6px var(--wlime),0 0 12px rgba(200,242,80,.3)}}
+
+  /* ---- the doc/webpage behind ---- */
+  .content{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:5;
+    width:560px;background:#0b120e;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 30px 60px -30px rgba(0,0,0,.8);transition:filter .6s, opacity .6s;}
+  .content.dim{filter:saturate(.6) brightness(.62);opacity:.85}
+  .doc-bar{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--line);
+    background:#0d1410;}
+  .doc-bar i{width:9px;height:9px;border-radius:50%;background:#1c2b22;display:block}
+  .doc-bar .url{margin-left:8px;font-family:var(--mono);font-size:10px;color:var(--faint);
+    background:#0a0f0c;border:1px solid var(--line);border-radius:5px;padding:3px 12px;}
+  .doc-body{padding:22px 26px;}
+  .doc-kick{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--phosphor-dim);margin-bottom:12px}
+  .doc-h{font-family:var(--sans);font-weight:700;font-size:22px;color:var(--paper);line-height:1.2;margin-bottom:14px}
+  .doc-p{height:8px;border-radius:4px;background:linear-gradient(90deg,#16221b,#0f1912);margin-bottom:9px}
+  .doc-p.w1{width:100%}.doc-p.w2{width:92%}.doc-p.w3{width:80%}.doc-p.w4{width:96%}.doc-p.w5{width:64%}
+  .doc-img{height:120px;border-radius:8px;margin:16px 0 6px;
+    background:linear-gradient(150deg,rgba(61,255,136,.14),#0d1912 60%,#0a0f0c);border:1px solid var(--line)}
+
+  /* ---- ⌃⌃ key hint ---- */
+  .keyhint{position:absolute;left:50%;bottom:40px;transform:translateX(-50%) translateY(8px);z-index:35;
+    display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:11px;
+    background:rgba(0,0,0,.62);border:1px solid var(--wedge);backdrop-filter:blur(6px);
+    opacity:0;transition:opacity .35s, transform .35s;}
+  .keyhint.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .keycap{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--wink);
+    min-width:30px;height:30px;display:grid;place-items:center;border-radius:7px;
+    background:linear-gradient(180deg,#26262a,#141416);border:1px solid #333;
+    box-shadow:0 2px 0 #000, inset 0 1px 0 rgba(255,255,255,.06);transition:.18s;}
+  .keycap.press{background:linear-gradient(180deg,var(--wlime),#a9d63f);color:#111;
+    border-color:var(--wlime);box-shadow:0 0 14px rgba(200,242,80,.6);transform:translateY(1px)}
+  .keyhint .kh-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--winkdim)}
+
+  /* ---- dictation caption under the notch ---- */
+  .caption{position:absolute;left:50%;top:44px;transform:translateX(-50%);z-index:25;
+    max-width:520px;display:flex;align-items:center;gap:9px;padding:8px 15px;border-radius:11px;
+    background:rgba(0,0,0,.66);border:1px solid var(--wedge);backdrop-filter:blur(6px);
+    opacity:0;transition:opacity .35s, transform .35s;pointer-events:none;}
+  .caption.on{opacity:1}
+  .caption .wave{display:flex;align-items:center;gap:2.5px;height:14px}
+  .caption .wave i{width:2.5px;height:5px;border-radius:2px;background:var(--wlime);
+    animation:wave 1s ease-in-out infinite;}
+  .caption .wave i:nth-child(2){animation-delay:.15s}
+  .caption .wave i:nth-child(3){animation-delay:.3s}
+  .caption .wave i:nth-child(4){animation-delay:.45s}
+  .caption .wave i:nth-child(5){animation-delay:.6s}
+  @keyframes wave{0%,100%{height:4px;opacity:.5}50%{height:13px;opacity:1}}
+  .caption .txt{font-family:var(--sans);font-size:14px;color:var(--wink);white-space:nowrap;font-style:italic}
+  .caption .caret{display:inline-block;width:2px;height:15px;background:var(--wlime);margin-left:1px;
+    vertical-align:middle;animation:blink 1s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ================= THE NOTCH WIDGET ================= */
+  .widget{position:absolute;left:50%;top:28px;z-index:28;width:360px;
+    background:var(--wpage);color:var(--wink);
+    transform:translateX(-50%) scaleX(.55) scaleY(.02);transform-origin:top center;
+    opacity:0;overflow:hidden;
+    box-shadow:0 40px 90px -30px rgba(0,0,0,.95), 0 0 60px rgba(200,242,80,.04);
+  }
+  .widget.grown{transform:translateX(-50%) scaleX(1) scaleY(1);opacity:1;
+    transition:transform .52s cubic-bezier(.2,.8,.2,1), opacity .4s ease, height .42s cubic-bezier(.3,.7,.2,1);}
+  .wpad{padding:18px 20px 20px}
+  .whead{display:flex;align-items:center;gap:11px}
+  .wdot{width:6px;height:6px;border-radius:50%;background:var(--wok);flex:none;transition:background .3s}
+  .wdot.working{background:var(--wlime);box-shadow:0 0 8px var(--wlime)}
+  .whead .htxt{min-width:0;flex:1;display:flex;flex-direction:column}
+  .wkick{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--winkfaint);white-space:nowrap}
+  .wkick b{color:var(--wlime);font-weight:700}
+  .wtitle{font-family:var(--sans);font-weight:600;font-size:14px;color:var(--wink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .wchip{display:inline-flex;align-items:center;gap:5px;flex:none;
+    font-family:var(--mono);font-size:10px;color:var(--winkdim);
+    padding:5px 9px;border-radius:7px;background:var(--wpanel);border:1px solid rgba(200,242,80,.35)}
+  .wchip .fx{font-size:10px}
+  .wclose{flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:7px;
+    background:var(--wpanel);border:1px solid var(--wedge);color:var(--winkdim);font-size:12px;line-height:1}
+  .whair{height:1px;background:var(--wedge);margin:14px 0}
+  .wbody{transition:opacity .32s ease}
+  .wbody.fade{opacity:0}
+
+  /* working canvas — spinner + status + indeterminate lime bar */
+  .work{display:flex;flex-direction:column;gap:12px;padding:4px 0}
+  .work-row{display:flex;align-items:center;gap:9px}
+  .spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(200,242,80,.22);
+    border-top-color:var(--wlime);animation:spin .8s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .work-line{font-size:12.5px;color:var(--winkdim)}
+  .wbar{height:4px;border-radius:4px;background:var(--wpanel);overflow:hidden;position:relative}
+  .wbar::after{content:"";position:absolute;top:0;left:0;height:100%;width:33%;border-radius:4px;
+    background:linear-gradient(90deg,rgba(200,242,80,.15),var(--wlime),rgba(200,242,80,.15));
+    animation:sweep 1.1s ease-in-out infinite alternate}
+  @keyframes sweep{from{left:-2%}to{left:69%}}
+
+  /* image result */
+  .wimg{border-radius:16px;overflow:hidden;border:1px solid var(--wedge);aspect-ratio:4/3;background:#0c0a07}
+  .wimg svg{display:block;width:100%;height:100%}
+  .wcap{display:flex;align-items:center;gap:8px;margin-top:14px;font-family:var(--sans);
+    font-size:11.5px;color:var(--winkdim)}
+  .wcap .ic{color:var(--winkfaint);font-size:11px}
+  .wsteer{margin-top:14px}
+  .wsteer .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--winkfaint);margin-bottom:8px}
+  .wsteer .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .schip{font-family:var(--mono);font-size:10.5px;color:var(--winkdim);padding:5px 11px;border-radius:100px;
+    background:var(--wpanel);border:1px solid var(--wedge)}
+  .wactions{display:flex;align-items:center;gap:8px;margin-top:16px}
+  .wbtn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:11px;font-weight:600;
+    padding:8px 11px;border-radius:7px;background:var(--wpanel);border:1px solid var(--wedge);color:var(--winkdim)}
+  .wbtn.dash{border-style:dashed}
+  .wbtn.prim{background:var(--wlime);border-color:var(--wlime);color:#0b0d08;margin-left:auto}
+  .wbtn .g{font-size:11px}
+
+  /* cards result */
+  .wcards{display:flex;flex-direction:column;gap:8px}
+  .card{padding:12px;border-radius:12px;background:var(--wpanel);border:1px solid var(--wedge)}
+  .card.rec{border-color:rgba(200,242,80,.5)}
+  .card .top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .card .cl{font-family:var(--sans);font-weight:600;font-size:12.5px;color:var(--wink)}
+  .card .rp{font-family:var(--mono);font-size:8.5px;color:var(--wlime);padding:2px 6px;border-radius:100px;
+    background:rgba(200,242,80,.12)}
+  .card .ct{font-size:11px;color:var(--winkdim);line-height:1.45}
+
+  /* text result */
+  .wtext{padding:14px 15px;border-radius:12px;background:var(--wpanel);border:1px solid var(--wedge);
+    font-size:12px;color:var(--wink);line-height:1.55}
+  .wtext .th{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;color:var(--wlime);margin-bottom:9px}
+  .wtext ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+  .wtext li{display:flex;gap:8px;color:var(--winkdim)}
+  .wtext li::before{content:"›";color:var(--wlime);flex:none}
+  .wtext li b{color:var(--wink);font-weight:600}
+
+  /* caption/label at the very bottom of the stage (film title) */
+  .filmtag{position:absolute;left:16px;bottom:14px;z-index:40;font-family:var(--mono);
+    font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+    display:flex;align-items:center;gap:8px}
+  .filmtag .d{width:5px;height:5px;border-radius:50%;background:var(--phosphor);
+    box-shadow:0 0 8px var(--phosphor);animation:orbpulse 1.6s ease-in-out infinite}
+</style>
+</head>
+<body>
+  <div class="fit" id="fit">
+    <div class="stage">
+      <div class="desktop"></div>
+
+      <!-- the doc/webpage the user is looking at -->
+      <div class="content" id="content">
+        <div class="doc-bar"><i></i><i></i><i></i><span class="url">coffeeandcopy.co / journal</span></div>
+        <div class="doc-body">
+          <div class="doc-kick">The Journal · Field Notes</div>
+          <div class="doc-h">On mornings, ritual, and the perfect pour</div>
+          <div class="doc-p w1"></div><div class="doc-p w2"></div><div class="doc-p w4"></div>
+          <div class="doc-img"></div>
+          <div class="doc-p w3"></div><div class="doc-p w1"></div><div class="doc-p w5"></div>
+        </div>
+      </div>
+
+      <!-- menubar + notch -->
+      <div class="menubar">
+        <span class="mk">◉ Switchboard</span><span>File</span><span>Edit</span><span>View</span>
+        <span class="sp"></span>
+        <span class="rt"><span>100%</span><span>◧</span><span id="clock">9:41</span></span>
+      </div>
+      <div class="notch">
+        <div class="orb" id="orb"></div>
+        <div class="orb-lbl" id="orbLbl">listening</div>
+      </div>
+
+      <!-- dictation caption -->
+      <div class="caption" id="caption">
+        <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="txt" id="capTxt"></span><span class="caret" id="caret" style="display:none"></span>
+      </div>
+
+      <!-- the notch widget (content injected by JS) -->
+      <div class="widget" id="widget"><div class="wpad" id="wpad"></div></div>
+
+      <!-- ⌃⌃ key hint -->
+      <div class="keyhint" id="keyhint">
+        <span class="keycap" id="kc1">⌃</span><span class="keycap" id="kc2">⌃</span>
+        <span class="kh-lbl">hold to talk</span>
+      </div>
+
+      <div class="filmtag"><span class="d"></span>Switchboard · one keystroke, on your own AI</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s){return document.querySelector(s);};
+  var fit=$("#fit"), stage=$(".stage");
+  function refit(){
+    var pad=32, w=Math.min(window.innerWidth-pad, 940), h=window.innerHeight-pad;
+    var f=Math.min(w/940, h/600, 1);
+    fit.style.setProperty("--fit", f.toFixed(4));
+  }
+  window.addEventListener("resize", refit); refit();
+
+  var widget=$("#widget"), wpad=$("#wpad"), orb=$("#orb"), orbLbl=$("#orbLbl"),
+      caption=$("#caption"), capTxt=$("#capTxt"), caret=$("#caret"),
+      keyhint=$("#keyhint"), kc1=$("#kc1"), kc2=$("#kc2"), content=$("#content");
+
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+
+  // ---- NotchDropShape → CSS clip-path (ported 1:1 from GodWidgetKit / RelayMenuBar) ----
+  function notchClip(w,h){
+    var e=Math.min(14,w/2), b=Math.min(22,(w-2*e)/2);
+    return "path('M0 0 L"+w+" 0 Q"+(w-e)+" 0 "+(w-e)+" "+e+
+      " L"+(w-e)+" "+(h-b)+" Q"+(w-e)+" "+h+" "+(w-e-b)+" "+h+
+      " L"+(e+b)+" "+h+" Q"+e+" "+h+" "+e+" "+(h-b)+
+      " L"+e+" "+e+" Q"+e+" 0 0 0 Z')";
+  }
+  function applyShape(){
+    var w=widget.offsetWidth, h=widget.offsetHeight;
+    if(w>0&&h>0){ var c=notchClip(w,h); widget.style.clipPath=c; widget.style.webkitClipPath=c; }
+  }
+  // keep the clip in sync while the height CSS-transitions
+  function syncShape(ms){
+    var end=performance.now()+ms;
+    (function frame(){ applyShape(); if(performance.now()<end) requestAnimationFrame(frame); })();
+  }
+
+  // ---- widget content templates ----
+  function head(kick,title){
+    return '<div class="whead">'
+      + '<span class="wdot working" id="wdot"></span>'
+      + '<span class="htxt"><span class="wkick">'+kick+'</span><span class="wtitle">'+title+'</span></span>'
+      + '<span class="wchip"><span class="fx">📁</span> Switchboard</span>'
+      + '<span class="wclose">✕</span></div><div class="whair"></div>';
+  }
+  function working(kick,title,line){
+    return head(kick,title)+'<div class="wbody" id="wbody"><div class="work">'
+      + '<div class="work-row"><span class="spin"></span><span class="work-line">'+line+'</span></div>'
+      + '<div class="wbar"></div></div></div>';
+  }
+  function imageResult(){
+    return head('PRISM · <b>LIVE</b>','Prism · fox in a library')+'<div class="wbody" id="wbody">'
+      + '<div class="wimg">'+foxSVG()+'</div>'
+      + '<div class="wcap"><span class="ic">◭</span> editorial illustration · grounded in Switchboard</div>'
+      + '<div class="wsteer"><div class="lbl">Steer</div><div class="chips">'
+      +   '<span class="schip">warmer</span><span class="schip">wider crop</span><span class="schip">new seed</span></div></div>'
+      + '<div class="wactions"><span class="wbtn dash"><span class="g">✥</span> drag to place</span>'
+      +   '<span class="wbtn"><span class="g">↻</span> Regenerate</span>'
+      +   '<span class="wbtn prim"><span class="g">⇱</span> Open in Prism</span></div></div>';
+  }
+  function cardsResult(){
+    return head('BRANDBRAIN · <b>LIVE</b>','Ad concepts · coffee brand')+'<div class="wbody" id="wbody">'
+      + '<div class="wcards">'
+      +   '<div class="card rec"><div class="top"><span class="cl">The 6am Ritual</span><span class="rp">recommended</span></div>'
+      +     '<div class="ct">Cinematic slow pour, warm light. Line: “Mornings, earned.”</div></div>'
+      +   '<div class="card"><div class="top"><span class="cl">Single-Origin Story</span></div>'
+      +     '<div class="ct">Farmer portrait + origin map. Trust through provenance.</div></div>'
+      +   '<div class="card"><div class="top"><span class="cl">The Commuter Cup</span></div>'
+      +     '<div class="ct">Bold, kinetic, city motion — for drinkers on the go.</div></div>'
+      + '</div>'
+      + '<div class="wcap"><span class="ic">◫</span> 3 concepts · grounded in Switchboard</div>'
+      + '<div class="wactions"><span class="wbtn"><span class="g">⧉</span> Copy</span>'
+      +   '<span class="wbtn"><span class="g">↻</span> Regenerate</span>'
+      +   '<span class="wbtn prim"><span class="g">⇱</span> Open in Brandbrain</span></div></div>';
+  }
+  function briefResult(){
+    return head('IDEABRAIN · <b>LIVE</b>','First-pass brief')+'<div class="wbody" id="wbody">'
+      + '<div class="wtext"><div class="th">THE IDEA</div>'
+      +   '<div style="color:var(--wink);margin-bottom:10px">A notch-native way to run AI on your own Claude.</div>'
+      +   '<ul>'
+      +     '<li><b>Who</b>&nbsp;— makers who live in flow, not in tabs</li>'
+      +     '<li><b>Why now</b>&nbsp;— voice + on-device models finally viable</li>'
+      +     '<li><b>The wedge</b>&nbsp;— one keystroke beats one more login</li>'
+      +     '<li><b>Test</b>&nbsp;— will people trust a broker with their AI?</li>'
+      +   '</ul></div>'
+      + '<div class="wcap"><span class="ic">◈</span> first-pass brief · grounded in Switchboard</div>'
+      + '<div class="wactions"><span class="wbtn"><span class="g">⧉</span> Copy</span>'
+      +   '<span class="wbtn"><span class="g">↻</span> Regenerate</span>'
+      +   '<span class="wbtn prim"><span class="g">⇱</span> Open in Ideabrain</span></div></div>';
+  }
+
+  // warm editorial illustration: a fox reading in a library (inline SVG, NOT a photo)
+  function foxSVG(){
+    return '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">'
+    +'<defs>'
+    +'<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a2416"/><stop offset="0.55" stop-color="#241408"/><stop offset="1" stop-color="#160c04"/></linearGradient>'
+    +'<radialGradient id="lamp" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffd98a" stop-opacity="0.9"/><stop offset="0.5" stop-color="#f4a94b" stop-opacity="0.35"/><stop offset="1" stop-color="#f4a94b" stop-opacity="0"/></radialGradient>'
+    +'<linearGradient id="fox" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f08a3c"/><stop offset="1" stop-color="#d5641f"/></linearGradient>'
+    +'</defs>'
+    +'<rect width="400" height="300" fill="url(#bg)"/>'
+    // bookshelves
+    +'<g opacity="0.85">'
+    +'<rect x="18" y="34" width="364" height="150" fill="#1c1006" rx="4"/>'
+    +'<rect x="18" y="104" width="364" height="6" fill="#0f0803"/>'
+    +'<g>'
+    +'<rect x="30" y="44" width="13" height="56" rx="2" fill="#8a3b2a"/><rect x="46" y="40" width="11" height="60" rx="2" fill="#b5763a"/>'
+    +'<rect x="60" y="48" width="15" height="52" rx="2" fill="#5c7a52"/><rect x="78" y="42" width="10" height="58" rx="2" fill="#c58a3c"/>'
+    +'<rect x="91" y="46" width="13" height="54" rx="2" fill="#7a4a2f"/><rect x="300" y="44" width="12" height="56" rx="2" fill="#8a3b2a"/>'
+    +'<rect x="315" y="40" width="11" height="60" rx="2" fill="#5c7a52"/><rect x="329" y="48" width="14" height="52" rx="2" fill="#b5763a"/>'
+    +'<rect x="346" y="42" width="10" height="58" rx="2" fill="#c58a3c"/><rect x="359" y="46" width="12" height="54" rx="2" fill="#7a4a2f"/>'
+    +'<rect x="32" y="118" width="12" height="54" rx="2" fill="#5c7a52"/><rect x="47" y="114" width="11" height="58" rx="2" fill="#8a3b2a"/>'
+    +'<rect x="330" y="118" width="12" height="54" rx="2" fill="#b5763a"/><rect x="345" y="114" width="11" height="58" rx="2" fill="#5c7a52"/>'
+    +'<rect x="360" y="120" width="12" height="52" rx="2" fill="#c58a3c"/>'
+    +'</g></g>'
+    // warm lamp glow
+    +'<ellipse cx="300" cy="150" rx="150" ry="130" fill="url(#lamp)"/>'
+    +'<circle cx="322" cy="86" r="15" fill="#ffcf7a"/><rect x="318" y="96" width="8" height="34" fill="#6b4a24"/>'
+    // desk
+    +'<rect x="0" y="238" width="400" height="62" fill="#20130a"/>'
+    +'<rect x="0" y="234" width="400" height="5" fill="#3a2414"/>'
+    // fox (sitting, reading an open book)
+    +'<g transform="translate(150,150)">'
+    +'<ellipse cx="52" cy="120" rx="70" ry="18" fill="#000" opacity="0.35"/>'
+    // tail
+    +'<path d="M -6 96 Q -58 88 -46 44 Q -28 74 8 84 Z" fill="url(#fox)"/><path d="M -46 44 Q -40 60 -18 70 L -30 48 Z" fill="#fbe9d4"/>'
+    // body
+    +'<path d="M 14 40 Q 62 30 96 62 Q 108 96 84 116 L 20 116 Q 2 92 14 40 Z" fill="url(#fox)"/>'
+    +'<path d="M 34 66 Q 58 58 78 76 Q 84 100 66 112 L 40 112 Q 28 90 34 66 Z" fill="#fbe9d4"/>'
+    // head
+    +'<circle cx="46" cy="30" r="30" fill="url(#fox)"/>'
+    +'<path d="M 20 12 L 10 -18 L 34 4 Z" fill="url(#fox)"/><path d="M 72 12 L 84 -18 L 60 4 Z" fill="url(#fox)"/>'
+    +'<path d="M 22 8 L 16 -8 L 30 4 Z" fill="#3a1c0c"/><path d="M 70 8 L 78 -8 L 62 4 Z" fill="#3a1c0c"/>'
+    +'<path d="M 30 34 Q 46 48 62 34 Q 58 50 46 52 Q 34 50 30 34 Z" fill="#fbe9d4"/>'
+    +'<circle cx="37" cy="28" r="3.4" fill="#241207"/><circle cx="57" cy="28" r="3.4" fill="#241207"/>'
+    +'<path d="M 44 40 L 48 40 L 46 44 Z" fill="#241207"/>'
+    // open book in paws
+    +'<g transform="translate(4,86)">'
+    +'<path d="M 0 6 Q 30 -6 58 6 L 58 30 Q 30 20 0 30 Z" fill="#f3ead6"/>'
+    +'<path d="M 29 3 L 29 26" stroke="#c9bda0" stroke-width="2"/>'
+    +'<path d="M 6 12 L 24 8 M 6 18 L 24 14 M 34 8 L 52 12 M 34 14 L 52 18" stroke="#b8a982" stroke-width="1.4" fill="none"/>'
+    +'</g>'
+    +'</g>'
+    +'</svg>';
+  }
+
+  // ---- caption typing ----
+  async function typeCaption(text){
+    caption.classList.add("on"); caret.style.display="inline-block"; capTxt.textContent="";
+    for(var i=0;i<text.length;i++){ capTxt.textContent+=text[i]; await sleep(26+Math.random()*22); }
+    caret.style.display="none";
+  }
+  function clearCaption(){ caption.classList.remove("on"); capTxt.textContent=""; }
+
+  // ---- ⌃⌃ flash ----
+  async function pressKeys(){
+    keyhint.classList.add("on");
+    for(var t=0;t<2;t++){ kc1.classList.add("press"); kc2.classList.add("press");
+      await sleep(120); kc1.classList.remove("press"); kc2.classList.remove("press"); await sleep(110); }
+  }
+
+  // ---- widget grow / swap / retract ----
+  function grow(html){
+    wpad.innerHTML=html;
+    widget.classList.remove("grown");
+    // clear any sticky inline styles so the collapsed BASE .widget rule applies as the start state
+    widget.style.transition=""; widget.style.transform=""; widget.style.opacity="";
+    widget.style.height="auto";
+    var h=widget.offsetHeight; widget.style.height=h+"px"; applyShape();
+    void widget.offsetWidth;                 // register the collapsed start, then transition
+    widget.classList.add("grown");
+    syncShape(560);
+  }
+  function swap(html){
+    return new Promise(function(resolve){
+      var oldH=widget.offsetHeight;              // current locked layout height (transform-independent)
+      var body=$("#wbody"); if(body) body.classList.add("fade");
+      setTimeout(function(){
+        wpad.innerHTML=html;
+        widget.style.height="auto"; var newH=widget.offsetHeight;  // measure new natural height
+        widget.style.height=oldH+"px";           // pin to old, then transition to new
+        void widget.offsetWidth;
+        widget.style.height=newH+"px"; syncShape(500);
+        var nb=$("#wbody"); if(nb){ nb.style.opacity=0; void nb.offsetWidth;
+          nb.style.transition="opacity .32s ease"; nb.style.opacity=1; }
+        setTimeout(resolve,420);
+      },320);
+    });
+  }
+  function retract(){
+    widget.classList.remove("grown");
+    widget.style.transition="transform .4s ease, opacity .35s ease";
+    widget.style.transform="translateX(-50%) scaleX(.55) scaleY(.02)";
+    widget.style.opacity="0";
+    setTimeout(function(){ widget.style.transition=""; widget.style.height="auto"; wpad.innerHTML=""; },420);
+  }
+
+  function listen(on){
+    if(on){ orb.classList.add("live"); orbLbl.classList.add("on"); }
+    else  { orb.classList.remove("live"); orbLbl.classList.remove("on"); }
+  }
+  function reset(){
+    listen(false); clearCaption(); keyhint.classList.remove("on"); content.classList.remove("dim");
+    widget.classList.remove("grown");
+    // clear inline styles → collapsed BASE .widget rule (opacity 0, scaled down) applies with no transition
+    widget.style.transition=""; widget.style.transform=""; widget.style.opacity="";
+    widget.style.height="auto"; wpad.innerHTML="";
+  }
+
+  // ---- an "ask" beat: keys → listen → dictate → work → result ----
+  async function ask(dictation, workingHTML, resultHTML, opts){
+    opts=opts||{};
+    await pressKeys();
+    listen(true);
+    await sleep(260);
+    await typeCaption(dictation);
+    await sleep(420);
+    keyhint.classList.remove("on");
+    listen(false); // done listening; now driving
+    if(opts.first){ grow(workingHTML); await sleep(560); }
+    else { await swap(workingHTML); }
+    await sleep(opts.work||1400);
+    await swap(resultHTML);
+    content.classList.add("dim");
+    await sleep(opts.hold||2500);
+  }
+
+  async function run(){
+    // eslint-disable-next-line no-constant-condition
+    while(true){
+      reset();
+      await sleep(750);                                   // beat 1 — a screen with content
+      await ask("make me an image of a fox reading in a library",
+                working('PRISM · <b>LIVE</b>','God is driving Prism…','Generating a fox reading in a library…'),
+                imageResult(), {first:true, work:1500, hold:2600});   // beats 2–5
+      await ask("make me an ad for my coffee brand",
+                working('BRANDBRAIN · <b>LIVE</b>','God is drafting ad concepts…','Drafting concepts for your coffee brand…'),
+                cardsResult(), {work:1150, hold:2700});               // beat 6
+      await ask("help me brainstorm this idea",
+                working('IDEABRAIN · <b>LIVE</b>','God is driving Ideabrain…','Shaping the brief…'),
+                briefResult(), {work:1150, hold:2700});               // beat 7
+      clearCaption(); content.classList.remove("dim"); retract();     // beat 8 — reset & loop
+      await sleep(950);
+    }
+  }
+  reset();
+  run();
+})();
+</script>
+</body>
+</html>

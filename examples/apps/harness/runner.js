@@ -81,8 +81,17 @@ const CFG = {
   standup: { name: "Standup", cat: "skill", count: (d) => skillDone(d) },
   objection: { name: "Objection", cat: "skill", count: (d) => skillDone(d) },
   coldemail: { name: "Cold Email", cat: "skill", count: (d) => skillDone(d) },
+  // ideabrain widget — idea-first (no cold-open), so the runner types the idea line (cat "skill").
+  // State 2 (the instant `brief` read) rendering .readhead IS stage-1 success; once it lands we kick
+  // the Validate button once so the pulse → verdict (State 4) is exercised too.
+  ideabrain: { name: "ideabrain", cat: "skill", count: (d) => {
+    if (d.querySelector(".verdict")) return 2;
+    const rh = d.querySelectorAll(".readhead, .oneliner").length;
+    if (rh) { if (!d.__ib_kick) { d.__ib_kick = true; const b = [...d.querySelectorAll("button")].find((x) => /^validate$/i.test((x.textContent || "").trim())); if (b) try { b.click(); } catch (_) {} } return 1; }
+    return 0;
+  } },
 };
-const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert", "hooks", "repurpose", "caption", "titles", "outline", "standup", "objection", "coldemail"];
+const FULL_ORDER = ["adforge", "adgen", "aplus", "imagegen", "shelf", "studio", "reel", "marquee", "canvas", "take", "identity", "batch", "bank", "redline", "adpulse", "huddle", "chat", "cartridge", "arcana", "natal", "cast", "arcade", "yearbook", "toon", "storybook", "petrait", "emote", "inkling", "roomify", "thumbs", "meme", "roast", "rizz", "anthem", "dreamlog", "gist", "rephrase", "explainthis", "translate", "polish", "extract", "reply", "unjargon", "nameit", "actions", "snap", "recap", "meetnotes", "cut", "regex", "errslate", "commit", "docstring", "shell", "cron", "steps", "compare", "formula", "spellout", "clipfix", "convert", "hooks", "repurpose", "caption", "titles", "outline", "standup", "objection", "coldemail", "ideabrain"];
 // ?only=take,huddle,shelf runs a subset — for verifying one wrapp's fix without a 68-run sweep.
 // A full run (no ?only) is still the ground truth before anything is called done.
 const ONLY = (new URLSearchParams(location.search).get("only") || "").split(",").map((s) => s.trim()).filter((s) => CFG[s]);

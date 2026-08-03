@@ -108,6 +108,10 @@ function imageSourceFromDataUrl(dataUrl: string): { media_type: string; data: st
   if (!m) return null;
   const [, mediaType, data] = m;
   if (!mediaType || !data || !mediaType.startsWith("image/")) return null;
+  // The Anthropic vision API only decodes jpeg/png/gif/webp. A caller that hands us HEIC/HEIF (an
+  // iPhone photo) would otherwise fail the WHOLE completion; skip it instead (text-safe). God already
+  // transcodes HEIC→JPEG before sending, so this only guards other callers (extension, bridge).
+  if (mediaType === "image/heic" || mediaType === "image/heif") return null;
   return { media_type: mediaType, data };
 }
 
@@ -155,7 +159,7 @@ export class ClaudeCodeBackend implements ModelBackend {
     return observedSignedIn !== undefined ? observedSignedIn : signInMarker();
   }
 
-  async run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }> {
+  async run(params: CompletionParams, ctx: BackendRunContext): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number }; sessionId?: string }> {
     const agentic = !!params.agentic && ctx.allowedTools.length > 0;
 
     // THE GATE, as the SDK sees it. Deny-by-default: only allowlisted tools even reach policy,
@@ -183,11 +187,17 @@ export class ClaudeCodeBackend implements ModelBackend {
     let text = "";
     let inputTokens = 0;
     let outputTokens = 0;
+    let sdkSessionId: string | undefined;   // the SDK's session UUID — captured so the daemon can resume it
 
     const q = query({
       prompt: toSdkPrompt(params),
       options: {
         model: params.model || DEFAULT_MODEL,
+        // Real warm thread: resume the prior SDK session so this turn CONTINUES the conversation
+        // (prior turns + prompt caching) instead of starting cold. The daemon owns the id per
+        // (origin, sessionId); vision still rides live in this turn's prompt. On the first turn
+        // (no id yet) this is absent and the SDK mints a fresh session we capture below.
+        ...(ctx.resumeSessionId ? { resume: ctx.resumeSessionId } : {}),
         ...(params.system ? { systemPrompt: params.system } : {}), // app persona (brandbrain STUDIO_SYSTEM etc.)
         ...(agentic
           ? {
@@ -228,8 +238,15 @@ export class ClaudeCodeBackend implements ModelBackend {
             ctx.emit({ type: "tool_result", call, result: { ok: !block.is_error, content } });
           }
         } else if (msg.type === "result") {
-          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string };
-          if (r.usage) { inputTokens = r.usage.input_tokens ?? 0; outputTokens = r.usage.output_tokens ?? 0; }
+          const r = msg as { usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }; result?: unknown; is_error?: boolean; subtype?: string; session_id?: string };
+          if (r.session_id) sdkSessionId = r.session_id;   // capture for resume next turn
+          if (r.usage) {
+            // Count CACHED input too — cache-creation + cache-read are real consumed input the budget must
+            // see. Reading only input_tokens undercounted by ~77x (e.g. 451 reported vs 34,585 consumed),
+            // making per-day budgets wildly too permissive. (OpenAI-shaped backends already total correctly.)
+            inputTokens = (r.usage.input_tokens ?? 0) + (r.usage.cache_creation_input_tokens ?? 0) + (r.usage.cache_read_input_tokens ?? 0);
+            outputTokens = r.usage.output_tokens ?? 0;
+          }
           // The SDK reports failures IN the result message, not by throwing — an unread is_error
           // meant "not signed in" surfaced as a generic backend error (or worse, empty success).
           if (r.is_error || (r.subtype && r.subtype !== "success")) {
@@ -248,6 +265,6 @@ export class ClaudeCodeBackend implements ModelBackend {
       ctx.signal.removeEventListener("abort", onAbort);
     }
 
-    return { text, usage: { inputTokens, outputTokens } };
+    return { text, usage: { inputTokens, outputTokens }, sessionId: sdkSessionId };
   }
 }

@@ -1,0 +1,657 @@
+{
+  "actions": [
+    {
+      "name": "actions_run",
+      "description": "Turn meeting notes or a transcript into a clean action-item checklist (owners and due dates where implied). Writes it live on the page and returns it.",
+      "inputSchema": {
+        "notes": "string — the notes or transcript to extract action items from. Required."
+      }
+    }
+  ],
+  "adforge": [
+    {
+      "name": "adforge_run",
+      "description": "Forge three Meta ad concepts from a site URL (or the lent brand). Renders them live on the page and returns them.",
+      "inputSchema": {
+        "url": "string — a site to forge ads from. Optional when a brand is lent."
+      }
+    }
+  ],
+  "adgen": [
+    {
+      "name": "adgen_run",
+      "description": "Draft a wall of six ad directions from a site URL (or the lent brand). Renders them live on the page and returns them.",
+      "inputSchema": {
+        "url": "string — a site to draft ad directions from. Optional when a brand is lent."
+      }
+    }
+  ],
+  "adpulse": [
+    {
+      "name": "adpulse_diagnose",
+      "description": "Diagnose a Meta Ads Manager export (CSV) — health score, wins, leaks, ranked actions, and per-campaign verdicts. Renders the readout live and returns it.",
+      "inputSchema": {
+        "csv": "string — a Meta Ads Manager CSV export. Optional when data is already loaded."
+      }
+    }
+  ],
+  "anthem": [
+    {
+      "name": "anthem_run",
+      "description": "Write an original song (structured lyrics + a copy-ready generation prompt) about a person, moment, or brand. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "subject": "string — what the song is about (a person, a moment, or a brand). Required."
+      }
+    }
+  ],
+  "aplus": [
+    {
+      "name": "aplus_write",
+      "description": "Write a full Amazon A+ content stack for a product (a line or a product-page URL). Renders it live on the page and returns it.",
+      "inputSchema": {
+        "product": "string — the product to write A+ content for. Optional when a brand is lent."
+      }
+    }
+  ],
+  "arcade": [
+    {
+      "name": "arcade_run",
+      "description": "Turn one line into a playable HTML5 game. Builds it live on the page (sandboxed) and returns the game's title.",
+      "inputSchema": {
+        "idea": "string — one line describing the game to build. Required."
+      }
+    }
+  ],
+  "arcana": [
+    {
+      "name": "arcana_run",
+      "description": "Deal a fresh three-card tarot spread for a question and read it live on the page. Returns the drawn cards and the reading.",
+      "inputSchema": {
+        "question": "string — the question to read for. Optional; a default is used if omitted."
+      }
+    }
+  ],
+  "bank": [
+    {
+      "name": "bank_ask",
+      "description": "Ask the context bank a question, answered from the user's own notes. Streams the answer onto the page and returns it.",
+      "inputSchema": {
+        "question": "string — the question to answer from the vault. Required."
+      }
+    }
+  ],
+  "batch": [
+    {
+      "name": "batch_draft",
+      "description": "Draft a full YC application (all 8 answers, one recommended each, plus the two video scripts) from a one-line idea. Fills the cards live on the page and returns the drafted application as markdown; nothing is locked or submitted.",
+      "inputSchema": {
+        "idea": "string — one line on what you're building. Required."
+      }
+    }
+  ],
+  "canvas": [
+    {
+      "name": "canvas_run",
+      "description": "Describe a diagram, board, or layout in words and get an editable, self-contained HTML document. Renders it live on the page and returns the document HTML.",
+      "inputSchema": {
+        "prompt": "string — one line describing the diagram/board/layout to draw. Required."
+      }
+    }
+  ],
+  "caption": [
+    {
+      "name": "caption_run",
+      "description": "Write 5 social captions plus a hashtag set for a post, one marked recommended. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "about": "string — what the post or photo is. Required."
+      }
+    }
+  ],
+  "cartridge": [
+    {
+      "name": "cartridge_run",
+      "description": "Forge a complete, self-contained HTML5 game from one idea. Generates it live on the page and returns the game's title.",
+      "inputSchema": {
+        "idea": "string — one line describing the game to make. Required."
+      }
+    }
+  ],
+  "chat": [
+    {
+      "name": "chat_send",
+      "description": "Send a message in the chat and get the reply. Answers live on the page in the active thread and returns the assistant's reply text.",
+      "inputSchema": {
+        "message": "string — the message to send. Required."
+      }
+    }
+  ],
+  "clipfix": [
+    {
+      "name": "clipfix_run",
+      "description": "Clean pasted text: fix smart-quotes, unwrap hard line breaks, strip tracking params from URLs, tidy whitespace. Writes the cleaned text live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the pasted text to clean. Required."
+      }
+    }
+  ],
+  "coldemail": [
+    {
+      "name": "coldemail_run",
+      "description": "Write a short, non-cringe cold email (subject + body + one clear ask) from a target and an ask. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "brief": "string — who you're emailing and the ask. Required."
+      }
+    }
+  ],
+  "commit": [
+    {
+      "name": "commit_run",
+      "description": "Write a Conventional Commits message (typed subject + body bullets) from a diff or change summary. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "diff": "string — the diff or change summary to describe. Required."
+      }
+    }
+  ],
+  "compare": [
+    {
+      "name": "compare_run",
+      "description": "Compare options side by side (pros/cons per option) with one recommendation. Writes the comparison live on the page and returns it.",
+      "inputSchema": {
+        "items": "string — the options to compare (e.g. 'A vs B vs C for X'). Required."
+      }
+    }
+  ],
+  "convert": [
+    {
+      "name": "convert_run",
+      "description": "Convert data between JSON/CSV/YAML/Markdown table — infers the source, outputs the most useful target (a Markdown table if ambiguous). Writes it live on the page and returns it.",
+      "inputSchema": {
+        "data": "string — the structured data to convert. Required."
+      }
+    }
+  ],
+  "cron": [
+    {
+      "name": "cron_run",
+      "description": "Convert a plain-English schedule to a cron expression (with a human-readable confirmation), or explain a cron expression field by field. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "schedule": "string — a schedule to convert, or a cron expression to explain. Required."
+      }
+    }
+  ],
+  "cut": [
+    {
+      "name": "cut_run",
+      "description": "Turn a video transcript (or rough notes) into a cut plan: on-screen captions + a highlight cut list (keep MM:SS–MM:SS with a reason) + what to trim. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "transcript": "string — the video transcript or rough notes to plan a cut from. Required."
+      }
+    }
+  ],
+  "docstring": [
+    {
+      "name": "docstring_run",
+      "description": "Write a clear docstring/JSDoc for a function — params, returns, one example — in the language's own convention. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "code": "string — the function source to document. Required."
+      }
+    }
+  ],
+  "dreamlog": [
+    {
+      "name": "dreamlog_run",
+      "description": "Interpret a dream. Writes the reading live on the page and returns it.",
+      "inputSchema": {
+        "dream": "string — the dream to interpret, in the dreamer's own words. Required."
+      }
+    }
+  ],
+  "echo": [
+    {
+      "name": "echo_speak",
+      "description": "Speak text aloud with a local, on-device voice model. Plays the audio on the page and returns which local backend spoke it.",
+      "inputSchema": {
+        "text": "string — the text to read aloud. Required."
+      }
+    }
+  ],
+  "emote": [
+    {
+      "name": "emote_run",
+      "description": "Turn a one-line character description into a die-cut sticker pack, drawn on the page via your Higgsfield. Returns the sticker image URLs.",
+      "inputSchema": {
+        "character": "string — one line describing the character or mascot. Required."
+      }
+    }
+  ],
+  "errslate": [
+    {
+      "name": "errslate_run",
+      "description": "Decode an error message or stack trace: what it means, the likely cause, and the fix. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "error": "string — the error message or stack trace to decode. Required."
+      }
+    }
+  ],
+  "explainthis": [
+    {
+      "name": "explainthis_run",
+      "description": "Explain a bit of text in plain English for a smart non-expert. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to explain. Required."
+      }
+    }
+  ],
+  "extract": [
+    {
+      "name": "extract_run",
+      "description": "Pull the key fields and entities out of a bit of text into a clean labeled list. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to extract fields from. Required."
+      }
+    }
+  ],
+  "formula": [
+    {
+      "name": "formula_run",
+      "description": "Write the exact spreadsheet formula for a plain-English need (Google Sheets + Excel), with one line explaining it. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "need": "string — the spreadsheet need in plain English. Required."
+      }
+    }
+  ],
+  "gist": [
+    {
+      "name": "gist_run",
+      "description": "Summarize a bit of text into a tight TL;DR (2 sentences + up to 4 bullets). Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to summarize. Required."
+      }
+    }
+  ],
+  "hooks": [
+    {
+      "name": "hooks_run",
+      "description": "Write 7 scroll-stopping opening lines (hooks) for a topic, one marked recommended. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "topic": "string — what the post/video/email is about. Required."
+      }
+    }
+  ],
+  "huddle": [
+    {
+      "name": "huddle_ask",
+      "description": "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
+      "inputSchema": {
+        "message": "string — what to say to the call. Required."
+      }
+    }
+  ],
+  "ideabrain": [
+    {
+      "name": "ideabrain_validate",
+      "description": "Pressure-test a one-line startup idea: reads it into a brief, runs a validation pass, and returns a verdict that states the risk (not hype). Writes it live on the page.",
+      "inputSchema": {
+        "idea": "string — one line describing the idea to validate. Required."
+      }
+    }
+  ],
+  "identity": [
+    {
+      "name": "identity_compose",
+      "description": "Compose an AI creator persona (person, voice, look, audience, pillars — one recommended each) from a one-line brief. Fills the cards live on the page and returns the drafted persona; it does not publish it to Cast.",
+      "inputSchema": {
+        "brief": "string — one line describing the creator (niche, vibe, who they're for). Required."
+      }
+    }
+  ],
+  "imagegen": [
+    {
+      "name": "imagegen_generate",
+      "description": "Generate an image from a text prompt on your Higgsfield. Renders it live on the page and returns the image URL. Optionally guided by a reference image.",
+      "inputSchema": {
+        "prompt": "string — what to generate (subject, setting, lighting…). Required.",
+        "reference": "string — OPTIONAL. A data: URL of a reference image to guide the render (image-to-image)."
+      }
+    }
+  ],
+  "inkling": [
+    {
+      "name": "inkling_run",
+      "description": "Turn one tattoo idea into three flash concepts and render the recommended one's line art on the page via your Higgsfield. Returns the concepts and any rendered image URLs.",
+      "inputSchema": {
+        "idea": "string — the tattoo idea and placement/size. Required."
+      }
+    }
+  ],
+  "marquee": [
+    {
+      "name": "marquee_build",
+      "description": "Build a cinematic scrolling landing page from one line: writes a complete self-contained HTML page into the live preview and paints its hero on your Higgsfield. Returns the page HTML.",
+      "inputSchema": {
+        "brief": "string — one line on what the landing page is for. Required."
+      }
+    }
+  ],
+  "meetnotes": [
+    {
+      "name": "meetnotes_run",
+      "description": "Turn a meeting transcript or rough notes into clean structured notes (TL;DR, decisions, action items with owners/dues, open questions). Writes it live on the page and returns it.",
+      "inputSchema": {
+        "transcript": "string — the meeting transcript or rough notes to structure. Required."
+      }
+    }
+  ],
+  "meme": [
+    {
+      "name": "meme_run",
+      "description": "Write meme concepts for a topic (or brand angle) and draw the recommended one on the page. Returns the concepts (format + captions).",
+      "inputSchema": {
+        "topic": "string — the topic or angle to meme. Required."
+      }
+    }
+  ],
+  "nameit": [
+    {
+      "name": "nameit_run",
+      "description": "Propose six strong name options (each with a rationale) for a described product, company, feature, or project. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "description": "string — a description of the thing to name. Required."
+      }
+    }
+  ],
+  "natal": [
+    {
+      "name": "natal_run",
+      "description": "Read a natal / birth chart from birth data. Renders the chart on the page and returns it.",
+      "inputSchema": {
+        "date": "string — date of birth, YYYY-MM-DD. Required.",
+        "place": "string — birthplace (city, country) — the rising depends on it. Required.",
+        "time": "string — time of birth, HH:MM (24h). Optional; omit if unknown.",
+        "name": "string — the person's name. Optional."
+      }
+    },
+    {
+      "name": "string — the person's name. Optional.",
+      "description": "",
+      "inputSchema": {}
+    }
+  ],
+  "objection": [
+    {
+      "name": "objection_run",
+      "description": "Reframe a sales or investor objection and draft a calm, honest response plus a one-liner. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "objection": "string — the objection you're facing. Required."
+      }
+    }
+  ],
+  "outline": [
+    {
+      "name": "outline_run",
+      "description": "Produce a clean hierarchical outline for a post, talk, or doc, with a suggested hook and CTA. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "topic": "string — what you're writing or presenting. Required."
+      }
+    }
+  ],
+  "petrait": [
+    {
+      "name": "petrait_run",
+      "description": "Dream up regal portrait concepts of a pet from one line and paint the recommended one on the user's Higgsfield. Renders live on the page and returns the portrait URL.",
+      "inputSchema": {
+        "pet": "string — one line about the pet (e.g. 'a grumpy orange tabby named Biscuit'). Required."
+      }
+    }
+  ],
+  "polish": [
+    {
+      "name": "polish_run",
+      "description": "Proofread and clarify a bit of text while keeping the author's voice. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to polish. Required."
+      }
+    }
+  ],
+  "reachout": [
+    {
+      "name": "reachout_draft",
+      "description": "Draft and stage (as Gmail DRAFTS — never sends) the next due outreach touches for the active Reachout campaign. Renders the board live and returns a summary.",
+      "inputSchema": {
+        "campaignId": "string — optional; defaults to the active campaign."
+      }
+    }
+  ],
+  "recap": [
+    {
+      "name": "recap_run",
+      "description": "Summarize a long doc or thread into a structured recap (TL;DR, key points, decisions, next steps). Writes it live on the page and returns it.",
+      "inputSchema": {
+        "document": "string — the long document or thread to recap. Required."
+      }
+    }
+  ],
+  "reel": [
+    {
+      "name": "reel_generate",
+      "description": "Draft a promo/launch reel from one line: writes a 4–6 scene script and paints each scene on your Higgsfield, live on the page. Returns the scenes (title, subtitle, image URL); it does not render the final video.",
+      "inputSchema": {
+        "brief": "string — one line on what the reel is for. Required."
+      }
+    }
+  ],
+  "regex": [
+    {
+      "name": "regex_run",
+      "description": "Write a regular expression for a plain-English matching need, with 3 matching + 3 non-matching test cases and a brief breakdown. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "need": "string — describe what you need to match (and what you don't). Required."
+      }
+    }
+  ],
+  "rephrase": [
+    {
+      "name": "rephrase_run",
+      "description": "Rewrite a bit of text in a requested tone/length, keeping its meaning. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to rewrite. Required.",
+        "tone": "string — desired tone or length (optional)."
+      }
+    }
+  ],
+  "reply": [
+    {
+      "name": "reply_run",
+      "description": "Draft reply options (concise, warm, firm) to a message or thread. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "message": "string — the message or thread to reply to. Required."
+      }
+    }
+  ],
+  "repurpose": [
+    {
+      "name": "repurpose_run",
+      "description": "Rewrite one piece of content into an X thread, a LinkedIn post, an Instagram caption, and a short-form video script. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "content": "string — the content to repurpose. Required."
+      }
+    }
+  ],
+  "resize": [
+    {
+      "name": "resize_image",
+      "description": "Resize/convert/compress an image entirely on-device (no AI). Give a data: URL and target size/format; returns the resized image as a data: URL. mode: 'long'|'width'|'percent'.",
+      "inputSchema": {
+        "dataUrl": "string — the source image as a data: URL (or bare base64). Required.",
+        "mode": "string — 'long' (cap longest side), 'width' (exact width), or 'percent'. Default 'long'.",
+        "value": "number — px for long/width. Default 1600.",
+        "percent": "number — scale % when mode='percent'. Default 50.",
+        "format": "string — 'image/jpeg' | 'image/png' | 'image/webp'. Default 'image/jpeg'.",
+        "quality": "number — 0.1–1 for lossy formats. Default 0.82."
+      }
+    }
+  ],
+  "rizz": [
+    {
+      "name": "rizz_run",
+      "description": "Get send-ready dating-app lines for a situation (their bio, their last message, or the vibe). Writes them live on the page and returns them.",
+      "inputSchema": {
+        "situation": "string — the situation to work with. Required."
+      }
+    }
+  ],
+  "roast": [
+    {
+      "name": "roast_run",
+      "description": "Roast a bit of text (a bio, brand blurb, resume, or pitch). Writes the roast live on the page and returns it.",
+      "inputSchema": {
+        "target": "string — the text to roast. Required."
+      }
+    }
+  ],
+  "roomify": [
+    {
+      "name": "roomify_run",
+      "description": "Pitch three restyle directions for a room from one line and repaint the recommended one on the user's Higgsfield. Renders live on the page and returns the room image URL.",
+      "inputSchema": {
+        "room": "string — the room + the vibe (e.g. 'small living room, cozy japandi'). Required."
+      }
+    }
+  ],
+  "shelf": [
+    {
+      "name": "shelf_triage",
+      "description": "Triage an inventory sheet (CSV of stock + sales) into reorder / watch / dead-weight, ABC, and one-week plans. Renders the board live and returns it.",
+      "inputSchema": {
+        "sheet": "string — CSV of stock + sales. Optional when a brand's inventory is lent (or the demo is used)."
+      }
+    }
+  ],
+  "shell": [
+    {
+      "name": "shell_run",
+      "description": "Give the exact shell command(s) for a task, with each flag explained — and a warning above anything destructive. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "task": "string — describe the task you want a shell command for. Required."
+      }
+    }
+  ],
+  "snap": [
+    {
+      "name": "snap_run",
+      "description": "Answer a question directly and concisely on the user's own Claude. Writes the answer live on the page and returns it.",
+      "inputSchema": {
+        "question": "string — the question to answer. Required."
+      }
+    }
+  ],
+  "spellout": [
+    {
+      "name": "spellout_run",
+      "description": "Expand a rough phrase or shorthand into a clear, well-formed sentence or short paragraph, keeping the meaning and voice. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "phrase": "string — the rough phrase to spell out. Required."
+      }
+    }
+  ],
+  "standup": [
+    {
+      "name": "standup_run",
+      "description": "Turn raw notes or commits into a crisp Yesterday / Today / Blockers standup. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "notes": "string — your raw notes, commits, or bullets. Required."
+      }
+    }
+  ],
+  "steps": [
+    {
+      "name": "steps_run",
+      "description": "Turn a goal into a few distinct step-by-step plans, each a numbered checklist. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "goal": "string — the goal to turn into steps. Required."
+      }
+    }
+  ],
+  "storybook": [
+    {
+      "name": "storybook_run",
+      "description": "Write an illustrated children's picture book from one line. Writes it live on the page and illustrates each page; returns the book title and its page text.",
+      "inputSchema": {
+        "idea": "string — the story idea and who the hero is. Required."
+      }
+    }
+  ],
+  "studio": [
+    {
+      "name": "studio_shoot",
+      "description": "Shoot one product photo on your Higgsfield from a product description. Develops it into the contact sheet and returns the image URL.",
+      "inputSchema": {
+        "product": "string — the product to shoot (one line). Required."
+      }
+    }
+  ],
+  "take": [
+    {
+      "name": "take_script",
+      "description": "Draft a recording script (beats for a screen or camera take) from a line describing what you're recording. Renders on the page and returns the recommended script; it does not start a recording.",
+      "inputSchema": {
+        "about": "string — what you're recording (e.g. 'a 40-second walkthrough of the pricing page'). Required."
+      }
+    }
+  ],
+  "thumbs": [
+    {
+      "name": "thumbs_run",
+      "description": "Draft three click-worthy YouTube thumbnail concepts from a video title (composition + big text overlay + emotion), rendered on the page. Returns the concepts; render each on your Higgsfield from the page.",
+      "inputSchema": {
+        "title": "string — the video title (e.g. \"I tried the world's spiciest ramen\"). Required."
+      }
+    }
+  ],
+  "titles": [
+    {
+      "name": "titles_run",
+      "description": "Write 8 headline/title options for a topic across styles, one marked recommended. Writes them live on the page and returns them.",
+      "inputSchema": {
+        "topic": "string — what the piece is about. Required."
+      }
+    }
+  ],
+  "toon": [
+    {
+      "name": "toon_run",
+      "description": "Storyboard a one-line moment into a 4-panel comic treatment (art style + recurring character + four beats), rendered on the page. Returns the storyboard; ink each panel from the page.",
+      "inputSchema": {
+        "moment": "string — the one line to turn into a comic. Required."
+      }
+    }
+  ],
+  "translate": [
+    {
+      "name": "translate_run",
+      "description": "Translate a bit of text into a target language, preserving tone. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the text to translate. Required.",
+        "language": "string — target language (default: Spanish)."
+      }
+    }
+  ],
+  "unjargon": [
+    {
+      "name": "unjargon_run",
+      "description": "Decode dense text (acronyms, legalese, jargon) into plain English. Writes it live on the page and returns it.",
+      "inputSchema": {
+        "text": "string — the dense text to decode. Required."
+      }
+    }
+  ],
+  "yearbook": [
+    {
+      "name": "yearbook_run",
+      "description": "Shoot a subject as retro yearbook portraits across the decades on the user's Higgsfield. Develops them live on the page and returns the portrait URLs.",
+      "inputSchema": {
+        "subject": "string — one line about who to yearbook (e.g. 'my roommate Dev, curly hair, always in a hoodie'). Required."
+      }
+    }
+  ]
+}

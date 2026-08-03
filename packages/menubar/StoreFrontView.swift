@@ -13,7 +13,7 @@ struct StoreFrontView: View {
     let listings: [SBListing]                        // the live catalog
     var icon: (String) -> NSImage? = { _ in nil }    // per-wrapp icon by id (nil → category glyph tile)
     var onGet: (SBListing) -> Void = { _ in }
-    var onSeeAll: () -> Void = {}                    // → the classic full StoreView
+    var onSeeAll: (String) -> Void = { _ in }        // → the classic full StoreView, preselecting a filter ("apps"/"skill"/"All")
     var onClose: () -> Void = {}
 
     // Layout tokens, scaled from the 880pt preview down to the 724pt modal.
@@ -54,9 +54,9 @@ struct StoreFrontView: View {
             }
         }
         .frame(width: 724, height: 476, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color.page))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.edge, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .background(RoundedRectangle(cornerRadius: 20).fill(Color.page))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.edge, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     // The scrollable page under the pinned bar. Internal (not private) so a snapshot harness can
@@ -64,8 +64,8 @@ struct StoreFrontView: View {
     var scrollBody: some View {
         VStack(alignment: .leading, spacing: M.gap) {
             heroRow
-            if !loved.isEmpty { gridSection("Apps we love right now", loved, free: false) }
-            if !skills.isEmpty { gridSection("New skills", skills, free: true) }
+            if !loved.isEmpty { gridSection("Apps we love right now", loved, free: false, filter: "apps") }
+            if !skills.isEmpty { gridSection("New skills", skills, free: true, filter: "skill") }
         }
         .padding(.horizontal, M.pad).padding(.top, 18).padding(.bottom, 28)
     }
@@ -82,8 +82,8 @@ struct StoreFrontView: View {
                 Spacer(minLength: 16)
                 HStack(spacing: 4) {
                     tabPill("Featured", active: true) {}
-                    tabPill("Apps", active: false, action: onSeeAll)
-                    tabPill("Skills", active: false, action: onSeeAll)
+                    tabPill("Apps", active: false) { onSeeAll("apps") }
+                    tabPill("Skills", active: false) { onSeeAll("skill") }
                 }
                 Spacer(minLength: 16)
                 Button(action: onClose) {
@@ -157,12 +157,12 @@ struct StoreFrontView: View {
     }
 
     // ---- a titled 2-col grid section (header gets the lime See All) ----
-    private func gridSection(_ title: String, _ rows: [SBListing], free: Bool) -> some View {
+    private func gridSection(_ title: String, _ rows: [SBListing], free: Bool, filter: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.brico(17, .bold)).foregroundColor(.ink)
                 Spacer()
-                Button(action: onSeeAll) {
+                Button(action: { onSeeAll(filter) }) {
                     Text("See All").font(.hanken(12, .semibold)).foregroundColor(.lime)
                 }.buttonStyle(.plain)
             }
@@ -214,8 +214,8 @@ struct StoreFrontView: View {
         VStack(spacing: 12) {
             Image(systemName: "square.grid.2x2").font(.system(size: 26)).foregroundColor(.inkFaint)
             Text("No catalog yet").font(.hanken(13, .semibold)).foregroundColor(.ink)
-            Button(action: onSeeAll) {
-                Text("Open the full store").font(.hanken(12, .semibold)).foregroundColor(.rail)
+            Button(action: { onSeeAll("All") }) {
+                Text("Open the full store").font(.hanken(12, .semibold)).foregroundColor(.page)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 9).fill(Color.lime))
             }.buttonStyle(.plain)

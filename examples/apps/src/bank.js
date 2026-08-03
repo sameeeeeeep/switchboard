@@ -14,6 +14,11 @@ const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 const KINDS = ["brand", "personal", "persona", "project", "csv", "gsheet", "note"];
 const DEFAULT_FOLDER = "~/SwitchboardBrain";
+// The establish front door hands off to ideafetch (the ingest sibling). Same host in local/dev
+// (./ideafetch.html beside bank.html), its own subdomain in production.
+const IDEAFETCH_URL = /\/bank\.html?$/i.test(location.pathname) ? "./ideafetch.html" : "https://ideafetch.thelastprompt.ai";
+const ACTIVE_KEY = "active-project"; // Bank-local memory of THE active project (the hero); mirrored to
+                                     // the daemon's setActiveProject best-effort so folderOf follows.
 
 let relay = null;
 let notInstalled = false;
@@ -21,6 +26,7 @@ let notes = [];      // [{key, title, body, links[], tasks[{line, done, text}], 
 let contexts = [];   // library metas
 let identityName = ""; // paired user's display name (starter-note seeds)
 let filterLink = null; // active [[link]] filter, or null
+let activeProjectId = null; // the hero's project — a project-<slug>.md key (Bank-local selection)
 let asking = false;
 let askSeq = 0;
 let syncing = false;
@@ -30,6 +36,7 @@ let selectedList = "Inbox";  // board quick-add target
 let sampleActive = false;    // pre-connect sample brain is on screen (never mixed with real calls)
 const expandedNotes = new Set(); // note keys currently expanded to full view
 let editingKey = null;           // note key currently in edit mode
+let editingCardKey = null;       // project/brand card key currently in inline-edit mode (§2.5)
 const TASKS_KEY = "tasks.md"; // the board's own file — SHARED with the Bank connector (packages/bank-mcp)
 // No `.json` suffix on these two. `.json` is NOT a LITERAL extension daemon-side (only .md/.html/
 // .css/… are), so a key of "brief.json" got the standard `<key>.json` treatment and landed on disk
@@ -198,6 +205,7 @@ async function doBoot() {
     ]);
     contexts = metas || [];
     identityName = who?.name || identityName;
+    try { activeProjectId = (await relay.storage.get(ACTIVE_KEY).catch(() => null)) || null; } catch { /* no selection yet */ }
     void migrateJsonRecords(keys || []); // fire-and-forget: never delays the vault render
     const mdKeys = (keys || []).filter((k) => k.endsWith(".md"));
     const bodies = await Promise.all(mdKeys.map((k) => relay.storage.get(k).catch(() => null)));
@@ -324,11 +332,157 @@ function renderSample() {
 }
 
 function renderAll() {
+  renderEstablish();
+  renderHero();
   renderShelf();
   renderProjects();
   renderBrands();
   renderBoard();
   renderNotes();
+}
+
+// ---------- establish front door: hand off to ideafetch (§2.2) ----------
+// Bank is the SHOW/EDIT home; the robust daemon extractor lives in ideafetch. The front door offers
+// the pointers and opens ideafetch with the chosen one — one engine, rendered here as an entry point.
+const ESTABLISH = [
+  { p: "site", g: "◍", label: "a website" },
+  { p: "repo", g: "▤", label: "a GitHub repo" },
+  { p: "folder", g: "▢", label: "a folder on this Mac" },
+  { p: "idea", g: "◇", label: "just an idea" },
+];
+let establishWired = false;
+function renderEstablish() {
+  const row = $("establish-row");
+  if (!row) return;
+  if (establishWired && row.children.length) return; // static — wire once
+  establishWired = true;
+  row.textContent = "";
+  for (const e of ESTABLISH) {
+    const b = document.createElement("button");
+    b.className = "estchip"; b.type = "button";
+    b.append(Object.assign(document.createElement("span"), { className: "g", textContent: e.g }));
+    b.append(document.createTextNode(e.label));
+    b.onclick = () => { try { window.open(`${IDEAFETCH_URL}#${e.p}`, "_blank", "noopener"); } catch { location.href = IDEAFETCH_URL; } };
+    row.append(b);
+  }
+}
+
+// ---------- the active-project hero: SHOW your project whole (§2.3–2.4) ----------
+// Driven by a Bank-local selection (ACTIVE_KEY) mirrored to the daemon's setActiveProject; the four
+// facets (understanding / brand / files / decisions) compose from the SAME project-*.md the vault holds.
+function activeProjectNote() {
+  const projs = notes.filter((n) => isProjectKey(n.key));
+  if (!projs.length) return null;
+  return projs.find((n) => n.key === activeProjectId) || projs[0];
+}
+function renderHero() {
+  const sec = $("now-sec");
+  const box = $("hero");
+  if (!sec || !box) return;
+  const note = sampleActive ? null : activeProjectNote();
+  if (!note) { sec.hidden = true; return; }
+  sec.hidden = false;
+  box.textContent = "";
+  const p = parseProjectCard(note);
+  const brandNote = matchingBrand(p.title);
+  const b = brandNote ? parseProjectCard(brandNote) : null;
+
+  const head = document.createElement("div"); head.className = "herohead";
+  head.append(Object.assign(document.createElement("b"), { textContent: p.title }));
+  head.append(Object.assign(document.createElement("span"), { className: "herokind", textContent: b ? "brand · project" : "project" }));
+  if (p.meta.folder?.[0] || p.meta.repo?.[0]) head.append(Object.assign(document.createElement("span"), { className: "herofolder", textContent: p.meta.folder?.[0] || "" }));
+  box.append(head);
+  if (p.summary) box.append(Object.assign(document.createElement("div"), { className: "herosum", textContent: p.summary }));
+
+  // count open tasks under this project's list (its section name)
+  let openN = 0;
+  for (const n of notes) for (const t of n.tasks) if (!t.done && (t.section || n.title).toLowerCase() === p.title.toLowerCase()) openN++;
+
+  const facets = document.createElement("div"); facets.className = "facets";
+  facets.append(facet("understanding", p.summary || (p.sections.Roadmap?.length ? "" : ""), p.summary ? "" : "define your project", () => window.open(`${IDEAFETCH_URL}#idea`, "_blank", "noopener")));
+  facets.append(brandFacet(b, () => window.open(`${IDEAFETCH_URL}#site`, "_blank", "noopener")));
+  facets.append(filesFacet(p, () => window.open(`${IDEAFETCH_URL}#folder`, "_blank", "noopener")));
+  facets.append(decisionsFacet(p, openN));
+  box.append(facets);
+
+  const foot = document.createElement("div"); foot.className = "herofoot";
+  foot.append(document.createTextNode(`${openN} open task${openN === 1 ? "" : "s"}`));
+  const reread = document.createElement("button"); reread.className = "cta"; reread.style.cssText = "background:none;border:0;color:var(--lime);cursor:pointer;font:500 11.5px/1 var(--mono)";
+  reread.textContent = "re-read"; reread.title = "re-run the extractor in ideafetch"; reread.onclick = () => window.open(IDEAFETCH_URL, "_blank", "noopener");
+  foot.append(reread);
+  // switch — re-home the hero across projects (one selection scopes the surface)
+  const projs = notes.filter((n) => isProjectKey(n.key));
+  if (projs.length > 1) {
+    const sw = document.createElement("div"); sw.className = "heroswitch";
+    sw.append(Object.assign(document.createElement("span"), { textContent: "project" }));
+    const sel = document.createElement("select");
+    for (const n of projs) sel.append(new Option(parseProjectCard(n).title, n.key, false, n.key === note.key));
+    sel.onchange = () => void setActiveProject(sel.value);
+    sw.append(sel); foot.append(sw);
+  }
+  box.append(foot);
+  $("now-note").textContent = p.meta.status?.[0] || "";
+}
+function facet(kind, value, cta, onCta) {
+  const f = document.createElement("div"); f.className = "facet" + (value ? "" : " empty");
+  f.append(Object.assign(document.createElement("div"), { className: "facetk", textContent: kind }));
+  f.append(Object.assign(document.createElement("div"), { className: "facetv", textContent: value || (cta ? "not yet — " : "—") }));
+  if (!value && cta) { const b = document.createElement("button"); b.className = "cta"; b.textContent = cta; b.onclick = onCta; f.append(b); }
+  return f;
+}
+function brandFacet(b, onCta) {
+  const f = document.createElement("div"); f.className = "facet" + (b ? "" : " empty");
+  f.append(Object.assign(document.createElement("div"), { className: "facetk", textContent: "brand" }));
+  const v = document.createElement("div"); v.className = "facetv";
+  if (b) {
+    const swatches = (b.sections.Palette || []).map(parseSwatch).filter(Boolean).slice(0, 6);
+    for (const s of swatches) { const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = s.hex; sw.title = s.from ? `${s.hex} — ${s.from}` : s.hex; v.append(sw); }
+    const prods = (b.sections.Products || []).length;
+    v.append(document.createTextNode(swatches.length ? ` ${prods} product${prods === 1 ? "" : "s"}` : `${prods} products`));
+    f.append(v);
+  } else {
+    v.textContent = "no brand yet"; f.append(v);
+    const btn = document.createElement("button"); btn.className = "cta"; btn.textContent = "point at your site"; btn.onclick = onCta; f.append(btn);
+  }
+  return f;
+}
+function filesFacet(p, onCta) {
+  const f = document.createElement("div"); f.className = "facet";
+  f.append(Object.assign(document.createElement("div"), { className: "facetk", textContent: "files" }));
+  const stats = [["Packages", "packages"], ["Docs", "docs"], ["Wrapps", "wrapps"]].map(([s]) => (p.sections[s]?.length ? `${p.sections[s].length} ${s.toLowerCase()}` : null)).filter(Boolean);
+  const folder = p.meta.folder?.[0];
+  const v = document.createElement("div"); v.className = "facetv";
+  if (folder || stats.length) { v.textContent = [folder ? "bound to disk" : "", stats.join(" · ")].filter(Boolean).join(" · "); f.append(v); }
+  else { f.className += " empty"; v.textContent = "no files bound"; f.append(v); const btn = document.createElement("button"); btn.className = "cta"; btn.textContent = "bind a folder"; btn.onclick = onCta; f.append(btn); }
+  return f;
+}
+function decisionsFacet(p, openN) {
+  const f = document.createElement("div"); f.className = "facet" + ((p.sections.Roadmap?.length || openN) ? "" : " empty");
+  f.append(Object.assign(document.createElement("div"), { className: "facetk", textContent: "decisions" }));
+  const v = document.createElement("div"); v.className = "facetv";
+  const road = p.sections.Roadmap || [];
+  if (road.length) v.textContent = road.slice(0, 2).join(" · ") + (road.length > 2 ? ` +${road.length - 2}` : "");
+  else if (openN) v.textContent = `${openN} open task${openN === 1 ? "" : "s"} on the board`;
+  else v.textContent = "no roadmap or open tasks yet";
+  f.append(v);
+  return f;
+}
+function matchingBrand(title) {
+  return notes.find((n) => isBrandKey(n.key) && parseProjectCard(n).title.toLowerCase() === String(title).toLowerCase()) || null;
+}
+// Persist the hero selection, and mirror to the daemon's global active project (control-plane op;
+// degrades silently if this provider lacks it — the panel selection stays the fallback).
+async function setActiveProject(key) {
+  activeProjectId = key;
+  renderHero();
+  if (!relay) return;
+  try { await relay.storage.set(ACTIVE_KEY, key); } catch { /* Bank-local memory only, non-fatal */ }
+  const p = parseProjectCard(notes.find((n) => n.key === key) || { key, body: "" });
+  const ctx = contexts.find((c) => (c.kind || "").toLowerCase() === "project" && (c.name || "").toLowerCase() === p.title.toLowerCase());
+  const raw = window.claude;
+  if (ctx && raw && typeof raw.request === "function") {
+    try { await raw.request({ method: "claude_context", params: { op: "setActive", id: ctx.id } }); } catch { /* no BYOP setActive yet — panel is the path */ }
+  }
 }
 
 // ---------- today's brief: the proactive half ----------
@@ -497,6 +651,7 @@ function renderProjects() {
   }
   const URL_RE = /^https?:\/\//i;
   for (const n of projNotes) {
+    if (!sampleActive && relay && editingCardKey === n.key) { box.append(cardEditor(n)); continue; }
     const p = parseProjectCard(n);
     const card = document.createElement("div");
     card.className = "projcard";
@@ -533,7 +688,7 @@ function renderProjects() {
     }
 
     if (!sampleActive && relay) {
-      const foot = document.createElement("div"); foot.className = "pfoot";
+      const foot = document.createElement("div"); foot.className = "pfoot"; foot.style.display = "flex"; foot.style.gap = "14px"; foot.style.flexWrap = "wrap";
       const pub = document.createElement("button"); pub.className = "linklike"; pub.type = "button";
       const already = contexts.some((c) => (c.kind || "").toLowerCase() === "project" && (c.name || "").toLowerCase() === p.title.toLowerCase());
       if (already) { pub.textContent = "in your library ✓"; pub.disabled = true; }
@@ -543,12 +698,48 @@ function renderProjects() {
         pub.onclick = () => void publishProject(p, pub);
       }
       foot.append(pub);
+      // set as the active project (the hero) — one selection scopes the whole surface
+      if (n.key !== (activeProjectNote()?.key)) {
+        const mk = document.createElement("button"); mk.className = "linklike"; mk.type = "button"; mk.textContent = "★ set as my project";
+        mk.title = "make this the active project the hero shows and wrapps borrow";
+        mk.onclick = () => void setActiveProject(n.key);
+        foot.append(mk);
+      }
+      foot.append(cardEditBtn(n));
       card.append(foot);
     }
     box.append(card);
   }
 }
 function tag(text) { const s = document.createElement("span"); s.className = "ptag"; s.textContent = text; return s; }
+
+// A project/brand card is just a `.md` file, so editing is the note editor over its raw body — the
+// same optimistic-write + revert-on-fail as toggleTask (§2.5). Round-trips to Obsidian unchanged.
+function cardEditor(note) {
+  const card = document.createElement("div"); card.className = "projcard";
+  card.append(Object.assign(document.createElement("div"), { className: "projhead" })).append(Object.assign(document.createElement("b"), { textContent: note.title }));
+  const ta = document.createElement("textarea"); ta.className = "cedit"; ta.value = note.body; ta.spellcheck = false;
+  const row = document.createElement("div"); row.className = "row";
+  const save = document.createElement("button"); save.className = "btn btn-primary"; save.type = "button"; save.textContent = "Save";
+  const cancel = document.createElement("button"); cancel.className = "btn"; cancel.type = "button"; cancel.textContent = "Cancel";
+  save.onclick = async () => {
+    if (!relay) return sysline("connect (top right) to edit");
+    const v = ta.value.trim(); if (!v) return;
+    save.disabled = true;
+    try { await relay.storage.set(note.key, v); editingCardKey = null; await boot(); }
+    catch (e) { save.disabled = false; sysline("couldn't save — " + String(e?.message || e).slice(0, 100)); }
+  };
+  cancel.onclick = () => { editingCardKey = null; renderAll(); };
+  row.append(save, cancel);
+  card.append(ta, row);
+  return card;
+}
+function cardEditBtn(note) {
+  const b = document.createElement("button"); b.className = "linklike"; b.type = "button"; b.textContent = "edit";
+  b.title = "edit this card as plain .md (round-trips to Obsidian)";
+  b.onclick = () => { editingCardKey = note.key; renderAll(); };
+  return b;
+}
 
 // Promote a vault project file into the shared library as a kind:"project" context — the bridge from
 // Bank-private files to context EVERY wrapp can consume (bounded by the user's consent, as always).
@@ -607,6 +798,7 @@ function renderBrands() {
   }
   const URL_RE = /^https?:\/\//i;
   for (const n of brandNotes) {
+    if (!sampleActive && relay && editingCardKey === n.key) { box.append(cardEditor(n)); continue; }
     const p = parseProjectCard(n); // the card dialect is shared: `> summary`, `- **k:** v`, `## Section`
     const card = document.createElement("div");
     card.className = "projcard";
@@ -661,7 +853,8 @@ function renderBrands() {
         pub.title = "share this brand as a context every wrapp can borrow";
         pub.onclick = () => void publishBrand(p, swatches, pub);
       }
-      foot.append(pub);
+      foot.style.display = "flex"; foot.style.gap = "14px"; foot.style.flexWrap = "wrap";
+      foot.append(pub, cardEditBtn(n));
       card.append(foot);
     }
     box.append(card);

@@ -16,6 +16,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.202",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@relay/bank-mcp": "*",
     "@relay/protocol": "*",
     "ws": "^8.18.0",
     "zod": "^4.4.3"

@@ -6,10 +6,11 @@
 import AppKit
 import SwiftUI
 
-// design tokens: one 4pt scale + a 3-step radius scale (unifies the ad-hoc set the inventory flagged).
+// design tokens: sourced from the module-level SB/SBr scales (RelayMenuBar.swift) so there is ONE grid and
+// ONE radius scale across panel · widgets · ambient · store (NOTCH-DESIGN §4/§5), not three copies.
 enum WK {
-    static let s1: CGFloat = 4, s2: CGFloat = 8, s3: CGFloat = 12, s4: CGFloat = 16, s5: CGFloat = 20, s6: CGFloat = 24
-    static let rSm: CGFloat = 7, rMd: CGFloat = 12, rLg: CGFloat = 16
+    static let s1 = SB.s1, s2 = SB.s2, s3 = SB.s3, s4 = SB.s4, s5 = SB.s5, s6 = SB.s6
+    static let rSm = SBr.xs, rMd = SBr.sm, rLg = SBr.md
     static let width: CGFloat = 600, ear: CGFloat = 14, padH: CGFloat = 22, hair: CGFloat = 1
 }
 
@@ -23,7 +24,8 @@ extension View {
 
 // ---------- shared chrome (every widget wears these) ----------
 struct WidgetHeader: View {
-    let kicker: String, title: String; var accent: Color = .ok
+    // One accent (NOTCH-DESIGN §2.2): the "healthy" header dot is lime, never a second green.
+    let kicker: String, title: String; var accent: Color = .lime
     var projects: [(id: String, name: String)] = []      // context-first: the project the run is grounded in
     var activeProjectId: String? = nil
     var onSelectProject: ((String?) -> Void)? = nil
@@ -68,13 +70,13 @@ struct ProjectChip: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "folder").font(.system(size: 9, weight: .semibold))
-                Text(label).font(.hanken(10.5, .medium)).lineLimit(1)
+                Text(label).font(.hanken(11, .medium)).lineLimit(1)
                 Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
             }
             .foregroundColor(currentId == nil ? .inkFaint : .inkDim)
             .padding(.horizontal, 9).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: WK.rSm).fill(Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: WK.rSm).stroke(currentId == nil ? Color.edge : Color.lime.opacity(0.35), lineWidth: WK.hair))
+            .overlay(RoundedRectangle(cornerRadius: WK.rSm).stroke(currentId == nil ? Color.edge : Color.lime.opacity(0.45), lineWidth: WK.hair))
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .help("The project this run is grounded in — switch it before running")
@@ -98,7 +100,7 @@ struct CaptionLine: View {
     var body: some View {
         HStack(spacing: WK.s2) {
             Image(systemName: icon).font(.system(size: 9, weight: .semibold)).foregroundColor(.inkFaint)
-            Text(text).font(.hanken(11.5)).foregroundColor(.inkDim).lineLimit(1)
+            Text(text).font(.hanken(12)).foregroundColor(.inkDim).lineLimit(1)
             Spacer(minLength: 0)
         }
     }
@@ -166,7 +168,7 @@ struct SteerRow: View {
             HStack(spacing: WK.s2) {
                 ForEach(chips, id: \.self) { c in
                     Button(action: { onSteer(c) }) {
-                        Text(c).font(.hanken(10.5, .medium)).foregroundColor(.inkDim)
+                        Text(c).font(.hanken(11, .medium)).foregroundColor(.inkDim)
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(Capsule().fill(Color.panel))
                             .overlay(Capsule().stroke(Color.edge, lineWidth: WK.hair))
@@ -228,9 +230,9 @@ struct ResultCards: View {
             ForEach(items) { c in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: WK.s2) {
-                        Text(c.label).font(.hanken(12.5, .semibold)).foregroundColor(.ink)
+                        Text(c.label).font(.hanken(12, .semibold)).foregroundColor(.ink)
                         if c.rec {
-                            Text("recommended").font(.splMono(8.5)).foregroundColor(.lime)
+                            Text("recommended").font(.splMono(9)).foregroundColor(.lime)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Capsule().fill(Color.lime.opacity(0.12)))
                         }
@@ -241,7 +243,7 @@ struct ResultCards: View {
                 .padding(WK.s3)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: WK.rMd).fill(Color.panel))
-                .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(c.rec ? Color.lime.opacity(0.5) : Color.edge, lineWidth: WK.hair))
+                .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(c.rec ? Color.lime.opacity(0.45) : Color.edge, lineWidth: WK.hair))
             }
         }
     }
@@ -249,7 +251,7 @@ struct ResultCards: View {
 struct ResultText: View {
     let text: String
     private var inner: some View {
-        Text(text).font(.hanken(12.5)).foregroundColor(.ink).lineSpacing(4)
+        Text(text).font(.hanken(12)).foregroundColor(.ink).lineSpacing(4)
             .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
             .padding(WK.s4)
     }
@@ -264,26 +266,32 @@ struct ResultText: View {
         .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(Color.edge, lineWidth: WK.hair))
     }
 }
+// Honest loading state — NOT a fake image. A driving wrapp used to show a big placeholder-art box that
+// read like the result; now it's a clear "working" treatment: a live spinner + the status line, and a
+// genuinely INDETERMINATE (moving) bar. Nothing here pretends to be output.
 struct WorkingCanvas: View {
     let line: String
+    @State private var slide = false
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s3) {
-            ZStack {
-                PlaceholderArt(symbol: "wand.and.stars", tint: .lime, symbolSize: 34)
-                LinearGradient(colors: [.clear, .white.opacity(0.06), .clear], startPoint: .leading, endPoint: .trailing)
+            HStack(spacing: WK.s2) {
+                ProgressView().controlSize(.small).tint(.lime)
+                Text(line).font(.hanken(12)).foregroundColor(.inkDim).lineLimit(2)
+                Spacer(minLength: 0)
             }
-            .aspectRatio(16.0/6.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: WK.rLg))
-            .overlay(RoundedRectangle(cornerRadius: WK.rLg).stroke(Color.edge, lineWidth: WK.hair))
-            CaptionLine(text: line, icon: "wand.and.stars")
+            // indeterminate bar: a lime segment sweeping left→right on a loop, so it reads as "in flight"
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.panel)
-                    Capsule().fill(LinearGradient(colors: [.lime.opacity(0.5), .lime], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: g.size.width * 0.42)
+                    Capsule().fill(LinearGradient(colors: [.lime.opacity(0.15), .lime, .lime.opacity(0.15)], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: g.size.width * 0.33)
+                        .offset(x: slide ? g.size.width * 0.67 : -g.size.width * 0.02)
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: slide)
                 }
             }.frame(height: 4)
         }
+        .padding(.vertical, WK.s2)
+        .onAppear { slide = true }
     }
 }
 
@@ -310,7 +318,7 @@ struct NotchWidget: View {
     var onOpen: () -> Void = {}
     var onRegen: () -> Void = {}
     var onSteer: (String) -> Void = { _ in }
-    var accent: Color { if case .working = spec.result { return .lime }; return .ok }
+    var accent: Color { .lime }   // one accent — working vs done reads from the renderer, not a hue swap
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s4) {
             WidgetHeader(kicker: spec.kicker, title: spec.title, accent: accent,

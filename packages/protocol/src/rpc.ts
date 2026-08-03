@@ -87,6 +87,37 @@ export interface TranscribeResult {
   backend: string;
 }
 
+/** sb_brand — read a brand's public website into provenance-tagged facts, SERVER-SIDE in the daemon
+ *  (no browser CORS, no forbidden-header stripping). Reuses the deterministic parser in
+ *  packages/bank-mcp (brand.mjs): colours come from the site's own CSS custom properties, products
+ *  from /products.json, each fact tagged with where it came from. This is the fix for the flaky in-tab
+ *  "start from an existing brand" (a tab can't fetch cross-origin, so the model was left to GUESS
+ *  hexes). See docs/BRAND-EXTRACTION.md §2.1 + docs/IDEAFETCH.md §2.1. */
+export interface SbBrandParams {
+  /** The brand's website, e.g. "nailin.it" or "https://nailin.it". */
+  url: string;
+  /** Override the brand name (else taken from og:site_name or the page title). */
+  name?: string;
+}
+export interface SbBrandResult {
+  domain: string;
+  siteName?: string;
+  description?: string;
+  platform?: string;
+  currency?: string;
+  ogImage?: string;
+  /** Provenance-tagged palette from the served CSS — each colour records the variable/source it
+   *  came from ("--brand-primary", "theme-color", …). Empty ⇒ no colours read (honest, never guessed). */
+  palette: { hex: string; from: string }[];
+  products: { short: string; price: number | null; type: string; url?: string }[];
+  category?: string;
+  priceRange?: { min: number; max: number };
+  socials: { label: string; url: string }[];
+  /** false ⇒ the site couldn't be read (dead / JS-only / bot-block / non-public URL). A first-class
+   *  HONEST state — the caller offers a repo/folder/paste reader instead of fabricating. */
+  reachable: boolean;
+}
+
 /** The typed method table: each method's params and result. */
 export interface BYOPMethods {
   /** Feature-detect. No permission required. */
@@ -127,6 +158,9 @@ export interface BYOPMethods {
   /** Local speech-to-text — recognized on-device, no cloud/connector/credits. Requires a grant.
    *  The mirror of claude_speak; primarily used by direct-principal (native) apps. */
   claude_transcribe: { params: TranscribeParams; result: TranscribeResult };
+  /** Read a brand's public website into provenance-tagged facts, server-side (no CORS). Requires a
+   *  grant; GET-only on public pages (read posture) so no per-call consent. See docs/BRAND-EXTRACTION.md. */
+  sb_brand: { params: SbBrandParams; result: SbBrandResult };
   /** The setup ladder, answered by the EXTENSION locally — never forwarded to the daemon, no
    *  grant required, resolves fast (<1s) even when the daemon is unreachable or unpaired. The
    *  chip/widget render install → unreachable → unpaired → disconnected → connected from this;

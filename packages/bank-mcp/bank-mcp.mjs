@@ -20,6 +20,9 @@ import { homedir } from "node:os";
 import { addTask, completeTask, parseTasks } from "./tasks.mjs";
 import { buildProject, projectToMarkdown, slugify, isProjectDir } from "./project.mjs";
 import { buildBrand, brandToMarkdown, brandToContext } from "./brand.mjs";
+// Server-side site fetching + SSRF/byte-budget guards. Extracted to site.mjs so the daemon's
+// `sb_brand` capability (packages/sidekick) reuses the exact same fetching brain — one implementation.
+import { safeUrl, gatherSite } from "./site.mjs";
 
 // ---- vault resolution: --vault <path> | $BANK_VAULT | ~/SwitchboardBrain (Bank's default) ----
 function argVal(flag) { const i = process.argv.indexOf(flag); return i >= 0 ? process.argv[i + 1] : undefined; }
@@ -107,73 +110,8 @@ function findProjects(root, maxDepth = 1, limit = 60) {
 }
 
 // ---- site fetching for bank_extract_brand ----
-// The whole point of the brand extractor is that colours and products come from bytes the site
-// actually served, never from a model's recollection. So we do the fetching here and hand raw text to
-// the pure parser in brand.mjs.
-const UA = "Mozilla/5.0 (compatible; SwitchboardBank/0.1; +https://github.com/sameeeeeeep/switchboard)";
-const MAX_BYTES = 4_000_000;
-// A URL reaches this tool from a model or a paste, so it must never be a lever onto the local network.
-const PRIVATE_HOST = /^(localhost|0\.0\.0\.0|\[?::1\]?|127\.|10\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i;
-
-function safeUrl(raw) {
-  let u;
-  try { u = new URL(/^https?:\/\//i.test(String(raw)) ? String(raw) : `https://${String(raw).trim()}`); } catch { return null; }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-  const h = u.hostname.toLowerCase();
-  if (PRIVATE_HOST.test(h) || h.endsWith(".local") || h.endsWith(".internal") || !h.includes(".")) return null;
-  return u;
-}
-
-async function get(url, { timeoutMs = 20_000, json = false } = {}) {
-  try {
-    const res = await fetch(url, {
-      headers: { "user-agent": UA, accept: json ? "application/json" : "text/html,application/xhtml+xml,*/*" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return null;
-    const text = (await res.text()).slice(0, MAX_BYTES);
-    if (!json) return text;
-    try { return JSON.parse(text); } catch { return null; } // a bot-block serves HTML here, not JSON
-  } catch { return null; }
-}
-
-/** The full catalogue. `?limit=250` is what turns "the first 30" into everything. */
-async function fetchCatalog(origin) {
-  const products = [];
-  for (let page = 1; page <= 8; page++) {
-    const j = await get(`${origin}/products.json?limit=250&page=${page}`, { json: true });
-    const list = j && Array.isArray(j.products) ? j.products : null;
-    if (!list || !list.length) break;
-    products.push(...list);
-    if (list.length < 250) break;
-  }
-  // Some storefronts bot-block the query-string form; the bare endpoint usually still answers.
-  if (!products.length) {
-    const j = await get(`${origin}/products.json`, { json: true });
-    if (j && Array.isArray(j.products)) products.push(...j.products);
-  }
-  return { products };
-}
-
-/** Homepage + its same-origin stylesheets + the catalogue. Stylesheets matter for themes that don't
- *  inline their custom properties — without them the palette silently degrades to frequency guessing. */
-async function gatherSite(u) {
-  const origin = u.origin;
-  const html = await get(`${origin}/`);
-  if (!html) return null;
-  const hrefs = [...html.matchAll(/<link[^>]+href=["']([^"']+\.css[^"']*)["']/gi)].map((m) => m[1]);
-  const sheets = await Promise.all(
-    hrefs.slice(0, 4).map(async (h) => {
-      try {
-        const abs = new URL(h, origin);
-        if (abs.origin !== origin && !/(^|\.)shopify(cdn)?\.com$|cdn\.shopify\.com/.test(abs.hostname)) return "";
-        return (await get(abs.href, { timeoutMs: 12_000 })) || "";
-      } catch { return ""; }
-    }),
-  );
-  return { html, css: sheets.join("\n"), catalog: await fetchCatalog(origin) };
-}
+// safeUrl + gatherSite (the SSRF/byte-budget guards + fetch fan-out) now live in site.mjs so the
+// daemon's `sb_brand` capability reuses the exact same fetching brain. Imported at the top.
 
 const server = new McpServer({ name: "bank", version: "0.1.0" });
 

@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift -framework AppKit -framework SwiftUI -framework WebKit
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices
 
 APP="Switchboard.app"
 rm -rf "$APP"
@@ -29,6 +29,22 @@ if compgen -G "icons/*.png" >/dev/null 2>&1; then
   mkdir -p "$APP/Contents/Resources/icons"
   cp icons/*.png "$APP/Contents/Resources/icons/" 2>/dev/null || true
   echo "[menubar] bundled wrapp icons ($(ls icons/*.png | wc -l | tr -d ' ') PNGs)"
+fi
+
+# Skill bodies — the "wear this skill" content behind a listing's components.skills refs
+# (e.g. "yc/register" → wrapps/yc/skills/register.md). Bundled flat as Resources/skills/<wrapp>/<name>.md
+# so the god surface can load the real instructions into God's context (docs/GOD-HANDS.md). A listing
+# with no skill files still works — the god surface falls back to the wrapp's page.
+WRAPPS_DIR="../../examples/apps/wrapps"
+if compgen -G "$WRAPPS_DIR/*/skills/*.md" >/dev/null 2>&1; then
+  n=0
+  for f in "$WRAPPS_DIR"/*/skills/*.md; do
+    wrapp="$(basename "$(dirname "$(dirname "$f")")")"
+    dest="$APP/Contents/Resources/skills/$wrapp"
+    mkdir -p "$dest"
+    cp "$f" "$dest/" && n=$((n+1))
+  done
+  echo "[menubar] bundled skill bodies ($n md files)"
 fi
 
 # House fonts (Bricolage / Hanken / Spline) — bundled if present so the panel renders in brand type;

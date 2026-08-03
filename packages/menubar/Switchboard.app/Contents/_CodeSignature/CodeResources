@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		njHoaSYxy1+y/9xCV0zlCC183Tk=
+		DMfHbj8zZtUmQVcCp0YEAD5e5g0=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -272,6 +272,18 @@
 		<data>
 		bLbT5Yy+eFkrDPq8qi69jJAf9oI=
 		</data>
+		<key>Resources/skills/gist/summarize.md</key>
+		<data>
+		l4LQKq608KGtGlrVi9OCbXXOzYA=
+		</data>
+		<key>Resources/skills/yc/register.md</key>
+		<data>
+		9Rul2c/CXxBXH2PUGYl2pFu/isw=
+		</data>
+		<key>Resources/skills/yc/rfs.md</key>
+		<data>
+		xH3t/P3rT6HNCx0UoJ0gD5Ql7Wk=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -279,7 +291,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			3hOZFU3Wfxe5oN6ZVdNHMSVkc0/Fvz+q2Lq7MmzC0xE=
+			usE4k8eGundg37ZCMUpzv6QNBUlMSZwTputhaCpvtwc=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
@@ -742,6 +754,27 @@
 			<key>hash2</key>
 			<data>
 			D4B3pGDFw0QefoPPDCybqdBb5bTSudMFRUEC2tKs/Qo=
+			</data>
+		</dict>
+		<key>Resources/skills/gist/summarize.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			p6lnAO4KaegjKj30YWD2Ctegz4fBnnG8V5IDsHUqlgA=
+			</data>
+		</dict>
+		<key>Resources/skills/yc/register.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			gujSFq9gAytQKSBZd18wlqM4FY74NC+JzmpYY5tI/5M=
+			</data>
+		</dict>
+		<key>Resources/skills/yc/rfs.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			073jbAlJoBGKx7gP6oim83OcDaeWYSz5Wg+WbFcFFec=
 			</data>
 		</dict>
 	</dict>

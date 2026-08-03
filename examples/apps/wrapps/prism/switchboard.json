@@ -1,7 +1,7 @@
 {
   "id": "prism",
   "name": "Prism",
-  "tagline": "Make an image pop on any background.",
+  "tagline": "Generate on-brand images from a prompt.",
   "category": "tool",
   "components": {
     "ui": {

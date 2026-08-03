@@ -13,6 +13,7 @@ import { readdirSync, readFileSync, writeFileSync, statSync, existsSync, mkdirSy
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { execFileSync } from "node:child_process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));           // examples/apps/wrapps
 const ROOT = join(HERE, "..", "..", "..");                     // worktree root
@@ -64,6 +65,25 @@ if (problems.length) {
   process.exit(1);
 }
 
+// Fold in the TOOL REGISTRY (wrapps/tools.json, harvested by build-tools.mjs from every exposeToGod).
+// Each listing carries its God-callable commands (name + when + how) so God resolves a request to the
+// RIGHT command with the RIGHT args — not just to a wrapp. The catalog id usually equals the source id;
+// SRC_ALIAS covers the few where they differ (Prism's page/tool is imagegen). Swift's decoder ignores
+// the extra `tools` key, so this stays backward-compatible with the strict SBListing decode.
+const SRC_ALIAS = { prism: "imagegen", cast: "persona" };
+// Refresh the registry from source first so the catalog never carries stale commands. execFileSync with
+// an argument array (no shell) — the path is fixed, but this keeps it injection-proof by construction.
+try { execFileSync(process.execPath, [join(HERE, "build-tools.mjs")], { stdio: "inherit" }); }
+catch { console.error("  (build-tools.mjs failed — listings may carry stale/no commands)"); }
+let toolReg = {};
+try { toolReg = JSON.parse(readFileSync(join(HERE, "tools.json"), "utf8")); }
+catch { console.error("  (no tools.json — run build-tools.mjs first; listings ship without commands)"); }
+let toolsAttached = 0;
+for (const l of listings) {
+  const tools = toolReg[SRC_ALIAS[l.id] || l.id];
+  if (tools && tools.length) { l.tools = tools; toolsAttached += tools.length; }
+}
+
 // Stable order: studios first, then the rest by category then name — a sensible default the modal
 // can re-sort. No popularity/recency (no telemetry, by design).
 const CAT_ORDER = { studio: 0, agent: 1, tool: 2, skill: 3, fun: 4 };
@@ -80,6 +100,7 @@ const relayDir = join(homedir(), ".relay");
 try { mkdirSync(relayDir, { recursive: true }); writeFileSync(join(relayDir, "catalog.json"), json); } catch {}
 
 console.log(`✓ ${listings.length} listings → ${repoOut}`);
+console.log(`  tool registry: ${toolsAttached} commands attached across ${listings.filter((l) => l.tools).length} listings`);
 console.log(`  also wrote ~/.relay/catalog.json (live)`);
 console.log(`  surfaces: ${[...new Set(listings.flatMap((l) => l.surfaces))].sort().join(", ")}`);
 if (runtimeOnly) console.log(`  (skipped ${runtimeOnly} runtime-only switchboard.json — no surfaces declared)`);

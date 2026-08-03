@@ -321,7 +321,38 @@
   // ---- routing table (first match wins) -------------------------------------------------------
   // Each route: [test(lc,prompt), producer] where producer returns a VALUE (stringified if object/
   // array) or a special {image:true}/{video:true} marker handled below.
+  // ideabrain widget — the reused `brief` seam returns a Brief OBJECT; the widget's pressure-test pass
+  // returns a VERDICT object. Both are distinctive enough to match on their own prompt language. The
+  // verdict names the RISK (not hype), mirroring what the widget renders.
+  function ideaBrief() {
+    return {
+      productIdea: bname + " — " + positioning, category: (keywords[0] || "marketplace") + " · " + (keywords[1] || "programmatic"),
+      audience: audience, demographics: "25–40, urban, mid-high income", priceTier: "Mid",
+      market: brand.market || "US", vibe: keywords.slice(0, 4).join(", ") || "sharp, modern, useful",
+      positioningHint: "Airbnb for " + (products[0] || "the thing nobody else priced by the minute"),
+    };
+  }
+  function ideaVerdict() {
+    return {
+      stance: "shaky", headline: "Wedge is real; supply is the risk",
+      risk: "Supply-side onboarding — you need " + audience + " listing before demand shows up, and the cold-start is brutal.",
+      wedge: "The pricing primitive (" + (products[0] || "by-the-minute") + ") genuinely doesn't exist yet — that's a real opening.",
+      whynow: "APIs opened up in 2024, so the integration cost finally dropped below the willingness to pay.",
+      stages: [
+        { key: "research", signal: "4 real alternatives found, none priced this way", grounded: true },
+        { key: "thesis", signal: "the analogy holds — two-sided, thin-margin, network-gated", grounded: false },
+        { key: "market", signal: "2 funds already writing checks in this space", grounded: true },
+        { key: "prove", signal: "riskiest assumption: will supply list before demand exists", grounded: true },
+      ],
+      reachOutCount: 6,
+    };
+  }
+
   var ROUTES = [
+    // ideabrain widget — brief (the reused seam) then the verdict pass. Match FIRST: both are JSON
+    // objects and would otherwise fall through to the generic objectFallback (empty brief/verdict).
+    [function (lc, p) { return /expand it into a sharp, specific brief|"positioninghint"/i.test(p); }, function () { return ideaBrief(); }],
+    [function (lc, p) { return /pressure-test this idea for a founder|single riskiest assumption|find where it breaks/i.test(p); }, function () { return ideaVerdict(); }],
     // image / video generation (agentic) — check before text routes
     [function (lc, p, params) { return params.agentic && /generate_image|higgsfield|generate an image|image url|aspect_ratio|final image url|poll (the )?job|nano_banana/i.test(p); }, function (lc, p) { return { image: true, video: /video|reel|animate|motion|generate_video/i.test(lc) }; }],
     // redline audit — ORDER MATTERS: the audit asks for {find,replace} pairs and says "EXACT unique
