@@ -3302,6 +3302,7 @@ struct ActionConsentDrop: View {
         installHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
+        startBundledWebServer()        // packaged app: serve the bundled wrapps/widgets locally so ⌥⌥ works offline
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
 
@@ -3928,6 +3929,32 @@ struct ActionConsentDrop: View {
         if let m = launcherMonitor { NSEvent.removeMonitor(m); launcherMonitor = nil }
         if let k = launcherKeyMonitor { NSEvent.removeMonitor(k); launcherKeyMonitor = nil }
         if let p = launcherPanel { dismissToNotch(p) }
+    }
+
+    // ── BUNDLED WEB SERVER — a packaged app ships examples/apps in Resources/webapps + the node binary, and
+    //    serves them locally on :5188 so the ⌥⌥ launcher's widgets + wrapp pages work with NO dev server. In a
+    //    dev build (no Resources/webapps) this is a no-op and the developer's external dev server is used. ──
+    var webServerProc: Process?
+    @MainActor private func startBundledWebServer() {
+        guard webServerProc == nil,
+              let serve = Bundle.main.url(forResource: "serve", withExtension: "mjs", subdirectory: "webapps"),
+              let node = Bundle.main.url(forResource: "node", withExtension: nil) else { return }
+        if isPortOpen(5188) { return }   // something's already serving :5188 (a dev server) — don't fight it
+        let p = Process()
+        p.executableURL = node
+        p.arguments = [serve.path]
+        var env = ProcessInfo.processInfo.environment; env["PORT"] = "5188"; p.environment = env
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        do { try p.run(); webServerProc = p; godLog("bundled web server started on :5188 (\(serve.path))") }
+        catch { godLog("bundled web server failed: \(error.localizedDescription)") }
+    }
+    private func isPortOpen(_ port: UInt16) -> Bool {
+        let s = socket(AF_INET, SOCK_STREAM, 0); guard s >= 0 else { return false }
+        defer { close(s) }
+        var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_port = port.bigEndian
+        _ = "127.0.0.1".withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        let r = withUnsafePointer(to: &addr) { p in p.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(s, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        return r == 0
     }
 
     // ── the native WIDGET HOST — load a wrapp offscreen, call __godWidget.get(input), render the notch widget ──

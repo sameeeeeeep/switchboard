@@ -98,8 +98,12 @@ cp -R "$WS_DIR/." "$RES/god/node_modules/ws/"
 say "God client staged (+ ws)"
 
 # ---------- 7. compile the menubar app + Info.plist ----------
-say "compiling RelayMenuBar.swift…"
-swiftc -O -o "$STAGE/Contents/MacOS/Relay" "$HERE/RelayMenuBar.swift" -framework AppKit -framework SwiftUI
+say "compiling the menu-bar app (all Swift files)…"
+swiftc -O -o "$STAGE/Contents/MacOS/Relay" \
+  "$HERE/main.swift" "$HERE/RelayMenuBar.swift" "$HERE/CursorGuide.swift" "$HERE/NotchLauncherView.swift" \
+  "$HERE/GodWidgetKit.swift" "$HERE/GodWebWindow.swift" "$HERE/StoreFrontView.swift" "$HERE/HtmlCapability.swift" \
+  "$HERE/SkillRunner.swift" "$HERE/AmbientSensor.swift" "$HERE/AmbientCanvas.swift" \
+  -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices
 
 # House fonts (optional; the panel falls back to the system font if the dir is empty).
 if ls "$HERE"/fonts/*.ttf >/dev/null 2>&1 || ls "$HERE"/fonts/*.otf >/dev/null 2>&1; then
@@ -108,6 +112,30 @@ if ls "$HERE"/fonts/*.ttf >/dev/null 2>&1 || ls "$HERE"/fonts/*.otf >/dev/null 2
   cp "$HERE"/fonts/*.otf "$RES/fonts/" 2>/dev/null || true   # missing glob must not skip the others
   say "bundled house fonts ($(ls "$RES/fonts" | tr '\n' ' '))"
 fi
+
+# ---------- 7b. bundle the store surface (match build.sh) — catalog + wrapp icons + skill bodies ----------
+CATALOG="$ROOT/examples/apps/wrapps/catalog.json"
+[ -f "$CATALOG" ] && cp "$CATALOG" "$RES/catalog.json" && say "bundled catalog ($(node -e "console.log(require('$CATALOG').count)" 2>/dev/null || echo '?') listings)"
+if compgen -G "$HERE/icons/*.png" >/dev/null 2>&1; then
+  mkdir -p "$RES/icons"; cp "$HERE"/icons/*.png "$RES/icons/" 2>/dev/null || true
+  say "bundled wrapp icons ($(ls "$HERE"/icons/*.png | wc -l | tr -d ' ') PNGs)"
+fi
+if compgen -G "$ROOT/examples/apps/wrapps/*/skills/*.md" >/dev/null 2>&1; then
+  n=0; for f in "$ROOT"/examples/apps/wrapps/*/skills/*.md; do
+    w="$(basename "$(dirname "$(dirname "$f")")")"; mkdir -p "$RES/skills/$w"; cp "$f" "$RES/skills/$w/" && n=$((n+1))
+  done; say "bundled skill bodies ($n md files)"
+fi
+
+# ---------- 7c. bundle the WEBAPPS — examples/apps served locally on :5188 by the app (serve.mjs), so the
+#              ⌥⌥ launcher's widgets + wrapp pages work with NO dev server (RelayMenuBar.startBundledWebServer). ----------
+say "bundling webapps (examples/apps)…"
+mkdir -p "$RES/webapps"
+rsync -a --delete \
+  --exclude 'node_modules' --exclude '.git' --exclude '*.map' --exclude 'harness' \
+  "$ROOT/examples/apps/" "$RES/webapps/"
+[ -f "$RES/webapps/serve.mjs" ] || die "webapps bundle missing serve.mjs"
+say "webapps bundled ($(du -sh "$RES/webapps" | cut -f1), $(ls "$RES/webapps"/*-widget.html 2>/dev/null | wc -l | tr -d ' ') widgets)"
+
 cp "$HERE/Info.plist" "$STAGE/Contents/Info.plist"
 printf 'APPL????' > "$STAGE/Contents/PkgInfo"
 VERSION="$($PB -c 'Print CFBundleShortVersionString' "$STAGE/Contents/Info.plist")"
