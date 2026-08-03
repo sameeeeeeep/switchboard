@@ -697,7 +697,10 @@ function render() {
   // kept shelf
   if (r.kept && r.kept.length) col.append(keptShelf());
 
-  // 5 — BRAND KIT (appears once at least one mark is kept): pick palette + fonts → designed PDF
+  // 3 — LOCKUPS (refine the kept mark into the working set)
+  if (r.kept && r.kept.length) col.append(lockupsBlock());
+
+  // 4 — BRAND KIT (pick palette + fonts → designed PDF) + shareable chooser
   if (r.kept && r.kept.length) col.append(kitBlock());
 
   view.append(col);
@@ -1073,7 +1076,8 @@ function kitBlock() {
   sec.append(fg);
   const ex = el("div", "kit-export");
   const pdf = el("button", "primary", "⬇ Export brand kit (PDF)"); pdf.disabled = running; pdf.onclick = () => void buildKitPdf();
-  ex.append(pdf);
+  const share = el("button", "act", "🔗 Export shareable chooser"); share.disabled = running; share.onclick = () => void exportChooser();
+  ex.append(pdf, share);
   sec.append(ex);
   return sec;
 }
@@ -1118,6 +1122,144 @@ async function buildKitPdf() {
     toast("Brand kit downloaded ✓");
   } catch (e) { toast("PDF export failed: " + msg(e), true); }
   finally { holder.remove(); }
+}
+
+// ============================================================================================
+// SHAREABLE CHOOSER — export ONE self-contained HTML packaging every generated option (marks,
+// lockups, palettes, fonts) with all image assets inlined as data URIs. The recipient browses,
+// PICKS their favourites, and downloads the finished kit — no server, no new generation.
+// ============================================================================================
+async function toDataUrl(url) {
+  if (!url || String(url).startsWith("data:")) return url || "";
+  try { const res = await fetch(url); const blob = await res.blob(); return await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(String(fr.result)); fr.onerror = () => r(url); fr.readAsDataURL(blob); }); }
+  catch { return url; }
+}
+async function exportChooser() {
+  const r = state.run; if (!r || !r.foundation) return;
+  if (!(r.kit && r.kit.palettes)) { toast("build the brand kit first (palettes + fonts)", true); return; }
+  toast("Packaging your shareable chooser…");
+  try {
+    const marks = [];
+    for (const k of (r.kept || [])) marks.push({ label: k.label, svg: k.svg || "", img: k.imageUrl ? await toDataUrl(k.imageUrl) : "" });
+    for (const it of ((r.lockups && r.lockups.items) || [])) if (it.svg || it.imageUrl) marks.push({ label: it.label, svg: it.svg || "", img: it.imageUrl ? await toDataUrl(it.imageUrl) : "" });
+    const data = {
+      name: r.foundation.name, positioning: r.foundation.positioning || "",
+      marks, palettes: r.kit.palettes || [], fonts: r.kit.fonts || [],
+      taglines: r.kit.taglines || [], voice: r.kit.voice || r.foundation.voice || "",
+    };
+    const blob = new Blob([buildChooserHtml(data)], { type: "text/html" });
+    const a = el("a"); a.href = URL.createObjectURL(blob); a.download = String(data.name || "brand").replace(/\s+/g, "-").toLowerCase() + "-chooser.html";
+    document.body.append(a); a.click(); a.remove();
+    toast("Shareable chooser downloaded ✓ — send it; they pick and download their kit");
+  } catch (e) { toast("chooser export failed: " + msg(e), true); }
+}
+function buildChooserHtml(d) {
+  const fams = [...new Set(d.fonts.flatMap((f) => [f.display, f.body]).filter(Boolean))];
+  const fontLink = fams.length ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?' + fams.map((f) => "family=" + encodeURIComponent(f).replace(/%20/g, "+") + ":wght@400;600;700").join("&") + '&display=swap">' : "";
+  const DATA = JSON.stringify(d).replace(/</g, "\\u003c");
+  const APP = 'const D=window.__KIT__;const S={mark:0,pal:0,font:0};'
+    + 'const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];'
+    + 'function markHTML(m,big){const z=big?200:120;if(m.img)return "<img src=\\""+m.img+"\\" style=\\"max-width:"+z+"px;max-height:"+z+"px;object-fit:contain\\">";if(m.svg)return "<div style=\\"width:"+z+"px\\">"+m.svg+"</div>";return "";}'
+    + 'function rgb(h){h=(h||"").replace("#","");if(h.length===3)h=h.split("").map(c=>c+c).join("");const n=parseInt(h||"0",16)||0;return [(n>>16)&255,(n>>8)&255,n&255];}'
+    + 'function render(){'
+    + '$("#marks").innerHTML=D.marks.map((m,i)=>"<div class=\\"opt "+(i===S.mark?"sel":"")+"\\" data-m=\\""+i+"\\"><div class=\\"thumb\\">"+markHTML(m)+"</div><div class=\\"cap\\">"+m.label+"</div></div>").join("");'
+    + '$("#pals").innerHTML=D.palettes.map((p,i)=>"<div class=\\"opt "+(i===S.pal?"sel":"")+"\\" data-p=\\""+i+"\\"><div class=\\"sw\\">"+["primary","secondary","ink","bg","accent"].map(r=>"<span style=\\"background:"+(p[r]||"#000")+"\\"></span>").join("")+"</div><div class=\\"cap\\">"+(p.name||"Palette")+"</div></div>").join("");'
+    + '$("#fonts").innerHTML=D.fonts.map((f,i)=>"<div class=\\"opt "+(i===S.font?"sel":"")+"\\" data-f=\\""+i+"\\"><div class=\\"fd\\" style=\\"font-family:\\x27"+f.display+"\\x27\\">Aa</div><div class=\\"fb\\" style=\\"font-family:\\x27"+f.body+"\\x27\\">The quick brown fox</div><div class=\\"cap\\">"+f.display+" \\u00b7 "+f.body+"</div></div>").join("");'
+    + '$$("[data-m]").forEach(e=>e.onclick=()=>{S.mark=+e.dataset.m;render();});'
+    + '$$("[data-p]").forEach(e=>e.onclick=()=>{S.pal=+e.dataset.p;render();});'
+    + '$$("[data-f]").forEach(e=>e.onclick=()=>{S.font=+e.dataset.f;render();});}'
+    + 'function kitHTML(){const m=D.marks[S.mark]||{},p=D.palettes[S.pal]||{},f=D.fonts[S.font]||{};'
+    + 'const df="\\x27"+(f.display||"Georgia")+"\\x27,sans-serif",bf="\\x27"+(f.body||"Georgia")+"\\x27,sans-serif";'
+    + 'const roles=[["Primary",p.primary],["Secondary",p.secondary],["Ink",p.ink],["Background",p.bg],["Accent",p.accent]].filter(x=>x[1]);'
+    + 'const sw=roles.map(x=>{const c=rgb(x[1]);return "<div style=\\"display:flex;align-items:center;gap:14px;margin:8px 0\\"><div style=\\"width:54px;height:54px;border-radius:9px;background:"+x[1]+";border:1px solid rgba(0,0,0,.12)\\"></div><div><b style=\\"font-family:"+df+"\\">"+x[0]+"</b><div style=\\"font:400 12px/1.6 monospace;color:#555\\">HEX "+String(x[1]).toUpperCase()+" \\u00b7 RGB "+c[0]+","+c[1]+","+c[2]+"</div></div></div>";}).join("");'
+    + 'const tags=(D.taglines||[]).map(t=>"<li>"+t+"</li>").join("");'
+    + 'return "<div style=\\"width:794px;box-sizing:border-box;padding:52px;background:"+(p.bg||"#fff")+";color:"+(p.ink||"#101014")+"\\"><div style=\\"font:600 11px monospace;letter-spacing:.2em;text-transform:uppercase;color:"+(p.accent||"#888")+"\\">Brand kit</div><h1 style=\\"font:700 40px/1.05 "+df+";margin:6px 0 0\\">"+D.name+"</h1><div style=\\"font:400 15px "+bf+";opacity:.8;margin-top:6px\\">"+(D.positioning||"")+"</div><div style=\\"margin:30px 0;display:flex;gap:20px\\"><div style=\\"flex:1;border:1px solid rgba(0,0,0,.1);border-radius:12px;padding:24px;display:flex;justify-content:center;background:"+(p.bg||"#fff")+"\\">"+markHTML(m,true)+"</div><div style=\\"flex:1;border-radius:12px;padding:24px;display:flex;justify-content:center;background:"+(p.ink||"#111")+"\\">"+markHTML(m,true)+"</div></div><h2 style=\\"font:700 22px "+df+";margin-top:24px\\">Colour</h2>"+sw+"<h2 style=\\"font:700 22px "+df+";margin-top:24px\\">Type</h2><div style=\\"font:700 40px "+df+";margin:8px 0\\">"+D.name+"</div><div style=\\"font:400 15px/1.6 "+bf+"\\">The quick brown fox jumps over the lazy dog. "+(f.display||"")+" for display, "+(f.body||"")+" for body — both free Google Fonts.</div><h2 style=\\"font:700 22px "+df+";margin-top:24px\\">Voice \\u0026 taglines</h2><p style=\\"font:400 14px/1.6 "+bf+"\\">"+(D.voice||"")+"</p><ul style=\\"font:600 17px/1.9 "+df+"\\">"+tags+"</ul></div>";}'
+    + 'function download(){if(!window.html2pdf){alert("PDF library still loading — try again in a second");return;}const h=document.createElement("div");h.style.cssText="position:fixed;left:-99999px;top:0";h.innerHTML=kitHTML();document.body.append(h);window.html2pdf().set({margin:0,filename:D.name.replace(/\\s+/g,"-").toLowerCase()+"-kit.pdf",image:{type:"jpeg",quality:.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:"px",format:[794,1123],orientation:"portrait"}}).from(h.firstElementChild).save().then(()=>h.remove());}'
+    + 'document.addEventListener("DOMContentLoaded",()=>{render();$("#dl").onclick=download;});';
+  return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>" + stripTags(d.name) + " — pick your brand</title>" + fontLink
+    + "<style>:root{--a:#C8F250}*{box-sizing:border-box}body{margin:0;background:#0A0C10;color:#E8EDF4;font:14px/1.6 system-ui,sans-serif}header{padding:22px 24px;border-bottom:1px solid #1C212B}h1{font:700 24px/1 system-ui;margin:0}.sub{color:#99A3B7;margin-top:6px;font-size:14px}main{max-width:900px;margin:0 auto;padding:28px 24px 100px}.k{font:500 10px/1 ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:#6E7C90;display:block;margin:26px 0 12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}.opt{border:1px solid #262C38;background:#070809;border-radius:13px;padding:12px;cursor:pointer;text-align:center}.opt.sel{border-color:var(--a);background:#181d0a}.thumb{aspect-ratio:1;background:#0A0C10;border-radius:9px;display:grid;place-items:center;overflow:hidden;margin-bottom:8px}.thumb img{max-width:80%;max-height:80%}.thumb svg{width:70%;height:70%}.sw{display:flex;gap:4px;margin-bottom:8px}.sw span{flex:1;height:30px;border-radius:5px;border:1px solid rgba(255,255,255,.1)}.fd{font-size:30px;line-height:1}.fb{font-size:13px;color:#B4BECE;margin:5px 0 8px}.cap{font:500 12px/1.3 system-ui;color:#E8EDF4}.bar{position:fixed;left:0;right:0;bottom:0;padding:14px 24px;background:#12151C;border-top:1px solid #262C38;display:flex;justify-content:center}#dl{font:600 14px system-ui;border:0;border-radius:10px;padding:13px 26px;background:var(--a);color:#0A0C10;cursor:pointer}</style></head>"
+    + "<body><header><h1>" + stripTags(d.name) + "</h1><div class=sub>Pick the mark, palette and fonts you like — then download your brand kit.</div></header>"
+    + "<main><span class=k>Logo — pick one</span><div class=grid id=marks></div><span class=k>Palette — pick one</span><div class=grid id=pals></div><span class=k>Type — pick a pairing</span><div class=grid id=fonts></div></main>"
+    + "<div class=bar><button id=dl>⬇ Download my brand kit (PDF)</button></div>"
+    + '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><' + '/script>'
+    + "<script>window.__KIT__=" + DATA + ";" + APP + "<" + "/script></body></html>";
+}
+
+// ============================================================================================
+// LOCKUPS — refine a kept mark into the working set (horizontal / stacked / avatar / wordmark /
+// one-colour). Wireframe-first: SVG shows free; image render is opt-in per lockup.
+// ============================================================================================
+const LOCKUPS = [
+  { id: "horizontal", label: "Primary — horizontal", hint: "the symbol on the left, the wordmark to its right, baseline-aligned" },
+  { id: "stacked",    label: "Compact — stacked",    hint: "the symbol centred above the wordmark" },
+  { id: "avatar",     label: "Avatar / monogram",    hint: "just the symbol or the initials inside a rounded square, for a social avatar" },
+  { id: "wordmark",   label: "Wordmark only",        hint: "the name set in the brand's letterform, no symbol" },
+  { id: "onecolor",   label: "One-colour",           hint: "the primary lockup flattened to a single colour — the small-size / print test" },
+];
+async function runLockups() {
+  const r = state.run; if (!r || !relay || !r.foundation || running) return;
+  const k = (r.kept && r.kept[0]); if (!k) { toast("keep a mark first (♥)", true); return; }
+  const style = styleOf(k) || STYLES[1];
+  running = true; r.lockups = { for: k.srcId, loading: true, items: null, error: null }; render();
+  try {
+    const prompt = [
+      "You are Crest. Produce the LOCKUP SET for this brand's chosen mark — each as clean inline SVG.",
+      `BRAND: ${r.foundation.name}`,
+      `MARK CONCEPT: ${k.label}` + (k.concept ? " — " + k.concept : ""),
+      `STYLE: ${style.label} — ${style.svgHint}`,
+      "Produce EXACTLY these 5, in order: " + LOCKUPS.map((l) => `${l.id} (${l.hint})`).join("; ") + ".",
+      "Each SVG must have a viewBox and be self-contained (no external refs). The mark should be recognizable and consistent across all five.",
+      "Respond with ONLY a JSON object — no prose, no fences — shape:",
+      '{"lockups":[5 items, each {"id":one of ' + LOCKUPS.map((l) => l.id).join("/") + ',"svg":string (inline SVG)}]}',
+    ].join("\n\n");
+    const o = await askJson([prompt]);
+    const byId = {}; (o.lockups || []).forEach((x) => { if (x && x.id) byId[x.id] = sanitizeSvg(String(x.svg || "")); });
+    r.lockups.items = LOCKUPS.map((l) => ({ id: l.id, label: l.label, svg: /<svg[\s\S]*<\/svg>/i.test(byId[l.id] || "") ? byId[l.id] : "", imagePrompt: `${r.foundation.name} logo, ${l.hint}`, imageUrl: null, imgStatus: "queued", imgError: null }));
+    r.lockups.loading = false; await saveState();
+  } catch (e) { r.lockups.error = msg(e); r.lockups.loading = false; }
+  finally { running = false; render(); }
+}
+async function reRenderLockup(it) {
+  const r = state.run; if (!r || !relay || !it) return;
+  const style = styleOf(r.kept && r.kept[0]) || STYLES[1];
+  it.imageUrl = null; it.imgStatus = "rendering"; it.imgError = null; paintLockupImg(it);
+  try { const url = await genLogoImage((it.imagePrompt || `${r.foundation.name} logo`) + `, ${style.img}`); if (!url) throw new Error("no image came back"); it.imageUrl = url; it.imgStatus = "done"; }
+  catch (e) { it.imgStatus = "error"; it.imgError = msg(e); }
+  await saveState(); paintLockupImg(it);
+}
+function paintLockupImg(it) {
+  const host = $("li-" + it.id); if (!host) return; host.textContent = "";
+  if (it.imgStatus === "done" && it.imageUrl) {
+    const img = el("img", "markimg"); img.src = it.imageUrl; img.alt = it.label; host.append(img);
+    const acts = el("div", "img-acts");
+    const dl = el("a", "mini", "download"); dl.href = it.imageUrl; dl.download = (state.run?.foundation?.name || "logo") + "-" + it.id + ".png"; dl.target = "_blank"; dl.rel = "noreferrer";
+    const rr = el("button", "mini", "↻"); rr.disabled = running; rr.onclick = () => void reRenderLockup(it); acts.append(dl, rr); host.append(acts);
+  } else if (it.imgStatus === "rendering") { const l = el("div", "img-load"); l.append(el("div", "scan"), el("div", "statusline", "rendering…")); host.append(l); }
+  else { const idle = el("div", "img-idle"); const b = el("button", "renderbtn", "✦ Render image"); b.disabled = running; b.onclick = () => void reRenderLockup(it); idle.append(b); host.append(idle); }
+}
+function lockupsBlock() {
+  const r = state.run; const sec = el("div", "sect-block");
+  sec.append(el("div", "kicker sect", "lockups — the working set for your kept mark"));
+  if (!r.lockups) {
+    const intro = el("div", "kit-intro");
+    intro.append(el("div", "kit-introtext", "Refine your kept mark into the pieces you'll actually use — horizontal, stacked, avatar, wordmark-only, and a one-colour version."));
+    const b = el("button", "primary", "✦ Refine into a lockup set"); b.disabled = running; b.onclick = () => void runLockups(); intro.append(b); sec.append(intro); return sec;
+  }
+  if (r.lockups.loading) { sec.append(researching("drawing the lockups…")); return sec; }
+  if (r.lockups.error) { sec.append(el("div", "err", r.lockups.error)); const t = el("button", "act", "try again"); t.onclick = () => void runLockups(); sec.append(t); return sec; }
+  const grid = el("div", "markgrid");
+  for (const it of (r.lockups.items || [])) {
+    const tile = el("div", "tile");
+    const head = el("div", "tile-head"); head.append(el("div", "tlabel", it.label)); tile.append(head);
+    const body = el("div", "tile-body");
+    const wp = el("div", "pane"); wp.append(el("div", "panek", "wireframe")); const wf = el("div", "svgwrap"); wf.innerHTML = it.svg ? sanitizeSvg(it.svg) : '<div class="svg-empty">—</div>'; wp.append(wf);
+    const ip = el("div", "pane"); ip.append(el("div", "panek", "rendered")); const ti = el("div", "tile-img"); ti.id = "li-" + it.id; ip.append(ti);
+    body.append(wp, ip); tile.append(body); grid.append(tile);
+  }
+  sec.append(grid);
+  setTimeout(() => { for (const it of (r.lockups.items || [])) paintLockupImg(it); }, 0);
+  const b = el("button", "act", "↻ redo the set"); b.disabled = running; b.onclick = () => void runLockups(); sec.append(el("div", "decidebar").appendChild(b).parentElement);
+  return sec;
 }
 
 render();
