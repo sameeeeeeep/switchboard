@@ -234,6 +234,23 @@ const STYLES = [
 ];
 const styleById = (id) => STYLES.find((s) => s.id === id) || STYLES[1];
 
+// FEATURE 2 — multi-select styles. `r.styleIds` is the chosen set; migrate old single-style runs.
+function ensureStyleIds(r) {
+  if (!r) return [];
+  if (!Array.isArray(r.styleIds) || !r.styleIds.length) r.styleIds = r.styleId ? [r.styleId] : [];
+  return r.styleIds;
+}
+// The style a given mark belongs to (marks are tagged with lo.styleId in runLogos).
+function styleOf(lo) { return styleById((lo && lo.styleId) || (state.run && state.run.styleId)); }
+// Spread 4 marks across the selected styles: 1→[4] · 2→[2,2] · 3→[2,1,1] · 4→[1,1,1,1].
+function distributeStyles(ids, total = 4) {
+  const use = (ids || []).slice(0, total);
+  const n = use.length || 1;
+  const base = Math.floor(total / n);
+  const rem = total - base * n;
+  return use.map((id, i) => ({ styleId: id, count: base + (i < rem ? 1 : 0) }));
+}
+
 // Instant SVG cue per style. c1/c2 are FIXED brand-neutral so every thumb is legible on the dark
 // card regardless of the brand palette — they teach the LOOK, not the colors.
 function styleThumb(id) {
@@ -256,9 +273,16 @@ function styleThumb(id) {
   return map[id] || map.flat;
 }
 
-// Instant, zero-token default: the recommended style, nudged by the brand's personality words.
-function recommendStyle(f) {
-  const words = ((f && f.personality) || []).join(" ").toLowerCase() + " " + String(f && f.positioning || "").toLowerCase();
+// Instant, zero-token default: the recommended style, nudged by styleHints then personality words.
+function recommendStyle(f, prefs) {
+  // FEATURE 1: seed from an explicit style hint first (direct match against the STYLE shelf).
+  const hints = (prefs && prefs.styleHints) || [];
+  for (const h of hints) {
+    const hl = String(h).toLowerCase();
+    const m = STYLES.find((s) => hl.includes(s.id) || hl.includes(s.label.toLowerCase()) || s.label.toLowerCase().split(/[\s/]+/).some((w) => w.length > 3 && hl.includes(w)));
+    if (m) return m.id;
+  }
+  const words = ((f && f.personality) || []).join(" ").toLowerCase() + " " + String(f && f.positioning || "").toLowerCase() + " " + hints.join(" ").toLowerCase();
   const has = (re) => re.test(words);
   if (has(/play|fun|friend|kid|whimsi|quirk/)) return "illus2d";
   if (has(/retro|vintage|nostalg|classic|heritage/)) return "retro";
@@ -282,11 +306,13 @@ async function start(brief) {
   if (!brief) { toast("Describe your brand first — one line is enough.", true); return; }
   state.run = {
     id: uid(), brief,
+    prefs: null,              // FEATURE 1: extracted brand preferences (qualities/avoid/styleHints/…)
     foundation: null, directions: null,
     chosenDirId: null,        // the direction the HUMAN clicked (accent); null until they do
     activeDirId: null,        // the direction the marks are FOR (recommended by default)
     styleId: null,            // the recommended style is seeded here as a highlighted default…
-    styleChosen: false,       // …but accent only lands once the human clicks a style
+    styleIds: [],             // FEATURE 2: the multi-select set of chosen styles (1–4)
+    styleChosen: false,       // …but accent only lands once the human generates the marks
     logos: null, kept: [], logoSteer: null,
     stage: "foundation", status: "", error: null,
   };
@@ -300,9 +326,20 @@ async function runPipeline() {
   const r = state.run; if (!r || !relay) return;
   running = true; r.error = null;
   try {
+    // 0 — PREFERENCES — parse the brief into structured, EDITABLE preferences BEFORE the
+    // foundation so the avoid-list + qualities thread through every downstream generation.
+    if (!r.prefs) {
+      r.stage = "foundation"; setStatus("reading your preferences…"); render();
+      try {
+        const ptext = await streamText({ prompt: buildPrefsPrompt(r.brief), maxTokens: 700 });
+        r.prefs = coercePrefs(parseJson(ptext));
+      } catch { r.prefs = coercePrefs(null); }
+      await saveState(); render();
+    }
+
     // 1 — FOUNDATION
     r.stage = "foundation"; setStatus("reading the brief…"); render();
-    const ftext = await streamText({ prompt: buildFoundationPrompt(r.brief), maxTokens: 900 },
+    const ftext = await streamText({ prompt: buildFoundationPrompt(r.brief, r.prefs), maxTokens: 900 },
       (p) => { if (p.text) setStatus("defining the foundation… " + (p.text.length / 1024).toFixed(1) + " kb"); });
     const f = coerceFoundation(parseJson(ftext));
     if (!f) throw new Error("The foundation came back malformed — hit ‘try again’.");
@@ -311,14 +348,15 @@ async function runPipeline() {
 
     // 2 — DIRECTIONS
     r.stage = "directions"; setStatus("sketching directions…"); render();
-    const dtext = await streamText({ prompt: buildDirectionsPrompt(f), maxTokens: 1100 },
+    const dtext = await streamText({ prompt: buildDirectionsPrompt(f, r.prefs), maxTokens: 1100 },
       (p) => { if (p.text) setStatus("sketching directions… " + (p.text.length / 1024).toFixed(1) + " kb"); });
     const dirs = coerceDirections(parseJson(dtext));
     if (!dirs) throw new Error("The directions came back malformed — hit ‘try again’.");
     r.directions = dirs;
     const rec = dirs.find((d) => d.recommended) || dirs[0];
     r.activeDirId = rec.id;          // marks will use the recommended direction; human can switch
-    r.styleId = recommendStyle(f);   // seed a highlighted default style — NOT chosen yet
+    r.styleId = recommendStyle(f, r.prefs);   // seed a highlighted default style — NOT chosen yet
+    r.styleIds = [r.styleId];        // FEATURE 2: multi-select — the recommended style starts selected
     r.stage = "style";               // 3 — STYLE PICKER: stop here; the human chooses the look
     r.status = "";
     await saveState(); render();
@@ -330,14 +368,62 @@ async function runPipeline() {
   }
 }
 
+// ---- preferences (FEATURE 1) ---------------------------------------------------------------
+// Parse the brief into structured, EDITABLE preferences up front. The AVOID list becomes HARD
+// negative constraints; qualities become positive requirements; styleHints seed the recommended
+// style. Threaded into every foundation/direction/mark/image prompt so a detailed brief counts.
+function buildPrefsPrompt(brief) {
+  return [
+    "You are Crest, a brand strategist. Parse the brief below into structured brand preferences that will steer every downstream generation. Infer sensibly — do not just echo literal words.",
+    `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
+    "Extract:",
+    "- qualities: 3-6 adjectives the identity must FEEL (expand what the brief implies).",
+    "- avoid: 3-6 things to steer AWAY from — clichés, over-used symbols, colors, and registers this brand should NOT resemble. Infer category-appropriate ones even if unstated (e.g. a cross-cultural community brief should avoid flags, globes, handshakes; a fintech brief should avoid looking like a bank or consultancy).",
+    "- styleHints: 0-4 visual looks the brief implies (e.g. 'monoline', 'heritage badge', 'flat geometric', 'gradient').",
+    "- audiences: 1-4 who this is for.",
+    "- ambition: one short phrase on reach/scale (one city → global; community ↔ professional).",
+    "- taglineNeed: boolean — does the name likely need a descriptor/tagline?",
+    "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
+    '{"qualities":[string],"avoid":[string],"styleHints":[string],"audiences":[string],"ambition":string,"taglineNeed":boolean}',
+  ].join("\n\n");
+}
+function coercePrefs(p) {
+  const arr = (a) => (Array.isArray(a) ? a : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 8);
+  if (!p || typeof p !== "object") p = {};
+  return {
+    qualities: arr(p.qualities),
+    avoid: arr(p.avoid),
+    styleHints: arr(p.styleHints),
+    audiences: arr(p.audiences),
+    ambition: String(p.ambition || "").trim(),
+    taglineNeed: !!p.taglineNeed,
+  };
+}
+// Positive requirements + HARD negative constraints, for text (strategy/direction/mark) prompts.
+function prefsPromptBlock(prefs) {
+  if (!prefs) return "";
+  const lines = [];
+  if (prefs.qualities && prefs.qualities.length) lines.push(`REQUIRED QUALITIES (the identity must feel these): ${prefs.qualities.join(", ")}.`);
+  if (prefs.styleHints && prefs.styleHints.length) lines.push(`STYLE HINTS the brief implies: ${prefs.styleHints.join(", ")}.`);
+  if (prefs.audiences && prefs.audiences.length) lines.push(`AUDIENCES: ${prefs.audiences.join(", ")}.`);
+  if (prefs.ambition) lines.push(`AMBITION / REACH: ${prefs.ambition}.`);
+  if (prefs.avoid && prefs.avoid.length) lines.push(`HARD NEGATIVE CONSTRAINTS — you MUST strictly AVOID these clichés, colors, symbols and registers (do NOT drift toward them): ${prefs.avoid.join("; ")}.`);
+  return lines.join("\n");
+}
+// Compact avoid clause folded into every Higgsfield image prompt.
+function avoidClause(prefs) {
+  return (prefs && prefs.avoid && prefs.avoid.length) ? `; strictly avoid: ${prefs.avoid.join(", ")}` : "";
+}
+
 // ---- foundation ----------------------------------------------------------------------------
-function buildFoundationPrompt(brief) {
+function buildFoundationPrompt(brief, prefs) {
   return [
     "You are Crest, a brand designer. From the brief below, define a compact brand foundation to anchor a logo.",
     `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
+    prefsPromptBlock(prefs),
     "Respond with ONLY a JSON object — no prose before or after, no markdown fences — in exactly this shape:",
     '{"name":string (the brand name, cleaned up),"positioning":string (one line, <= 90 chars),"personality":[string,string,string] (exactly 3 single evocative words),"voice":string (a short phrase),"palette":[string] (3-4 hex colors like "#1A2B3C" that genuinely suit this brand),"rationale":string (one line on the logo direction this foundation implies)}',
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 function coerceFoundation(f) {
   if (!f || typeof f !== "object") return null;
@@ -358,7 +444,7 @@ function coerceFoundation(f) {
 }
 
 // ---- directions ----------------------------------------------------------------------------
-function buildDirectionsPrompt(f) {
+function buildDirectionsPrompt(f, prefs) {
   return [
     "You are Crest. Propose 3 DISTINCT logo directions for this brand.",
     `BRAND: ${f.name}`,
@@ -366,6 +452,7 @@ function buildDirectionsPrompt(f) {
     `PERSONALITY: ${f.personality.join(", ")}`,
     f.voice ? `VOICE: ${f.voice}` : "",
     `PALETTE: ${f.palette.join(", ")}`,
+    prefsPromptBlock(prefs),
     "Each direction must take a genuinely different formal approach — e.g. wordmark, monogram, symbol + wordmark, abstract mark.",
     "Respond with ONLY a JSON object — no prose, no markdown fences — in exactly this shape:",
     '{"directions":[exactly 3 items, each {"name":string (2-4 words),"approach":string (the mark type + form, one short line),"rationale":string (why it fits this brand, one line),"recommended":boolean}]}',
@@ -387,7 +474,7 @@ function coerceDirections(o) {
 }
 
 // ---- four marks (SVG wireframe + Higgsfield image) ------------------------------------------
-function buildLogosPrompt(f, dir, style, opts = {}) {
+function buildLogosPrompt(f, dir, style, opts = {}, prefs = null) {
   const count = opts.count || 4;
   const one = count === 1;
   return [
@@ -398,6 +485,7 @@ function buildLogosPrompt(f, dir, style, opts = {}) {
     `PALETTE (use ONLY these hex values): ${f.palette.join(", ")}`,
     `DIRECTION: ${dir.name} — ${dir.approach}. ${dir.rationale}`,
     `VISUAL STYLE: ${style.label} — ${style.svgHint}. Every mark — the SVG AND the imagePrompt — MUST clearly read as this style.`,
+    prefsPromptBlock(prefs),
     opts.moreLike ? `Make them variations in the spirit of this concept: ${opts.moreLike}.` : "",
     opts.steer ? `Apply this steer from the user: "${opts.steer}".` : "",
     opts.avoid && opts.avoid.length ? `Make them clearly different from these existing options: ${opts.avoid.join(", ")}.` : "",
@@ -417,12 +505,13 @@ function coerceLogo(lo) {
     concept: String(lo.concept || "").trim(),
     svg: /<svg[\s\S]*<\/svg>/i.test(svgRaw) ? svgRaw : "",
     imagePrompt: String(lo.imagePrompt || "").trim(),
+    styleId: null,            // FEATURE 2: tagged by runLogos so each mark renders in ITS style
     imageUrl: null, imgStatus: "queued", imgError: null, kept: false,
   };
 }
-function coerceLogos(o) {
+function coerceLogos(o, max = 4) {
   const arr = o && Array.isArray(o.logos) ? o.logos : (Array.isArray(o) ? o : []);
-  const list = arr.map(coerceLogo).filter(Boolean).slice(0, 4);
+  const list = arr.map(coerceLogo).filter(Boolean).slice(0, max);
   return list.length ? list : null;
 }
 
@@ -445,16 +534,24 @@ async function genLogoImage(promptText) {
 async function runLogos(opts = {}) {
   const r = state.run; if (!r || !relay || !r.foundation || running) return;
   const dir = (r.directions || []).find((d) => d.id === r.activeDirId) || (r.directions || [])[0];
-  const style = styleById(r.styleId);
-  if (!dir || !style) return;
+  const styleIds = (opts.styleIds && opts.styleIds.length) ? opts.styleIds : ensureStyleIds(r);
+  if (!dir || !styleIds.length) return;
   running = true; r.error = null; r.stage = "logos"; r.logos = null;
-  setStatus(`sketching four ${style.label.toLowerCase()} marks…`); render();
+  const dist = distributeStyles(styleIds);           // FEATURE 2: [{styleId,count}] summing to 4
+  const only = styleIds.length === 1 ? styleById(styleIds[0]).label.toLowerCase() + " " : "";
+  setStatus(`sketching four ${only}marks…`); render();
   try {
-    const text = await streamText({ prompt: buildLogosPrompt(r.foundation, dir, style, opts), maxTokens: 6000 },
-      (p) => { if (p.text) setStatus(`sketching four marks… ${(p.text.length / 1024).toFixed(1)} kb`); });
-    const logos = coerceLogos(parseJson(text));
-    if (!logos) throw new Error("The marks came back malformed — try ‘generate 4 more’.");
-    r.logos = logos; r.status = "";
+    // One batch per selected style, generated in parallel; each mark tagged with its styleId.
+    const batches = await Promise.all(dist.map(async ({ styleId, count }) => {
+      const style = styleById(styleId);
+      const text = await streamText({ prompt: buildLogosPrompt(r.foundation, dir, style, { ...opts, count }, r.prefs), maxTokens: count >= 4 ? 6000 : count >= 2 ? 4000 : 2400 });
+      const logos = coerceLogos(parseJson(text), count) || [];
+      logos.forEach((l) => { l.styleId = styleId; });
+      return logos;
+    }));
+    const all = batches.flat().slice(0, 4);
+    if (!all.length) throw new Error("The marks came back malformed — try ‘generate 4 more’.");
+    r.logos = all; r.status = "";
     await saveState(); render();
   } catch (e) {
     r.error = msg(e); r.status = "";
@@ -470,12 +567,12 @@ async function runLogos(opts = {}) {
 
 async function renderLogoImages() {
   const r = state.run; if (!r || !r.logos) return;
-  const style = styleById(r.styleId);
   await Promise.all(r.logos.map(async (lo) => {
     if (lo.imageUrl) return;
+    const style = styleOf(lo);
     lo.imgStatus = "rendering"; paintTileImg(lo);
     try {
-      const prompt = (lo.imagePrompt || `${r.foundation.name} logo`) + `, ${style.img}`;
+      const prompt = (lo.imagePrompt || `${r.foundation.name} logo`) + `, ${style.img}` + avoidClause(r.prefs);
       const url = await genLogoImage(prompt);
       if (!url) throw new Error("no image came back");
       lo.imageUrl = url; lo.imgStatus = "done"; lo.imgError = null;
@@ -487,10 +584,10 @@ async function renderLogoImages() {
 // Re-render ONE mark's image only (the ↻ per-tile control).
 async function reRenderOne(lo) {
   const r = state.run; if (!r || !relay || !lo) return;
-  const style = styleById(r.styleId);
+  const style = styleOf(lo);
   lo.imageUrl = null; lo.imgStatus = "rendering"; lo.imgError = null; paintTileImg(lo);
   try {
-    const url = await genLogoImage((lo.imagePrompt || `${r.foundation.name} logo`) + `, ${style.img}`);
+    const url = await genLogoImage((lo.imagePrompt || `${r.foundation.name} logo`) + `, ${style.img}` + avoidClause(r.prefs));
     if (!url) throw new Error("no image came back");
     lo.imageUrl = url; lo.imgStatus = "done";
   } catch (e) { lo.imgStatus = "error"; lo.imgError = msg(e); }
@@ -501,15 +598,15 @@ async function reRenderOne(lo) {
 async function regenerateOne(lo) {
   const r = state.run; if (!r || !relay || !r.foundation || running) return;
   const dir = (r.directions || []).find((d) => d.id === r.activeDirId) || (r.directions || [])[0];
-  const style = styleById(r.styleId);
+  const style = styleOf(lo);           // FEATURE 2: keep this slot in ITS own style
   if (!dir || !style) return;
   running = true; render();
   lo.svg = ""; lo.concept = ""; lo.imageUrl = null; lo.imgStatus = "queued"; lo.imgError = null;
   paintTileSketch(lo); paintTileImg(lo);
   try {
     const avoid = r.logos.filter((x) => x !== lo).map((x) => x.label);
-    const text = await streamText({ prompt: buildLogosPrompt(r.foundation, dir, style, { count: 1, avoid }), maxTokens: 2200 });
-    const fresh = (coerceLogos(parseJson(text)) || [])[0];
+    const text = await streamText({ prompt: buildLogosPrompt(r.foundation, dir, style, { count: 1, avoid }, r.prefs), maxTokens: 2400 });
+    const fresh = (coerceLogos(parseJson(text), 1) || [])[0];
     if (!fresh) throw new Error("couldn't re-sketch that one");
     lo.label = fresh.label; lo.concept = fresh.concept; lo.svg = fresh.svg; lo.imagePrompt = fresh.imagePrompt;
     await saveState(); render();
@@ -574,6 +671,9 @@ function render() {
   // 1 — FOUNDATION
   if (r.foundation) col.append(foundationCard(r.foundation));
   else if (r.stage === "foundation") { const b = liveSection("Foundation"); b.append(researching(r.status || "reading the brief…")); col.append(b); }
+
+  // 1b — PREFERENCES (editable; extracted from the brief, threaded into every generation)
+  if (r.prefs) col.append(prefsPanel(r.prefs));
 
   // 2 — DIRECTIONS
   if (r.directions) {
@@ -643,6 +743,47 @@ function foundationCard(f) {
   return card;
 }
 
+// FEATURE 1 — the editable Preferences panel. Chips are removable; each group has an "+ add"
+// input. Edits mutate r.prefs in place + save; they take effect on the next generation.
+function prefChipGroup(title, list, accent) {
+  const grp = el("div", "prefgroup" + (accent ? " avoid" : ""));
+  grp.append(el("div", "pg-k kicker", title));
+  const chips = el("div", "prefchips");
+  list.forEach((item, i) => {
+    const chip = el("span", "prefchip" + (accent ? " no" : ""));
+    chip.append(el("span", "pc-t", item));
+    const x = el("button", "pc-x", "×"); x.title = "remove";
+    x.onclick = () => { list.splice(i, 1); void saveState(); render(); };
+    chip.append(x);
+    chips.append(chip);
+  });
+  const addWrap = el("span", "prefadd");
+  const inp = el("input"); inp.type = "text"; inp.placeholder = "+ add";
+  const add = () => { const v = inp.value.trim(); if (!v) return; list.push(v); inp.value = ""; void saveState(); render(); };
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+  addWrap.append(inp);
+  chips.append(addWrap);
+  grp.append(chips);
+  return grp;
+}
+function prefsPanel(prefs) {
+  const card = el("div", "prefs");
+  card.append(el("div", "kicker sect", "preferences — extracted from your brief · edit to steer every step"));
+  card.append(prefChipGroup("qualities — the identity must feel", prefs.qualities));
+  card.append(prefChipGroup("avoid — hard no's (clichés · colors · symbols · registers)", prefs.avoid, true));
+  card.append(prefChipGroup("style hints", prefs.styleHints));
+  const metaBits = [];
+  if (prefs.audiences && prefs.audiences.length) metaBits.push(["audiences", prefs.audiences.join(" · ")]);
+  if (prefs.ambition) metaBits.push(["ambition", prefs.ambition]);
+  metaBits.push(["tagline", prefs.taglineNeed ? "likely wanted" : "not essential"]);
+  if (metaBits.length) {
+    const meta = el("div", "prefmeta");
+    for (const [k, v] of metaBits) { const m = el("div", "pm"); m.append(el("span", "pm-k", k), el("span", "pm-v", v)); meta.append(m); }
+    card.append(meta);
+  }
+  return card;
+}
+
 function chooseDirection(id) {
   const r = state.run; if (!r || running) return;
   r.chosenDirId = id; r.activeDirId = id;
@@ -652,20 +793,24 @@ function chooseDirection(id) {
 
 function styleGallery() {
   const r = state.run;
+  const ids = ensureStyleIds(r);
+  const recId = r.styleId; // seeded recommendation (highlighted)
   const sec = el("div", "sect-block");
-  sec.append(el("div", "kicker sect", r.styleChosen ? "style — switch the look any time" : "style — pick the look (instant)"));
+  const n = ids.length;
+  sec.append(el("div", "kicker sect", r.styleChosen
+    ? `styles — ${n} selected · switch the mix any time`
+    : `styles — pick 1–4 looks, then generate (${n} selected)`));
   const grid = el("div", "stylegrid");
-  const recId = r.styleId; // seeded recommendation (highlighted as a draft until chosen)
   for (const st of STYLES) {
-    const chosen = r.styleChosen && r.styleId === st.id;
-    const drafted = !r.styleChosen && recId === st.id;
-    const card = el("div", "stylecard" + (chosen ? " sel" : "") + (drafted ? " draft" : ""));
+    const on = ids.includes(st.id);
+    const drafted = !on && recId === st.id;
+    const card = el("div", "stylecard" + (on ? " sel" : "") + (drafted ? " draft" : ""));
     const thumb = el("div", "stylethumb"); thumb.innerHTML = sanitizeSvg(styleThumb(st.id));
     card.append(thumb);
     card.append(el("div", "stylelabel", st.label));
     if (drafted) card.append(el("div", "styletag", "recommended"));
-    if (chosen) card.append(el("div", "styletag on", "chosen"));
-    card.onclick = () => chooseStyle(st.id);
+    if (on) card.append(el("div", "styletag on", "selected"));
+    card.onclick = () => toggleStyle(st.id);
     grid.append(card);
   }
   sec.append(grid);
@@ -677,12 +822,32 @@ function styleGallery() {
   pin.addEventListener("input", () => { r.stylePref = pin.value; });
   prefWrap.append(el("span", "kicker", "prefs"), pin);
   sec.append(prefWrap);
+  // FEATURE 2: generation is no longer a single-click on a style — pick 1–4, then generate.
+  const genRow = el("div", "genrow");
+  const spread = distributeStyles(ids).map((d) => `${d.count}× ${styleById(d.styleId).label}`).join(" · ");
+  genRow.append(el("div", "spread", n ? spread : "select at least one style"));
+  const gen = el("button", "primary gen", r.styleChosen ? "Generate 4 more ✦" : "Generate 4 marks ✦");
+  gen.disabled = running || n === 0;
+  gen.onclick = () => generateMarks();
+  genRow.append(gen);
+  sec.append(genRow);
   return sec;
 }
 
-function chooseStyle(id) {
+function toggleStyle(id) {
   const r = state.run; if (!r || running) return;
-  r.styleId = id; r.styleChosen = true;
+  const ids = ensureStyleIds(r);
+  const at = ids.indexOf(id);
+  if (at >= 0) { if (ids.length > 1) ids.splice(at, 1); }   // keep at least one selected
+  else { if (ids.length >= 4) toast("Up to 4 styles — deselect one first.", true); else ids.push(id); }
+  r.styleId = ids.includes(r.styleId) ? r.styleId : ids[0]; // keep a valid single fallback
+  void saveState(); render();
+}
+
+function generateMarks() {
+  const r = state.run; if (!r || running) return;
+  if (!ensureStyleIds(r).length) { toast("Pick at least one style.", true); return; }
+  r.styleChosen = true;
   const steer = r.stylePref && r.stylePref.trim() ? { steer: r.stylePref.trim() } : {};
   void saveState();
   void runLogos(steer);
@@ -692,8 +857,11 @@ function chooseStyle(id) {
 function marksBlock() {
   const r = state.run;
   const sec = el("div", "sect-block");
-  const style = styleById(r.styleId);
-  sec.append(el("div", "kicker sect", `four ${style.label.toLowerCase()} marks — keep what's good, change what isn't`));
+  const ids = ensureStyleIds(r);
+  const header = ids.length === 1
+    ? `four ${styleById(ids[0]).label.toLowerCase()} marks — keep what's good, change what isn't`
+    : `four marks across ${ids.length} styles — keep what's good, change what isn't`;
+  sec.append(el("div", "kicker sect", header));
   const grid = el("div", "markgrid");
   for (const lo of r.logos) grid.append(markTile(lo));
   sec.append(grid);
@@ -703,8 +871,8 @@ function marksBlock() {
   const more = el("button", "act", "＋ generate 4 more");
   more.disabled = running;
   more.onclick = () => void runLogos({ avoid: r.logos.map((l) => l.label) });
-  const chStyle = el("button", "act", "↩ change the style");
-  chStyle.onclick = () => { r.stage = "style"; r.styleChosen = false; r.logos = null; void saveState(); render(); scrollToTop(); };
+  const chStyle = el("button", "act", "↩ change styles");
+  chStyle.onclick = () => scrollToTop();   // the style gallery stays live above — retoggle + regenerate
   barWrap.append(more, chStyle);
   sec.append(barWrap);
 
@@ -719,7 +887,9 @@ function markTile(lo) {
   const tile = el("div", "tile" + (lo.kept ? " kept" : ""));
   const head = el("div", "tile-head");
   const meta = el("div", "tile-meta");
-  meta.append(el("div", "tlabel", lo.label));
+  const lab = el("div", "tlabel"); lab.append(document.createTextNode(lo.label));
+  if (ensureStyleIds(r).length > 1) { const b = el("span", "tstyle", styleOf(lo).label); lab.append(b); }
+  meta.append(lab);
   if (lo.concept) meta.append(el("div", "tconcept", lo.concept));
   head.append(meta);
   const keep = el("button", "heart" + (lo.kept ? " on" : ""), lo.kept ? "♥ kept" : "♡ keep");
@@ -748,7 +918,7 @@ function markTile(lo) {
   const regen = el("button", "mini", "↻ regenerate"); regen.disabled = running; regen.title = "New concept for this slot";
   regen.onclick = () => void regenerateOne(lo);
   const more = el("button", "mini", "✦ more like this"); more.disabled = running;
-  more.onclick = () => void runLogos({ moreLike: `${lo.label} — ${lo.concept}`, avoid: r.logos.map((l) => l.label) });
+  more.onclick = () => void runLogos({ moreLike: `${lo.label} — ${lo.concept}`, styleIds: lo.styleId ? [lo.styleId] : undefined, avoid: r.logos.map((l) => l.label) });
   foot.append(regen, more);
   tile.append(foot);
 
@@ -823,6 +993,11 @@ function scrollToTop() { try { window.scrollTo({ top: 0, behavior: "smooth" }); 
 
 render();
 
+// __CRESTDEV__ — temporary self-test hook (removed before ship); only active with ?crestdev.
+if (typeof location !== "undefined" && location.search.includes("crestdev")) {
+  window.__crest = { get state() { return state; }, set state(v) { state = v; }, set relay(v) { relay = v; }, render, STYLES };
+}
+
 // ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
 // `crest_run` runs the SAME start() a type-and-go click runs — foundation, directions, the seeded
 // style, and the four marks all render live in the DOM — then returns the structured logo for God to
@@ -847,6 +1022,7 @@ exposeToGod({
     if (!r.foundation) throw new Error("Crest couldn't read that brief — try again");
     // pick the style (given or the seeded recommendation) and generate the four marks
     if (style) { const m = STYLES.find((s) => s.label.toLowerCase() === String(style).toLowerCase() || s.id === style); if (m) r.styleId = m.id; }
+    r.styleIds = [r.styleId];
     r.styleChosen = true;
     await runLogos();
     await waitFor(() => !running, 180000);
@@ -855,9 +1031,9 @@ exposeToGod({
     const rr = state.run || {};
     return {
       foundation: rr.foundation || null,
-      style: styleById(rr.styleId).label,
+      styles: ensureStyleIds(rr).map((id) => styleById(id).label),
       directions: (rr.directions || []).map((d) => ({ name: d.name, approach: d.approach, rationale: d.rationale, recommended: d.recommended })),
-      marks: (rr.logos || []).map((l) => ({ label: l.label, concept: l.concept, imageUrl: l.imageUrl || null })),
+      marks: (rr.logos || []).map((l) => ({ label: l.label, concept: l.concept, style: styleOf(l).label, imageUrl: l.imageUrl || null })),
     };
   },
 });
