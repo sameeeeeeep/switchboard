@@ -96,9 +96,12 @@ export interface ScopeRequest {
 }
 
 export const DEFAULT_BUDGETS: Budgets = {
-  // Now that cached input is counted (claude-code.ts), a warm prompt-cached thread legitimately reports
-  // far more tokens/day, so the old 200k cap would throttle normal use — raised 10x to match reality.
-  maxTokensPerDay: 2_000_000,
+  // Cached input is now counted (claude-code.ts), so a warm prompt-cached thread legitimately reports
+  // ~77x more tokens/day than the old accounting. 200k → 2M wasn't enough headroom for a real heavy
+  // day under accurate counting, so a single active session still tripped the cap. Raised to 8M: well
+  // above what a heavy real-user day burns, while staying a genuine ceiling (we KEEP counting cached
+  // tokens — enforcement stays accurate; only the default was unrealistically low).
+  maxTokensPerDay: 8_000_000,
   maxCallsPerMin: 30,
 };
 

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skill · widget</title>
+    <style>
+      /* Notch widget tokens — compact, dark, one system. Shared across every Switchboard widget. */
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);flex:none;}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .tag{font:400 11px/1.4 var(--mono);color:var(--ink-faint);}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:flex;gap:8px;align-items:center;}
+      .flabel .pick{margin-left:auto;font:500 9px/1 var(--mono);letter-spacing:.08em;color:var(--ink-sec);background:none;border:0;cursor:pointer;text-transform:uppercase;}
+      .flabel .pick:hover{color:var(--accent);}
+      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:10px 12px;outline:none;resize:vertical;min-height:70px;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;gap:9px;align-items:center;}
+      .grow{flex:1;}
+      .go{font:600 12.5px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 16px;cursor:pointer;transition:filter .15s,opacity .15s;}
+      .go:hover{filter:brightness(1.08);} .go:disabled{opacity:.45;cursor:default;}
+      .hint{font:400 10px/1.4 var(--mono);color:var(--ink-faint);}
+      .out{display:flex;flex-direction:column;gap:9px;}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;flex:none;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .md{font:400 13px/1.65 var(--sans);color:var(--ink-sec);white-space:pre-wrap;word-break:break-word;border:1px solid var(--edge);background:var(--panel);border-radius:12px;padding:13px;}
+      .md b{color:var(--ink);} .md code{font:400 12px/1.5 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:5px;padding:1px 5px;}
+      .md pre{font:400 12px/1.55 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:8px;padding:10px;overflow-x:auto;white-space:pre;}
+      .md a{color:var(--accent);}
+      .cp{font:500 10.5px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:6px 11px;cursor:pointer;align-self:flex-start;transition:border-color .15s,color .15s;}
+      .cp:hover{border-color:var(--accent);color:var(--ink);}
+      .err{color:var(--danger);font:400 11.5px/1.5 var(--mono);border:1px solid color-mix(in srgb,var(--danger) 35%,var(--edge));background:color-mix(in srgb,var(--danger) 8%,transparent);border-radius:10px;padding:10px 12px;}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .foot{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .foot .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+      /* picker */
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      .card{text-align:left;border:1px solid var(--edge);background:var(--panel);border-radius:11px;padding:10px 11px;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:border-color .15s,transform .1s;}
+      .card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));}
+      .card .cn{font:600 12.5px/1.2 var(--sans);color:var(--ink);}
+      .card .ct{font:400 10.5px/1.35 var(--mono);color:var(--ink-faint);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="wrap">
+      <div class="head"><span class="mk"></span><span class="name" id="name">Skill</span><span class="kicker" id="kicker">on your claude</span></div>
+      <div id="body"></div>
+      <div class="foot"><span class="dot"></span>Runs on your own Claude · via Switchboard · nothing is written to disk</div>
+    </div>
+
+    <script type="module">
+      // ============================================================================================
+      // ONE generic "paste → run the skill → glance result" widget, parameterized by ?skill=<id>
+      // (or window.__widgetInput.skill). It loads each skill's canonical system prompt from
+      // wrapps/skill-prompts.json (built by build-skill-prompts.mjs) and runs it on the user's Claude.
+      // ============================================================================================
+
+      // ---- injected-input contract: the notch host injects window.__widgetInput { text?, dataUrl?,
+      //      filename?, skill? } at documentStart; ?skill= / ?input= also work (extension browser). ----
+      function param(name) { try { return new URLSearchParams(location.search).get(name) || ""; } catch { return ""; } }
+      function injected() {
+        const w = window.__widgetInput;
+        const o = (w && typeof w === "object") ? w : {};
+        const text = typeof o.text === "string" ? o.text : (typeof w === "string" ? w : "");
+        const qtext = param("input");
+        const skill = (o.skill || param("skill") || "").trim().toLowerCase();
+        return { skill, text: (qtext || text || "").toString() };
+      }
+
+      // ================= window.claude bridge (mirrors @relay/sdk connect + stream) =================
+      // The notch host injects window.claude — the raw BYOP provider. In the notch these fixes are
+      // no-ops, but the extension browser injects it a beat late (fires `claude#initialized`) and can
+      // hold `claude_connect` pending a consent chip — so we wait for the provider and treat connect as
+      // best-effort. The stream call the daemon authorizes on its own is the real gate.
+      const SCOPE = { reason: "Skill widget — run a Switchboard skill on your own Claude", models: ["sonnet"], tools: [] };
+      const STREAM_TIMEOUT_MS = 180000;
+      function provider() { const p = window.claude; return (p && p.isRelay && typeof p.request === "function") ? p : null; }
+      function waitForProvider(timeoutMs = 4000) {
+        const now = provider(); if (now) return Promise.resolve(now);
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); window.removeEventListener("claude#initialized", onInit); resolve(provider()); };
+          const onInit = () => finish();
+          const poll = setInterval(() => { if (provider()) finish(); }, 80);
+          const timer = setTimeout(finish, timeoutMs);
+          window.addEventListener("claude#initialized", onInit);
+        });
+      }
+      let grant = null, connectTried = false;
+      async function ensure() {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        if (!grant && !connectTried) {
+          connectTried = true;
+          grant = await p.request({ method: "claude_permissions" }).catch(() => null);
+          if (!grant) {
+            const timeout = new Promise((r) => setTimeout(() => r(null), 1500));
+            grant = await Promise.race([p.request({ method: "claude_connect", params: SCOPE }).catch(() => null), timeout]);
+          }
+        }
+        return p;
+      }
+      // Await claude_stream for the id, THEN attach the delta handler (the SDK's exact order).
+      async function streamText(params, onProgress) {
+        const p = await ensure();
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        let text = "";
+        return await new Promise((resolve, reject) => {
+          let timer = null;
+          const cleanup = () => { clearTimeout(timer); try { p.removeListener("delta", handler); } catch {} };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onProgress && onProgress(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          p.on("delta", handler);
+          timer = setTimeout(() => { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); }, STREAM_TIMEOUT_MS);
+        });
+      }
+
+      // ---- dom + light markdown ----
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      function mdLite(s) {
+        let t = esc(s);
+        // fenced code blocks first (protect their contents)
+        const blocks = [];
+        t = t.replace(/```[a-z]*\n?([\s\S]*?)```/gi, (_, code) => { blocks.push(code.replace(/\n$/, "")); return "\uE000"+(blocks.length-1)+"\uE001"; });
+        t = t
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+          .replace(/^\s*[-*]\s+/gm, "• ");
+        t = t.replace(/\uE000(\d+)\uE001/g, (_, i) => `<pre>${blocks[+i]}</pre>`);
+        return t;
+      }
+
+      // ---- state ----
+      let SKILLS = null;      // the whole skill-prompts.json map
+      let current = null;     // { id, name, tagline, system, placeholder }
+      let busy = false;
+      const seed = injected();
+
+      // ---- boot ----
+      (async () => {
+        try {
+          const res = await fetch("./wrapps/skill-prompts.json", { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          SKILLS = await res.json();
+        } catch (e) {
+          $("body").textContent = "";
+          $("body").append(el("div", "err", "Couldn't load skills — " + String(e?.message || e)));
+          return;
+        }
+        const id = seed.skill && SKILLS[seed.skill] ? seed.skill : "";
+        if (id) mountSkill(id); else mountPicker();
+      })();
+
+      // ---- picker (no skill given / unknown) ----
+      function mountPicker() {
+        current = null;
+        $("name").textContent = "Skills";
+        $("kicker").textContent = "pick one";
+        const body = $("body"); body.textContent = "";
+        body.append(el("div", "placeholder", "Choose a skill to run on your own Claude."));
+        const grid = el("div", "grid");
+        for (const id of Object.keys(SKILLS).sort((a, b) => SKILLS[a].name.localeCompare(SKILLS[b].name))) {
+          const s = SKILLS[id];
+          const c = el("button", "card");
+          c.append(el("div", "cn", s.name), el("div", "ct", s.tagline || ""));
+          c.onclick = () => { try { history.replaceState(null, "", "?skill=" + id); } catch {} mountSkill(id); };
+          grid.append(c);
+        }
+        body.append(grid);
+      }
+
+      // ---- skill runner ----
+      function mountSkill(id) {
+        current = { id, ...SKILLS[id] };
+        $("name").innerHTML = "";
+        $("name").append(document.createTextNode(current.name));
+        $("kicker").textContent = "on your claude";
+
+        const body = $("body"); body.textContent = "";
+        if (current.tagline) body.append(el("div", "tag", current.tagline));
+
+        const lab = el("div", "flabel");
+        lab.append(el("span", null, "Your input"));
+        const pick = el("button", "pick", "↔ change skill");
+        pick.onclick = () => mountPicker();
+        lab.append(pick);
+        body.append(lab);
+
+        const ta = el("textarea");
+        ta.id = "in";
+        ta.placeholder = current.placeholder || "Paste your input…";
+        if (seed.text) ta.value = seed.text;
+        body.append(ta);
+
+        const row = el("div", "row");
+        row.append(el("div", "hint grow", "⌘/Ctrl + Enter to run"));
+        const go = el("button", "go", "Run " + current.name);
+        go.id = "go";
+        row.append(go);
+        body.append(row);
+
+        const out = el("div", "out"); out.id = "out";
+        out.append(el("div", "placeholder", "Paste something above, then Run — your Claude returns the result."));
+        body.append(out);
+
+        go.onclick = () => void run();
+        ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void run(); } });
+        // Auto-run when the host injected input for a chosen skill.
+        if (seed.text && seed.skill === id) void run();
+        setTimeout(() => ta.focus(), 30);
+      }
+
+      async function run() {
+        if (busy || !current) return;
+        const ta = $("in"), out = $("out"), go = $("go");
+        const input = (ta.value || "").trim();
+        if (!input) { ta.focus(); return; }
+        busy = true; go.disabled = true;
+        out.textContent = "";
+        const st = el("div", "status"); st.append(el("div", "scan"), el("span", null, "running " + current.name + " on your Claude…"));
+        out.append(st);
+        // Mirror the proven widgets: fold the skill's system prompt INTO `prompt` (neither redline nor
+        // feature-widget passes a separate params.system — the provider contract is prompt-only).
+        const prompt = [current.system, "———", "USER INPUT:", input].join("\n\n");
+        try {
+          const md = el("div", "md"); // live target
+          const text = await streamText(
+            { prompt, model: "sonnet", maxTokens: 1600 },
+            (partial) => { if (!md.isConnected) { out.textContent = ""; out.append(md); } md.innerHTML = mdLite(partial); }
+          );
+          out.textContent = "";
+          const result = String(text || "").trim();
+          if (!result) { out.append(el("div", "err", "No output came back — try again or rephrase your input.")); return; }
+          const done = el("div", "md"); done.innerHTML = mdLite(result); out.append(done);
+          const cp = el("button", "cp", "copy");
+          cp.onclick = () => { navigator.clipboard?.writeText(result).catch(() => {}); cp.textContent = "copied ✓"; setTimeout(() => (cp.textContent = "copy"), 1400); };
+          out.append(cp);
+        } catch (e) {
+          out.textContent = "";
+          out.append(el("div", "err", String(e?.message || e).slice(0, 220)));
+          const retry = el("button", "cp", "try again"); retry.onclick = () => void run(); out.append(retry);
+        } finally { busy = false; go.disabled = false; }
+      }
+    </script>
+  </body>
+</html>

@@ -903,6 +903,7 @@ struct Panel: View {
     let onSignIn: () -> Void             // onboarding: open Terminal + start the `claude` login
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     let onStore: () -> Void              // open the wrapp store modal (drops from the notch)
+    let onTour: () -> Void               // launch the floating-cursor onboarding concierge (CursorGuide .tour)
     @State private var breathe = false
     @State private var pickerOpen = false
     @State private var dropTargeted = false
@@ -1194,7 +1195,7 @@ struct Panel: View {
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
-            Button(action: { showSettings = false; onboard.beginSetup() }) {
+            Button(action: { showSettings = false; onTour() }) {
                 HStack(spacing: 9) {
                     Image(systemName: "sparkles").font(.system(size: 12)).foregroundColor(.lime).frame(width: 18)
                     Text("Replay the welcome tour").font(.hanken(12.5, .medium)).foregroundColor(.ink)
@@ -1594,7 +1595,9 @@ struct Panel: View {
             }
             Rectangle().fill(Color.edge).frame(height: 1)
             HStack(spacing: 12) {
-                Button(action: { onboard.startTour() }) {
+                // Act I (mechanical ladder) → Act II is now the floating-cursor concierge (CursorGuide .tour).
+                // finish() dismisses the native setup card + marks onboarded; onTour() floats the guide.
+                Button(action: { onboard.finish(); onTour() }) {
                     HStack(spacing: 7) {
                         Text(setupReady ? "Take the tour" : "Skip to the tour").font(.hanken(12.5, .semibold))
                         Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold))
@@ -2711,6 +2714,50 @@ final class NotchPanel: NSPanel {
 // behind the bar (the edge is meant to be invisible against it anyway), so no rounding direction shows a gap.
 let notchTopBleed: CGFloat = 1
 
+// The notch turns into a note field during guide feedback. Modeled on GodStatusDrop's shape/tokens,
+// but with a live TextField (needs a key window — hosted in a LauncherPanel, not a NotchPanel).
+struct FeedbackNoteDrop: View {
+    @Binding var note: String
+    var shotThumb: NSImage?          // the fn-drag grab's chip, nil until grabbed
+    var onCommit: () -> Void         // ↵ / Save
+    var onCancel: () -> Void         // esc / Discard
+    @FocusState private var focused: Bool
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.bubble.fill").font(.system(size: 13)).foregroundColor(.danger)
+                Text("What went wrong?").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Spacer(minLength: 0)
+                if let t = shotThumb {
+                    Image(nsImage: t).resizable().aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 26).cornerRadius(4)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                }
+            }
+            TextField("type a note — or hold ⌃⌥ to dictate", text: $note, axis: .vertical)
+                .textFieldStyle(.plain).font(.hanken(12)).foregroundColor(.ink)
+                .lineLimit(1...4).focused($focused)
+                .onSubmit { onCommit() }
+                .padding(.horizontal, 9).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+            HStack(spacing: 10) {
+                Text("fn-drag a screenshot").font(.splMono(9)).foregroundColor(.inkFaint)
+                Spacer(minLength: 0)
+                Text("↵ save").font(.splMono(9)).foregroundColor(.lime)
+                Text("esc discard").font(.splMono(9)).foregroundColor(.inkDim)
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 12)
+        .frame(width: 300)
+        .padding(.horizontal, 14)   // notch ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+        .ignoresSafeArea()
+        .onAppear { focused = true }
+    }
+}
+
 // Like NotchPanel (which is final), but CAN become key — the ⌥⌥ launcher's search field needs to accept
 // typing. Non-activating, so it never steals app focus; the notch shape comes from the SwiftUI content.
 final class LauncherPanel: NSPanel {
@@ -2930,6 +2977,16 @@ struct ActionConsentDrop: View {
     private var regionMonitors: [Any] = []
     private var regionStart: NSPoint?
     private var regionMoved = false
+    // Guide feedback-capture state — a lean, God-independent sibling of the ⌃⌃ capture (see armFeedbackRegionCapture).
+    private var feedbackCaptureTimer: Timer?
+    private var feedbackRegionStart: NSPoint?
+    private var feedbackRegionMoved = false
+    private var feedbackPrevBtnDown = false
+    private var onFeedbackShot: ((String) -> Void)?   // completion for a committed grab
+    private var feedbackPanel: LauncherPanel?
+    private var feedbackNote = ""
+    private var feedbackShotThumb: NSImage?
+    private var feedbackKeyMonitor: Any?
     private var fnCaptureActive = false               // an fn+click/fn+drag capture gesture is in progress
     private var lastGodCaptureIntentional = false     // the last ⌃⌃ did an explicit fn capture → usable as an image reference
     private var shareScreenThisTurn = false           // snapshot of readDefaultShare() at listening-start (a mid-turn toggle can't change the in-flight turn)
@@ -3270,7 +3327,8 @@ struct ActionConsentDrop: View {
             onSetShortcut: { [weak self] kind, value in self?.setShortcut(kind, value) },
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
-            onStore: { [weak self] in self?.showStore() }
+            onStore: { [weak self] in self?.showStore() },
+            onTour: { [weak self] in self?.startWelcomeTour() }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
@@ -3302,6 +3360,9 @@ struct ActionConsentDrop: View {
         installHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
+        // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
+        CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
+        CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
 
@@ -3437,6 +3498,8 @@ struct ActionConsentDrop: View {
         amb.state = ambientOn ? .on : .off
         menu.addItem(amb)
         menu.addItem(.separator())
+        let tour = NSMenuItem(title: "Replay the welcome tour", action: #selector(replayWelcomeTour), keyEquivalent: ""); tour.target = self
+        menu.addItem(tour)
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
@@ -3888,7 +3951,9 @@ struct ActionConsentDrop: View {
         guard model.running else { showPanel(); return }
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
         model.refreshFiles()
-        let listings = readCatalog().filter { $0.category != "skill" }   // apps, not à-la-carte skills
+        // Include skills too — they get their own "Skill" tab (NotchLauncherView derives tabs from
+        // categories) and each opens the shared skill-widget.html glance (paste → run → result).
+        let listings = readCatalog()
         let view = NotchLauncherView(
             listings: listings,
             projects: readContexts(),
@@ -3930,6 +3995,76 @@ struct ActionConsentDrop: View {
         if let p = launcherPanel { dismissToNotch(p) }
     }
 
+    // ── Guide FEEDBACK note surface — the notch becomes an anchored input during a guide (docs/FEEDBACK-CAPTURE.md).
+    // Raised from CursorGuide.onFeedbackBegin: shows a focused note field + arms the fn-drag screenshot grab.
+    // ⌃⌥ dictation stays live during a guide, and stopDictationAndPaste routes its transcript here (not the app).
+    @MainActor private func showFeedbackNote() {
+        feedbackNote = ""; feedbackShotThumb = nil
+        guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        rebuildFeedbackPanel(screen)
+        // The panel is key → it owns ↵ / esc → CursorGuide commits/cancels. CursorGuide.onKey no-ops while
+        // capturingFeedback, so there's no double-fire.
+        if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m) }
+        feedbackKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+            guard let self else { return ev }
+            if ev.keyCode == 53 { Task { @MainActor in self.commitFeedbackFromField(cancel: true) }; return nil }   // esc → discard
+            if ev.keyCode == 36 && !ev.modifierFlags.contains(.shift) { Task { @MainActor in self.commitFeedbackFromField(cancel: false) }; return nil }  // ↵ → save
+            return ev
+        }
+        armFeedbackRegionCapture { [weak self] path in
+            Task { @MainActor in
+                guard let self else { return }
+                CursorGuide.shared.attachFeedbackScreenshot(path)
+                self.feedbackShotThumb = NSImage(contentsOfFile: path)
+                if let scr = self.statusItem?.button?.window?.screen ?? NSScreen.main { self.rebuildFeedbackPanel(scr) }  // show the chip
+            }
+        }
+    }
+
+    @MainActor private func rebuildFeedbackPanel(_ screen: NSScreen) {
+        let view = FeedbackNoteDrop(
+            note: Binding(get: { [weak self] in self?.feedbackNote ?? "" },
+                          set: { [weak self] in self?.feedbackNote = $0 }),
+            shotThumb: feedbackShotThumb,
+            onCommit: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: false) } },
+            onCancel: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: true) } })
+        let host = NoInsetHostingView(rootView: view)
+        if feedbackPanel == nil {
+            let p = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 140),
+                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false
+            p.level = .popUpMenu
+            p.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+            feedbackPanel = p
+        }
+        feedbackPanel!.contentView = host
+        let size = host.fittingSize
+        feedbackPanel!.setContentSize(size)
+        feedbackPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        feedbackPanel!.makeKeyAndOrderFront(nil)
+        orb?.orderOut(nil)
+        presentFromNotch(feedbackPanel!)
+    }
+
+    // Push the typed note into CursorGuide, then commit or cancel. Called on ↵ / esc / Save / Discard.
+    @MainActor private func commitFeedbackFromField(cancel: Bool) {
+        guard CursorGuide.shared.capturingFeedback else { return }
+        if cancel {
+            CursorGuide.shared.cancelFeedback()
+        } else {
+            CursorGuide.shared.attachFeedbackNote(feedbackNote)   // typed note (replace)
+            CursorGuide.shared.commitFeedback()
+        }
+        // teardown happens via onFeedbackEnd → hideFeedbackNote, which both paths trigger.
+    }
+
+    @MainActor private func hideFeedbackNote() {
+        disarmFeedbackRegionCapture()
+        if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m); feedbackKeyMonitor = nil }
+        if let p = feedbackPanel { dismissToNotch(p) }
+        feedbackNote = ""; feedbackShotThumb = nil
+    }
+
     // ── the native WIDGET HOST — load a wrapp offscreen, call __godWidget.get(input), render the notch widget ──
     private func mimeForExt(_ ext: String) -> String {
         switch ext {
@@ -3962,6 +4097,12 @@ struct ActionConsentDrop: View {
         "saas", "flow", "huddle", "identity", "mkt", "marquee",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
+        // Skills all share ONE generic widget (paste → run the skill → glance result), selected by
+        // ?skill=<id>. skill-widget.html reads the id from the query string AND window.__widgetInput.skill.
+        if l.category == "skill", let wurl = URL(string: "http://localhost:5188/skill-widget.html?skill=\(l.id)") {
+            showNotchWidgetWeb(url: wurl, widgetId: l.id, title: l.name, input: widgetInput(from: fileURL))
+            return
+        }
         // Interactive path: render the wrapp's compact <id>-widget.html LIVE in the notch, with the launcher's
         // dropped file injected as window.__widgetInput. (Others fall through to the glance __godWidget path.)
         if interactiveWidgetIds.contains(l.id), let wurl = URL(string: "http://localhost:5188/\(l.id)-widget.html") {
@@ -4241,6 +4382,48 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // The onboarding concierge, ported onto the CursorGuide floating-cursor tour (docs/ONBOARDING.md
+    // Act II). Writes ~/.relay/guide-run.json {mode:"tour"}; the already-armed CursorGuide watcher
+    // (installed in installGlow/CursorGuide.shared.install) picks it up within ~0.3s and floats each
+    // step by the cursor. Steps 1-3 walk the real permission cards (surfaced via refreshPermissionGate);
+    // steps 4-6 practice the three hotkeys ⌃⌃ / ⌃⌥ / ⌥⌥ — which stay LIVE during a guide (onFlags has
+    // no isActive guard), so the practice actually works. Canonical copy: examples/apps/onboarding/
+    // onboarding-tour.json (kept in sync; inlined here so the app has no runtime file dependency).
+    @MainActor private func startWelcomeTour() {
+        let steps: [[String: Any]] = [
+            ["id": "grant-mic",
+             "text": "A card just dropped from the notch asking for your mic. Click Allow — that's the ear that hears you when you hold a key and talk.",
+             "hint": "If the system window doesn't appear, the card opens System Settings — flip the Switchboard toggle on."],
+            ["id": "grant-accessibility",
+             "text": "Next card: Accessibility. Drag the Switchboard chip into the list (or hit Open) and switch it on — this is the hand that points, clicks and types for you.",
+             "hint": "macOS has no one-click grant here, so you add Switchboard to the list yourself. The card waits."],
+            ["id": "grant-screen",
+             "text": "Last one: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
+             "hint": "Grant it and the permission cards are done — the notch orb goes quiet. Press → to keep going."],
+            ["id": "practice-summon",
+             "text": "Now tap Control twice — ⌃⌃. The orb wakes, listens, and you can just say what you need. Try it, then press → .",
+             "hint": "This is your summon. Anytime, anywhere — ⌃⌃ and start talking."],
+            ["id": "practice-dictation",
+             "text": "Put your cursor in any text field, then hold ⌃⌥ and speak. Let go and your words land right where the cursor is. Press → when you've watched it type.",
+             "hint": "Hold to talk, release to drop the text. No send button, no window — just your voice into the page."],
+            ["id": "practice-launcher",
+             "text": "Last trick: double-tap Option — ⌥⌥ — to throw open the launcher. Every app and tool, one keystroke away. Give it a tap, then press → to finish.",
+             "hint": "⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. That's the whole keyboard. You're set."]
+        ]
+        let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
+        try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
+        let f = (RELAY_DIR as NSString).appendingPathComponent("guide-run.json")
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: f), options: .atomic)
+        }
+        // Surface the REAL permission cards so steps 1-3 have a live Grant button under the floating guide.
+        gateDismissed = false          // clear any prior dismissal so the concierge cards can show
+        refreshPermissionGate()
+        // Presence == onboarded (matches Onboard.mark semantics), so first-run auto-open doesn't re-fire.
+        try? Data("done".utf8).write(to: URL(fileURLWithPath: ONBOARDED_FILE))
+    }
+    @objc private func replayWelcomeTour() { startWelcomeTour() }
+
     // Show the Accessibility onboarding card while the app isn't trusted (unless dismissed this
     // session); auto-hide the instant it's granted. AXIsProcessTrusted() is the honest, non-prompting read.
     // The concierge: show the FIRST missing permission (mic → accessibility → screen); advance as each
@@ -4410,7 +4593,17 @@ struct ActionConsentDrop: View {
             try? p.run(); p.waitUntilExit()
             let data = out.fileHandleForReading.readDataToEndOfFile()
             let text = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            Task { @MainActor in self.hideGodStatus(); self.pasteText(text) }
+            Task { @MainActor in
+                self.hideGodStatus()
+                if CursorGuide.shared.capturingFeedback {
+                    // A guide is capturing feedback → the transcript is the step's NOTE, not a paste into the app.
+                    CursorGuide.shared.attachFeedbackNote(text, append: true)
+                    self.feedbackNote = (self.feedbackNote.isEmpty ? text : self.feedbackNote + " " + text)
+                    if let scr = self.statusItem?.button?.window?.screen ?? NSScreen.main { self.rebuildFeedbackPanel(scr) }  // reflect it in the field
+                } else {
+                    self.pasteText(text)
+                }
+            }
         }
     }
 
@@ -4822,6 +5015,55 @@ struct ActionConsentDrop: View {
                 self.capturePrevBtnDown = btnDown
             }
         }
+    }
+
+    // Arm a ONE-SHOT fn-drag region grab for GUIDE FEEDBACK. Independent of any God turn: it reuses the
+    // region overlay + screencapture, but hands the jpg to `completion` instead of staging a God ref
+    // (confirmCaptureInNotch mutates godRefs / paints the God pill — all wrong mid-guide). fn+drag → that
+    // region · fn+click (no drag) → whole screen · disarmed after one commit.
+    @MainActor func armFeedbackRegionCapture(completion: @escaping (String) -> Void) {
+        guard feedbackCaptureTimer == nil, let screen = NSScreen.main else { return }
+        onFeedbackShot = completion
+        feedbackRegionStart = nil; feedbackRegionMoved = false; feedbackPrevBtnDown = false
+        let toView: (NSPoint) -> NSPoint = { NSPoint(x: $0.x - screen.frame.minX, y: $0.y - screen.frame.minY) }
+        feedbackCaptureTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let btnDown = (NSEvent.pressedMouseButtons & 0x1) != 0
+                let fn = NSEvent.modifierFlags.contains(.function)
+                let p = toView(NSEvent.mouseLocation)
+                if btnDown && !self.feedbackPrevBtnDown {                       // ── DOWN edge
+                    if fn { self.feedbackRegionStart = p; self.feedbackRegionMoved = false
+                            self.ensureRegionOverlay(screen); self.regionView?.setSel(.zero) }
+                } else if btnDown, self.feedbackRegionStart != nil, let s = self.feedbackRegionStart {  // ── dragging
+                    if hypot(p.x - s.x, p.y - s.y) > 6 { self.feedbackRegionMoved = true }
+                    self.regionView?.setSel(NSRect(x: min(s.x, p.x), y: min(s.y, p.y), width: abs(p.x - s.x), height: abs(p.y - s.y)))
+                } else if !btnDown && self.feedbackPrevBtnDown, self.feedbackRegionStart != nil {  // ── UP edge → commit
+                    let pick: RegionPick
+                    if self.feedbackRegionMoved, let v = self.regionView, v.sel.width > 8, v.sel.height > 8 {
+                        pick = .region(v.captureRect())   // fn+drag → that region
+                    } else {
+                        pick = .full                      // fn+click (no drag) → whole screen
+                    }
+                    self.regionOverlay?.orderOut(nil); self.regionOverlay = nil; self.regionView = nil
+                    let shot = NSTemporaryDirectory() + "guide-feedback-\(UUID().uuidString).jpg"
+                    self.captureShot(pick, to: shot)
+                    self.disarmFeedbackRegionCapture()
+                    if FileManager.default.fileExists(atPath: shot) {
+                        NSSound(named: "Morse")?.play()
+                        self.onFeedbackShot?(shot)        // → CursorGuide.attachFeedbackScreenshot
+                    }
+                    // if the file is missing (Screen-Recording ungranted) we simply don't attach a shot.
+                }
+                self.feedbackPrevBtnDown = btnDown
+            }
+        }
+    }
+
+    @MainActor func disarmFeedbackRegionCapture() {
+        feedbackCaptureTimer?.invalidate(); feedbackCaptureTimer = nil
+        regionOverlay?.orderOut(nil); regionOverlay = nil; regionView = nil
+        feedbackRegionStart = nil
     }
 
     // An fn grab committed. What it MEANS depends on the share mode snapshotted for this turn:
