@@ -1,0 +1,28 @@
+{
+  "id": "deck",
+  "name": "Deck",
+  "tagline": "Notes in, a real slide deck out — export to PowerPoint",
+  "category": "studio",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/deck.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "model",
+    "engineTier": "L2",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": true
+  }
+}

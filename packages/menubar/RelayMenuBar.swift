@@ -4099,6 +4099,8 @@ struct ActionConsentDrop: View {
         "canvas", "capp", "cartridge", "cast", "cut", "feature", "hardware", "ideabrain", "ideafetch",
         "meetnotes", "natal", "prism", "reachout", "redline", "reel", "retail", "shelf", "studio", "take",
         "saas", "flow", "huddle", "identity", "mkt", "marquee",
+        // new: Deck (slides→pptx), Dub (audio→per-speaker TTS revoice)
+        "deck", "dub",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
         // Skills all share ONE generic widget (paste → run the skill → glance result), selected by

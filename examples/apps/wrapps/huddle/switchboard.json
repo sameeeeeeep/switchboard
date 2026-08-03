@@ -1,24 +1,21 @@
 {
   "id": "huddle",
   "name": "Huddle",
-  "tagline": "Get everyone on the same call, fast.",
-  "category": "tool",
+  "tagline": "Any meeting → clean notes, decisions and action items.",
+  "category": "studio",
   "components": {
     "ui": {
       "kind": "web",
-      "url": "https://huddle.thelastprompt.ai"
+      "url": "http://localhost:5188/huddle.html"
     }
   },
   "surfaces": [
-    "browser"
+    "browser",
+    "notch"
   ],
   "requires": [
     {
       "kind": "daemon"
-    },
-    {
-      "kind": "model",
-      "class": "local"
     }
   ]
 }

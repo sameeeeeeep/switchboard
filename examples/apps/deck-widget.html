@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deck · widget</title>
+    <style>
+      /* Notch widget tokens — compact, dark, one system. Shared across every Switchboard widget. */
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --accent-soft:#232B0D; --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);position:relative;}
+      .mk::after{content:"";position:absolute;left:3px;right:3px;top:5px;height:2px;background:var(--page);box-shadow:0 3px 0 var(--page);}
+      .name{font:600 13px/1 var(--sans);letter-spacing:-.01em;} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .flabel{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px;display:block;}
+      textarea,.in{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 13px/1.5 var(--sans);padding:10px 12px;outline:none;resize:vertical;}
+      textarea:focus,.in:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      textarea.topic{min-height:60px;}
+      .row{display:flex;gap:9px;align-items:center;}
+      .go{font:600 12.5px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:11px 16px;cursor:pointer;transition:filter .15s,opacity .15s;}
+      .go:hover{filter:brightness(1.08);} .go:disabled{opacity:.45;cursor:default;}
+      .grow{flex:1;}
+      .out{display:flex;flex-direction:column;gap:8px;}
+      .summ{font:500 11px/1.5 var(--mono);color:var(--accent);}
+      .slide{position:relative;border:1px solid var(--edge);background:var(--panel);border-radius:11px;padding:10px 12px;display:flex;gap:10px;align-items:baseline;}
+      .slide.title{border-color:color-mix(in srgb,var(--accent) 40%,var(--edge));}
+      .slide .no{font:500 10px/1 var(--mono);color:var(--accent);letter-spacing:.08em;flex:none;}
+      .slide .body{min-width:0;}
+      .slide .tt{font:600 12.5px/1.3 var(--sans);color:var(--ink);}
+      .slide .sub{font:400 11.5px/1.45 var(--sans);color:var(--ink-sec);margin-top:2px;}
+      .cp{font:500 10.5px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;align-self:flex-start;transition:border-color .15s,color .15s;}
+      .cp:hover{border-color:var(--accent);color:var(--ink);}
+      .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+      .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;flex:none;}
+      .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
+      @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
+      .err{color:var(--danger);font:400 11.5px/1.5 var(--mono);}
+      .placeholder{font:400 11px/1.5 var(--mono);color:var(--ink-faint);}
+      .foot{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .foot .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name">De<em>ck</em></span><span class="kicker">on your claude</span></div>
+      <div>
+        <label class="flabel" for="topic">A topic, notes, or an outline</label>
+        <textarea id="topic" class="topic" autofocus placeholder="Q3 board update — revenue, churn, roadmap, the ask…"></textarea>
+      </div>
+      <div class="row">
+        <span class="grow"></span>
+        <button id="go" class="go">Outline the deck</button>
+      </div>
+      <div class="out" id="out"><div class="placeholder">Type a topic — your Claude returns a slide-by-slide outline. Export the real .pptx in the full app.</div></div>
+      <div class="foot"><span class="dot"></span>Runs on your own Claude · via Switchboard · nothing written to disk</div>
+    </div>
+
+    <script type="module">
+      // ---- injected-input contract: ?input=<url-encoded> OR window.__widgetInput { text, dataUrl?, filename? }
+      function injectedText() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q != null && q !== "") return q; } catch {}
+        const w = window.__widgetInput;
+        if (w && typeof w === "object" && typeof w.text === "string" && w.text.trim()) return w.text;
+        if (typeof w === "string" && w.trim()) return w;
+        return "";
+      }
+
+      // ================= window.claude bridge =================
+      // The notch host injects window.claude — the raw BYOP provider (EIP-1193-style request + `delta`
+      // events) that @relay/sdk wraps. A self-contained widget can't bundle the SDK, so we talk to the
+      // provider directly, mirroring the SDK's connect + streamed-completion contract exactly.
+      const SCOPE = { reason: "Deck widget — turn a topic into a slide-by-slide outline, on your own Claude", models: ["sonnet"] };
+      function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+      function waitForProvider(ms = 1500) {
+        const p = provider(); if (p) return Promise.resolve(p);
+        return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; res(provider()); };
+          window.addEventListener("claude#initialized", fin, { once: true }); setTimeout(fin, ms); });
+      }
+      let grantP = null;
+      function ensureGrant(p) {
+        if (!grantP) grantP = (async () => {
+          try { const g = await p.request({ method: "claude_permissions" }); if (g) return g; } catch {}
+          return p.request({ method: "claude_connect", params: SCOPE });
+        })();
+        return grantP;
+      }
+      // Streamed completion — await claude_stream for the id, THEN attach the delta handler (SDK order).
+      async function streamPrompt(p, params, onText) {
+        const { streamId } = await p.request({ method: "claude_stream", params });
+        return new Promise((resolve, reject) => {
+          let text = "", settled = false;
+          const cleanup = () => { settled = true; try { p.removeListener("delta", handler); } catch {} clearTimeout(timer); };
+          const handler = (d) => {
+            if (!d || d.streamId !== streamId) return;
+            if (d.type === "text") { text += d.text; onText && onText(text); }
+            else if (d.type === "error") { cleanup(); reject(new Error((d.error && d.error.message) || "stream error")); }
+            else if (d.type === "done") { cleanup(); resolve((d.result && d.result.text) || text); }
+          };
+          const timer = setTimeout(() => { if (!settled) { cleanup(); reject(new Error("Switchboard didn't respond — reload the widget and try again.")); } }, 180000);
+          p.on("delta", handler);
+        });
+      }
+      async function ask(prompt, onText) {
+        const p = await waitForProvider();
+        if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
+        await ensureGrant(p);
+        return streamPrompt(p, { prompt, model: "sonnet", maxTokens: 1400 }, onText);
+      }
+
+      // ---- deck-outline prompt (a compact cousin of src/deck.js run()) ----
+      function buildPrompt(topic) {
+        return [
+          "You are Deck, a sharp presentation designer. Turn the material below into a compact slide OUTLINE.",
+          "Return ONE JSON object and NOTHING else — no prose, no fences. Shape EXACTLY:",
+          '{"title": <deck title, punchy>, "subtitle": <one line or "">, "slides": [ {"title": <slide title>, "lead": <one short supporting phrase or "">} ]}',
+          "Rules: 5–8 content slides (fewer if the material is thin — never pad). Invent nothing not in the material. Titles are phrases, not sentences.",
+          "MATERIAL:\n" + topic,
+        ].join("\n\n");
+      }
+      function parseJson(text) {
+        let t = String(text || "").replace(/```[a-z]*\n?/gi, "").trim();
+        const s = t.indexOf("{"), e = t.lastIndexOf("}");
+        if (s === -1 || e <= s) return null;
+        try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
+      }
+
+      // ---- UI ----
+      const $ = (id) => document.getElementById(id);
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+      const out = $("out"), topicEl = $("topic"), goEl = $("go");
+      let busy = false;
+
+      async function run() {
+        const topic = topicEl.value.trim();
+        if (!topic) { topicEl.focus(); return; }
+        if (busy) return;
+        busy = true; goEl.disabled = true;
+        out.textContent = "";
+        const st = mk("div", "status"); st.append(mk("div", "scan"), mk("span", null, "structuring the deck on your Claude…")); out.append(st);
+        try {
+          const raw = await ask(buildPrompt(topic));
+          const deck = parseJson(raw);
+          out.textContent = "";
+          if (!deck || !Array.isArray(deck.slides) || !deck.slides.length) throw new Error("no outline came back — try rephrasing the topic");
+          if (deck.title) {
+            const tc = mk("div", "slide title");
+            tc.append(mk("span", "no", "00"));
+            const body = mk("div", "body");
+            body.append(mk("div", "tt", String(deck.title)));
+            if (deck.subtitle) body.append(mk("div", "sub", String(deck.subtitle)));
+            else body.append(mk("div", "sub", "title slide"));
+            tc.append(body); out.append(tc);
+          }
+          deck.slides.slice(0, 8).forEach((s, i) => {
+            const card = mk("div", "slide");
+            card.append(mk("span", "no", String(i + 1).padStart(2, "0")));
+            const body = mk("div", "body");
+            body.append(mk("div", "tt", String(s.title || `Slide ${i + 1}`)));
+            if (s.lead) body.append(mk("div", "sub", String(s.lead)));
+            card.append(body); out.append(card);
+          });
+          const lines = [String(deck.title || "Deck"), ...deck.slides.map((s, i) => `${i + 1}. ${s.title}`)].join("\n");
+          const cp = mk("button", "cp", "copy outline");
+          cp.onclick = () => { navigator.clipboard?.writeText(lines).catch(() => {}); cp.textContent = "copied ✓"; setTimeout(() => (cp.textContent = "copy outline"), 1400); };
+          out.append(cp);
+        } catch (e) {
+          out.textContent = "";
+          out.append(mk("div", "err", String(e?.message || e).slice(0, 200)));
+        } finally { busy = false; goEl.disabled = false; }
+      }
+      goEl.addEventListener("click", run);
+      topicEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); });
+
+      // init: injected input pre-fills the topic
+      const seed = injectedText();
+      if (seed) topicEl.value = seed;
+      topicEl.focus();
+    </script>
+  </body>
+</html>

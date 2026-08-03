@@ -190,6 +190,15 @@
       }
     }
   ],
+  "deck": [
+    {
+      "name": "deck_build",
+      "description": "Turn notes, an outline, or a topic into a structured slide deck (a title slide plus content slides, each with a title, bullets, and an optional speaker note). Builds it live on the page and returns the outline; the user exports a real .pptx from the page.",
+      "inputSchema": {
+        "notes": "string — notes, an outline, or a topic to turn into a slide deck. Required."
+      }
+    }
+  ],
   "docstring": [
     {
       "name": "docstring_run",
@@ -205,6 +214,15 @@
       "description": "Interpret a dream. Writes the reading live on the page and returns it.",
       "inputSchema": {
         "dream": "string — the dream to interpret, in the dreamer's own words. Required."
+      }
+    }
+  ],
+  "dub": [
+    {
+      "name": "dub_run",
+      "description": "Transcribe an audio clip (locally) and split it into a speaker-labelled, ordered script (diarize). Pass the audio as a data: URL. Runs live on the page and returns the script plus whether speakers were diarized or inferred; choosing a voice per speaker and regenerating happens on the page.",
+      "inputSchema": {
+        "audio": "string — the audio clip as a data: URL (e.g. data:audio/wav;base64,…). Required."
       }
     }
   ],
@@ -282,10 +300,11 @@
   ],
   "huddle": [
     {
-      "name": "huddle_ask",
-      "description": "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
+      "name": "huddle_notes",
+      "description": "Turn a meeting into clean notes: TL;DR, decisions, action items with owners, and per-topic notes. Pass a transcript, or an audio file as a data:audio/… URL (transcribed locally). Writes the notes live on the page and returns them.",
       "inputSchema": {
-        "message": "string — what to say to the call. Required."
+        "transcript": "string — the meeting transcript or rough notes. Provide this OR audio.",
+        "audio": "string — an audio recording as a data:audio/… URL, transcribed locally on the device. Provide this OR transcript."
       }
     }
   ],
