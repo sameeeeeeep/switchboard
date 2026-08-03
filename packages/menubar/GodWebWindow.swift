@@ -218,6 +218,13 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
             guard let self else { return }
             if (res as? Bool) == true { self.onReady?() }
             else if n > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self.pollReady(n - 1) } }
+            else {
+                // NEVER hang: after ~20s the bridge still isn't up (stale/broken wrapp, failed connect).
+                // Fire onReady anyway — listTools will return empty and the caller's "no God tools →
+                // front the wrapp window" path takes over, so the notch never freezes on "waiting…".
+                NSLog("[god-web] pollReady timed out — no __god/__godWidget bridge; handing off to caller")
+                self.onReady?()
+            }
         }
     }
 

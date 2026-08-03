@@ -32,11 +32,20 @@ struct GuideStep {
     let hint: String?   // optional dim second line (the schema's `hint` / `expect`)
 }
 
+// A screenshot and/or a note the human left on a step during a guide run. Both optional and
+// independent — a step may have a shot, a note, both, or (the common case) neither.
+struct StepFeedback {
+    var screenshot: String?   // absolute path to an fn-drag jpg (in NSTemporaryDirectory)
+    var note: String?         // raw typed + dictated text, no cleanup
+    var isEmpty: Bool { (screenshot?.isEmpty ?? true) && (note?.isEmpty ?? true) }
+}
+
 struct GuideResult {
     let id: String
     let text: String
     var verdict: String   // "pass" | "fail" | "skipped" | "unrun" | "done" (tour)
     var notedAt: Date?
+    var feedback: StepFeedback? = nil   // set by the feedback-capture flow (fn-drag shot + typed/dictated note)
 }
 
 enum GuideFlash { case pass, fail, skip, next, back }
@@ -236,6 +245,74 @@ final class CursorGuide {
     /// summon during a run (add the one-line guard shown in the integration notes).
     private(set) var isActive = false
 
+    // ── Feedback capture ─────────────────────────────────────────────────────
+    // True while the human is leaving a screenshot/note on a step. The main app reads this to route a
+    // ⌃⌥ dictation transcript to the note (instead of pasting) and to raise the notch input surface.
+    private(set) var capturingFeedback = false
+    private var feedbackIdx: Int? = nil          // the result index the capture attaches to
+
+    // Wired ONCE by RelayController at launch (it owns the capture UI). CursorGuide has no notch/mouse
+    // access of its own, so it delegates the UI and just receives the artifacts back.
+    var onFeedbackBegin: ((_ stepId: String) -> Void)?   // raise fn-drag capture + the notch note field
+    var onFeedbackEnd:   (() -> Void)?                    // tear the capture UI down
+
+    // Spoken concierge: RelayController wires these to God's voice (Pocket-TTS on :7897, macOS say
+    // fallback). In .tour mode each step is read aloud as it appears, so the guide talks you through it.
+    var onSpeak: ((String) -> Void)?     // speak a line (interrupts any in-flight speech)
+    var onStopSpeak: (() -> Void)?       // silence on teardown/abort
+
+    // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
+    // never changes it — it just opens capture.
+    private func beginFeedback() {
+        guard isActive, idx < results.count, !capturingFeedback else { return }
+        capturingFeedback = true
+        feedbackIdx = idx
+        if results[idx].feedback == nil { results[idx].feedback = StepFeedback() }
+        onFeedbackBegin?(results[idx].id)
+    }
+
+    // RelayController pushes the fn-drag jpg here as soon as a region is grabbed.
+    func attachFeedbackScreenshot(_ path: String) {
+        guard capturingFeedback, let i = feedbackIdx, i < results.count else { return }
+        var fb = results[i].feedback ?? StepFeedback()
+        fb.screenshot = path
+        results[i].feedback = fb
+    }
+
+    // RelayController pushes typed/dictated text here. Dictation may fire twice (two ⌃⌥ holds); APPEND so
+    // a second utterance doesn't clobber the first. Typing replaces via the panel's commit.
+    func attachFeedbackNote(_ text: String, append: Bool = false) {
+        guard capturingFeedback, let i = feedbackIdx, i < results.count else { return }
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        var fb = results[i].feedback ?? StepFeedback()
+        if append, let existing = fb.note, !existing.isEmpty { fb.note = existing + " " + t }
+        else { fb.note = t }
+        results[i].feedback = fb
+    }
+
+    // Save what's staged and move on. Called on ↵ / fn→ from the notch field.
+    func commitFeedback() {
+        guard capturingFeedback, let i = feedbackIdx else { return }
+        if let fb = results[i].feedback, fb.isEmpty { results[i].feedback = nil }   // nothing staged → no key
+        endFeedback()
+        advance()
+    }
+
+    // Discard the in-progress shot/note (KEEP the verdict) and move on. Called on esc.
+    func cancelFeedback() {
+        guard capturingFeedback, let i = feedbackIdx else { return }
+        results[i].feedback = nil
+        endFeedback()
+        advance()
+    }
+
+    private func endFeedback() {
+        capturingFeedback = false
+        feedbackIdx = nil
+        onFeedbackEnd?()
+    }
+
     private let model = GuideOverlayModel()
     private var overlay: NSPanel?
     private var hosting: NSHostingView<GuideCaptionView>?
@@ -349,15 +426,17 @@ final class CursorGuide {
         model.hint = s.hint
         model.progress = "\(idx + 1)/\(steps.count)"
         model.canBack = idx > 0
+        if mode == .tour { onSpeak?(s.text) }   // the concierge reads the step aloud (tour only)
     }
 
     // MARK: signals
 
     private func handleAdvance(fail: Bool) {
-        guard isActive, idx < steps.count else { return }
+        guard isActive, idx < steps.count, !capturingFeedback else { return }
         if mode == .test {
             record(verdict: fail ? "fail" : "pass")
             flash(fail ? .fail : .pass)
+            if fail { beginFeedback(); return }   // pause on the step; commit/cancel advances
         } else {
             results[idx].verdict = "done"; results[idx].notedAt = Date()
             flash(.next)
@@ -371,6 +450,7 @@ final class CursorGuide {
         idx -= 1
         results[idx].verdict = mode == .test ? "unrun" : "done"
         results[idx].notedAt = nil
+        results[idx].feedback = nil            // re-answering a step overwrites its feedback too
         flash(.back)
         showStep()
     }
@@ -400,6 +480,7 @@ final class CursorGuide {
 
     private func abort(reason: String) {
         guard isActive else { return }
+        if capturingFeedback { capturingFeedback = false; feedbackIdx = nil; onFeedbackEnd?() }  // tear down any in-flight capture
         // Any not-yet-verdicted step becomes "skipped" (unrun in the file's terms → skipped on abort).
         for i in idx..<results.count where results[i].verdict == "unrun" { results[i].verdict = "skipped" }
         finish(outcome: "aborted")
@@ -430,12 +511,19 @@ final class CursorGuide {
     private func writeResult(outcome: String, finishedAt: Date, passed: Int, failed: Int, skipped: Int) {
         var stepDicts: [[String: Any]] = []
         for r in results {
-            stepDicts.append([
+            var d: [String: Any] = [
                 "id": r.id,
                 "text": r.text,
                 "verdict": r.verdict,
                 "notedAt": r.notedAt.map { iso.string(from: $0) } ?? NSNull(),
-            ])
+            ]
+            if let fb = r.feedback, !fb.isEmpty {
+                var fbo: [String: Any] = [:]
+                if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }
+                if let n = fb.note, !n.isEmpty { fbo["note"] = n }
+                d["feedback"] = fbo
+            }
+            stepDicts.append(d)
         }
         let out: [String: Any] = [
             "title": title,
@@ -488,6 +576,7 @@ final class CursorGuide {
 
     private func teardown() {
         isActive = false
+        onStopSpeak?()          // silence the concierge voice when the guide ends
         model.visible = false
         model.done = nil
         model.flash = nil
@@ -575,6 +664,10 @@ final class CursorGuide {
     // keyCodes when .function is present (external keyboards). Esc closes. ⌃⌥ dictation is left untouched.
     @discardableResult private func onKey(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags) -> Bool {
         guard isActive else { return false }
+        // While capturing feedback, the notch input panel is key and owns ↵/esc (RelayMenuBar
+        // showFeedbackNote). CursorGuide's global monitor must NOT also act on those, or esc double-fires
+        // (cancel here AND abort). Swallow keys so they can't leak to the app, but take no action.
+        if capturingFeedback { return true }
         let fn = flags.contains(.function)
         switch keyCode {
         case 53: abort(reason: "esc"); return true                                     // Esc — Close
@@ -584,6 +677,8 @@ final class CursorGuide {
         case 123 where fn: if mode == .test { handleAdvance(fail: true) }; return true // ← +fn
         case 116: goBack(); return true                                                // PageUp (fn ↑) — Back
         case 126 where fn: goBack(); return true                                       // ↑ +fn
+        case 121: if mode == .test { beginFeedback() }; return true                    // PageDown (fn ↓) — Note (any verdict)
+        case 125 where fn: if mode == .test { beginFeedback() }; return true           // ↓ +fn
         default: return false
         }
     }

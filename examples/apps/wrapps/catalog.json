@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 71,
+  "count": 75,
   "listings": [
     {
       "id": "bank",
@@ -73,6 +73,186 @@
         "A living brand system — voice, palette, and positioning in one vault",
         "Copy review that answers in your own voice",
         "A competitor war-room you can refresh"
+      ]
+    },
+    {
+      "id": "copyflow",
+      "name": "CopyFlow",
+      "tagline": "Show a workflow once — it runs itself.",
+      "category": "studio",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/copyflow.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "copyflow_record",
+          "description": "Author a routine from a 2-step demo: step 1 fetches JSON from a URL, step 2 appends a row of values to a target. CopyFlow saves the recording trace, generalizes it into a parameterized routine with the user's Claude, and shows it on the Review view for the user to confirm. Returns the compiled routine JSON (NOT yet confirmed — confirming is the user's standing grant).",
+          "inputSchema": {
+            "fetchUrl": "string — the URL step 1 fetches JSON from. Required.",
+            "appendTarget": "string — where step 2 appends the row (a sheet id / connector target). Required.",
+            "appendValues": "string — the new row's values, comma-separated or a JSON array. Optional.",
+            "title": "string — a name for the routine. Optional.",
+            "fetchIntent": "string — plain-language description of step 1. Optional.",
+            "appendIntent": "string — plain-language description of step 2. Optional."
+          }
+        }
+      ]
+    },
+    {
+      "id": "crest",
+      "name": "Crest",
+      "tagline": "A brief in, a logo out — foundation, directions, four marks.",
+      "category": "studio",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/crest.html"
+        }
+      },
+      "surfaces": [
+        "browser"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "model",
+          "class": "cloud"
+        }
+      ],
+      "tools": [
+        {
+          "name": "crest_run",
+          "description": "Turn a one-line brand brief into a logo: a brand foundation, three directions (one recommended), a chosen visual style, and four concrete marks (SVG wireframe + a real image rendered on your Higgsfield). Runs live on the page and returns the result.",
+          "inputSchema": {
+            "brief": "string — brand name + what it does / who it's for / any vibe. Required.",
+            "style": "string — OPTIONAL. One of: 3D isometric, flat, monoline, monochrome, 2D illustrative, pixel art, gradient, bold, emblem, geometric, negative space, retro. Defaults to the recommended style."
+          }
+        }
+      ]
+    },
+    {
+      "id": "deck",
+      "name": "Deck",
+      "tagline": "Notes in, a real slide deck out — export to PowerPoint",
+      "category": "studio",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/deck.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "model",
+        "engineTier": "L2",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": true
+      },
+      "tools": [
+        {
+          "name": "deck_build",
+          "description": "Turn notes, an outline, or a topic into a structured slide deck (a title slide plus content slides, each with a title, bullets, and an optional speaker note). Builds it live on the page and returns the outline; the user exports a real .pptx from the page.",
+          "inputSchema": {
+            "notes": "string — notes, an outline, or a topic to turn into a slide deck. Required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "dub",
+      "name": "Dub",
+      "tagline": "Audio in — revoice each speaker with the TTS voice you pick.",
+      "category": "studio",
+      "author": "Switchboard",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/dub.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "model",
+        "engineTier": "L2",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": true
+      },
+      "inside": [
+        "Transcribes locally (whisper/STT on the daemon) — your audio never leaves the machine",
+        "Claude splits the transcript into a per-speaker, ordered script (the daemon does not diarize)",
+        "Pick a local TTS voice per speaker (cloned voices in ~/.relay/voices, or the OS engine) and regenerate one stitched track"
+      ],
+      "tools": [
+        {
+          "name": "dub_run",
+          "description": "Transcribe an audio clip (locally) and split it into a speaker-labelled, ordered script (diarize). Pass the audio as a data: URL. Runs live on the page and returns the script plus whether speakers were diarized or inferred; choosing a voice per speaker and regenerating happens on the page.",
+          "inputSchema": {
+            "audio": "string — the audio clip as a data: URL (e.g. data:audio/wav;base64,…). Required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "huddle",
+      "name": "Huddle",
+      "tagline": "Any meeting → clean notes, decisions and action items.",
+      "category": "studio",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/huddle.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "huddle_notes",
+          "description": "Turn a meeting into clean notes: TL;DR, decisions, action items with owners, and per-topic notes. Pass a transcript, or an audio file as a data:audio/… URL (transcribed locally). Writes the notes live on the page and returns them.",
+          "inputSchema": {
+            "transcript": "string — the meeting transcript or rough notes. Provide this OR audio.",
+            "audio": "string — an audio recording as a data:audio/… URL, transcribed locally on the device. Provide this OR transcript."
+          }
+        }
       ]
     },
     {
@@ -706,39 +886,6 @@
         {
           "kind": "model",
           "class": "local"
-        }
-      ]
-    },
-    {
-      "id": "huddle",
-      "name": "Huddle",
-      "tagline": "Get everyone on the same call, fast.",
-      "category": "tool",
-      "components": {
-        "ui": {
-          "kind": "web",
-          "url": "https://huddle.thelastprompt.ai"
-        }
-      },
-      "surfaces": [
-        "browser"
-      ],
-      "requires": [
-        {
-          "kind": "daemon"
-        },
-        {
-          "kind": "model",
-          "class": "local"
-        }
-      ],
-      "tools": [
-        {
-          "name": "huddle_ask",
-          "description": "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
-          "inputSchema": {
-            "message": "string — what to say to the call. Required."
-          }
         }
       ]
     },

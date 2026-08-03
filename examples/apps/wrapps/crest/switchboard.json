@@ -1,0 +1,14 @@
+{
+  "id": "crest",
+  "name": "Crest",
+  "tagline": "A brief in, a logo out — foundation, directions, four marks.",
+  "category": "studio",
+  "components": {
+    "ui": { "kind": "web", "url": "http://localhost:5188/crest.html" }
+  },
+  "surfaces": ["browser"],
+  "requires": [
+    { "kind": "daemon" },
+    { "kind": "model", "class": "cloud" }
+  ]
+}

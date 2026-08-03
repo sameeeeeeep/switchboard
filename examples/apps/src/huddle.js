@@ -1,35 +1,35 @@
-// HUDDLE — get on a working call with Claude to move a project forward, on the visitor's OWN Claude.
-// COMPOSE wrapp: camera presence (getUserMedia) + a warm stateful thread (claude_session, one
-// sessionId held across turns) + the shared kit SPEAKER element (relay.speak — Claude talks back
-// ON-DEVICE, no cloud voice) + storage.bind to a real project folder so the call is grounded in
-// actual files. You type; Claude answers in text and speaks it. Nothing but your prompts leaves.
+// HUDDLE — any meeting into clean, skimmable notes on the visitor's OWN Claude. Paste a transcript,
+// or drop an audio file (transcribed LOCALLY on the daemon's whisper/STT — audio never leaves the
+// machine), then one stage structures it into a TL;DR, decisions, action items with owners, and
+// collapsible per-topic notes. The operator holds no key, pays for no inference, and never sees the
+// user's data — Switchboard brokers everything. Granola, but private + one-click.
 //
-// Plumbing between here and the "APP LOGIC" line is the /wrapp template, byte-identical.
+// This file is TEMPLATE PLUMBING + the app. Everything between here and the "APP LOGIC" line is
+// proven idiom (distilled from recap.js) — keep it byte-identical. Edit the CONFIG block and
+// everything below APP LOGIC.
+//
+// House doctrine (all five, every wrapp): context-first · single input · options with exactly ONE
+// recommended · house design system · one-go auto-advancing pipeline the user can steer anywhere.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
-import { mountSpeaker } from "./kit/speaker.js";
-// The shared decision atoms. optionCards() keeps the accent for a human click and renders the
-// model's ★ as a neutral DRAFT; escapeHatch() is the way out of the menu. (doctrine 4 + 5)
-import { optionCards, escapeHatch } from "./kit/ui.js";
+// Option cards come from the shared kit (src/kit/ui.js): DRAFTED stays visually distinct from CHOSEN
+// so the accent never paints a machine decision (doctrine 5), and any slate gets an escape hatch.
+import { optionCards } from "./kit/ui.js";
 // God's hands: expose Huddle's one action as a page-tool so the native God webview (or any WebMCP
-// host) can DRIVE the call — reusing the same ask() the composer runs, so the user watches it happen.
-import { exposeToGod } from "./kit/webmcp.js";
+// host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
+import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
 const APP = {
-  id: "huddle",
+  id: "huddle",                                 // = build.mjs entry name = ./dist/<id>.js in the html
   name: "Huddle",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
-    reason: "Huddle — a working call with Claude on your own model; Claude speaks back on-device and can read the project you lend it",
+    reason: "Huddle — turns a meeting transcript (or a locally-transcribed audio file) into clean notes, decisions and action items on your own Claude",
     models: ["sonnet"],
-    tools: ["WebSearch", "WebFetch"],
-    // The call is grounded in the LENT context first (that's what makes the openers real) and in an
-    // optional bound folder second. Reused grants are exact-match and ignore newly requested kinds,
-    // so every list()/use() call below tolerates an empty result or a throw.
-    contextKinds: ["project", "brand", "note", "personal"],
+    tools: [],                                  // transcription is a LOCAL daemon verb (claude_transcribe), not a gated connector tool
   },
-  usesContext: "single",                        // a lent context grounds the call; a bound folder deepens it
+  usesContext: "single",                        // a lent project scopes the notes to your own material
 };
 
 // ==== dom + string helpers ==================================================================
@@ -100,19 +100,7 @@ async function onReady() {
 // docs/CONTEXT-KINDS.md). Hardcoded samples are allowed ONLY pre-connect, visibly labeled.
 async function syncContext() {
   if (!relay) return;
-  if (APP.usesContext === "single") {
-    brand = await relay.context.active().catch(() => null);
-    // Doctrine fallback: nothing lent → auto-select the best-matching banked context so the call
-    // still opens on something real. A project beats a brand beats whatever else is banked.
-    if (!brand && typeof relay.context.list === "function" && typeof relay.context.use === "function") {
-      try {
-        const metas = (await relay.context.list()) || [];
-        const rank = { project: 0, brand: 1, note: 2, personal: 3 };
-        const best = metas.slice().sort((a, b) => (rank[(a.kind || "").toLowerCase()] ?? 9) - (rank[(b.kind || "").toLowerCase()] ?? 9))[0];
-        if (best) brand = (await relay.context.use(best.id)) || null;
-      } catch { /* grant without the kind, or an older daemon — the picker still works */ }
-    }
-  }
+  if (APP.usesContext === "single") brand = await relay.context.active().catch(() => null);
   render();
 }
 
@@ -180,8 +168,8 @@ async function genImage(promptText) {
 }
 
 // ==== house UI atoms ========================================================================
-// optionCards now comes from ./kit/ui.js — same class names, same positional signature, but the
-// ★ suggestion renders as a neutral DRAFT instead of wearing the brand accent.
+// Option cards: 2–4 options, exactly ONE recommended — now imported from ./kit/ui.js (same class
+// names, plus the drafted-vs-chosen distinction and the escape hatch).
 function researching(status) { const r = el("div", "researching"); r.append(el("div", "scan"), el("span", null, status || "working…")); return r; }
 function steerRow(onSteer, chips) {
   const wrap = el("div", "steer");
@@ -205,254 +193,395 @@ function connectSteps() {
   const s1 = el("div"); s1.innerHTML = notInstalled
     ? "<b>1</b> · Install Switchboard (button, top-right)"
     : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
-  const s2 = el("div"); s2.innerHTML = "<b>2</b> · Four openers from your project — nothing to type";
-  const s3 = el("div"); s3.innerHTML = "<b>3</b> · The ★ one is already answered; take it from there";
+  const s2 = el("div"); s2.innerHTML = "<b>2</b> · Paste a transcript or drop an audio file — the notes write themselves";
+  const s3 = el("div"); s3.innerHTML = "<b>3</b> · Skim decisions + action items, steer anywhere, copy or export";
   steps.append(s1, s2, s3);
   card.append(steps);
   return card;
 }
 
 // ==== APP LOGIC ═════════════════════════════════════════════════════════════════════════════
-// HUDDLE — a live working call that OPENS ITSELF. The moment Switchboard is connected (fresh chip
-// click OR a page-load with a standing grant) Huddle reads the lent context and drafts 4 opening
-// questions grounded in it — one ★ recommended — then ASKS the ★ one, so the founder lands on a
-// real answer instead of a blank composer. Camera preview (presence) + a warm claude_session thread
-// + replies SPOKEN via the kit speaker (local TTS). Typing stays available; it is never required.
+// HUDDLE — a meeting into clean notes. Two input doors: (a) paste a transcript, or (b) drop/select an
+// audio file → transcribed LOCALLY via the daemon's `claude_transcribe` (whisper/STT on the machine,
+// audio never uploaded). Either way ONE stage streams STRUCTURED notes JSON — {title, tl_dr,
+// decisions[], action_items[{who,what}], topics[{heading, notes[]}]} — rendered as a skimmable page:
+// a TL;DR, a decisions list, an action-items checklist with owners, and collapsible per-topic notes.
+// Copy / export markdown. Steer chips re-draft. A lent project scopes the notes to your own material.
 
+const STEER_CHIPS = ["shorter", "more detail", "just decisions", "group by owner", "sharper owners"];
+// Pre-connect ONLY — a visibly-labeled sample so the empty state isn't dead. Gone the moment Claude connects.
+const SAMPLE = `Priya: Ok, standup. The onboarding redesign — where are we?
+Marco: Flow's built, but the email verification step is flaky. I think we cut it for launch and add it back in v2.
+Priya: Agreed, cut it. Marco, can you file the v2 ticket so we don't forget?
+Marco: Yep, I'll do that today.
+Dana: Pricing page copy is still blocking the marketing site. I can draft it by Thursday.
+Priya: Good. Let's also decide — are we launching Tuesday or waiting for the mobile fix?
+Marco: Mobile fix lands Monday night, so Tuesday's fine.
+Priya: Tuesday it is. Dana, loop in support once copy's locked.`;
 let running = false;
-let startersLoading = false;
-let startersTried = false;          // one proactive opener pass per page life — the chip's onConnect
-                                    // and the returning-user probe both funnel through onReady().
-let speaker = null;                 // kit/speaker handle
-let camStream = null;               // live getUserMedia stream (presence, NOT recorded)
-const SESSION_ID = "huddle-" + uid(); // one warm session for the whole page session
-// chosenStarterId is written by ONE line of code — the opener card's click handler. Huddle asks the
-// ★ opener on its own, and that autonomous ask must stay a DRAFT: it never lights a card. (rule 5)
-let session = { folder: null, files: [], turns: [], starters: null, starterError: null, chosenStarterId: null, camOn: false, voiceOn: true, status: "", error: null };
 
-let opened = false;
-function autostart() { void openCall(); }
-async function openCall() {
-  // onReady() fires from BOTH the chip's onConnect and the returning-user probe — opening twice
-  // would read the transcript back over a turn that is mid-stream.
-  if (opened) return;
-  opened = true;
-  await loadCall();
-  // A warm call resumes where it was — never re-open (and never re-spend) on top of real turns.
-  if (session.turns.length) { startersTried = true; return; }
-  if (startersTried) return;
-  startersTried = true;
-  await loadStarters();
+// ---- the raw provider (window.claude). The SDK wraps speak() but NOT transcribe(), so we reach the
+// local `claude_transcribe` verb through the provider directly — the same object @relay/sdk wraps.
+// (Verified path: examples/apps/src/dub.js transcribeAudio → p.request({ method:"claude_transcribe" }).) ----
+function rawProvider() { const c = (typeof window !== "undefined" ? window : globalThis).claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = () => reject(new Error("couldn't read that file"));
+    fr.readAsDataURL(file);
+  });
 }
-async function loadCall() { try { const raw = await relay.storage.get(APP.id + "-call"); if (raw) { const s = JSON.parse(raw); session.turns = s.turns || []; session.folder = s.folder || null; } } catch { /* fresh */ } if (session.folder) await refreshFiles(); render(); }
-async function saveCall() { try { await relay.storage.set(APP.id + "-call", JSON.stringify({ turns: session.turns.slice(-40), folder: session.folder })); } catch { /* non-fatal */ } }
+// ---- LOCAL transcription (daemon's claude_transcribe: whisper/STT on-device; audio never leaves) ----
+async function transcribeAudio(dataUrl) {
+  const p = rawProvider();
+  if (!p) throw new Error("Switchboard isn't connected — connect it (top-right) first.");
+  const out = await p.request({ method: "claude_transcribe", params: { audio: dataUrl } });
+  const text = String(out?.text || "").trim();
+  if (!text) throw new Error("No speech was recognized. Local transcription needs a whisper/STT backend on the daemon (RELAY_LOCAL_STT_URL, RELAY_WHISPER_BIN, or RELAY_STT_CMD).");
+  return { text, backend: out?.backend || "" };
+}
 
-async function bindProject(path) {
-  if (!relay) return;
-  session.status = "opening the project…"; render();
+function autostart() {
+  // No cold open — Huddle needs a transcript or an audio file. Left in place for house-consistency.
+  if (state.run) return;
+}
+
+// Entry from the paste box.
+async function startFromText(transcript, fromContext) {
+  if (!relay || running) return;
+  transcript = String(transcript || "").trim();
+  if (!transcript) { toast("Paste a transcript or notes first.", true); return; }
+  state.run = { id: uid(), source: "paste", fileName: "", transcript, notes: null, steers: [], expanded: {}, status: "", error: null };
+  await saveState(); render();
+  await run();
+}
+
+// Entry from an audio file — transcribe LOCALLY first, then structure.
+async function startFromAudio(file) {
+  if (!relay || running) return;
+  if (!file) return;
+  const fileName = file.name || "recording";
+  state.run = { id: uid(), source: "audio", fileName, transcript: "", notes: null, steers: [], expanded: {}, status: "transcribing on your device…", error: null };
+  running = true; await saveState(); render();
   try {
-    const info = await relay.storage.bind(String(path).trim());
-    if (!info) throw new Error("bind declined");
-    session.folder = info.folder;
-    await refreshFiles();
-  } catch (e) { toast("Couldn't open — " + msg(e), true); }
-  finally { session.status = ""; await saveCall(); render(); }
-}
-async function refreshFiles() {
-  try { const keys = await relay.storage.list(); session.files = (keys || []).filter((k) => /\.(md|txt|json|js|ts|tsx|css|html)$/i.test(k)).slice(0, 40); }
-  catch { session.files = []; }
-}
-// A compact grounding blob: file names + the head of a few text files, so the call knows the project.
-async function projectGrounding() {
-  if (!session.folder || !session.files.length) return "";
-  const heads = [];
-  for (const k of session.files.slice(0, 6)) { try { const v = await relay.storage.get(k); if (v) heads.push(`--- ${k} ---\n${String(v).slice(0, 800)}`); } catch { /* skip */ } }
-  return `PROJECT FOLDER: ${session.folder}\nFILES: ${session.files.join(", ")}\n\n${heads.join("\n\n")}`.slice(0, 6000);
-}
-
-// STAGE 0 — the openers. Derived from the lent context (plus the bound folder when there is one),
-// so the call starts on this project's real decisions. Degrades honestly with no context and never
-// leaves the UI locked (unlock in a finally).
-const ctxBlob = (n) => (brand ? JSON.stringify(brand.data || {}).slice(0, n || 2200) : "");
-
-async function loadStarters(steer) {
-  if (!relay || startersLoading) return;
-  startersLoading = true; session.starterError = null; render();
-  try {
-    const arr = await askJsonArray([
-      `You are setting the agenda for a founder's working session on "${brand ? brand.name : "their project"}".`,
-      brand
-        ? `THE PROJECT — every question must come from here (its products, status, roadmap, open tasks, audience): ${ctxBlob()}`
-        : "Nothing was lent, so keep the openers concrete and useful to any small product team shipping this week.",
-      session.folder && session.files.length ? `They also opened the folder ${session.folder} — files: ${session.files.slice(0, 20).join(", ")}` : "",
-      "Propose 4 opening questions the founder would genuinely want answered in the first ten minutes. Each must name something specific from the material above — a real product, a real decision, a real gap. No generic coaching questions, no 'what are your goals'.",
-      steer ? `Steer (apply it): "${steer}"` : "",
-      'Return ONLY a JSON array — no prose, no fences. Each element: {"label":<the question, asked in the founder\'s own first person, at most 14 words>,"text":<one line on why it is worth the first ten minutes>,"recommended":<true for exactly one>}',
-    ]);
-    if (!arr || !arr.length) throw new Error("no openers came back — hit ⟳ other openers");
-    const opts = arr.slice(0, 4).map((o) => ({
-      id: uid(),
-      label: String(o.label || o.title || o.question || "Where should I start?").slice(0, 120),
-      text: String(o.text || o.body || o.description || "").trim().slice(0, 240),
-      recommended: !!o.recommended,
-    }));
-    if (!opts.some((o) => o.recommended)) opts[0].recommended = true;
-    let seen = false;
-    for (const o of opts) { if (o.recommended) { if (seen) o.recommended = false; else seen = true; } }
-    session.starters = opts;
-    session.chosenStarterId = null; // a new slate means the old pick no longer refers to anything
-  } catch (e) { session.starterError = msg(e); }
-  finally {
-    startersLoading = false; render();
-    // The ★ is a call, not a decoration: it gets asked, so the founder lands on an answer.
-    const rec = (session.starters || []).find((o) => o.recommended);
-    if (rec && !session.turns.length && !running) void ask(rec.label);
+    const dataUrl = await fileToDataUrl(file);
+    const tr = await transcribeAudio(dataUrl);
+    state.run.transcript = tr.text;
+    state.run.backend = tr.backend;
+  } catch (e) {
+    state.run.error = msg(e); state.run.status = "";
+    running = false; await saveState(); render(); return;
   }
+  running = false; state.run.status = "";
+  await run();
 }
 
-async function toggleCam() {
-  session.camOn = !session.camOn;
-  if (session.camOn) {
-    try { camStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 } }, audio: false }); }
-    catch { session.camOn = false; toast("Camera declined.", true); }
-  } else if (camStream) { for (const t of camStream.getTracks()) t.stop(); camStream = null; }
-  render();
-}
-
-async function ask(text) {
-  text = String(text || "").trim();
-  if (!text || !relay || running) return;
-  session.turns.push({ role: "user", text });
-  session.turns.push({ role: "assistant", text: "", pending: true });
-  running = true; session.error = null; render();
-  const turn = session.turns[session.turns.length - 1];
+// THE stage — structure the transcript into clean notes JSON. Streams; renders on completion (with a
+// live raw peek while it writes). Steering re-runs with the accumulated steers applied.
+async function run(steer) {
+  const r = state.run; if (!r || !relay || running) return;
+  if (steer) r.steers.push(steer);
+  if (!r.transcript) { toast("Nothing to structure yet.", true); return; }
+  running = true; r.error = null; r.status = "reading the meeting…"; render();
   try {
-    const grounding = await projectGrounding();
-    const full = await streamText({
-      sessionId: SESSION_ID,
-      system: "You are on a live working call with the founder, helping move their project forward. Be concise and spoken — short paragraphs, one idea at a time, like talk not an essay. Ask a sharp question when it would help."
-        + (brand ? `\n\nThe project they lent you is "${brand.name}":\n` + ctxBlob(2500) : "")
-        + (grounding ? "\n\nYou can also see their files:\n" + grounding : ""),
-      prompt: text,
-      maxTokens: 1200,
-    }, (p) => { if (p.text) { turn.text = p.text; const live = document.querySelector(".turn.pending .bubble"); if (live) live.textContent = p.text; } });
-    turn.text = full.trim(); turn.pending = false;
-    if (session.voiceOn && speaker) void speaker.speak(turn.text);
-  } catch (e) { turn.pending = false; turn.text = ""; session.error = msg(e); session.turns.pop(); }
-  finally { running = false; await saveCall(); render(); }
+    const raw = await streamText({
+      prompt: [
+        `You are ${APP.name}. Turn the meeting transcript below into clean, skimmable notes.`,
+        brand ? `PROJECT CONTEXT (scope names, products and decisions to this — never invent beyond the transcript): ${JSON.stringify(brand.data || {}).slice(0, 2200)}` : "",
+        `THE TRANSCRIPT:\n"""${r.transcript.slice(0, 16000)}"""`,
+        r.steers.length ? `Steering (apply the latest): ${r.steers.map((s) => `"${s}"`).join(" → ")}` : "",
+        'Reply with ONE JSON object ONLY — no prose, no fences:',
+        '{ "title": "<short meeting title>", "tl_dr": "<2–3 sentence summary of what happened and what was decided>", "decisions": ["<a decision that was actually made>"], "action_items": [ { "who": "<owner name, or \\"Unassigned\\">", "what": "<the concrete task>" } ], "topics": [ { "heading": "<topic discussed>", "notes": ["<a bullet of substance under this topic>"] } ] }',
+        "Rules: only what is in the transcript — never invent decisions, owners, or tasks. If nobody was named as owner, use \"Unassigned\". Keep bullets tight. Order topics as they came up. Omit an empty array only by leaving it [].",
+      ].filter(Boolean).join("\n\n"),
+      maxTokens: 2200,
+    }, (p) => { if (p.text) { r.status = "writing the notes…"; const live = $("raw-live"); if (live) live.textContent = p.text.slice(-600); } });
+    const notes = parseJson(raw);
+    if (!notes || typeof notes !== "object") throw new Error("Couldn't structure that — try again, or paste a cleaner transcript.");
+    r.notes = normalizeNotes(notes);
+    r.expanded = {};
+  } catch (e) { r.error = msg(e); }
+  finally { running = false; r.status = ""; await saveState(); render(); }
+}
+
+// Defensive shaping so a slightly-off JSON never breaks the render.
+function normalizeNotes(n) {
+  const arr = (x) => Array.isArray(x) ? x : [];
+  return {
+    title: String(n.title || "Meeting notes").slice(0, 140),
+    tl_dr: String(n.tl_dr || n.tldr || n.summary || "").trim(),
+    decisions: arr(n.decisions).map((d) => (typeof d === "string" ? d : String(d?.text || d?.decision || ""))).filter(Boolean).slice(0, 30),
+    action_items: arr(n.action_items || n.actions).map((a) => {
+      if (typeof a === "string") return { who: "Unassigned", what: a };
+      return { who: String(a?.who || a?.owner || "Unassigned").slice(0, 60) || "Unassigned", what: String(a?.what || a?.task || a?.text || "").trim() };
+    }).filter((a) => a.what).slice(0, 40),
+    topics: arr(n.topics).map((t) => ({
+      heading: String(t?.heading || t?.title || "Topic").slice(0, 120),
+      notes: arr(t?.notes || t?.bullets || t?.points).map((b) => (typeof b === "string" ? b : String(b?.text || ""))).filter(Boolean).slice(0, 20),
+    })).filter((t) => t.notes.length).slice(0, 20),
+  };
+}
+
+// ---- markdown export -----------------------------------------------------------------------
+function notesToMarkdown(n) {
+  if (!n) return "";
+  const L = [];
+  L.push(`# ${n.title}`, "");
+  if (n.tl_dr) L.push(`**TL;DR** — ${n.tl_dr}`, "");
+  if (n.decisions.length) { L.push("## Decisions"); for (const d of n.decisions) L.push(`- ${d}`); L.push(""); }
+  if (n.action_items.length) { L.push("## Action items"); for (const a of n.action_items) L.push(`- [ ] **${a.who}** — ${a.what}`); L.push(""); }
+  if (n.topics.length) { L.push("## Notes"); for (const t of n.topics) { L.push(`### ${t.heading}`); for (const b of t.notes) L.push(`- ${b}`); L.push(""); } }
+  return L.join("\n").trim() + "\n";
+}
+async function copyOut() {
+  const r = state.run; if (!r || !r.notes) return;
+  try { await navigator.clipboard.writeText(notesToMarkdown(r.notes)); toast("Notes copied as markdown ✓"); }
+  catch { toast("Couldn't copy.", true); }
+}
+function exportMd() {
+  const r = state.run; if (!r || !r.notes) return;
+  const md = notesToMarkdown(r.notes);
+  const blob = new Blob([md], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a"); a.href = url; a.download = (r.notes.title || "meeting-notes").replace(/[^\w-]+/g, "-").toLowerCase().slice(0, 60) + ".md";
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 // ==== render ================================================================================
 function render() {
   const hero = $("hero"), view = $("view");
-  hero.hidden = !!relay;
+  const r = state.run;
+  hero.hidden = !!r;
   view.textContent = "";
-  if (!relay) { view.append(connectSteps()); return; }
-  if (!speaker) speaker = mountSpeaker(relay);
 
-  // the call surface: a stage (camera + controls) over a transcript, with a persistent composer
-  const stage = el("div", "call-stage");
-  const cam = el("div", "cam" + (session.camOn ? " on" : ""));
-  if (session.camOn && camStream) { const v = el("video"); v.autoplay = true; v.muted = true; v.playsInline = true; v.srcObject = camStream; v.style.transform = "scaleX(-1)"; cam.append(v); }
-  else cam.append(el("div", "cam-off", "camera off"));
-  stage.append(cam);
-  const claude = el("div", "cam claude"); claude.append(el("div", "orb" + (running ? " live" : "")), el("div", "cam-tag", running ? "Claude is talking…" : "Claude")); stage.append(claude);
-  view.append(stage);
-
-  // controls
-  const ctl = el("div", "call-ctl");
-  const camBtn = el("button", "act" + (session.camOn ? " on" : "")); camBtn.textContent = session.camOn ? "◉ camera on" : "○ camera"; camBtn.onclick = () => void toggleCam();
-  const vBtn = el("button", "act" + (session.voiceOn ? " on" : "")); vBtn.textContent = session.voiceOn ? "🔊 voice on" : "🔇 voice off"; vBtn.onclick = () => { session.voiceOn = !session.voiceOn; if (!session.voiceOn && speaker) speaker.stop(); render(); };
-  ctl.append(camBtn, vBtn);
-  // project bind
-  if (session.folder) { const f = el("span", "proj-tag"); f.textContent = "▸ " + session.folder + " (" + session.files.length + " files)"; ctl.append(f); const chg = el("button", "act", "change"); chg.onclick = () => { session.folder = null; render(); }; ctl.append(chg); }
-  else { const b = el("button", "act", "＋ bring a project folder"); b.onclick = () => { const p = prompt("Project folder to work on (path):", "~/Documents/Projects/"); if (p) void bindProject(p); }; ctl.append(b); }
-  view.append(ctl);
-
-  if (session.status) view.append(researching(session.status));
-  if (session.error) view.append(el("div", "err", session.error));
-
-  // ---- the openers: options on the table, never an empty composer ----
-  const shead = el("div", "opener-head");
-  shead.append(el("span", "kicker", "on the table"));
-  shead.append(el("span", "opener-src", brand ? "drawn from " + brand.name : "no context lent — general openers"));
-  const more = el("button", "act", "⟳ other openers");
-  more.disabled = startersLoading || running;
-  more.onclick = () => void loadStarters();
-  shead.append(more);
-  view.append(shead);
-
-  if (startersLoading) view.append(researching("reading " + (brand ? brand.name : "the project") + " for what's worth asking…"));
-  if (session.starterError) {
-    view.append(el("div", "err", session.starterError));
-    const t = el("button", "act", "try again"); t.onclick = () => void loadStarters(); view.append(t);
-  }
-  if (session.starters && session.starters.length) {
-    view.append(optionCards({
-      options: session.starters,
-      chosenId: session.chosenStarterId,   // null until a human clicks — the ★ never lands here
-      chosenNote: "you opened on this",
-      disabled: running,
-      onChoose: (o) => { if (running) return; session.chosenStarterId = o.id; void ask(o.label); },
-      // The way out of the menu: the founder's own opener beats four drafted ones. (doctrine 4)
-      escape: {
-        label: "none of these — say what you'd rather open on",
-        hint: "asked as-is, on the same call",
-        placeholder: "e.g. I need to decide whether to cut the free tier this week…",
-        sendLabel: "open on this",
-        onSubmit: (text) => { if (running) return; session.chosenStarterId = null; void ask(text); },
-      },
-    }));
+  if (!relay) {
+    view.append(connectSteps());
+    const s = el("div", "sample");
+    s.append(el("div", "kicker", "sample transcript (connect to structure your own)"));
+    s.append(el("div", "sample-text", SAMPLE));
+    view.append(s);
+    return;
   }
 
-  // transcript
-  const log = el("div", "call-log");
-  if (!session.turns.length && !startersLoading) log.append(el("div", "empty", "Pick one above — or type anything. Claude answers in text and talks back."));
-  for (const t of session.turns) {
-    const row = el("div", "turn " + t.role + (t.pending ? " pending" : ""));
-    const b = el("div", "bubble"); b.textContent = t.pending ? "…" : t.text; row.append(b);
-    log.append(row);
-  }
-  view.append(log);
+  if (!r) { view.append(inputCard()); return; }
 
-  // composer
-  const comp = el("div", "composer");
-  const input = el("input"); input.placeholder = running ? "Claude is answering…" : "type to the call — ⏎ to send"; input.disabled = running;
-  const send = () => { const t = input.value.trim(); if (t && !running) { input.value = ""; void ask(t); } };
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
-  const b = el("button", "primary", "Send"); b.disabled = running; b.onclick = send;
-  comp.append(input, b);
-  view.append(comp);
-  if (!running) setTimeout(() => input.focus(), 30);
+  const col = el("div", "run");
+  const bar = el("div", "runbar");
+  bar.append(el("span", "kicker", "meeting notes"));
+  bar.append(el("span", "run-input", r.source === "audio" ? "🎙 " + (r.fileName || "audio") : "pasted transcript"));
+  bar.append(el("span", "grow"));
+  const cp = el("button", "act", "copy"); cp.onclick = () => void copyOut(); cp.disabled = !r.notes;
+  const ex = el("button", "act", "export .md"); ex.onclick = () => exportMd(); ex.disabled = !r.notes;
+  const redo = el("button", "act", "× new"); redo.onclick = () => { state.run = null; void saveState(); render(); };
+  bar.append(cp, ex, redo);
+  col.append(bar);
+
+  if (r.status) col.append(researching(r.status));
+  if (r.status && running) { const raw = el("pre", "raw-peek"); raw.id = "raw-live"; col.append(raw); }
+  if (r.error) {
+    col.append(el("div", "err", r.error));
+    const t = el("button", "act", "try again");
+    t.onclick = () => { r.error = null; void run(); };
+    col.append(t);
+  }
+  if (r.notes) { renderNotes(col, r.notes); if (!running) col.append(steerRow((s) => void run(s), STEER_CHIPS)); }
+  view.append(col);
+}
+
+// The input surface: two doors — paste a transcript, or drop/select an audio file.
+function inputCard() {
+  const box = el("div", "start");
+
+  if (brand) box.append(el("div", "ctx", "scoped to your project — " + brand.name));
+
+  const ta = el("textarea"); ta.rows = 7;
+  ta.placeholder = "paste your meeting transcript or rough notes here…";
+  box.append(ta);
+
+  const row = el("div", "startrow");
+  const go = () => { if (ta.value.trim()) void startFromText(ta.value); };
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); });
+  const btn = el("button", "primary", "Make notes ▸"); btn.onclick = go;
+  row.append(el("span", "hint", "⌘/Ctrl + Enter · TL;DR · decisions · action items · per-topic notes"), el("span", "grow"), btn);
+  box.append(row);
+
+  box.append(el("div", "or", "or drop a recording"));
+
+  const drop = el("label", "drop");
+  drop.append(el("div", "drop-icon", "▤"));
+  drop.append(el("div", "drop-title", "Drop an audio file"));
+  drop.append(el("div", "drop-sub", "wav · mp3 · m4a — transcribed locally on your machine. Never uploaded."));
+  const file = el("input"); file.type = "file"; file.accept = "audio/*"; file.hidden = true;
+  file.onchange = () => { const f = file.files && file.files[0]; if (f) void startFromAudio(f); };
+  drop.append(file);
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) void startFromAudio(f); });
+  box.append(drop);
+
+  box.append(el("div", "note", "Live meeting capture isn't here yet — recording a call needs system-audio the browser can't reach. Paste a transcript or upload a file for now."));
+
+  setTimeout(() => ta.focus(), 30);
+  return box;
+}
+
+// The notes surface: TL;DR, decisions, action-items checklist with owners, collapsible topics.
+function renderNotes(col, n) {
+  col.append(el("h2", "notes-title", n.title));
+
+  if (n.tl_dr) {
+    const tl = el("div", "tldr");
+    tl.append(el("span", "tldr-tag", "TL;DR"));
+    tl.append(el("span", "tldr-text", n.tl_dr));
+    col.append(tl);
+  }
+
+  if (n.decisions.length) {
+    col.append(el("div", "kicker sect", "decisions"));
+    const ul = el("ul", "decisions");
+    for (const d of n.decisions) { const li = el("li"); li.append(el("span", "dec-mark", "✓")); li.append(el("span", "dec-text", d)); ul.append(li); }
+    col.append(ul);
+  }
+
+  if (n.action_items.length) {
+    col.append(el("div", "kicker sect", "action items"));
+    const list = el("div", "actions");
+    n.action_items.forEach((a, i) => {
+      const row = el("label", "action");
+      const cb = el("input"); cb.type = "checkbox"; cb.className = "act-cb";
+      cb.checked = !!(state.run && state.run.done && state.run.done[i]);
+      cb.onchange = () => { const r = state.run; if (!r) return; r.done = r.done || {}; r.done[i] = cb.checked; row.classList.toggle("done", cb.checked); void saveState(); };
+      row.classList.toggle("done", cb.checked);
+      const who = el("span", "act-who", a.who || "Unassigned");
+      const what = el("span", "act-what", a.what);
+      row.append(cb, who, what);
+      list.append(row);
+    });
+    col.append(list);
+  }
+
+  if (n.topics.length) {
+    col.append(el("div", "kicker sect", "notes by topic"));
+    const wrap = el("div", "topics");
+    n.topics.forEach((t, i) => {
+      const open = !!(state.run && state.run.expanded && state.run.expanded[i]);
+      const card = el("div", "topic" + (open ? " open" : ""));
+      const head = el("button", "topic-head");
+      head.append(el("span", "topic-caret", open ? "▾" : "▸"));
+      head.append(el("span", "topic-h", t.heading));
+      head.append(el("span", "topic-n", String(t.notes.length)));
+      head.onclick = () => { const r = state.run; if (!r) return; r.expanded = r.expanded || {}; r.expanded[i] = !r.expanded[i]; void saveState(); render(); };
+      card.append(head);
+      if (open) { const ul = el("ul", "topic-notes"); for (const b of t.notes) ul.append(el("li", null, b)); card.append(ul); }
+      wrap.append(card);
+    });
+    col.append(wrap);
+  }
 }
 render();
 
-// ---- God's hand: one page-tool, driving the real call -------------------------------------------
-// `huddle_ask` runs the SAME ask() the composer runs — the message goes to the warm claude_session
-// grounded in the lent context (and any bound folder), the reply streams into the transcript and is
-// spoken on-device — then returns Claude's reply. Reused as-is by the native God webview and WebMCP.
+// ---- God's hand: one page-tool, driving the real pipeline ----------------------------------------
+// `huddle_notes` runs the SAME pipeline a paste-and-go (or drop-and-go) click runs — the notes render
+// live on the page — then returns the structured notes + a markdown export for God to speak or file.
 exposeToGod({
-  name: "huddle_ask",
-  description: "Say something on the working call with Claude. Streams the reply into the transcript (and speaks it on-device), then returns the reply text.",
-  inputSchema: { message: "string — what to say to the call. Required." },
-  execute: async ({ message } = {}) => {
-    const line = String(message || "").trim();
-    if (!line) throw new Error("nothing to say — pass { message } with what to ask the call");
+  name: "huddle_notes",
+  description: "Turn a meeting into clean notes: TL;DR, decisions, action items with owners, and per-topic notes. Pass a transcript, or an audio file as a data:audio/… URL (transcribed locally). Writes the notes live on the page and returns them.",
+  inputSchema: {
+    transcript: "string — the meeting transcript or rough notes. Provide this OR audio.",
+    audio: "string — an audio recording as a data:audio/… URL, transcribed locally on the device. Provide this OR transcript.",
+  },
+  execute: async ({ transcript, audio } = {}) => {
     const waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
     if (!await waitFor(() => !!relay, 6000)) throw new Error("Huddle isn't connected to Switchboard yet");
-    // God may call DURING the cold open (openCall asks the ★ opener on its own). ask() early-returns
-    // while a turn is in flight, so wait for idle, ask, wait for idle, and read the reply we produced.
+    const text = String(transcript || "").trim();
+    const audioUrl = String(audio || "").trim();
+    if (!text && !/^data:audio\//.test(audioUrl)) throw new Error("pass { transcript } text OR { audio } as a data:audio/… URL");
     for (let attempt = 0; attempt < 3; attempt++) {
-      await waitFor(() => !running, 180000);   // let any in-flight turn (incl. the cold-open ★) finish
-      const before = session.turns.length;
-      await ask(line);                          // reuses the call's own turn pipeline, awaited
-      await waitFor(() => !running, 180000);
-      if (session.error) throw new Error(session.error);
-      const last = session.turns[session.turns.length - 1];
-      if (session.turns.length > before && last && last.role === "assistant" && !last.pending && last.text) {
-        return { reply: last.text };
+      await waitFor(() => !running, 190000);
+      if (text) await startFromText(text);
+      else {
+        // Build a File-like from the data URL so the same startFromAudio pipeline runs (and is seen).
+        const p = rawProvider();
+        if (!p) throw new Error("Switchboard isn't connected");
+        state.run = { id: uid(), source: "audio", fileName: "god-audio", transcript: "", notes: null, steers: [], expanded: {}, status: "transcribing on your device…", error: null };
+        running = true; await saveState(); render();
+        try { const tr = await transcribeAudio(audioUrl); state.run.transcript = tr.text; state.run.backend = tr.backend; }
+        catch (e) { state.run.error = msg(e); state.run.status = ""; running = false; await saveState(); render(); throw e; }
+        running = false; state.run.status = ""; await run();
+      }
+      await waitFor(() => !running, 190000);
+      const r = state.run || {};
+      if (r.notes || r.error) {
+        if (r.error) throw new Error(r.error);
+        return { notes: r.notes, markdown: notesToMarkdown(r.notes), transcript: r.transcript };
       }
     }
     throw new Error("Huddle stayed busy — try again");
   },
 });
+
+// ---- The notch glance: a compact "cards" view of decisions + action items -----------------------
+// The producer reuses the same structuring pipeline. With no input (or no connection) it returns an
+// honest prompt state rather than a fake glance. Input may be a pasted transcript ({ text }) or an
+// audio data: URL ({ audio | dataUrl }) the notch launcher hands over.
+function widgetTextFrom(input) {
+  if (!input) return { transcript: "", audio: "" };
+  if (typeof input === "string") return /^data:audio\//.test(input) ? { transcript: "", audio: input } : { transcript: input, audio: "" };
+  if (typeof input === "object") {
+    const audio = /^data:audio\//.test(String(input.audio || "")) ? input.audio : (/^data:audio\//.test(String(input.dataUrl || "")) ? input.dataUrl : "");
+    const transcript = String(input.text || input.transcript || "").trim();
+    return { transcript: audio ? "" : transcript, audio };
+  }
+  return { transcript: "", audio: "" };
+}
+exposeWidget(async (input) => {
+  const prompt = {
+    kicker: "HUDDLE · MEETING NOTES", title: "Paste a meeting", openLabel: "Open Huddle", shape: "text",
+    result: { body: "Hand me a transcript or a recording — I pull out the TL;DR, decisions and action items.", caption: "on your Claude · audio transcribed on-device" },
+  };
+  const { transcript, audio } = widgetTextFrom(input);
+  if ((!transcript && !audio) || !relay) return prompt;
+  try {
+    let text = transcript;
+    if (!text && audio) { const tr = await transcribeAudio(audio); text = tr.text; }
+    const notes = normalizeNotes(parseJson(await streamText({
+      prompt: [
+        `You are ${APP.name}. Turn this meeting into structured notes.`,
+        `TRANSCRIPT:\n"""${String(text).slice(0, 12000)}"""`,
+        'Reply with ONE JSON object ONLY: { "title": "…", "tl_dr": "…", "decisions": ["…"], "action_items": [{"who":"…","what":"…"}], "topics": [{"heading":"…","notes":["…"]}] }. Only what is in the transcript. Unassigned owners → "Unassigned".',
+      ].join("\n\n"),
+      maxTokens: 1600,
+    })) || {});
+    const items = [];
+    for (const d of notes.decisions.slice(0, 3)) items.push({ label: "Decision", text: d });
+    for (const a of notes.action_items.slice(0, 4)) items.push({ label: a.who || "Unassigned", text: a.what, recommended: false });
+    if (!items.length) return { ...prompt, title: notes.title || "Notes ready", result: { body: notes.tl_dr || "Notes are ready — open Huddle for the full breakdown.", caption: "on your Claude" } };
+    if (items[0]) items[0].recommended = true;
+    return {
+      kicker: "HUDDLE · " + (notes.decisions.length ? "DECISIONS + ACTIONS" : "ACTION ITEMS"),
+      title: notes.title || "Meeting notes",
+      openLabel: "Open Huddle — full notes", shape: "cards",
+      result: { caption: `${notes.decisions.length} decision${notes.decisions.length === 1 ? "" : "s"} · ${notes.action_items.length} action item${notes.action_items.length === 1 ? "" : "s"}`, items },
+      copyText: notesToMarkdown(notes),
+    };
+  } catch (e) {
+    return { ...prompt, title: "Couldn't read that", result: { body: msg(e), caption: "on your Claude · audio transcribed on-device" } };
+  }
+});
+
+// ---- In-tab verification hook (used by the headless proof; harmless in production) -----------------
+// `mockNotes(json)` stubs a connected relay + a completed run so the REAL render()/renderNotes() paths
+// can be exercised without a live model — proving the notes/decisions/action-items surface cleanly.
+try {
+  (typeof window !== "undefined" ? window : globalThis).__huddleTest = {
+    normalizeNotes, notesToMarkdown, widgetTextFrom,
+    mockNotes(json) {
+      relay = { storage: { get: async () => null, set: async () => {} }, context: { active: async () => null } };
+      state.run = { id: uid(), source: "paste", fileName: "", transcript: "mock", notes: normalizeNotes(json || {}), steers: [], expanded: {}, status: "", error: null };
+      render();
+      return state.run.notes;
+    },
+  };
+} catch { /* ignore */ }

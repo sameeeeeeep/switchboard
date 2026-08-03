@@ -1,12 +1,12 @@
 {
-  "id": "huddle",
-  "name": "Huddle",
-  "tagline": "Any meeting → clean notes, decisions and action items.",
+  "id": "copyflow",
+  "name": "CopyFlow",
+  "tagline": "Show a workflow once — it runs itself.",
   "category": "studio",
   "components": {
     "ui": {
       "kind": "web",
-      "url": "http://localhost:5188/huddle.html"
+      "url": "http://localhost:5188/copyflow.html"
     }
   },
   "surfaces": [

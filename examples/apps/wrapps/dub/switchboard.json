@@ -1,0 +1,34 @@
+{
+  "id": "dub",
+  "name": "Dub",
+  "tagline": "Audio in — revoice each speaker with the TTS voice you pick.",
+  "category": "studio",
+  "author": "Switchboard",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/dub.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "model",
+    "engineTier": "L2",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": true
+  },
+  "inside": [
+    "Transcribes locally (whisper/STT on the daemon) — your audio never leaves the machine",
+    "Claude splits the transcript into a per-speaker, ordered script (the daemon does not diarize)",
+    "Pick a local TTS voice per speaker (cloned voices in ~/.relay/voices, or the OS engine) and regenerate one stitched track"
+  ]
+}

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Huddle · widget</title>
+    <title>Dub · widget</title>
     <style>
       :root {
         --page:#0A0C10; --inset:#070809; --panel:#141416; --raised:#1A1F29;
@@ -21,25 +21,21 @@
       .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
       .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
       .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
-      textarea{width:100%;background:var(--inset);border:1px solid var(--edge);border-radius:11px;color:var(--ink);font:400 12.5px/1.55 var(--sans);padding:11px 12px;outline:none;resize:vertical;min-height:74px;}
-      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
-      .row{display:flex;gap:8px;align-items:center;}
-      .row .grow{flex:1;}
-      .go{font:600 12px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:9px;padding:10px 14px;cursor:pointer;}
-      .go:disabled{opacity:.5;cursor:default;}
-      .drop{display:flex;align-items:center;justify-content:center;gap:7px;text-align:center;border:1.5px dashed var(--edge);border-radius:11px;padding:12px 14px;background:var(--inset);cursor:pointer;font:400 11px/1.4 var(--sans);color:var(--ink-dim);transition:border-color .15s,background .15s;}
+      .drop{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;border:1.5px dashed var(--edge);border-radius:12px;padding:22px 16px;background:var(--inset);cursor:pointer;transition:border-color .15s,background .15s;}
       .drop:hover,.drop.over{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));background:color-mix(in srgb,var(--accent-soft) 30%,var(--inset));}
-      .drop b{color:var(--accent);font-weight:700;}
+      .drop-ic{font:700 20px/1 var(--sans);color:var(--accent);letter-spacing:.1em;}
+      .drop-t{font:600 13px/1.2 var(--sans);color:var(--ink);}
+      .drop-s{font:400 11px/1.4 var(--sans);color:var(--ink-dim);max-width:320px;}
       .status{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
       .scan{position:relative;width:24px;height:6px;border-radius:3px;background:var(--inset);overflow:hidden;}
       .scan::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1.1s linear infinite;}
       @keyframes scan{from{transform:translateX(-100%);}to{transform:translateX(260%);}}
-      .card{border:1px solid var(--edge);border-radius:10px;background:var(--panel);padding:9px 11px;display:flex;flex-direction:column;gap:3px;}
-      .card.rec{border-color:color-mix(in srgb,var(--accent) 40%,var(--edge));}
-      .card-top{display:flex;align-items:center;gap:7px;}
-      .tag{font:600 8px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;padding:3px 7px;}
-      .card-t{font:400 12px/1.5 var(--sans);color:var(--ink);}
-      .cap{font:400 10.5px/1.4 var(--mono);color:var(--ink-faint);}
+      .spk{border:1px solid var(--edge);border-radius:10px;background:var(--panel);padding:9px 11px;display:flex;flex-direction:column;gap:3px;}
+      .spk.rec{border-color:color-mix(in srgb,var(--accent) 40%,var(--edge));}
+      .spk-top{display:flex;align-items:center;gap:7px;}
+      .spk-n{font:600 12px/1 var(--sans);color:var(--ink);}
+      .tag{font:500 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;padding:3px 6px;}
+      .spk-meta{font:400 11px/1.4 var(--sans);color:var(--ink-dim);}
       .err{color:var(--danger);font:400 12px/1.5 var(--mono);}
       .open{font:600 11px/1 var(--sans);background:var(--accent);color:var(--page);border:0;border-radius:8px;padding:9px 12px;cursor:pointer;align-self:flex-start;}
       .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
@@ -48,33 +44,35 @@
   </head>
   <body>
     <div class="wrap">
-      <div class="head"><span class="mk"></span><span class="name">Hudd<em>le</em></span><span class="kicker">meeting → notes</span></div>
-      <textarea id="ta" placeholder="paste a meeting transcript or rough notes…"></textarea>
-      <div class="row">
-        <label class="drop" id="drop">▤ <b>drop audio</b> — transcribed locally<input id="file" type="file" accept="audio/*" hidden /></label>
-        <span class="grow"></span>
-        <button class="go" id="go">Make notes ▸</button>
-      </div>
+      <div class="head"><span class="mk"></span><span class="name">D<em>ub</em></span><span class="kicker">revoice speakers</span></div>
+      <label class="drop" id="drop">
+        <div class="drop-ic">▚</div>
+        <div class="drop-t">Drop an audio clip</div>
+        <div class="drop-s">wav · mp3 · m4a — transcribed locally to find the speakers. Never uploaded.</div>
+        <input id="file" type="file" accept="audio/*" hidden />
+      </label>
       <div id="out"></div>
-      <div class="nobadge"><span class="dot"></span>On your Claude · audio transcribed on-device, never uploaded</div>
+      <div class="nobadge"><span class="dot"></span>Transcription runs on your device · audio stays local</div>
     </div>
 
     <script type="module">
-      // ---- injected-input contract: ?input=<url-encoded transcript OR data URL> OR window.__widgetInput ----
-      function injectedInput() {
-        try { const q = new URLSearchParams(location.search).get("input"); if (q) return q; } catch {}
+      // ---- injected-input contract: ?input=<url-encoded data URL> OR window.__widgetInput { audio|dataUrl } ----
+      function injectedAudio() {
+        try { const q = new URLSearchParams(location.search).get("input"); if (q && /^data:audio\//.test(q)) return q; } catch {}
         const w = window.__widgetInput;
-        if (typeof w === "string") return w;
-        if (w && typeof w === "object") return w.audio || w.dataUrl || w.text || w.transcript || "";
+        if (typeof w === "string" && /^data:audio\//.test(w)) return w;
+        if (w && typeof w === "object") {
+          if (/^data:audio\//.test(String(w.audio || ""))) return w.audio;
+          if (/^data:audio\//.test(String(w.dataUrl || ""))) return w.dataUrl;
+        }
         return "";
       }
-      function isAudio(s) { return /^data:audio\//.test(String(s || "")); }
 
       // ================= window.claude bridge =================
       // The notch host injects window.claude — the raw BYOP provider. A self-contained widget can't
-      // bundle the SDK, so we talk to the provider directly: claude_transcribe (local STT) for audio,
-      // then a streamed completion to structure the notes. Same contract @relay/sdk wraps.
-      const SCOPE = { reason: "Huddle widget — turn a meeting into clean notes, decisions and action items on your own Claude", models: ["sonnet"] };
+      // bundle the SDK, so we talk to the provider directly: claude_transcribe (local STT) to get the
+      // text, then a streamed completion to split it into speakers. Same contract @relay/sdk wraps.
+      const SCOPE = { reason: "Dub widget — split an audio clip into a per-speaker script, on your own Claude", models: ["sonnet"] };
       const msg = (e) => String(e?.message || e).slice(0, 200);
       function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
       function waitForProvider(ms = 1500) {
@@ -117,18 +115,20 @@
         if (s === -1 || e <= s) return null;
         try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
       }
-      function structurePrompt(transcript) {
+      // NOTE: the daemon has no audio diarizer, so this INFERS speakers from the transcript text — a
+      // guess, not who-spoke-when. The full page (src/dub.js) has the swappable diarize() seam that
+      // will prefer a real daemon diarizer once one exists; this compact widget mirrors its fallback.
+      function splitPrompt(transcript) {
         return [
-          "You are Huddle. Turn this meeting into structured notes. Only what is in the transcript — never invent decisions, owners or tasks. Unassigned owners → \"Unassigned\".",
-          `TRANSCRIPT:\n"""${String(transcript).slice(0, 10000)}"""`,
-          'Reply with ONE JSON object ONLY — no prose, no fences: { "title":"…", "tl_dr":"…", "decisions":["…"], "action_items":[{"who":"…","what":"…"}], "topics":[{"heading":"…","notes":["…"]}] }',
+          "You are Dub. You are given a transcript that is NOT diarized (no ground-truth speaker labels). Infer who spoke each part from conversational cues. If clearly one person, return one speaker.",
+          `TRANSCRIPT:\n"""${String(transcript).slice(0, 8000)}"""`,
+          'Reply with ONE JSON object ONLY — no prose, no fences: { "speakers":[{"id":"s1","name":"Speaker 1"}], "turns":[{"speaker":"s1","text":"…"}] }. Every turn.speaker must be a listed id. Keep turns in spoken order. Never invent content.',
         ].join("\n\n");
       }
 
       // ---- UI ----
       const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-      const out = document.getElementById("out"), ta = document.getElementById("ta"), go = document.getElementById("go");
-      const fileEl = document.getElementById("file"), dropEl = document.getElementById("drop");
+      const out = document.getElementById("out"), fileEl = document.getElementById("file"), dropEl = document.getElementById("drop");
       let busy = false;
 
       function fileToDataUrl(file) {
@@ -136,56 +136,43 @@
       }
       function showStatus(t) { out.textContent = ""; const st = mk("div", "status"); st.append(mk("div", "scan"), mk("span", null, t)); out.append(st); }
       function showErr(t) { out.textContent = ""; out.append(mk("div", "err", t)); }
-      function openHuddle() { try { window.__openWrapp ? window.__openWrapp("huddle") : window.open("/huddle.html", "_blank"); } catch { window.open("/huddle.html", "_blank"); } }
+      function openDub() { try { window.__openWrapp ? window.__openWrapp("dub") : window.open("/dub.html", "_blank"); } catch { window.open("/dub.html", "_blank"); } }
 
-      async function run(source) {
-        if (busy) return; busy = true; go.disabled = true;
+      async function run(audioDataUrl) {
+        if (busy) return; busy = true;
         try {
           const p = await waitForProvider();
           if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
           await ensureGrant(p);
-          let transcript = "";
-          if (isAudio(source)) { showStatus("transcribing on your device…"); transcript = await transcribe(p, source); }
-          else { transcript = String(source || "").trim(); }
-          if (!transcript) throw new Error("Nothing to structure — paste a transcript or drop audio.");
-          showStatus("writing the notes…");
-          const notes = parseJson(await streamPrompt(p, { prompt: structurePrompt(transcript), model: "sonnet", maxTokens: 1600 }));
-          if (!notes) throw new Error("Couldn't structure that — try Huddle in the tab.");
-          const decisions = Array.isArray(notes.decisions) ? notes.decisions : [];
-          const actions = Array.isArray(notes.action_items) ? notes.action_items : [];
+          showStatus("transcribing on your device…");
+          const transcript = await transcribe(p, audioDataUrl);
+          showStatus("splitting into speakers…");
+          const script = parseJson(await streamPrompt(p, { prompt: splitPrompt(transcript), model: "sonnet", maxTokens: 1600 }));
+          if (!script || !Array.isArray(script.speakers) || !script.speakers.length) throw new Error("Couldn't split that into speakers — try Dub in the tab.");
+          const turns = Array.isArray(script.turns) ? script.turns : [];
           out.textContent = "";
-          if (notes.title) out.append(mk("div", "cap", notes.title));
-          if (notes.tl_dr) { const c = mk("div", "card"); c.append(mk("div", "card-t", notes.tl_dr)); out.append(c); }
-          let first = true;
-          decisions.slice(0, 3).forEach((d) => {
-            const c = mk("div", "card" + (first ? " rec" : "")); first = false;
-            const top = mk("div", "card-top"); top.append(mk("span", "tag", "decision")); c.append(top);
-            c.append(mk("div", "card-t", typeof d === "string" ? d : String(d?.text || "")));
-            out.append(c);
+          script.speakers.forEach((sp, i) => {
+            const n = turns.filter((t) => t.speaker === sp.id).length;
+            const sample = (turns.find((t) => t.speaker === sp.id)?.text || "").slice(0, 90);
+            const card = mk("div", "spk" + (i === 0 ? " rec" : ""));
+            const top = mk("div", "spk-top"); top.append(mk("span", "spk-n", sp.name || `Speaker ${i + 1}`)); if (i === 0) top.append(mk("span", "tag", "pick a voice")); card.append(top);
+            card.append(mk("div", "spk-meta", `${n} turn${n === 1 ? "" : "s"}${sample ? ` · “${sample}${sample.length >= 90 ? "…" : ""}”` : ""}`));
+            out.append(card);
           });
-          actions.slice(0, 4).forEach((a) => {
-            const who = typeof a === "object" ? (a.who || "Unassigned") : "Unassigned";
-            const what = typeof a === "object" ? (a.what || "") : String(a || "");
-            const c = mk("div", "card");
-            const top = mk("div", "card-top"); top.append(mk("span", "tag", who)); c.append(top);
-            c.append(mk("div", "card-t", what));
-            out.append(c);
-          });
-          if (!decisions.length && !actions.length && !notes.tl_dr) out.append(mk("div", "cap", "Notes are ready — open Huddle for the full breakdown."));
-          const btn = mk("button", "open", "Open Huddle — full notes & export"); btn.onclick = openHuddle; out.append(btn);
+          const note = mk("div", "spk-meta", "Speakers inferred from the transcript — not audio diarization.");
+          note.style.color = "var(--warn)"; out.append(note);
+          const btn = mk("button", "open", "Open Dub — pick voices & regenerate"); btn.onclick = openDub; out.append(btn);
         } catch (e) { showErr(msg(e)); }
-        finally { busy = false; go.disabled = false; }
+        finally { busy = false; }
       }
 
-      go.onclick = () => { const t = ta.value.trim(); if (t) run(t); };
-      ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go.click(); });
       fileEl.onchange = () => { const f = fileEl.files && fileEl.files[0]; if (f) fileToDataUrl(f).then(run); };
       dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("over"); });
       dropEl.addEventListener("dragleave", () => dropEl.classList.remove("over"));
       dropEl.addEventListener("drop", (e) => { e.preventDefault(); dropEl.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) fileToDataUrl(f).then(run); });
 
-      const seed = injectedInput();
-      if (seed) { if (!isAudio(seed)) ta.value = seed; run(seed); }
+      const seed = injectedAudio();
+      if (seed) run(seed);
     </script>
   </body>
 </html>

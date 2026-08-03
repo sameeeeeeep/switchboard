@@ -1,0 +1,36 @@
+{
+  "mode": "tour",
+  "title": "Welcome to Switchboard",
+  "steps": [
+    {
+      "id": "grant-mic",
+      "text": "A card just dropped from the notch asking for your mic. Click Allow — that's the ear that hears you when you hold a key and talk.",
+      "hint": "If the system window doesn't appear, the card opens System Settings — flip the Switchboard toggle on."
+    },
+    {
+      "id": "grant-accessibility",
+      "text": "Next card: Accessibility. Drag the Switchboard chip into the list (or hit Open) and switch it on — this is the hand that points, clicks and types for you.",
+      "hint": "macOS has no one-click grant here, so you add Switchboard to the list yourself. The card waits."
+    },
+    {
+      "id": "grant-screen",
+      "text": "Last one: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
+      "hint": "Grant it and the permission cards are done — the notch orb goes quiet. Press → to keep going."
+    },
+    {
+      "id": "practice-summon",
+      "text": "Now tap Control twice — ⌃⌃. The orb wakes, listens, and you can just say what you need. Try it, then press → .",
+      "hint": "This is your summon. Anytime, anywhere — ⌃⌃ and start talking."
+    },
+    {
+      "id": "practice-dictation",
+      "text": "Put your cursor in any text field, then hold ⌃⌥ and speak. Let go and your words land right where the cursor is. Press → when you've watched it type.",
+      "hint": "Hold to talk, release to drop the text. No send button, no window — just your voice into the page."
+    },
+    {
+      "id": "practice-launcher",
+      "text": "Last trick: double-tap Option — ⌥⌥ — to throw open the launcher. Every app and tool, one keystroke away. Give it a tap, then press → to finish.",
+      "hint": "⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. That's the whole keyboard. You're set."
+    }
+  ]
+}
