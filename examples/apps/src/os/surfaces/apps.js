@@ -8,6 +8,8 @@
 // The iso-tile + hue helpers mirror os.js (isoTile / hueForId) so the dock reads
 // identical to the Home dock; inlined here to keep the module standalone.
 
+import { appIcon } from "../icons.js";
+
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
 // ---- deterministic per-app hue (ported from os.js hueForId/hexForId) ----
@@ -76,7 +78,7 @@ function resolveApps(DATA) {
 }
 
 function tile(a) {
-  return '<div class="app" data-app="' + esc(a.id) + '"><div class="tile">' + tileSvg(hexForId(a.id))
+  return '<div class="app" data-app="' + esc(a.id) + '"><div class="tile">' + appIcon(a.id, 68)
     + (a.live ? '<span class="live"></span>' : "")
     + (a.god ? '<span class="god"><span class="gd"></span>God</span>' : "")
     + '</div><div class="nm">' + esc(a.id) + '</div><div class="cat">' + esc(a.cat) + "</div></div>";
@@ -156,10 +158,10 @@ export function wire(root) {
 
 export const css = `
 .srf-apps{
-  --panel:#14161c; --raised:#1b1e26; --edge:#242833; --edge-soft:#1a1d25;
-  --ink:#e8edf4; --ink-sec:#b4bece; --ink-dim:#8a93a6; --ink-faint:#5c6474;
-  --lime:#c8f250; --indigo:#5b4fe8;
-  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --panel:#12151C; --raised:#1A1F29; --edge:#262C38; --edge-soft:#1C212B;
+  --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+  --lime:#C8F250; --indigo:#5B4FE8;
+  --mono:"Spline Sans Mono",ui-monospace,Menlo,monospace;
 }
 .srf-apps .kick{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
 .srf-apps .shead{display:flex;align-items:center;gap:14px;margin:10px 0 6px}
@@ -179,7 +181,11 @@ export const css = `
 .srf-apps .grouphd .c{font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
 .srf-apps .apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:18px}
 .srf-apps .app{text-align:center;cursor:pointer;position:relative}
-.srf-apps .app .tile{width:76px;height:76px;margin:0 auto;border-radius:19px;display:grid;place-items:center;position:relative;background:linear-gradient(160deg,#15161d,#0d0e13);border:1px solid #1e222c}
+.srf-apps .app .tile{width:76px;height:76px;margin:0 auto;border-radius:19px;display:grid;place-items:center;position:relative;background:linear-gradient(160deg,#15161d,#0d0e13);border:1px solid #1e222c;overflow:hidden}
+.srf-apps .app .tile .os-ic{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+.srf-apps .os-ic-broken{display:none!important}
+.srf-apps .app{transition:transform .1s ease}
+.srf-apps .app:hover{transform:translateY(-2px)}
 .srf-apps .app .nm{font-size:12.5px;color:var(--ink-sec);margin-top:9px;font-weight:500}
 .srf-apps .app .cat{font-size:10px;color:var(--ink-faint);font-family:var(--mono);margin-top:2px}
 .srf-apps .app .live{position:absolute;top:9px;right:13px;width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px 1px rgba(200,242,80,.6)}

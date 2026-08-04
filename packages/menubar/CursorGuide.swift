@@ -143,6 +143,8 @@ final class GuideOverlayModel: ObservableObject {
     @Published var done: String? = nil            // non-nil → show the completion summary card
     @Published var reduceMotion = false
     @Published var target: CGPoint? = nil         // teach mode: overlay-coords point to ring + anchor the chip to (nil = ride the cursor)
+    // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
+    @Published var muted: Bool = UserDefaults.standard.bool(forKey: "relay.guide.muted")
 }
 
 // MARK: - The caption chip (rides the cursor)
@@ -213,6 +215,8 @@ struct GuideCaptionView: View {
             a.append(("fn →", "Next", true))
         }
         if m.canBack { a.append(("fn ↑", "Back", false)) }
+        a.append(("fn ↓", "Feedback", false))   // screenshot + note, any mode
+        a.append(("fn m", m.muted ? "Unmute" : "Mute", false))
         a.append(("esc", "Close", false))
         return a.map { (combo: $0.0, label: $0.1, primary: $0.2) }
     }
@@ -235,6 +239,10 @@ struct GuideCaptionView: View {
                         .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
+                // voiceover state — at-a-glance speaker icon (toggle with fn m)
+                Image(systemName: m.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(m.muted ? .inkFaint : .lime)
             }
             // the instruction — the readable line
             Text(m.text)
@@ -580,7 +588,7 @@ final class CursorGuide {
         model.canBack = idx > 0
         model.target = s.point        // teach: point the ring + anchor the chip; nil → chip rides the cursor
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
-        if mode == .tour || mode == .teach { onSpeak?(s.say ?? s.text) }
+        if (mode == .tour || mode == .teach) && !model.muted { onSpeak?(s.say ?? s.text) }
         // Pre-load the clipboard with this step's paste payload (opt-in; user's clipboard is restored on end).
         if autoClipboard, let c = s.copy {
             NSPasteboard.general.clearContents()
@@ -1040,9 +1048,22 @@ final class CursorGuide {
         case 123 where fn: if mode == .test { handleAdvance(fail: true) }; return true // ← +fn
         case 116: goBack(); return true                                                // PageUp (fn ↑) — Back
         case 126 where fn: goBack(); return true                                       // ↑ +fn
-        case 121: if mode == .test { beginFeedback() }; return true                    // PageDown (fn ↓) — Note (any verdict)
-        case 125 where fn: if mode == .test { beginFeedback() }; return true           // ↓ +fn
+        case 121: beginFeedback(); return true                                         // PageDown (fn ↓) — screenshot + note (any mode)
+        case 125 where fn: beginFeedback(); return true                                // ↓ +fn
+        case 46 where fn: toggleMute(); return true                                    // fn m — voiceover on/off
         default: return false
+        }
+    }
+
+    // fn m — toggle the spoken voiceover on/off. Persisted (durable preference). Muting silences
+    // any in-flight speech; un-muting re-reads the current step aloud so the change is audible.
+    private func toggleMute() {
+        model.muted.toggle()
+        UserDefaults.standard.set(model.muted, forKey: "relay.guide.muted")
+        if model.muted {
+            onStopSpeak?()
+        } else if isActive, idx >= 0, idx < steps.count, mode == .tour || mode == .teach {
+            onSpeak?(steps[idx].say ?? steps[idx].text)
         }
     }
 }

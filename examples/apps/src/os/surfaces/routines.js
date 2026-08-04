@@ -63,23 +63,33 @@ const SAMPLE = [
 const DOT = { active: "lime", running: "ind", waiting: "am", paused: "red" };
 const PILL_LABEL = { active: "active", running: "running…", waiting: "waiting for you" };
 
+// Nav-type actions carry a data-route so the OS shell's global handler navigates.
+// State-type actions (run/pause/resume/grant/revoke) are flipped live in wire().
+const ACT_ROUTE = { log: "history", edit: "workflows" };
+
 function routineRow(r) {
   const cls = r.state === "paused" ? "failed" : r.state; // paused rows read as the failed register
   const pillLabel = r.pill || PILL_LABEL[r.state] || r.state;
   const pillCls = r.state === "paused" ? "failed" : r.state;
   const grant = r.grant.map(([lock, t]) => '<span class="g"><span class="lock">' + esc(lock) + "</span>" + esc(t) + "</span>").join("");
-  const acts = r.acts.map(([label, k, act]) => '<button class="btn' + (k ? " " + k : "") + '" data-act="' + act + '">' + esc(label) + "</button>").join("");
-  return '<div class="r ' + cls + '" data-routine="' + esc(r.id) + '">'
-    + '<div class="hd"><div class="ic">⟳</div><div class="nm">' + esc(r.name) + "</div>"
+  const acts = r.acts.map(([label, k, act]) => {
+    const route = ACT_ROUTE[act];
+    return '<button class="btn' + (k ? " " + k : "") + '" data-act="' + act + '"'
+      + (route ? ' data-route="' + route + '"' : "") + ">" + esc(label) + "</button>";
+  }).join("");
+  const outs = r.outs ? r.outs.replace(/<a>/g, '<a data-route="history">') : "";
+  return '<div class="r ' + cls + '" data-routine="' + esc(r.id) + '" data-state="' + esc(r.state) + '">'
+    + '<div class="hd" data-route="history" title="See this routine’s runs"><div class="ic">⟳</div><div class="nm">' + esc(r.name) + "</div>"
     + '<div class="pill ' + pillCls + '"><span class="dt ' + DOT[r.state] + '"></span>' + esc(pillLabel) + "</div></div>"
     + '<div class="sched">' + r.sched.map((s) => "<span>" + s + "</span>").join("") + "</div>"
-    + (r.outs ? '<div class="outs">' + r.outs + "</div>" : "")
+    + (outs ? '<div class="outs">' + outs + "</div>" : "")
     + (r.attn ? '<div class="attn">' + esc(r.attn) + "</div>" : "")
     + '<div class="foot-r"><div class="grant">' + grant + '</div><div class="acts">' + acts + "</div></div>"
     + "</div>";
 }
 
-const CREATE = '<div class="create" data-act="create"><span class="p">+</span>'
+// Create a routine = record/edit a flow → the Workflows surface.
+const CREATE = '<div class="create" data-act="create" data-route="workflows"><span class="p">+</span>'
   + "<div><b>Create a routine</b> — record a flow (CopyFlow) or promote an autopilot. "
   + 'Or start from a template: <span class="tpl">Daily brief · Email triage · Weekly report</span></div></div>';
 
@@ -108,37 +118,108 @@ export function render(DATA) {
 export function wire(root) {
   const el = root.querySelector(".srf-routines");
   if (!el) return;
+
+  // Which filter bucket a row belongs to, read from its live register class.
+  // active+running = "active"; failed (paused-with-fails) = "failed";
+  // paused + waiting = "paused". Recomputed on every state flip so rows move.
+  const group = (row) => {
+    if (row.classList.contains("active") || row.classList.contains("running")) return "active";
+    if (row.classList.contains("failed")) return "failed";
+    return "paused"; // paused + waiting
+  };
+
+  // Apply the currently-selected segment: show/hide rows, refresh the count.
+  const applyFilter = () => {
+    const on = el.querySelector(".seg span.on");
+    const seg = on ? on.textContent.trim() : "All";
+    el.querySelectorAll(".rows .r").forEach((row) => {
+      const g = group(row);
+      const show = seg === "All"
+        || (seg === "Active" && g === "active")
+        || (seg === "Paused" && g === "paused")
+        || (seg === "Failed" && g === "failed");
+      row.classList.toggle("hide", !show);
+    });
+    const n = el.querySelector(".shead .n");
+    if (n) {
+      const c = [...el.querySelectorAll(".rows .r")].filter((r) => group(r) === "active").length;
+      n.textContent = c + " active";
+    }
+  };
+
+  const setPill = (row, cls, dot, label) => {
+    const pill = row.querySelector(".pill");
+    if (pill) { pill.className = "pill " + cls; pill.innerHTML = '<span class="dt ' + dot + '"></span>' + label; }
+  };
+  const dropAttn = (row) => { const a = row.querySelector(".attn"); if (a) a.remove(); };
+  const setState = (row, register, state) => { row.className = "r " + register; row.setAttribute("data-state", state); };
+
   el.addEventListener("click", (e) => {
-    // filter segments toggle
+    // filter segments — real show/hide filtering
     const seg = e.target.closest(".seg span");
     if (seg) {
       seg.parentElement.querySelectorAll("span").forEach((s) => s.classList.remove("on"));
       seg.classList.add("on");
+      applyFilter();
       return;
     }
-    // row actions — optimistic local state flip so the monitor feels live
+
+    // search — pressed affordance (real toggle, not inert)
+    const srch = e.target.closest(".srch");
+    if (srch) { srch.classList.toggle("on"); return; }
+
+    // row action buttons — optimistic local state flip so the monitor feels live.
+    // (log / edit / create carry data-route; the OS shell handles their nav.)
     const btn = e.target.closest("button[data-act]");
     if (!btn) return;
     const act = btn.getAttribute("data-act");
     const row = btn.closest(".r");
-    if (act === "pause" && row) {
-      row.className = "r paused";
-      const pill = row.querySelector(".pill");
-      if (pill) { pill.className = "pill paused"; pill.innerHTML = '<span class="dt gr"></span>paused'; }
-    } else if ((act === "run" || act === "resume") && row) {
-      row.className = "r running";
-      const pill = row.querySelector(".pill");
-      if (pill) { pill.className = "pill running"; pill.innerHTML = '<span class="dt ind"></span>running…'; }
+    if (!row) return;
+
+    if (act === "pause") {
+      setState(row, "paused", "paused");
+      setPill(row, "paused", "gr", "paused");
+      dropAttn(row);
+      applyFilter();
+    } else if (act === "resume") {
+      setState(row, "active", "active");
+      setPill(row, "active", "lime", "active");
+      dropAttn(row);
+      applyFilter();
+    } else if (act === "run") {
+      setState(row, "running", "running");
+      setPill(row, "running", "ind", "running…");
+      btn.disabled = true;
+      applyFilter();
+      setTimeout(() => {
+        setState(row, "active", "active");
+        setPill(row, "active", "lime", "ran ✓ just now");
+        btn.disabled = false;
+        applyFilter();
+      }, 1200);
+    } else if (act === "grant") {
+      // consent obtained → the held routine proceeds
+      setState(row, "running", "running");
+      setPill(row, "running", "ind", "running…");
+      const ung = [...row.querySelectorAll(".g")].find((g) => /ungranted/i.test(g.textContent));
+      if (ung) ung.innerHTML = '<span class="lock">⛁</span>Drive write ✓';
+      dropAttn(row);
+      applyFilter();
+    } else if (act === "revoke") {
+      setState(row, "paused", "paused");
+      setPill(row, "paused", "gr", "revoked");
+      dropAttn(row);
+      applyFilter();
     }
   });
 }
 
 export const css = `
 .srf-routines{
-  --panel:#14161c; --raised:#1b1e26; --edge:#242833; --edge-soft:#1a1d25;
-  --ink:#e8edf4; --ink-sec:#b4bece; --ink-dim:#8a93a6; --ink-faint:#5c6474;
-  --lime:#c8f250; --indigo:#5b4fe8; --danger:#ff5a6e; --amber:#f2994a;
-  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --panel:#12151C; --raised:#1A1F29; --edge:#262C38; --edge-soft:#1C212B;
+  --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+  --lime:#C8F250; --indigo:#5B4FE8; --danger:#FF2D6E; --amber:#F59E0B;
+  --mono:"Spline Sans Mono",ui-monospace,Menlo,monospace;
 }
 .srf-routines .kick{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
 .srf-routines .shead{display:flex;align-items:center;gap:14px;margin:10px 0 6px}
@@ -146,19 +227,27 @@ export const css = `
 .srf-routines .shead .n{font-family:var(--mono);font-size:11px;color:var(--ink-dim);border:1px solid var(--edge);border-radius:20px;padding:2px 10px}
 .srf-routines .filters{margin-left:auto;display:flex;gap:6px;align-items:center}
 .srf-routines .seg{display:flex;background:var(--panel);border:1px solid var(--edge);border-radius:9px;padding:2px}
-.srf-routines .seg span{font-size:12px;padding:4px 11px;border-radius:7px;color:var(--ink-dim);cursor:pointer}
+.srf-routines .seg span{font-size:12px;padding:4px 11px;border-radius:7px;color:var(--ink-dim);cursor:pointer;transition:color .12s ease,background .12s ease}
+.srf-routines .seg span:hover:not(.on){color:var(--ink-sec)}
 .srf-routines .seg span.on{background:var(--raised);color:var(--ink)}
-.srf-routines .srch{width:30px;height:30px;border-radius:8px;border:1px solid var(--edge);background:var(--panel);display:grid;place-items:center;color:var(--ink-dim);font-size:13px}
+.srf-routines .srch{width:30px;height:30px;border-radius:8px;border:1px solid var(--edge);background:var(--panel);display:grid;place-items:center;color:var(--ink-dim);font-size:13px;cursor:pointer;transition:color .12s ease,border-color .12s ease,background .12s ease}
+.srf-routines .srch:hover{color:var(--ink-sec);border-color:var(--ink-faint)}
+.srf-routines .srch.on{color:var(--ink);border-color:var(--ink-faint);background:var(--raised)}
 .srf-routines .rule{height:1px;background:var(--edge-soft);margin:14px 0 18px}
 .srf-routines .rows{display:flex;flex-direction:column;gap:12px}
+.srf-routines .r.hide{display:none}
 .srf-routines .r{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:15px 17px;border-left:2px solid var(--edge)}
 .srf-routines .r.active{border-left-color:var(--lime)}
 .srf-routines .r.running{border-left-color:var(--indigo)}
 .srf-routines .r.paused{border-left-color:var(--ink-faint)}
 .srf-routines .r.failed{border-left-color:var(--danger)}
 .srf-routines .r.waiting{border-left-color:var(--amber)}
-.srf-routines .r .hd{display:flex;align-items:center;gap:11px}
-.srf-routines .r .ic{width:30px;height:30px;border-radius:9px;background:var(--raised);border:1px solid var(--edge);display:grid;place-items:center;color:var(--ink-sec);font-size:14px;flex:0 0 auto}
+.srf-routines .r .hd{display:flex;align-items:center;gap:11px;cursor:pointer}
+.srf-routines .r .hd:hover .nm{color:var(--indigo)}
+.srf-routines .r .hd:hover .ic{color:var(--ink);border-color:var(--ink-faint)}
+.srf-routines .r .ic{width:30px;height:30px;border-radius:9px;background:var(--raised);border:1px solid var(--edge);display:grid;place-items:center;color:var(--ink-sec);font-size:14px;flex:0 0 auto;transition:color .12s ease,border-color .12s ease}
+.srf-routines .r.running .ic{color:var(--ink);animation:rt-spin 2.4s linear infinite}
+@keyframes rt-spin{to{transform:rotate(360deg)}}
 .srf-routines .r .nm{font-size:14.5px;font-weight:600}
 .srf-routines .r .pill{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;padding:3px 10px;border-radius:20px;display:flex;align-items:center;gap:6px}
 .srf-routines .pill.active{color:var(--lime);background:#1b2410;border:1px solid #33461a}
@@ -181,13 +270,17 @@ export const css = `
 .srf-routines .g{font-family:var(--mono);font-size:10.5px;color:var(--ink-sec);background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:2px 8px;display:flex;align-items:center;gap:5px}
 .srf-routines .g .lock{color:var(--ink-faint)}
 .srf-routines .acts{margin-left:auto;display:flex;gap:7px}
-.srf-routines .btn{font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid var(--edge);background:var(--raised);color:var(--ink-sec);cursor:pointer;white-space:nowrap}
+.srf-routines .btn{font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid var(--edge);background:var(--raised);color:var(--ink-sec);cursor:pointer;white-space:nowrap;transition:border-color .12s ease,color .12s ease,filter .12s ease}
+.srf-routines .btn:hover:not(:disabled){border-color:var(--ink-faint);color:var(--ink);filter:brightness(1.12)}
+.srf-routines .btn:disabled{opacity:.6;cursor:default}
 .srf-routines .btn.pri{background:#1b2410;border-color:#33461a;color:var(--lime)}
 .srf-routines .btn.warn{background:#2a1418;border-color:#52222b;color:var(--danger)}
 .srf-routines .outs{margin:10px 0 0 41px;font-size:12px;color:var(--ink-faint)}
 .srf-routines .outs a{color:var(--indigo);text-decoration:none;cursor:pointer}
+.srf-routines .outs a:hover{text-decoration:underline}
 .srf-routines .attn{margin:9px 0 0 41px;font-size:11.5px;color:var(--danger);font-family:var(--mono)}
-.srf-routines .create{margin-top:16px;border:1px dashed var(--edge);border-radius:13px;padding:15px 17px;display:flex;align-items:center;gap:12px;color:var(--ink-dim);font-size:13px;cursor:pointer}
+.srf-routines .create{margin-top:16px;border:1px dashed var(--edge);border-radius:13px;padding:15px 17px;display:flex;align-items:center;gap:12px;color:var(--ink-dim);font-size:13px;cursor:pointer;transition:border-color .12s ease,background .12s ease}
+.srf-routines .create:hover{border-color:var(--ink-faint);background:var(--raised)}
 .srf-routines .create .p{width:26px;height:26px;border-radius:8px;background:var(--raised);border:1px solid var(--edge);display:grid;place-items:center;color:var(--lime);font-size:15px;flex:0 0 auto}
 .srf-routines .create b{color:var(--ink-sec);font-weight:500}
 .srf-routines .create .tpl{color:var(--ink-sec)}

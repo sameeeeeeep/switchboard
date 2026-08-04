@@ -220,7 +220,8 @@ enum Sample {
 // =====================================================================================================
 
 struct OSShellView: View {
-    @State private var selected: Surface = .home     // the one-window nav: rail sets this, detail swaps
+    @State private var selected: Surface     // the one-window nav: rail sets this, detail swaps
+    init(initial: Surface = .home) { _selected = State(initialValue: initial) }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -229,8 +230,21 @@ struct OSShellView: View {
             VStack(spacing: 0) {
                 OmniBar()
                 Group {
-                    if selected == .home { HomeDetail(selected: $selected) }
-                    else { StubDetail(surface: selected) }
+                    switch selected {
+                    case .home:       HomeDetail(selected: $selected)
+                    case .tasks:      TasksSurface(onNavigate: { selected = $0 })
+                    case .calendar:   CalendarSurface(onNavigate: { selected = $0 })
+                    case .bank:       BankSurface(onNavigate: { selected = $0 })
+                    case .dashboard:  DashboardSurface(onNavigate: { selected = $0 })
+                    case .needs:      NeedsSurface(onNavigate: { selected = $0 })
+                    case .routines:   RoutinesSurface(onNavigate: { selected = $0 })
+                    case .workflows:  WorkflowsSurface(onNavigate: { selected = $0 })
+                    case .history:    HistorySurface(onNavigate: { selected = $0 })
+                    case .graph:      GraphSurface(onNavigate: { selected = $0 })
+                    case .dictionary: DictionarySurface(onNavigate: { selected = $0 })
+                    case .apps:       AppsSurface(onNavigate: { selected = $0 })
+                    case .store:      StoreSurface(onNavigate: { selected = $0 })
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -565,6 +579,23 @@ struct ArtifactThumb: View {
     }
 }
 
+// An app glyph: the real bundled icon (Resources/icons/<id>.png, via storeIcon) when present,
+// else the deterministic iso tile. Keeps native app tiles at parity with the web OS.
+struct OSAppGlyph: View {
+    let id: String
+    var size: CGFloat = 72
+    var body: some View {
+        if let img = storeIcon(id.lowercased()) {
+            Image(nsImage: img).resizable().interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.25))
+        } else {
+            IsoTile(hue: hueForId(id)).frame(width: size, height: size)
+        }
+    }
+}
+
 struct AppDock: View {
     @Binding var selected: Surface
     let cols = [GridItem(.adaptive(minimum: 96), spacing: 16)]
@@ -573,7 +604,7 @@ struct AppDock: View {
             ForEach(Sample.apps) { app in
                 VStack(spacing: 8) {
                     ZStack(alignment: .bottomTrailing) {
-                        IsoTile(hue: hueForId(app.id)).frame(width: 72, height: 72)
+                        OSAppGlyph(id: app.id, size: 72)
                             .background(RoundedRectangle(cornerRadius: 18)
                                 .fill(LinearGradient(colors: [Color(red: 0x15/255, green: 0x16/255, blue: 0x1d/255),
                                                               Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],

@@ -4,15 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Switchboard OS — the home you come back to</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
+      /* Switchboard brand design system — same tokens/fonts every wrapp uses (examples/apps/app.css). */
       :root{
-        --page:#08090c; --rail:#0a0a0b; --panel:#14161c; --raised:#1b1e26; --edge:#242833; --edge-soft:#1a1d25;
-        --ink:#e8edf4; --ink-sec:#b4bece; --ink-dim:#8a93a6; --ink-faint:#5c6474;
-        --lime:#c8f250; --indigo:#5b4fe8; --danger:#ff5a6e; --ok:#3dd68c; --warn:#f2994a;
-        --mono:ui-monospace,"SF Mono",Menlo,monospace; --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+        --page:#0A0C10; --inset:#070809; --rail:#0a0b0e; --panel:#12151C; --raised:#1A1F29; --edge:#262C38; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+        --lime:#C8F250; --lime-soft:#232B0D; --indigo:#5B4FE8; --indigo-soft:#171633; --danger:#FF2D6E; --ok:#3DD68C; --warn:#F59E0B; --blue:#7DE0FF;
+        --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,Menlo,monospace;
       }
       *{box-sizing:border-box} html,body{margin:0}
-      body{background:var(--page); color:var(--ink); font-family:var(--sans)}
+      body{background:var(--page); color:var(--ink); font:15px/1.6 var(--sans); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+      ::selection{background:rgba(200,242,80,.3)}
+      /* brand typography — headings + logo in Bricolage display, everywhere (shell + all surface modules) */
+      h1,h2,h3,.rail .logo,#pane h1,#pane h2,#pane h3,.hero h1,.proj .nm,.stub h1{font-family:var(--display); letter-spacing:-.02em}
       .wrap{color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased;
         display:flex; max-width:1320px; margin:0 auto}
       .maincol{flex:1; min-width:0; padding:0 0 60px}
@@ -69,6 +78,12 @@
       .app .tile{width:72px;height:72px;margin:0 auto;border-radius:18px;display:grid;place-items:center;position:relative;background:linear-gradient(160deg,#15161d,#0d0e13);border:1px solid #1e222c}
       .app .nm{font-size:12px;color:var(--ink-sec);margin-top:8px}
       .app .live{position:absolute;bottom:8px;right:9px;width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px 1px rgba(200,242,80,.6)}
+      /* real app icons — fill their rounded tile frame; mini variant in work cards */
+      .app .tile .os-ic{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+      .proj .mark .os-ic{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+      .src .os-ic{width:15px;height:15px;border-radius:4px;object-fit:cover;vertical-align:-3px}
+      .os-ic-broken{display:none!important}
+      .app{transition:transform .1s ease} .app:hover{transform:translateY(-2px)}
       /* what's next */
       .next{display:flex; gap:12px; flex-wrap:wrap; margin-top:14px}
       .nx{flex:1; min-width:240px; background:var(--panel); border:1px solid var(--edge); border-radius:13px; padding:14px 16px; display:flex; gap:12px; align-items:center; cursor:pointer}
@@ -114,6 +129,8 @@
         <div class="foot" id="foot"></div>
       </div>
     </div>
-    <script type="module" src="./dist/os.js"></script>
+    <script>/* dev: cache-bust the bundle so edits always show */
+      { const s = document.createElement("script"); s.type = "module"; s.src = "./dist/os.js?t=" + Date.now(); document.head.appendChild(s); }
+    </script>
   </body>
 </html>
