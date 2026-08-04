@@ -16,7 +16,8 @@ import * as S_routines from "./surfaces/routines.js";
 import * as S_workflows from "./surfaces/workflows.js";
 import * as S_apps from "./surfaces/apps.js";
 import * as S_store from "./surfaces/store.js";
-const SURFACES = { tasks: S_tasks, calendar: S_calendar, dashboard: S_dashboard, attention: S_attention, bank: S_bank, history: S_history, graph: S_graph, dictionary: S_dictionary, routines: S_routines, workflows: S_workflows, apps: S_apps, store: S_store };
+import { appIcon, pageFor } from "./icons.js";
+const SURFACES = { tasks: S_tasks, calendar: S_calendar, dashboard: S_dashboard, needs: S_attention, attention: S_attention, bank: S_bank, history: S_history, graph: S_graph, dictionary: S_dictionary, routines: S_routines, workflows: S_workflows, apps: S_apps, store: S_store };
 const _cssDone = {};
 function ensureSurfaceCss(id, mod) {
   if (_cssDone[id] || !mod || !mod.css) return;
@@ -93,9 +94,9 @@ const DATA = {
     { t: "IndEur thesis + reach-outs", src: "ideabrain", time: "yesterday", kind: "doc" },
   ],
   next: [
-    { kind: "suggest", title: "Render your IndEur mark", body: "you kept 2 wireframes in Crest. Turn one into an image." },
-    { kind: "suggest", title: "Draft the launch post", body: "brandbrain has your voice; write the IndEur announce." },
-    { kind: "task", title: "Finalize Q4 palette", body: "@brandbrain · due Fri" },
+    { kind: "suggest", title: "Render your IndEur mark", body: "you kept 2 wireframes in Crest. Turn one into an image.", app: "Prism" },
+    { kind: "suggest", title: "Draft the launch post", body: "brandbrain has your voice; write the IndEur announce.", app: "brandbrain" },
+    { kind: "task", title: "Finalize Q4 palette", body: "@brandbrain · due Fri", route: "tasks" },
   ],
   needs: [
     { title: "Approve AdForge send to 3 launch emails", act: "Review" },
@@ -179,10 +180,10 @@ function thumb(w) {
 function renderHome() {
   const p = DATA.project;
   let html = '<div class="hero"><h1>Evening, Sameep. <span class="sub">Here\'s where you left off.</span></h1>';
-  html += '<div class="proj"><div class="mark">' + tileSvg(hexForId(p.id), 34) + "</div><div>"
+  html += '<div class="proj"><div class="mark">' + appIcon(p.id, 34) + "</div><div>"
     + '<div class="nm">' + esc(p.name) + "</div>"
     + '<div class="facets">' + p.facets.map((f) => '<span class="facet">' + esc(f) + "</span>").join("") + "</div>"
-    + '</div><div class="switch">Switch project ▾</div></div></div>';
+    + '</div><div class="switch" data-route="bank">Switch project ▾</div></div></div>';
 
   // ① needs-attention strip (only when non-empty)
   if (DATA.needs.length) {
@@ -193,18 +194,18 @@ function renderHome() {
 
   // ② recent work
   html += '<div class="sh"><span class="kick">Recent work</span><span class="more" data-route="bank">everything you\'ve made →</span></div><div class="work">';
-  html += DATA.work.map((w) => '<div class="card"><div class="thumb" style="background:linear-gradient(160deg,#101218,#0b0c11)">' + thumb(w) + "</div>"
-    + '<div class="meta"><div class="t">' + esc(w.t) + '</div><div class="src">' + chip(hexForId(w.src), 13) + esc(w.src) + '<span class="time">' + esc(w.time) + "</span></div></div></div>").join("");
+  html += DATA.work.map((w) => '<div class="card" data-app="' + esc(w.src) + '" data-ctx="' + encodeURIComponent(JSON.stringify({ artifact: w.t, kind: w.kind, project: DATA.project.id })) + '" title="Open ' + esc(w.t) + ' in ' + esc(w.src) + '"><div class="thumb" style="background:linear-gradient(160deg,#101218,#0b0c11)">' + thumb(w) + "</div>"
+    + '<div class="meta"><div class="t">' + esc(w.t) + '</div><div class="src">' + appIcon(w.src, 15) + esc(w.src) + '<span class="time">' + esc(w.time) + "</span></div></div></div>").join("");
   html += "</div>";
 
   // ③ app dock — one deterministic hue per id
   html += '<div class="sh"><span class="kick">Your apps</span><span class="more" data-route="apps">all apps →</span></div><div class="apps">';
-  html += DATA.apps.map((a) => '<div class="app"><div class="tile">' + tileSvg(hexForId(a.id)) + (a.live ? '<span class="live"></span>' : "") + '</div><div class="nm">' + esc(a.id) + "</div></div>").join("");
+  html += DATA.apps.map((a) => '<div class="app" data-app="' + esc(a.id) + '"><div class="tile">' + appIcon(a.id, 60) + (a.live ? '<span class="live"></span>' : "") + '</div><div class="nm">' + esc(a.id) + "</div></div>").join("");
   html += "</div>";
 
   // ④ what's next
   html += '<div class="sh"><span class="kick">What\'s next</span></div><div class="next">';
-  html += DATA.next.map((n) => '<div class="nx ' + (n.kind === "task" ? "task" : "") + '"><div class="g">' + (n.kind === "task" ? "☐" : "✦") + '</div><div class="tx"><b>' + esc(n.title) + "</b> — " + esc(n.body) + "</div></div>").join("");
+  html += DATA.next.map((n) => '<div class="nx ' + (n.kind === "task" ? "task" : "") + '"' + (n.app ? ' data-app="' + esc(n.app) + '"' : n.route ? ' data-route="' + esc(n.route) + '"' : "") + '><div class="g">' + (n.kind === "task" ? "☐" : "✦") + '</div><div class="tx"><b>' + esc(n.title) + "</b> — " + esc(n.body) + "</div></div>").join("");
   html += "</div>";
   return html;
 }
@@ -234,11 +235,17 @@ function renderStub(id) {
 // ---------------------------------------------------------------------------
 // SINGLE-WINDOW HASH ROUTER — swaps #pane, no reload; back/forward + deep-link.
 // ---------------------------------------------------------------------------
-function currentRoute() {
-  const h = (location.hash || "").replace(/^#\/?/, "").trim();
-  return h || "home";
+// route + carried context: "#/dictionary?term=diaspora" → {route:"dictionary", params}
+function parseRoute() {
+  const h = (location.hash || "").replace(/^#\/?/, "");
+  const qi = h.indexOf("?");
+  const path = (qi >= 0 ? h.slice(0, qi) : h).trim();
+  const params = new URLSearchParams(qi >= 0 ? h.slice(qi + 1) : "");
+  return { route: path || "home", params };
 }
+function currentRoute() { return parseRoute().route; }
 function render() {
+  const { params } = parseRoute();
   let route = currentRoute();
   const pane = document.getElementById("pane");
   if (route === "home") { pane.innerHTML = renderHome(); }
@@ -248,6 +255,10 @@ function render() {
     try { pane.innerHTML = mod.render(DATA); }
     catch (e) { console.error("render " + route, e); pane.innerHTML = renderStub(route); }
     if (typeof mod.wire === "function") { try { mod.wire(pane); } catch (e) { console.error("wire " + route, e); } }
+    // carried context: a surface can consume incoming params (highlight/scroll/filter to the item)
+    if (typeof mod.applyContext === "function" && [...params.keys()].length) {
+      try { mod.applyContext(pane, params); } catch (e) { console.error("applyContext " + route, e); }
+    }
   }
   else if (STUBS[route]) { pane.innerHTML = renderStub(route); }
   else { route = "home"; pane.innerHTML = renderHome(); }
@@ -259,6 +270,22 @@ function render() {
 
 // clicks on data-route elements (cards / more-links / strip actions) navigate too
 document.addEventListener("click", (e) => {
+  // launch a wrapp (Home dock/cards, Apps surface, any [data-app]) → open its page,
+  // carrying item context so the tool opens AT the right thing (data-ctx = encoded JSON).
+  const app = e.target.closest("[data-app]");
+  if (app) {
+    const id = app.getAttribute("data-app");
+    const url = pageFor(id);
+    if (url) {
+      e.preventDefault();
+      const ctx = app.getAttribute("data-ctx"); // already URI-encoded JSON
+      window.open(ctx ? url + "#os=" + ctx : url, "_blank", "noopener");
+    }
+    return;
+  }
+  // open a specific page / artifact in a new tab (surfaces use data-open="./x.html")
+  const opener = e.target.closest("[data-open]");
+  if (opener) { const u = opener.getAttribute("data-open"); if (u) { e.preventDefault(); window.open(u, "_blank", "noopener"); } return; }
   const el = e.target.closest("[data-route]");
   if (el && el.tagName !== "A") { e.preventDefault(); location.hash = "#/" + el.getAttribute("data-route"); }
 });

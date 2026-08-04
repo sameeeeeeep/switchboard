@@ -9,7 +9,7 @@ const SAMPLE = {
     { k: "Projects", big: "4", sub: "1 stalled", drill: "bank", spark: { kind: "line", data: [3, 3, 4, 4, 4, 4, 4], color: "#8a93a6" } },
     { k: "Routines", big: "3", sub: "active · next 08:00", drill: "routines", spark: { kind: "line", data: [2, 3, 3, 2, 3, 3, 3], color: "#8a93a6" } },
     { k: "Workflows", big: "12", subHtml: '<span class="ok">✓10</span> &nbsp;<span class="bad">✗2</span>', drill: "workflows", spark: { kind: "bars", data: [2, 1, 3, 2, 1, 2, 1], color: "#8a93a6" } },
-    { k: "Usage", bigHtml: '4.2M<span class="of"> /8M</span>', sub: "tokens · 53% of budget", drill: "settings", spark: { kind: "bars", data: [3, 5, 4, 6, 5, 7, 6], color: "#c8f250" } },
+    { k: "Usage", bigHtml: '4.2M<span class="of"> /8M</span>', sub: "tokens · 53% of budget", drill: "history", spark: { kind: "bars", data: [3, 5, 4, 6, 5, 7, 6], color: "#c8f250" } },
     { k: "Needs attention", big: "5", sub: "2 blocking", drill: "needs", alert: 1, spark: { kind: "line", data: [0, 1, 1, 2, 3, 4, 5], color: "#ff5a6e" } },
   ],
   routines: [
@@ -60,7 +60,7 @@ function sparkSvg(sp) {
 function tile(t) {
   const big = t.bigHtml || esc(t.big);
   const sub = t.subHtml || (t.sub ? esc(t.sub) : "");
-  return '<div class="tile' + (t.alert ? " alert" : "") + '" data-drill="' + esc(t.drill) + '">'
+  return '<div class="tile' + (t.alert ? " alert" : "") + '" role="button" tabindex="0" data-route="' + esc(t.drill) + '">'
     + '<div class="k">' + esc(t.k) + "</div>"
     + '<div class="big">' + big + "</div>"
     + '<div class="sub">' + sub + "</div>"
@@ -90,13 +90,13 @@ export function render(DATA) {
     + "</div>"
     + '<div class="tiles">' + SAMPLE.tiles.map(tile).join("") + "</div>"
     + '<div class="cols">'
-    + '<div class="pane"><div class="ph"><span class="t">Routines — running / next fire</span><span class="more" data-drill="routines">→ Routines</span></div>' + routines + "</div>"
-    + '<div class="pane"><div class="ph"><span class="t">Recent runs — pass / fail</span><span class="more" data-drill="workflows">→ Workflows</span></div>' + runs + "</div>"
+    + '<div class="pane"><div class="ph"><span class="t">Routines — running / next fire</span><span class="more" data-route="routines">→ Routines</span></div>' + routines + "</div>"
+    + '<div class="pane"><div class="ph"><span class="t">Recent runs — pass / fail</span><span class="more" data-route="workflows">→ Workflows</span></div>' + runs + "</div>"
     + "</div>"
     + '<div class="cols">'
     + '<div class="pane"><div class="ph"><span class="t">Subsystem health</span></div><div class="health">' + health + "</div>"
-    + '<div class="lrow ht"><span class="ic bad">◐</span><span class="nm">' + esc(SAMPLE.healthAlert.nm) + '</span><span class="fix" data-drill="needs">→ fix</span></div></div>'
-    + '<div class="pane"><div class="ph"><span class="t">Activity feed</span><span class="more" data-drill="history">→ History</span></div>' + activity + "</div>"
+    + '<div class="lrow ht"><span class="ic bad">◐</span><span class="nm">' + esc(SAMPLE.healthAlert.nm) + '</span><span class="fix" data-route="needs">→ fix</span></div></div>'
+    + '<div class="pane"><div class="ph"><span class="t">Activity feed</span><span class="more" data-route="history">→ History</span></div>' + activity + "</div>"
     + "</div>"
     + '<div class="foot">dashboard is the state of the machine, not your work · every tile is a door, not a dead number · a red tile always names the action</div>'
     + "</main></div>";
@@ -119,8 +119,15 @@ export function wire(root) {
       console.log("[dashboard] retry run");
       return;
     }
-    const drill = e.target.closest("[data-drill]");
-    if (drill) { const r = drill.getAttribute("data-drill"); console.log("[dashboard] drill →", r); location.hash = "#/" + r; }
+    // data-route[...] tiles / more-links / fix are handled by the global delegated router.
+  });
+  // Keyboard activation for the focusable stat tiles → let the global router run.
+  surf.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const tile = e.target.closest(".tile[data-route]");
+    if (!tile) return;
+    e.preventDefault();
+    tile.click();
   });
 }
 
@@ -132,8 +139,13 @@ export const css = `<style>
 .srf-dashboard .seg{margin-left:auto;display:flex;background:var(--panel);border:1px solid var(--edge);border-radius:9px;padding:2px}
 .srf-dashboard .seg span{font-size:12px;color:var(--ink-dim);padding:4px 11px;border-radius:7px;cursor:pointer}
 .srf-dashboard .seg span.on{background:var(--raised);color:var(--ink)}
+.srf-dashboard .seg span:hover{color:var(--ink)}
 .srf-dashboard .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:20px}
-.srf-dashboard .tile{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:14px 15px;cursor:pointer;display:flex;flex-direction:column;min-height:128px}
+.srf-dashboard .tile{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:14px 15px;cursor:pointer;display:flex;flex-direction:column;min-height:128px;transition:transform .12s ease,border-color .12s ease}
+.srf-dashboard .tile:hover{transform:translateY(-2px);border-color:var(--indigo)}
+.srf-dashboard .tile:hover .drill{color:var(--ink-sec)}
+.srf-dashboard .tile:focus-visible{outline:none;border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo)}
+.srf-dashboard .tile.alert:hover{border-color:var(--danger)}
 .srf-dashboard .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
 .srf-dashboard .tile .big{font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1.1;margin-top:6px}
 .srf-dashboard .tile .big .of{font-size:15px;color:var(--ink-dim)}
@@ -146,7 +158,8 @@ export const css = `<style>
 .srf-dashboard .pane{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:14px 16px}
 .srf-dashboard .pane .ph{display:flex;align-items:center;margin-bottom:10px}
 .srf-dashboard .pane .ph .t{font-size:12.5px;font-weight:600}
-.srf-dashboard .pane .ph .more{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-faint);cursor:pointer}
+.srf-dashboard .pane .ph .more{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-faint);cursor:pointer;transition:color .12s ease}
+.srf-dashboard .pane .ph .more:hover{color:var(--indigo)}
 .srf-dashboard .lrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--edge-soft);font-size:13px}
 .srf-dashboard .lrow:first-of-type,.srf-dashboard .health+.lrow.ht{border-top:0}
 .srf-dashboard .lrow .ic{width:16px;text-align:center;flex:0 0 auto;font-family:var(--mono);font-size:12px}
@@ -155,7 +168,8 @@ export const css = `<style>
 .srf-dashboard .lrow .nm.muted{color:var(--ink-dim)}
 .srf-dashboard .lrow .st{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
 .srf-dashboard .lrow .st.runn{color:var(--indigo)}
-.srf-dashboard .pill{font-family:var(--mono);font-size:10px;border-radius:20px;padding:1px 8px;border:1px solid var(--edge);color:var(--ink-dim);cursor:pointer}
+.srf-dashboard .pill{font-family:var(--mono);font-size:10px;border-radius:20px;padding:1px 8px;border:1px solid var(--edge);color:var(--ink-dim);cursor:pointer;transition:filter .12s ease}
+.srf-dashboard .pill:hover{filter:brightness(1.25)}
 .srf-dashboard .pill.retry{color:var(--lime);border-color:#3a4a12;background:#20260c}
 .srf-dashboard .pill.busy{color:var(--ink-dim);opacity:.7}
 .srf-dashboard .ok{color:var(--lime)} .srf-dashboard .bad{color:var(--danger)} .srf-dashboard .runn{color:var(--indigo)}
@@ -163,6 +177,7 @@ export const css = `<style>
 .srf-dashboard .dotg{width:7px;height:7px;border-radius:50%;display:inline-block}
 .srf-dashboard .health{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:6px}
 .srf-dashboard .hitem{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-sec)}
-.srf-dashboard .fix{font-family:var(--mono);font-size:10px;color:var(--lime);border:1px solid #3a4a12;background:#20260c;border-radius:20px;padding:1px 8px;margin-left:auto;cursor:pointer}
+.srf-dashboard .fix{font-family:var(--mono);font-size:10px;color:var(--lime);border:1px solid #3a4a12;background:#20260c;border-radius:20px;padding:1px 8px;margin-left:auto;cursor:pointer;transition:filter .12s ease}
+.srf-dashboard .fix:hover{filter:brightness(1.3)}
 .srf-dashboard .foot{margin-top:34px;color:var(--ink-faint);font-size:11.5px;font-family:var(--mono)}
 </style>`;

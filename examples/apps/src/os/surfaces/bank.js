@@ -58,7 +58,7 @@ const SAMPLE = {
 
 function ovField(f) {
   if (f.empty) {
-    return '<div class="field empty"><div class="lbl">' + esc(f.lbl) + '</div><div class="val">' + f.val + '</div><span class="cta">' + esc(f.cta) + '</span></div>';
+    return '<div class="field empty"><div class="lbl">' + esc(f.lbl) + '</div><div class="val">' + f.val + '</div><span class="cta" data-app="brandbrain">' + esc(f.cta) + '</span></div>';
   }
   let inner = '<div class="lbl">' + esc(f.lbl) + '</div>';
   if (f.val) inner += '<div class="val">' + f.val + '</div>';
@@ -72,15 +72,17 @@ function facetOverview() {
 }
 function facetTasks() {
   return '<div class="rows">' + SAMPLE.tasks.map((t) =>
-    '<div class="brow"><span class="bx ' + t.state + '"></span><div class="bt">' + esc(t.t) + '</div><div class="bm">' + esc(t.meta) + '</div></div>').join("") + '</div>';
+    '<div class="brow" data-route="tasks"><span class="bx ' + t.state + '"></span><div class="bt">' + esc(t.t) + '</div><div class="bm">' + esc(t.meta) + '</div></div>').join("")
+    + '<div class="brow viewall" data-route="tasks"><span class="md">→</span><div class="bt">View all in Tasks</div></div></div>';
 }
 function facetBrain() {
   return '<div class="rows">' + SAMPLE.brain.map((n) =>
-    '<div class="brow"><span class="md">▤</span><div class="bt">' + esc(n.t) + ' <span class="dim">— ' + esc(n.note) + '</span></div><div class="bm">' + esc(n.src) + '</div></div>').join("") + '</div>';
+    '<div class="brow" data-route="graph"><span class="md">▤</span><div class="bt">' + esc(n.t) + ' <span class="dim">— ' + esc(n.note) + '</span></div><div class="bm">' + esc(n.src) + '</div></div>').join("")
+    + '<div class="brow viewall" data-route="graph"><span class="md">→</span><div class="bt">Open the knowledge graph</div></div></div>';
 }
 function facetArtifacts() {
   return '<div class="artgrid">' + SAMPLE.artifacts.map((a) =>
-    '<div class="art"><div class="athumb ' + a.kind + '"></div><div class="an">' + esc(a.t) + '</div><div class="as">' + esc(a.src) + ' · ' + esc(a.time) + '</div></div>').join("") + '</div>';
+    '<div class="art" data-app="' + esc(a.src) + '"><div class="athumb ' + a.kind + '"></div><div class="an">' + esc(a.t) + '</div><div class="as">' + esc(a.src) + ' · ' + esc(a.time) + '</div></div>').join("") + '</div>';
 }
 
 const FACETS = { overview: facetOverview, tasks: facetTasks, brain: facetBrain, artifacts: facetArtifacts };
@@ -89,13 +91,13 @@ export function render(DATA) {
   const c = SAMPLE.facetCounts;
   let h = '<div class="srf-bank">';
   h += '<div class="bankhead"><span class="kick">Bank · brain</span><h1>Your vault</h1>'
-    + '<div class="estab"><div class="btn est">+ Establish a project</div><div class="btn vs">Open the folder</div></div></div>';
+    + '<div class="estab"><div class="btn est" data-app="Bank">+ Establish a project</div><div class="btn vs" data-app="Bank">Open the folder</div></div></div>';
 
   // projects strip
   h += '<div class="strip">' + SAMPLE.projects.map((p) =>
-    '<div class="pchip' + (p.active ? " on" : "") + '"><span class="d"></span>' + esc(p.name)
+    '<div class="pchip' + (p.active ? " on" : "") + '" data-project="' + esc(p.id) + '"><span class="d"></span>' + esc(p.name)
     + (p.active ? '<span class="act">active</span>' : "") + '</div>').join("")
-    + '<div class="pchip new">+ New</div></div>';
+    + '<div class="pchip new" data-app="Bank">+ New</div></div>';
 
   // active-project hero
   h += '<div class="hero"><div class="row">'
@@ -117,22 +119,43 @@ export function render(DATA) {
   // capture box
   h += '<div class="capture"><div class="ic">＋</div>'
     + '<div class="tx"><b>Drop a file, paste a note, or "Bank it."</b> — files it as an artifact or note on IndEur Club, with its source.</div>'
-    + '<div class="bank">Bank it</div></div>';
+    + '<div class="bank" data-app="Bank">Bank it</div></div>';
 
   h += '</div>';
   return h;
 }
 
 export function wire(root) {
+  // Facet tabs → real tab switching: activate the tab, swap the content region.
   const tabs = root.querySelectorAll(".srf-bank .tab");
   const body = root.querySelector(".srf-bank [data-facetbody]");
-  if (!tabs.length || !body) return;
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      tabs.forEach((t) => t.classList.remove("on"));
-      tab.classList.add("on");
-      const f = tab.getAttribute("data-facet");
-      body.innerHTML = (FACETS[f] || facetOverview)();
+  if (tabs.length && body) {
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("on"));
+        tab.classList.add("on");
+        const f = tab.getAttribute("data-facet");
+        body.innerHTML = (FACETS[f] || facetOverview)();
+      });
+    });
+  }
+
+  // Project chips → switch the active project (no global route for these).
+  const chips = root.querySelectorAll(".srf-bank .pchip[data-project]");
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      chips.forEach((c) => {
+        c.classList.remove("on");
+        const a = c.querySelector(".act");
+        if (a) a.remove();
+      });
+      chip.classList.add("on");
+      if (!chip.querySelector(".act")) {
+        const a = document.createElement("span");
+        a.className = "act";
+        a.textContent = "active";
+        chip.appendChild(a);
+      }
     });
   });
 }
@@ -146,8 +169,12 @@ export const css = `
 .srf-bank .estab .btn{font-size:12.5px;border-radius:9px;padding:8px 14px;white-space:nowrap;cursor:pointer}
 .srf-bank .estab .est{color:#0c0d10;background:var(--lime);font-weight:600;border:1px solid var(--lime)}
 .srf-bank .estab .vs{color:var(--ink-dim);background:var(--panel);border:1px solid var(--edge)}
+.srf-bank .estab .btn{transition:filter .12s,border-color .12s,color .12s}
+.srf-bank .estab .est:hover{filter:brightness(1.08)}
+.srf-bank .estab .vs:hover{border-color:var(--edge-soft);color:var(--ink)}
 .srf-bank .strip{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center}
-.srf-bank .pchip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:7px 12px;font-size:13px;color:var(--ink-sec);cursor:pointer}
+.srf-bank .pchip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:7px 12px;font-size:13px;color:var(--ink-sec);cursor:pointer;transition:border-color .12s,color .12s}
+.srf-bank .pchip:hover{border-color:var(--edge-soft);color:var(--ink)}
 .srf-bank .pchip.on{border-left:2px solid var(--indigo);background:linear-gradient(180deg,#15131f,#121319);color:var(--ink)}
 .srf-bank .pchip .d{width:8px;height:8px;border-radius:50%;background:var(--ink-faint)}
 .srf-bank .pchip.on .d{background:var(--indigo);box-shadow:0 0 7px 1px rgba(91,79,232,.6)}
@@ -160,7 +187,8 @@ export const css = `
 .srf-bank .hero .desc{font-size:12.5px;color:var(--ink-dim);margin-top:2px}
 .srf-bank .hero .path{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
 .srf-bank .tabs{display:flex;gap:6px;margin-top:16px;border-bottom:1px solid var(--edge-soft)}
-.srf-bank .tab{font-size:13px;color:var(--ink-dim);padding:8px 14px;border-radius:9px 9px 0 0;cursor:pointer;position:relative;top:1px}
+.srf-bank .tab{font-size:13px;color:var(--ink-dim);padding:8px 14px;border-radius:9px 9px 0 0;cursor:pointer;position:relative;top:1px;transition:color .12s}
+.srf-bank .tab:hover{color:var(--ink-sec)}
 .srf-bank .tab .ct{color:var(--ink-faint)}
 .srf-bank .tab.on{color:var(--ink);background:var(--panel);border:1px solid var(--edge-soft);border-bottom:1px solid var(--panel)}
 .srf-bank .facet{padding:18px 2px 2px}
@@ -173,13 +201,17 @@ export const css = `
 .srf-bank .sw{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.08)}
 .srf-bank .field.empty{border-style:dashed;background:transparent}
 .srf-bank .field.empty .val{color:var(--ink-dim)}
-.srf-bank .field.empty .cta{margin-top:9px;display:inline-block;font-size:12px;color:var(--lime);border:1px solid #3a4a12;background:#20260c;border-radius:8px;padding:6px 11px;cursor:pointer}
+.srf-bank .field.empty .cta{margin-top:9px;display:inline-block;font-size:12px;color:var(--lime);border:1px solid #3a4a12;background:#20260c;border-radius:8px;padding:6px 11px;cursor:pointer;transition:filter .12s}
+.srf-bank .field.empty .cta:hover{filter:brightness(1.25)}
 .srf-bank .roadmap{display:flex;gap:10px;margin-top:9px;flex-wrap:wrap}
 .srf-bank .stg{font-size:11.5px;color:var(--ink-sec);background:#0f1116;border:1px solid var(--edge);border-radius:20px;padding:3px 11px}
 .srf-bank .stg.done{color:var(--lime);border-color:#3a4a12}
 .srf-bank .stg.now{color:var(--indigo);border-color:#2c2a55;background:#14122b}
 .srf-bank .rows{display:flex;flex-direction:column;gap:8px}
-.srf-bank .brow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:11px 15px}
+.srf-bank .brow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:11px 15px;cursor:pointer;transition:border-color .12s,background .12s}
+.srf-bank .brow:hover{border-color:var(--edge-soft);background:linear-gradient(180deg,#15131f,#121319)}
+.srf-bank .brow.viewall{background:transparent;border-style:dashed}
+.srf-bank .brow.viewall .bt{color:var(--ink-dim);font-size:12.5px}
 .srf-bank .brow .bx{width:13px;height:13px;border-radius:4px;border:1px solid var(--edge);flex:0 0 auto}
 .srf-bank .brow .bx.now{border-color:var(--indigo);background:#14122b}
 .srf-bank .brow .bx.blocked{border-color:#5a2c30;background:#241214}
@@ -188,7 +220,8 @@ export const css = `
 .srf-bank .brow .bt .dim{color:var(--ink-dim);font-weight:400}
 .srf-bank .brow .bm{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);flex:0 0 auto}
 .srf-bank .artgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.srf-bank .art{background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:10px;cursor:pointer}
+.srf-bank .art{background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:10px;cursor:pointer;transition:border-color .12s,transform .12s}
+.srf-bank .art:hover{border-color:var(--edge-soft);transform:translateY(-2px)}
 .srf-bank .athumb{height:84px;border-radius:8px;background:linear-gradient(150deg,#E0764A,#0d0e13)}
 .srf-bank .athumb.image{background:linear-gradient(150deg,#9B5DE5,#0d0e13)}
 .srf-bank .athumb.ad{background:linear-gradient(150deg,#F2994A,#0d0e13)}
@@ -199,5 +232,6 @@ export const css = `
 .srf-bank .capture .ic{width:38px;height:38px;border-radius:11px;background:#0f1116;border:1px solid var(--edge);display:grid;place-items:center;color:var(--ink-dim);font-size:17px;flex:0 0 auto}
 .srf-bank .capture .tx{font-size:13px;color:var(--ink-sec)}
 .srf-bank .capture .tx b{color:var(--ink);font-weight:500}
-.srf-bank .capture .bank{margin-left:auto;font-size:12.5px;color:#0c0d10;background:var(--lime);font-weight:600;border-radius:9px;padding:8px 15px;cursor:pointer;white-space:nowrap}
+.srf-bank .capture .bank{margin-left:auto;font-size:12.5px;color:#0c0d10;background:var(--lime);font-weight:600;border-radius:9px;padding:8px 15px;cursor:pointer;white-space:nowrap;transition:filter .12s}
+.srf-bank .capture .bank:hover{filter:brightness(1.08)}
 `;

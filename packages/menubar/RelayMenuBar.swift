@@ -3391,7 +3391,7 @@ struct ActionConsentDrop: View {
 
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.poll(); self?.refreshPermissionGate() }
+            MainActor.assumeIsolated { self?.poll(); self?.refreshPermissionGate(); self?.checkOpenOSTrigger() }
         }
         installHotKey()
         installGlow()
@@ -3554,6 +3554,16 @@ struct ActionConsentDrop: View {
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
     }
     @objc private func openOSWindow() { OSShellWindowController.shared.show() }
+
+    // Programmatic open hook: `touch ~/.relay/open-os` opens the OS window (for scripted
+    // launches / self-test, since this accessory app can't be driven via LaunchServices).
+    private func checkOpenOSTrigger() {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-os")
+        if FileManager.default.fileExists(atPath: p) {
+            try? FileManager.default.removeItem(atPath: p)
+            OSShellWindowController.shared.show()
+        }
+    }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
         guard let spec = sender.representedObject as? WidgetSpec else { return }
         showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
