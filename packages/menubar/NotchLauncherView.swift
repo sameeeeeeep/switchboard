@@ -13,6 +13,52 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers   // UTType.fileURL for the file-intake drop target
 
+// A native file-drop catcher for the launcher intake bar — the SAME proven notch-drop plumbing the talking
+// pill uses (FileDropView): register BOTH `.fileURL` AND the legacy NSFilenamesPboardType (Finder / Dock
+// stacks hand files over as one or the other — registering only `.fileURL`, as the old SwiftUI `.onDrop`
+// did, silently missed the filenames case), an OPAQUE full-bounds hit area (a clear view only takes a drop
+// where it has drawn pixels), and NO NSApp.activate (that would silence the global ⌥⌥ monitor). SwiftUI
+// lays this out to the intake bar's bounds, so there's no manual notch-frame math. The LauncherPanel is
+// already key-capable (canBecomeKey = true), which is the other half of why the drop now lands.
+struct FileDropCatcher: NSViewRepresentable {
+    var onDrop: (URL) -> Void
+    var onTargeted: (Bool) -> Void
+    func makeNSView(context: Context) -> DropCatchNSView {
+        let v = DropCatchNSView(); v.onDropURL = onDrop; v.onTargeted = onTargeted; return v
+    }
+    func updateNSView(_ v: DropCatchNSView, context: Context) { v.onDropURL = onDrop; v.onTargeted = onTargeted }
+}
+
+final class DropCatchNSView: NSView {
+    var onDropURL: ((URL) -> Void)?
+    var onTargeted: ((Bool) -> Void)?
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor   // opaque hit area — a clear view only accepts drops on drawn pixels
+        registerForDraggedTypes([.fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType")])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    private func fileURLs(_ s: NSDraggingInfo) -> [URL] {
+        let pb = s.draggingPasteboard
+        if let u = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !u.isEmpty { return u }
+        if let names = pb.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String], !names.isEmpty { return names.map { URL(fileURLWithPath: $0) } }
+        return []
+    }
+    override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation {
+        let ok = !fileURLs(s).isEmpty; onTargeted?(ok); return ok ? .copy : []   // NO NSApp.activate — keeps the ⌥⌥ monitor alive
+    }
+    override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { fileURLs(s).isEmpty ? [] : .copy }
+    override func draggingExited(_ s: NSDraggingInfo?) { onTargeted?(false) }
+    override func draggingEnded(_ s: NSDraggingInfo) { onTargeted?(false) }
+    override func prepareForDragOperation(_ s: NSDraggingInfo) -> Bool { !fileURLs(s).isEmpty }
+    override func performDragOperation(_ s: NSDraggingInfo) -> Bool {
+        onTargeted?(false)
+        guard let u = fileURLs(s).first else { return false }
+        onDropURL?(u); return true
+    }
+}
+
 struct NotchLauncherView: View {
     // ---- inputs (see the init doc for the exact contract the host wires up) ----
     let listings: [SBListing]                     // the live catalog, already filtered to what should appear
@@ -42,6 +88,7 @@ struct NotchLauncherView: View {
     @State private var staged: StagedFile? = nil     // the file handed to the next app clicked
     @State private var dropTargeted: Bool = false
     @State private var hoveredId: String? = nil
+    @State private var clipOffer: String? = nil      // the clipboard string offered as an addable context object (opt-in; nil once added)
     @FocusState private var searchFocused: Bool      // keep the field focused across grid re-renders
 
     // A dropped file + its human-readable size, resolved once at drop time.
@@ -75,6 +122,7 @@ struct NotchLauncherView: View {
             header
             catTabs
             intakeBar
+            if staged == nil, let c = clipOffer { clipboardOfferRow(c) }   // opt-in: the clipboard as addable context
             grid
             hintLine
         }
@@ -85,7 +133,50 @@ struct NotchLauncherView: View {
         .clipShape(NotchDropShape())
         .ignoresSafeArea()
         .onExitCommand(perform: onClose)                              // Esc closes the launcher
-        .onAppear { DispatchQueue.main.async { searchFocused = true } }
+        .onAppear {
+            DispatchQueue.main.async { searchFocused = true }
+            // Peek the clipboard when ⌥⌥ opens — if it holds text, offer it (never auto-attached).
+            if let s = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                clipOffer = s
+            }
+        }
+    }
+
+    // ── clipboard offer: an addable chip that stages the clipboard as the context handed to the next app ──
+    // Opt-in — the clipboard rides along ONLY if the user taps Add. Adding writes it to a temp clipboard.txt
+    // and stages it exactly like a dropped file, so it flows through the SAME onLaunch(listing, url) path.
+    private func clipboardOfferRow(_ s: String) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Button(action: { withAnimation(.easeOut(duration: 0.16)) { addClipboard(s) } }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.on.clipboard").font(.system(size: 10, weight: .medium)).foregroundColor(.lime)
+                    Text(clipPeek(s)).font(.hanken(10.5, .medium)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus").font(.system(size: 7, weight: .bold))
+                        Text("Add").font(.hanken(9.5, .semibold))
+                    }.foregroundColor(.page).padding(.horizontal, 7).padding(.vertical, 3)
+                     .background(Capsule().fill(Color.lime))
+                }
+                .padding(.leading, 9).padding(.trailing, 5).padding(.vertical, 4)
+                .background(Capsule().fill(Color.white.opacity(0.05)))
+                .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
+            }.buttonStyle(.plain).frame(maxWidth: 240)
+             .help("Add your clipboard as context for the app you launch")
+        }
+    }
+    private func clipPeek(_ s: String) -> String {
+        let flat = s.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return flat.count <= 24 ? flat : String(flat.prefix(24)) + "\u{2026}"
+    }
+    private func addClipboard(_ s: String) {
+        let dir = NSTemporaryDirectory() + "sb-clip-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let file = dir + "/clipboard.txt"
+        guard (try? s.write(toFile: file, atomically: true, encoding: .utf8)) != nil else { return }
+        stage(URL(fileURLWithPath: file))   // becomes the staged context — the intake bar now shows the clipboard chip
+        clipOffer = nil
     }
 
     // ── header: ⌥⌥ · LAUNCH kicker · project chip · search ──────────────────────────────
@@ -176,13 +267,12 @@ struct NotchLauncherView: View {
         .overlay(RoundedRectangle(cornerRadius: SBr.sm)
             .strokeBorder(staged == nil ? Color.edge : Color.lime.opacity(0.45),
                           style: StrokeStyle(lineWidth: 1, dash: staged == nil ? [4, 3] : [])))
-        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
-            guard let p = providers.first else { return false }
-            _ = p.loadObject(ofClass: URL.self) { url, _ in
-                guard let url = url else { return }
-                DispatchQueue.main.async { stage(url) }
-            }
-            return true
+        // Native drop catcher (see FileDropCatcher) — replaces the SwiftUI `.onDrop`, which registered only
+        // `.fileURL` and used flaky async NSItemProvider loading, so Finder drags never staged. Inset on the
+        // trailing edge so the clear "✕" (visible when a file is staged) stays clickable.
+        .overlay {
+            FileDropCatcher(onDrop: { stage($0) }, onTargeted: { t in dropTargeted = t })
+                .padding(.trailing, 44)
         }
     }
 
@@ -226,10 +316,18 @@ struct NotchLauncherView: View {
         let ringed = hasFile && takes                      // …one it can → the lime "handles this" ring
         let hovering = hoveredId == l.id
         return Button(action: { onLaunch(l, takes ? staged?.url : nil) }) {
-            VStack(spacing: 7) {
+            VStack(spacing: 6) {
                 tileArt(l)
-                Text(l.name).font(.hanken(10.5)).foregroundColor(.inkDim)
-                    .lineLimit(1).truncationMode(.tail)
+                VStack(spacing: 1) {
+                    Text(l.name).font(.hanken(10.5, .medium)).foregroundColor(.inkDim)
+                        .lineLimit(1).truncationMode(.tail)
+                    // The app's one-line tagline under the name — small, ink-dim, single line (the row was
+                    // name-only before; the description is what tells apps apart at a glance).
+                    if !l.tagline.isEmpty {
+                        Text(l.tagline).font(.hanken(8.5)).foregroundColor(.inkFaint)
+                            .lineLimit(1).truncationMode(.tail)
+                    }
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 11).padding(.bottom, 9).padding(.horizontal, 6)

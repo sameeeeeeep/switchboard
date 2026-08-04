@@ -108,7 +108,8 @@
             "appendIntent": "string — plain-language description of step 2. Optional."
           }
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "crest",
@@ -179,7 +180,8 @@
             "notes": "string — notes, an outline, or a topic to turn into a slide deck. Required."
           }
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "dub",
@@ -253,7 +255,8 @@
             "audio": "string — an audio recording as a data:audio/… URL, transcribed locally on the device. Provide this OR transcript."
           }
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "ideabrain",
@@ -335,7 +338,8 @@
         "Read a website, repo, folder, URL or paste — real bytes, never a guess",
         "Multi-select what your project actually is — you assert, the model only structures",
         "One kind:project/brand context every wrapp opens pre-loaded"
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "adpulse",
@@ -714,7 +718,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "capp",
@@ -738,7 +743,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "convert",
@@ -830,7 +836,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "flow",
@@ -887,7 +894,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "identity",
@@ -944,7 +952,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "marquee",
@@ -1006,7 +1015,8 @@
             "transcript": "string — the meeting transcript or rough notes to structure. Required."
           }
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "palette",
@@ -1264,7 +1274,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "saas",
@@ -1288,7 +1299,8 @@
           "kind": "model",
           "class": "local"
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "shelf",

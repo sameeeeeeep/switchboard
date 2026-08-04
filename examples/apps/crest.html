@@ -70,7 +70,32 @@
       .fm { display: flex; flex-direction: column; gap: 2px; }
       .fm-k { font: 500 9px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
       .fm-v { font: 500 13px/1.4 var(--sans); color: var(--ink); }
-      .found-rat { font: 400 12.5px/1.6 var(--sans); color: var(--ink-dim); margin-top: 12px; border-top: 1px solid var(--edge-soft); padding-top: 11px; }
+      .found-rat { font: 400 12.5px/1.6 var(--sans); color: var(--ink-dim); margin-top: 16px; border-top: 1px solid var(--edge-soft); padding-top: 11px; }
+      /* foundation assembly board — each axis is an optionCards slate + inline tweak */
+      .found-hint { font: 400 12.5px/1.5 var(--sans); color: var(--ink-dim); margin-top: 8px; }
+      .found-axis { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--edge-soft); }
+      .axis-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+      .axis-head .kicker.sub { color: var(--ink-sec); }
+      .axis-regen { font: 500 10.5px/1 var(--mono); background: none; border: 1px solid var(--edge); color: var(--ink-dim); border-radius: 999px; padding: 5px 9px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .axis-regen:hover { border-color: var(--edge-soft); color: var(--ink-sec); }
+      .axis-regen:disabled { opacity: .45; cursor: default; }
+      .axis-sw { display: flex; gap: 6px; margin-top: 9px; }
+      .axis-swi { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255,255,255,.14); }
+      /* inline tweak — indigo edit-affordance chrome only (never the lime decision accent) */
+      .axis-tweak { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .tweak-k { font: 500 9px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+      .tweak-color { -webkit-appearance: none; appearance: none; width: 26px; height: 26px; padding: 0; border: 1px solid #5B4FE8; border-radius: 6px; background: none; cursor: pointer; }
+      .tweak-color::-webkit-color-swatch-wrapper { padding: 2px; }
+      .tweak-color::-webkit-color-swatch { border: none; border-radius: 4px; }
+      .tweak-btn { font: 500 10.5px/1 var(--mono); background: none; border: 1px solid color-mix(in srgb, #5B4FE8 55%, var(--edge)); color: #8E86F2; border-radius: 999px; padding: 5px 10px; cursor: pointer; transition: border-color .15s, color .15s; }
+      .tweak-btn:hover { border-color: #5B4FE8; color: #A9A2F6; }
+      .tweak-row { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; flex-wrap: wrap; }
+      .tweak-row[hidden] { display: none; }
+      .tweak-in { flex: 1; min-width: 90px; background: var(--inset); border: 1px solid color-mix(in srgb, #5B4FE8 40%, var(--edge)); border-radius: 8px; color: var(--ink); font: 400 12.5px/1.4 var(--sans); padding: 7px 10px; outline: none; }
+      .tweak-in.word { flex: 0 1 96px; }
+      .tweak-in:focus { border-color: #5B4FE8; }
+      .tweak-save { flex: none; font: 600 11px/1 var(--sans); background: #5B4FE8; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+      .tweak-save:hover { filter: brightness(1.08); }
 
       /* option cards (directions — house atom from kit/ui.js optionCards) */
       .opts { display: flex; flex-direction: column; gap: 8px; }

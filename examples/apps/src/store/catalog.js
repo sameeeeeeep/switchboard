@@ -5,7 +5,11 @@
 // `pro` lists the pro-tier features per the Free/Pro split rubric: free = the complete core loop,
 // pro = batch/automation/depth on top. `pro: null` means the wrapp is free-only today.
 
-export const APPS = [
+// Raw shelf entries. `hidden: true` UNLISTS a wrapp reversibly — it stays here (route, tokens,
+// pro all preserved) but the filtered `APPS` export below drops it, so it vanishes from every tile,
+// count, and category on the store home. Flip the flag off (or delete it) to re-list. This is the
+// web half of the "verified/listed" gate that mirrors catalog.json's `hidden`.
+const ALL_APPS = [
   // featured
   { id: "brandbrain", name: "brandbrain", href: "https://brandbrain.thelastprompt.ai/build",
     tokens: 4_800_000, updates: 61, pro: ["multi-brand portfolio", "competitor war-room refresh"] },
@@ -16,17 +20,17 @@ export const APPS = [
 
   // validate an idea (ideabrain templates — free-only presets)
   { id: "mkt", name: "Marketplace Validator", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=marketplace",
-    tokens: 260_000, updates: 8, pro: null },
+    tokens: 260_000, updates: 8, pro: null, hidden: true },
   { id: "capp", name: "Consumer App Planner", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=app",
-    tokens: 230_000, updates: 7, pro: null },
+    tokens: 230_000, updates: 7, pro: null, hidden: true },
   { id: "saas", name: "SaaS Thesis", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=saas",
-    tokens: 240_000, updates: 7, pro: null },
+    tokens: 240_000, updates: 7, pro: null, hidden: true },
   { id: "retail", name: "Retail Concept", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=retail",
-    tokens: 210_000, updates: 6, pro: null },
+    tokens: 210_000, updates: 6, pro: null, hidden: true },
   { id: "hardware", name: "Hardware Reality Check", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=hardware",
-    tokens: 220_000, updates: 6, pro: null },
+    tokens: 220_000, updates: 6, pro: null, hidden: true },
   { id: "feature", name: "Feature Case", href: "https://brandbrain.thelastprompt.ai/build?studio=idea&template=feature",
-    tokens: 190_000, updates: 5, pro: null },
+    tokens: 190_000, updates: 5, pro: null, hidden: true },
 
   // the founder stack
   { id: "adpulse", name: "AdPulse", href: "https://adpulse.thelastprompt.ai",
@@ -50,7 +54,7 @@ export const APPS = [
   { id: "marquee", name: "Marquee", href: "https://marquee.thelastprompt.ai",
     tokens: 300_000, updates: 2, pro: ["multi-page sites", "publish to a domain"] },
   { id: "huddle", name: "Huddle", href: "https://huddle.thelastprompt.ai",
-    tokens: 150_000, updates: 1, pro: null },
+    tokens: 150_000, updates: 1, pro: null, hidden: true },
 
   // after hours
   { id: "natal", name: "NATAL", href: "https://natal.thelastprompt.ai",
@@ -64,12 +68,17 @@ export const APPS = [
   { id: "cartridge", name: "Cartridge", href: "https://cartridge.thelastprompt.ai",
     tokens: 720_000, updates: 12, pro: null },
   { id: "cast", name: "Cast", href: "https://cast.thelastprompt.ai",
-    tokens: 1_300_000, updates: 21, pro: ["multi-persona rosters", "reel batching"] },
+    tokens: 1_300_000, updates: 21, pro: ["multi-persona rosters", "reel batching"], hidden: true },
   { id: "prism", name: "Prism", href: "https://prism.thelastprompt.ai",
     tokens: 310_000, updates: 8, pro: null },
   { id: "adgen", name: "Adwall", href: "https://adgen.thelastprompt.ai",
     tokens: 540_000, updates: 11, pro: null },
 ];
+
+// The listed shelf. Unlisted (`hidden`) wrapps are dropped here once, so every downstream consumer
+// — tiles, category counts, APP_BY_ID routing, the "new arrivals" index — inherits the filter for
+// free. Re-listing is a one-flag change in ALL_APPS above.
+export const APPS = ALL_APPS.filter((a) => !a.hidden);
 
 // PARKED — the 14 one-off wrapps, trimmed from the shelf until each has its own subdomain
 // (per-origin isolation: a shared path would mean one grant + one storage partition for all of

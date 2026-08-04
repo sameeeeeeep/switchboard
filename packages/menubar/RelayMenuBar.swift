@@ -2240,7 +2240,7 @@ struct GodRefChipVM: Identifiable {
     let id: UUID
     let label: String
     let thumb: NSImage?
-    let isScreenshot: Bool
+    let icon: String   // SF Symbol shown when there's no thumbnail (doc / camera / clipboard)
 }
 
 /// A compact removable reference chip inside the notch pill — thumbnail/icon + name + ✕. Kept slim and
@@ -2255,7 +2255,7 @@ struct RefChip: View {
                     .frame(width: 20, height: 14).clipShape(RoundedRectangle(cornerRadius: 3))
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.lime.opacity(0.5), lineWidth: 1))
             } else {
-                Image(systemName: vm.isScreenshot ? "camera.viewfinder" : "doc")
+                Image(systemName: vm.icon)
                     .font(.system(size: 9, weight: .semibold)).foregroundColor(.lime).frame(width: 14)
             }
             Text(vm.label).font(.hanken(10.5, .medium)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.middle)
@@ -2266,6 +2266,29 @@ struct RefChip: View {
         .padding(.leading, 6).padding(.trailing, 5).padding(.vertical, 3)
         .background(Capsule().fill(Color.white.opacity(0.06)))
         .frame(maxWidth: 230, alignment: .leading)
+    }
+}
+
+/// The clipboard offered as an ADDABLE context object — a clipboard glyph + a short text peek + an "Add"
+/// affordance. Opt-in: nothing rides the turn until the user taps Add (then it becomes a normal ref chip).
+struct ClipboardOfferChip: View {
+    let peek: String
+    var onAdd: () -> Void
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc.on.clipboard").font(.system(size: 9, weight: .semibold)).foregroundColor(.lime).frame(width: 14)
+            Text(peek).font(.hanken(10.5, .medium)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.tail)
+            Button(action: onAdd) {
+                HStack(spacing: 3) {
+                    Image(systemName: "plus").font(.system(size: 7, weight: .bold))
+                    Text("Add").font(.hanken(9.5, .semibold))
+                }.foregroundColor(.page).padding(.horizontal, 7).padding(.vertical, 3)
+                 .background(Capsule().fill(Color.lime))
+            }.buttonStyle(.plain).help("Add your clipboard as context for God")
+        }
+        .padding(.leading, 7).padding(.trailing, 4).padding(.vertical, 3)
+        .background(Capsule().fill(Color.white.opacity(0.06)))
+        .frame(maxWidth: 250, alignment: .leading)
     }
 }
 
@@ -2280,12 +2303,16 @@ struct GodStatusDrop: View {
     // Only passed on God's own request phases (never ⌃⌥ dictation), so a grab can't leak into the dictation pill.
     var refs: [GodRefChipVM] = []
     var onRemoveRef: ((UUID) -> Void)? = nil
+    // The user's clipboard, offered as an ADDABLE context object — a peek + an "add" affordance. Opt-in:
+    // present only while listening and only until the user adds it (then it becomes a normal ref chip).
+    var clipboardPeek: String? = nil
+    var onAddClipboard: (() -> Void)? = nil
     // Context-first: the project this run is grounded in, switchable RIGHT as God works (the user's ask —
     // choose the project from a dropdown in the thinking pill). Empty projects → the chip is hidden.
     var projects: [(id: String, name: String)] = []
     var activeProjectId: String? = nil
     var onSelectProject: ((String?) -> Void)? = nil
-    private var hasExtras: Bool { !refs.isEmpty || (!projects.isEmpty && onSelectProject != nil) }
+    private var hasExtras: Bool { !refs.isEmpty || clipboardPeek != nil || (!projects.isEmpty && onSelectProject != nil) }
     var body: some View {
         VStack(spacing: 7) {
             HStack(spacing: 12) {
@@ -2299,6 +2326,9 @@ struct GodStatusDrop: View {
                 VStack(spacing: 4) {
                     ForEach(refs) { RefChip(vm: $0, onRemove: onRemove) }
                 }
+            }
+            if let peek = clipboardPeek, let onAdd = onAddClipboard {
+                ClipboardOfferChip(peek: peek, onAdd: onAdd)
             }
         }
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, hasExtras ? 12 : 15)
@@ -2777,7 +2807,7 @@ enum RegionPick { case cancel; case full; case region(CGRect) }   // region: scr
 // A reference the user staged for God's next ⌃⌃: a dropped FILE or a grabbed SCREENSHOT. Several can ride
 // one turn (multi-file + multi-screenshot). Each shows as a removable chip in the notch pill and rides to
 // god.mjs via GOD_FILES / GOD_IMAGES. `path` is the file (or the captured jpg); `thumb` previews images.
-enum GodRefKind { case file, screenshot }
+enum GodRefKind { case file, screenshot, clipboard }
 struct GodRef: Identifiable, Equatable {
     let id = UUID()
     let kind: GodRefKind
@@ -2785,6 +2815,10 @@ struct GodRef: Identifiable, Equatable {
     var thumb: NSImage?
     let label: String
     var full = false     // a WHOLE-screen grab (the auto-share chip / fn+click full) — marks the take-it-back target
+    // The chip glyph per kind — a clipboard-add reads as clipboard, not a generic doc.
+    var sfSymbol: String {
+        switch kind { case .screenshot: return "camera.viewfinder"; case .file: return "doc"; case .clipboard: return "doc.on.clipboard" }
+    }
     static func == (a: GodRef, b: GodRef) -> Bool { a.id == b.id }
 }
 
@@ -2995,6 +3029,7 @@ struct ActionConsentDrop: View {
     private var captureFnTimer: Timer?                // polls mouse-button + fn (free reads) to drive fn-capture WITHOUT the Input-Monitoring grant a global mouse monitor needs
     private var capturePrevBtnDown = false            // edge-detect the left button between poll ticks
     private var godRefs: [GodRef] = []                // the references staged for God's next ⌃⌃ — dropped files + grabbed screenshots (several allowed); each a removable chip
+    private var clipboardOffer: String? = nil         // the clipboard string offered THIS turn (opt-in add); nil once added or the turn ends — never auto-attached
     private var notchDropPanel: NSPanel?              // the full-notch file drop zone, live during listening
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
@@ -3364,9 +3399,14 @@ struct ActionConsentDrop: View {
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
-        // Spoken concierge: the welcome tour reads each step aloud in God's voice.
+        // Spoken concierge: the welcome tour AND teach mode read each step aloud in God's voice.
         CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
+        // Teach mode senses locally: hand CursorGuide a fresh AmbientSignal on demand so its doneWhen
+        // watcher can decide when a step is done. Reuses the same LOCAL sensor ambient mode uses (no
+        // network/screenshot beyond the opt-in Vision OCR); wired unconditionally so teach works even
+        // when ambient mode is off.
+        CursorGuide.shared.sampleSignal = { [weak self] in self?.ambientSensor.sampleNow() }
         startBundledWebServer()        // packaged app: serve the bundled wrapps/widgets locally so ⌥⌥ works offline
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
@@ -3507,8 +3547,13 @@ struct ActionConsentDrop: View {
         menu.addItem(tour)
         let open = NSMenuItem(title: "Open panel", action: #selector(openPanelFromMenu), keyEquivalent: ""); open.target = self
         menu.addItem(open)
+        // The windowed OS — the "come back to" desk the notch points at (docs/OS.md). Single window, the
+        // rail swaps the detail pane in place. ⌘O opens it; lazily created on first show.
+        let openOS = NSMenuItem(title: "Open OS", action: #selector(openOSWindow), keyEquivalent: "o"); openOS.target = self
+        menu.addItem(openOS)
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
     }
+    @objc private func openOSWindow() { OSShellWindowController.shared.show() }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
         guard let spec = sender.representedObject as? WidgetSpec else { return }
         showNotchWidget(spec, onOpen: { [weak self] in self?.hideNotchWidget() })
@@ -3551,6 +3596,7 @@ struct ActionConsentDrop: View {
     }
     @MainActor @objc private func clearAttachedFileForGod() {
         godRefs.removeAll()
+        clipboardOffer = nil
         (notchDropPanel?.contentView as? FileDropView)?.attached = false
         if godListening || godRunning { updateGodStatusDrop(glowModel.state) }
         toast("Cleared attached references")
@@ -3564,9 +3610,42 @@ struct ActionConsentDrop: View {
     // Drop every staged reference — called when a turn ends/cancels so a screenshot or file can't leak into
     // the next gesture (the ⌃⌥ dictation pill was showing a stale grab because refs outlived their turn).
     @MainActor private func clearGodRefs() {
+        clipboardOffer = nil                          // the offer never survives a turn
         guard !godRefs.isEmpty else { return }
         godRefs.removeAll()
         (notchDropPanel?.contentView as? FileDropView)?.attached = false
+    }
+
+    // ── Clipboard as an ADDABLE context object (opt-in) ──────────────────────────────────────────────
+    // When a ⌃⌃ turn opens we peek the clipboard; if it holds text, the listening pill offers it as an
+    // addable chip. NOTHING is attached until the user taps Add — this is the user's own clipboard, placed
+    // only on their explicit consent (never auto-dumped into a prompt).
+    @MainActor private func captureClipboardOffer() {
+        if let s = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            clipboardOffer = s
+        } else { clipboardOffer = nil }
+    }
+    // A one-line, ~24-char peek for the chip (newlines flattened, ellipsized).
+    private func clipPeek(_ s: String) -> String {
+        let flat = s.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return flat.count <= 24 ? flat : String(flat.prefix(24)) + "\u{2026}"
+    }
+    // Add tapped: persist the clipboard to a temp text file (basename clipboard.txt) and stage it as a
+    // removable ref. It rides god.mjs exactly like a dropped file (GOD_FILES, folded in as UNTRUSTED
+    // reference) AND is named via GOD_CLIPBOARD — the same temp-file+env mechanism GOD_FILE uses.
+    @MainActor private func addClipboardRef() {
+        guard let s = clipboardOffer, !s.isEmpty else { return }
+        let dir = NSTemporaryDirectory() + "god-clip-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let file = dir + "/clipboard.txt"
+        guard (try? s.write(toFile: file, atomically: true, encoding: .utf8)) != nil else { return }
+        godRefs.append(GodRef(kind: .clipboard, path: file, thumb: nil, label: "Clipboard: \(clipPeek(s))"))
+        godLog("addClipboardRef: staged clipboard (\(s.count) chars)")
+        clipboardOffer = nil                          // consumed → the offer chip becomes a normal ref chip
+        NSSound(named: "Tink")?.play()
+        (notchDropPanel?.contentView as? FileDropView)?.attached = true
+        updateGodStatusDrop(glowModel.state)
     }
 
     // A picker over the whole installed catalog — every wrapp with a page (and thus an <id>_run tool)
@@ -4783,6 +4862,7 @@ struct ActionConsentDrop: View {
             shareScreenThisTurn = readDefaultShare()
             installCaptureGestureMonitors()   // pointer stays free; fn+click = full/toggle, fn+drag = region, drag a file = reference
             showNotchDropZone()               // the full notch becomes a file-drop target while you talk
+            captureClipboardOffer()           // if the clipboard holds text, offer it as an addable chip (opt-in)
             // Default-share ON → the whole screen is shared the moment you start talking (a "Whole screen" chip
             // is visible the entire time = the honest "my screen is shared now" signal). fn+click then TOGGLES it.
             if shareScreenThisTurn { stageAutoScreen() }
@@ -5055,11 +5135,17 @@ struct ActionConsentDrop: View {
         // Files the user attached for God (the file analog of the screenshot): GOD_FILES (newline-separated;
         // GOD_FILE = first, back-compat). god.mjs inlines text/PDF/doc/xlsx as untrusted reference data, SEES
         // images. NOT cleared here — a project-switch re-run reuses them; they clear when the turn goes idle.
-        if let first = filePaths.first {
-            env["GOD_FILE"] = first
-            env["GOD_FILES"] = filePaths.joined(separator: "\n")
-            godLog("spawnGod: attaching \(filePaths.count) file(s)")
+        // The opt-in clipboard the user ADDED rides the SAME path (a temp clipboard.txt) so god.mjs folds it
+        // in as untrusted reference today; GOD_CLIPBOARD also names it — the same temp-file+env mechanism as
+        // GOD_FILE, not a new IPC. Only present when the user tapped Add (never auto-attached).
+        let clipPaths = godRefs.filter { $0.kind == .clipboard }.map { $0.path }.filter { FileManager.default.fileExists(atPath: $0) }
+        let attachPaths = filePaths + clipPaths
+        if let first = attachPaths.first {
+            env["GOD_FILE"] = filePaths.first ?? first
+            env["GOD_FILES"] = attachPaths.joined(separator: "\n")
+            godLog("spawnGod: attaching \(filePaths.count) file(s)\(clipPaths.isEmpty ? "" : " + clipboard")")
         }
+        if let clip = clipPaths.first { env["GOD_CLIPBOARD"] = clip }
         if let p = point, let screen = NSScreen.main, screen.frame.width > 0, screen.frame.height > 0 {
             let fx = (p.x - screen.frame.minX) / screen.frame.width
             let fy = (screen.frame.maxY - p.y) / screen.frame.height
@@ -5310,6 +5396,7 @@ struct ActionConsentDrop: View {
 
     // Map God's published phase to the glow/notch state (drives the notch pill + cursor caption).
     @MainActor private func readGodState() {
+        readGodPoint()   // model-chosen [POINT] → the shared pulsing ring (God + guide use one ring)
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
         let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch s {
@@ -5325,6 +5412,25 @@ struct ActionConsentDrop: View {
         default: break   // idle handled on termination
         }
         // setGlow() drives the cursor glow AND the notch phase drop; nothing more to do per tick.
+    }
+
+    // God's model-chosen [POINT] → the SAME pulsing ring the guide uses. Today glowModel.target is only
+    // ever set from the user's ⌃⌥ click (triggerGod ~L4981); companion.point() is a console stub, so a
+    // point the MODEL chose never reaches the ring. This reads ~/.relay/god-point.json (x,y in GLOBAL
+    // bottom-left screen points, matching the ⌃⌥-click convention) and marks the ring from it — so God
+    // and the teach-guide share one ring visual.
+    //
+    // TODO(god.mjs, out of this file's scope): god.mjs must WRITE ~/.relay/god-point.json when it parses
+    // a [POINT:x,y] from the model (and delete/emit {} to clear). This is the READ side only; until the
+    // write side ships this is simply inert (the file never appears). god.mjs is owned by another agent.
+    @MainActor private func readGodPoint() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-point.json")
+        guard FileManager.default.fileExists(atPath: path) else { return }   // absent → keep any ⌃⌥-set mark
+        guard let obj = readJSON(path) as? [String: Any] else { return }
+        // An explicit clear ({} or {"clear":true} / no numeric x,y) drops the mark.
+        guard let x = (obj["x"] as? NSNumber)?.doubleValue, let y = (obj["y"] as? NSNumber)?.doubleValue,
+              let screen = NSScreen.main else { glowModel.target = nil; return }
+        glowModel.target = CGPoint(x: x - screen.frame.minX, y: screen.frame.maxY - y)   // → overlay top-left (same as L4981)
     }
 
     // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
@@ -5423,9 +5529,12 @@ struct ActionConsentDrop: View {
         // drive-status pills — so a grabbed screenshot / dropped file can't leak into the dictation pill.
         let showRefs = (label == "Listening" || label == "Thinking" || label == "Speaking")
         let refVMs: [GodRefChipVM] = showRefs ? godRefs.map {
-            GodRefChipVM(id: $0.id, label: $0.label, thumb: $0.thumb, isScreenshot: $0.kind == .screenshot)
+            GodRefChipVM(id: $0.id, label: $0.label, thumb: $0.thumb, icon: $0.sfSymbol)
         } : []
-        let refsKey = refVMs.map { $0.id.uuidString }.joined(separator: ",")
+        // The clipboard offer rides ONLY the listening pill — that's the window where an Add still makes the
+        // turn (spawnGod reads godRefs at ⌃-send). Included in the dedup key so it doesn't restart the waveform.
+        let clipPeekText: String? = (label == "Listening") ? clipboardOffer.map { clipPeek($0) } : nil
+        let refsKey = refVMs.map { $0.id.uuidString }.joined(separator: ",") + (clipPeekText != nil ? "|clip" : "")
         let showProjects = (label == "Thinking" || label == "Speaking")
         let activeProj = showProjects ? readDefaultId() : nil
         if godStatusLabel == label, godStatusRefsKey == refsKey, godStatusProject == activeProj, godStatusPanel?.isVisible == true { return }
@@ -5460,7 +5569,8 @@ struct ActionConsentDrop: View {
             godStatusPanel.isOpaque = false; godStatusPanel.backgroundColor = .clear; godStatusPanel.hasShadow = false
             godStatusPanel.level = .popUpMenu; godStatusPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         }
-        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern, refs: refVMs, onRemoveRef: onRemove, projects: projs, activeProjectId: activeProj, onSelectProject: onSel))
+        let onAddClip: (() -> Void)? = clipPeekText == nil ? nil : { [weak self] in self?.addClipboardRef() }
+        godStatusPanel.contentView = NoInsetHostingView(rootView: GodStatusDrop(label: label, accent: accent, pattern: pattern, refs: refVMs, onRemoveRef: onRemove, clipboardPeek: clipPeekText, onAddClipboard: onAddClip, projects: projs, activeProjectId: activeProj, onSelectProject: onSel))
         let size = godStatusPanel.contentView!.fittingSize
         godStatusPanel.setContentSize(size)
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
@@ -5754,7 +5864,10 @@ struct ActionConsentDrop: View {
     @MainActor private func showStore() {
         model.refreshFiles(); ollama.refresh()
         hidePanel()
-        let listings = readCatalog()
+        // Drop UNLISTED wrapps (`hidden: true`) from every store surface here, at the single feed that
+        // fills both the featured front page and the classic StoreView. Kept out of readCatalog() on
+        // purpose: an already-installed hidden wrapp must still resolve for its connect chip / widgets.
+        let listings = readCatalog().filter { !($0.hidden ?? false) }
         // Two-level store (docs/STORE.md): the FEATURED front page first; each tab / "See All" swaps the
         // classic full StoreView into the SAME panel PRE-FILTERED (Apps → non-skill, Skills → skill, else
         // All) so the three tabs land on distinct views instead of all showing every wrapp.
@@ -5955,6 +6068,8 @@ struct SBListing: Codable, Identifiable {
     let category: String; let author: String?
     let components: SBComponents; let surfaces: [String]; let requires: [SBReq]; let inside: [String]?
     let tools: [SBTool]?
+    let hidden: Bool?   // true → UNLISTED: kept in the catalog (still resolvable/runnable if already
+                        // installed) but dropped from every store grid. Flip false / remove to re-list.
 }
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 
