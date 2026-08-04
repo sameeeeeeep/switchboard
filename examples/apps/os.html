@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Switchboard OS — the home you come back to</title>
+    <style>
+      :root{
+        --page:#08090c; --rail:#0a0a0b; --panel:#14161c; --raised:#1b1e26; --edge:#242833; --edge-soft:#1a1d25;
+        --ink:#e8edf4; --ink-sec:#b4bece; --ink-dim:#8a93a6; --ink-faint:#5c6474;
+        --lime:#c8f250; --indigo:#5b4fe8; --danger:#ff5a6e; --ok:#3dd68c; --warn:#f2994a;
+        --mono:ui-monospace,"SF Mono",Menlo,monospace; --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+      }
+      *{box-sizing:border-box} html,body{margin:0}
+      body{background:var(--page); color:var(--ink); font-family:var(--sans)}
+      .wrap{color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased;
+        display:flex; max-width:1320px; margin:0 auto}
+      .maincol{flex:1; min-width:0; padding:0 0 60px}
+      /* rail */
+      .rail{width:212px; flex:0 0 auto; background:var(--rail); border-right:1px solid var(--edge-soft); padding:20px 12px 40px; position:sticky; top:0; align-self:flex-start; min-height:100vh}
+      .rail .logo{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px;letter-spacing:-.01em;padding:2px 8px 12px}
+      .rail .logo .dot{width:9px;height:9px;border-radius:50%;background:var(--lime);box-shadow:0 0 9px 1px rgba(200,242,80,.5)}
+      .rail .grp{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);padding:15px 10px 5px}
+      .rail a{display:flex;align-items:center;gap:11px;padding:7px 10px;border-radius:9px;color:var(--ink-dim);font-size:13.5px;text-decoration:none;cursor:pointer;border-left:2px solid transparent;transition:background .12s,color .12s}
+      .rail a .i{width:18px;text-align:center;color:var(--ink-faint);font-size:12.5px;font-family:var(--mono)}
+      .rail a:hover{background:var(--raised);color:var(--ink)}
+      .rail a.on{background:var(--panel);color:var(--ink);border-left:2px solid var(--lime)} .rail a.on .i{color:var(--lime)}
+      .rail a .ct{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-faint);background:var(--panel);border:1px solid var(--edge-soft);border-radius:20px;padding:1px 7px}
+      .rail a .ct.hot{color:var(--page);background:var(--lime);border-color:var(--lime);font-weight:600}
+      .railfoot{margin-top:22px;border-top:1px solid var(--edge-soft);padding-top:12px}
+      .kick{font-family:var(--mono); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
+      /* top bar */
+      .top{display:flex; align-items:center; gap:14px; padding:20px clamp(18px,4vw,44px) 14px; position:sticky; top:0; background:linear-gradient(var(--page),var(--page) 70%,rgba(8,9,12,0)); z-index:5}
+      .omni{flex:1; max-width:440px; margin:0 auto; background:var(--panel); border:1px solid var(--edge); border-radius:11px; padding:8px 13px; color:var(--ink-faint); font-size:13px; display:flex; align-items:center; gap:9px; cursor:text}
+      .omni .k{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink-faint); border:1px solid var(--edge); border-radius:5px; padding:1px 6px}
+      .top .gear{width:30px;height:30px;border-radius:8px;border:1px solid var(--edge);background:var(--panel);display:grid;place-items:center;color:var(--ink-dim);font-size:14px;cursor:pointer}
+      main{padding:6px clamp(18px,4vw,44px) 0}
+      /* home hero */
+      .hero{display:grid; grid-template-columns:1fr; gap:16px; margin-top:8px}
+      h1{font-size:clamp(22px,3vw,30px); font-weight:600; letter-spacing:-.02em; margin:0}
+      h1 .sub{color:var(--ink-dim); font-weight:400}
+      .proj{display:flex; align-items:center; gap:16px; background:linear-gradient(180deg,#15131f,#121319); border:1px solid var(--edge); border-left:2px solid var(--indigo); border-radius:16px; padding:16px 20px; margin-top:12px}
+      .proj .mark{width:46px;height:46px;border-radius:12px;background:#1b1a2e;border:1px solid #2c2a55;display:grid;place-items:center;flex:0 0 auto}
+      .proj .nm{font-size:16px; font-weight:600}
+      .proj .facets{display:flex; gap:8px; margin-top:5px; flex-wrap:wrap}
+      .proj .facet{font-size:11.5px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--edge); border-radius:20px; padding:2px 9px}
+      .proj .switch{margin-left:auto; font-size:12px; color:var(--indigo); border:1px solid #2c2a55; background:#14122b; border-radius:9px; padding:7px 12px; white-space:nowrap; cursor:pointer}
+      /* needs-attention strip */
+      .attn{margin-top:16px; background:linear-gradient(180deg,#1c1512,#161014); border:1px solid #3a2416; border-left:2px solid var(--warn); border-radius:14px; padding:12px 16px}
+      .attn .ah{display:flex; align-items:center; gap:9px; font-size:12px; color:var(--warn); font-family:var(--mono); letter-spacing:.06em}
+      .attn .ah .ct{margin-left:auto; color:var(--ink-faint)}
+      .attn .row{display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--edge-soft); font-size:13px; color:var(--ink-sec)}
+      .attn .row:first-of-type{border-top:0}
+      .attn .row .do{margin-left:auto; font-size:11.5px; font-family:var(--mono); color:var(--lime); border:1px solid #3a4a12; background:#20260c; border-radius:8px; padding:5px 10px; cursor:pointer}
+      /* section head */
+      .sh{display:flex; align-items:baseline; gap:12px; margin:34px 0 14px}
+      .sh h2{font-size:15px; font-weight:600; margin:0} .sh .more{margin-left:auto; font-size:12px; color:var(--ink-dim); cursor:pointer}
+      /* recent work */
+      .work{display:grid; grid-template-columns:repeat(auto-fill,minmax(184px,1fr)); gap:14px}
+      .card{background:var(--panel); border:1px solid var(--edge); border-radius:14px; overflow:hidden; cursor:pointer}
+      .card .thumb{height:104px; display:grid; place-items:center; position:relative; border-bottom:1px solid var(--edge-soft)}
+      .card .meta{padding:10px 12px 12px}
+      .card .t{font-size:13px; font-weight:500; line-height:1.3}
+      .card .src{display:flex; align-items:center; gap:6px; margin-top:7px; font-size:11px; color:var(--ink-faint); font-family:var(--mono)}
+      .card .time{margin-left:auto}
+      /* apps dock */
+      .apps{display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:16px}
+      .app{text-align:center; cursor:pointer}
+      .app .tile{width:72px;height:72px;margin:0 auto;border-radius:18px;display:grid;place-items:center;position:relative;background:linear-gradient(160deg,#15161d,#0d0e13);border:1px solid #1e222c}
+      .app .nm{font-size:12px;color:var(--ink-sec);margin-top:8px}
+      .app .live{position:absolute;bottom:8px;right:9px;width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px 1px rgba(200,242,80,.6)}
+      /* what's next */
+      .next{display:flex; gap:12px; flex-wrap:wrap; margin-top:14px}
+      .nx{flex:1; min-width:240px; background:var(--panel); border:1px solid var(--edge); border-radius:13px; padding:14px 16px; display:flex; gap:12px; align-items:center; cursor:pointer}
+      .nx .g{width:32px;height:32px;border-radius:9px;background:#20260c;border:1px solid #3a4a12;display:grid;place-items:center;color:var(--lime);flex:0 0 auto}
+      .nx.task .g{background:var(--raised);border-color:var(--edge);color:var(--ink-dim)}
+      .nx .tx{font-size:13px; color:var(--ink-sec)} .nx .tx b{color:var(--ink); font-weight:500}
+      /* stub surfaces */
+      .stub{margin-top:10px}
+      .stub .head{display:flex; align-items:baseline; gap:12px; margin-bottom:4px}
+      .stub h1{font-size:26px}
+      .stub .bld{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--edge-soft); border-radius:20px; padding:3px 9px; display:inline-flex; align-items:center; gap:6px}
+      .stub .bld .d{width:6px;height:6px;border-radius:50%;background:var(--warn);box-shadow:0 0 7px var(--warn)}
+      .stub .lede{color:var(--ink-dim); font-size:13.5px; margin:6px 0 26px; max-width:560px}
+      .cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px}
+      .col{background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:14px; min-height:150px}
+      .col .ct{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); display:flex; align-items:center; gap:8px}
+      .col .ph{height:34px; border-radius:9px; background:var(--raised); border:1px solid var(--edge-soft); margin-top:12px; opacity:.5}
+      .col .ph.s{height:22px; opacity:.35}
+      .chips{display:flex; gap:10px; flex-wrap:wrap}
+      .chipk{font-size:12.5px; color:var(--ink-sec); background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:9px 15px}
+      .chipk.on{border-color:var(--lime); color:var(--ink)}
+      .tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px}
+      .tile2{background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:14px 16px}
+      .tile2 .k{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim)}
+      .tile2 .big{font-size:30px; font-weight:600; letter-spacing:-.02em; margin-top:8px}
+      .tile2 .spark{height:20px; margin-top:8px; border-radius:6px; background:linear-gradient(90deg,var(--edge-soft),var(--raised)); opacity:.6}
+      .rows{display:flex; flex-direction:column; gap:10px}
+      .rowk{display:flex; align-items:center; gap:12px; background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:12px 15px; font-size:13px; color:var(--ink-sec)}
+      .rowk .dg{width:26px;height:26px;border-radius:7px;background:var(--raised);border:1px solid var(--edge-soft);flex:0 0 auto}
+      .rowk .mono{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
+      .foot{margin-top:38px; padding:0 clamp(18px,4vw,44px); color:var(--ink-faint); font-size:11.5px; font-family:var(--mono)}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <aside class="rail" id="rail"></aside>
+      <div class="maincol">
+        <div class="top">
+          <div class="omni" title="⌃⌃ omni (placeholder)">⌃⌃ ask, or search your work<span class="k">⌃⌃</span></div>
+          <div class="gear" title="Settings">⚙</div>
+        </div>
+        <main id="pane"></main>
+        <div class="foot" id="foot"></div>
+      </div>
+    </div>
+    <script type="module" src="./dist/os.js"></script>
+  </body>
+</html>

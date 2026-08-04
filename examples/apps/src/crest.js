@@ -111,7 +111,7 @@ async function syncContext() {
 
 // ==== per-origin state (values are opaque STRINGS — store JSON) =============================
 let state = { run: null };
-async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } }
+async function loadState() { try { const raw = await relay.storage.get(APP.id + "-state"); if (raw) state = JSON.parse(raw); } catch { state = { run: null }; } if (state && state.run && state.run.foundation) state.run.foundation = migrateFoundation(state.run.foundation); }
 async function saveState() { try { await relay.storage.set(APP.id + "-state", JSON.stringify(state)); } catch { /* non-fatal */ } }
 
 // ==== llm helpers — the EXACT stream contract; never guess these shapes =====================
@@ -350,11 +350,14 @@ async function generateIdentity() {
   try {
     // 1 — FOUNDATION
     r.stage = "foundation"; setStatus("reading the brief…"); render();
-    const ftext = await streamText({ prompt: buildFoundationPrompt(r.brief, r.prefs), maxTokens: 900 },
+    const ftext = await streamText({ prompt: buildFoundationPrompt(r.brief, r.prefs), maxTokens: 3200 },
       (p) => { if (p.text) setStatus("defining the foundation… " + (p.text.length / 1024).toFixed(1) + " kb"); });
-    const f = coerceFoundation(parseJson(ftext));
+    const f = coerceFoundationOptions(parseJson(ftext));
     if (!f) throw new Error("The foundation came back malformed — hit ‘try again’.");
     r.foundation = f;
+    await saveState(); render();
+    // Ensure EVERY axis is a real 4-way choice (re-derive any the model short-changed) before moving on.
+    await backfillFoundationAxes(f);
     await saveState(); render();
 
     // 2 — DIRECTIONS
@@ -437,34 +440,164 @@ function avoidClause(prefs) {
   return (prefs && prefs.avoid && prefs.avoid.length) ? `; strictly avoid: ${prefs.avoid.join(", ")}` : "";
 }
 
-// ---- foundation ----------------------------------------------------------------------------
+// ---- foundation (OPTIONS-FIRST) ------------------------------------------------------------
+// DOCTRINE 5: the foundation never hands back a single answer — every axis (positioning ·
+// personality · voice · palette · reads-like) comes back as 3-4 DISTINCT options with exactly one
+// recommended, rendered as the same optionCards slate the directions step uses. The human CHOOSES;
+// the chosen value is then fine-tunable inline. Downstream code reads convenience fields
+// (foundation.palette / .personality / .voice / .positioning / .analogy) kept in sync with the
+// chosen option by syncFoundationDerived — so marks / directions / kit need NO changes.
 function buildFoundationPrompt(brief, prefs) {
   return [
-    "You are Crest, a brand designer. From the brief below, define a compact brand foundation to anchor a logo.",
+    "You are Crest, a brand designer. From the brief below, reason about the brand, then propose a brand foundation as a set of DISTINCT OPTIONS the founder will choose from — never a single locked answer.",
     prefs && prefs.name ? `The brand is named "${prefs.name}"` + (prefs.sector ? ` — ${prefs.sector}.` : ".") : "",
     `BRIEF:\n"""${brief.slice(0, 4000)}"""`,
     prefsPromptBlock(prefs),
-    "Respond with ONLY a JSON object — no prose before or after, no markdown fences — in exactly this shape:",
-    '{"name":string (the brand name, cleaned up),"positioning":string (one line, <= 90 chars),"personality":[string,string,string] (exactly 3 single evocative words),"voice":string (a short phrase),"palette":[string] (3-4 hex colors like "#1A2B3C" that genuinely suit this brand),"rationale":string (one line on the logo direction this foundation implies),"analogy":string (a short "reads like X meets Y" line naming TWO well-known brands as TONAL touchstones — reference/comparison only, do NOT reproduce them)}',
+    "This is a CHOOSE-YOUR-OWN board: ALL FIVE axes (positioning · personality · voice · palette · reads-like) MUST each come back as a JSON array of EXACTLY 4 DISTINCT options. Never return a single value, a bare string, or fewer than 4 for ANY axis — every axis is a 4-way choice for the founder.",
+    "For EACH axis, the 4 options must be genuinely DIFFERENT strategic takes — a different angle, register, or feel — not rewordings of one idea. Reason first (in your head), avoid clichés, then output ONLY the JSON.",
+    "Mark exactly ONE option per axis as recommended, via its 0-based index in the `recommended` object.",
+    "Respond with ONLY a JSON object — no prose before or after, no markdown fences — in exactly this shape (each *Options array has EXACTLY 4 items):",
+    '{'
+      + '"name":string (the brand name, cleaned up),'
+      + '"positioningOptions":[EXACTLY 4 strings, each one line <= 90 chars, each a DIFFERENT strategic angle],'
+      + '"personalityOptions":[EXACTLY 4 arrays, each exactly 3 single evocative words, each a DIFFERENT register],'
+      + '"voiceOptions":[EXACTLY 4 strings, each a short phrase, each a DIFFERENT tonal approach],'
+      + '"paletteOptions":[EXACTLY 4 objects, each {"name":string,"colors":[3-4 hex like "#1A2B3C"]}, each a DISTINCT palette that genuinely suits this brand],'
+      + '"analogyOptions":[EXACTLY 4 strings, each a "reads like X meets Y" line naming TWO well-known brands as TONAL touchstones — reference/comparison only, do NOT reproduce them],'
+      + '"recommended":{"positioning":int,"personality":int,"voice":int,"palette":int,"analogy":int},'
+      + '"rationale":string (one line on the logo direction the recommended foundation implies)'
+      + '}',
   ].filter(Boolean).join("\n\n");
 }
-function coerceFoundation(f) {
-  if (!f || typeof f !== "object") return null;
-  const name = String(f.name || "").trim();
+
+// Per-axis normalizers — shared by the full-foundation coerce and the per-axis re-roll.
+function normAxisOptions(raw, key) {
+  if (key === "personality") {
+    // Tolerate a scalar/flat triad: a bare array of words = ONE option; an array of arrays = many.
+    let list = Array.isArray(raw) ? raw : (raw != null ? [raw] : []);
+    if (list.length && !list.some((x) => Array.isArray(x))) list = [list]; // flat ["bold","warm","precise"] → one triad
+    const triad = (a) => { const w = (Array.isArray(a) ? a : String(a || "").split(/[,\s·]+/)).map((x) => String(x).trim()).filter(Boolean).slice(0, 3); return w.length ? w : null; };
+    return list.map(triad).filter(Boolean).slice(0, 4);
+  }
+  if (key === "palette") {
+    const hex = (a) => (Array.isArray(a) ? a : []).map((x) => String(x).trim()).filter((x) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(x)).slice(0, 4);
+    const list = Array.isArray(raw) ? raw : (raw && typeof raw === "object" ? [raw] : []);
+    return list.map((p, i) => { const colors = hex(p && p.colors); if (colors.length < 2) return null; return { name: String((p && p.name) || ("Palette " + (i + 1))).trim(), colors }; }).filter(Boolean).slice(0, 4);
+  }
+  const list = Array.isArray(raw) ? raw : (raw != null && String(raw).trim() ? [raw] : []);
+  return list.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
+}
+const clampIdx = (n, len) => { n = Number.isInteger(n) ? n : 0; return (n >= 0 && n < len) ? n : 0; };
+
+// Keep the flat convenience fields in lockstep with the chosen option of each axis. Called on
+// coerce, on every choice, on inline tweak, on per-axis re-roll, and on migration — so downstream
+// (buildDirectionsPrompt / buildLogosPrompt / runBrandSystem / widgets) reads the CHOSEN values.
+function syncFoundationDerived(f) {
+  if (!f || !f.axes) return;
+  const pick = (ax) => ax && ax.options[clampIdx(ax.chosen, ax.options.length)];
+  f.positioning = pick(f.axes.positioning) || "";
+  const pers = pick(f.axes.personality); f.personality = Array.isArray(pers) ? pers.slice() : ["clear", "modern", "honest"];
+  f.voice = pick(f.axes.voice) || "";
+  const pal = pick(f.axes.palette); f.palette = (pal && Array.isArray(pal.colors)) ? pal.colors.slice() : ["#C8F250", "#12151C", "#E8EDF4"];
+  f.analogy = f.axes.analogy ? (pick(f.axes.analogy) || "") : "";
+}
+
+// The options-first coerce: normalized { name, axes:{ <axis>:{options,chosen,recommended} }, rationale }.
+function coerceFoundationOptions(o) {
+  if (!o || typeof o !== "object") return null;
+  const name = String(o.name || "").trim();
   if (!name) return null;
-  const hex = (a) => (Array.isArray(a) ? a : []).map((x) => String(x).trim()).filter((x) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(x)).slice(0, 4);
-  let pal = hex(f.palette); if (!pal.length) pal = ["#C8F250", "#12151C", "#E8EDF4"];
-  let pers = (Array.isArray(f.personality) ? f.personality : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 3);
-  if (!pers.length) pers = ["clear", "modern", "honest"];
-  return {
-    name,
-    positioning: String(f.positioning || "").trim(),
-    personality: pers,
-    voice: String(f.voice || "").trim(),
-    palette: pal,
-    rationale: String(f.rationale || "").trim(),
-    analogy: String(f.analogy || "").trim(),
+  const rec = (o.recommended && typeof o.recommended === "object") ? o.recommended : {};
+  const axisFrom = (raw, key, fallback) => {
+    let opts = normAxisOptions(raw, key);
+    if (!opts.length) opts = fallback;
+    const idx = clampIdx(rec[key], opts.length);
+    return { options: opts, chosen: idx, recommended: idx };
   };
+  const analogyOpts = normAxisOptions(o.analogyOptions, "analogy");
+  const f = {
+    name,
+    axes: {
+      positioning: axisFrom(o.positioningOptions, "positioning", ["A clear, honest brand that earns trust through restraint."]),
+      personality: axisFrom(o.personalityOptions, "personality", [["clear", "modern", "honest"]]),
+      voice: axisFrom(o.voiceOptions, "voice", ["Plain-spoken and warm — says what it means."]),
+      palette: axisFrom(o.paletteOptions, "palette", [{ name: "Default", colors: ["#C8F250", "#12151C", "#E8EDF4"] }]),
+      analogy: analogyOpts.length ? { options: analogyOpts, chosen: clampIdx(rec.analogy, analogyOpts.length), recommended: clampIdx(rec.analogy, analogyOpts.length) } : null,
+    },
+    rationale: String(o.rationale || "").trim(),
+  };
+  syncFoundationDerived(f);
+  return f;
+}
+// One axis re-rolled on its own (the ↻ per-axis control) → { options, chosen, recommended }.
+function coerceAxisOptions(o, key) {
+  const opts = normAxisOptions(o && o.options, key);
+  if (!opts.length) return null;
+  const idx = clampIdx(o && o.recommended, opts.length);
+  return { options: opts, chosen: idx, recommended: idx };
+}
+// BACK-COMPAT: an old single-answer foundation (no .axes) becomes the sole+chosen option per axis.
+function migrateFoundation(f) {
+  if (!f || typeof f !== "object" || f.axes) return f;
+  const pers = (Array.isArray(f.personality) ? f.personality : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 3);
+  const pal = (Array.isArray(f.palette) ? f.palette : []).map((x) => String(x).trim()).filter((x) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(x)).slice(0, 4);
+  const mk = (val) => ({ options: [val], chosen: 0, recommended: 0 });
+  const nf = {
+    name: String(f.name || "").trim() || "Brand",
+    axes: {
+      positioning: mk(String(f.positioning || "").trim()),
+      personality: mk(pers.length ? pers : ["clear", "modern", "honest"]),
+      voice: mk(String(f.voice || "").trim()),
+      palette: mk({ name: "Palette", colors: pal.length ? pal : ["#C8F250", "#12151C", "#E8EDF4"] }),
+      analogy: f.analogy ? mk(String(f.analogy).trim()) : null,
+    },
+    rationale: String(f.rationale || "").trim(),
+  };
+  syncFoundationDerived(nf);
+  return nf;
+}
+// Per-axis re-roll prompt (scoped, cheap) — reuses the same reason-first, anti-cliché framing.
+const AXIS_SPEC = {
+  positioning: { label: "positioning", need: "EXACTLY 4 DISTINCT one-line positioning statements (each <= 90 chars, each a genuinely different strategic angle)", shape: '{"options":[string,string,string,string],"recommended":int}' },
+  personality: { label: "personality", need: "EXACTLY 4 DISTINCT personality triads (each exactly 3 single evocative words, each a different register)", shape: '{"options":[[string,string,string],[string,string,string],[string,string,string],[string,string,string]],"recommended":int}' },
+  voice: { label: "voice", need: "EXACTLY 4 DISTINCT voice descriptions (each a short phrase, each a different tonal approach)", shape: '{"options":[string,string,string,string],"recommended":int}' },
+  palette: { label: "palette", need: 'EXACTLY 4 DISTINCT colour palettes (each {"name":string,"colors":[3-4 hex like "#1A2B3C"]}) that genuinely suit this brand', shape: '{"options":[{"name":string,"colors":["#hex"]},{"name":string,"colors":["#hex"]},{"name":string,"colors":["#hex"]},{"name":string,"colors":["#hex"]}],"recommended":int}' },
+  analogy: { label: "reads-like", need: 'EXACTLY 4 DISTINCT "reads like X meets Y" lines, each naming TWO well-known brands as TONAL touchstones (reference only, do NOT reproduce)', shape: '{"options":[string,string,string,string],"recommended":int}' },
+};
+function buildAxisPrompt(f, key, prefs) {
+  const s = AXIS_SPEC[key];
+  return [
+    `You are Crest, a brand designer. Re-propose ONLY the ${s.label} options for this brand. Reason first, avoid clichés, and make each option genuinely DISTINCT (not a reword of another).`,
+    `BRAND: ${f.name}`,
+    f.positioning ? `POSITIONING: ${f.positioning}` : "",
+    f.personality && f.personality.length ? `PERSONALITY: ${f.personality.join(", ")}` : "",
+    f.voice ? `VOICE: ${f.voice}` : "",
+    prefsPromptBlock(prefs),
+    `Give ${s.need}. Mark exactly ONE as recommended (its 0-based index).`,
+    "Respond with ONLY a JSON object — no prose, no fences — shape:",
+    s.shape,
+  ].filter(Boolean).join("\n\n");
+}
+
+// GUARANTEE 4-per-axis: the batch foundation prompt asks for exactly 4 on all five axes, but a model
+// can still short-change (or misname) an axis — coerce then falls back to a single hardcoded card and
+// analogy vanishes. So AFTER coerce we back-fill any deficient axis (< 4 real options, or a missing
+// analogy) with a scoped per-axis re-roll — in parallel, best-effort. Healthy output (4 each) fires
+// ZERO extra calls. This is the "re-derive if fewer" guard the founder asked for — never a fake pad.
+const FOUNDATION_KEYS = ["positioning", "personality", "voice", "palette", "analogy"];
+async function backfillFoundationAxes(f) {
+  const r = state.run; if (!r || !relay || !f || !f.axes) return;
+  const deficient = FOUNDATION_KEYS.filter((k) => { const ax = f.axes[k]; return !ax || !Array.isArray(ax.options) || ax.options.length < 4; });
+  if (!deficient.length) return;
+  setStatus("rounding out your options…"); render();
+  await Promise.all(deficient.map(async (k) => {
+    try {
+      const text = await streamText({ prompt: buildAxisPrompt(f, k, r.prefs), maxTokens: 900 });
+      const fresh = coerceAxisOptions(parseJson(text), k);
+      if (fresh && fresh.options.length >= Math.max(2, ((f.axes[k] && f.axes[k].options.length) || 0))) f.axes[k] = fresh;
+    } catch { /* best-effort: keep whatever we had */ }
+  }));
+  syncFoundationDerived(f);
 }
 
 // ---- directions ----------------------------------------------------------------------------
@@ -761,22 +894,193 @@ function startBox() {
   return startBox;
 }
 
+// The FOUNDATION as an assembly board (brandbrain-style): every axis is a slate of distinct
+// options with exactly ONE recommended, rendered with the shared optionCards atom. Clicking a card
+// CHOOSES that option (accent), re-derives the flat convenience fields, and re-renders. Each axis
+// also has a ↻ re-roll (a scoped model call) and, on the CHOSEN option, inline tweak affordances
+// (edit the text / re-pick individual palette swatches) so it's options-first, fine-tune-second.
+const FOUNDATION_AXES = [
+  { key: "positioning", title: "positioning — pick the angle" },
+  { key: "personality", title: "personality — pick the register" },
+  { key: "voice", title: "voice — pick the tone" },
+  { key: "palette", title: "palette — pick the colours" },
+  { key: "analogy", title: "reads like — pick the touchstone" },
+];
 function foundationCard(f) {
   const card = el("div", "found");
   const top = el("div", "found-top");
   top.append(el("div", "found-name", f.name));
   const sw = el("div", "sw-row");
-  for (const c of f.palette) { const s = el("span", "sw"); s.style.background = c; s.title = c; sw.append(s); }
+  for (const c of (f.palette || [])) { const s = el("span", "sw"); s.style.background = c; s.title = c; sw.append(s); }
   top.append(sw);
   card.append(top);
-  if (f.positioning) card.append(el("div", "found-pos", f.positioning));
-  const meta = el("div", "found-meta");
-  const pers = el("div", "fm"); pers.append(el("span", "fm-k", "personality"), el("span", "fm-v", f.personality.join(" · "))); meta.append(pers);
-  if (f.voice) { const v = el("div", "fm"); v.append(el("span", "fm-k", "voice"), el("span", "fm-v", f.voice)); meta.append(v); }
-  if (f.analogy) { const a = el("div", "fm"); a.append(el("span", "fm-k", "reads like"), el("span", "fm-v", f.analogy)); meta.append(a); }
-  card.append(meta);
+  card.append(el("div", "found-hint", "one foundation, assembled from options — pick each axis (the recommended is pre-highlighted), then fine-tune"));
+  for (const a of FOUNDATION_AXES) { if (a.key === "analogy" && !f.axes.analogy) continue; card.append(foundationAxis(f, a.key, a.title)); }
   if (f.rationale) card.append(el("div", "found-rat", f.rationale));
   return card;
+}
+
+function foundationAxis(f, key, title) {
+  const ax = f.axes[key];
+  const sec = el("div", "found-axis");
+  const head = el("div", "axis-head");
+  head.append(el("span", "kicker sub", title));
+  const regen = el("button", "axis-regen", "↻ regenerate"); regen.disabled = running; regen.title = "Re-roll these options";
+  regen.onclick = () => void regenerateAxis(key);
+  head.append(regen);
+  sec.append(head);
+
+  const options = ax.options.map((opt, i) => {
+    const o = { id: String(i), recommended: i === ax.recommended };
+    if (key === "personality") o.label = (Array.isArray(opt) ? opt : []).join(" · ");
+    else if (key === "palette") o.label = opt.name || ("Palette " + (i + 1));
+    else o.label = opt;
+    return o;
+  });
+  sec.append(optionCards({
+    options,
+    chosenId: String(ax.chosen),
+    onChoose: (opt) => chooseFoundationOption(key, Number(opt.id)),
+    disabled: running,
+    chosenNote: "chosen by you",
+    decorate: key === "palette" ? (cardEl, opt) => {
+      const i = Number(opt.id);
+      const swwrap = el("div", "axis-sw"); swwrap.id = "fnd-pal-sw-" + i;
+      for (const c of (ax.options[i].colors || [])) { const s = el("span", "axis-swi"); s.style.background = c; s.title = c; swwrap.append(s); }
+      cardEl.append(swwrap);
+    } : undefined,
+  }));
+
+  sec.append(foundationTweak(f, key));
+  return sec;
+}
+
+// Changing WHICH option is chosen on any axis is a BRANCH: everything derived from the old foundation
+// (directions, the chosen direction, the marks, the kept shelf, the brand kit) is now stale. We
+// invalidate it immediately (so no stale result can silently show), then — debounced, so rapid
+// clicking coalesces into ONE model call — re-derive the immediate downstream (directions) from the
+// new pick. Marks/kit are NOT auto-spent: they drop to a "needs re-run" state (the style gallery's
+// Generate button). A plain inline TWEAK of the already-chosen option is a refinement, NOT a branch —
+// it goes through foundationTweak, which only syncs the derived fields and never calls this.
+let cascadeTimer = null;
+function chooseFoundationOption(key, idx) {
+  const r = state.run; if (!r || !r.foundation) return;
+  const ax = r.foundation.axes[key]; if (!ax || idx < 0 || idx >= ax.options.length) return;
+  if (idx === ax.chosen) return;               // same pick — no branch, no cascade
+  ax.chosen = idx;
+  syncFoundationDerived(r.foundation);
+  invalidateDownstream(r);                      // clear stale directions/marks/kit built on the OLD foundation
+  r.foundationDirty = true;                     // the "updating from your pick…" live state
+  r.status = "updating from your pick…";
+  void saveState(); render();
+  scheduleFoundationCascade();                  // debounced re-derive of directions
+}
+
+// Wipe every stage downstream of the foundation so nothing built on the OLD pick can show through.
+function invalidateDownstream(r) {
+  r.directions = null; r.chosenDirId = null; r.activeDirId = null;
+  r.logos = null; r.logoSteer = null;
+  r.styleChosen = false;                        // marks now need an explicit Generate (no auto image spend)
+  r.kept = []; r.kit = null;                    // shortlist + brand kit were derived from the old foundation
+  r.stage = "directions";
+}
+
+function scheduleFoundationCascade() {
+  if (cascadeTimer) clearTimeout(cascadeTimer);
+  cascadeTimer = setTimeout(() => { cascadeTimer = null; void cascadeFromFoundation(); }, 650); // debounce rapid clicks
+}
+async function cascadeFromFoundation() {
+  const r = state.run; if (!r || !relay || !r.foundation) return;
+  if (running) { scheduleFoundationCascade(); return; }   // a call is in flight — retry after it settles
+  await regenerateDirections();
+}
+
+// Re-derive DIRECTIONS from the current (freshly-picked) foundation. Mirrors the directions leg of
+// generateIdentity, but stops at the style gallery — marks are opt-in (Generate) so we never
+// auto-spend image credits on a cascade.
+async function regenerateDirections() {
+  const r = state.run; if (!r || !relay || !r.foundation || running) return;
+  running = true; r.error = null; r.stage = "directions"; setStatus("updating directions from your pick…"); render();
+  try {
+    const f = r.foundation;
+    const dtext = await streamText({ prompt: buildDirectionsPrompt(f, r.prefs), maxTokens: 1100 },
+      (p) => { if (p.text) setStatus("updating directions… " + (p.text.length / 1024).toFixed(1) + " kb"); });
+    const dirs = coerceDirections(parseJson(dtext));
+    if (!dirs) throw new Error("The directions came back malformed — change a pick or hit ‘try again’.");
+    r.directions = dirs;
+    const rec = dirs.find((d) => d.recommended) || dirs[0];
+    r.activeDirId = rec.id; r.chosenDirId = rec.id;
+    r.styleId = recommendStyle(f, r.prefs);
+    r.styleIds = [r.styleId];
+    r.styleChosen = false;                       // stop at the style gallery — marks are opt-in now
+    r.stage = "style"; r.status = ""; r.foundationDirty = false;
+    await saveState(); render();
+  } catch (e) {
+    r.error = msg(e); r.status = ""; r.foundationDirty = false;
+    await saveState(); render();
+  } finally { running = false; render(); }
+}
+
+function normHex(c) {
+  c = String(c || "").trim();
+  if (/^#[0-9a-f]{3}$/i.test(c)) return "#" + c.slice(1).split("").map((x) => x + x).join("");
+  return /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000";
+}
+
+// Inline fine-tune on the CHOSEN option: recolour individual palette swatches, or edit the text of
+// any other axis. Options first; this is the second-order nudge once a card is chosen.
+function foundationTweak(f, key) {
+  const ax = f.axes[key];
+  const chosen = ax.options[clampIdx(ax.chosen, ax.options.length)];
+  const wrap = el("div", "axis-tweak");
+  if (key === "palette") {
+    wrap.classList.add("open");
+    wrap.append(el("span", "tweak-k", "recolour ↓"));
+    (chosen.colors || []).forEach((c, i) => {
+      const pk = el("input"); pk.type = "color"; pk.className = "tweak-color"; pk.value = normHex(c); pk.title = "recolour swatch";
+      pk.oninput = () => {
+        chosen.colors[i] = pk.value; syncFoundationDerived(f); void saveState();
+        const swc = $("fnd-pal-sw-" + ax.chosen); if (swc && swc.children[i]) { swc.children[i].style.background = pk.value; swc.children[i].title = pk.value; }
+        const top = document.querySelector(".found .sw-row"); if (top && top.children[i]) top.children[i].style.background = pk.value;
+      };
+      wrap.append(pk);
+    });
+    return wrap;
+  }
+  const btn = el("button", "tweak-btn", "✎ tweak");
+  const row = el("div", "tweak-row"); row.hidden = true;
+  if (key === "personality") {
+    const inputs = [0, 1, 2].map((i) => { const inp = el("input", "tweak-in word"); inp.type = "text"; inp.value = chosen[i] || ""; inp.placeholder = "word " + (i + 1); return inp; });
+    const save = el("button", "tweak-save", "save");
+    const commit = () => { const w = inputs.map((x) => x.value.trim()).filter(Boolean).slice(0, 3); if (w.length) { ax.options[ax.chosen] = w; syncFoundationDerived(f); void saveState(); render(); } };
+    save.onclick = commit;
+    inputs.forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }));
+    row.append(...inputs, save);
+  } else {
+    const inp = el("input", "tweak-in"); inp.type = "text"; inp.value = chosen || ""; inp.placeholder = "edit " + key + "…";
+    const save = el("button", "tweak-save", "save");
+    const commit = () => { const v = inp.value.trim(); if (v) { ax.options[ax.chosen] = v; syncFoundationDerived(f); void saveState(); render(); } };
+    save.onclick = commit;
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } });
+    row.append(inp, save);
+  }
+  btn.onclick = () => { row.hidden = !row.hidden; if (!row.hidden) { const first = row.querySelector("input"); if (first) first.focus(); } };
+  wrap.append(btn, row);
+  return wrap;
+}
+
+async function regenerateAxis(key) {
+  const r = state.run; if (!r || !relay || !r.foundation || running) return;
+  running = true; render();
+  try {
+    const f = r.foundation;
+    const text = await streamText({ prompt: buildAxisPrompt(f, key, r.prefs), maxTokens: 800 });
+    const fresh = coerceAxisOptions(parseJson(text), key);
+    if (fresh && fresh.options.length) {
+      f.axes[key] = fresh; syncFoundationDerived(f); await saveState();
+    } else toast("Couldn't re-roll those — try again.", true);
+  } catch (e) { toast(msg(e), true); }
+  finally { running = false; render(); }
 }
 
 // FEATURE 1 — the editable Preferences panel. Chips are removable; each group has an "+ add"

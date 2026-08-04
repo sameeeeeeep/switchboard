@@ -27,6 +27,7 @@ struct AmbientSignal: Equatable {
     var windowTitle: String?     // from AX AXFocusedWindow → AXTitle
     var url: String?             // browsers: best-effort from the AX tree (AXWebArea/AXDocument); nil if unavailable
     var focusedFormField: Bool   // AX: is a text field / text area / editable web control focused right now?
+    var focusedValue: String?    // AX: the VALUE of the focused element (drives field-non-empty / field-contains predicates)
     var kind: AmbientAppKind
 }
 
@@ -158,6 +159,75 @@ private func bestEffortURL(app: AXUIElement, focusedWindow: AXUIElement?) -> Str
     return nil
 }
 
+// MARK: - Bounded AX element query (LOCAL — the teach-mode doneWhen predicates lean on this)
+//
+// A generalization of bestEffortURL's bounded BFS: walk the frontmost app's focused-window tree
+// (fall back to the whole app) looking for the FIRST element matching role (+ optional title/value
+// substring). Same 400-node hard cap so it stays cheap and can never turn into a deep crawl. All
+// on-device AX, zero network — used by CursorGuide to locally decide when a teach step is "done".
+
+/// Read a numeric AX attribute (e.g. a checkbox's kAXValue = 0/1) off an element.
+func axNumber(_ element: AXUIElement, _ attribute: String) -> Int? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+          let v = value, CFGetTypeID(v) == CFNumberGetTypeID() else { return nil }
+    var n = 0
+    CFNumberGetValue((v as! CFNumber), .intType, &n)
+    return n
+}
+
+/// Read a boolean AX attribute (e.g. kAXEnabled) off an element.
+func axEnabled(_ element: AXUIElement) -> Bool? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXEnabledAttribute as CFString, &value) == .success,
+          let v = value, CFGetTypeID(v) == CFBooleanGetTypeID() else { return nil }
+    return CFBooleanGetValue((v as! CFBoolean))
+}
+
+/// Public string reader mirroring the private axString — exposed so callers outside this file
+/// (CursorGuide) can read a found element's title/value without re-implementing the CF dance.
+func axStringPublic(_ element: AXUIElement, _ attribute: String) -> String? { axString(element, attribute) }
+
+/// Bounded BFS for the first element with `role` (+ optional title/value substring), over the
+/// frontmost app. Returns nil when AX is untrusted, no app is frontmost, or nothing matches within
+/// the 400-node cap. Title match checks AXTitle → AXDescription → AXValue (case-insensitive contains).
+func findElement(role: String, titleContains: String?, valueEquals: String?) -> AXUIElement? {
+    guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return nil }
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+    let root = axElement(axApp, kAXFocusedWindowAttribute as String) ?? axApp
+    var queue: [AXUIElement] = [root]
+    var visited = 0
+    let maxVisit = 400        // same hard cap as bestEffortURL — bounded, never a full deep crawl
+    let needleTitle = titleContains?.lowercased()
+    while !queue.isEmpty && visited < maxVisit {
+        let el = queue.removeFirst()
+        visited += 1
+        if let r = axString(el, kAXRoleAttribute as String), r == role {
+            let titleOK: Bool = {
+                guard let sub = needleTitle, !sub.isEmpty else { return true }
+                let t = (axString(el, kAXTitleAttribute as String)
+                         ?? axString(el, kAXDescriptionAttribute as String)
+                         ?? axString(el, kAXValueAttribute as String) ?? "").lowercased()
+                return t.contains(sub)
+            }()
+            let valueOK: Bool = {
+                guard let v = valueEquals else { return true }
+                return (axString(el, kAXValueAttribute as String) ?? "") == v
+            }()
+            if titleOK && valueOK { return el }
+        }
+        for child in axChildren(el) { queue.append(child) }
+    }
+    return nil
+}
+
+/// Checkbox state by title substring: nil = not found / undecidable, else true (checked) / false.
+func checkboxChecked(titleContains: String) -> Bool? {
+    guard let el = findElement(role: "AXCheckBox", titleContains: titleContains, valueEquals: nil) else { return nil }
+    guard let n = axNumber(el, kAXValueAttribute as String) else { return nil }
+    return n != 0
+}
+
 // MARK: - Native exact-URL layer (OPT-IN AppleScript, browsers only)
 //
 // The AX walk above is best-effort and silent — no permission prompt, works today. But it can
@@ -239,7 +309,7 @@ final class AmbientSensor {
 
         var signal = AmbientSignal(
             bundleId: bundleId, appName: name,
-            windowTitle: nil, url: nil, focusedFormField: false, kind: kind
+            windowTitle: nil, url: nil, focusedFormField: false, focusedValue: nil, kind: kind
         )
 
         // AX layer — only if THIS process is trusted. The real menubar app holds the grant;
@@ -254,10 +324,11 @@ final class AmbientSensor {
             signal.windowTitle = axString(w, kAXTitleAttribute as String)
         }
 
-        // Focused UI element → role → editable?
+        // Focused UI element → role → editable? + its current VALUE (for field-non-empty / field-contains).
         if let focused = axElement(axApp, kAXFocusedUIElementAttribute as String) {
             let role = axString(focused, kAXRoleAttribute as String)
             signal.focusedFormField = isEditableRole(role, focused)
+            signal.focusedValue = axString(focused, kAXValueAttribute as String)
         }
 
         // Browser URL — AX best-effort FIRST (silent, always on).

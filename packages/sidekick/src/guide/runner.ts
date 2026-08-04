@@ -23,11 +23,81 @@ const RUN_FILE = join(RELAY_DIR, "guide-run.json");
 const RESULT_FILE = join(RELAY_DIR, "guide-result.json");
 const TMP_FILE = join(RELAY_DIR, "guide-run.json.tmp");
 
-/** What we hand the native runtime — exactly the guide-run.json schema it watches for. */
+/** A pixel coordinate in the captured screenshot's space (see `GuideRunFile.shot`). */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * A "done" condition the native runtime evaluates LOCALLY to auto-advance a teach step (AX first,
+ * one Vision OCR only when a leaf needs on-screen text). Composable via `any`/`all`; leaves name a
+ * `kind`. The daemon only serializes this — it never evaluates it — so the union stays open-ended:
+ * an unknown `kind` is simply ignored by an older runtime (forward-compatible), and the human's
+ * manual advance (fn→) is always available regardless.
+ */
+export type Predicate =
+  | { any: Predicate[] }
+  | { all: Predicate[] }
+  | { kind: "app-frontmost"; bundleId: string }
+  | { kind: "window-title-matches"; pattern: string; mode: "contains" | "regex" | "equals" }
+  | { kind: "url-host-is"; host: string; pathContains?: string }
+  | { kind: "field-focused" }
+  | { kind: "field-non-empty" }
+  | { kind: "field-contains"; text?: string; regex?: string }
+  | { kind: "element-exists"; role: string; titleContains?: string; enabled?: boolean }
+  | { kind: "checkbox-state"; titleContains: string; checked: boolean }
+  | { kind: "on-screen-text-appeared"; text?: string; regex?: string; region?: unknown };
+/** Alias kept readable at call sites — a step's `doneWhen` is a {@link Predicate}. */
+export type DoneWhen = Predicate;
+
+/**
+ * One step handed to the native runtime. `id`/`text`/`hint` are the original tour/test fields; the
+ * rest are the additive "teach" fields (all optional, so existing runs stay valid):
+ *   - `say`   — spoken aloud when the step is shown (local TTS).
+ *   - `point` — pixel coords (in `shot` space) to anchor/point the cursor chip at a UI element.
+ *   - `copy`  — non-secret helper text pre-loaded onto the clipboard for the human to paste.
+ *   - `hold`  — ms to keep the step visible before auto-advancing (a dwell, not a verdict).
+ *   - `doneWhen` — a {@link Predicate} the runtime checks locally to auto-advance.
+ */
+export interface GuideStepFile {
+  id: string;
+  /** The caption shown by the cursor. Alias accepted on input: `instruction`. */
+  text: string;
+  /** Where to look / what "done" looks like. Alias accepted on input: `expect`. */
+  hint?: string;
+  /** Spoken aloud when this step is shown (on-device TTS). */
+  say?: string;
+  /** UI-element anchor in captured-screenshot pixel space (declare the space via `shot`). */
+  point?: Point;
+  /** Non-secret helper content pre-loaded onto the clipboard for this step (see `autoClipboard`). */
+  copy?: string;
+  /** Milliseconds to keep the step visible before auto-advancing. */
+  hold?: number;
+  /** Local auto-advance condition (AX first, Vision OCR only when needed). */
+  doneWhen?: DoneWhen;
+}
+
+/**
+ * What we hand the native runtime — exactly the guide-run.json schema it watches for.
+ *
+ * `shot`/`autoClipboard` and the `"teach"` mode are additive; a run that omits them is a plain
+ * tour/test run exactly as before.
+ */
 export interface GuideRunFile {
   title: string;
-  mode: "test" | "tour";
-  steps: { id: string; text: string; hint?: string }[];
+  mode: "teach" | "test" | "tour";
+  /**
+   * The screenshot space every step's `point` is expressed in — capture ONE shot at plan time, ask
+   * for [POINT:x,y] tags, and declare its pixel size + which screen it came from. Teach mode only.
+   */
+  shot?: { w: number; h: number; screen: number };
+  /**
+   * When true, each step's `copy` pre-loads the clipboard as the step is shown; the user's original
+   * clipboard is preserved and restored when the run ends. Teach-mode form-fill.
+   */
+  autoClipboard?: boolean;
+  steps: GuideStepFile[];
 }
 
 export interface RunGuideOptions {
