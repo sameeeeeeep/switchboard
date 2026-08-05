@@ -3367,6 +3367,14 @@ struct ActionConsentDrop: View {
         // Wire the OS's real wrapp-launch seam: a tile in the OS window resolves its app id here and
         // opens the real page, carrying item context as `#os=` (docs/OS.md — carried context).
         OSLaunch.handler = { [weak self] appId, ctx in Task { @MainActor in self?.launchFromOS(appId, ctx) } }
+        // Wire the OS Home spotlight (OmniBar): app search over the live catalog, and "ask" → God.
+        OSCatalog.search = { q in
+            let ql = q.lowercased()
+            return readCatalog()
+                .filter { $0.name.lowercased().contains(ql) || $0.tagline.lowercased().contains(ql) }
+                .prefix(6).map { OmniApp(id: $0.id, name: $0.name, sub: $0.tagline) }
+        }
+        OSAsk.handler = { [weak self] q in Task { @MainActor in if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } } }
         // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
         consent = ConsentClient(port: PORT,
             tokenProvider: {
@@ -4202,6 +4210,8 @@ struct ActionConsentDrop: View {
 
     @MainActor private func onOptTap() {
         let now = Date()
+        // ⌥⌥ drops the notch HOME (compact command centre); the full window opens only when you ACT on
+        // something in it (a project row, "open home ↗") — founder's notch-first call.
         if let last = lastOptTap, now.timeIntervalSince(last) < 0.5 { lastOptTap = nil; toggleLauncher() }
         else { lastOptTap = now }
     }
@@ -4221,6 +4231,7 @@ struct ActionConsentDrop: View {
             projects: readContexts(),
             recent: osRecentWork(),
             vaultFolders: osVaultFolders(),
+            homeProjects: osProjects(),
             activeProjectId: readDefaultId(),
             onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
@@ -4730,8 +4741,8 @@ struct ActionConsentDrop: View {
             "doneWhen": ["kind": "event", "name": "dictation"],
             "hint": "Hold to talk, release to drop — I'll move on when you do."])
         steps.append(["id": "key-launcher",
-            "text": "Every app and tool, one keystroke away.",
-            "keys": [["caps": ["⌥", "⌥"], "name": "Launch"]],
+            "text": "Your home — projects, files, apps, all searchable in one place.",
+            "keys": [["caps": ["⌥", "⌥"], "name": "Home"]],
             "placement": "cursor",
             "doneWhen": ["kind": "event", "name": "launcher"],
             "hint": "Double-tap Option — I'll move on when you do."])
@@ -4762,7 +4773,7 @@ struct ActionConsentDrop: View {
             ]])
         // ── What's next (compact inline recap — three KeyChips would overflow the card)
         steps.append(["id": "done",
-            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ launch.",
+            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ home.",
             "hint": "Browse the store for more. Replay anytime from the dot."])
 
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]

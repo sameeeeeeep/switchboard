@@ -59,6 +59,18 @@ enum OSLaunch {
     }
 }
 
+// A catalog hit for the omni spotlight — a light struct so OmniBar never references RelayMenuBar's SBListing
+// (keeps the OS views compilable under the SnapshotOS harness). The host wires OSCatalog.search at launch.
+struct OmniApp: Identifiable { let id: String; let name: String; let sub: String }
+enum OSCatalog {
+    static var search: ((String) -> [OmniApp])? = nil     // (query) → matching apps from the live catalog
+}
+// Ask-across-your-work seam — the omni's "ask" row routes here (host wires it to God). No-op under previews.
+enum OSAsk {
+    static var handler: ((String) -> Void)? = nil
+    static func ask(_ q: String) { handler?(q) }
+}
+
 // =====================================================================================================
 // MARK: - Deterministic per-app hue (OS.md §3.1 — "one hue each, from the app id")
 // =====================================================================================================
@@ -208,7 +220,7 @@ struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
 struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made" }
 struct SpotFile: Identifiable { let id = UUID(); let name: String; let path: String; let folder: String }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
-struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = "" }
+struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = ""; var updatedMs: Double = 0 }
 
 // LIVE projects — read the real ~/.relay/contexts.json (the same store the pill + wrapps use), so the
 // command centre spans every real project, not a fictional sample. Essence is derived from the context's
@@ -228,8 +240,10 @@ func osProjects() -> [SBProject] {
         if essence.isEmpty { essence = kind }
         let updatedMs = (c["updatedAt"] as? NSNumber)?.doubleValue ?? 0
         return SBProject(id: id, name: name, essence: essence, facets: [kind], progress: 0,
-                         kind: kind, pending: 0, updated: updatedMs > 0 ? relAgo(now - updatedMs) : "")
+                         kind: kind, pending: 0, updated: updatedMs > 0 ? relAgo(now - updatedMs) : "",
+                         updatedMs: updatedMs)
     }
+    .sorted { $0.updatedMs > $1.updatedMs }   // recency-first — the command centre leads with what's warm
 }
 func osActiveId() -> String? { readDefaultId() }
 private func relAgo(_ ms: Double) -> String {
@@ -412,6 +426,7 @@ enum Sample {
 
 struct OSShellView: View {
     @State private var selected: Surface     // the one-window nav: rail sets this, detail swaps
+    @State private var homeReload = 0        // bumped on a project switch so Home re-grounds
     init(initial: Surface = .home) { _selected = State(initialValue: initial) }
 
     var body: some View {
@@ -419,10 +434,10 @@ struct OSShellView: View {
             RailView(selected: $selected)
             Divider().overlay(Color.edgeSoft)
             VStack(spacing: 0) {
-                OmniBar()
+                OmniBar(selected: $selected, onSwitchProject: { writeGlobalContext($0); homeReload += 1 })
                 Group {
                     switch selected {
-                    case .home:       HomeDetail(selected: $selected)
+                    case .home:       HomeDetail(selected: $selected).id(homeReload)
                     case .tasks:      TasksSurface(onNavigate: { selected = $0 })
                     case .calendar:   CalendarSurface(onNavigate: { selected = $0 })
                     case .bank:       BankSurface(onNavigate: { selected = $0 })
@@ -542,21 +557,51 @@ struct RailItem: View {
 }
 
 // ---- the top omni bar (⌃⌃ search/ask — the universal invoke, OS.md §2.2) ----
+// The OS Home's spotlight — one bar that reaches anywhere: projects · apps · files (Spotlight) · recent ·
+// surfaces · ask. Results drop as an overlay; ↑↓/↵/esc; leads straight to the thing.
 struct OmniBar: View {
+    @Binding var selected: Surface
+    var onSwitchProject: (String) -> Void
+
+    @State private var query = ""
+    @State private var projects: [SBProject] = []
+    @State private var recent: [SBArtifact] = []
+    @State private var folders: [String] = []
+    @State private var disk: [SpotFile] = []
+    @State private var sel = 0
+    @State private var gen = 0
+    @FocusState private var focused: Bool
+
+    private struct Row: Identifiable { let id: String; let kind: String; let label: String; let sub: String; let payload: String; let hue: Double }
+    private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    private var rows: [Row] {
+        guard !q.isEmpty else { return [] }
+        var out: [Row] = []
+        out += projects.filter { $0.name.lowercased().contains(q) }.prefix(5).map { Row(id: "p-" + $0.id, kind: "project", label: $0.name, sub: $0.kind, payload: $0.id, hue: hueForId($0.id)) }
+        out += (OSCatalog.search?(q) ?? []).prefix(5).map { Row(id: "a-" + $0.id, kind: "app", label: $0.name, sub: $0.sub, payload: $0.id, hue: hueForId($0.id)) }
+        out += disk.prefix(6).map { Row(id: "d-" + $0.path, kind: "file", label: $0.name, sub: $0.folder, payload: $0.path, hue: -1) }
+        out += recent.filter { $0.title.lowercased().contains(q) || $0.app.lowercased().contains(q) }.prefix(4).map { Row(id: "r-" + $0.title, kind: "recent", label: $0.title, sub: "\($0.app) · \($0.time)", payload: $0.app, hue: hueForId($0.app)) }
+        out += Surface.allCases.filter { $0.title.lowercased().contains(q) }.map { Row(id: "s-" + $0.rawValue, kind: "surface", label: $0.title, sub: "surface", payload: $0.rawValue, hue: -1) }
+        out.append(Row(id: "ask", kind: "ask", label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: query, hue: -1))
+        return out
+    }
+
+    private func choose(_ r: Row) {
+        switch r.kind {
+        case "project":            onSwitchProject(r.payload); selected = .home
+        case "app", "recent":      OSLaunch.launch(r.payload)
+        case "file":               NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: r.payload)])
+        case "surface":            if let s = Surface(rawValue: r.payload) { selected = s }
+        case "ask":                OSAsk.ask(query.trimmingCharacters(in: .whitespaces))
+        default: break
+        }
+        query = ""; sel = 0; focused = false
+    }
+
     var body: some View {
         HStack(spacing: 14) {
-            HStack(spacing: 9) {
-                Text("⌃⌃").font(.splMono(10)).foregroundColor(.inkFaint)
-                Text("ask, or search your work").font(.hanken(12)).foregroundColor(.inkFaint)
-                Spacer(minLength: 0)
-                Text("⌃⌃").font(.splMono(9)).foregroundColor(.inkFaint)
-                    .padding(.horizontal, 6).padding(.vertical, 1)
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.edge, lineWidth: 1))
-            }
-            .padding(.horizontal, 13).padding(.vertical, 8)
-            .frame(maxWidth: 440)
-            .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.edge, lineWidth: 1))
+            field
             Spacer(minLength: 0)
             Text("⚙").font(.system(size: 13)).foregroundColor(.inkDim)
                 .frame(width: 30, height: 30)
@@ -564,6 +609,83 @@ struct OmniBar: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
         }
         .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 12)
+        .zIndex(50)
+        .onAppear { projects = osProjects(); recent = osRecentWork(); folders = osVaultFolders() }
+        .onChange(of: query) { _, newVal in
+            sel = 0; gen += 1; let g = gen
+            let qq = newVal.trimmingCharacters(in: .whitespaces)
+            guard qq.count >= 2, !folders.isEmpty else { disk = []; return }
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.12) {
+                let res = vaultSearch(qq, folders: folders, limit: 8)
+                DispatchQueue.main.async { if g == gen { disk = res } }
+            }
+        }
+    }
+
+    private var field: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundColor(.inkFaint)
+            TextField("Search projects, apps, files — or ask", text: $query)
+                .textFieldStyle(.plain).font(.hanken(12.5)).foregroundColor(.ink).focused($focused)
+                .onSubmit { if rows.indices.contains(sel) { choose(rows[sel]) } }
+            if !query.isEmpty {
+                Button(action: { query = "" }) { Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundColor(.inkFaint) }.buttonStyle(.plain)
+            } else {
+                Text("⌥⌥").font(.splMono(9)).foregroundColor(.inkFaint)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.edge, lineWidth: 1))
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 9)
+        .frame(maxWidth: 460)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(focused ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
+        .overlay(alignment: .topLeading) { if !rows.isEmpty && focused { resultsPanel.offset(y: 46) } }
+        .onKeyPress(.downArrow) { if !rows.isEmpty { sel = min(sel + 1, rows.count - 1) }; return .handled }
+        .onKeyPress(.upArrow) { if !rows.isEmpty { sel = max(sel - 1, 0) }; return .handled }
+        .onKeyPress(.escape) { query = ""; focused = false; return .handled }
+    }
+
+    private var resultsPanel: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
+                HStack(spacing: 11) {
+                    omniIcon(r).frame(width: 24, height: 24)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.label).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                        Text(r.sub).font(.hanken(10.5)).foregroundColor(.inkDim).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Text(actionWord(r.kind)).font(.splMono(9)).foregroundColor(i == sel ? .lime : .inkFaint)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(i == sel ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
+                }
+                .padding(.horizontal, 9).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8).fill(i == sel ? Color.raised : Color.clear))
+                .contentShape(Rectangle())
+                .onTapGesture { choose(r) }
+                .onHover { if $0 { sel = i } }
+            }
+        }
+        .padding(6)
+        .frame(width: 460, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.edge, lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 18, y: 10)
+    }
+
+    private func actionWord(_ k: String) -> String {
+        switch k { case "project": return "switch"; case "app", "recent": return "open"; case "file": return "reveal"; case "surface": return "go"; default: return "↵" }
+    }
+    @ViewBuilder private func omniIcon(_ r: Row) -> some View {
+        switch r.kind {
+        case "project", "recent", "app":
+            if r.hue >= 0 { Monogram(name: r.label, hue: r.hue, size: 24) }
+            else { RoundedRectangle(cornerRadius: 6).fill(Color.raised).overlay(Image(systemName: "app").font(.system(size: 11)).foregroundColor(.inkDim)) }
+        case "file":    RoundedRectangle(cornerRadius: 6).fill(Color.raised).overlay(Image(systemName: "folder").font(.system(size: 10)).foregroundColor(.inkDim))
+        case "surface": RoundedRectangle(cornerRadius: 6).fill(Color.raised).overlay(Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundColor(.inkDim))
+        default:        RoundedRectangle(cornerRadius: 6).fill(Color.lime.opacity(0.15)).overlay(Text("✦").font(.splMono(12)).foregroundColor(.lime))
+        }
     }
 }
 
@@ -596,20 +718,26 @@ struct HomeDetail: View {
                 if let a = active {
                     SectionHead(kicker: "Jump back in", more: nil)
                     ProjectCard(p: a, big: true, isActive: true) { switchTo(a.id); selected = .bank }
-                    if !others.isEmpty {
-                        SectionHead(kicker: "Projects", more: "manage →")
-                        ProjectsGrid(projects: others) { switchTo($0) }
-                    }
                 } else {
                     ActiveProjectCard()   // fallback (no contexts yet) — the sample card
                 }
 
-                // LIVE needs-attention + recent work (real ~/.relay reads); each hidden when empty so the
-                // command centre never shows fictional filler.
+                // ACTIVITY leads (live ~/.relay reads, hidden when empty): what needs you, then what you
+                // just made — the "pick up where you left off" core. Projects follow as compact rows.
                 if !pending.isEmpty { NeedsStrip(items: pending).padding(.top, 16) }
                 if !recent.isEmpty {
                     SectionHead(kicker: "Recent work", more: "everything you've made →")
                     RecentWorkGrid(items: recent)
+                }
+                if !others.isEmpty {
+                    SectionHead(kicker: "Recent projects", more: nil)
+                    ProjectRows(projects: Array(others.prefix(6))) { switchTo($0) }
+                    HStack {
+                        Spacer()
+                        Text("all \(projects.count) projects →").font(.hanken(12)).foregroundColor(.inkDim)
+                            .contentShape(Rectangle()).onTapGesture { selected = .bank }
+                        Spacer()
+                    }.padding(.top, 10)
                 }
 
                 SectionHead(kicker: "Your apps", more: "get more →")
@@ -630,17 +758,17 @@ struct HomeDetail: View {
 // Reads as a crafted mark, not a generic cube.
 struct Monogram: View {
     let name: String; let hue: Double; var size: CGFloat = 40
-    private var top: Color { Color(hue: hue, saturation: 0.60, brightness: 0.84) }
-    private var bot: Color { Color(hue: hue, saturation: 0.72, brightness: 0.34) }
+    // Flat, product-style mark: one deep tint of the project's hue + the initial in Bricolage. No gradients
+    // or drop shadows — matches the panel's flat-with-hairline language; the hue itself is the color moment.
+    private var fill: Color { Color(hue: hue, saturation: 0.55, brightness: 0.30) }
+    private var inkC: Color { Color(hue: hue, saturation: 0.45, brightness: 0.95) }
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.3)
-            .fill(LinearGradient(colors: [top, bot], startPoint: .topLeading, endPoint: .bottomTrailing))
+        RoundedRectangle(cornerRadius: size * 0.24)
+            .fill(fill)
             .frame(width: size, height: size)
             .overlay(Text(String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                .font(.brico(size * 0.46, .bold)).foregroundColor(.white)
-                .shadow(color: .black.opacity(0.3), radius: 1, y: 1))
-            .overlay(RoundedRectangle(cornerRadius: size * 0.3).stroke(Color.white.opacity(0.16), lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                .font(.brico(size * 0.46, .bold)).foregroundColor(inkC))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.24).stroke(Color.white.opacity(0.10), lineWidth: 1))
     }
 }
 
@@ -653,52 +781,75 @@ struct ProjectCard: View {
     @State private var hovered = false
     private var tint: Color { kindTint(p.kind) }
     var body: some View {
-        HStack(spacing: big ? 18 : 14) {
-            Monogram(name: p.name, hue: hueForId(p.id), size: big ? 52 : 40)
+        HStack(spacing: big ? 16 : 13) {
+            Monogram(name: p.name, hue: hueForId(p.id), size: big ? 46 : 36)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(p.name).font(big ? .brico(20, .bold) : .hanken(14.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    Text(p.name).font(big ? .brico(18, .bold) : .hanken(14, .semibold)).foregroundColor(.ink).lineLimit(1)
                     if isActive {
                         Text("ACTIVE").font(.splMono(8)).tracking(0.9).foregroundColor(.lime)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.lime.opacity(0.08)))
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.lime.opacity(0.35), lineWidth: 1))
                     }
+                    if big && hovered { Spacer(minLength: 0); Text("Resume →").font(.hanken(12, .medium)).foregroundColor(.lime) }
                 }
-                Text(p.essence).font(.hanken(big ? 13.5 : 12.5)).foregroundColor(big ? .inkSec : .inkDim).lineLimit(1).padding(.top, big ? 4 : 2)
+                Text(p.essence).font(.hanken(12.5)).foregroundColor(.inkDim).lineLimit(1).padding(.top, 1)
                 HStack(spacing: 12) {
                     HStack(spacing: 5) {
-                        Circle().fill(tint).frame(width: 5, height: 5)
-                        Text(p.kind.uppercased()).font(.splMono(10)).tracking(0.6).foregroundColor(tint)
+                        Circle().fill(tint).frame(width: 4, height: 4)
+                        Text(p.kind.uppercased()).font(.splMono(9.5)).tracking(0.6).foregroundColor(tint)
                     }
-                    if p.pending > 0 { Text("\(p.pending) PENDING").font(.splMono(10)).tracking(0.6).foregroundColor(.amber) }
-                    if !p.updated.isEmpty { Text(p.updated.uppercased()).font(.splMono(10)).tracking(0.6).foregroundColor(.inkFaint) }
-                    if big && hovered { Spacer(minLength: 0); Text("Resume →").font(.hanken(12, .medium)).foregroundColor(.lime) }
-                }.padding(.top, 8)
+                    if p.pending > 0 { Text("\(p.pending) PENDING").font(.splMono(9.5)).tracking(0.6).foregroundColor(.amber) }
+                    if !p.updated.isEmpty { Text(p.updated.uppercased()).font(.splMono(9.5)).tracking(0.6).foregroundColor(.inkFaint) }
+                }.padding(.top, 5)
             }
             Spacer(minLength: 0)
         }
-        .padding(big ? 20 : 15)
-        .background(RoundedRectangle(cornerRadius: big ? 20 : 16)
-            .fill(LinearGradient(colors: big ? [Color(red: 0x18/255, green: 0x15/255, blue: 0x28/255), Color(red: 0x12/255, green: 0x12/255, blue: 0x18/255)]
-                                              : [Color(red: 0x14/255, green: 0x18/255, blue: 0x21/255), Color(red: 0x10/255, green: 0x13/255, blue: 0x1a/255)],
-                                 startPoint: .top, endPoint: .bottom)))
-        .overlay(RoundedRectangle(cornerRadius: big ? 20 : 16)
-            .stroke(isActive || big ? Color.indigo.opacity(hovered ? 0.6 : 0.32) : (hovered ? Color.lime.opacity(0.45) : Color.edgeSoft), lineWidth: 1))
-        .shadow(color: .black.opacity(hovered ? 0.4 : 0.25), radius: hovered ? 12 : 6, y: hovered ? 5 : 3)
+        .padding(big ? 16 : 12)
+        .background(RoundedRectangle(cornerRadius: 13).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 13)
+            .stroke(isActive || big ? Color.indigo.opacity(0.35) : (hovered ? Color.lime.opacity(0.4) : Color.edge), lineWidth: 1))
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .onTapGesture { onOpen() }
     }
 }
 
-struct ProjectsGrid: View {
+// Recent projects as compact ROWS in one edged panel (the product's row grammar — like the menu-bar panel's
+// connection rows), not a wall of cards. Hairline separators; tap switches.
+struct ProjectRows: View {
     let projects: [SBProject]; let onSwitch: (String) -> Void
-    let cols = [GridItem(.adaptive(minimum: 240), spacing: 12)]
     var body: some View {
-        LazyVGrid(columns: cols, spacing: 12) {
-            ForEach(projects) { p in ProjectCard(p: p, big: false, isActive: false) { onSwitch(p.id) } }
+        VStack(spacing: 0) {
+            ForEach(Array(projects.enumerated()), id: \.element.id) { i, p in
+                ProjectRow(p: p) { onSwitch(p.id) }
+                if i < projects.count - 1 { Divider().overlay(Color.edgeSoft).padding(.leading, 52) }
+            }
         }
+        .background(RoundedRectangle(cornerRadius: 13).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 13))
+    }
+}
+struct ProjectRow: View {
+    let p: SBProject; let onOpen: () -> Void
+    @State private var hovered = false
+    private var tint: Color { kindTint(p.kind) }
+    var body: some View {
+        HStack(spacing: 12) {
+            Monogram(name: p.name, hue: hueForId(p.id), size: 28)
+            Text(p.name).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
+            Text(p.essence).font(.hanken(11.5)).foregroundColor(.inkFaint).lineLimit(1)
+            Spacer(minLength: 8)
+            if p.pending > 0 { Text("\(p.pending)").font(.splMono(9.5)).foregroundColor(.amber) }
+            Circle().fill(tint).frame(width: 4, height: 4)
+            Text(p.updated.isEmpty ? p.kind : p.updated).font(.splMono(9.5)).foregroundColor(.inkFaint)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(hovered ? Color.raised : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .onTapGesture { onOpen() }
     }
 }
 

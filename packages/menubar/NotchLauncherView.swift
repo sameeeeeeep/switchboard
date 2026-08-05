@@ -63,8 +63,9 @@ struct NotchLauncherView: View {
     // ---- inputs (see the init doc for the exact contract the host wires up) ----
     let listings: [SBListing]                     // the live catalog, already filtered to what should appear
     let projects: [Ctx]                           // the project/context list for the chip
-    let recent: [SBArtifact]                       // recent artifacts across wrapps (spotlight "Recent")
+    let recent: [SBArtifact]                       // recent artifacts across wrapps (spotlight "Recent" + home rows)
     let vaultFolders: [String]                     // bound vault folders → Spotlight file search scope (spotlight "Files")
+    let homeProjects: [SBProject]                  // recency-sorted projects (the notch HOME rows)
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
     let onPickProject: (String?) -> Void          // chip → set the global context (nil = unconnected)
     let onLaunch: (SBListing, URL?) -> Void        // tile → launch this wrapp's widget, with the staged file if it takes one
@@ -76,6 +77,7 @@ struct NotchLauncherView: View {
          projects: [Ctx],
          recent: [SBArtifact] = [],
          vaultFolders: [String] = [],
+         homeProjects: [SBProject] = [],
          activeProjectId: String?,
          onPickProject: @escaping (String?) -> Void,
          onLaunch: @escaping (SBListing, URL?) -> Void,
@@ -86,6 +88,7 @@ struct NotchLauncherView: View {
         self.projects = projects
         self.recent = recent
         self.vaultFolders = vaultFolders
+        self.homeProjects = homeProjects
         self.activeProjectId = activeProjectId
         self.onPickProject = onPickProject
         self.onLaunch = onLaunch
@@ -225,6 +228,77 @@ struct NotchLauncherView: View {
          .onHover { hoveredId = $0 ? r.id : (hoveredId == r.id ? nil : hoveredId) }
     }
 
+    // ── the notch HOME — a compact command centre in the drop. Rows only; acting opens the real thing
+    //    (project → the full Home window grounded on it; artifact → its wrapp). Product row grammar.
+    private var homeContent: some View {
+        let active = homeProjects.first { $0.id == activeProjectId } ?? homeProjects.first
+        let others = homeProjects.filter { $0.id != active?.id }.prefix(3)
+        let work = recent.prefix(3)
+        return VStack(alignment: .leading, spacing: SB.s2) {
+            if let a = active {
+                homeKicker("JUMP BACK IN", trailing: "open home ↗") { onOpenSurface("home") }
+                notchProjectRow(a, isActive: true)
+            }
+            if !others.isEmpty {
+                homeKicker("RECENT PROJECTS", trailing: nil, action: nil)
+                ForEach(Array(others)) { p in notchProjectRow(p, isActive: false) }
+            }
+            if !work.isEmpty {
+                homeKicker("RECENT WORK", trailing: nil, action: nil)
+                ForEach(Array(work)) { w in notchWorkRow(w) }
+            }
+        }
+    }
+    private func homeKicker(_ t: String, trailing: String?, action: (() -> Void)?) -> some View {
+        HStack {
+            Text(t).font(.splMono(9)).tracking(1.4).foregroundColor(.inkFaint)
+            Spacer(minLength: 0)
+            if let tr = trailing {
+                Text(tr).font(.hanken(10.5, .medium)).foregroundColor(.lime)
+                    .contentShape(Rectangle()).onTapGesture { action?() }
+            }
+        }.padding(.top, 3)
+    }
+    private func notchProjectRow(_ p: SBProject, isActive: Bool) -> some View {
+        Button(action: {
+            if !isActive { onPickProject(p.id) }
+            onOpenSurface("home")                       // acting on a project opens the full Home, grounded
+        }) {
+            HStack(spacing: 10) {
+                Monogram(name: p.name, hue: hueForId(p.id), size: 26)
+                Text(p.name).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                if isActive {
+                    Text("ACTIVE").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
+                }
+                Text(p.essence).font(.hanken(11)).foregroundColor(.inkFaint).lineLimit(1)
+                Spacer(minLength: 6)
+                if p.pending > 0 { Text("\(p.pending)").font(.splMono(9)).foregroundColor(.amber) }
+                Text(p.updated.isEmpty ? p.kind : p.updated).font(.splMono(9)).foregroundColor(.inkFaint)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == "hp-" + p.id ? Color.raised : Color.white.opacity(0.02)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? Color.indigo.opacity(0.35) : Color.edgeSoft, lineWidth: 1))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+         .onHover { hoveredId = $0 ? "hp-" + p.id : (hoveredId == "hp-" + p.id ? nil : hoveredId) }
+    }
+    private func notchWorkRow(_ w: SBArtifact) -> some View {
+        Button(action: { if let l = listing(forApp: w.app) { onLaunch(l, staged?.url) } }) {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text").font(.system(size: 10)).foregroundColor(.inkDim).frame(width: 26)
+                Text(w.title).font(.hanken(12)).foregroundColor(.inkSec).lineLimit(1)
+                Spacer(minLength: 6)
+                Text("\(w.app) · \(w.time)").font(.splMono(9)).foregroundColor(.inkFaint)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == "hw-" + w.title ? Color.raised : Color.clear))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+         .onHover { hoveredId = $0 ? "hw-" + w.title : (hoveredId == "hw-" + w.title ? nil : hoveredId) }
+    }
+
     private var spotlightList: some View {
         let groups: [(String, [SpotRow])] = [("Projects", spotProjects), ("Apps", spotApps), ("Files", spotDiskFiles), ("Recent", spotRecent), ("Go to", spotSurfaces), ("Actions", spotActions)].filter { !$0.1.isEmpty }
         return ScrollView {
@@ -249,12 +323,12 @@ struct NotchLauncherView: View {
             header
             intakeBar
             if q.isEmpty {
-                // browse mode — categories + the app grid (⌥⌥ as an app launcher)
-                catTabs
+                // HOME mode (founder: "the home should show up in the notch; a window only when you act") —
+                // active project · recent projects · recent work, as compact rows. Any tap = the action.
                 if staged == nil, let c = clipOffer { clipboardOfferRow(c) }   // opt-in: the clipboard as addable context
-                grid
+                homeContent
             } else {
-                // spotlight mode — one query reaches projects · apps · surfaces · actions
+                // spotlight mode — one query reaches projects · apps · files · surfaces · actions
                 spotlightList
             }
             hintLine
@@ -328,7 +402,7 @@ struct NotchLauncherView: View {
     // ── header: ⌥⌥ · LAUNCH kicker · project chip · search ──────────────────────────────
     private var header: some View {
         HStack(spacing: SB.s2) {
-            (Text("⌥⌥").foregroundColor(.lime) + Text(" · LAUNCH").foregroundColor(.inkFaint))
+            (Text("⌥⌥").foregroundColor(.lime) + Text(" · HOME").foregroundColor(.inkFaint))
                 .font(.splMono(9.5)).kerning(1.4)
             Spacer(minLength: SB.s2)
             if !projects.isEmpty {
