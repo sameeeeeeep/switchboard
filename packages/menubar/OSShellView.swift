@@ -463,8 +463,8 @@ struct HomeDetail: View {
                 // greeting — the command centre spans EVERY project
                 (Text("Evening, Sameep. ").foregroundColor(.ink)
                     + Text(projects.isEmpty ? "Here's where you left off." : "\(projects.count) projects · pick up anywhere.").foregroundColor(.inkDim))
-                    .font(.hanken(24, .semibold))
-                    .padding(.bottom, 4)
+                    .font(.brico(28, .bold)).tracking(-0.5)
+                    .padding(.top, 6).padding(.bottom, 4)
 
                 if let a = active {
                     SectionHead(kicker: "Jump back in", more: nil)
@@ -477,11 +477,8 @@ struct HomeDetail: View {
                     ActiveProjectCard()   // fallback (no contexts yet) — the sample card
                 }
 
-                if Sample.needsCount > 0 { NeedsStrip().padding(.top, 16) }
-
-                SectionHead(kicker: "Recent work", more: "everything you've made →")
-                RecentWorkGrid()
-
+                // Recent work + Needs-attention are intentionally omitted until they read from a REAL source
+                // (an artifact/pending index) — showing fictional IndEur samples was the "not proper" part.
                 SectionHead(kicker: "Your apps", more: "get more →")
                 AppDock(selected: $selected)
 
@@ -496,37 +493,68 @@ struct HomeDetail: View {
     }
 }
 
-// A project as a card — the vibrant per-id mark + name + essence + kind/pending/updated. Click switches
-// the active project (writeGlobalContext). `big` = the "jump back in" hero variant.
+// A branded per-project MONOGRAM — the initial in Bricolage on a two-stop tint of the project's own hue.
+// Reads as a crafted mark, not a generic cube.
+struct Monogram: View {
+    let name: String; let hue: Double; var size: CGFloat = 40
+    private var top: Color { Color(hue: hue, saturation: 0.60, brightness: 0.84) }
+    private var bot: Color { Color(hue: hue, saturation: 0.72, brightness: 0.34) }
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.3)
+            .fill(LinearGradient(colors: [top, bot], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: size, height: size)
+            .overlay(Text(String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                .font(.brico(size * 0.46, .bold)).foregroundColor(.white)
+                .shadow(color: .black.opacity(0.3), radius: 1, y: 1))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.3).stroke(Color.white.opacity(0.16), lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+    }
+}
+
+func kindTint(_ k: String) -> Color { k == "brand" ? .lime : (k == "idea" ? .amber : .indigo) }
+
+// A project as a card — branded monogram + name + essence + kind/pending/updated. Click switches the
+// active project (writeGlobalContext). `big` = the "jump back in" hero variant.
 struct ProjectCard: View {
     let p: SBProject; var big = false; var isActive = false; let onOpen: () -> Void
+    @State private var hovered = false
+    private var tint: Color { kindTint(p.kind) }
     var body: some View {
-        HStack(spacing: big ? 16 : 13) {
-            IsoTile(hue: hueForId(p.id))
-                .frame(width: big ? 50 : 38, height: big ? 50 : 38)
-                .background(RoundedRectangle(cornerRadius: big ? 13 : 11).fill(Color(red: 0x1b/255, green: 0x1a/255, blue: 0x2e/255)))
+        HStack(spacing: big ? 18 : 14) {
+            Monogram(name: p.name, hue: hueForId(p.id), size: big ? 52 : 40)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(p.name).font(.hanken(big ? 17 : 14, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    Text(p.name).font(big ? .brico(20, .bold) : .hanken(14.5, .semibold)).foregroundColor(.ink).lineLimit(1)
                     if isActive {
-                        Text("ACTIVE").font(.splMono(8)).tracking(0.8).foregroundColor(.lime)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                        Text("ACTIVE").font(.splMono(8)).tracking(0.9).foregroundColor(.lime)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.lime.opacity(0.08)))
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.lime.opacity(0.35), lineWidth: 1))
                     }
                 }
-                Text(p.essence).font(.hanken(12)).foregroundColor(.inkDim).lineLimit(1)
-                HStack(spacing: 8) {
-                    Text(p.kind).font(.splMono(10)).foregroundColor(.indigo)
-                    if p.pending > 0 { Text("\(p.pending) pending").font(.splMono(10)).foregroundColor(.amber) }
-                    if !p.updated.isEmpty { Text("· \(p.updated)").font(.splMono(10)).foregroundColor(.inkFaint) }
-                }.padding(.top, 2)
+                Text(p.essence).font(.hanken(big ? 13.5 : 12.5)).foregroundColor(big ? .inkSec : .inkDim).lineLimit(1).padding(.top, big ? 4 : 2)
+                HStack(spacing: 12) {
+                    HStack(spacing: 5) {
+                        Circle().fill(tint).frame(width: 5, height: 5)
+                        Text(p.kind.uppercased()).font(.splMono(10)).tracking(0.6).foregroundColor(tint)
+                    }
+                    if p.pending > 0 { Text("\(p.pending) PENDING").font(.splMono(10)).tracking(0.6).foregroundColor(.amber) }
+                    if !p.updated.isEmpty { Text(p.updated.uppercased()).font(.splMono(10)).tracking(0.6).foregroundColor(.inkFaint) }
+                    if big && hovered { Spacer(minLength: 0); Text("Resume →").font(.hanken(12, .medium)).foregroundColor(.lime) }
+                }.padding(.top, 8)
             }
             Spacer(minLength: 0)
         }
-        .padding(big ? 16 : 13)
-        .background(RoundedRectangle(cornerRadius: big ? 16 : 14).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: big ? 16 : 14).stroke(isActive ? Color.indigo.opacity(0.4) : Color.edge, lineWidth: 1))
+        .padding(big ? 20 : 15)
+        .background(RoundedRectangle(cornerRadius: big ? 20 : 16)
+            .fill(LinearGradient(colors: big ? [Color(red: 0x18/255, green: 0x15/255, blue: 0x28/255), Color(red: 0x12/255, green: 0x12/255, blue: 0x18/255)]
+                                              : [Color(red: 0x14/255, green: 0x18/255, blue: 0x21/255), Color(red: 0x10/255, green: 0x13/255, blue: 0x1a/255)],
+                                 startPoint: .top, endPoint: .bottom)))
+        .overlay(RoundedRectangle(cornerRadius: big ? 20 : 16)
+            .stroke(isActive || big ? Color.indigo.opacity(hovered ? 0.6 : 0.32) : (hovered ? Color.lime.opacity(0.45) : Color.edgeSoft), lineWidth: 1))
+        .shadow(color: .black.opacity(hovered ? 0.4 : 0.25), radius: hovered ? 12 : 6, y: hovered ? 5 : 3)
         .contentShape(Rectangle())
+        .onHover { hovered = $0 }
         .onTapGesture { onOpen() }
     }
 }
@@ -544,12 +572,12 @@ struct ProjectsGrid: View {
 struct SectionHead: View {
     let kicker: String; let more: String?
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(spacing: 14) {
             Text(kicker.uppercased()).font(.splMono(10.5)).tracking(1.8).foregroundColor(.inkFaint)
-            Spacer()
+            Rectangle().fill(LinearGradient(colors: [Color.edgeSoft, .clear], startPoint: .leading, endPoint: .trailing)).frame(height: 1)
             if let m = more { Text(m).font(.hanken(12)).foregroundColor(.inkDim) }
         }
-        .padding(.top, 32).padding(.bottom, 14)
+        .padding(.top, 34).padding(.bottom, 15)
     }
 }
 

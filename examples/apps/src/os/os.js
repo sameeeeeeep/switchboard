@@ -194,15 +194,31 @@ function thumb(w) {
   return '<div style="width:56px;height:60px;border-radius:6px;background:#0f1116;border:1px solid #23262f;padding:9px 8px">' + [80, 60, 90, 50, 70].map((w2) => '<div style="height:3px;width:' + w2 + "%;background:" + (w2 === 90 ? h : "#3a3f4b") + ';border-radius:2px;margin-bottom:5px"></div>').join("") + "</div>";
 }
 
+// a branded per-project MONOGRAM — the initial in Bricolage on a two-stop tint of the project's own hue.
+// Reads as a crafted mark, not a generic 3D cube.
+function shade(hex, f) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+function monogram(p, px) {
+  const h = hexForId(p.id);
+  const ch = (p.name || "?").trim().charAt(0).toUpperCase();
+  return '<div class="mono" style="width:' + px + "px;height:" + px + "px;background:linear-gradient(150deg," + h + " 0%," + shade(h, 0.42) + ' 100%)">'
+    + '<span style="font-size:' + Math.round(px * 0.46) + 'px">' + esc(ch) + "</span></div>";
+}
+const KIND_TINT = { brand: "var(--lime)", project: "var(--indigo)", idea: "var(--warn)" };
 function projectCard(p, big) {
   const cls = big ? "pcard big" : "pcard";
   const pend = p.pending ? '<span class="pend">' + p.pending + " pending</span>" : "";
+  const tint = KIND_TINT[p.kind] || "var(--ink-faint)";
   return '<div class="' + cls + '" data-project="' + esc(p.id) + '" title="Open ' + esc(p.name) + '">'
-    + '<div class="pmark">' + tileSvg(hexForId(p.id), big ? 44 : 34) + "</div>"
+    + '<div class="pmark">' + monogram(p, big ? 52 : 40) + "</div>"
     + '<div class="pbody"><div class="pnm">' + esc(p.name) + (p.active ? '<span class="cur">active</span>' : "") + "</div>"
     + '<div class="pess">' + esc(p.essence || p.kind) + "</div>"
-    + '<div class="pmeta"><span class="kd">' + esc(p.kind) + "</span>" + pend
-    + (p.updated ? '<span class="upd">· ' + esc(p.updated) + "</span>" : "") + "</div></div></div>";
+    + '<div class="pmeta"><span class="kd" style="color:' + tint + '"><span class="kdot" style="background:' + tint + '"></span>' + esc(p.kind) + "</span>" + pend
+    + (p.updated ? '<span class="upd">' + esc(p.updated) + "</span>" : "")
+    + (big ? '<span class="resume">Resume →</span>' : "") + "</div></div></div>";
 }
 
 function renderHome() {
