@@ -13,6 +13,9 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose AdForge's forge as a page-tool so the native God webview (or any WebMCP host)
 // can DRIVE it — reusing the same forgeRun() a click runs, so the user watches it happen.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches AdForge AT a brand/site/campaign, open focused
+// on it — prefill the site URL (or the angle steer) instead of the sample. No-op on a normal launch.
+import { readOsContext } from "./os/os-context.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -134,6 +137,28 @@ function load() {
   coerceState();
 }
 load();
+
+// ---------- carried context from the Switchboard OS ----------
+// The OS may launch us AT an item ({artifact|term}, plus optional project). Open focused on it:
+// a URL-like value seeds the site field (the primary input); anything else becomes the angle steer.
+// Only fills a field the user hasn't (they can't have on a fresh load — guarded anyway). Safe no-op.
+let osSeedLabel = "";
+(function readOsSeed() {
+  try {
+    const os = readOsContext();
+    if (!os) return;
+    let title = null;
+    if (typeof os.artifact === "string") title = os.artifact;
+    else if (os.artifact && typeof os.artifact.title === "string") title = os.artifact.title;
+    if (!title && typeof os.term === "string") title = os.term;
+    if (!title) return;
+    title = String(title).slice(0, 160);
+    osSeedLabel = title;
+    const urlLike = /^https?:\/\//i.test(title) || /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(title);
+    if (urlLike && (!state.url || state.url === SAMPLE_URL)) { state.url = title; state.source = "url"; }
+    else if (!urlLike && !state.steer) { state.steer = title; }
+  } catch { /* garbage hash — behave exactly as a normal launch */ }
+})();
 
 // Pull the origin-store copy once connected; it wins only when strictly newer than what the
 // localStorage tier already painted. Sequenced by the callers (never raced against connect).
@@ -374,6 +399,11 @@ mountConnect($("chip-dock"), {
 
 // ---------- 01 · source: which entry the user sees ----------
 function renderEntry() {
+  const osNote = $("os-ctx");
+  if (osNote) {
+    osNote.hidden = !osSeedLabel;
+    if (osSeedLabel) osNote.textContent = "Opened from Switchboard OS · " + osSeedLabel;
+  }
   const hasBrand = !!(relay && lent);
   $("brand-entry").hidden = !hasBrand;
   $("url-entry").hidden = hasBrand && !urlRevealed;

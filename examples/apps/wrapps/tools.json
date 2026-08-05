@@ -259,6 +259,23 @@
       }
     }
   ],
+  "emboss": [
+    {
+      "name": "emboss_apply",
+      "description": "Apply the user's saved brand profile (letterhead, signature, stamp) to a document and produce a branded PDF, entirely on-device (no AI). Composes the given text into a new PDF and surfaces the download.",
+      "inputSchema": {
+        "text": "string — the document body text to compose into a branded PDF. Required for compose.",
+        "title": "string — optional document heading.",
+        "mode": "string — 'compose' (default). Only compose is supported via this tool.",
+        "profile": "string — optional profile name to use; defaults to the active one."
+      }
+    },
+    {
+      "name": "lh.png",
+      "description": "",
+      "inputSchema": {}
+    }
+  ],
   "emote": [
     {
       "name": "emote_run",

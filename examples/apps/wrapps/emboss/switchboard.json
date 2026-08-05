@@ -1,0 +1,28 @@
+{
+  "id": "emboss",
+  "name": "Emboss",
+  "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
+  "category": "tool",
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/emboss.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L1",
+    "downloadBytes": 524288,
+    "background": false,
+    "needsModel": false
+  }
+}

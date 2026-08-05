@@ -910,6 +910,7 @@ struct Panel: View {
     @State private var showSettings = false      // the right pane flips to Settings (in-panel, one grammar)
     @State private var nameDraft = ""            // the name field's working copy, committed on save
     @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
+    @State private var guideVoiceover = CursorGuide.shared.voiceoverOn  // mirrors the fn-m guide preference in Settings
 
     private var signedOut: Bool { model.running && !model.signedIn }
     private var heroTitle: String { signedOut ? "Sign in" : (model.working ? "Working" : (model.running ? "Idle" : "Offline")) }
@@ -1193,6 +1194,8 @@ struct Panel: View {
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("region", "WHAT GOD SEES", summary: model.defaultShare ? "Shared by default" : "Voice-first") { regionSection }
             Rectangle().fill(Color.edge).frame(height: 1)
+            disclosure("guide", "GUIDED HELP", summary: guideVoiceover ? "Voiceover on" : "Voiceover off") { guideSection }
+            Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onTour() }) {
@@ -1279,6 +1282,42 @@ struct Panel: View {
                         .animation(.easeOut(duration: 0.15), value: model.economy)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
+        }
+    }
+
+    // GUIDED HELP — the two live-guide preferences, surfaced as Settings rows instead of shortcut-only:
+    // spoken voiceover (fn m) as a toggle, and a reminder that screenshot+note feedback (fn ↓) works in
+    // any guide. Reversible + legible: the toggle drives the SAME persisted key CursorGuide reads.
+    private var guideSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: {
+                guideVoiceover.toggle()
+                CursorGuide.shared.setVoiceover(guideVoiceover)
+            }) {
+                HStack(spacing: 11) {
+                    Image(systemName: guideVoiceover ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.system(size: 13)).foregroundColor(guideVoiceover ? .lime : .inkDim).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Voiceover").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                        Text(guideVoiceover ? "Each guide step is read aloud (⌥M to toggle live)."
+                                            : "Guides stay silent (⌥M to toggle live).")
+                            .font(.hanken(10.5)).foregroundColor(.inkFaint)
+                    }
+                    Spacer(minLength: 6)
+                    RoundedRectangle(cornerRadius: 11).fill(guideVoiceover ? Color.lime : Color.edge).frame(width: 38, height: 22)
+                        .overlay(Circle().fill(Color.page).frame(width: 16, height: 16).offset(x: guideVoiceover ? 8 : -8))
+                        .animation(.easeOut(duration: 0.15), value: guideVoiceover)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            HStack(spacing: 11) {
+                Image(systemName: "camera.viewfinder").font(.system(size: 13)).foregroundColor(.inkDim).frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Feedback on any step").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                    Text("In a guide, press ⌥↓ to grab a screenshot + leave a note.")
+                        .font(.hanken(10.5)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -3322,6 +3361,9 @@ struct ActionConsentDrop: View {
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerBundledFonts()
         NSApp.setActivationPolicy(.accessory)
+        // Wire the OS's real wrapp-launch seam: a tile in the OS window resolves its app id here and
+        // opens the real page, carrying item context as `#os=` (docs/OS.md — carried context).
+        OSLaunch.handler = { [weak self] appId, ctx in Task { @MainActor in self?.launchFromOS(appId, ctx) } }
         // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
         consent = ConsentClient(port: PORT,
             tokenProvider: {
@@ -3402,6 +3444,16 @@ struct ActionConsentDrop: View {
         // Spoken concierge: the welcome tour AND teach mode read each step aloud in God's voice.
         CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
+        // Options live-apply: when a guide step's variant is approved, apply it here. Onboarding is the
+        // first consumer — the welcome tour's "setup-economy" step flips economy mode the moment you pick.
+        CursorGuide.shared.onOptionApprove = { [weak self] stepId, optionId in
+            Task { @MainActor in
+                switch stepId {
+                case "setup-economy": self?.setEconomy(optionId == "eco")
+                default: break
+                }
+            }
+        }
         // Teach mode senses locally: hand CursorGuide a fresh AmbientSignal on demand so its doneWhen
         // watcher can decide when a step is done. Reuses the same LOCAL sensor ambient mode uses (no
         // network/screenshot beyond the opt-in Vision OCR); wired unconditionally so teach works even
@@ -4515,8 +4567,8 @@ struct ActionConsentDrop: View {
         var steps: [[String: Any]] = []
         // ── Welcome
         steps.append(["id": "welcome",
-            "text": "Welcome to Switchboard. Ninety seconds and you'll be running AI on your own Mac — no new subscription, nothing leaving your machine. Press → to begin.",
-            "hint": "I ride beside your cursor the whole way. → to go on, esc to leave anytime."])
+            "text": "Welcome to Switchboard. Ninety seconds and you'll be running AI on your own Mac — no new subscription, nothing leaving your machine. Press ⌥→ (Option + Right arrow) to begin.",
+            "hint": "I'm docked down here the whole way; the ring points at things up there. ⌥→ next · ⌥. hide me · esc leave."])
         // ── Access — only the permissions not yet granted (a returning user skips these)
         for p in GodPerm.allCases where !p.granted {
             switch p {
@@ -4542,30 +4594,39 @@ struct ActionConsentDrop: View {
         }
         // ── The three keys (hotkeys stay live during a guide, so this is real practice)
         steps.append(["id": "key-summon",
-            "text": "Now the three keys. Tap Control twice — ⌃⌃ — and just say what you need. The orb wakes and listens. Try it, then →.",
+            "text": "Now the three keys. Tap Control twice — ⌃⌃ — and just say what you need. The orb wakes and listens. Try it, then ⌥→.",
             "hint": "This is your summon. Anywhere, anytime: ⌃⌃ and talk."])
         steps.append(["id": "key-dictation",
-            "text": "Put your cursor in any text field, hold ⌃⌥ and speak. Let go — your words land right where the cursor is. → when you've watched it type.",
+            "text": "Put your cursor in any text field, hold ⌃⌥ and speak. Let go — your words land right where the cursor is. ⌥→ when you've watched it type.",
             "hint": "Hold to talk, release to drop. Your voice into any app, no window."])
         steps.append(["id": "key-launcher",
-            "text": "Double-tap Option — ⌥⌥ — to throw open the launcher: every app and tool, one keystroke away. Give it a tap, then →.",
+            "text": "Double-tap Option — ⌥⌥ — to throw open the launcher: every app and tool, one keystroke away. Give it a tap, then ⌥→.",
             "hint": "⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ launch. That's the whole keyboard."])
         // ── First project (seeded demo so it's never a blank slate)
         steps.append(["id": "first-project",
-            "text": "See the project chip in the pill? A project is the context every app borrows — your brand, your notes, your world. I set up a demo one so nothing's blank. Click the chip to see it, then →.",
+            "text": "See the project chip in the pill? A project is the context every app borrows — your brand, your notes, your world. I set up a demo one so nothing's blank. Click the chip to see it, then ⌥→.",
             "hint": "Later, make your own — every app re-grounds to whatever project you pick."])
         // ── First wrapp (AI) — honest whether or not the demo context has deep data yet
         steps.append(["id": "first-wrapp",
-            "text": "Let's run something real. Open the launcher (⌥⌥) and click ideabrain — give it a rough idea and watch it think out loud on your own Claude. → once you've seen a result.",
+            "text": "Let's run something real. Open the launcher (⌥⌥) and click ideabrain — give it a rough idea and watch it think out loud on your own Claude. ⌥→ once you've seen a result.",
             "hint": "That's a wrapp: a skin over your Claude. No key, no setup — it just runs."])
         // ── First non-AI tool (instant win, zero setup, private by construction)
         steps.append(["id": "first-tool",
-            "text": "Not everything needs AI. Open the launcher again and try QR — it makes a code instantly, right on your Mac, no model, nothing sent anywhere. → when you've got one.",
+            "text": "Not everything needs AI. Open the launcher again and try QR — it makes a code instantly, right on your Mac, no model, nothing sent anywhere. ⌥→ when you've got one.",
             "hint": "The non-AI tools are free and private by construction — pure device-light utilities."])
         // ── Background tasks
         steps.append(["id": "background",
-            "text": "Long jobs don't block you — they run in the background. You'll see them in the panel's Running rail and get a little notch nudge when they finish. Click the menu-bar dot to peek, then →.",
+            "text": "Long jobs don't block you — they run in the background. You'll see them in the panel's Running rail and get a little notch nudge when they finish. Click the menu-bar dot to peek, then ⌥→.",
             "hint": "Everything connected and running lives in the panel."])
+        // ── Set up by choosing — an OPTIONS step. The pick is applied LIVE via onOptionApprove
+        //    (onboarding is the first consumer of the guide's options hook), and recorded in the result.
+        steps.append(["id": "setup-economy",
+            "text": "Quick setup, your call: run God at full quality, or economy — a cheaper, faster model that spends fewer tokens. Press ⌥1 or ⌥2 to try each, then ⌥→ to lock it in.",
+            "hint": "⌥1 full · ⌥2 economy — change it anytime in Settings.",
+            "options": [
+                ["id": "full", "label": "Full quality", "accent": "lime"],
+                ["id": "eco",  "label": "Economy",      "accent": "indigo"],
+            ]])
         // ── What's next
         steps.append(["id": "done",
             "text": "That's the whole app: ⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. Browse the store for more apps, skills and tools whenever you like. You're set — go make something.",
@@ -6054,6 +6115,40 @@ struct ActionConsentDrop: View {
         default:
             if let s = l.components.ui?.url, let u = URL(string: s) { NSWorkspace.shared.open(u) }
         }
+    }
+
+    // ── the OS window's real launch (OSLaunch.handler) ─────────────────────────────────────────────
+    // A tile in the Switchboard OS window passes the app id it references (e.g. a task's @tag, an
+    // artifact's src, a calendar event's app) + item context. We resolve the id (case-insensitively,
+    // by catalog id OR display name — the OS data uses friendly names like "Crest") to a listing and
+    // open its page, appending `#os=<encoded {artifact,kind,project}>` so the wrapp opens AT the item —
+    // the native twin of the web OS's `url + "#os=" + ctx` (examples/apps/src/os/os.js). No page to
+    // open → fall back to God with the app's name so a tap is never a dead end.
+    @MainActor func launchFromOS(_ appId: String, _ ctx: OSLaunchContext) {
+        let key = appId.lowercased()
+        let listing = readCatalog().first { $0.id.lowercased() == key || $0.name.lowercased() == key }
+        guard let l = listing else {
+            // Unknown app id: don't leave the tap dead — hand the name to God.
+            triggerGod(instruction: "Open \(appId) for me — help me with whatever it does. Ask one short question first if you need to.", forceFullScreen: true)
+            return
+        }
+        guard let s = l.components.ui?.url, var comps = URLComponents(string: s) else {
+            // Listing with no page (skill/god-only wrapp): launch it through the normal resolver.
+            launchWrapp(l, l.surfaces.first ?? "god")
+            return
+        }
+        // Carry item context (mirrors the web `data-ctx` JSON; only non-nil fields).
+        if !ctx.isEmpty {
+            var obj: [String: String] = [:]
+            if let a = ctx.artifact { obj["artifact"] = a }
+            if let k = ctx.kind     { obj["kind"] = k }
+            if let p = ctx.project  { obj["project"] = p }
+            if let data = try? JSONSerialization.data(withJSONObject: obj),
+               let json = String(data: data, encoding: .utf8) {
+                comps.fragment = "os=" + (json.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? json)
+            }
+        }
+        if let u = comps.url { NSWorkspace.shared.open(u); concierge(l) }
     }
 }
 

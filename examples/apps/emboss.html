@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emboss — stamp your brand onto documents & export a PDF, on your device</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* HOUSE "Atlas cockpit" system (brandbrain tokens). Add app CSS at the END. */
+      :root {
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --accent: #C8F250; --accent-soft: #232B0D;
+        --indigo: #5B4FE8;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E; --blue: #7DE0FF;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; min-height: 100%; }
+      body { background: var(--page); color: var(--ink); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      button { font-family: inherit; }
+      .kicker { font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
+
+      header { display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-bottom: 1px solid var(--edge-soft); }
+      .word { font: 700 20px/1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
+      .word em { font-style: normal; color: var(--accent); }
+      .word .mk { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); box-shadow: 0 0 14px rgba(200,242,80,.4); }
+      #chip-dock { margin-left: auto; }
+
+      main { max-width: 760px; margin: 0 auto; padding: 34px 20px 90px; }
+      .hero h1 { font: 700 clamp(1.7rem, 4vw, 2.5rem)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
+      .hero h1 em { font-style: normal; color: var(--accent); }
+      .hero p { color: var(--ink-sec); margin: 0 0 22px; font-size: 14.5px; max-width: 560px; }
+
+      .primary { font: 600 13.5px/1 var(--sans); border-radius: 10px; padding: 13px 18px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--page); transition: filter .15s, opacity .15s; align-self: flex-start; }
+      .primary:hover { filter: brightness(1.08); }
+      .primary:disabled { opacity: .5; cursor: default; }
+      .act { font: 500 11.5px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 7px 11px; cursor: pointer; transition: border-color .15s, color .15s; text-decoration: none; display: inline-block; }
+      .act:hover { border-color: var(--accent); color: var(--ink); }
+      .danger-act:hover { border-color: var(--danger); color: #ffd6e2; }
+
+      .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--edge); color: var(--ink); font: 500 12.5px/1.4 var(--sans); padding: 11px 16px; border-radius: 10px; box-shadow: 0 14px 40px -14px rgba(0,0,0,.7); z-index: 200; max-width: 80vw; }
+      .toast.err { border-color: var(--danger); color: #ffd6e2; }
+
+      /* ==== app-specific CSS below this line ==== */
+      .work { display: flex; flex-direction: column; gap: 18px; }
+      .flabel { font: 500 9px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
+      .grow { flex: 1; }
+
+      /* profile bar */
+      .profilebar { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--edge-soft); border-radius: 14px; background: var(--panel); padding: 12px 14px; }
+      .pchips { display: flex; flex-wrap: wrap; gap: 7px; }
+      .pchip { font: 500 12px/1 var(--sans); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 8px 14px; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+      .pchip:hover { border-color: var(--accent); color: var(--ink); }
+      .pchip.on { background: var(--accent); color: var(--page); border-color: var(--accent); font-weight: 600; }
+      .pchip.add { border-style: dashed; color: var(--ink-dim); }
+      .prow { display: flex; align-items: center; gap: 10px; }
+      .pname { flex: 1; max-width: 280px; background: var(--inset); border: 1px solid var(--edge); border-radius: 9px; color: var(--ink); font: 500 12.5px/1 var(--sans); padding: 9px 12px; outline: none; }
+      .pname:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+
+      /* asset slots */
+      .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      @media (max-width: 640px) { .slots { grid-template-columns: 1fr; } }
+      .slot { border: 1px solid var(--edge); border-radius: 14px; background: var(--inset); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+      .slot.filled { border-color: color-mix(in srgb, var(--accent) 30%, var(--edge)); }
+      .slot-label { font: 600 12px/1 var(--sans); color: var(--ink); }
+      .slot-body { display: flex; flex-direction: column; gap: 9px; }
+      .slot-drop { border: 1.5px dashed var(--edge); border-radius: 11px; background: var(--page); padding: 20px 10px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; color: inherit; }
+      .slot-drop:hover, .slot-drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--page)); }
+      .slot-plus { font: 400 22px/1 var(--display); color: var(--ink-dim); }
+      .slot-hint { font: 400 10.5px/1.4 var(--mono); color: var(--ink-faint); }
+      .thumb { background: #fff; border: 1px solid var(--edge); border-radius: 10px; padding: 8px; min-height: 74px; display: flex; align-items: center; justify-content: center; }
+      .thumb img { max-width: 100%; max-height: 90px; object-fit: contain; display: block; }
+      .slot-acts { display: flex; gap: 7px; }
+      .file-in { display: none; }
+
+      .firstrun { border: 1px dashed var(--edge); border-radius: 14px; background: var(--panel); padding: 20px; }
+      .fr-t { font: 700 15px/1.2 var(--display); color: var(--ink); }
+      .fr-s { font: 400 12.5px/1.55 var(--sans); color: var(--ink-sec); margin-top: 6px; }
+
+      /* mode cards */
+      .modecards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 560px) { .modecards { grid-template-columns: 1fr; } }
+      .modecard { text-align: left; border: 1px solid var(--edge); border-radius: 14px; background: var(--inset); padding: 14px 15px; cursor: pointer; transition: border-color .15s, background .15s; }
+      .modecard:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--edge)); }
+      .modecard.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 35%, var(--inset)); }
+      .mc-top { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+      .mc-label { font: 700 14px/1 var(--display); color: var(--ink); }
+      .mc-star { font: 500 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--page); background: var(--accent); border-radius: 999px; padding: 4px 8px; }
+      .mc-desc { font: 400 12px/1.5 var(--sans); color: var(--ink-sec); }
+
+      /* panels */
+      .panel { display: flex; flex-direction: column; gap: 12px; }
+      .titlein { background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; color: var(--ink); font: 600 14px/1 var(--sans); padding: 12px 14px; outline: none; }
+      .titlein:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+      .bodytext { min-height: 220px; resize: vertical; background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; color: var(--ink); font: 400 13.5px/1.65 var(--sans); padding: 14px; outline: none; }
+      .bodytext:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
+
+      .drop { border: 1.5px dashed var(--edge); border-radius: 16px; background: var(--inset); padding: 40px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+      .drop:hover, .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--inset)); }
+      .drop-ic { font-size: 30px; line-height: 1; margin-bottom: 10px; }
+      .drop-t { font: 700 16px/1.2 var(--display); color: var(--ink); }
+      .drop-s { font: 400 12px/1.5 var(--mono); color: var(--ink-faint); margin-top: 6px; }
+
+      .filerow, .pdf-result { display: flex; align-items: center; gap: 10px; background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 13px; }
+      .fic { font-size: 16px; }
+      .fname { font: 500 13px/1.3 var(--sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46%; }
+      .fmeta { font: 500 11px/1 var(--mono); color: var(--ink-faint); }
+      .toggle { display: flex; align-items: center; gap: 9px; font: 400 12.5px/1.4 var(--sans); color: var(--ink-sec); cursor: pointer; }
+      .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+      .outcard { border: 1px solid var(--edge); border-radius: 16px; background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+      .dl { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); color: var(--accent); }
+      .pdfview { width: 100%; height: 460px; border: 1px solid var(--edge); border-radius: 10px; background: #fff; }
+
+      .nobadge { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font: 500 11.5px/1 var(--mono); color: var(--ink-dim); background: var(--panel); border: 1px solid var(--edge-soft); border-radius: 999px; padding: 8px 13px; align-self: flex-start; }
+      .nobadge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="word"><span class="mk"></span>Em<em>boss</em></span>
+      <div id="chip-dock"></div>
+    </header>
+    <main>
+      <section class="hero" id="hero">
+        <h1>Your brand, <em>on every document.</em></h1>
+        <p>Save your letterhead, signature and seal once — then compose a new PDF or stamp an existing one, with your identity applied automatically. Everything runs in this tab: no AI, no upload, no cost. Your documents never leave your browser. Powered by pdf-lib, zero network at runtime.</p>
+      </section>
+      <div id="view"></div>
+    </main>
+    <script type="module" src="./dist/emboss.js"></script>
+  </body>
+</html>

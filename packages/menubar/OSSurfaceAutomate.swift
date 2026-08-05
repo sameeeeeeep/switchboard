@@ -468,7 +468,7 @@ private func titleText(_ parts: [TP]) -> Text {
 }
 
 private enum NeedTone { case lime, indigo, danger, plain }
-private enum NeedBehavior { case resolve(String); case launch; case route(Surface) }
+private enum NeedBehavior { case resolve(String); case launch(String); case route(Surface) }  // launch carries the app id to open
 
 private struct NeedAct: Identifiable {
     let id = UUID()
@@ -514,7 +514,7 @@ private enum NeedSample {
                      why: "why…",
                      detail: "Prism's model grant was revoked, so image generation is paused. Regrant opens Prism to restore access.",
                      src: "◦ from Apps · Prism",
-                     acts: [NeedAct(label: "Grant", tone: .indigo, primary: true, behavior: .launch),
+                     acts: [NeedAct(label: "Grant", tone: .indigo, primary: true, behavior: .launch("Prism")),
                             NeedAct(label: "Later", behavior: .resolve("Snoozed"))]),
         ]),
         NeedBand(id: "failed", mk: "●", mkColor: sbAmber, lb: "Failed", hint: "retry or investigate", barColor: sbAmber, items: [
@@ -539,7 +539,7 @@ private enum NeedSample {
                      why: "options…",
                      detail: "a) Sep 12 · b) Sep 19 · c) Sep 26 — ideabrain has the reasoning for each. Decide opens it.",
                      src: "◦ from ideabrain",
-                     acts: [NeedAct(label: "Decide", tone: .indigo, primary: true, behavior: .launch)]),
+                     acts: [NeedAct(label: "Decide", tone: .indigo, primary: true, behavior: .launch("ideabrain"))]),
             NeedItem(id: "n-venue", mk: "☐", mkColor: .inkDim,
                      title: [TP(t: "Overdue: ", kind: .bold), TP(t: "Reply to the venue email ", kind: .normal), TP(t: "(2 days)", kind: .muted)],
                      src: "◦ from Tasks · #indeur",
@@ -550,7 +550,7 @@ private enum NeedSample {
                      why: "preview…",
                      detail: "4 new marks are awaiting review in the Crest batch. Review opens Crest to approve or send back.",
                      src: "◦ from Crest",
-                     acts: [NeedAct(label: "Review", tone: .lime, primary: true, behavior: .launch)]),
+                     acts: [NeedAct(label: "Review", tone: .lime, primary: true, behavior: .launch("Crest"))]),
         ]),
     ]
 
@@ -615,8 +615,8 @@ struct NeedsSurface: View {
         switch act.behavior {
         case .resolve:
             withAnimation(.easeInOut(duration: 0.28)) { _ = resolved.insert(item.id) }
-        case .launch:
-            onNavigate(.apps)                    // TODO real launch — open the named tool
+        case .launch(let app):
+            OSLaunch.launchOr(app, .init(kind: "need")) { onNavigate(.apps) }   // open the tool this item is about
         case .route(let s):
             onNavigate(s)
         }
@@ -1519,7 +1519,9 @@ private struct RecentRunRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            WFChip(app: run.app) { onNavigate(.apps) }   // TODO real launch — open the tool the step used
+            WFChip(app: run.app) {
+                OSLaunch.launchOr(run.app, .init(artifact: run.desc, kind: "run")) { onNavigate(.apps) }
+            }
         }
         .padding(.horizontal, 13).padding(.vertical, 10)
         .background(rowHover ? Color.raised : .clear)

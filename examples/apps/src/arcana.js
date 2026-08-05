@@ -6,6 +6,16 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose Arcana's reading as a page-tool so the native God webview (or any WebMCP host)
 // can DRIVE it — dealing a fresh spread and running the same readSpread() a click runs, live in the DOM.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context — when the Switchboard OS launches Arcana AT an item, seed the question box so the
+// reading opens focused on it. Tarot's primary input is the question; the item's title becomes it.
+import { readOsContext } from "./os/os-context.js";
+const osCtx = readOsContext();
+let osTitle = null;
+if (osCtx) {
+  if (typeof osCtx.artifact === "string") osTitle = osCtx.artifact.slice(0, 160);
+  else if (osCtx.artifact && typeof osCtx.artifact.title === "string") osTitle = osCtx.artifact.title.slice(0, 160);
+  if (!osTitle && typeof osCtx.term === "string") osTitle = osCtx.term.slice(0, 160);
+}
 
 const $ = (id) => document.getElementById(id);
 // "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
@@ -651,6 +661,9 @@ function restore() {
 
 ghosts();
 restore();
+// Carried context: if the OS opened us AT an item and the question box is still empty (no saved
+// question), seed it — so the auto-read below reads for that item, not the default.
+if (osTitle && !$("q").value.trim()) $("q").value = osTitle;
 renderChips();
 reflect();
 

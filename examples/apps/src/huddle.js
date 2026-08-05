@@ -17,6 +17,16 @@ import { optionCards } from "./kit/ui.js";
 // God's hands: expose Huddle's one action as a page-tool so the native God webview (or any WebMCP
 // host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
 import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
+// Carried context — when the Switchboard OS launches Huddle AT an item, open focused on it (prefill
+// the transcript box) instead of cold. Safe no-op when absent (readOsContext returns null).
+import { readOsContext } from "./os/os-context.js";
+const osCtx = readOsContext();
+let osTitle = null;
+if (osCtx) {
+  if (typeof osCtx.artifact === "string") osTitle = osCtx.artifact.slice(0, 160);
+  else if (osCtx.artifact && typeof osCtx.artifact.title === "string") osTitle = osCtx.artifact.title.slice(0, 160);
+  if (!osTitle && typeof osCtx.term === "string") osTitle = osCtx.term.slice(0, 160);
+}
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -395,9 +405,14 @@ function inputCard() {
   const box = el("div", "start");
 
   if (brand) box.append(el("div", "ctx", "scoped to your project — " + brand.name));
+  // Legibility: when the OS opened us AT an item, say so in Huddle's own token.
+  if (osTitle) box.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
 
   const ta = el("textarea"); ta.rows = 7;
   ta.placeholder = "paste your meeting transcript or rough notes here…";
+  // Carried context: seed the transcript box from the item the OS opened us at — only when empty,
+  // never clobbering anything the user typed.
+  if (osTitle && !ta.value.trim()) ta.value = osTitle;
   box.append(ta);
 
   const row = el("div", "startrow");

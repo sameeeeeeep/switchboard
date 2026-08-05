@@ -23,11 +23,13 @@ import { optionCards } from "./kit/ui.js";
 // God's hands + the notch glance: expose Dub's action as a page-tool AND publish a purpose-built
 // widget, both driving the same pipeline (kit/webmcp.js).
 import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Dub AT an item, note it (Dub still needs a clip).
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
 const APP = {
-  id: "dub",                                    // = build.mjs entry name = ./dist/<id>.js in the html
+  id: "dub",                                  // = build.mjs entry name = ./dist/<id>.js in the html
   name: "Dub",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
@@ -66,6 +68,18 @@ function toast(text, err) {
   if (!t) { t = el("div", "toast"); document.body.append(t); }
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
+}
+
+// carried context — the OS may launch Dub AT an item. Dub's primary input is an audio clip (nothing
+// text to prefill), so we surface WHERE we came from as a chip on the drop screen. Safe no-op when
+// absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
 }
 
 // ==== connect (standard chip + returning-user probe) ========================================
@@ -551,6 +565,8 @@ function render() {
 
 function dropView() {
   const wrap = el("div", "start");
+  const osTitle = osCtxTitle();
+  if (osTitle) wrap.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle + " — drop its audio to revoice"));
   const zone = el("label", "drop");
   zone.append(el("div", "drop-icon", "▚"));
   zone.append(el("div", "drop-title", "Drop an audio clip"));

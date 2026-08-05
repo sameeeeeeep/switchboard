@@ -19,6 +19,9 @@ import { STUDIO_SYSTEM, buildBriefPrompt, normalizeBrief } from "./core/ideabrai
 // God's hands: expose the widget's one action as a page-tool so the native God webview (or any WebMCP
 // host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Ideabrain AT an idea/artifact, open with it
+// already in the idle prompt instead of a cold blank. Safe no-op on a normal launch (returns null).
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG =================================================================================
 const APP = {
@@ -158,6 +161,21 @@ function detectTemplate(brief) {
 }
 
 const SAMPLE = "a marketplace to buy billboard slots by the minute"; // pre-connect only, visibly labelled
+
+// Carried context from the Switchboard OS — the idea/artifact the user launched AT. Prefills the
+// empty idle prompt so Ideabrain opens focused on it. "" when launched normally or on a bad hash.
+const OS_SEED = (() => {
+  try {
+    const c = readOsContext();
+    if (!c) return "";
+    let t = null;
+    if (typeof c.artifact === "string") t = c.artifact;
+    else if (c.artifact && typeof c.artifact.title === "string") t = c.artifact.title;
+    if (!t && typeof c.term === "string") t = c.term;
+    return t ? String(t).slice(0, 160) : "";
+  } catch { return ""; }
+})();
+
 let running = false;
 let pulseTimer = null;
 
@@ -314,10 +332,12 @@ function render() {
   if (!r) {
     const box = el("div", "prompt");
     if (seed) box.append(el("div", "ctx", "seeded from " + seed.name));
+    else if (OS_SEED) box.append(el("div", "ctx", "Opened from Switchboard OS · " + OS_SEED));
     const row = el("div", "field");
     const input = el("textarea"); input.rows = 2;
     input.placeholder = "a marketplace to buy billboard slots by the minute…";
     if (seed) input.value = seedLine();
+    else if (OS_SEED) input.value = OS_SEED; // carried context: open AT the idea the OS launched us on
     const go = () => { if (input.value.trim()) void start(input.value); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } });
     const btn = el("button", "primary", "Pressure-test it →"); btn.onclick = go;

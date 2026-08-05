@@ -13,11 +13,13 @@ import { optionCards } from "./kit/ui.js";
 // God's hands: expose Take's script step as a page-tool the native God webview (or any WebMCP host)
 // can DRIVE — reusing the same start() the "describe your own" box runs.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Take AT an item, open focused on it.
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
 const APP = {
-  id: "take",                                   // = build.mjs entry name = ./dist/<id>.js in the html
+  id: "take",                                 // = build.mjs entry name = ./dist/<id>.js in the html
   name: "Take",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
@@ -56,6 +58,17 @@ function toast(text, err) {
   if (!t) { t = el("div", "toast"); document.body.append(t); }
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
+}
+
+// carried context — the OS may launch Take AT an item; seed the "describe your own" take with it
+// instead of a cold start. Safe no-op when absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
 }
 
 // ==== connect (standard chip + returning-user probe) ========================================
@@ -346,6 +359,9 @@ function render() {
   head.append(more);
   view.append(head);
 
+  const osTitle = osCtxTitle();
+  if (osTitle) view.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
+
   if (premLoading) view.append(researching("reading " + (brand ? brand.name : "the project") + " for what's worth recording…"));
   if (state.premiseError) {
     view.append(el("div", "err", state.premiseError));
@@ -373,6 +389,8 @@ function render() {
   const ownRow = el("div", "row");
   const ownBox = el("div", "box");
   const ownInput = el("input"); ownInput.placeholder = "e.g. a 40-second walkthrough of the pricing page";
+  // When the OS launched Take AT an item, seed the "describe your own" box with it (never over a run).
+  if (osTitle && !r) ownInput.value = osTitle;
   const ownGo = () => { const t = ownInput.value.trim(); if (!t) return; ownInput.value = ""; void start({ id: null, label: t, text: "" }); };
   ownInput.addEventListener("keydown", (e) => { if (e.key === "Enter") ownGo(); });
   ownBox.append(ownInput);

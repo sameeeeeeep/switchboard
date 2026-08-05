@@ -22,6 +22,9 @@ import { optionCards } from "./kit/ui.js";
 // host) can DRIVE it — reusing the same start() a click runs, so the user watches it happen. And a
 // notch GLANCE via exposeWidget: the recommended logo direction, declared as data.
 import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Crest AT a brand/mark, open with its name
+// already in the brief instead of a cold blank. Safe no-op when launched normally (returns null).
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -214,6 +217,20 @@ function connectSteps() {
 const STEER_CHIPS = ["cleaner", "bolder", "more playful", "more premium"];
 // Pre-connect ONLY — a visibly-labeled sample so the empty state isn't dead. Gone the moment Claude connects.
 const SAMPLE = "Northwind — a small-batch coffee roaster for early-morning commuters who want a calmer, more deliberate start to the day. Warm, honest, unfussy.";
+
+// Carried context from the Switchboard OS — the item title (or search term) the user launched AT.
+// Prefills the empty brief so Crest opens focused on that brand. "" when launched normally.
+const OS_SEED = (() => {
+  try {
+    const c = readOsContext();
+    if (!c) return "";
+    let t = null;
+    if (typeof c.artifact === "string") t = c.artifact;
+    else if (c.artifact && typeof c.artifact.title === "string") t = c.artifact.title;
+    if (!t && typeof c.term === "string") t = c.term;
+    return t ? String(t).slice(0, 160) : "";
+  } catch { return ""; }
+})();
 
 // The instant style gallery. Each style ships a hand-drawn inline-SVG cue (fixed, legible colors —
 // these illustrate the STYLE, not the brand) plus two prompt fragments: `svgHint` steers the
@@ -884,9 +901,12 @@ function startBox() {
   const input = el("textarea");
   input.rows = 8;
   input.placeholder = "Paste your full brief, or describe your brand — name, what it does, who it's for, the qualities it should feel, and anything to avoid. The more detail, the better Crest can extract your preferences.";
+  // Carried context: open AT the brand the OS launched us on (prefill only when empty).
+  if (OS_SEED && !input.value.trim()) input.value = OS_SEED;
   const go = () => { if (input.value.trim()) void start(input.value); };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); });
   const btn = el("button", "primary", "Make the logo ✦"); btn.onclick = go;
+  if (OS_SEED) { startBox.append(el("div", "hint", "Opened from Switchboard OS · " + OS_SEED)); }
   row.append(input, btn);
   startBox.append(row);
   startBox.append(el("div", "hint", "⌘/Ctrl + Enter · foundation → directions → style → four marks"));

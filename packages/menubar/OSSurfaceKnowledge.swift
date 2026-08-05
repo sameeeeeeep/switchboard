@@ -247,7 +247,9 @@ struct HistorySurface: View {
                                       if openRuns.contains(run.id) { openRuns.remove(run.id) }
                                       else { openRuns.insert(run.id) }
                                   },
-                                  onReopen: { onNavigate(.apps) })   // TODO real launch
+                                  onReopen: {
+                                      OSLaunch.launchOr(run.wrapp, .init(artifact: run.prompt, kind: run.kind)) { onNavigate(.apps) }
+                                  })
                 }
             }
         }

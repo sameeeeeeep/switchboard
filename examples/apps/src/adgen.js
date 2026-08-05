@@ -17,6 +17,18 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose Adwall's draft as a page-tool so the native God webview (or any WebMCP host)
 // can DRIVE it — reusing the same draftRun() a click runs, so the user watches it happen.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context — when the Switchboard OS launches Adwall AT an item, open focused on it. Adwall's
+// primary input is a site URL: a URL-ish item seeds the URL box; any other item text seeds the steer
+// note (the closest free-text knob). Safe no-op when absent.
+import { readOsContext } from "./os/os-context.js";
+const osCtx = readOsContext();
+let osTitle = null;
+if (osCtx) {
+  if (typeof osCtx.artifact === "string") osTitle = osCtx.artifact.slice(0, 160);
+  else if (osCtx.artifact && typeof osCtx.artifact.title === "string") osTitle = osCtx.artifact.title.slice(0, 160);
+  if (!osTitle && typeof osCtx.term === "string") osTitle = osCtx.term.slice(0, 160);
+}
+const osLooksLikeUrl = !!osTitle && (/^https?:\/\//i.test(osTitle) || /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(osTitle));
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -727,6 +739,14 @@ async function castRun(i) {
 
 // ---------- boot: restore whatever wall was up last time, instantly, before any probe answers ----------
 try { applyRaw(localStorage.getItem(STORE_KEY) ?? "null"); } catch { /* start clean */ }
+// Carried context: open AT the item the OS handed us. A URL-ish item seeds the URL box (only over an
+// empty box or the labeled sample, never a saved real URL); anything else seeds the steer note (only
+// when empty). Never clobbers user content; the lent-brand path still takes over when a brand exists.
+if (osLooksLikeUrl && (!state.url || state.url === SAMPLE_URL)) {
+  state.url = /^https?:\/\//i.test(osTitle) ? osTitle : "https://" + osTitle;
+} else if (osTitle && !osLooksLikeUrl && !state.steer.trim()) {
+  state.steer = osTitle;
+}
 $("f-url").value = state.url;
 $("steer").value = state.steer;
 renderWall();

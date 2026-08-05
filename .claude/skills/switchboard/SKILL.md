@@ -1,25 +1,31 @@
 ---
-name: guided-cursor
+name: switchboard
 description: >-
-  Hand a step to the human on their Mac and get a machine-readable result back. Use whenever a task
-  needs something only a person at the keyboard can do — grant an OS permission, click inside a native
-  app Claude can't drive, plug in a cable, sign in, or eyeball whether something looks right — OR to run
-  a guided pass/fail TEST of a GUI flow. Switchboard floats a cursor-anchored instruction chip by the
-  pointer for each step; the person acts and marks pass/fail (and can attach a screenshot/note), and the
-  outcome comes back as JSON. Trigger for: "walk me through…", "test this on the real app", "have the
-  human grant X", "guided test", "check the notch renders", or any step that requires a human hand.
+  The one skill for talking to the user through their Switchboard (the Mac menu-bar app) instead of
+  burying it in chat. It's a PRESENCE layer: raise a card at the notch/cursor to (a) ASK a question or
+  present A/B/C options and get the pick back, (b) request an APPROVAL, (c) run a guided TEST / walkthrough
+  where the human does something only they can (grant a permission, click a native app, sign in, eyeball
+  a result) and reports pass/fail, or (d) notify with actions. The card is clickable at the notch, shows
+  who's asking (thread + project), and the answer comes back as JSON. **Default to this whenever you need
+  the user to decide, approve, test on the real app, or do something at their keyboard.** Trigger for:
+  "ask the user", "present options", "let them pick / decide / approve", "walk me through…", "test this on
+  the real app", "let me test it", "guided test", "have the human grant X", "check the notch renders".
 ---
 
-# Guided cursor — drive the human through steps, get a verdict back
+# Switchboard — talk to the user through the notch (ask · approve · guide · notify)
 
-Switchboard's menubar app runs a **CursorGuide**: a small instruction chip that floats next to the
-mouse pointer, one step at a time. Any Claude session drives it through a plain file handshake — no
-grants, no code, no MCP. Use it to (a) **help** a human do something Claude can't do itself, or (b)
-**test** a GUI flow where a human confirms each step passed. The result comes back as machine-readable
-JSON you read and act on.
+Switchboard's menubar app runs a **CursorGuide**: a **docked instruction card** (bottom-center — it no
+longer chases the cursor) with a **pointing ring** that lands on the target element, one step at a time.
+Any Claude session drives it through a plain file handshake — no grants, no code, no MCP. Use it to
+(a) **help** a human do something Claude can't do itself, or (b) **test** a GUI flow where a human
+confirms each step. The result comes back as machine-readable JSON you read and act on.
 
-This closes the GUI self-test gap: Claude scripts the steps, the app floats them by the cursor, the
-human passes/fails each (⌃⌥ or the on-chip controls; **esc** aborts), and a summary returns to you.
+**Default to this for ANY testing that needs the human's real screen/hands** — don't hand the user a
+wall of manual steps; fire a guided run and read the structured result back.
+
+This closes the GUI self-test gap: Claude scripts the steps, the app docks the card + points the ring,
+the human advances each (**⌥→** next/pass · **⌥←** fail · **⌥↑** back · **⌥↓** feedback · **⌥.**
+collapse · **esc** aborts), and a summary returns to you. Steps mostly **auto-advance** (see `doneWhen`).
 
 ## When to use it
 
@@ -40,7 +46,7 @@ The **Switchboard menubar app must be running** — it owns the on-screen chip a
 file. Check quickly:
 
 ```bash
-pgrep -f "Switchboard|RelayMenuBar" >/dev/null && echo "app up" || echo "app NOT running — ask the user to launch Switchboard first"
+pgrep -f "MacOS/Relay" >/dev/null && echo "app up" || echo "app NOT running — ask the user to launch Switchboard first"
 ```
 
 If it isn't running, don't write the trigger — tell the user to launch Switchboard, then retry.
@@ -214,6 +220,70 @@ notes, boilerplate, sample values). If a field needs a password / API key / toke
 `copy` and do **not** auto-fill it — write a plain step that says "enter your … in the field" and let
 the human type it into the real app. We place non-secret helper content; the human supplies anything
 secret. (This is the same secret rule as tour/test, made explicit for the clipboard path.)
+
+## Presence — raise a card for ANY interaction (not just testing)
+
+The same runtime is Switchboard's **presence layer** (docs/PRESENCE.md): whenever you need the user's
+attention — **a decision, an approval, a "which of these?", a heads-up** — don't bury it in a wall of
+chat. Raise a card **at the notch** and read the answer back. It renders as the real **notch canvas**
+(the black `NotchDropShape` drop, like God's status), clickable + keyboard, with a **provenance header**
+so the user sees who's asking.
+
+**When to use presence (default for decisions going forward):** any time you'd otherwise ask the user to
+pick between options, approve something, or you have a result they should act on. Especially for
+`ask`/approve/notify moments.
+
+**Raise an `ask` (one-shot, returns the pick):**
+```jsonc
+{ "mode": "teach", "title": "Migration strategy",
+  "source": "Claude Code · migrate-db",   // WHO is asking (shown in the provenance header)
+  "project": "StayOften",                  // the project it's grounded in
+  "steps": [{
+    "id": "strategy", "text": "Which migration should I run on prod?", "placement": "notch",
+    "options": [
+      { "id": "inplace", "label": "In-place", "detail": "fastest, brief lock" },
+      { "id": "bluegreen", "label": "Blue-green", "detail": "zero downtime, safe rollback", "recommended": true },
+      { "id": "manual", "label": "Manual", "detail": "you run each step" }
+    ]
+  }] }
+```
+The user presses `⌥1/2/3` (or clicks — the notch card is clickable) then `⌥→` to approve; the
+**⭐recommended** option is pre-selected so a single `⌥→` takes it. Read the pick from
+`results[0].chosenOption` in `~/.relay/guide-result.json`.
+
+**Presence fields (additive):** `source` + `project` (provenance header) · per-step `placement`
+(`notch` clickable · `dock` · `cursor`) · options gain `detail` (one-line why) + `recommended` (⭐,
+pre-selected). `⌥/` moves notch↔dock, `⌥.` collapses. An option can carry `media` (an image thumbnail).
+
+## Current runtime — newer capabilities (all additive; old runs still work)
+
+- **Keys are `⌥`-based** (not `fn`, which scrolled the app): `⌥→` next/pass · `⌥←` fail · `⌥↑` back ·
+  `⌥↓` feedback · `⌥M` mute · `⌥.` collapse↔pill · `esc` close. Options steps add `⌥1/⌥2/⌥3`.
+- **Feedback on ANY step, any mode** — the human presses `⌥↓` to grab a screen-region + a typed/spoken
+  note (not just on a test-fail). It lands in that step's `feedback:{screenshot,note}`.
+- **Paste auto-advance** — a step with `"doneWhen":{"kind":"pasted"}` advances the moment the human
+  presses `⌘V` (great for "paste this in" testing steps).
+- **Options (A/B/C, compare + approve)** — a step can carry `options` the human picks between; `⌥1/2/3`
+  previews a variant, `⌥→` approves. An option can be **media** (an image thumbnail) or a labelled swatch:
+  ```jsonc
+  { "id": "headline", "text": "Pick a headline",
+    "options": [
+      { "id": "bold",   "label": "Bold",   "media": "/path/a.png" },   // media OR
+      { "id": "calm",   "label": "Calm",   "accent": "indigo" },        // a coloured swatch
+      { "id": "punchy", "label": "Punchy", "accent": "pink" } ] }
+  ```
+  The approved variant comes back as `results[i].chosenOption` (the option `id`). *(Applying the choice
+  live to the underlying work is a wrapp-side hook; the choice itself is always recorded.)*
+- **Media step** — `"media": "/abs/path.png"` (or an http url, or `{src,caption}`) shows an image/GIF.
+- **Durable history — read the user's PAST runs.** Every run also APPENDS to
+  **`~/.relay/guide-history.jsonl`** (never deleted, unlike guide-result.json), with per-step verdicts,
+  **`chosenOption`**, notes, and **durable screenshot paths** (copied out of /tmp into
+  `~/.relay/guide-shots/`). To see what the user chose/saw in an earlier test, read that file:
+  ```bash
+  tail -5 ~/.relay/guide-history.jsonl
+  ```
+  This is how any later Claude thread — including a fresh session — recovers the user's choices +
+  screenshots to "finish it next pass."
 
 ## Rules
 

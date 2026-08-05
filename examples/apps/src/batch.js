@@ -14,11 +14,13 @@ import { optionCards } from "./kit/ui.js";
 // God's hands: expose Batch's one primary action (draft the whole application) as a page-tool the
 // native God webview (or any WebMCP host) can DRIVE — reusing the same start() a click runs.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Batch AT an item, open focused on it.
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
 const APP = {
-  id: "batch",                                  // = build.mjs entry name = ./dist/<id>.js in the html
+  id: "batch",                                // = build.mjs entry name = ./dist/<id>.js in the html
   name: "Batch",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
@@ -57,6 +59,17 @@ function toast(text, err) {
   if (!t) { t = el("div", "toast"); document.body.append(t); }
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
+}
+
+// carried context — the OS may launch Batch AT an item; open on it instead of a cold start. Safe
+// no-op when absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
 }
 
 // ==== connect (standard chip + returning-user probe) ========================================
@@ -559,11 +572,15 @@ function render() {
   if (!r) {
     const startBox = el("div", "start");
     if (brand) startBox.append(el("div", "ctx", "grounding in your lent context — " + brand.name));
+    const osTitle = osCtxTitle();
+    if (osTitle) startBox.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
     const row = el("div", "bindrow");
     const input = el("input");
     input.placeholder = "one line — what are you building?";
-    // CONTEXT-FIRST: a lent idea/project context prefills the line — one click, zero typing.
+    // CONTEXT-FIRST: a lent idea/project context prefills the line — one click, zero typing. When the
+    // OS launched Batch AT a specific item, that carried title seeds the line instead.
     if (brand) input.value = brand.name + (brand.data && brand.data.positioning ? " — " + brand.data.positioning : "");
+    else if (osTitle) input.value = osTitle;
     const go = () => { if (input.value.trim()) void start(input.value); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     const btn = el("button", "primary", brand ? "Draft from " + brand.name + " ▸" : "Draft all 8 ▸");

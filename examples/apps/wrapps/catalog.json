@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 75,
+  "count": 76,
   "listings": [
     {
       "id": "bank",
@@ -108,8 +108,7 @@
             "appendIntent": "string — plain-language description of step 2. Optional."
           }
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "crest",
@@ -180,8 +179,7 @@
             "notes": "string — notes, an outline, or a topic to turn into a slide deck. Required."
           }
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "dub",
@@ -255,8 +253,7 @@
             "audio": "string — an audio recording as a data:audio/… URL, transcribed locally on the device. Provide this OR transcript."
           }
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "ideabrain",
@@ -338,8 +335,7 @@
         "Read a website, repo, folder, URL or paste — real bytes, never a guess",
         "Multi-select what your project actually is — you assert, the model only structures",
         "One kind:project/brand context every wrapp opens pre-loaded"
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "adpulse",
@@ -718,8 +714,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "capp",
@@ -743,8 +738,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "convert",
@@ -815,6 +809,51 @@
       ]
     },
     {
+      "id": "emboss",
+      "name": "Emboss",
+      "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/emboss.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L1",
+        "downloadBytes": 524288,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "emboss_apply",
+          "description": "Apply the user's saved brand profile (letterhead, signature, stamp) to a document and produce a branded PDF, entirely on-device (no AI). Composes the given text into a new PDF and surfaces the download.",
+          "inputSchema": {
+            "text": "string — the document body text to compose into a branded PDF. Required for compose.",
+            "title": "string — optional document heading.",
+            "mode": "string — 'compose' (default). Only compose is supported via this tool.",
+            "profile": "string — optional profile name to use; defaults to the active one."
+          }
+        },
+        {
+          "name": "lh.png",
+          "description": "",
+          "inputSchema": {}
+        }
+      ]
+    },
+    {
       "id": "feature",
       "name": "Feature Case",
       "tagline": "Make the case for one feature.",
@@ -836,8 +875,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "flow",
@@ -894,8 +932,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "identity",
@@ -952,8 +989,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "marquee",
@@ -1015,8 +1051,7 @@
             "transcript": "string — the meeting transcript or rough notes to structure. Required."
           }
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "palette",
@@ -1274,8 +1309,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "saas",
@@ -1299,8 +1333,7 @@
           "kind": "model",
           "class": "local"
         }
-      ],
-      "hidden": true
+      ]
     },
     {
       "id": "shelf",

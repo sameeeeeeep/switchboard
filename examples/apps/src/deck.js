@@ -17,11 +17,13 @@ import { optionCards } from "./kit/ui.js";
 // God's hands: expose Deck's action as a page-tool so the native God webview (or any WebMCP host)
 // can DRIVE it — reusing the same start() a click runs — and expose a notch-widget glance.
 import { exposeToGod, exposeWidget } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Deck AT an item, open focused on it.
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
 const APP = {
-  id: "deck",                                   // = build.mjs entry name = ./dist/<id>.js in the html
+  id: "deck",                                 // = build.mjs entry name = ./dist/<id>.js in the html
   name: "Deck",
   installUrl: "https://thelastprompt.ai/switchboard/",
   scope: {
@@ -60,6 +62,17 @@ function toast(text, err) {
   if (!t) { t = el("div", "toast"); document.body.append(t); }
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
+}
+
+// carried context — the OS may launch Deck AT an item; open on it instead of a cold start. Safe
+// no-op when absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
 }
 
 // ==== connect (standard chip + returning-user probe) ========================================
@@ -369,10 +382,14 @@ function render() {
   if (!r) {
     const startBox = el("div", "start");
     if (brand) startBox.append(el("div", "ctx", "styled for your lent brand — " + brand.name));
+    const osTitle = osCtxTitle();
+    if (osTitle) startBox.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
     const row = el("div", "bindrow");
     const input = el("textarea");
     input.rows = 5;
     input.placeholder = "paste notes, an outline, or a topic…";
+    // When the OS launched Deck AT an item, that carried title/topic seeds the source note.
+    if (osTitle) input.value = osTitle;
     const go = () => { if (input.value.trim()) void start(input.value); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); });
     const btn = el("button", "primary", "Build the deck 🖥"); btn.onclick = go;
