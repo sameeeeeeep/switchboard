@@ -64,7 +64,7 @@ struct NotchLauncherView: View {
     let listings: [SBListing]                     // the live catalog, already filtered to what should appear
     let projects: [Ctx]                           // the project/context list for the chip
     let recent: [SBArtifact]                       // recent artifacts across wrapps (spotlight "Recent")
-    let vaultFiles: [SpotFile]                     // real disk files under bound vault folders (spotlight "Files")
+    let vaultFolders: [String]                     // bound vault folders → Spotlight file search scope (spotlight "Files")
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
     let onPickProject: (String?) -> Void          // chip → set the global context (nil = unconnected)
     let onLaunch: (SBListing, URL?) -> Void        // tile → launch this wrapp's widget, with the staged file if it takes one
@@ -75,7 +75,7 @@ struct NotchLauncherView: View {
     init(listings: [SBListing],
          projects: [Ctx],
          recent: [SBArtifact] = [],
-         vaultFiles: [SpotFile] = [],
+         vaultFolders: [String] = [],
          activeProjectId: String?,
          onPickProject: @escaping (String?) -> Void,
          onLaunch: @escaping (SBListing, URL?) -> Void,
@@ -85,7 +85,7 @@ struct NotchLauncherView: View {
         self.listings = listings
         self.projects = projects
         self.recent = recent
-        self.vaultFiles = vaultFiles
+        self.vaultFolders = vaultFolders
         self.activeProjectId = activeProjectId
         self.onPickProject = onPickProject
         self.onLaunch = onLaunch
@@ -101,6 +101,8 @@ struct NotchLauncherView: View {
     @State private var dropTargeted: Bool = false
     @State private var hoveredId: String? = nil
     @State private var spotSel: Int = 0              // ↑↓ selection index into spotAll (spotlight rows)
+    @State private var diskResults: [SpotFile] = []  // Spotlight file hits for the current query (async)
+    @State private var findGen: Int = 0              // debounce/cancel token for the async file search
     @State private var clipOffer: String? = nil      // the clipboard string offered as an addable context object (opt-in; nil once added)
     @FocusState private var searchFocused: Bool      // keep the field focused across grid re-renders
 
@@ -146,7 +148,7 @@ struct NotchLauncherView: View {
             SpotRow(id: "r-\(i)-" + a.title, kind: .file, label: a.title, sub: "\(a.app) · \(a.time)", payload: a.app) }
     }
     private var spotDiskFiles: [SpotRow] {
-        (q.isEmpty ? [] : vaultFiles.filter { $0.name.lowercased().contains(q) }).prefix(7).map {
+        diskResults.prefix(7).map {
             SpotRow(id: "d-" + $0.path, kind: .diskfile, label: $0.name, sub: $0.folder, payload: $0.path) }
     }
     private var spotSurfaces: [SpotRow] {
@@ -264,7 +266,17 @@ struct NotchLauncherView: View {
         .clipShape(NotchDropShape())
         .ignoresSafeArea()
         .onExitCommand(perform: onClose)                              // Esc closes the launcher
-        .onChange(of: query) { _, _ in spotSel = 0 }                  // new query → reset the ↑↓ cursor to the top
+        .onChange(of: query) { _, newVal in
+            spotSel = 0                                                // new query → reset the ↑↓ cursor to the top
+            let qq = newVal.trimmingCharacters(in: .whitespaces)
+            findGen += 1; let gen = findGen
+            guard qq.count >= 2, !vaultFolders.isEmpty else { diskResults = []; return }
+            // Spotlight file search off the main thread; drop the result if a newer keystroke superseded it.
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.12) {
+                let res = vaultSearch(qq, folders: vaultFolders, limit: 8)
+                DispatchQueue.main.async { if gen == findGen { diskResults = res } }
+            }
+        }
         .onKeyPress(.downArrow) { if !spotAll.isEmpty { spotSel = min(spotSel + 1, spotAll.count - 1) }; return .handled }
         .onKeyPress(.upArrow)   { if !spotAll.isEmpty { spotSel = max(spotSel - 1, 0) }; return .handled }
         .onAppear {
