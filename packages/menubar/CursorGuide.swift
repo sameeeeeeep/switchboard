@@ -235,7 +235,7 @@ struct GuideCaptionView: View {
             if m.visible {
                 placedCard
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(m.placement == .notch)
+                    .allowsHitTesting(false)   // overlay never captures clicks — the app underneath stays interactive
                     .animation(.easeOut(duration: 0.16), value: m.collapsed)
                     .animation(.easeOut(duration: 0.18), value: m.placement)
             }
@@ -1208,10 +1208,11 @@ final class CursorGuide {
         onOptionPreview?(steps[idx].id, model.options[i].id)
     }
 
-    // ── notch-clickable: at the notch the card is fixed, so its buttons/options can be CLICKED. The panel
-    //    only accepts mouse when a notch card is up; the card is the sole hit-testable view (rest stays
-    //    click-through). These public taps let the SwiftUI card drive the same paths as the keys. ──
-    private func applyMousePolicy() { overlay?.ignoresMouseEvents = (model.placement != .notch) }
+    // ── mouse policy: the overlay is ALWAYS click-through (ignoresMouseEvents=true) so it NEVER blocks the
+    //    app underneath — the user must be able to click form fields / real UI while a guide is up. Cards
+    //    are keyboard-driven (⌥→ etc.). (Making the notch card itself clickable safely needs its OWN small
+    //    bounded panel, not flipping the full-screen overlay — that blocked clicks to the app. Follow-up.) ──
+    private func applyMousePolicy() { overlay?.ignoresMouseEvents = true }
     func tapPrimary()      { handleAdvance(fail: false) }
     func tapFail()         { if mode == .test { handleAdvance(fail: true) } }
     func tapOption(_ i: Int) { selectOption(i) }
