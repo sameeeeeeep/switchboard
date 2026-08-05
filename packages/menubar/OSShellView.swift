@@ -207,7 +207,37 @@ let OS_GROUPS: [RailGroup] = [
 struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
 struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
-struct SBProject { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double }
+struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = "" }
+
+// LIVE projects — read the real ~/.relay/contexts.json (the same store the pill + wrapps use), so the
+// command centre spans every real project, not a fictional sample. Essence is derived from the context's
+// own data (products / positioning / audience) so a card is never blank.
+func osProjects() -> [SBProject] {
+    guard let arr = readJSON(CONTEXTS_FILE) as? [[String: Any]] else { return [] }
+    let now = Date().timeIntervalSince1970 * 1000
+    return arr.compactMap { c in
+        guard let id = c["id"] as? String, let name = c["name"] as? String else { return nil }
+        let kind = (c["kind"] as? String) ?? "context"
+        let data = c["data"] as? [String: Any]
+        var essence = ""
+        if let prods = data?["products"] as? [String], let first = prods.first, !first.isEmpty { essence = first }
+        else if let pos = data?["positioning"] as? String, !pos.isEmpty { essence = pos }
+        else if let aud = data?["audience"] as? String, !aud.isEmpty { essence = aud }
+        if essence.count > 68 { essence = String(essence.prefix(66)) + "…" }
+        if essence.isEmpty { essence = kind }
+        let updatedMs = (c["updatedAt"] as? NSNumber)?.doubleValue ?? 0
+        return SBProject(id: id, name: name, essence: essence, facets: [kind], progress: 0,
+                         kind: kind, pending: 0, updated: updatedMs > 0 ? relAgo(now - updatedMs) : "")
+    }
+}
+func osActiveId() -> String? { readDefaultId() }
+private func relAgo(_ ms: Double) -> String {
+    let s = ms / 1000
+    if s < 3600 { return "\(max(1, Int(s/60)))m" }
+    if s < 86400 { return "\(Int(s/3600))h" }
+    if s < 86400 * 8 { return "\(Int(s/86400))d" }
+    return "\(Int(s/604800))w"
+}
 
 enum Sample {
     static let project = SBProject(
@@ -321,10 +351,13 @@ struct RailView: View {
 
             Spacer(minLength: 12)
             Divider().overlay(Color.edgeSoft).padding(.horizontal, 8)
-            // active-project switcher (foot of rail — the one place it's set, OS.md §2.3)
+            // active-project switcher (foot of rail — the one place it's set, OS.md §2.3). Live: the real
+            // active context (falls back to the first project, then the sample name if there are none yet).
+            let projs = osProjects()
+            let activeProj = projs.first { $0.id == osActiveId() } ?? projs.first
             HStack(spacing: 9) {
-                IsoTile(hue: hueForId(Sample.project.id)).frame(width: 22, height: 22)
-                Text(Sample.project.name).font(.hanken(11, .medium)).foregroundColor(.inkSec).lineLimit(1)
+                IsoTile(hue: hueForId(activeProj?.id ?? Sample.project.id)).frame(width: 22, height: 22)
+                Text(activeProj?.name ?? Sample.project.name).font(.hanken(11, .medium)).foregroundColor(.inkSec).lineLimit(1)
                 Spacer(minLength: 0)
                 Text("▾").font(.splMono(9)).foregroundColor(.inkFaint)
             }
@@ -415,17 +448,34 @@ struct OmniBar: View {
 
 struct HomeDetail: View {
     @Binding var selected: Surface
+    @State private var projects: [SBProject] = []
+    @State private var activeId: String? = nil
+
+    private var active: SBProject? { projects.first { $0.id == activeId } ?? projects.first }
+    private var others: [SBProject] { projects.filter { $0.id != active?.id } }
+
+    private func load() { projects = osProjects(); activeId = osActiveId() }
+    private func switchTo(_ id: String) { writeGlobalContext(id); activeId = id }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // greeting
+                // greeting — the command centre spans EVERY project
                 (Text("Evening, Sameep. ").foregroundColor(.ink)
-                    + Text("Here's where you left off.").foregroundColor(.inkDim))
+                    + Text(projects.isEmpty ? "Here's where you left off." : "\(projects.count) projects · pick up anywhere.").foregroundColor(.inkDim))
                     .font(.hanken(24, .semibold))
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 4)
 
-                ActiveProjectCard()
+                if let a = active {
+                    SectionHead(kicker: "Jump back in", more: nil)
+                    ProjectCard(p: a, big: true, isActive: true) { switchTo(a.id); selected = .bank }
+                    if !others.isEmpty {
+                        SectionHead(kicker: "Projects", more: "manage →")
+                        ProjectsGrid(projects: others) { switchTo($0) }
+                    }
+                } else {
+                    ActiveProjectCard()   // fallback (no contexts yet) — the sample card
+                }
 
                 if Sample.needsCount > 0 { NeedsStrip().padding(.top, 16) }
 
@@ -435,15 +485,58 @@ struct HomeDetail: View {
                 SectionHead(kicker: "Your apps", more: "get more →")
                 AppDock(selected: $selected)
 
-                SectionHead(kicker: "What's next", more: nil)
-                WhatsNext()
-
                 Text("the home you come back to · every surface in the rail is a lens on your Bank · chrome stays lime + indigo, apps go vibrant")
                     .font(.splMono(10)).foregroundColor(.inkFaint)
                     .padding(.top, 34)
             }
             .padding(.horizontal, 28).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onAppear(perform: load)
+    }
+}
+
+// A project as a card — the vibrant per-id mark + name + essence + kind/pending/updated. Click switches
+// the active project (writeGlobalContext). `big` = the "jump back in" hero variant.
+struct ProjectCard: View {
+    let p: SBProject; var big = false; var isActive = false; let onOpen: () -> Void
+    var body: some View {
+        HStack(spacing: big ? 16 : 13) {
+            IsoTile(hue: hueForId(p.id))
+                .frame(width: big ? 50 : 38, height: big ? 50 : 38)
+                .background(RoundedRectangle(cornerRadius: big ? 13 : 11).fill(Color(red: 0x1b/255, green: 0x1a/255, blue: 0x2e/255)))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(p.name).font(.hanken(big ? 17 : 14, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    if isActive {
+                        Text("ACTIVE").font(.splMono(8)).tracking(0.8).foregroundColor(.lime)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                    }
+                }
+                Text(p.essence).font(.hanken(12)).foregroundColor(.inkDim).lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(p.kind).font(.splMono(10)).foregroundColor(.indigo)
+                    if p.pending > 0 { Text("\(p.pending) pending").font(.splMono(10)).foregroundColor(.amber) }
+                    if !p.updated.isEmpty { Text("· \(p.updated)").font(.splMono(10)).foregroundColor(.inkFaint) }
+                }.padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(big ? 16 : 13)
+        .background(RoundedRectangle(cornerRadius: big ? 16 : 14).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: big ? 16 : 14).stroke(isActive ? Color.indigo.opacity(0.4) : Color.edge, lineWidth: 1))
+        .contentShape(Rectangle())
+        .onTapGesture { onOpen() }
+    }
+}
+
+struct ProjectsGrid: View {
+    let projects: [SBProject]; let onSwitch: (String) -> Void
+    let cols = [GridItem(.adaptive(minimum: 240), spacing: 12)]
+    var body: some View {
+        LazyVGrid(columns: cols, spacing: 12) {
+            ForEach(projects) { p in ProjectCard(p: p, big: false, isActive: false) { onSwitch(p.id) } }
         }
     }
 }
