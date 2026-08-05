@@ -206,6 +206,7 @@ let OS_GROUPS: [RailGroup] = [
 
 struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
 struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made" }
+struct SpotFile: Identifiable { let id = UUID(); let name: String; let path: String; let folder: String }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
 struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = "" }
 
@@ -295,6 +296,34 @@ private func wrappFromOrigin(_ o: String) -> String {
     if s.contains("5190") { return "os" }
     return s.split(separator: ".").first.map(String.init) ?? s
 }
+// ── LIVE vault/disk files — a bounded index of REAL files under the folders the user has bound (the
+// "vaults", from storage-bindings.json). Depth- and count-capped, prunes heavy dirs, so ⌥⌥ can find a
+// real file and reveal it in Finder. Scanned on launcher open; filtered in-memory by the query.
+func osVaultFiles(cap: Int = 900) -> [SpotFile] {
+    let bindingsPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage-bindings.json")
+    var folders = Set<String>()
+    if let obj = readJSON(bindingsPath) as? [String: Any] {
+        for (_, v) in obj { if let m = v as? [String: Any], let f = m["folder"] as? String, !f.isEmpty { folders.insert(f) } }
+    }
+    let skip: Set<String> = ["node_modules", ".git", "dist", "build", ".next", ".cache", "Pods", ".venv", "venv", "__pycache__", ".DS_Store"]
+    let fm = FileManager.default
+    var out: [SpotFile] = []
+    var stack: [(String, Int)] = folders.map { ($0, 0) }
+    while let (dir, depth) = stack.popLast(), out.count < cap {
+        guard depth <= 4, let items = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+        let folderName = (dir as NSString).lastPathComponent
+        for it in items {
+            if it.hasPrefix(".") || skip.contains(it) { continue }
+            let p = dir + "/" + it
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: p, isDirectory: &isDir) else { continue }
+            if isDir.boolValue { stack.append((p, depth + 1)) }
+            else { out.append(SpotFile(name: it, path: p, folder: folderName)); if out.count >= cap { break } }
+        }
+    }
+    return out
+}
+
 // ── LIVE pending — genuine "needs attention": connectors that are down (status.json ok:false) + a paused
 // global routine loop. Real, actionable; empty when nothing needs the user.
 func osPending() -> [SBTask] {
