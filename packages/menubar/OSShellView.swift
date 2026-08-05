@@ -205,7 +205,7 @@ let OS_GROUPS: [RailGroup] = [
 // =====================================================================================================
 
 struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
-struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String }
+struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made" }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
 struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = "" }
 
@@ -242,7 +242,7 @@ private func relAgo(_ ms: Double) -> String {
 // ── LIVE recent work — the most-recently-saved wrapp artifacts across ~/.relay/storage/<origin>/*.json.
 // Each file is a wrapp's saved blob; mtime = recency, its `name`/`title`/`oneLine` (or a prettified key) is
 // the title, the origin resolves to the wrapp. Real activity, no fictional samples.
-func osRecentWork(limit: Int = 6) -> [SBArtifact] {
+func osRecentWork(limit: Int = 16) -> [SBArtifact] {
     let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
     let fm = FileManager.default
     guard let origins = try? fm.contentsOfDirectory(atPath: base) else { return [] }
@@ -258,10 +258,34 @@ func osRecentWork(limit: Int = 6) -> [SBArtifact] {
             let path = dir + "/" + f
             let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
             guard m > 0 else { continue }
-            scored.append((SBArtifact(title: artifactTitle(path, key: f), app: app, time: relAgo(now - m), kind: "doc"), m))
+            let (title, cat, kind) = classifyArtifact(path, key: f)
+            scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
         }
     }
-    return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+    // hierarchy: newest first, but genuine "made" artifacts float above "working" state at the same glance.
+    return scored.sorted { a, b in
+        if (a.0.category == "made") != (b.0.category == "made") { return a.0.category == "made" }
+        return a.1 > b.1
+    }.prefix(limit).map { $0.0 }
+}
+// Nothing is dropped — each file is TAGGED: "made" (a real created object — the blob names itself) vs
+// "working" (wrapp state/config). The Recent-work section filters on this, defaulting to Made.
+private func classifyArtifact(_ path: String, key: String) -> (title: String, category: String, kind: String) {
+    let name = key.hasSuffix(".json") ? String(key.dropLast(5)) : key
+    let lower = name.lowercased()
+    let stateHints = ["state", "profile", "workspace", "recents", "wallet", "vendors", "bindings", "config", "settings", "session", "prefs", "cache"]
+    let looksState = stateHints.contains { lower.hasSuffix($0) || lower == $0 || lower.hasSuffix("-\($0)") }
+    if let obj = readJSON(path) as? [String: Any] {
+        for k in ["name", "title", "oneLine"] {
+            if let v = obj[k] as? String, !v.isEmpty {
+                let t = v.count > 60 ? String(v.prefix(58)) + "…" : v
+                return (t, looksState ? "working" : "made", "doc")   // has a self-name → a real object
+            }
+        }
+    }
+    let pretty = name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
+    let titled = pretty.prefix(1).uppercased() + pretty.dropFirst()
+    return (String(titled), looksState ? "working" : "made", looksState ? "text" : "doc")
 }
 private func wrappFromOrigin(_ o: String) -> String {
     var s = o
@@ -271,18 +295,6 @@ private func wrappFromOrigin(_ o: String) -> String {
     if s.contains("5190") { return "os" }
     return s.split(separator: ".").first.map(String.init) ?? s
 }
-private func artifactTitle(_ path: String, key: String) -> String {
-    if let obj = readJSON(path) as? [String: Any] {
-        for k in ["name", "title", "oneLine"] {
-            if let v = obj[k] as? String, !v.isEmpty { return v.count > 60 ? String(v.prefix(58)) + "…" : v }
-        }
-    }
-    var base = key.hasSuffix(".json") ? String(key.dropLast(5)) : key
-    // drop a trailing -<uuid or slug> tail so "autopilotco-docket-loop-08g3" → "autopilotco docket loop"
-    base = base.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
-    return base.prefix(1).uppercased() + base.dropFirst()
-}
-
 // ── LIVE pending — genuine "needs attention": connectors that are down (status.json ok:false) + a paused
 // global routine loop. Real, actionable; empty when nothing needs the user.
 func osPending() -> [SBTask] {
@@ -728,11 +740,44 @@ struct NeedsStrip: View {
 
 struct RecentWorkGrid: View {
     let items: [SBArtifact]
+    @State private var filter = "made"     // Made (default) · Working · All — noise is one tap away, never gone
     let cols = [GridItem(.adaptive(minimum: 184), spacing: 14)]
+
+    private var madeCount: Int { items.filter { $0.category == "made" }.count }
+    private var workingCount: Int { items.filter { $0.category == "working" }.count }
+    // default to Made, but if there are no made items fall back to All so the section is never empty-looking
+    private var effective: String { (filter == "made" && madeCount == 0) ? "all" : filter }
+    private var shown: [SBArtifact] { effective == "all" ? items : items.filter { $0.category == effective } }
+
     var body: some View {
-        LazyVGrid(columns: cols, spacing: 14) {
-            ForEach(items) { w in ArtifactCard(art: w) }
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(spacing: 7) {
+                chip("made", "Made", madeCount)
+                chip("working", "Working", workingCount)
+                chip("all", "All", items.count)
+                Spacer(minLength: 0)
+            }
+            LazyVGrid(columns: cols, spacing: 14) {
+                ForEach(shown) { w in ArtifactCard(art: w) }
+            }
         }
+    }
+
+    private func chip(_ id: String, _ label: String, _ count: Int) -> some View {
+        let on = effective == id
+        return Button(action: { filter = id }) {
+            HStack(spacing: 6) {
+                Text(label).font(.hanken(11.5, on ? .semibold : .medium))
+                Text("\(count)").font(.splMono(9.5)).foregroundColor(on ? .page.opacity(0.7) : .inkFaint)
+            }
+            .foregroundColor(on ? .page : .inkDim)
+            .padding(.horizontal, 11).padding(.vertical, 5)
+            .background(Capsule().fill(on ? Color.lime : Color.panel))
+            .overlay(Capsule().stroke(on ? Color.clear : Color.edge, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .opacity(count == 0 ? 0.45 : 1)
+        .disabled(count == 0)
     }
 }
 
