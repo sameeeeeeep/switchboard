@@ -4219,6 +4219,7 @@ struct ActionConsentDrop: View {
         let view = NotchLauncherView(
             listings: listings,
             projects: readContexts(),
+            recent: osRecentWork(),
             activeProjectId: readDefaultId(),
             onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },

@@ -63,6 +63,7 @@ struct NotchLauncherView: View {
     // ---- inputs (see the init doc for the exact contract the host wires up) ----
     let listings: [SBListing]                     // the live catalog, already filtered to what should appear
     let projects: [Ctx]                           // the project/context list for the chip
+    let recent: [SBArtifact]                       // recent files/artifacts across wrapps (spotlight "Files")
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
     let onPickProject: (String?) -> Void          // chip → set the global context (nil = unconnected)
     let onLaunch: (SBListing, URL?) -> Void        // tile → launch this wrapp's widget, with the staged file if it takes one
@@ -72,6 +73,7 @@ struct NotchLauncherView: View {
 
     init(listings: [SBListing],
          projects: [Ctx],
+         recent: [SBArtifact] = [],
          activeProjectId: String?,
          onPickProject: @escaping (String?) -> Void,
          onLaunch: @escaping (SBListing, URL?) -> Void,
@@ -80,6 +82,7 @@ struct NotchLauncherView: View {
          onClose: @escaping () -> Void) {
         self.listings = listings
         self.projects = projects
+        self.recent = recent
         self.activeProjectId = activeProjectId
         self.onPickProject = onPickProject
         self.onLaunch = onLaunch
@@ -124,7 +127,7 @@ struct NotchLauncherView: View {
 
     // ── SPOTLIGHT — the ⌥⌥ bar reaches ANYWHERE: projects · apps · surfaces · actions. When the query is
     //    non-empty the app grid is replaced by grouped results, each leading somewhere. (docs: command centre)
-    private enum SpotKind { case project, app, surface, action }
+    private enum SpotKind { case project, app, file, surface, action }
     private struct SpotRow: Identifiable { let id: String; let kind: SpotKind; let label: String; let sub: String; let payload: String }
     private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
     private var spotProjects: [SpotRow] {
@@ -135,6 +138,10 @@ struct NotchLauncherView: View {
         (q.isEmpty ? [] : listings.filter { $0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q) }).prefix(6).map {
             SpotRow(id: "a-" + $0.id, kind: .app, label: $0.name, sub: $0.tagline, payload: $0.id) }
     }
+    private var spotFiles: [SpotRow] {
+        (q.isEmpty ? [] : recent.filter { $0.title.lowercased().contains(q) || $0.app.lowercased().contains(q) }).prefix(6).enumerated().map { (i, a) in
+            SpotRow(id: "f-\(i)-" + a.title, kind: .file, label: a.title, sub: "\(a.app) · \(a.time)", payload: a.app) }
+    }
     private var spotSurfaces: [SpotRow] {
         (q.isEmpty ? [] : Surface.allCases.filter { $0.title.lowercased().contains(q) }).map {
             SpotRow(id: "s-" + $0.rawValue, kind: .surface, label: $0.title, sub: "surface", payload: $0.rawValue) }
@@ -142,12 +149,16 @@ struct NotchLauncherView: View {
     private var spotActions: [SpotRow] {
         q.isEmpty ? [] : [SpotRow(id: "act-ask", kind: .action, label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: "ask")]
     }
-    private var spotAll: [SpotRow] { spotProjects + spotApps + spotSurfaces + spotActions }
+    private var spotAll: [SpotRow] { spotProjects + spotApps + spotFiles + spotSurfaces + spotActions }
+    private func listing(forApp id: String) -> SBListing? {
+        listings.first { $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name.caseInsensitiveCompare(id) == .orderedSame }
+    }
 
     private func choose(_ r: SpotRow) {
         switch r.kind {
         case .project: onPickProject(r.payload); onClose()
         case .app:     if let l = listings.first(where: { $0.id == r.payload }) { onLaunch(l, staged?.url) }
+        case .file:    if let l = listing(forApp: r.payload) { onLaunch(l, staged?.url) } else { onClose() }   // open in its wrapp
         case .surface: onOpenSurface(r.payload); onClose()
         case .action:  onAsk(query.trimmingCharacters(in: .whitespaces)); onClose()
         }
@@ -166,6 +177,9 @@ struct NotchLauncherView: View {
                 RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
                     .overlay(Image(systemName: "square.grid.2x2").font(.system(size: 11)).foregroundColor(.inkDim))
             }
+        case .file:
+            RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
+                .overlay(Image(systemName: "doc.text").font(.system(size: 11)).foregroundColor(.inkDim))
         case .surface:
             RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
                 .overlay(Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundColor(.inkDim))
@@ -186,7 +200,7 @@ struct NotchLauncherView: View {
                     Text(r.sub).font(.hanken(10.5)).foregroundColor(.inkDim).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Text(r.kind == .project ? "switch" : r.kind == .app ? "open" : r.kind == .surface ? "go" : "↵")
+                Text(r.kind == .project ? "switch" : (r.kind == .app || r.kind == .file) ? "open" : r.kind == .surface ? "go" : "↵")
                     .font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(sel ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
@@ -199,7 +213,7 @@ struct NotchLauncherView: View {
     }
 
     private var spotlightList: some View {
-        let groups: [(String, [SpotRow])] = [("Projects", spotProjects), ("Apps", spotApps), ("Go to", spotSurfaces), ("Actions", spotActions)].filter { !$0.1.isEmpty }
+        let groups: [(String, [SpotRow])] = [("Projects", spotProjects), ("Apps", spotApps), ("Files", spotFiles), ("Go to", spotSurfaces), ("Actions", spotActions)].filter { !$0.1.isEmpty }
         return ScrollView {
             VStack(alignment: .leading, spacing: 1) {
                 if groups.isEmpty {
@@ -305,7 +319,7 @@ struct NotchLauncherView: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
-            TextField("Search projects, apps — or ask", text: $query)
+            TextField("Search projects, apps, files — or ask", text: $query)
                 .textFieldStyle(.plain)
                 .font(.hanken(11))
                 .foregroundColor(.ink)
