@@ -239,6 +239,65 @@ private func relAgo(_ ms: Double) -> String {
     return "\(Int(s/604800))w"
 }
 
+// ── LIVE recent work — the most-recently-saved wrapp artifacts across ~/.relay/storage/<origin>/*.json.
+// Each file is a wrapp's saved blob; mtime = recency, its `name`/`title`/`oneLine` (or a prettified key) is
+// the title, the origin resolves to the wrapp. Real activity, no fictional samples.
+func osRecentWork(limit: Int = 6) -> [SBArtifact] {
+    let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
+    let fm = FileManager.default
+    guard let origins = try? fm.contentsOfDirectory(atPath: base) else { return [] }
+    let now = Date().timeIntervalSince1970 * 1000
+    var scored: [(SBArtifact, Double)] = []
+    for origin in origins {
+        let dir = base + "/" + origin
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
+              let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+        let app = wrappFromOrigin(origin)
+        for f in files where f.hasSuffix(".json") {
+            let path = dir + "/" + f
+            let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+            guard m > 0 else { continue }
+            scored.append((SBArtifact(title: artifactTitle(path, key: f), app: app, time: relAgo(now - m), kind: "doc"), m))
+        }
+    }
+    return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+}
+private func wrappFromOrigin(_ o: String) -> String {
+    var s = o
+    for p in ["https_", "http_", "tabsidekick_", "bridge_", "native_"] where s.hasPrefix(p) { s = String(s.dropFirst(p.count)); break }
+    if let r = s.range(of: ".thelastprompt.ai") { return String(s[..<r.lowerBound]) }   // subdomain = wrapp id
+    if s.contains("5178") { return "brandbrain" }
+    if s.contains("5190") { return "os" }
+    return s.split(separator: ".").first.map(String.init) ?? s
+}
+private func artifactTitle(_ path: String, key: String) -> String {
+    if let obj = readJSON(path) as? [String: Any] {
+        for k in ["name", "title", "oneLine"] {
+            if let v = obj[k] as? String, !v.isEmpty { return v.count > 60 ? String(v.prefix(58)) + "…" : v }
+        }
+    }
+    var base = key.hasSuffix(".json") ? String(key.dropLast(5)) : key
+    // drop a trailing -<uuid or slug> tail so "autopilotco-docket-loop-08g3" → "autopilotco docket loop"
+    base = base.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
+    return base.prefix(1).uppercased() + base.dropFirst()
+}
+
+// ── LIVE pending — genuine "needs attention": connectors that are down (status.json ok:false) + a paused
+// global routine loop. Real, actionable; empty when nothing needs the user.
+func osPending() -> [SBTask] {
+    var out: [SBTask] = []
+    let statusPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/status.json")
+    if let st = readJSON(statusPath) as? [String: Any], let cs = st["connectors"] as? [[String: Any]] {
+        for c in cs where (c["ok"] as? Bool) == false {
+            if let n = c["name"] as? String {
+                out.append(SBTask(glyph: "⚠", title: "Reconnect \(n)", detail: "connector is down — 0 tools", suggested: false))
+            }
+        }
+    }
+    return out
+}
+
 enum Sample {
     static let project = SBProject(
         id: "indeur", name: "IndEur Club",
@@ -450,11 +509,13 @@ struct HomeDetail: View {
     @Binding var selected: Surface
     @State private var projects: [SBProject] = []
     @State private var activeId: String? = nil
+    @State private var recent: [SBArtifact] = []
+    @State private var pending: [SBTask] = []
 
     private var active: SBProject? { projects.first { $0.id == activeId } ?? projects.first }
     private var others: [SBProject] { projects.filter { $0.id != active?.id } }
 
-    private func load() { projects = osProjects(); activeId = osActiveId() }
+    private func load() { projects = osProjects(); activeId = osActiveId(); recent = osRecentWork(); pending = osPending() }
     private func switchTo(_ id: String) { writeGlobalContext(id); activeId = id }
 
     var body: some View {
@@ -477,8 +538,14 @@ struct HomeDetail: View {
                     ActiveProjectCard()   // fallback (no contexts yet) — the sample card
                 }
 
-                // Recent work + Needs-attention are intentionally omitted until they read from a REAL source
-                // (an artifact/pending index) — showing fictional IndEur samples was the "not proper" part.
+                // LIVE needs-attention + recent work (real ~/.relay reads); each hidden when empty so the
+                // command centre never shows fictional filler.
+                if !pending.isEmpty { NeedsStrip(items: pending).padding(.top, 16) }
+                if !recent.isEmpty {
+                    SectionHead(kicker: "Recent work", more: "everything you've made →")
+                    RecentWorkGrid(items: recent)
+                }
+
                 SectionHead(kicker: "Your apps", more: "get more →")
                 AppDock(selected: $selected)
 
@@ -633,19 +700,20 @@ struct ProgressBar: View {
     }
 }
 
-// the top-of-Home action inbox (Needs attention lives everywhere, OS.md §2.1)
+// the top-of-Home action inbox (Needs attention lives everywhere, OS.md §2.1) — LIVE items from osPending()
 struct NeedsStrip: View {
+    let items: [SBTask]
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("!").font(.splMono(10)).foregroundColor(.lime)
-                Text("\(Sample.needsCount) things need you").font(.hanken(12, .semibold)).foregroundColor(.ink)
+                Text("!").font(.splMono(10)).foregroundColor(.amber)
+                Text("\(items.count) \(items.count == 1 ? "thing needs" : "things need") you").font(.hanken(12, .semibold)).foregroundColor(.ink)
                 Spacer()
                 Text("open Needs attention →").font(.hanken(11)).foregroundColor(.inkDim)
             }
-            ForEach(Sample.needs) { n in
+            ForEach(items) { n in
                 HStack(spacing: 10) {
-                    Text(n.glyph).font(.splMono(11)).foregroundColor(.lime).frame(width: 16)
+                    Text(n.glyph).font(.splMono(11)).foregroundColor(.amber).frame(width: 16)
                     Text(n.title).font(.hanken(12, .medium)).foregroundColor(.inkSec)
                     Text(n.detail).font(.hanken(11)).foregroundColor(.inkFaint).lineLimit(1)
                     Spacer(minLength: 0)
@@ -654,15 +722,16 @@ struct NeedsStrip: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 13).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.lime.opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.amber.opacity(0.28), lineWidth: 1))
     }
 }
 
 struct RecentWorkGrid: View {
+    let items: [SBArtifact]
     let cols = [GridItem(.adaptive(minimum: 184), spacing: 14)]
     var body: some View {
         LazyVGrid(columns: cols, spacing: 14) {
-            ForEach(Sample.work) { w in ArtifactCard(art: w) }
+            ForEach(items) { w in ArtifactCard(art: w) }
         }
     }
 }
