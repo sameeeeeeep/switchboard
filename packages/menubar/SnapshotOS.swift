@@ -38,6 +38,7 @@ func writeGlobalContext(_ id: String?) { }
 extension Font {
     static func hanken(_ s: CGFloat, _ w: Font.Weight = .regular) -> Font { .system(size: s, weight: w) }
     static func splMono(_ s: CGFloat) -> Font { .system(size: s, weight: .medium, design: .monospaced) }
+    static func brico(_ s: CGFloat, _ w: Font.Weight = .semibold) -> Font { .custom("Bricolage Grotesque", size: s).weight(w) }
 }
 
 // Minimal stand-in for RelayMenuBar's DotMatrix — only referenced by OSShellView.StubDetail,

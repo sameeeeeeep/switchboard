@@ -94,6 +94,7 @@ struct NotchLauncherView: View {
     @State private var staged: StagedFile? = nil     // the file handed to the next app clicked
     @State private var dropTargeted: Bool = false
     @State private var hoveredId: String? = nil
+    @State private var spotSel: Int = 0              // ↑↓ selection index into spotAll (spotlight rows)
     @State private var clipOffer: String? = nil      // the clipboard string offered as an addable context object (opt-in; nil once added)
     @FocusState private var searchFocused: Bool      // keep the field focused across grid re-renders
 
@@ -175,7 +176,9 @@ struct NotchLauncherView: View {
     }
 
     private func spotRowView(_ r: SpotRow) -> some View {
-        Button(action: { choose(r) }) {
+        let sel = spotAll.indices.contains(spotSel) && spotAll[spotSel].id == r.id
+        let lit = sel || hoveredId == r.id
+        return Button(action: { choose(r) }) {
             HStack(spacing: 10) {
                 spotIcon(r)
                 VStack(alignment: .leading, spacing: 1) {
@@ -184,12 +187,12 @@ struct NotchLauncherView: View {
                 }
                 Spacer(minLength: 0)
                 Text(r.kind == .project ? "switch" : r.kind == .app ? "open" : r.kind == .surface ? "go" : "↵")
-                    .font(.splMono(9)).foregroundColor(.inkFaint)
+                    .font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.edge, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(sel ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
             }
             .padding(.horizontal, 8).padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == r.id ? Color.raised : Color.clear))
+            .background(RoundedRectangle(cornerRadius: 8).fill(lit ? Color.raised : Color.clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
          .onHover { hoveredId = $0 ? r.id : (hoveredId == r.id ? nil : hoveredId) }
@@ -236,6 +239,9 @@ struct NotchLauncherView: View {
         .clipShape(NotchDropShape())
         .ignoresSafeArea()
         .onExitCommand(perform: onClose)                              // Esc closes the launcher
+        .onChange(of: query) { _, _ in spotSel = 0 }                  // new query → reset the ↑↓ cursor to the top
+        .onKeyPress(.downArrow) { if !spotAll.isEmpty { spotSel = min(spotSel + 1, spotAll.count - 1) }; return .handled }
+        .onKeyPress(.upArrow)   { if !spotAll.isEmpty { spotSel = max(spotSel - 1, 0) }; return .handled }
         .onAppear {
             DispatchQueue.main.async { searchFocused = true }
             // Peek the clipboard when ⌥⌥ opens — if it holds text, offer it (never auto-attached).
@@ -304,7 +310,7 @@ struct NotchLauncherView: View {
                 .font(.hanken(11))
                 .foregroundColor(.ink)
                 .focused($searchFocused)
-                .onSubmit { if let first = spotAll.first { choose(first) } }   // ↵ takes the top result
+                .onSubmit { let rows = spotAll; if rows.indices.contains(spotSel) { choose(rows[spotSel]) } else if let f = rows.first { choose(f) } }
             Button(action: { onAsk(query.trimmingCharacters(in: .whitespaces)); onClose() }) {
                 Image(systemName: "mic.fill").font(.system(size: 10, weight: .medium)).foregroundColor(.inkDim)
             }.buttonStyle(.plain).help("Ask by voice (⌃⌃)")
