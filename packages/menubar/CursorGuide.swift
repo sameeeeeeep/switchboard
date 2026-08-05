@@ -55,7 +55,8 @@ struct GuideStep {
     // ── teach-mode additions (all optional; absent → behaves exactly like a tour/test step) ──
     var say: String? = nil          // line to speak (falls back to `text`)
     var point: CGPoint? = nil       // overlay top-left coords (already mapped from shot pixels in begin())
-    var copy: String? = nil         // clipboard payload to pre-load when the step shows (opt-in via autoClipboard)
+    var copy: String? = nil         // TEXT clipboard payload to pre-load when the step shows (opt-in via autoClipboard)
+    var copyImage: String? = nil    // IMAGE (file path / http url) to pre-load onto the clipboard — the user just pastes it
     var hold: Double? = nil         // ms to dwell before auto-advancing (teach only)
     var doneWhen: Predicate? = nil  // locally-sensed completion condition → auto-advance
     var timeoutMs: Double? = nil    // after this long, stop watching doneWhen and fall back to manual-only
@@ -185,6 +186,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var placement: GuidePlacement = .dock   // notch / dock / cursor (⌥/ toggles notch↔dock)
     @Published var source: String? = nil          // provenance: who's asking (thread/agent/wrapp), e.g. "Claude Code · migrate-db"
     @Published var project: String? = nil         // provenance: the project this run is grounded in
+    @Published var clipboardHint: String? = nil   // "⌘V — pasted for you" cursor hint when a step preloads the clipboard
     @Published var applyingOption: Int? = nil     // an option is being applied live (shows the working dot-matrix)
     @Published var optionError = false            // last apply failed (danger line; never blocks)
     // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
@@ -213,6 +215,18 @@ struct GuideCaptionView: View {
                     .animation(m.reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: ringPulse)
                     .position(t)
                     .allowsHitTesting(false)
+            }
+            // Cursor hint — a tiny chip by the pointer when a step preloaded the clipboard, so the user knows
+            // to just paste (the full step stays at the notch/dock). Rides the cursor; never hit-tested.
+            if m.visible, let hint = m.clipboardHint {
+                HStack(spacing: 5) {
+                    Image(systemName: "doc.on.clipboard.fill").font(.system(size: 9)).foregroundColor(.lime)
+                    Text(hint).font(.splMono(9.5)).foregroundColor(.ink)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(Capsule().fill(Color.page.opacity(0.96)).overlay(Capsule().stroke(Color.lime.opacity(0.5), lineWidth: 1)))
+                .position(x: min(m.cursor.x + 74, max(90, m.screenSize.width - 90)), y: m.cursor.y + 24)
+                .allowsHitTesting(false)
             }
             // Placement (docs/PRESENCE.md §2): notch = fixed top-center + CLICKABLE; dock = bottom (or top on
             // a low target); cursor = rides the pointer (opt-in). Only the NOTCH card is hit-testable — the
@@ -821,6 +835,7 @@ final class CursorGuide {
             // ── teach fields (all optional) ──
             step.say = s["say"] as? String
             step.copy = s["copy"] as? String
+            step.copyImage = s["copyImage"] as? String
             if let h = (s["hold"] as? NSNumber)?.doubleValue { step.hold = h }
             if let t = (s["timeoutMs"] as? NSNumber)?.doubleValue { step.timeoutMs = t }
             if let p = s["point"] as? [String: Any],
@@ -901,6 +916,12 @@ final class CursorGuide {
         return GuideMedia(src: src, caption: d["caption"] as? String)
     }
 
+    // Load an image for the clipboard-preload (file path or http url). Small helper images only.
+    private func loadImage(_ src: String) -> NSImage? {
+        if src.hasPrefix("http"), let url = URL(string: src), let d = try? Data(contentsOf: url) { return NSImage(data: d) }
+        return NSImage(contentsOfFile: src)
+    }
+
     private func logMalformed() {
         NSLog("[cursor-guide] trigger malformed — ignored (need {title, steps:[{text|instruction}]})")
     }
@@ -938,9 +959,16 @@ final class CursorGuide {
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
         if (mode == .tour || mode == .teach) && !model.muted { onSpeak?(s.say ?? s.text) }
         // Pre-load the clipboard with this step's paste payload (opt-in; user's clipboard is restored on end).
-        if autoClipboard, let c = s.copy {
+        // An IMAGE wins if present (copyImage); else text (copy). The cursor hint tells the user it's ready.
+        model.clipboardHint = nil
+        if autoClipboard, let imgSrc = s.copyImage, let img = loadImage(imgSrc) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([img])
+            model.clipboardHint = "⌘V — image ready"
+        } else if autoClipboard, let c = s.copy {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(c, forType: .string)
+            model.clipboardHint = "⌘V — pasted for you"
         }
         armStepWatchers()
     }
