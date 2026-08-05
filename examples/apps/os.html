@@ -40,8 +40,28 @@
       .kick{font-family:var(--mono); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
       /* top bar */
       .top{display:flex; align-items:center; gap:14px; padding:20px clamp(18px,4vw,44px) 14px; position:sticky; top:0; background:linear-gradient(var(--page),var(--page) 70%,rgba(8,9,12,0)); z-index:5}
-      .omni{flex:1; max-width:440px; margin:0 auto; background:var(--panel); border:1px solid var(--edge); border-radius:11px; padding:8px 13px; color:var(--ink-faint); font-size:13px; display:flex; align-items:center; gap:9px; cursor:text}
-      .omni .k{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink-faint); border:1px solid var(--edge); border-radius:5px; padding:1px 6px}
+      .omniwrap{flex:1; max-width:560px; margin:0 auto; position:relative}
+      .omni{background:var(--panel); border:1px solid var(--edge); border-radius:11px; padding:0 8px 0 13px; height:40px; display:flex; align-items:center; gap:9px}
+      .omni:focus-within{border-color:var(--lime); box-shadow:0 0 0 3px rgba(200,242,80,.12)}
+      .omni .oic{color:var(--ink-faint); font-size:14px}
+      .omni input{flex:1; background:none; border:0; outline:none; color:var(--ink); font-size:13.5px; font-family:inherit}
+      .omni input::placeholder{color:var(--ink-faint)}
+      .omni .omic{width:26px;height:26px;border-radius:7px;border:1px solid var(--edge);background:transparent;color:var(--ink-dim);font-size:12px;cursor:pointer;display:grid;place-items:center}
+      .omni .omic:hover{border-color:var(--lime);color:var(--lime)}
+      .omni .k{font-family:var(--mono); font-size:10px; color:var(--ink-faint); border:1px solid var(--edge); border-radius:5px; padding:1px 6px}
+      /* spotlight dropdown */
+      .spot{position:absolute; top:46px; left:0; right:0; background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:6px; max-height:60vh; overflow:auto; box-shadow:0 18px 50px rgba(0,0,0,.55); z-index:20}
+      .spot .grp{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-faint); padding:9px 10px 5px}
+      .spot .opt{display:flex; align-items:center; gap:11px; padding:8px 10px; border-radius:9px; cursor:pointer}
+      .spot .opt.sel,.spot .opt:hover{background:var(--raised)}
+      .spot .opt .ico{width:26px;height:26px;border-radius:7px;flex:0 0 auto;display:grid;place-items:center;font-size:13px;overflow:hidden}
+      .spot .opt .ico img,.spot .opt .ico svg{width:100%;height:100%;object-fit:cover}
+      .spot .opt .lab{flex:1; min-width:0}
+      .spot .opt .lab b{display:block; font-size:13px; color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+      .spot .opt .lab span{display:block; font-size:11px; color:var(--ink-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+      .spot .opt .go{font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); border:1px solid var(--edge); border-radius:5px; padding:1px 6px}
+      .spot .opt.sel .go{color:var(--lime); border-color:var(--lime)}
+      .spot .empty{padding:16px 12px; color:var(--ink-dim); font-size:12.5px}
       .top .gear{width:30px;height:30px;border-radius:8px;border:1px solid var(--edge);background:var(--panel);display:grid;place-items:center;color:var(--ink-dim);font-size:14px;cursor:pointer}
       main{padding:6px clamp(18px,4vw,44px) 0}
       /* home hero */
@@ -54,6 +74,22 @@
       .proj .facets{display:flex; gap:8px; margin-top:5px; flex-wrap:wrap}
       .proj .facet{font-size:11.5px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--edge); border-radius:20px; padding:2px 9px}
       .proj .switch{margin-left:auto; font-size:12px; color:var(--indigo); border:1px solid #2c2a55; background:#14122b; border-radius:9px; padding:7px 12px; white-space:nowrap; cursor:pointer}
+      /* projects — jump-back + grid */
+      .jump{margin-top:12px}
+      .pcard{display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:13px 15px; cursor:pointer; transition:border-color .12s}
+      .pcard:hover{border-color:var(--lime)}
+      .pcard.big{background:linear-gradient(180deg,#15131f,#121319); border-left:2px solid var(--indigo); border-radius:16px; padding:16px 20px; gap:16px}
+      .pcard .pmark{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;overflow:hidden}
+      .pcard.big .pmark{width:50px;height:50px;border-radius:13px}
+      .pcard .pbody{min-width:0;flex:1}
+      .pcard .pnm{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+      .pcard.big .pnm{font-size:17px}
+      .pcard .pnm .cur{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--lime);border:1px solid #3a4a12;background:#20260c;border-radius:5px;padding:1px 6px}
+      .pcard .pess{font-size:12px;color:var(--ink-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .pcard .pmeta{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:var(--ink-faint);font-family:var(--mono)}
+      .pcard .pmeta .kd{color:var(--indigo)}
+      .pcard .pmeta .pend{color:var(--warn)}
+      .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
       /* needs-attention strip */
       .attn{margin-top:16px; background:linear-gradient(180deg,#1c1512,#161014); border:1px solid #3a2416; border-left:2px solid var(--warn); border-radius:14px; padding:12px 16px}
       .attn .ah{display:flex; align-items:center; gap:9px; font-size:12px; color:var(--warn); font-family:var(--mono); letter-spacing:.06em}
@@ -122,7 +158,16 @@
       <aside class="rail" id="rail"></aside>
       <div class="maincol">
         <div class="top">
-          <div class="omni" title="⌃⌃ omni (placeholder)">⌃⌃ ask, or search your work<span class="k">⌃⌃</span></div>
+          <div class="omniwrap" id="omniwrap">
+            <div class="omni" id="omni">
+              <span class="oic">⌕</span>
+              <input id="omniInput" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="Search projects, apps, files — or ask" aria-label="Search or ask" />
+              <button class="omic" id="omniMic" title="Ask by voice (⌃⌃)" aria-label="Ask by voice">🎙</button>
+              <span class="k">⌥⌥</span>
+            </div>
+            <div class="spot" id="spot" hidden></div>
+          </div>
           <div class="gear" title="Settings">⚙</div>
         </div>
         <main id="pane"></main>
