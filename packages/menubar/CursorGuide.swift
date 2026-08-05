@@ -36,6 +36,14 @@ struct GuideMedia {
     var caption: String? = nil
 }
 
+// A shortcut to TEACH, rendered as keycap buttons + a name (e.g. [⌃][⌃] Ask). Prominent in the card body
+// so the user reads the keys as buttons, not buried in prose. `caps` = the individual keys drawn as caps.
+struct GuideKeyGroup: Identifiable {
+    let id = UUID()
+    let caps: [String]      // e.g. ["⌃","⌃"] or ["⌥","⌥"]
+    let name: String        // e.g. "Ask", "Dictate", "Launch"
+}
+
 // One A/B/C variant the user compares + approves (Redline-style). A variant can BE media (an image
 // thumbnail) OR a labelled swatch — `media` wins when present. Picking one (⌥1/2/3) previews it; ⌥→
 // approves. The chosen id is recorded in the result so the wrapp/God can apply it (the live-apply hook).
@@ -63,6 +71,7 @@ struct GuideStep {
     var media: GuideMedia? = nil    // an image/gif for this step (zone 4)
     var options: [GuideOption]? = nil  // A/B/C variants to compare + approve (zone 5); ⌥→ = approve selected
     var placement: String? = nil    // "notch" | "dock" | "cursor" — where the card sits (nil = smart default)
+    var keys: [GuideKeyGroup]? = nil   // shortcut(s) to teach, drawn as keycap buttons (zone: taught-keys)
 }
 
 // Where the presence/guide card sits. notch = fixed top-center + CLICKABLE; dock = fixed bottom (keyboard);
@@ -180,6 +189,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var target: CGPoint? = nil         // a step's point → the ring indicates it (nil = no ring this step)
     @Published var collapsed = false              // card collapsed to a small docked pill (⌥. toggles)
     @Published var media: GuideMedia? = nil       // zone 4 — an image/gif for this step
+    @Published var keys: [GuideKeyGroup] = []     // taught-keys zone — shortcut(s) as keycap buttons
     @Published var options: [GuideOption] = []    // zone 5 — A/B/C variants to compare + approve
     @Published var selectedOption = 0             // ⌥1/2/3 highlight; ⌥→ approves this one
     @Published var dockTop = false                // dock the card at the TOP when the target is in the bottom band
@@ -472,6 +482,14 @@ struct GuideCaptionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // ── taught-keys zone: the shortcut(s) this step teaches, as keycap buttons (⌃⌃ Ask, …) ──
+            if !m.keys.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(m.keys) { g in KeyChip(group: g) }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 1)
+            }
             // ── zone 4: media (image / gif) ──
             if let media = m.media {
                 GuideMediaView(media: media, reduceMotion: m.reduceMotion, compact: false)
@@ -584,20 +602,58 @@ struct CardChrome: ViewModifier {
     }
 }
 
+// One keyboard key drawn as a physical keycap.
+struct KeyCap: View {
+    let glyph: String
+    var big = false
+    var filled = false            // lime-filled (the primary action) vs raised
+    var body: some View {
+        Text(glyph)
+            .font(.splMono(big ? 12 : 9.5))
+            .foregroundColor(filled ? .page : .ink)
+            .frame(minWidth: big ? 20 : 13)
+            .padding(.horizontal, big ? 6 : 4).padding(.vertical, big ? 4 : 2)
+            .background(
+                RoundedRectangle(cornerRadius: big ? 6 : 4).fill(filled ? Color.lime : Color.raised)
+                    .overlay(RoundedRectangle(cornerRadius: big ? 6 : 4).stroke(filled ? Color.clear : Color.edge, lineWidth: 1))
+            )
+    }
+}
+
+// A taught shortcut rendered as a button: its keycaps + a name (e.g. [⌃][⌃] Ask). The prominent, scannable
+// way to teach a hotkey — keys as buttons, not prose.
+struct KeyChip: View {
+    let group: GuideKeyGroup
+    var body: some View {
+        HStack(spacing: 7) {
+            HStack(spacing: 3) { ForEach(Array(group.caps.enumerated()), id: \.offset) { _, c in KeyCap(glyph: c, big: true) } }
+            if !group.name.isEmpty {
+                Text(group.name).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1).fixedSize()
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.page.opacity(0.45))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1)))
+    }
+}
+
 struct GuideActionChip: View {
-    let combo: String   // e.g. "fn →", "esc"
+    let combo: String   // e.g. "⌥→", "esc", "⌥1·⌥2·⌥3"
     let label: String   // e.g. "Pass", "Close"
     let primary: Bool
+    // Break a combo into individual caps so each key is its own button. A composite (·) or word (esc)
+    // stays whole.
+    private var caps: [String] {
+        if combo.isEmpty || combo.contains("·") { return [combo] }
+        if combo.count == 1 { return [combo] }
+        if combo.allSatisfy({ $0.isLetter }) { return [combo] }   // "esc"
+        return combo.map { String($0) }
+    }
     var body: some View {
         HStack(spacing: 4) {
-            Text(combo)
-                .font(.splMono(9.5))
-                .foregroundColor(primary ? .page : .ink)
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4).fill(primary ? Color.lime : Color.raised)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(primary ? Color.clear : Color.edge, lineWidth: 1))
-                )
+            HStack(spacing: 2) {
+                ForEach(Array(caps.enumerated()), id: \.offset) { _, c in KeyCap(glyph: c, filled: primary) }
+            }
             Text(label)
                 .font(.hanken(10, .medium))
                 .foregroundColor(primary ? .lime : .inkDim)
@@ -697,8 +753,13 @@ final class CursorGuide {
         capturingFeedback = true
         feedbackIdx = idx
         if results[idx].feedback == nil { results[idx].feedback = StepFeedback() }
+        // Collapse the card to its pill so it vacates the notch — the feedback note drops BELOW it instead of
+        // being hidden behind it. Restored on endFeedback.
+        wasCollapsedBeforeFeedback = model.collapsed
+        model.collapsed = true
         onFeedbackBegin?(results[idx].id)
     }
+    private var wasCollapsedBeforeFeedback = false
 
     // RelayController pushes the fn-drag jpg here as soon as a region is grabbed.
     func attachFeedbackScreenshot(_ path: String) {
@@ -739,6 +800,7 @@ final class CursorGuide {
     private func endFeedback() {
         capturingFeedback = false
         feedbackIdx = nil
+        model.collapsed = wasCollapsedBeforeFeedback   // re-expand the card (unless it was already collapsed)
         onFeedbackEnd?()
     }
 
@@ -861,6 +923,13 @@ final class CursorGuide {
                 if !opts.isEmpty { step.options = Array(opts.prefix(3)) }   // cap at A/B/C (spec §7)
             }
             step.placement = (s["placement"] as? String)
+            if let rawKeys = s["keys"] as? [[String: Any]] {
+                let groups: [GuideKeyGroup] = rawKeys.compactMap { g in
+                    guard let caps = g["caps"] as? [String], !caps.isEmpty else { return nil }
+                    return GuideKeyGroup(caps: caps, name: (g["name"] as? String) ?? "")
+                }
+                if !groups.isEmpty { step.keys = groups }
+            }
             parsed.append(step)
         }
         guard !parsed.isEmpty else { logMalformed(); return }
@@ -948,6 +1017,7 @@ final class CursorGuide {
         model.autoSensing = (s.doneWhen != nil) || ((s.hold ?? 0) > 0)   // step advances itself → AUTO
         model.canBack = idx > 0
         model.media = s.media
+        model.keys = s.keys ?? []
         model.options = s.options ?? []
         // adhd-pm: pre-select the ⭐recommended option so a single ⌥→ (or click) takes the recommendation.
         model.selectedOption = (s.options ?? []).firstIndex(where: { $0.recommended }) ?? 0
