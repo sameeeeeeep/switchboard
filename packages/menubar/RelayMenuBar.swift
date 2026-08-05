@@ -3529,6 +3529,15 @@ struct ActionConsentDrop: View {
             ("Widget — working", WidgetSpec(kicker: "PRISM · IMAGE", title: "Making an image…", openLabel: "Open in Prism", result: .working("Making an image from your selection…"))),
         ]
         let menu = NSMenu()
+        // Resume an ABANDONED guide — shown only when one is suspended (esc'd part-way). Picks up right
+        // where you left off (the run carries its startIndex).
+        if let suspended = readSuspendedGuide() {
+            let t = (suspended["suspendedTitle"] as? String) ?? "Resume guide"
+            let resume = NSMenuItem(title: "▶ \(t)", action: #selector(resumeSuspendedGuide), keyEquivalent: "")
+            resume.target = self
+            menu.addItem(resume)
+            menu.addItem(.separator())
+        }
         // LIVE first — the real thing. Drive ANY installed wrapp on your own Claude: pick it, give it
         // input, its <id>_run tool runs in a hosted webview and the result lands as a notch widget.
         // (Not roast-only anymore — the whole catalog is drivable. docs/GOD-HANDS.md "God drives ALL wrapps".)
@@ -3606,6 +3615,22 @@ struct ActionConsentDrop: View {
         if let btn = statusItem.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 5), in: btn) }
     }
     @objc private func openOSWindow() { OSShellWindowController.shared.show() }
+
+    // Resume-from-menu: a guide abandoned mid-way writes ~/.relay/guide-suspended.json (raw run + startIndex).
+    private func readSuspendedGuide() -> [String: Any]? {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/guide-suspended.json")
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: p)),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj
+    }
+    @objc private func resumeSuspendedGuide() {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+        let src = (dir as NSString).appendingPathComponent("guide-suspended.json")
+        let dst = (dir as NSString).appendingPathComponent("guide-run.json")
+        try? FileManager.default.removeItem(atPath: dst)
+        // Move suspended → run; the CursorGuide watcher picks it up and resumes at its startIndex.
+        try? FileManager.default.moveItem(atPath: src, toPath: dst)
+    }
 
     // Programmatic open hook: `touch ~/.relay/open-os` opens the OS window (for scripted
     // launches / self-test, since this accessory app can't be driven via LaunchServices).
