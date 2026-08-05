@@ -303,7 +303,7 @@ struct GuideCaptionView: View {
         return a.map { (combo: $0.0, label: $0.1, primary: $0.2) }
     }
     private var metaActions: [(combo: String, label: String, primary: Bool)] {
-        [("⌥↓", "Feedback", false),                        // screenshot + note, any mode
+        [("⌥↓", "Feedback", false),                         // screenshot + note, any mode
          ("⌥M", m.muted ? "Unmute" : "Mute", false),
          ("esc", "Close", false)]
         .map { (combo: $0.0, label: $0.1, primary: $0.2) }
@@ -514,7 +514,8 @@ struct GuideCaptionView: View {
             .padding(.top, 2)
         }
         .padding(.horizontal, m.placement == .notch ? 20 : SB.s3)
-        .padding(.vertical, m.placement == .notch ? 13 : SB.s3)
+        .padding(.top, m.placement == .notch ? 34 : SB.s3)      // clear the physical notch — content drops below it
+        .padding(.bottom, m.placement == .notch ? 13 : SB.s3)
         .modifier(CardChrome(notch: m.placement == .notch))
         .overlay(alignment: .topTrailing) { flashBadge }
     }
@@ -1519,11 +1520,13 @@ final class CursorGuide {
         // the paste itself must reach the app. The ~4Hz watcher picks up the flag on its next tick.
         if keyCode == 9, flags.contains(.command) { pasteObserved = true; return false }
         if keyCode == 53 { abort(reason: "esc"); return true }                          // Esc — Close
-        // Every other guide signal needs Option held — but NOT Control (⌃⌥ = dictation, left alone).
+        // Everything needs OPTION held (never Control — ⌃⌥ dictation + ⌃→ Spaces are left alone). Option is
+        // required so a BARE arrow (which the user needs for normal navigation — fields, dropdowns) never
+        // advances the guide by accident. ⌥+arrow doesn't page-scroll either.
         guard flags.contains(.option), !flags.contains(.control) else { return false }
         switch keyCode {
         case 124: handleAdvance(fail: false); return true                              // ⌥→ — Pass/Next
-        case 123: if mode == .test { handleAdvance(fail: true) }; return true          // ⌥← — Fail
+        case 123: if mode == .test { handleAdvance(fail: true) }; return true          // ⌥← — Fail (test)
         case 126: goBack(); return true                                                // ⌥↑ — Back
         case 125: beginFeedback(); return true                                         // ⌥↓ — screenshot + note
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
