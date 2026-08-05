@@ -255,6 +255,30 @@ The user presses `⌥1/2/3` (or clicks — the notch card is clickable) then `�
 (`notch` clickable · `dock` · `cursor`) · options gain `detail` (one-line why) + `recommended` (⭐,
 pre-selected). `⌥/` moves notch↔dock, `⌥.` collapses. An option can carry `media` (an image thumbnail).
 
+## Recipe: help the user fill a form (guided fill)
+
+Turn "help me fill this form" into a guided fill — no screen-reading needed:
+
+1. **Get the form.** Easiest: the user selects the form and **⌘A ⌘C** (copies it); God reads the clipboard
+   for the field labels. (A Claude Code thread can't read the Mac clipboard — have the user paste the form
+   text into chat instead.)
+2. **Get the data.** God pulls the user's values from their **identity / Bank** context. A CLI thread asks
+   the user (or reads a file they point at). **Never invent values; skip a field you have no data for.**
+3. **Raise a teach fill-guide** — one step per field, each pre-loading that field's value on the clipboard,
+   so the user just clicks the field and pastes; `doneWhen: field-non-empty` auto-advances:
+```jsonc
+{ "mode": "teach", "title": "Fill: contact form", "source": "God", "project": "…",
+  "autoClipboard": true,
+  "steps": [
+    { "id": "name",  "text": "Click the Name field, then ⌘V", "copy": "Ada Lovelace",
+      "doneWhen": { "kind": "field-non-empty" } },
+    { "id": "email", "text": "Click the Email field, then ⌘V", "copy": "ada@analytical.engine",
+      "doneWhen": { "kind": "field-non-empty" } }
+  ] }
+```
+The "⌘V — pasted for you" cursor hint shows on each step. Secrets rule still holds: never place a
+password/API key on the clipboard — write a plain "type your … here" step instead.
+
 ## Claude Code → the notch (attention hook)
 
 `cc-notify.py` (in this skill dir) turns Claude Code's own "needs you" moments into a notch card instead
