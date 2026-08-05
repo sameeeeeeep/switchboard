@@ -2817,7 +2817,7 @@ struct FeedbackNoteDrop: View {
                 Text("esc discard").font(.splMono(9)).foregroundColor(.inkDim)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 12)
+        .padding(.horizontal, 20).padding(.top, 34).padding(.bottom, 12)   // top clears the physical notch
         .frame(width: 300)
         .padding(.horizontal, 14)   // notch ears
         .background(Color.page)
@@ -3536,8 +3536,13 @@ struct ActionConsentDrop: View {
             let resume = NSMenuItem(title: "▶ \(t)", action: #selector(resumeSuspendedGuide), keyEquivalent: "")
             resume.target = self
             menu.addItem(resume)
-            menu.addItem(.separator())
+        } else {
+            // Always visible (disabled) so it's discoverable — becomes "▶ Resume … step N/total" once you esc a guide part-way.
+            let none = NSMenuItem(title: "Resume guide (none paused)", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
         }
+        menu.addItem(.separator())
         // Guided form fill: copy a form (⌘A⌘C) then click this → a fill-guide with your data, field by field.
         let fill = NSMenuItem(title: "Fill a form from clipboard", action: #selector(fillFormFromClipboard), keyEquivalent: "")
         fill.target = self
@@ -3660,8 +3665,10 @@ struct ActionConsentDrop: View {
         for f in fillFields {
             guard let val = id[f.key], !val.isEmpty else { continue }          // only fields I actually have
             guard f.synonyms.contains(where: { clip.contains($0) }) else { continue }   // the form mentions it
+            // Advance on the PASTE keystroke (reliable, no AX) OR the field filling — whichever first.
             steps.append(["id": f.key, "text": "Click the \(f.label) field, then ⌘V",
-                          "copy": val, "doneWhen": ["kind": "field-non-empty"]])
+                          "copy": val,
+                          "doneWhen": ["any": [["kind": "pasted"], ["kind": "field-non-empty"]]]])
         }
         guard !steps.isEmpty else {
             raiseFillNote("No fields I have data for matched this form. Add values in ~/.relay/identity.json.")
