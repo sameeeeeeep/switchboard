@@ -762,6 +762,7 @@ final class CursorGuide {
     private var steps: [GuideStep] = []
     private var idx = 0
     private var results: [GuideResult] = []
+    private var rawRun: [String: Any]? = nil   // the original run JSON — re-saved (with startIndex) on abort so a guide can be RESUMED from the menu
     private var startedAt = Date()
 
     // ── teach run state
@@ -868,12 +869,15 @@ final class CursorGuide {
         self.mode = m
         self.title = title
         self.steps = parsed
+        self.rawRun = obj                          // keep the raw run so we can re-save it (with startIndex) to resume
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
         model.sourceId = (obj["sourceId"] as? String)
         model.project = (obj["project"] as? String)
-        self.idx = 0
+        // Resume support: a run may carry startIndex (written by the "resume" menu item) → begin partway in.
+        self.idx = max(0, min((obj["startIndex"] as? Int) ?? 0, parsed.count - 1))
         self.results = parsed.map { GuideResult(id: $0.id, text: $0.text, verdict: "unrun", notedAt: nil) }
+        for i in 0..<idx where i < results.count { results[i].verdict = "done" }   // steps before the resume point are done
         self.startedAt = Date()
         self.isActive = true
         self.autoClipboard = autoClip
@@ -1253,6 +1257,14 @@ final class CursorGuide {
     private func abort(reason: String) {
         guard isActive else { return }
         if capturingFeedback { capturingFeedback = false; feedbackIdx = nil; onFeedbackEnd?() }  // tear down any in-flight capture
+        // Suspend for RESUME: if there are steps left, re-save the raw run with startIndex=idx so the
+        // menu can pick it up right where the user left off. (Only when abandoned mid-way, not at the end.)
+        if let raw = rawRun, idx < steps.count {
+            var suspended = raw
+            suspended["startIndex"] = idx
+            suspended["suspendedTitle"] = "\(title) — step \(idx + 1)/\(steps.count)"
+            writeAtomic(suspended, to: rel("guide-suspended.json"))
+        }
         // Any not-yet-verdicted step becomes "skipped" (unrun in the file's terms → skipped on abort).
         for i in idx..<results.count where results[i].verdict == "unrun" { results[i].verdict = "skipped" }
         finish(outcome: "aborted")
@@ -1260,6 +1272,9 @@ final class CursorGuide {
     }
 
     private func finish(outcome: String) {
+        if outcome == "completed" {   // ran to the end → nothing to resume; clear any suspended guide
+            try? FileManager.default.removeItem(atPath: rel("guide-suspended.json"))
+        }
         let finishedAt = Date()
         let passed = results.filter { $0.verdict == "pass" }.count
         let failed = results.filter { $0.verdict == "fail" }.count
