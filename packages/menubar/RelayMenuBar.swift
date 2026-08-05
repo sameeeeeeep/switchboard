@@ -4688,13 +4688,13 @@ struct ActionConsentDrop: View {
             case .screen:
                 steps.append(["id": "grant-screen",
                     "text": "Last permission: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
-                    "hint": "Grant it and the cards are done — the orb goes quiet. → to keep going."])
+                    "hint": "Grant it and the cards are done — the orb goes quiet. ⌥→ to keep going."])
             }
         }
         // ── Your Claude — only if signed out
         if model.running && !model.signedIn {
             steps.append(["id": "sign-in",
-                "text": "Switchboard runs on YOUR Claude — the plan you already pay for, no API key, no extra bill. I've opened Terminal; run the `claude` command there to sign in, then come back and press →.",
+                "text": "Switchboard runs on YOUR Claude — the plan you already pay for, no API key, no extra bill. I've opened Terminal; run the `claude` command there to sign in, then come back and press ⌥→.",
                 "hint": "This is the one time you touch a terminal. Once you're in, the menu-bar dot turns lime."])
         }
         // ── The three keys (hotkeys stay live during a guide, so this is real practice)
