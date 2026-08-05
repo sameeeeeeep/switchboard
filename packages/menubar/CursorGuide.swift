@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Vision
 import CoreGraphics
+import ApplicationServices   // AXIsProcessTrusted — the permission strip check
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CURSOR GUIDE — a cursor-anchored, no-grant, click-through instruction chip that
@@ -28,6 +29,25 @@ import CoreGraphics
 
 enum GuideMode: String { case tour, test, teach }
 
+// A picture or looping GIF shown in a step's media zone (show-don't-tell). `src` is an absolute file
+// path or an http(s) URL; loaded lazily when the step appears (docs/GUIDE-CARD-SPEC §6 media states).
+struct GuideMedia {
+    let src: String
+    var caption: String? = nil
+}
+
+// One A/B/C variant the user compares + approves (Redline-style). A variant can BE media (an image
+// thumbnail) OR a labelled swatch — `media` wins when present. Picking one (⌥1/2/3) previews it; ⌥→
+// approves. The chosen id is recorded in the result so the wrapp/God can apply it (the live-apply hook).
+struct GuideOption: Identifiable {
+    let id: String
+    let label: String
+    var media: GuideMedia? = nil
+    var accent: String? = nil        // "lime" | "indigo" | "pink" — the swatch bar when there's no media
+    var detail: String? = nil        // one-line "why" (adhd-pm: make the trade-off scannable)
+    var recommended: Bool = false    // ⭐ the recommended pick — pre-selected so ⌥→ takes it instantly
+}
+
 struct GuideStep {
     let id: String
     let text: String
@@ -39,7 +59,14 @@ struct GuideStep {
     var hold: Double? = nil         // ms to dwell before auto-advancing (teach only)
     var doneWhen: Predicate? = nil  // locally-sensed completion condition → auto-advance
     var timeoutMs: Double? = nil    // after this long, stop watching doneWhen and fall back to manual-only
+    var media: GuideMedia? = nil    // an image/gif for this step (zone 4)
+    var options: [GuideOption]? = nil  // A/B/C variants to compare + approve (zone 5); ⌥→ = approve selected
+    var placement: String? = nil    // "notch" | "dock" | "cursor" — where the card sits (nil = smart default)
 }
+
+// Where the presence/guide card sits. notch = fixed top-center + CLICKABLE; dock = fixed bottom (keyboard);
+// cursor = rides the pointer (opt-in). See docs/PRESENCE.md §2.
+enum GuidePlacement: String { case notch, dock, cursor }
 
 // A locally-decidable completion condition. Either a boolean combinator (any/all) or a leaf that the
 // CursorGuide watcher evaluates against a fresh AmbientSignal (+ bounded AX / local Vision OCR). A
@@ -56,6 +83,7 @@ indirect enum Predicate {
     case elementExists(role: String, titleContains: String?, enabled: Bool?)
     case checkboxState(titleContains: String, checked: Bool)
     case onScreenTextAppeared(text: String?, regex: String?, region: CGRect?)   // LOCAL Apple Vision OCR
+    case pasted   // satisfied once the user presses ⌘V while the step is active → paste auto-advances
     case unknown   // unrecognized leaf → never satisfied (manual-only), never crashes
 
     /// Parse a predicate from the JSON schema. Returns nil only for a non-object; unknown leaves
@@ -94,6 +122,8 @@ indirect enum Predicate {
                 region = CGRect(x: x, y: y, width: w, height: h)
             }
             return .onScreenTextAppeared(text: d["text"] as? String, regex: d["regex"] as? String, region: region)
+        case "pasted":
+            return .pasted
         default:
             return .unknown
         }
@@ -123,6 +153,7 @@ struct GuideResult {
     var verdict: String   // "pass" | "fail" | "skipped" | "unrun" | "done" (tour)
     var notedAt: Date?
     var feedback: StepFeedback? = nil   // set by the feedback-capture flow (fn-drag shot + typed/dictated note)
+    var chosenOption: String? = nil     // the A/B/C variant the user approved on an options step
 }
 
 enum GuideFlash { case pass, fail, skip, next, back }
@@ -137,12 +168,25 @@ final class GuideOverlayModel: ObservableObject {
     @Published var title: String? = nil          // optional guide title, shown dim in the kicker
     @Published var text: String = ""
     @Published var hint: String? = nil
-    @Published var progress: String = ""         // "3/8"
+    @Published var progress: String = ""         // "3/8" (kept for logs / a11y)
+    @Published var stepIndex: Int = 0            // 0-based, drives the segment progress bar
+    @Published var stepTotal: Int = 0
+    @Published var autoSensing = false           // this step self-advances (doneWhen/hold) → AUTO pill + status line
     @Published var canBack = false               // idx > 0 → the Back chip appears
     @Published var flash: GuideFlash? = nil       // brief ✓/✗ confirmation that a signal landed
     @Published var done: String? = nil            // non-nil → show the completion summary card
     @Published var reduceMotion = false
-    @Published var target: CGPoint? = nil         // teach mode: overlay-coords point to ring + anchor the chip to (nil = ride the cursor)
+    @Published var target: CGPoint? = nil         // a step's point → the ring indicates it (nil = no ring this step)
+    @Published var collapsed = false              // card collapsed to a small docked pill (⌥. toggles)
+    @Published var media: GuideMedia? = nil       // zone 4 — an image/gif for this step
+    @Published var options: [GuideOption] = []    // zone 5 — A/B/C variants to compare + approve
+    @Published var selectedOption = 0             // ⌥1/2/3 highlight; ⌥→ approves this one
+    @Published var dockTop = false                // dock the card at the TOP when the target is in the bottom band
+    @Published var placement: GuidePlacement = .dock   // notch / dock / cursor (⌥/ toggles notch↔dock)
+    @Published var source: String? = nil          // provenance: who's asking (thread/agent/wrapp), e.g. "Claude Code · migrate-db"
+    @Published var project: String? = nil         // provenance: the project this run is grounded in
+    @Published var applyingOption: Int? = nil     // an option is being applied live (shows the working dot-matrix)
+    @Published var optionError = false            // last apply failed (danger line; never blocks)
     // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
     @Published var muted: Bool = UserDefaults.standard.bool(forKey: "relay.guide.muted")
 }
@@ -154,28 +198,13 @@ final class GuideOverlayModel: ObservableObject {
 struct GuideCaptionView: View {
     @ObservedObject var m: GuideOverlayModel
     @State private var ringPulse = false
-    private let cardW: CGFloat = 300
-    private let estH: CGFloat = 96   // nominal card height, used only to pick the flip side
-
-    // The point the chip hangs off: the marked target in teach mode, else the live cursor.
-    private var anchor: CGPoint { m.target ?? m.cursor }
-
-    // Top-left origin of the card in overlay coords, clamped to the screen frame.
-    private func origin() -> CGPoint {
-        let a = anchor
-        var x = a.x + 18
-        var y = a.y + 22
-        let W = m.screenSize.width, H = m.screenSize.height
-        if W > 0, x + cardW > W - 8 { x = a.x - 18 - cardW }   // flip left
-        if H > 0, y + estH > H - 8 { y = a.y - 22 - estH }      // flip up
-        return CGPoint(x: max(8, x), y: max(8, y))
-    }
+    private let cardW: CGFloat = 320
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.clear
-            // Teach-mode pointer ring — the SAME pulsing lime circle GodGlowView draws, so God and the
-            // guide share one visual vocabulary. The pulse is gated on reduce-motion (falls to a still ring).
+            Color.clear.allowsHitTesting(false)
+            // Pointer ring — shown ONLY when a step declares a target to indicate (m.target). Pulsing lime
+            // circle, matching God's [POINT] ring. The RING follows/points; the CARD is placed separately.
             if m.visible, let t = m.target {
                 Circle().stroke(Color.lime.opacity(0.85), lineWidth: 2)
                     .frame(width: 40, height: 40)
@@ -183,17 +212,51 @@ struct GuideCaptionView: View {
                     .opacity(m.reduceMotion ? 0.9 : (ringPulse ? 0.3 : 0.95))
                     .animation(m.reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: ringPulse)
                     .position(t)
+                    .allowsHitTesting(false)
             }
+            // Placement (docs/PRESENCE.md §2): notch = fixed top-center + CLICKABLE; dock = bottom (or top on
+            // a low target); cursor = rides the pointer (opt-in). Only the NOTCH card is hit-testable — the
+            // rest of the overlay stays click-through so the app underneath is never blocked.
             if m.visible {
-                card
-                    .frame(width: cardW, alignment: .leading)
-                    .offset(x: origin().x, y: origin().y)
+                placedCard
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(m.placement == .notch)
+                    .animation(.easeOut(duration: 0.16), value: m.collapsed)
+                    .animation(.easeOut(duration: 0.18), value: m.placement)
             }
         }
-        .allowsHitTesting(false)
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { ringPulse = true }
+    }
+
+    @ViewBuilder private var placedCard: some View {
+        switch m.placement {
+        case .notch:
+            VStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }   // flush at top — the drop merges into the notch
+        case .cursor:
+            VStack(spacing: 0) { Spacer(minLength: 0); cardOrPill }.padding(.bottom, 54)   // (rides-cursor is a later refinement; docks bottom for now)
+        case .dock:
+            VStack(spacing: 0) {
+                if m.dockTop { cardOrPill; Spacer(minLength: 0) } else { Spacer(minLength: 0); cardOrPill }
+            }.padding(m.dockTop ? .top : .bottom, 54)
+        }
+    }
+
+    @ViewBuilder private var cardOrPill: some View {
+        if m.collapsed { collapsedPill } else { card.frame(width: cardW, alignment: .leading) }
+    }
+
+    // Collapsed: a small docked pill — a live pulse, the step count, and how to bring the card back.
+    private var collapsedPill: some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.7), radius: 3)
+            Text("\(m.stepIndex + 1)/\(max(m.stepTotal, 1))").font(.splMono(10)).foregroundColor(.ink)
+            Text("guide").font(.hanken(11, .semibold)).foregroundColor(.inkDim)
+            Text("⌥. expand").font(.splMono(8.5)).foregroundColor(.inkFaint)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(chipBackground)
     }
 
     @ViewBuilder private var card: some View {
@@ -204,71 +267,237 @@ struct GuideCaptionView: View {
         }
     }
 
-    // The action chips available for the current step + mode. Primary (Pass/Next) is lime.
-    // Back is hidden on step 1 (nothing to go back to); Fail only exists in test mode.
-    private var actions: [(combo: String, label: String, primary: Bool)] {
+    // The action chips, split into a PRIMARY row (advance / fail / back) and a META row (feedback / mute /
+    // close). Two rows so labels never wrap or get cut in the 300pt card, whatever the count. Primary
+    // (Pass/Next) is lime. Back is hidden on step 1 (nothing to go back to); Fail only exists in test mode.
+    // Accelerators use ⌃⌘+arrow — NOT fn+arrow, which macOS maps to PageUp/PageDown and scrolls the app
+    // underneath the guide. (Manual advance is also a click on the chip; auto-advance is the primary path.)
+    private var primaryActions: [(combo: String, label: String, primary: Bool)] {
         var a: [(String, String, Bool)] = []
-        if m.mode == .test {
-            a.append(("fn →", "Pass", true))
-            a.append(("fn ←", "Fail", false))
+        if !m.options.isEmpty {                                   // options step → try variants, then approve
+            let combo = (1...m.options.count).map { "⌥\($0)" }.joined(separator: "·")
+            a.append((combo, "try", false))
+            a.append(("⌥→", "Approve", true))
+        } else if m.mode == .test {
+            a.append(("⌥→", "Pass", true))
+            a.append(("⌥←", "Fail", false))
         } else {
-            a.append(("fn →", "Next", true))
+            a.append(("⌥→", "Next", true))
         }
-        if m.canBack { a.append(("fn ↑", "Back", false)) }
-        a.append(("fn ↓", "Feedback", false))   // screenshot + note, any mode
-        a.append(("fn m", m.muted ? "Unmute" : "Mute", false))
-        a.append(("esc", "Close", false))
+        if m.canBack { a.append(("⌥↑", "Back", false)) }
         return a.map { (combo: $0.0, label: $0.1, primary: $0.2) }
+    }
+    private var metaActions: [(combo: String, label: String, primary: Bool)] {
+        [("⌥↓", "Feedback", false),                        // screenshot + note, any mode
+         ("⌥M", m.muted ? "Unmute" : "Mute", false),
+         ("esc", "Close", false)]
+        .map { (combo: $0.0, label: $0.1, primary: $0.2) }
+    }
+
+    // A slim segment bar: one pill per step, filled up to the current one. Reads as progress at a glance
+    // (replaces the "3/6" text — show, don't count).
+    // Readability: for a long step, break the FIRST sentence out as the bold lead (the thing to focus on)
+    // and render the rest as dimmer detail. Short steps stay a single line (rest = nil).
+    private func splitInstruction(_ t: String) -> (lead: String, rest: String?) {
+        guard t.count > 88, let r = t.range(of: ". ") else { return (t, nil) }
+        let lead = String(t[..<r.upperBound]).trimmingCharacters(in: .whitespaces)
+        let rest = String(t[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+        return rest.isEmpty ? (t, nil) : (lead, rest)
+    }
+
+    // Route a clicked action chip to the same handler as its key (notch-clickable).
+    private func chipTap(_ label: String) {
+        switch label {
+        case "Next", "Pass", "Approve": CursorGuide.shared.tapPrimary()
+        case "Fail":                     CursorGuide.shared.tapFail()
+        case "Back":                     CursorGuide.shared.tapBack()
+        case "Feedback":                 CursorGuide.shared.tapFeedback()
+        case "Mute", "Unmute":           CursorGuide.shared.tapMute()
+        case "Close":                    CursorGuide.shared.tapClose()
+        default: break   // "try" (⌥1·2·3) has no single action — the option cards handle taps
+        }
+    }
+
+    private var segmentBar: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<max(m.stepTotal, 1), id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(i <= m.stepIndex ? Color.lime : Color.raised)
+                    .frame(height: 4)
+            }
+        }
+    }
+
+    // Zone 5: the A/B/C variant cards. Each shows its media (or an accent swatch), a bold label, and a
+    // one-line "why" (adhd-pm: make the trade-off scannable). The ⭐recommended one is pre-selected + badged
+    // so a single ⌥→ / click takes it. Selected = lime border. Tappable at the notch. ⌥→ approves.
+    private var optionsRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Text("PICK ONE — UPDATES LIVE").font(.splMono(8.5)).tracking(0.6).foregroundColor(.indigo)
+                if m.options.contains(where: { $0.recommended }) {
+                    Text("★ recommended").font(.splMono(8)).foregroundColor(.lime.opacity(0.9))
+                }
+            }
+            HStack(alignment: .top, spacing: 7) {
+                ForEach(Array(m.options.enumerated()), id: \.element.id) { (i, opt) in optionCard(i, opt) }
+            }
+        }
+    }
+    private func optionCard(_ i: Int, _ opt: GuideOption) -> some View {
+        let sel = i == m.selectedOption
+        let letter = i < 3 ? ["A", "B", "C"][i] : "\(i + 1)"
+        return VStack(alignment: .leading, spacing: 5) {
+            ZStack(alignment: .topTrailing) {
+                if let md = opt.media {
+                    GuideMediaView(media: md, reduceMotion: m.reduceMotion, compact: true)
+                } else {
+                    RoundedRectangle(cornerRadius: 5).fill(accentColor(opt.accent)).frame(maxWidth: .infinity).frame(height: 40)
+                }
+                if opt.recommended {
+                    Text("★").font(.system(size: 9)).foregroundColor(.lime)
+                        .padding(3).background(Circle().fill(Color.page.opacity(0.75))).padding(4)
+                }
+            }
+            HStack(spacing: 4) {
+                Text(sel ? "\(letter)✓" : letter).font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
+                Text(opt.label).font(.hanken(11, .semibold)).foregroundColor(sel ? .ink : .inkDim).lineLimit(1)
+            }
+            if let d = opt.detail, !d.isEmpty {
+                Text(d).font(.hanken(9.5)).foregroundColor(.inkFaint)
+                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: SBr.xs)
+            .stroke(sel ? Color.lime : (opt.recommended ? Color.lime.opacity(0.4) : Color.edge), lineWidth: sel ? 1.5 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture { CursorGuide.shared.tapOption(i) }   // clickable at the notch (no-op elsewhere: not hit-testable)
+    }
+    private func accentColor(_ name: String?) -> Color {
+        switch (name ?? "").lowercased() {
+        case "indigo": return .indigo
+        case "pink", "danger": return .danger
+        default: return .lime
+        }
     }
 
     private var stepCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // kicker: N/total + optional guide title
-            HStack(spacing: 7) {
-                Text(m.progress)
-                    .font(.splMono(9.5))
-                    .foregroundColor(.lime)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.lime.opacity(0.14)))
-                    .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.lime.opacity(0.35), lineWidth: 1))
+        VStack(alignment: .leading, spacing: 9) {
+            // ── provenance: WHO is asking (thread/agent) + which PROJECT, so a card is never a mystery. ──
+            if (m.source?.isEmpty == false) || (m.project?.isEmpty == false) {
+                HStack(spacing: 7) {
+                    if let s = m.source, !s.isEmpty {
+                        Text("⌘ \(s)").font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1)
+                    }
+                    if let p = m.project, !p.isEmpty {
+                        Text("◆ \(p)").font(.splMono(9)).foregroundColor(.indigo).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            // ── permission strip: keys need Accessibility. Shown only when not trusted; the guide still
+            //    renders + esc works, but keyboard signals won't fire until granted (spec §6). ──
+            if !AXIsProcessTrusted() {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                    Text("Keys need Accessibility — grant it in Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+            }
+            // ── header rail: segment progress · title · AUTO pill · voice ──
+            HStack(spacing: 8) {
+                segmentBar.frame(width: 92)
                 if let t = m.title, !t.isEmpty {
                     Text(t.uppercased())
-                        .font(.splMono(8.5))
-                        .tracking(0.6)
+                        .font(.splMono(8.5)).tracking(0.7)
                         .foregroundColor(.inkFaint)
                         .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
-                // voiceover state — at-a-glance speaker icon (toggle with fn m)
+                if m.autoSensing {
+                    HStack(spacing: 4) {
+                        DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 3, dot: 2, gap: 2, animated: !m.reduceMotion)
+                        Text("AUTO").font(.splMono(8)).tracking(0.5).foregroundColor(.lime)
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                }
                 Image(systemName: m.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 9))
                     .foregroundColor(m.muted ? .inkFaint : .lime)
+                Text("⌥.").font(.splMono(8)).foregroundColor(.inkFaint)   // hint: ⌥. collapses the card to a pill
             }
-            // the instruction — the readable line
-            Text(m.text)
-                .font(.hanken(13, .medium))
+            // ── the instruction — a bold LEAD line (what to focus on) + dimmer detail, so a dense step is
+            //    scannable instead of a wall. Short steps render as one line. NO line limit (never cut). ──
+            let parts = splitInstruction(m.text)
+            Text(parts.lead)
+                .font(.brico(15, .semibold))
                 .foregroundColor(.ink)
-                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let h = m.hint, !h.isEmpty {
-                Text(h)
-                    .font(.hanken(11, .regular))
+            if let rest = parts.rest {
+                Text(rest)
+                    .font(.hanken(12, .regular))
                     .foregroundColor(.inkDim)
-                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // keycap action chips — one per available action
-            HStack(spacing: 5) {
-                ForEach(Array(actions.enumerated()), id: \.offset) { _, act in
-                    GuideActionChip(combo: act.combo, label: act.label, primary: act.primary)
+            if let h = m.hint, !h.isEmpty {
+                Text(h)
+                    .font(.hanken(11.5, .regular))
+                    .foregroundColor(.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // ── zone 4: media (image / gif) ──
+            if let media = m.media {
+                GuideMediaView(media: media, reduceMotion: m.reduceMotion, compact: false)
+            }
+            // ── zone 5: options — A/B/C variants to compare + approve ──
+            if !m.options.isEmpty { optionsRow }
+            // ── auto-status / applying / error line (dot-matrix — the Switchboard sensing language) ──
+            if m.optionError {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 10)).foregroundColor(.danger)
+                    Text("couldn't apply — try another or skip (⌥→)").font(.hanken(10.5, .medium)).foregroundColor(.danger)
+                }
+            } else if let ai = m.applyingOption, ai < m.options.count {
+                HStack(spacing: 6) {
+                    DotMatrix(pattern: .working, accent: .indigo, cols: 5, rows: 3, dot: 2, gap: 2, animated: !m.reduceMotion)
+                    Text("applying \(m.options[ai].label)…").font(.hanken(10.5, .medium)).foregroundColor(.indigo)
+                }
+            } else if m.autoSensing {
+                HStack(spacing: 6) {
+                    DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 3, dot: 2, gap: 2, animated: !m.reduceMotion)
+                    Text("watching — I'll advance on my own").font(.hanken(10.5, .medium)).foregroundColor(.lime.opacity(0.9))
                 }
             }
-            .padding(.top, 1)
+            // keycap action chips — two rows (primary, then meta) so labels never wrap/cut. At the NOTCH they
+            // are clickable (tap → same path as the key); elsewhere the tap is inert (card isn't hit-tested).
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    ForEach(Array(primaryActions.enumerated()), id: \.offset) { _, act in
+                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary)
+                            .contentShape(Rectangle()).onTapGesture { chipTap(act.label) }
+                    }
+                }
+                HStack(spacing: 5) {
+                    ForEach(Array(metaActions.enumerated()), id: \.offset) { _, act in
+                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary)
+                            .contentShape(Rectangle()).onTapGesture { chipTap(act.label) }
+                    }
+                }
+            }
+            .padding(.top, 2)
         }
-        .padding(.horizontal, SB.s3).padding(.vertical, SB.s3)
-        .background(chipBackground)
+        .padding(.horizontal, m.placement == .notch ? 20 : SB.s3)
+        .padding(.vertical, m.placement == .notch ? 13 : SB.s3)
+        .modifier(CardChrome(notch: m.placement == .notch))
         .overlay(alignment: .topTrailing) { flashBadge }
     }
 
@@ -278,7 +507,7 @@ struct GuideCaptionView: View {
                 .font(.system(size: 13)).foregroundColor(.lime)
             Text(summary)
                 .font(.hanken(11.5, .medium)).foregroundColor(.ink)
-                .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, SB.s3).padding(.vertical, SB.s2 + 2)
@@ -315,6 +544,27 @@ struct GuideCaptionView: View {
 
 /// A keycap-style action indicator: the key(s) to press rendered as a little keycap, plus its label.
 /// Primary (Pass/Next) wears the lime accent; the rest are ghost. Purely visual (the caption is click-through).
+// The card chrome. At the NOTCH it IS the notch canvas — Color.page + NotchDropShape (the exact silhouette
+// God's status drop + the consent drop use), so it descends from the notch and blends in. Elsewhere it's
+// the rounded, shadowed card. (NotchDropShape + Color.page come from RelayMenuBar — same build target.)
+struct CardChrome: ViewModifier {
+    let notch: Bool
+    func body(content: Content) -> some View {
+        if notch {
+            content
+                .frame(minWidth: 130)
+                .padding(.horizontal, 14)   // room for the notch "ears" (the shape flares to full width up top)
+                .background(Color.page)
+                .clipShape(NotchDropShape())
+        } else {
+            content.background(
+                RoundedRectangle(cornerRadius: SBr.sm).fill(Color.panel.opacity(0.98))
+                    .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(Color.lime.opacity(0.45), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.45), radius: 12, x: 0, y: 6))
+        }
+    }
+}
+
 struct GuideActionChip: View {
     let combo: String   // e.g. "fn →", "esc"
     let label: String   // e.g. "Pass", "Close"
@@ -332,7 +582,53 @@ struct GuideActionChip: View {
             Text(label)
                 .font(.hanken(10, .medium))
                 .foregroundColor(primary ? .lime : .inkDim)
+                .lineLimit(1).fixedSize()   // never break a keycap label mid-word
         }
+    }
+}
+
+// Zone 4 / option thumbnail — loads a local file path OR an http(s) url. While loading: the working
+// dot-matrix. On failure: a small "preview unavailable" (the instruction still stands — spec §6 media).
+struct GuideMediaView: View {
+    let media: GuideMedia
+    var reduceMotion = false
+    var compact = false
+    private var h: CGFloat { compact ? 40 : 96 }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity)
+            .frame(height: h)
+            .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
+            .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
+    }
+
+    @ViewBuilder private var content: some View {
+        if media.src.hasPrefix("http"), let url = URL(string: media.src) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                case .failure: unavailable
+                default: loading
+                }
+            }
+        } else if let img = NSImage(contentsOfFile: media.src) {
+            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+        } else {
+            unavailable
+        }
+    }
+    private var loading: some View {
+        DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 3, dot: 2, gap: 2, animated: !reduceMotion)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.raised)
+    }
+    private var unavailable: some View {
+        HStack(spacing: 5) {
+            if !compact { Image(systemName: "photo").font(.system(size: 10)) }
+            Text(compact ? "—" : "preview unavailable").font(.hanken(compact ? 9 : 10)).foregroundColor(.inkFaint)
+        }
+        .foregroundColor(.inkFaint).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.raised)
     }
 }
 
@@ -362,6 +658,12 @@ final class CursorGuide {
     // fallback). In .tour AND .teach mode each step is read aloud as it appears, so the guide talks you through it.
     var onSpeak: ((String) -> Void)?     // speak a line (interrupts any in-flight speech)
     var onStopSpeak: (() -> Void)?       // silence on teardown/abort
+
+    // The live-apply hook (Redline-style options). CursorGuide only knows WHICH variant the user is
+    // eyeing/approved; APPLYING it to the real work (re-render the doc/page) is the app/wrapp's job.
+    // preview = ⌥1/2/3 (compare live); approve = ⌥→. Absent → options are still recorded, just not applied.
+    var onOptionPreview: ((_ stepId: String, _ optionId: String) -> Void)?
+    var onOptionApprove: ((_ stepId: String, _ optionId: String) -> Void)?
 
     // Teach mode senses locally. CursorGuide owns no sensor, so RelayController injects a closure that
     // returns a fresh AmbientSignal (frontmost app / window title / url / focused-field value). The
@@ -451,6 +753,7 @@ final class CursorGuide {
     private var ocrInFlight = false          // one Vision pass at a time
     private var ocrMatched = false           // last OCR verdict for the current step
     private var ocrStepIdx = -1              // which step the cached ocrMatched belongs to
+    private var pasteObserved = false        // ⌘V seen during THIS step (drives the `.pasted` doneWhen)
 
     // ── chord edge-detect (⌃⌥ down → release = one signal; +⇧ while held = fail)
     private var chordDown = false
@@ -525,6 +828,18 @@ final class CursorGuide {
                 step.point = mapper(CGPoint(x: px, y: py))
             }
             step.doneWhen = Predicate.parse(s["doneWhen"])
+            step.media = parseMedia(s["media"])
+            if let rawOpts = s["options"] as? [[String: Any]] {
+                let opts: [GuideOption] = rawOpts.enumerated().compactMap { (j, o) in
+                    guard let label = (o["label"] as? String) ?? (o["id"] as? String) else { return nil }
+                    let oid = (o["id"] as? String) ?? "opt-\(j + 1)"
+                    return GuideOption(id: oid, label: label, media: parseMedia(o["media"]),
+                                       accent: o["accent"] as? String, detail: o["detail"] as? String,
+                                       recommended: (o["recommended"] as? Bool) ?? false)
+                }
+                if !opts.isEmpty { step.options = Array(opts.prefix(3)) }   // cap at A/B/C (spec §7)
+            }
+            step.placement = (s["placement"] as? String)
             parsed.append(step)
         }
         guard !parsed.isEmpty else { logMalformed(); return }
@@ -534,6 +849,9 @@ final class CursorGuide {
         self.mode = m
         self.title = title
         self.steps = parsed
+        // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
+        model.source = (obj["source"] as? String)
+        model.project = (obj["project"] as? String)
         self.idx = 0
         self.results = parsed.map { GuideResult(id: $0.id, text: $0.text, verdict: "unrun", notedAt: nil) }
         self.startedAt = Date()
@@ -574,6 +892,15 @@ final class CursorGuide {
         }
     }
 
+    // media may be a bare string (src) or an object {src|url|path, caption}. nil → no media zone.
+    private func parseMedia(_ raw: Any?) -> GuideMedia? {
+        if let s = raw as? String, !s.isEmpty { return GuideMedia(src: s) }
+        guard let d = raw as? [String: Any] else { return nil }
+        let src = (d["src"] as? String) ?? (d["url"] as? String) ?? (d["path"] as? String)
+        guard let src, !src.isEmpty else { return nil }
+        return GuideMedia(src: src, caption: d["caption"] as? String)
+    }
+
     private func logMalformed() {
         NSLog("[cursor-guide] trigger malformed — ignored (need {title, steps:[{text|instruction}]})")
     }
@@ -585,7 +912,28 @@ final class CursorGuide {
         model.text = s.text
         model.hint = s.hint
         model.progress = "\(idx + 1)/\(steps.count)"
+        model.stepIndex = idx
+        model.stepTotal = steps.count
+        model.autoSensing = (s.doneWhen != nil) || ((s.hold ?? 0) > 0)   // step advances itself → AUTO
         model.canBack = idx > 0
+        model.media = s.media
+        model.options = s.options ?? []
+        // adhd-pm: pre-select the ⭐recommended option so a single ⌥→ (or click) takes the recommendation.
+        model.selectedOption = (s.options ?? []).firstIndex(where: { $0.recommended }) ?? 0
+        model.applyingOption = nil
+        model.optionError = false
+        // Dock-edge flip (spec §7): if the ring's target sits in the bottom band where the card lives,
+        // dock the card at the TOP so it never covers the thing it's pointing at.
+        if let t = s.point, model.screenSize.height > 0 {
+            model.dockTop = t.y > model.screenSize.height * 0.62
+        } else {
+            model.dockTop = false
+        }
+        // Placement (docs/PRESENCE.md §2): explicit wins; else smart — a choose/approve step (options) goes
+        // to the clickable NOTCH, everything else docks. ⌥/ can move it live afterwards.
+        if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
+        else { model.placement = (s.options?.isEmpty == false) ? .notch : .dock }
+        applyMousePolicy()   // notch → the card becomes clickable; else pure click-through
         model.target = s.point        // teach: point the ring + anchor the chip; nil → chip rides the cursor
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
         if (mode == .tour || mode == .teach) && !model.muted { onSpeak?(s.say ?? s.text) }
@@ -605,6 +953,7 @@ final class CursorGuide {
         timeoutTimer?.invalidate(); timeoutTimer = nil
         doneStreak = 0
         ocrMatched = false; ocrStepIdx = idx
+        pasteObserved = false        // a paste only counts for the step it happens on
         guard idx < steps.count else { return }
         let s = steps[idx]
         // Dwell-then-advance: a purely timed step (e.g. "watch this happen for 3s"). Teach-only.
@@ -684,6 +1033,8 @@ final class CursorGuide {
             return checkboxChecked(titleContains: titleContains) == checked
         case .onScreenTextAppeared:
             return (ocrStepIdx == idx) && ocrMatched   // set by the async Vision pass for THIS step
+        case .pasted:
+            return pasteObserved   // set by onKey on ⌘V for THIS step (reset in armStepWatchers)
         case .unknown:
             return false
         }
@@ -793,6 +1144,12 @@ final class CursorGuide {
 
     private func handleAdvance(fail: Bool) {
         guard isActive, idx < steps.count, !capturingFeedback else { return }
+        // Options step: ⌥→ APPROVES the selected variant — record it + fire the live-apply hook.
+        if !fail, let opts = steps[idx].options, !opts.isEmpty {
+            let i = min(max(model.selectedOption, 0), opts.count - 1)
+            results[idx].chosenOption = opts[i].id
+            onOptionApprove?(steps[idx].id, opts[i].id)
+        }
         if mode == .test {
             record(verdict: fail ? "fail" : "pass")
             flash(fail ? .fail : .pass)
@@ -803,6 +1160,26 @@ final class CursorGuide {
         }
         advance()
     }
+
+    // ⌥1/2/3 — preview a variant live (compare); the wrapp applies it via onOptionPreview.
+    private func selectOption(_ i: Int) {
+        guard isActive, idx < steps.count, !model.options.isEmpty, i < model.options.count else { return }
+        model.selectedOption = i
+        model.optionError = false
+        onOptionPreview?(steps[idx].id, model.options[i].id)
+    }
+
+    // ── notch-clickable: at the notch the card is fixed, so its buttons/options can be CLICKED. The panel
+    //    only accepts mouse when a notch card is up; the card is the sole hit-testable view (rest stays
+    //    click-through). These public taps let the SwiftUI card drive the same paths as the keys. ──
+    private func applyMousePolicy() { overlay?.ignoresMouseEvents = (model.placement != .notch) }
+    func tapPrimary()      { handleAdvance(fail: false) }
+    func tapFail()         { if mode == .test { handleAdvance(fail: true) } }
+    func tapOption(_ i: Int) { selectOption(i) }
+    func tapBack()         { goBack() }
+    func tapFeedback()     { beginFeedback() }
+    func tapMute()         { toggleMute() }
+    func tapClose()        { abort(reason: "click-close") }
 
     private func goBack() {
         guard isActive, idx > 0 else { return }
@@ -883,6 +1260,7 @@ final class CursorGuide {
                 if let n = fb.note, !n.isEmpty { fbo["note"] = n }
                 d["feedback"] = fbo
             }
+            if let ch = r.chosenOption { d["chosenOption"] = ch }   // the approved A/B/C variant
             stepDicts.append(d)
         }
         let out: [String: Any] = [
@@ -896,6 +1274,47 @@ final class CursorGuide {
         ]
         writeAtomic(out, to: rel("guide-result.json"))               // unified result the daemon reads (both modes)
         if mode == .test { writeAtomic(out, to: rel("test-result.json")) }  // back-compat twin for the direct file path
+        persistDurable(out)                                          // append-only history + durable screenshots
+    }
+
+    // Make a guide run READABLE BY ANY LATER CLAUDE THREAD — not just the one that triggered it. guide-result.json
+    // is consumed-then-deleted by the daemon and its screenshots live in /tmp; here we (1) copy each feedback
+    // screenshot out of /tmp into ~/.relay/guide-shots so the path survives a reboot, and (2) APPEND the run
+    // (with the durable paths + the user's per-step verdicts/choices) to ~/.relay/guide-history.jsonl, which is
+    // never deleted. The switchboard connector's `guide_history` tool reads this file. (docs: carried context /
+    // Bank-as-substrate — this is the machine-readable memory of what the user has done + seen.)
+    private func persistDurable(_ out: [String: Any]) {
+        let runId = String(Int(startedAt.timeIntervalSince1970))
+        let shotDir = rel("guide-shots")
+        try? FileManager.default.createDirectory(atPath: shotDir, withIntermediateDirectories: true)
+        var rec = out
+        rec["runId"] = runId
+        if var steps = rec["results"] as? [[String: Any]] {
+            for i in steps.indices {
+                guard var fb = steps[i]["feedback"] as? [String: Any],
+                      let src = fb["screenshot"] as? String, !src.isEmpty,
+                      FileManager.default.fileExists(atPath: src) else { continue }
+                let stepId = ((steps[i]["id"] as? String) ?? "\(i)").replacingOccurrences(of: "/", with: "_")
+                let dst = shotDir + "/" + runId + "-" + stepId + ".jpg"
+                try? FileManager.default.removeItem(atPath: dst)
+                if (try? FileManager.default.copyItem(atPath: src, toPath: dst)) != nil {
+                    fb["screenshot"] = dst          // point the durable record at the surviving copy
+                    steps[i]["feedback"] = fb
+                }
+            }
+            rec["results"] = steps
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: rec, options: []),
+              var line = String(data: data, encoding: .utf8) else { return }
+        line += "\n"
+        let path = rel("guide-history.jsonl")
+        if let fh = FileHandle(forWritingAtPath: path) {          // append-only: never truncates prior runs
+            defer { try? fh.close() }
+            fh.seekToEndOfFile()
+            if let d = line.data(using: .utf8) { fh.write(d) }
+        } else {
+            try? line.data(using: .utf8)?.write(to: URL(fileURLWithPath: path))
+        }
     }
 
     private func writeResultText(passed: Int, failed: Int, skipped: Int) {
@@ -983,6 +1402,7 @@ final class CursorGuide {
         guard let panel = overlay else { return }
         if let scr = NSScreen.main { panel.setFrame(scr.frame, display: false); model.screenSize = scr.frame.size }
         updateCursor()
+        model.collapsed = false     // a fresh guide always opens expanded
         model.visible = true
         panel.orderFrontRegardless()
     }
@@ -1031,26 +1451,35 @@ final class CursorGuide {
     // stays live during a guide for spoken feedback. Kept as a hook so the flags monitors have a target.
     private func onFlags(_ flags: NSEvent.ModifierFlags) { }
 
-    // fn+arrow signals. On a Mac laptop fn+arrow arrives as Home/End/PageUp; we also accept the raw arrow
-    // keyCodes when .function is present (external keyboards). Esc closes. ⌃⌥ dictation is left untouched.
+    // ⌥+arrow accelerators — ONE modifier, arrows for next/back (intuitive + one-handed). We moved OFF
+    // fn+arrow (macOS maps fn+↑/↓ → PageUp/PageDown → scrolled the app under the guide) and off the clunky
+    // ⌃⌘ chord. ⌥+arrow doesn't scroll or switch Spaces; its only side effect is a harmless word-jump when
+    // the cursor happens to sit in a text field. Esc closes. ⌃⌥ dictation (both held) is left untouched:
+    // we require .option but NOT .control, so a ⌃⌥ hold never triggers a guide signal. Auto-advance
+    // (doneWhen) remains the primary path; this is the manual accelerator.
     @discardableResult private func onKey(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags) -> Bool {
         guard isActive else { return false }
         // While capturing feedback, the notch input panel is key and owns ↵/esc (RelayMenuBar
         // showFeedbackNote). CursorGuide's global monitor must NOT also act on those, or esc double-fires
         // (cancel here AND abort). Swallow keys so they can't leak to the app, but take no action.
         if capturingFeedback { return true }
-        let fn = flags.contains(.function)
+        // ⌘V (keyCode 9) — mark a paste so a step whose doneWhen is `pasted` auto-advances. NEVER swallow:
+        // the paste itself must reach the app. The ~4Hz watcher picks up the flag on its next tick.
+        if keyCode == 9, flags.contains(.command) { pasteObserved = true; return false }
+        if keyCode == 53 { abort(reason: "esc"); return true }                          // Esc — Close
+        // Every other guide signal needs Option held — but NOT Control (⌃⌥ = dictation, left alone).
+        guard flags.contains(.option), !flags.contains(.control) else { return false }
         switch keyCode {
-        case 53: abort(reason: "esc"); return true                                     // Esc — Close
-        case 119: handleAdvance(fail: false); return true                              // End (fn →) — Pass/Next
-        case 124 where fn: handleAdvance(fail: false); return true                     // → +fn
-        case 115: if mode == .test { handleAdvance(fail: true) }; return true          // Home (fn ←) — Fail
-        case 123 where fn: if mode == .test { handleAdvance(fail: true) }; return true // ← +fn
-        case 116: goBack(); return true                                                // PageUp (fn ↑) — Back
-        case 126 where fn: goBack(); return true                                       // ↑ +fn
-        case 121: beginFeedback(); return true                                         // PageDown (fn ↓) — screenshot + note (any mode)
-        case 125 where fn: beginFeedback(); return true                                // ↓ +fn
-        case 46 where fn: toggleMute(); return true                                    // fn m — voiceover on/off
+        case 124: handleAdvance(fail: false); return true                              // ⌥→ — Pass/Next
+        case 123: if mode == .test { handleAdvance(fail: true) }; return true          // ⌥← — Fail
+        case 126: goBack(); return true                                                // ⌥↑ — Back
+        case 125: beginFeedback(); return true                                         // ⌥↓ — screenshot + note
+        case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
+        case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
+        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
+        case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
+        case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
+        case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C
         default: return false
         }
     }
@@ -1065,5 +1494,14 @@ final class CursorGuide {
         } else if isActive, idx >= 0, idx < steps.count, mode == .tour || mode == .teach {
             onSpeak?(steps[idx].say ?? steps[idx].text)
         }
+    }
+
+    // Public mirror of the fn-m voiceover preference, so Settings can surface the same toggle as a row.
+    // Reads/writes the identical persisted key + live model as toggleMute; silences speech when turned off.
+    var voiceoverOn: Bool { !model.muted }
+    func setVoiceover(_ on: Bool) {
+        model.muted = !on
+        UserDefaults.standard.set(model.muted, forKey: "relay.guide.muted")
+        if model.muted { onStopSpeak?() }
     }
 }

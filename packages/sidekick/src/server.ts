@@ -1,7 +1,8 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { resolve as resolvePath, sep as pathSep } from "node:path";
-import { realpathSync } from "node:fs";
+import { resolve as resolvePath, sep as pathSep, join as joinPath } from "node:path";
+import { realpathSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import type {
   BYOPMethod,
   Capabilities,
@@ -289,6 +290,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
         return this.sbBrand(origin, env.params as SbBrandParams);
       case "guide_run":
         return this.guideRun(origin, env.params as GuideRunParams);
+      case "guide_history":
+        return this.guideHistory(env.params as { limit?: number });
       case "claude_permissions":
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
@@ -318,7 +321,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private async capabilities(): Promise<Capabilities> {
     return {
       version: BYOP_VERSION,
-      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand", "guide_run"],
+      methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand", "guide_run", "guide_history"],
       // Enumerating consumers (the panel, feature-detect) see the ALLOWED set — a model the user
       // disabled in Settings → Models never even appears as a choice (docs/MODEL-SELECTION.md §4c).
       models: this.deps.backends.allowedModels(),
@@ -388,6 +391,24 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  card the human must click — no prompt injection can satisfy it). Once approved the daemon hands
    *  the steps to the native runtime via ~/.relay/guide-run.json and waits for guide-result.json.
    *  Only ONE guide runs at a time (there's a single on-screen cursor); a second is refused. */
+  /** guide_history — the user's past guided runs, newest-first, from the append-only
+   *  ~/.relay/guide-history.jsonl the native runtime writes. Each run carries per-step verdicts, the
+   *  options/choices the user picked, any notes, and DURABLE screenshot paths (copied out of /tmp). This
+   *  is how ANY later Claude thread reads what the user has done + seen — not just the one that ran the
+   *  guide. Read-only over the user's OWN local record → no per-call consent (nothing a grant protects). */
+  private guideHistory(params: { limit?: number }): { runs: unknown[] } {
+    const path = joinPath(homedir(), ".relay", "guide-history.jsonl");
+    let text = "";
+    try { text = readFileSync(path, "utf8"); } catch { return { runs: [] }; }
+    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+    const limit = Math.max(1, Math.min(params?.limit ?? 25, 200));
+    const runs: unknown[] = [];
+    for (const l of lines.slice(-limit).reverse()) {
+      try { runs.push(JSON.parse(l)); } catch { /* skip a torn line */ }
+    }
+    return { runs };
+  }
+
   private guideRunning = false;
   private async guideRun(origin: string, params: GuideRunParams): Promise<GuideResult> {
     // NOTE: unlike the data-touching verbs, a guide is gated by its PER-RUN consent alone, NOT by a

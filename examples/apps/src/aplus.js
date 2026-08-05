@@ -11,6 +11,16 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose A-Plus's write pipeline as a page-tool so the native God webview (or any WebMCP
 // host) can DRIVE it — reusing the same generateDirections()/generateStack() a click runs.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context — when the Switchboard OS launches A-Plus AT a product/item, open focused on it
+// (prefill the single line) instead of cold. Safe no-op when absent.
+import { readOsContext } from "./os/os-context.js";
+const osCtx = readOsContext();
+let osTitle = null;
+if (osCtx) {
+  if (typeof osCtx.artifact === "string") osTitle = osCtx.artifact.slice(0, 160);
+  else if (osCtx.artifact && typeof osCtx.artifact.title === "string") osTitle = osCtx.artifact.title.slice(0, 160);
+  if (!osTitle && typeof osCtx.term === "string") osTitle = osCtx.term.slice(0, 160);
+}
 
 const $ = (id) => document.getElementById(id);
 // "-" not ":" — a key is a filename daemon-side, and colons are outside the legal alphabet
@@ -122,8 +132,9 @@ function restore() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { /* corrupt */ }
   if (d && typeof d === "object") applySaved(d);
-  // The sample fills an empty box only; a real brand context replaces it (see applyBrand).
-  if (!$("f-line").value.trim()) $("f-line").value = SAMPLE_LINE;
+  // Carried context wins over the sample: when the OS opened us AT a product, that line seeds the
+  // single input. Falls back to the labeled sample. Only ever fills an EMPTY box (never user text).
+  if (!$("f-line").value.trim()) $("f-line").value = osTitle || SAMPLE_LINE;
   if (directions) { renderDirections(); $("directions").hidden = false; }
   if (stack) { renderStack(); $("preview").hidden = false; }
   // Nothing persisted → the pre-connect page is a labeled demo, not a form (adforge idiom).

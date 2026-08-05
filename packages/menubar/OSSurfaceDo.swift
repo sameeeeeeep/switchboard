@@ -91,7 +91,9 @@ struct AppsSurface: View {
 
                 ForEach(groups) { g in
                     AppGroupHead(title: g.title, note: g.note)
-                    AppTileGrid(apps: g.apps) { onNavigate(.apps) }   // TODO real launch
+                    AppTileGrid(apps: g.apps) { app in
+                        OSLaunch.launchOr(app.id, .init(kind: "app")) { onNavigate(.apps) }
+                    }
                 }
 
                 // the one door to discovery — foot of the dock (apps.js .footdoor)
@@ -190,11 +192,11 @@ private struct AppGroupHead: View {
 // ---- the tile grid (the closest reference is AppDock in OSShellView.swift) ----
 private struct AppTileGrid: View {
     let apps: [DoApp]
-    let onTap: () -> Void
+    let onLaunch: (DoApp) -> Void
     private let cols = [GridItem(.adaptive(minimum: 104), spacing: 18)]
     var body: some View {
         LazyVGrid(columns: cols, spacing: 18) {
-            ForEach(apps) { app in AppTile(app: app, onTap: onTap) }
+            ForEach(apps) { app in AppTile(app: app, onTap: { onLaunch(app) }) }
         }
     }
 }
@@ -332,7 +334,9 @@ struct StoreSurface: View {
                 // teasers — each app chip is a live launch (no inert element)
                 VStack(spacing: 12) {
                     ForEach(STORE_TEASERS) { t in
-                        StoreTeaserCard(teaser: t) { _ in onNavigate(.apps) }   // TODO real launch
+                        StoreTeaserCard(teaser: t) { chip in
+                            OSLaunch.launchOr(chip.app) { onNavigate(.apps) }   // nil-app chip (unlisted) → the store grid
+                        }
                     }
                 }
                 .padding(.top, 16)

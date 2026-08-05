@@ -11,6 +11,9 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose Prism's render as a page-tool so the native God webview (or any WebMCP host)
 // can DRIVE it — reusing the same renderShot() the Generate button runs, so the user watches it happen.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Prism AT an item, seed the art-direction prompt
+// with it so the studio opens focused on that subject. Safe no-op on a normal launch (returns null).
+import { readOsContext } from "./os/os-context.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -94,6 +97,25 @@ function load() {
   coerceState();
 }
 load();
+
+// ---------- carried context from the Switchboard OS ----------
+// The OS may launch Prism AT an item ({artifact|term}, plus optional project). Seed the free-text
+// art direction with it so the studio opens focused on that subject — but only when it's still empty
+// (never clobber a prompt the user saved). A chip explains why. Safe no-op on a normal launch.
+let osSeedLabel = "";
+(function readOsSeed() {
+  try {
+    const os = readOsContext();
+    if (!os) return;
+    let title = null;
+    if (typeof os.artifact === "string") title = os.artifact;
+    else if (os.artifact && typeof os.artifact.title === "string") title = os.artifact.title;
+    if (!title && typeof os.term === "string") title = os.term;
+    if (!title) return;
+    osSeedLabel = String(title).slice(0, 160);
+    if (!state.extra.trim()) state.extra = osSeedLabel;
+  } catch { /* garbage hash — behave exactly as a normal launch */ }
+})();
 
 // Pull the origin-store copy once connected; it wins only when strictly newer than the local
 // paint. Sequenced by boot() — never raced against connect.
@@ -821,6 +843,7 @@ function flashHint(msg) {
 }
 
 // ---------- first paint: whatever localStorage banked shows before any connect ----------
+if (osSeedLabel) { const n = $("os-ctx"); if (n) { n.hidden = false; n.textContent = "Opened from Switchboard OS · " + osSeedLabel; } }
 $("prompt").value = state.extra;
 $("aspect").value = state.aspect;
 renderGrid();

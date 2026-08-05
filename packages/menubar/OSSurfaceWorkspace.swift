@@ -380,8 +380,12 @@ private struct TaskCardView: View {
     }
 
     private func open() {
-        // TODO real launch — route to Apps so a tagged task isn't a dead end (Bank if untagged).
-        onNavigate(task.opensApp ? .apps : .bank)
+        // @tagged task → open that wrapp AT this task; untagged → the vault. Falls back to in-OS
+        // navigation under the snapshot harness (no live launcher).
+        OSLaunch.launchOr(task.opensApp ? task.appName : nil,
+                          .init(artifact: task.title, kind: "task", project: task.proj)) {
+            onNavigate(task.opensApp ? .apps : .bank)
+        }
     }
 }
 
@@ -498,7 +502,12 @@ private struct TaskListRow: View {
         .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture { onNavigate(item.opensApp ? .apps : .bank) }         // TODO real launch
+        .onTapGesture {
+            OSLaunch.launchOr(item.opensApp ? item.appName : nil,
+                              .init(artifact: item.title, kind: "task", project: item.proj)) {
+                onNavigate(item.opensApp ? .apps : .bank)
+            }
+        }
     }
 }
 
@@ -688,7 +697,11 @@ private struct CalChip: View {
     let onNavigate: (Surface) -> Void
     @State private var hover = false
     var body: some View {
-        Button(action: { onNavigate(event.app != nil ? .apps : .tasks) }) {   // TODO real launch when app-tagged
+        Button(action: {
+            OSLaunch.launchOr(event.app, .init(artifact: event.title, kind: "event")) {
+                onNavigate(event.app != nil ? .apps : .tasks)
+            }
+        }) {
             HStack(spacing: 6) {
                 Text(event.glyph).font(.splMono(9)).foregroundColor(chipGlyphColor(event.cls))
                     .frame(width: 11)
@@ -889,8 +902,8 @@ struct BankSurface: View {
                 Text("Your vault").font(.hanken(24, .semibold)).foregroundColor(.ink)
             }
             Spacer(minLength: 0)
-            LimeButton(label: "+ Establish a project") { onNavigate(.apps) }   // TODO real launch (Bank)
-            OSWSGhostButton(label: "Open the folder") { onNavigate(.apps) }         // TODO real launch (Bank)
+            LimeButton(label: "+ Establish a project") { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
+            OSWSGhostButton(label: "Open the folder") { OSLaunch.launchOr("bank") { onNavigate(.apps) } }
         }
     }
 
@@ -901,7 +914,7 @@ struct BankSurface: View {
                 ForEach(BANK_PROJECTS) { p in
                     OSWSProjectChip(project: p, active: activeProject == p.id) { activeProject = p.id }
                 }
-                NewOSWSProjectChip { onNavigate(.apps) }                            // TODO real launch (Bank)
+                NewOSWSProjectChip { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
             }
         }
     }
@@ -964,7 +977,7 @@ struct BankSurface: View {
                 + Text("— files it as an artifact or note on IndEur Club, with its source.").font(.hanken(13)).foregroundColor(.inkSec))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            LimeButton(label: "Bank it") { onNavigate(.apps) }                  // TODO real launch (Bank)
+            LimeButton(label: "Bank it") { OSLaunch.launchOr("bank") { onNavigate(.apps) } }
         }
         .padding(.horizontal, 20).padding(.vertical, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1216,7 +1229,9 @@ private struct BankArtifactGrid: View {
     var body: some View {
         LazyVGrid(columns: cols, spacing: 12) {
             ForEach(BANK_ARTIFACTS) { a in
-                BankArtifactCard(art: a) { onNavigate(.apps) }               // TODO real launch (open in a.src)
+                BankArtifactCard(art: a) {
+                    OSLaunch.launchOr(a.src, .init(artifact: a.t, kind: a.kind)) { onNavigate(.apps) }
+                }
             }
         }
     }

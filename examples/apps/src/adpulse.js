@@ -9,6 +9,9 @@ import { migrateLocalKey } from "./kit/storekey.js";
 // God's hands: expose AdPulse's diagnosis as a page-tool so the native God webview (or any WebMCP
 // host) can DRIVE it — reusing the same analyse() a click runs, so the user watches it happen.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches AdPulse AT an item (a campaign, a question),
+// open with the diagnosis already focused on it instead of the default focus. No-op on normal launch.
+import { readOsContext } from "./os/os-context.js";
 
 const $ = (id) => document.getElementById(id);
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
@@ -1009,6 +1012,31 @@ function persist() {
   }
   if (report) renderReport();
   reflect();
+})();
+
+// ---------- carried context from the Switchboard OS ----------
+// After boot has restored the focus, let an OS launch open AT its item: seed the analysis focus
+// (the primary steer) with the carried artifact/term, but only when the focus is still the default
+// (never clobber a focus the user themselves saved). A chip explains why the page opened focused.
+(function osSeed() {
+  try {
+    const os = readOsContext();
+    if (!os) return;
+    let title = null;
+    if (typeof os.artifact === "string") title = os.artifact;
+    else if (os.artifact && typeof os.artifact.title === "string") title = os.artifact.title;
+    if (!title && typeof os.term === "string") title = os.term;
+    if (!title) return;
+    title = String(title).slice(0, 160);
+    const cur = String($("focus-in").value || "").trim();
+    if (!cur || cur === "Find wasted spend") {
+      $("focus-in").value = "Focus the post-mortem on: " + title;
+      syncChips();
+      persist();
+    }
+    const note = $("os-ctx");
+    if (note) { note.hidden = false; note.textContent = "Opened from Switchboard OS · " + title; }
+  } catch { /* garbage hash — behave exactly as a normal launch */ }
 })();
 
 // ---- God's hand: one page-tool, driving the real diagnosis -------------------------------------

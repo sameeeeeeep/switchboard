@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emboss · widget</title>
+    <style>
+      :root {
+        --page:#0A0C10; --inset:#070809; --panel:#141416;
+        --edge:#282829; --edge-soft:#1C212B;
+        --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#9A9AA2; --ink-faint:#6E7C90;
+        --accent:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+        --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+        --mono:"Spline Sans Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
+      *{box-sizing:border-box;} [hidden]{display:none !important;}
+      html,body{margin:0;}
+      body{background:var(--page);color:var(--ink);font:13px/1.5 var(--sans);-webkit-font-smoothing:antialiased;}
+      .wrap{width:560px;max-width:100vw;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;}
+      .head{display:flex;align-items:center;gap:8px;}
+      .mk{width:16px;height:16px;border-radius:5px;background:var(--accent);box-shadow:0 0 10px rgba(200,242,80,.4);}
+      .name{font:600 13px/1 var(--sans);} .name em{font-style:normal;color:var(--accent);}
+      .kicker{font:500 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-left:auto;}
+      .marks{display:flex;gap:6px;}
+      .mchip{font:500 9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);border:1px solid var(--edge);border-radius:999px;padding:5px 9px;}
+      .mchip.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));}
+      textarea{width:100%;min-height:96px;resize:vertical;background:var(--inset);border:1px solid var(--edge);border-radius:10px;color:var(--ink);font:400 12.5px/1.55 var(--sans);padding:11px;outline:none;}
+      textarea:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--edge));}
+      .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+      .grow{flex:1;}
+      .act{font:500 11px/1 var(--mono);background:var(--inset);border:1px solid var(--edge);border-radius:999px;color:var(--ink-sec);padding:7px 12px;cursor:pointer;transition:border-color .15s,color .15s;text-decoration:none;display:inline-block;}
+      .act:hover{border-color:var(--accent);color:var(--ink);}
+      .primary{font:600 12px/1 var(--sans);border-radius:999px;padding:9px 16px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:var(--page);}
+      .primary:disabled{opacity:.45;cursor:default;}
+      .rrow{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:8px 11px;}
+      .rrow .rn{font:600 11px/1 var(--mono);color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .rrow .rd{font:400 10px/1 var(--mono);color:var(--ink-faint);}
+      .empty{font:400 12px/1.5 var(--sans);color:var(--ink-sec);}
+      .err{color:var(--danger);font:400 11px/1.5 var(--mono);}
+      .nobadge{display:inline-flex;align-items:center;gap:7px;font:500 10px/1 var(--mono);color:var(--ink-dim);}
+      .nobadge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head"><span class="mk"></span><span class="name">Em<em>boss</em></span><span class="kicker" id="pname">on your device</span></div>
+      <div class="marks" id="marks"></div>
+      <div id="stage"></div>
+      <div id="err" class="err" hidden></div>
+      <div class="nobadge"><span class="dot"></span>Your brand applied in-tab · no AI · no upload</div>
+    </div>
+
+    <script type="module">
+      import { PDFDocument, StandardFonts, rgb } from "./src/vendor/pdf-lib.esm.min.js";
+
+      // ---- read the SAME saved profile the main app writes (localStorage) ----
+      const PROFILES_KEY = "emboss.profiles", ACTIVE_KEY = "emboss.activeProfile";
+      function activeProfile() {
+        let list = null;
+        try { list = JSON.parse(localStorage.getItem(PROFILES_KEY) || "null"); } catch {}
+        if (!Array.isArray(list) || !list.length) return null;
+        const id = localStorage.getItem(ACTIVE_KEY);
+        return list.find((p) => p.id === id) || list[0];
+      }
+
+      // ---- pipeline copied from src/emboss.js (pdf-lib, model-free) ----
+      const A4 = [595.28, 841.89];
+      const fmtBytes = (n) => !Number.isFinite(n) ? "—" : n < 1024 ? n + " B" : n < 1048576 ? (n/1024).toFixed(1) + " KB" : (n/1048576).toFixed(2) + " MB";
+      const msg = (e) => String(e?.message || e).slice(0, 160);
+      function dataUrlToBytes(d){ const c=String(d).indexOf(","); const b=atob(String(d).slice(c+1)); const u=new Uint8Array(b.length); for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i); return u; }
+      const mimeOf = (d) => { const m=/^data:([^;,]+)[;,]/.exec(String(d)); return m?m[1].toLowerCase():""; };
+      async function embedAsset(doc, a){ if(!a||!a.dataUrl) return null; const b=dataUrlToBytes(a.dataUrl); const m=a.mime||mimeOf(a.dataUrl); return /jpe?g/.test(m)?doc.embedJpg(b):doc.embedPng(b); }
+      const fitInto=(w,h,mw,mh)=>{const r=Math.min(mw/w,mh/h);return {w:w*r,h:h*r};};
+      function wrap(text,font,size,maxW){ const words=String(text).replace(/\s+$/g,"").split(/\s+/); const lines=[]; let line=""; for(const w of words){ const t=line?line+" "+w:w; if(font.widthOfTextAtSize(t,size)>maxW&&line){lines.push(line);line=w;} else line=t; } if(line)lines.push(line); return lines.length?lines:[""]; }
+      async function composePdf(profile, text, title){
+        const doc=await PDFDocument.create(); const font=await doc.embedFont(StandardFonts.Helvetica); const bold=await doc.embedFont(StandardFonts.HelveticaBold);
+        const lh=await embedAsset(doc,profile.letterhead), sig=await embedAsset(doc,profile.signature), stamp=await embedAsset(doc,profile.stamp);
+        const M=56, size=11, lineH=16, contentW=A4[0]-M*2, INK=rgb(0.09,0.10,0.12), DIM=rgb(0.45,0.47,0.52);
+        const pages=[]; let page=doc.addPage(A4); pages.push(page); let y=A4[1]-M;
+        if(lh){ const {w,h}=fitInto(lh.width,lh.height,contentW,120); const x=M+(contentW-w)/2; y=A4[1]-M-h; page.drawImage(lh,{x,y,width:w,height:h}); y-=26; }
+        if(title&&title.trim()){ for(const ln of wrap(title.trim(),bold,18,contentW)){ if(y<M+lineH){page=doc.addPage(A4);pages.push(page);y=A4[1]-M;} page.drawText(ln,{x:M,y:y-18,size:18,font:bold,color:INK}); y-=24; } y-=10; }
+        for(const para of String(text||"").split(/\n\s*\n/)){ for(const raw of para.split(/\n/)){ for(const ln of wrap(raw,font,size,contentW)){ if(y<M+lineH){page=doc.addPage(A4);pages.push(page);y=A4[1]-M;} if(ln)page.drawText(ln,{x:M,y:y-size,size,font,color:INK}); y-=lineH; } } y-=8; }
+        let last=pages[pages.length-1]; const zone=(sig||stamp)?120:0; if(zone&&y<M+zone){last=doc.addPage(A4);pages.push(last);}
+        const lw=last.getSize().width;
+        if(sig){ const {w,h}=fitInto(sig.width,sig.height,190,74); const yy=M+14; last.drawImage(sig,{x:M,y:yy,width:w,height:h}); last.drawLine({start:{x:M,y:yy-4},end:{x:M+Math.max(w,150),y:yy-4},thickness:0.75,color:DIM}); last.drawText("Signature",{x:M,y:yy-16,size:8,font,color:DIM}); }
+        if(stamp){ const {w,h}=fitInto(stamp.width,stamp.height,120,120); last.drawImage(stamp,{x:lw-M-w,y:M+6,width:w,height:h}); }
+        return { name:`emboss-${Date.now()}.pdf`, bytes:await doc.save({useObjectStreams:true}), pages:doc.getPageCount() };
+      }
+
+      // ---- injected-input contract: ?input=<text> OR window.__widgetInput { text } ----
+      function injectedText(){
+        try { const q=new URLSearchParams(location.search).get("input"); if(q) return q; } catch {}
+        const w=window.__widgetInput;
+        if(w&&typeof w==="object"&&typeof w.text==="string") return w.text;
+        if(typeof w==="string") return w;
+        return "";
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const mk = (tag, cls, text) => { const n=document.createElement(tag); if(cls)n.className=cls; if(text!=null)n.textContent=text; return n; };
+      const stage=$("stage"), errEl=$("err"), marksEl=$("marks"), pnameEl=$("pname");
+      const setErr=(t)=>{ if(t){errEl.hidden=false;errEl.textContent=t;} else {errEl.hidden=true;errEl.textContent="";} };
+
+      let result=null, running=false;
+      const profile = activeProfile();
+      const hasAsset = profile && (profile.letterhead || profile.signature || profile.stamp);
+      if (profile) pnameEl.textContent = profile.name || "on your device";
+      for (const [k,label] of [["letterhead","Letterhead"],["signature","Signature"],["stamp","Seal"]]) {
+        marksEl.append(mk("span","mchip"+(profile&&profile[k]?" on":""),label));
+      }
+
+      function render(){
+        stage.textContent="";
+        if(!hasAsset){ stage.append(mk("div","empty","No brand saved yet. Open Emboss to add a letterhead, signature or seal — then this widget stamps any text you send.")); return; }
+        const ta=mk("textarea"); ta.placeholder="Paste the document text to emboss…"; ta.value=render.text||""; ta.oninput=()=>{render.text=ta.value;};
+        stage.append(ta);
+        const ctl=mk("div","row"); ctl.style.marginTop="9px"; ctl.append(mk("span","grow"));
+        const btn=mk("button","primary", running?"Embossing…":"Emboss → PDF"); btn.disabled=running; btn.onclick=go;
+        ctl.append(btn); stage.append(ctl);
+        if(result){ const r=mk("div","rrow"); r.style.marginTop="10px"; r.append(mk("span","rn",result.name),mk("span","rd",`${result.pages}p · ${fmtBytes(result.bytes)}`)); const dl=mk("button","act","download ⬇"); dl.onclick=()=>{const u=URL.createObjectURL(result.blob);const a=mk("a");a.href=u;a.download=result.name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}; r.append(dl); stage.append(r); }
+      }
+      async function go(){
+        if(running) return; const text=(render.text||"").trim();
+        if(!text){ setErr("Type or paste some text first."); return; }
+        running=true; setErr(""); render();
+        try { const out=await composePdf(profile,text,""); result={name:out.name,blob:new Blob([out.bytes],{type:"application/pdf"}),bytes:out.bytes.length,pages:out.pages}; }
+        catch(e){ setErr(msg(e)); result=null; }
+        finally { running=false; render(); }
+      }
+      render.text = injectedText();
+      render();
+      if (hasAsset && render.text.trim()) go();
+    </script>
+  </body>
+</html>

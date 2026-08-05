@@ -11,6 +11,16 @@ import { optionCards } from "./kit/ui.js";
 // God's hands: expose Identity's compose step as a page-tool the native God webview (or any WebMCP
 // host) can DRIVE — reusing the same start() a click runs.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context — when the Switchboard OS launches Identity AT an item, open focused on it (seed
+// the one-line persona brief) instead of cold. Safe no-op when absent.
+import { readOsContext } from "./os/os-context.js";
+const osCtx = readOsContext();
+let osTitle = null;
+if (osCtx) {
+  if (typeof osCtx.artifact === "string") osTitle = osCtx.artifact.slice(0, 160);
+  else if (osCtx.artifact && typeof osCtx.artifact.title === "string") osTitle = osCtx.artifact.title.slice(0, 160);
+  if (!osTitle && typeof osCtx.term === "string") osTitle = osCtx.term.slice(0, 160);
+}
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -228,6 +238,9 @@ let published = null; // { id, name } once published
 
 function autostart() {
   if (state.run) { state.run.status = ""; render(); return; }
+  // CARRIED CONTEXT: the OS opened us AT an item — cold-open the persona compose for exactly that,
+  // so we land focused on it rather than the generic brand seed.
+  if (osTitle) { void start(osTitle); return; }
   // THE COLD OPEN: a lent brand is enough — connect and Identity is already composing the persona
   // that would create for it. Zero input; the facets start landing as cards on their own.
   if (brand) { const seed = "an on-camera creator for " + brand.name + (brand.data?.positioning ? " — " + brand.data.positioning : ""); void start(seed); }
@@ -349,9 +362,11 @@ function render() {
   if (!r) {
     const startBox = el("div", "start");
     if (brand) startBox.append(el("div", "ctx", "the persona will create for your lent brand — " + brand.name));
+    if (osTitle) startBox.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
     const row = el("div", "bindrow");
     const input = el("input");
     input.placeholder = "one line — describe the creator (niche, vibe, who they're for)";
+    if (osTitle && !input.value.trim()) input.value = osTitle; // seed from the item the OS opened us at
     const go = () => { if (input.value.trim()) void start(input.value); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     const btn = el("button", "primary", "Compose ▸"); btn.onclick = go;

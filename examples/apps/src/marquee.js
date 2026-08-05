@@ -9,6 +9,8 @@ import { whenRelayReady, mountConnect } from "@relay/sdk";
 // God's hands: expose Marquee's generate step as a page-tool the native God webview (or any WebMCP
 // host) can DRIVE — reusing the same start() a click runs.
 import { exposeToGod } from "./kit/webmcp.js";
+// Carried context: when the Switchboard OS launches Marquee AT an item, open focused on it.
+import { readOsContext } from "./os/os-context.js";
 
 // ==== CONFIG — every new wrapp edits this block =============================================
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*"; // whole-connector wildcard — the ONLY form the gate accepts
@@ -53,6 +55,17 @@ function toast(text, err) {
   if (!t) { t = el("div", "toast"); document.body.append(t); }
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
+}
+
+// carried context — the OS may launch Marquee AT an item; open on it instead of a cold start. Safe
+// no-op when absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
 }
 
 // ==== connect (standard chip + returning-user probe) ========================================
@@ -316,9 +329,13 @@ function render() {
   if (!r) {
     const startBox = el("div", "start");
     if (brand) startBox.append(el("div", "ctx", "page for your lent brand — " + brand.name));
+    const osTitle = osCtxTitle();
+    if (osTitle && !brand) startBox.append(el("div", "ctx", "Opened from Switchboard OS · " + osTitle));
     const row = el("div", "bindrow");
     const input = el("input");
     input.placeholder = "one line — what's the landing page for?";
+    // When the OS launched Marquee AT an item, that carried headline/title seeds the line.
+    if (!brand && osTitle) input.value = "a landing page for " + osTitle;
     const go = () => { if (input.value.trim()) void start(input.value); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     const btn = el("button", "primary", "Build the page ▸"); btn.onclick = go;

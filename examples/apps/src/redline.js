@@ -11,8 +11,26 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountBankIt, listContexts, useContext, slugId } from "./store/bankit.js";
 import { collection, mountLive } from "./kit/livestore.js";
+// Carried context: when the Switchboard OS launches Redline AT a project, open that project
+// directly (auto-bind its folder) instead of the pick-a-project stage. No-op on a normal launch.
+import { readOsContext } from "./os/os-context.js";
 
 const $ = (id) => document.getElementById(id);
+
+// The item the OS launched us on: { project? name, title? artifact/doc title }. "" fields on a
+// normal launch or a garbage hash. Read once; used to auto-open the matching project below.
+const OS_CTX = (() => {
+  try {
+    const c = readOsContext();
+    if (!c) return { project: "", title: "" };
+    let title = "";
+    if (typeof c.artifact === "string") title = c.artifact;
+    else if (c.artifact && typeof c.artifact.title === "string") title = c.artifact.title;
+    if (!title && typeof c.term === "string") title = c.term;
+    return { project: String(c.project || "").slice(0, 120).trim(), title: String(title).slice(0, 120).trim() };
+  } catch { return { project: "", title: "" }; }
+})();
+let osConsumed = false; // once we've opened the OS project (or failed to match), don't fight the user
 const INSTALL_URL = "https://thelastprompt.ai/switchboard/";
 const HIGGSFIELD = "mcp__claude_ai_Higgsfield__*";
 const DEFAULT_FOLDER = "~/Documents/Projects/the-last-prompt/switchboard";
@@ -122,6 +140,16 @@ async function resolveProject() {
     binding = true; reflect();
     try { await loadProject(); } finally { binding = false; reflect(); }
     return;
+  }
+  // CARRIED CONTEXT: nothing already bound — if the OS launched us AT a project, open the matching
+  // one directly (name match against the listed project contexts) so the user lands on it, not the
+  // picker. Any miss falls through to the normal stage. Only ever fires once, on a fresh entry.
+  if (!osConsumed && OS_CTX.project && projectMetas.length) {
+    osConsumed = true;
+    const want = OS_CTX.project.toLowerCase();
+    const match = projectMetas.find((m) => String(m.name || "").toLowerCase() === want)
+      || projectMetas.find((m) => String(m.name || "").toLowerCase().includes(want));
+    if (match && match.folder) { await bindFolder(match.folder); return; }
   }
   reflect();
 }
@@ -265,6 +293,11 @@ function renderStage() {
   sub.textContent = projectMetas.length
     ? "Pick the project to review — one click, no typing. Redline opens its page and runs the first audit itself."
     : "Point Redline at the folder that holds the page (its index.html lives there).";
+
+  // Legibility for a carried-context launch we couldn't auto-open (project not in the list yet).
+  if (OS_CTX.project || OS_CTX.title) {
+    flow.append(el("div", "kicker stage-k", "Opened from Switchboard OS · " + (OS_CTX.project || OS_CTX.title)));
+  }
 
   if (projectMetas.length) {
     flow.append(el("div", "kicker stage-k", "your projects"));

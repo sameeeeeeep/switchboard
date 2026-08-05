@@ -16,8 +16,22 @@ import { renderStage, groundInBackground } from "./cast/stages.js";
 import { $, el, clear, renderStepper } from "./cast/ui.js";
 import { svgTile } from "./cast/gen.js";
 import { harnessRelay } from "./cast/harness.js";
+// Carried context: when the Switchboard OS launches Cast AT an item (a persona/account name), open a
+// fresh account with that as the reference brief instead of a blank entry.
+import { readOsContext } from "./os/os-context.js";
 
 const state = { relay: null, mock: false, caps: null, brand: null, accounts: [], current: null, loading: new Set() };
+
+// carried context — the OS may launch Cast AT an item; seed the reference brief with it. Safe no-op
+// when absent (bad hash → null → "").
+const OS_CTX = readOsContext();
+function osCtxTitle() {
+  const c = OS_CTX; if (!c) return "";
+  if (typeof c.artifact === "string") return c.artifact.slice(0, 160);
+  if (c.artifact && typeof c.artifact.title === "string") return c.artifact.title.slice(0, 160);
+  if (typeof c.term === "string") return c.term.slice(0, 160);
+  return "";
+}
 
 // ?harness — boot the LIVE harness relay: Cast's real generation path (mock=false) backed by real
 // Higgsfield assets, so a reel actually renders inside Cast without the browser extension present.
@@ -58,8 +72,19 @@ async function boot(relay, mock) {
   // land in Foundation where autopilot streams the persona directions in with ★ auto-locked.
   if (!state.accounts.length) {
     if (state.brand) autoStart();
-    else newAccount();
+    else { newAccount(); seedFromOs(); }
   } else selectAccount(state.accounts[0].id);
+}
+
+// Carried context: the OS launched Cast AT an item and there's no lent brand to auto-start from —
+// open the fresh account's reference brief seeded with the carried title, so the entry screen lands
+// pre-filled on that item instead of a blank line. Only seeds an empty brief; never clobbers input.
+function seedFromOs() {
+  const seed = osCtxTitle();
+  const a = state.current;
+  if (!seed || !a) return;
+  if (!a.reference) a.reference = { brief: "", niche: "", inspirations: [], moodNotes: "", locked: false };
+  if (!a.reference.brief) { a.reference.brief = seed; save(); renderShell(); }
 }
 
 // First-run with a lent brand: the ONE thing Cast needs is the brand — so that IS the entry.

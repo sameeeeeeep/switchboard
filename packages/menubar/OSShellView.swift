@@ -24,6 +24,42 @@ extension Color {
 }
 
 // =====================================================================================================
+// MARK: - OSLaunch — the real wrapp-launch seam (mirrors the web OS's `url + "#os=" + ctx` contract)
+// =====================================================================================================
+//
+// The OS surfaces are pure SwiftUI with no reference to the AppDelegate. RelayMenuBar installs `handler`
+// once at startup (→ resolves an app id to a catalog listing and opens its page, carrying item context
+// as `#os=<encoded {artifact,kind,project}>` so the wrapp opens AT the item). Surfaces call
+// `OSLaunch.launch(appId, ctx)` at every tile that references a real app. When no handler is installed —
+// the SnapshotOS render harness, SwiftUI previews — `isLive` is false and the site falls back to
+// in-OS navigation (`.apps`/`.bank`), so a tap is NEVER a dead end and those targets still compile.
+
+/// Item context carried into a launched wrapp (the native twin of the web `data-ctx` JSON).
+struct OSLaunchContext {
+    var artifact: String? = nil   // the thing the user clicked (a doc/mark/ad title)
+    var kind: String? = nil       // its kind (doc/mark/ad/image/text…)
+    var project: String? = nil    // the owning project id, when known
+    var isEmpty: Bool { artifact == nil && kind == nil && project == nil }
+}
+
+enum OSLaunch {
+    /// Installed by RelayMenuBar at launch: (appId, context) → open the real wrapp page.
+    static var handler: ((String, OSLaunchContext) -> Void)? = nil
+    /// True only when a real launcher is wired (the running app), false under SnapshotOS / previews.
+    static var isLive: Bool { handler != nil }
+    /// Open the wrapp for `appId`, carrying item context. No-op when no handler is installed.
+    static func launch(_ appId: String, _ context: OSLaunchContext = .init()) {
+        handler?(appId, context)
+    }
+    /// Launch `appId` when it's non-nil AND a real launcher is wired; otherwise run `fallback`
+    /// (in-OS navigation). This is what every tile uses, so a tap is NEVER a dead end — under the
+    /// SnapshotOS harness (no handler) it degrades to the same navigation the stubs had.
+    static func launchOr(_ appId: String?, _ context: OSLaunchContext = .init(), else fallback: () -> Void) {
+        if let id = appId, let h = handler { h(id, context) } else { fallback() }
+    }
+}
+
+// =====================================================================================================
 // MARK: - Deterministic per-app hue (OS.md §3.1 — "one hue each, from the app id")
 // =====================================================================================================
 
@@ -526,7 +562,7 @@ struct ArtifactCard: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(art.title).font(.hanken(13, .medium)).foregroundColor(.ink).lineLimit(2)
                 HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 4).fill(colorForId(art.app)).frame(width: 13, height: 13)
+                    OSAppGlyph(id: art.app, size: 14)   // the real app icon (iso-tile fallback), not a flat swatch
                     Text(art.app).font(.splMono(10)).foregroundColor(.inkFaint)
                     Spacer(minLength: 0)
                     Text(art.time).font(.splMono(10)).foregroundColor(.inkFaint)

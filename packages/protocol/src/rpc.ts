@@ -208,6 +208,10 @@ export interface BYOPMethods {
   /** Drive a guided cursor-walkthrough on the user's screen (onboarding/setup/how-to/guided-test).
    *  Requires a grant AND a per-run consent (write-class: it takes over the cursor + keyboard). */
   guide_run: { params: GuideRunParams; result: GuideResult };
+  /** Read the user's past guided runs (append-only ~/.relay/guide-history.jsonl): per-step verdicts,
+   *  the options/choices they picked, notes, and DURABLE screenshot paths. Read-only over the user's
+   *  own local record → no per-call consent. Lets ANY later Claude thread see what the user did + saw. */
+  guide_history: { params: { limit?: number }; result: { runs: unknown[] } };
   /** The setup ladder, answered by the EXTENSION locally — never forwarded to the daemon, no
    *  grant required, resolves fast (<1s) even when the daemon is unreachable or unpaired. The
    *  chip/widget render install → unreachable → unpaired → disconnected → connected from this;
