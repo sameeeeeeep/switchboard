@@ -4210,6 +4210,7 @@ struct ActionConsentDrop: View {
     @MainActor func showLauncher() {
         guard model.running else { showPanel(); return }
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
+        CursorGuide.shared.noteEvent("launcher")   // a guide's ⌥⌥ step advances the moment you open the launcher
         model.refreshFiles()
         // Include skills too — they get their own "Skill" tab (NotchLauncherView derives tabs from
         // categories) and each opens the shared skill-widget.html glance (paste → run → result).
@@ -4716,16 +4717,19 @@ struct ActionConsentDrop: View {
             "text": "Your summon — tap it and say what you need. The orb wakes and listens.",
             "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
             "placement": "cursor",
-            "hint": "Anywhere, anytime. Try it, then ⌥→."])
+            "doneWhen": ["kind": "event", "name": "summon"],   // advances the instant you actually ⌃⌃
+            "hint": "Just try it — I'll move on when you do."])
         steps.append(["id": "key-dictation",
             "text": "Hold in any text field and speak — your words land at the cursor.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
-            "hint": "Hold to talk, release to drop. ⌥→ once you've watched it type."])
+            "doneWhen": ["kind": "event", "name": "dictation"],
+            "hint": "Hold to talk, release to drop — I'll move on when you do."])
         steps.append(["id": "key-launcher",
             "text": "Every app and tool, one keystroke away.",
             "keys": [["caps": ["⌥", "⌥"], "name": "Launch"]],
             "placement": "cursor",
-            "hint": "Double-tap Option. Give it a tap, then ⌥→."])
+            "doneWhen": ["kind": "event", "name": "launcher"],
+            "hint": "Double-tap Option — I'll move on when you do."])
         // ── First project (seeded demo so it's never a blank slate)
         steps.append(["id": "first-project",
             "text": "The project chip is the context every app borrows. I seeded a demo one.",
@@ -4944,6 +4948,7 @@ struct ActionConsentDrop: View {
         guard !godRunning, !godListening else { return }   // don't collide with a God summon
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { refreshPermissionGate(); return }
         guard whisperCliPath() != nil, whisperModelPath() != nil else { toast("Dictation needs whisper.cpp — brew install whisper-cpp + a ggml model in ~/.relay/models"); return }
+        CursorGuide.shared.noteEvent("dictation")   // a guide's ⌃⌥ step advances the moment you dictate
         // Paint the pill FIRST. AVAudioRecorder init + record() synchronously blocks the main thread while
         // the mic hardware + TCC client cold-activate (~100–300ms), so if we set it up before showing the
         // status the "Dictating" pill can't paint until this func returns and feels laggy. Flip the state and
@@ -5251,6 +5256,7 @@ struct ActionConsentDrop: View {
     // screen). The overlay itself lives in the listening flow now, so this just captures + spawns.
     @MainActor private func triggerGod(at point: CGPoint? = nil, audio: String? = nil, instruction: String? = nil, skill: String? = nil, sessionOverride: String? = nil, forceFullScreen: Bool = false) {
         guard !godRunning else { return }   // one loop at a time — a held ⌃⌥ doesn't stack
+        CursorGuide.shared.noteEvent("summon")   // a guide's ⌃⌃ step advances the moment you actually summon
         lastGodAudio = audio   // remembered so a mid-run project switch can re-run this turn (staged refs persist)
         if let p = point, let screen = NSScreen.main {
             glowModel.target = CGPoint(x: p.x - screen.frame.minX, y: screen.frame.maxY - p.y)

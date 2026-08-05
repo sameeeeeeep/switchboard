@@ -94,6 +94,8 @@ indirect enum Predicate {
     case checkboxState(titleContains: String, checked: Bool)
     case onScreenTextAppeared(text: String?, regex: String?, region: CGRect?)   // LOCAL Apple Vision OCR
     case pasted   // satisfied once the user presses ⌘V while the step is active → paste auto-advances
+    case event(String)   // satisfied once the app reports this named action (summon/dictation/launcher) — the
+                         // user PERFORMING the taught gesture advances the step, no ⌥→ needed
     case unknown   // unrecognized leaf → never satisfied (manual-only), never crashes
 
     /// Parse a predicate from the JSON schema. Returns nil only for a non-object; unknown leaves
@@ -134,6 +136,8 @@ indirect enum Predicate {
             return .onScreenTextAppeared(text: d["text"] as? String, regex: d["regex"] as? String, region: region)
         case "pasted":
             return .pasted
+        case "event":
+            return .event((d["name"] as? String) ?? "")
         default:
             return .unknown
         }
@@ -836,6 +840,15 @@ final class CursorGuide {
     private var ocrMatched = false           // last OCR verdict for the current step
     private var ocrStepIdx = -1              // which step the cached ocrMatched belongs to
     private var pasteObserved = false        // ⌘V seen during THIS step (drives the `.pasted` doneWhen)
+    private var observedEvent: String? = nil // app-reported gesture seen during THIS step (drives `.event`)
+
+    /// The app calls this when a taught gesture actually fires (summon/dictation/launcher), so a step whose
+    /// doneWhen is `{kind:"event",name:…}` advances the moment the user DOES it — no ⌥→ needed. Only counts
+    /// while a guide is active; the ~4Hz watcher picks it up on its next tick.
+    func noteEvent(_ name: String) {
+        guard isActive, !capturingFeedback else { return }
+        observedEvent = name
+    }
 
     // ── chord edge-detect (⌃⌥ down → release = one signal; +⇧ while held = fail)
     private var chordDown = false
@@ -1064,6 +1077,7 @@ final class CursorGuide {
         doneStreak = 0
         ocrMatched = false; ocrStepIdx = idx
         pasteObserved = false        // a paste only counts for the step it happens on
+        observedEvent = nil          // an app-reported gesture only counts for the step it happens on
         guard idx < steps.count else { return }
         let s = steps[idx]
         // Dwell-then-advance: a purely timed step (e.g. "watch this happen for 3s"). Teach-only.
@@ -1145,6 +1159,8 @@ final class CursorGuide {
             return (ocrStepIdx == idx) && ocrMatched   // set by the async Vision pass for THIS step
         case .pasted:
             return pasteObserved   // set by onKey on ⌘V for THIS step (reset in armStepWatchers)
+        case .event(let name):
+            return observedEvent == name   // set by noteEvent() when the app fires the taught gesture
         case .unknown:
             return false
         }
