@@ -3538,6 +3538,11 @@ struct ActionConsentDrop: View {
             menu.addItem(resume)
             menu.addItem(.separator())
         }
+        // Guided form fill: copy a form (⌘A⌘C) then click this → a fill-guide with your data, field by field.
+        let fill = NSMenuItem(title: "Fill a form from clipboard", action: #selector(fillFormFromClipboard), keyEquivalent: "")
+        fill.target = self
+        menu.addItem(fill)
+        menu.addItem(.separator())
         // LIVE first — the real thing. Drive ANY installed wrapp on your own Claude: pick it, give it
         // input, its <id>_run tool runs in a hosted webview and the result lands as a notch widget.
         // (Not roast-only anymore — the whole catalog is drivable. docs/GOD-HANDS.md "God drives ALL wrapps".)
@@ -3616,6 +3621,68 @@ struct ActionConsentDrop: View {
     }
     @objc private func openOSWindow() { OSShellWindowController.shared.show() }
 
+    // ── Guided FORM FILL (docs/FORM-FILL.md) ───────────────────────────────────────────────────────
+    // "Help me fill this form" from anywhere: the user selects the form + ⌘A⌘C, then triggers this. We
+    // read the copied form + their ~/.relay/identity.json, match the fields we HAVE data for, and raise a
+    // teach fill-guide — one step per field, that field's value pre-loaded on the clipboard, so they just
+    // click the field and ⌘V (doneWhen:field-non-empty auto-advances). Deterministic + local: no tokens,
+    // nothing leaves the Mac. (An LLM mapper for exotic forms is a future upgrade.)
+    private struct FillField { let key: String; let label: String; let synonyms: [String] }
+    private let fillFields: [FillField] = [
+        .init(key: "name",    label: "Name",    synonyms: ["full name", "your name", "name"]),
+        .init(key: "email",   label: "Email",   synonyms: ["e-mail", "email"]),
+        .init(key: "phone",   label: "Phone",   synonyms: ["phone number", "mobile", "cell", "phone", "tel"]),
+        .init(key: "address", label: "Address", synonyms: ["street address", "address", "street"]),
+        .init(key: "city",    label: "City",    synonyms: ["city", "town"]),
+        .init(key: "state",   label: "State",   synonyms: ["state", "province", "region"]),
+        .init(key: "zip",     label: "Zip",     synonyms: ["postal code", "zip code", "postcode", "zip"]),
+        .init(key: "company", label: "Company", synonyms: ["organization", "organisation", "employer", "company"]),
+        .init(key: "website", label: "Website", synonyms: ["website", "url", "web site"]),
+    ]
+    // Read (seed on first use) ~/.relay/identity.json — the user's fill data, label→value. Name from profile.
+    private func readIdentity() -> [String: String] {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/identity.json")
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: p)),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] { return obj }
+        // seed: name from profile, the rest empty for the user to fill once
+        var seed: [String: String] = ["name": model.userName, "email": "", "phone": "", "address": "",
+                                      "city": "", "state": "", "zip": "", "company": "", "website": ""]
+        if let d = try? JSONSerialization.data(withJSONObject: seed, options: [.prettyPrinted]) {
+            try? d.write(to: URL(fileURLWithPath: p), options: .atomic)
+        }
+        return seed
+    }
+    @MainActor @objc private func fillFormFromClipboard() {
+        let clip = (NSPasteboard.general.string(forType: .string) ?? "").lowercased()
+        guard !clip.isEmpty else { raiseFillNote("Copy the form first (⌘A then ⌘C), then try again."); return }
+        let id = readIdentity()
+        var steps: [[String: Any]] = []
+        for f in fillFields {
+            guard let val = id[f.key], !val.isEmpty else { continue }          // only fields I actually have
+            guard f.synonyms.contains(where: { clip.contains($0) }) else { continue }   // the form mentions it
+            steps.append(["id": f.key, "text": "Click the \(f.label) field, then ⌘V",
+                          "copy": val, "doneWhen": ["kind": "field-non-empty"]])
+        }
+        guard !steps.isEmpty else {
+            raiseFillNote("No fields I have data for matched this form. Add values in ~/.relay/identity.json.")
+            return
+        }
+        let run: [String: Any] = ["mode": "teach", "title": "Fill this form", "source": "Form fill",
+                                  "project": model.userName.isEmpty ? "" : "you", "autoClipboard": true, "steps": steps]
+        writeGuideRunFile(run)
+    }
+    // A one-step notch note (used for "copy the form first" / "no matches").
+    private func raiseFillNote(_ text: String) {
+        writeGuideRunFile(["mode": "teach", "title": "Form fill", "source": "Form fill",
+                           "steps": [["id": "note", "text": text, "placement": "notch"]]])
+    }
+    private func writeGuideRunFile(_ obj: [String: Any]) {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        try? data.write(to: URL(fileURLWithPath: (dir as NSString).appendingPathComponent("guide-run.json")), options: .atomic)
+    }
+
     // Resume-from-menu: a guide abandoned mid-way writes ~/.relay/guide-suspended.json (raw run + startIndex).
     private func readSuspendedGuide() -> [String: Any]? {
         let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/guide-suspended.json")
@@ -3639,6 +3706,12 @@ struct ActionConsentDrop: View {
         if FileManager.default.fileExists(atPath: p) {
             try? FileManager.default.removeItem(atPath: p)
             OSShellWindowController.shared.show()
+        }
+        // `touch ~/.relay/fill-form` → guided form-fill from the clipboard (scriptable + self-test hook).
+        let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/fill-form")
+        if FileManager.default.fileExists(atPath: f) {
+            try? FileManager.default.removeItem(atPath: f)
+            fillFormFromClipboard()
         }
     }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
