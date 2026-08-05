@@ -2782,6 +2782,8 @@ final class NotchPanel: NSPanel {
 // between the black menu bar and the black drop body. Bleeding the top edge 1pt above the seam tucks it
 // behind the bar (the edge is meant to be invisible against it anyway), so no rounding direction shows a gap.
 let notchTopBleed: CGFloat = 1
+// How far BELOW the screen top the feedback note drops, so it clears the notch + the collapsed guide pill.
+let feedbackNotchDrop: CGFloat = 54
 
 // The notch turns into a note field during guide feedback. Modeled on GodStatusDrop's shape/tokens,
 // but with a live TextField (needs a key window — hosted in a LauncherPanel, not a NotchPanel).
@@ -2817,7 +2819,7 @@ struct FeedbackNoteDrop: View {
                 Text("esc discard").font(.splMono(9)).foregroundColor(.inkDim)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 34).padding(.bottom, 12)   // top clears the physical notch
+        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)   // sits below the notch now (dropped panel)
         .frame(width: 300)
         .padding(.horizontal, 14)   // notch ears
         .background(Color.page)
@@ -3720,6 +3722,13 @@ struct ActionConsentDrop: View {
             try? FileManager.default.removeItem(atPath: f)
             fillFormFromClipboard()
         }
+        // `touch ~/.relay/replay-tour` → run the real (adaptive) welcome tour. Same as the menu item;
+        // scriptable so it can be fired for a walkthrough or self-test without clicking the dot.
+        let t = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/replay-tour")
+        if FileManager.default.fileExists(atPath: t) {
+            try? FileManager.default.removeItem(atPath: t)
+            startWelcomeTour()
+        }
     }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
         guard let spec = sender.representedObject as? WidgetSpec else { return }
@@ -4291,7 +4300,9 @@ struct ActionConsentDrop: View {
         feedbackPanel!.contentView = host
         let size = host.fittingSize
         feedbackPanel!.setContentSize(size)
-        feedbackPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        // Drop the note BELOW the notch (not pinned to the very top) so it never hides behind the guide card
+        // or any notch content — the guide card collapses to its pill while capturing, and this sits under it.
+        feedbackPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - feedbackNotchDrop))
         feedbackPanel!.makeKeyAndOrderFront(nil)
         orb?.orderOut(nil)
         presentFromNotch(feedbackPanel!)
@@ -4670,72 +4681,80 @@ struct ActionConsentDrop: View {
     // onboarding-tour.json (kept in sync; inlined here so the app has no runtime file dependency).
     @MainActor private func startWelcomeTour() {
         var steps: [[String: Any]] = []
+        // Copy is deliberately TERSE — a short lead line + a one-line hint. The keys a step teaches render as
+        // keycap BUTTONS (the `keys` field), not prose. Notch/orb steps sit at the CURSOR so the notch is free.
         // ── Welcome
         steps.append(["id": "welcome",
-            "text": "Welcome to Switchboard. Ninety seconds and you'll be running AI on your own Mac — no new subscription, nothing leaving your machine. Press ⌥→ (Option + Right arrow) to begin.",
-            "hint": "I'm docked down here the whole way; the ring points at things up there. ⌥→ next · ⌥. hide me · esc leave."])
+            "text": "Welcome. In ninety seconds you're running AI on your own Mac — nothing leaves it.",
+            "hint": "⌥→ next · ⌥. hide me · esc leave."])
         // ── Access — only the permissions not yet granted (a returning user skips these)
         for p in GodPerm.allCases where !p.granted {
             switch p {
             case .mic:
                 steps.append(["id": "grant-mic",
-                    "text": "A card just dropped from the notch asking for your mic. Click Allow — that's the ear that hears you when you hold a key and talk.",
-                    "hint": "If no system window appears, the card opens System Settings — flip the Switchboard toggle on."])
+                    "text": "Mic — the ear that hears you. Click Allow on the card.",
+                    "hint": "No window? The card opens System Settings — flip Switchboard on."])
             case .accessibility:
                 steps.append(["id": "grant-accessibility",
-                    "text": "Next card: Accessibility. Drag the Switchboard chip into the list (or hit Open) and switch it on — this is the hand that points, clicks and types for you.",
-                    "hint": "macOS has no one-click grant here, so you add Switchboard yourself. The card waits."])
+                    "text": "Accessibility — the hand that points and types. Add Switchboard, switch it on.",
+                    "hint": "macOS needs you to add it yourself. The card waits."])
             case .screen:
                 steps.append(["id": "grant-screen",
-                    "text": "Last permission: Screen Recording. Click Allow so I can glance at what's on your screen and actually help with it.",
-                    "hint": "Grant it and the cards are done — the orb goes quiet. ⌥→ to keep going."])
+                    "text": "Screen Recording — the eyes. Click Allow.",
+                    "hint": "Last one. ⌥→ to keep going."])
             }
         }
         // ── Your Claude — only if signed out
         if model.running && !model.signedIn {
             steps.append(["id": "sign-in",
-                "text": "Switchboard runs on YOUR Claude — the plan you already pay for, no API key, no extra bill. I've opened Terminal; run the `claude` command there to sign in, then come back and press ⌥→.",
-                "hint": "This is the one time you touch a terminal. Once you're in, the menu-bar dot turns lime."])
+                "text": "Switchboard runs on YOUR Claude — no API key, no extra bill.",
+                "hint": "Run `claude` in the Terminal I opened, then ⌥→. Dot turns lime when you're in."])
         }
-        // ── The three keys (hotkeys stay live during a guide, so this is real practice)
+        // ── The three keys (hotkeys stay live during a guide, so this is real practice). Each teaches its
+        //    shortcut as a keycap button. Summon + launcher use the NOTCH, so the card rides the CURSOR to free it.
         steps.append(["id": "key-summon",
-            "text": "Now the three keys. Tap Control twice — ⌃⌃ — and just say what you need. The orb wakes and listens. Try it, then ⌥→.",
-            "hint": "This is your summon. Anywhere, anytime: ⌃⌃ and talk."])
+            "text": "Your summon — tap it and say what you need. The orb wakes and listens.",
+            "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
+            "placement": "cursor",
+            "hint": "Anywhere, anytime. Try it, then ⌥→."])
         steps.append(["id": "key-dictation",
-            "text": "Put your cursor in any text field, hold ⌃⌥ and speak. Let go — your words land right where the cursor is. ⌥→ when you've watched it type.",
-            "hint": "Hold to talk, release to drop. Your voice into any app, no window."])
+            "text": "Hold in any text field and speak — your words land at the cursor.",
+            "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
+            "hint": "Hold to talk, release to drop. ⌥→ once you've watched it type."])
         steps.append(["id": "key-launcher",
-            "text": "Double-tap Option — ⌥⌥ — to throw open the launcher: every app and tool, one keystroke away. Give it a tap, then ⌥→.",
-            "hint": "⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ launch. That's the whole keyboard."])
+            "text": "Every app and tool, one keystroke away.",
+            "keys": [["caps": ["⌥", "⌥"], "name": "Launch"]],
+            "placement": "cursor",
+            "hint": "Double-tap Option. Give it a tap, then ⌥→."])
         // ── First project (seeded demo so it's never a blank slate)
         steps.append(["id": "first-project",
-            "text": "See the project chip in the pill? A project is the context every app borrows — your brand, your notes, your world. I set up a demo one so nothing's blank. Click the chip to see it, then ⌥→.",
-            "hint": "Later, make your own — every app re-grounds to whatever project you pick."])
-        // ── First wrapp (AI) — honest whether or not the demo context has deep data yet
+            "text": "The project chip is the context every app borrows. I seeded a demo one.",
+            "hint": "Click it to peek — make your own later. ⌥→."])
+        // ── First wrapp (AI)
         steps.append(["id": "first-wrapp",
-            "text": "Let's run something real. Open the launcher (⌥⌥) and click ideabrain — give it a rough idea and watch it think out loud on your own Claude. ⌥→ once you've seen a result.",
-            "hint": "That's a wrapp: a skin over your Claude. No key, no setup — it just runs."])
+            "text": "Run something real: open ideabrain, give it a rough idea, watch it think.",
+            "hint": "A wrapp is a skin over your Claude — no setup. ⌥→ after a result."])
         // ── First non-AI tool (instant win, zero setup, private by construction)
         steps.append(["id": "first-tool",
-            "text": "Not everything needs AI. Open the launcher again and try QR — it makes a code instantly, right on your Mac, no model, nothing sent anywhere. ⌥→ when you've got one.",
-            "hint": "The non-AI tools are free and private by construction — pure device-light utilities."])
+            "text": "Not everything needs AI. Try QR — instant, on-device, nothing sent.",
+            "hint": "The non-AI tools are free + private. ⌥→ when you've got one."])
         // ── Background tasks
         steps.append(["id": "background",
-            "text": "Long jobs don't block you — they run in the background. You'll see them in the panel's Running rail and get a little notch nudge when they finish. Click the menu-bar dot to peek, then ⌥→.",
-            "hint": "Everything connected and running lives in the panel."])
+            "text": "Long jobs run in the background — you'll get a notch nudge when they finish.",
+            "hint": "Click the dot to peek at the Running rail. ⌥→."])
         // ── Set up by choosing — an OPTIONS step. The pick is applied LIVE via onOptionApprove
         //    (onboarding is the first consumer of the guide's options hook), and recorded in the result.
         steps.append(["id": "setup-economy",
-            "text": "Quick setup, your call: run God at full quality, or economy — a cheaper, faster model that spends fewer tokens. Press ⌥1 or ⌥2 to try each, then ⌥→ to lock it in.",
-            "hint": "⌥1 full · ⌥2 economy — change it anytime in Settings.",
+            "text": "Your call — full quality, or economy.",
+            "hint": "⌥1 / ⌥2 to try · ⌥→ to lock in · change anytime in Settings.",
             "options": [
-                ["id": "full", "label": "Full quality", "accent": "lime"],
-                ["id": "eco",  "label": "Economy",      "accent": "indigo"],
+                ["id": "full", "label": "Full quality", "accent": "lime",   "detail": "Best answers",         "recommended": true],
+                ["id": "eco",  "label": "Economy",      "accent": "indigo", "detail": "Faster, fewer tokens"],
             ]])
-        // ── What's next
+        // ── What's next (compact inline recap — three KeyChips would overflow the card)
         steps.append(["id": "done",
-            "text": "That's the whole app: ⌃⌃ to ask · ⌃⌥ to dictate · ⌥⌥ to launch. Browse the store for more apps, skills and tools whenever you like. You're set — go make something.",
-            "hint": "Replay this anytime from the menu-bar dot → Replay the welcome tour."])
+            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ launch.",
+            "hint": "Browse the store for more. Replay anytime from the dot."])
 
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
