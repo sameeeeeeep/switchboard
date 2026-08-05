@@ -255,6 +255,22 @@ The user presses `⌥1/2/3` (or clicks — the notch card is clickable) then `�
 (`notch` clickable · `dock` · `cursor`) · options gain `detail` (one-line why) + `recommended` (⭐,
 pre-selected). `⌥/` moves notch↔dock, `⌥.` collapses. An option can carry `media` (an image thumbnail).
 
+## Claude Code → the notch (attention hook)
+
+`cc-notify.py` (in this skill dir) turns Claude Code's own "needs you" moments into a notch card instead
+of a silent terminal wait — the same trigger `claude-sounds` beeps on, but you get the message on-screen.
+Install once:
+```bash
+mkdir -p ~/.relay/hooks && cp "$(dirname "$0")/cc-notify.py" ~/.relay/hooks/cc-notify.py 2>/dev/null || true
+```
+Then register it on the `Notification` event in `~/.claude/settings.json` (merge — don't clobber existing hooks):
+```jsonc
+"hooks": { "Notification": [ { "matcher": "",
+  "hooks": [ { "type": "command", "command": "python3 ~/.relay/hooks/cc-notify.py" } ] } ] }
+```
+The script reads the event JSON on stdin and raises a notch card (`source: "Claude Code"`, project = cwd
+basename). Non-fatal by design (any error exits 0 → never blocks Claude Code).
+
 ## Current runtime — newer capabilities (all additive; old runs still work)
 
 - **Keys are `⌥`-based** (not `fn`, which scrolled the app): `⌥→` next/pass · `⌥←` fail · `⌥↑` back ·
