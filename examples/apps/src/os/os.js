@@ -187,7 +187,8 @@ function renderRail(active) {
 
 function thumb(w) {
   const h = hexForId(w.src);
-  if (w.kind === "mark" || w.kind === "image") return '<div style="width:56px;height:56px;border-radius:12px;background:linear-gradient(150deg,' + h + ',#0d0e13);display:grid;place-items:center"><div style="width:26px;height:26px;border:2.5px solid #fff;border-radius:7px;opacity:.9"></div></div>';
+  if (w.kind === "mark") return '<div style="width:56px;height:56px;border-radius:12px;background:linear-gradient(150deg,' + h + ',#0d0e13);display:grid;place-items:center"><div style="width:24px;height:24px;border-radius:7px;background:rgba(255,255,255,.92);display:grid;place-items:center"><div style="width:10px;height:10px;border-radius:3px;background:' + h + '"></div></div></div>';
+  if (w.kind === "image") return '<div style="width:78px;height:56px;border-radius:10px;background:linear-gradient(180deg,' + h + ',#151720 60%,#0d0e13);position:relative;overflow:hidden"><span style="position:absolute;top:8px;right:14px;width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.85)"></span></div>';
   if (w.kind === "gallery") return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">' + [0, 1, 2, 3].map(() => '<span style="width:22px;height:22px;border-radius:5px;background:' + h + ';opacity:.85"></span>').join("") + "</div>";
   if (w.kind === "ad") return '<div style="width:78px;height:56px;border-radius:8px;background:' + h + ';opacity:.9;display:flex;flex-direction:column;justify-content:flex-end;padding:6px"><span style="height:5px;width:70%;background:#fff;opacity:.85;border-radius:3px"></span><span style="height:4px;width:45%;background:#fff;opacity:.6;border-radius:3px;margin-top:4px"></span></div>';
   return '<div style="width:56px;height:60px;border-radius:6px;background:#0f1116;border:1px solid #23262f;padding:9px 8px">' + [80, 60, 90, 50, 70].map((w2) => '<div style="height:3px;width:' + w2 + "%;background:" + (w2 === 90 ? h : "#3a3f4b") + ';border-radius:2px;margin-bottom:5px"></div>').join("") + "</div>";
@@ -418,6 +419,17 @@ function wireOmni() {
   });
   const mic = document.getElementById("omniMic");
   if (mic) mic.addEventListener("click", () => alert("Voice — hold ⌃⌃ in the native app to ask by voice. (Web preview stub.)"));
+  // drop a file on the bar → in native it attaches as context / opens the right wrapp; here we echo it.
+  const omni = document.getElementById("omni");
+  if (omni) {
+    ["dragover", "dragenter"].forEach((ev) => omni.addEventListener(ev, (e) => { e.preventDefault(); omni.style.borderColor = "var(--lime)"; }));
+    ["dragleave", "drop"].forEach((ev) => omni.addEventListener(ev, () => { omni.style.borderColor = ""; }));
+    omni.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) alert("“" + f.name + "” — in the native app this attaches as context, or opens the right wrapp for it.");
+    });
+  }
   document.addEventListener("click", (e) => { if (!e.target.closest("#omniwrap")) { const s = document.getElementById("spot"); if (s) s.hidden = true; } });
   // ⌥⌥ / "/" focuses the bar (spotlight from anywhere)
   document.addEventListener("keydown", (e) => {

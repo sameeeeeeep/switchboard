@@ -676,13 +676,25 @@ struct ArtifactThumb: View {
     var c: Color { Color(hue: hue, saturation: 0.6, brightness: 0.82) }
     var body: some View {
         switch kind {
-        case "mark", "image":
+        case "mark":
+            // a logo lockup: vibrant tile + a filled mark block (reads as real art, not a hollow placeholder)
             RoundedRectangle(cornerRadius: 12)
-                .fill(LinearGradient(colors: [c, Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],
+                .fill(LinearGradient(colors: [c, Color(hue: hue, saturation: 0.7, brightness: 0.38)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 56, height: 56)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.9), lineWidth: 2.5)
-                    .frame(width: 26, height: 26))
+                .overlay(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)).frame(width: 24, height: 24)
+                    .overlay(RoundedRectangle(cornerRadius: 4).fill(c).frame(width: 10, height: 10)))
+        case "image":
+            // a "render": layered diagonal tones with a horizon, so it looks like a generated image
+            RoundedRectangle(cornerRadius: 12)
+                .fill(LinearGradient(colors: [Color(hue: hue, saturation: 0.65, brightness: 0.9),
+                                              Color(hue: hue, saturation: 0.55, brightness: 0.5),
+                                              Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: 78, height: 56)
+                .overlay(Circle().fill(Color.white.opacity(0.85)).frame(width: 12, height: 12)
+                    .offset(x: 18, y: -10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         case "gallery":
             LazyVGrid(columns: [GridItem(.fixed(22), spacing: 4), GridItem(.fixed(22), spacing: 4)], spacing: 4) {
                 ForEach(0..<4, id: \.self) { _ in RoundedRectangle(cornerRadius: 5).fill(c.opacity(0.85)).frame(width: 22, height: 22) }
