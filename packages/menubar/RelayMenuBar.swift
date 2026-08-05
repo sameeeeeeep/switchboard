@@ -4222,6 +4222,8 @@ struct ActionConsentDrop: View {
             activeProjectId: readDefaultId(),
             onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
+            onOpenSurface: { [weak self] raw in self?.hideLauncher(); OSShellWindowController.shared.show(Surface(rawValue: raw) ?? .home) },
+            onAsk: { [weak self] q in self?.hideLauncher(); if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } },
             onClose: { [weak self] in self?.hideLauncher() })
         let host = NoInsetHostingView(rootView: view)
         if launcherPanel == nil {

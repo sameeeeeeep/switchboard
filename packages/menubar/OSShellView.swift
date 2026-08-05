@@ -842,7 +842,7 @@ final class OSShellWindowController: NSObject, NSWindowDelegate {
     static let shared = OSShellWindowController()
     private var window: NSWindow?
 
-    func show() {
+    func show(_ initial: Surface? = nil) {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -854,10 +854,13 @@ final class OSShellWindowController: NSObject, NSWindowDelegate {
             w.backgroundColor = NSColor.black
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 920, height: 620)
-            w.contentView = NSHostingView(rootView: OSShellView())
+            w.contentView = NSHostingView(rootView: OSShellView(initial: initial ?? .home))
             w.center()
             w.delegate = self
             window = w
+        } else if let initial {
+            // already open → swap to the requested surface (spotlight "go to")
+            window?.contentView = NSHostingView(rootView: OSShellView(initial: initial))
         }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
