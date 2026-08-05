@@ -952,8 +952,10 @@ final class CursorGuide {
         }
         // Placement (docs/PRESENCE.md §2): explicit wins; else smart — a choose/approve step (options) goes
         // to the clickable NOTCH, everything else docks. ⌥/ can move it live afterwards.
+        // Smart default: presence lives at the NOTCH. Only a step that POINTS at a target docks (bottom),
+        // so the card never covers the ring's target. Everything else — asks, questions, reading — → notch.
         if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
-        else { model.placement = (s.options?.isEmpty == false) ? .notch : .dock }
+        else { model.placement = (s.point != nil) ? .dock : .notch }
         applyMousePolicy()   // notch → the card becomes clickable; else pure click-through
         model.target = s.point        // teach: point the ring + anchor the chip; nil → chip rides the cursor
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
@@ -1487,10 +1489,11 @@ final class CursorGuide {
     // (doneWhen) remains the primary path; this is the manual accelerator.
     @discardableResult private func onKey(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags) -> Bool {
         guard isActive else { return false }
-        // While capturing feedback, the notch input panel is key and owns ↵/esc (RelayMenuBar
-        // showFeedbackNote). CursorGuide's global monitor must NOT also act on those, or esc double-fires
-        // (cancel here AND abort). Swallow keys so they can't leak to the app, but take no action.
-        if capturingFeedback { return true }
+        // While capturing feedback, the notch note field is key + focused and owns typing + ↵/esc (via
+        // RelayMenuBar's feedbackKeyMonitor). CursorGuide must take NO action here — but it must NOT swallow
+        // either, or it eats the keystrokes meant for the note field (the "can't type" bug). Return false so
+        // every key flows to the focused field; the feedbackKeyMonitor is the sole handler of ↵/esc.
+        if capturingFeedback { return false }
         // ⌘V (keyCode 9) — mark a paste so a step whose doneWhen is `pasted` auto-advances. NEVER swallow:
         // the paste itself must reach the app. The ~4Hz watcher picks up the flag on its next tick.
         if keyCode == 9, flags.contains(.command) { pasteObserved = true; return false }
