@@ -296,29 +296,54 @@ private func wrappFromOrigin(_ o: String) -> String {
     if s.contains("5190") { return "os" }
     return s.split(separator: ".").first.map(String.init) ?? s
 }
-// ── LIVE vault/disk files — a bounded index of REAL files under the folders the user has bound (the
-// "vaults", from storage-bindings.json). Depth- and count-capped, prunes heavy dirs, so ⌥⌥ can find a
-// real file and reveal it in Finder. Scanned on launcher open; filtered in-memory by the query.
-func osVaultFiles(cap: Int = 900) -> [SpotFile] {
+// ── The bound "vault" folders (from storage-bindings.json) — the search scope for ⌥⌥ file search.
+func osVaultFolders() -> [String] {
     let bindingsPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage-bindings.json")
     var folders = Set<String>()
     if let obj = readJSON(bindingsPath) as? [String: Any] {
         for (_, v) in obj { if let m = v as? [String: Any], let f = m["folder"] as? String, !f.isEmpty { folders.insert(f) } }
     }
-    let skip: Set<String> = ["node_modules", ".git", "dist", "build", ".next", ".cache", "Pods", ".venv", "venv", "__pycache__", ".DS_Store"]
-    let fm = FileManager.default
+    return Array(folders)
+}
+
+// ── Query-time file search over the vaults — leverages macOS SPOTLIGHT (mdfind, the prebuilt system index:
+// complete + instant, no manual walk/cap). Per folder: mdfind by filename; if Spotlight doesn't index that
+// folder (hidden/.noindex), fall back to a small bounded name-walk so a vault is never invisible. Runs off
+// the main thread (Process); the caller updates UI on the result.
+func vaultSearch(_ query: String, folders: [String], limit: Int = 8) -> [SpotFile] {
+    let q = query.trimmingCharacters(in: .whitespaces)
+    guard q.count >= 2 else { return [] }
     var out: [SpotFile] = []
-    var stack: [(String, Int)] = folders.map { ($0, 0) }
-    while let (dir, depth) = stack.popLast(), out.count < cap {
-        guard depth <= 4, let items = try? fm.contentsOfDirectory(atPath: dir) else { continue }
-        let folderName = (dir as NSString).lastPathComponent
+    let perFolder = max(3, limit / max(1, folders.count))
+    for folder in folders {
+        if out.count >= limit { break }
+        var hits = mdfindNames(q, in: folder, limit: perFolder)
+        if hits.isEmpty { hits = walkNames(q, in: folder, limit: perFolder) }   // Spotlight didn't index it → walk
+        let fn = (folder as NSString).lastPathComponent
+        for path in hits { out.append(SpotFile(name: (path as NSString).lastPathComponent, path: path, folder: fn)); if out.count >= limit { break } }
+    }
+    return out
+}
+private func mdfindNames(_ q: String, in folder: String, limit: Int) -> [String] {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+    p.arguments = ["-onlyin", folder, "-name", q]
+    let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+    guard (try? p.run()) != nil else { return [] }
+    let data = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    return (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").prefix(limit).map(String.init)
+}
+private func walkNames(_ q: String, in folder: String, limit: Int) -> [String] {
+    let ql = q.lowercased()
+    let skip: Set<String> = ["node_modules", ".git", "dist", "build", ".next", ".cache", "Pods", "venv", ".venv", "__pycache__"]
+    let fm = FileManager.default; var out: [String] = []; var stack: [(String, Int)] = [(folder, 0)]
+    while let (dir, d) = stack.popLast(), out.count < limit {
+        guard d <= 5, let items = try? fm.contentsOfDirectory(atPath: dir) else { continue }
         for it in items {
             if it.hasPrefix(".") || skip.contains(it) { continue }
-            let p = dir + "/" + it
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: p, isDirectory: &isDir) else { continue }
-            if isDir.boolValue { stack.append((p, depth + 1)) }
-            else { out.append(SpotFile(name: it, path: p, folder: folderName)); if out.count >= cap { break } }
+            let pth = dir + "/" + it; var isD: ObjCBool = false
+            guard fm.fileExists(atPath: pth, isDirectory: &isD) else { continue }
+            if isD.boolValue { stack.append((pth, d + 1)) }
+            else if it.lowercased().contains(ql) { out.append(pth); if out.count >= limit { break } }
         }
     }
     return out
