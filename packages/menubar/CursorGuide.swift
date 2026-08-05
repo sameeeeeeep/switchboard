@@ -185,6 +185,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var dockTop = false                // dock the card at the TOP when the target is in the bottom band
     @Published var placement: GuidePlacement = .dock   // notch / dock / cursor (⌥/ toggles notch↔dock)
     @Published var source: String? = nil          // provenance: who's asking (thread/agent/wrapp), e.g. "Claude Code · migrate-db"
+    @Published var sourceId: String? = nil        // stable THREAD identity → a deterministic colour (tell threads apart)
     @Published var project: String? = nil         // provenance: the project this run is grounded in
     @Published var clipboardHint: String? = nil   // "⌘V — pasted for you" cursor hint when a step preloads the clipboard
     @Published var applyingOption: Int? = nil     // an option is being applied live (shows the working dot-matrix)
@@ -404,6 +405,9 @@ struct GuideCaptionView: View {
             if (m.source?.isEmpty == false) || (m.project?.isEmpty == false) {
                 HStack(spacing: 7) {
                     if let s = m.source, !s.isEmpty {
+                        // Per-THREAD colour dot (deterministic from the thread id) — tell two threads apart at a glance.
+                        Circle().fill(colorForId(m.sourceId ?? s)).frame(width: 7, height: 7)
+                            .shadow(color: colorForId(m.sourceId ?? s).opacity(0.6), radius: 2)
                         Text("⌘ \(s)").font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1)
                     }
                     if let p = m.project, !p.isEmpty {
@@ -866,6 +870,7 @@ final class CursorGuide {
         self.steps = parsed
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
+        model.sourceId = (obj["sourceId"] as? String)
         model.project = (obj["project"] as? String)
         self.idx = 0
         self.results = parsed.map { GuideResult(id: $0.id, text: $0.text, verdict: "unrun", notedAt: nil) }
