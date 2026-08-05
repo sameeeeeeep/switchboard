@@ -66,6 +66,8 @@ struct NotchLauncherView: View {
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
     let onPickProject: (String?) -> Void          // chip → set the global context (nil = unconnected)
     let onLaunch: (SBListing, URL?) -> Void        // tile → launch this wrapp's widget, with the staged file if it takes one
+    let onOpenSurface: (String) -> Void            // spotlight "go to" → open the OS window at a surface (rawValue)
+    let onAsk: (String) -> Void                    // spotlight "ask" / mic → hand the query to God (empty = voice)
     let onClose: () -> Void                        // ⌥⌥ again / Esc — the host dismisses the drop
 
     init(listings: [SBListing],
@@ -73,12 +75,16 @@ struct NotchLauncherView: View {
          activeProjectId: String?,
          onPickProject: @escaping (String?) -> Void,
          onLaunch: @escaping (SBListing, URL?) -> Void,
+         onOpenSurface: @escaping (String) -> Void = { _ in },
+         onAsk: @escaping (String) -> Void = { _ in },
          onClose: @escaping () -> Void) {
         self.listings = listings
         self.projects = projects
         self.activeProjectId = activeProjectId
         self.onPickProject = onPickProject
         self.onLaunch = onLaunch
+        self.onOpenSurface = onOpenSurface
+        self.onAsk = onAsk
         self.onClose = onClose
     }
 
@@ -115,15 +121,112 @@ struct NotchLauncherView: View {
         switch c { case "studio": return "Make"; case "tool": return "Tools"; case "fun": return "Fun"; case "agent": return "Agents"; default: return c.capitalized }
     }
 
+    // ── SPOTLIGHT — the ⌥⌥ bar reaches ANYWHERE: projects · apps · surfaces · actions. When the query is
+    //    non-empty the app grid is replaced by grouped results, each leading somewhere. (docs: command centre)
+    private enum SpotKind { case project, app, surface, action }
+    private struct SpotRow: Identifiable { let id: String; let kind: SpotKind; let label: String; let sub: String; let payload: String }
+    private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+    private var spotProjects: [SpotRow] {
+        projects.filter { q.isEmpty || $0.name.lowercased().contains(q) }.prefix(6).map {
+            SpotRow(id: "p-" + $0.id, kind: .project, label: $0.name, sub: $0.kind, payload: $0.id) }
+    }
+    private var spotApps: [SpotRow] {
+        (q.isEmpty ? [] : listings.filter { $0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q) }).prefix(6).map {
+            SpotRow(id: "a-" + $0.id, kind: .app, label: $0.name, sub: $0.tagline, payload: $0.id) }
+    }
+    private var spotSurfaces: [SpotRow] {
+        (q.isEmpty ? [] : Surface.allCases.filter { $0.title.lowercased().contains(q) }).map {
+            SpotRow(id: "s-" + $0.rawValue, kind: .surface, label: $0.title, sub: "surface", payload: $0.rawValue) }
+    }
+    private var spotActions: [SpotRow] {
+        q.isEmpty ? [] : [SpotRow(id: "act-ask", kind: .action, label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: "ask")]
+    }
+    private var spotAll: [SpotRow] { spotProjects + spotApps + spotSurfaces + spotActions }
+
+    private func choose(_ r: SpotRow) {
+        switch r.kind {
+        case .project: onPickProject(r.payload); onClose()
+        case .app:     if let l = listings.first(where: { $0.id == r.payload }) { onLaunch(l, staged?.url) }
+        case .surface: onOpenSurface(r.payload); onClose()
+        case .action:  onAsk(query.trimmingCharacters(in: .whitespaces)); onClose()
+        }
+    }
+
+    @ViewBuilder private func spotIcon(_ r: SpotRow) -> some View {
+        switch r.kind {
+        case .project:
+            IsoTile(hue: hueForId(r.payload)).frame(width: 24, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.raised))
+        case .app:
+            if let img = storeIcon(r.payload) {
+                Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                    .frame(width: 24, height: 24).clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
+                    .overlay(Image(systemName: "square.grid.2x2").font(.system(size: 11)).foregroundColor(.inkDim))
+            }
+        case .surface:
+            RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
+                .overlay(Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundColor(.inkDim))
+        case .action:
+            RoundedRectangle(cornerRadius: 6).fill(Color.lime.opacity(0.15)).frame(width: 24, height: 24)
+                .overlay(Text("✦").font(.splMono(12)).foregroundColor(.lime))
+        }
+    }
+
+    private func spotRowView(_ r: SpotRow) -> some View {
+        Button(action: { choose(r) }) {
+            HStack(spacing: 10) {
+                spotIcon(r)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(r.label).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    Text(r.sub).font(.hanken(10.5)).foregroundColor(.inkDim).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text(r.kind == .project ? "switch" : r.kind == .app ? "open" : r.kind == .surface ? "go" : "↵")
+                    .font(.splMono(9)).foregroundColor(.inkFaint)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.edge, lineWidth: 1))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == r.id ? Color.raised : Color.clear))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+         .onHover { hoveredId = $0 ? r.id : (hoveredId == r.id ? nil : hoveredId) }
+    }
+
+    private var spotlightList: some View {
+        let groups: [(String, [SpotRow])] = [("Projects", spotProjects), ("Apps", spotApps), ("Go to", spotSurfaces), ("Actions", spotActions)].filter { !$0.1.isEmpty }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 1) {
+                if groups.isEmpty {
+                    Text("Nothing matches “\(query)” — try a project, an app, or ask.")
+                        .font(.hanken(11.5)).foregroundColor(.inkDim).padding(10)
+                }
+                ForEach(groups, id: \.0) { g in
+                    Text(g.0.uppercased()).font(.splMono(9)).tracking(1.2).foregroundColor(.inkFaint)
+                        .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 3)
+                    ForEach(g.1) { r in spotRowView(r) }
+                }
+            }
+        }.frame(maxHeight: 300)
+    }
+
     private let cols = Array(repeating: GridItem(.flexible(), spacing: SB.s3), count: 5)
 
     var body: some View {
         VStack(alignment: .leading, spacing: SB.s3) {
             header
-            catTabs
             intakeBar
-            if staged == nil, let c = clipOffer { clipboardOfferRow(c) }   // opt-in: the clipboard as addable context
-            grid
+            if q.isEmpty {
+                // browse mode — categories + the app grid (⌥⌥ as an app launcher)
+                catTabs
+                if staged == nil, let c = clipOffer { clipboardOfferRow(c) }   // opt-in: the clipboard as addable context
+                grid
+            } else {
+                // spotlight mode — one query reaches projects · apps · surfaces · actions
+                spotlightList
+            }
             hintLine
         }
         .padding(.horizontal, 22).padding(.top, SB.s5).padding(.bottom, 22)
@@ -196,16 +299,20 @@ struct NotchLauncherView: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
-            TextField("find an app…", text: $query)
+            TextField("Search projects, apps — or ask", text: $query)
                 .textFieldStyle(.plain)
                 .font(.hanken(11))
                 .foregroundColor(.ink)
                 .focused($searchFocused)
+                .onSubmit { if let first = spotAll.first { choose(first) } }   // ↵ takes the top result
+            Button(action: { onAsk(query.trimmingCharacters(in: .whitespaces)); onClose() }) {
+                Image(systemName: "mic.fill").font(.system(size: 10, weight: .medium)).foregroundColor(.inkDim)
+            }.buttonStyle(.plain).help("Ask by voice (⌃⌃)")
         }
         .padding(.horizontal, 11).padding(.vertical, 7)
-        .frame(width: 170, alignment: .leading)
+        .frame(width: 250, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(searchFocused ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
     }
 
     // ── category tabs: All + one per catalog category, so fewer apps show at a glance ────

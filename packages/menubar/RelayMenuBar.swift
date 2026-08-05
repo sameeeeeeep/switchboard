@@ -179,6 +179,7 @@ extension Color {
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
     static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
     static let ok = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)   // "connected" green
+    static let amber = Color(red: 0xEF/255.0, green: 0x9F/255.0, blue: 0x27/255.0)  // pending / needs-attention
     // The LOCAL-ONLY signal — a cool indigo, deliberately NOT lime, so a rare ambient screenshot reads as
     // "never left your Mac" and can never be confused with the normal lime ⌃⌃ capture flash. sRGB #5B8DEF.
     static let localInk = Color(red: 0x5B/255.0, green: 0x8D/255.0, blue: 0xEF/255.0)
@@ -4221,6 +4222,8 @@ struct ActionConsentDrop: View {
             activeProjectId: readDefaultId(),
             onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
+            onOpenSurface: { [weak self] raw in self?.hideLauncher(); OSShellWindowController.shared.show(Surface(rawValue: raw) ?? .home) },
+            onAsk: { [weak self] q in self?.hideLauncher(); if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } },
             onClose: { [weak self] in self?.hideLauncher() })
         let host = NoInsetHostingView(rootView: view)
         if launcherPanel == nil {

@@ -21,7 +21,19 @@ extension Color {
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
     static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
     static let ok = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)
+    static let amber = Color(red: 0xEF/255.0, green: 0x9F/255.0, blue: 0x27/255.0)
 }
+
+// Shims for RelayMenuBar's ~/.relay readers (osProjects/osActiveId use these) — the harness reads the
+// REAL contexts.json so a snapshot shows real projects; writeGlobalContext is a no-op here.
+let CONTEXTS_FILE = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/contexts.json")
+let SELECTION_FILE = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/context-selection.json")
+func readJSON(_ path: String) -> Any? {
+    guard let d = FileManager.default.contents(atPath: path) else { return nil }
+    return try? JSONSerialization.jsonObject(with: d)
+}
+func readDefaultId() -> String? { (readJSON(SELECTION_FILE) as? [String: String])?["*global*"] }
+func writeGlobalContext(_ id: String?) { }
 
 extension Font {
     static func hanken(_ s: CGFloat, _ w: Font.Weight = .regular) -> Font { .system(size: s, weight: w) }
