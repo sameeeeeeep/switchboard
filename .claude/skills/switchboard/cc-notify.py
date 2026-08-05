@@ -18,9 +18,11 @@ def main():
     msg = (ev.get("message") or ev.get("title") or "Claude Code needs your attention").strip()
     cwd = ev.get("cwd") or os.getcwd()
     proj = os.path.basename(cwd.rstrip("/")) or "—"
+    sid = str(ev.get("session_id") or "")          # stable per-thread id → a deterministic colour dot
+    src = "Claude Code" + (" · #" + sid[:4] if sid else "")   # short tag so same-project threads read apart too
     run = {
         "mode": "teach", "title": "Claude Code",
-        "source": "Claude Code", "project": proj,
+        "source": src, "sourceId": sid or src, "project": proj,
         "steps": [{
             "id": "cc-notif", "text": msg, "placement": "notch",
             "hint": "⌥→ dismiss · switch back to your terminal to continue",
