@@ -31,7 +31,7 @@ interface TeamStatus { enabled: boolean; role: "off" | "host" | "member"; teamNa
 interface CloudStatus { enabled: boolean; hostedModels: string[]; models?: string[] }
 interface PanelData { paired: boolean; reachable: boolean; tokenRejected?: boolean; installedHere?: boolean; signedIn?: boolean; stage?: Stage; grants: Grant[]; audit: AuditEntry[]; contexts: ContextMeta[]; activeProject: string | null; selections: { origin: string; contextId: string | null }[]; team: TeamStatus | null; cloud?: CloudStatus | null; }
 
-import { deriveStage, SIGNED_OUT_HEADLINE, SIGNED_OUT_MESSAGE, type Stage } from "@relay/protocol";
+import { deriveStage, SIGNED_OUT_HEADLINE, SIGNED_OUT_MESSAGE, isVerifiedOrigin, type Stage } from "@relay/protocol";
 import { renderConsent, type Prompt } from "./consent-view.js";
 import { WRAPPS, host, hostMatch } from "./wrapps.js";
 import { connectorOf, connectorGlyph, brandIcon, KIND_MARKS, type ConnectorInfo } from "./icons.js";
@@ -719,7 +719,11 @@ function renderApps(data: PanelData) {
     const row = el("div", "row");
     row.append(brandIcon({ className: "av", pageUrl: g.origin, letter: appName(g.origin)[0] ?? "•" }));
     const txt = el("div"); txt.style.minWidth = "0";
-    txt.append(el("div", "nm", appName(g.origin)));
+    const nm = el("div", "nm"); nm.append(document.createTextNode(appName(g.origin)));
+    // Verified badge on official first-party origins, so the user can tell a Switchboard app they can
+    // trust their Claude with from any page that merely connected.
+    if (isVerifiedOrigin(g.origin)) { const v = el("span", "vbadge", "✓ Verified"); v.title = "Official Switchboard app"; nm.append(v); }
+    txt.append(nm);
     const sub = el("div", "sub");
     sub.append(Object.assign(el("span", "dot" + (activeNow ? "" : " idle")), {}), document.createTextNode(g.pending ? "waiting for you" : activeNow ? "active now" : seen ? ago(seen) : "connected"));
     txt.append(sub); row.append(txt);

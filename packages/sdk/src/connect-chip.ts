@@ -1,4 +1,4 @@
-import { PROVIDER_GLOBAL, BYOPErrorCode } from "@relay/protocol";
+import { PROVIDER_GLOBAL, BYOPErrorCode, isVerifiedOrigin } from "@relay/protocol";
 import type { Context, ScopeRequest, UserIdentity } from "@relay/protocol";
 import { Relay, whenRelayReady } from "./index.js";
 
@@ -107,6 +107,11 @@ const STYLE = `
 .who .hi { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .who .proj { font-size: 10.5px; font-weight: 500; color: #99A3B7; white-space: nowrap; }
 .caret { color: #6E7C90; font-size: 9px; margin-left: 2px; }
+.verified { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 700;
+  color: #C8F250; background: rgba(200,242,80,.10); border: 1px solid rgba(200,242,80,.22);
+  border-radius: 999px; padding: 1px 6px 1px 5px; letter-spacing: .01em; white-space: nowrap; width: max-content; }
+.verified .vk { font-size: 8.5px; line-height: 1; }
+.connect-row { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 2147483000; width: 232px;
   background: #1A1F29; border: 1px solid #262C38; border-radius: 12px; padding: 7px;
   box-shadow: 0 18px 40px -20px rgba(0,0,0,.7); }
@@ -170,6 +175,17 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
 
   function el(tag: string, cls?: string, text?: string) {
     const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n;
+  }
+
+  // "Verified" — shown only on official first-party Switchboard origins (isVerifiedOrigin), so a user
+  // can tell an app they can trust their Claude with from any page that merely asks. The check runs on
+  // the real page origin; a spoofed host simply doesn't match, so the badge can't be faked into place.
+  const isVerified = isVerifiedOrigin(location.origin);
+  function mkVerified() {
+    const v = el("span", "verified");
+    v.append(el("span", "vk", "✓"), el("span", undefined, "Verified"));
+    v.title = "Official Switchboard app — safe to connect your Claude.";
+    return v;
   }
 
   async function refresh() {
@@ -368,7 +384,9 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       const b = el("button", "btn connect");
       b.append(el("span", "glyph"), el("span", undefined, "Connect Switchboard"));
       b.onclick = doConnect;
-      mount.append(b);
+      // On a verified app, show the badge ABOVE the button — the trust cue lands before the grant.
+      if (isVerified) { const row = el("div", "connect-row"); row.append(mkVerified(), b); mount.append(row); }
+      else mount.append(b);
       return;
     }
 
@@ -393,6 +411,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     // for a lent context (context: "none") get an identity-only second line instead — a "selected
     // project" is not a universal concept, and pretending it is confuses producers and toys alike.
     who.append(el("div", "proj", wantsContext ? (project ? project.name : "No context lent") : "Connected"));
+    if (isVerified) who.append(mkVerified());
     chip.append(av, who, el("span", "caret", "▾"));
     chip.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
     wrap.append(chip);

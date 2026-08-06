@@ -29,6 +29,8 @@
       "matches": [
         "https://thelastprompt.ai/*",
         "https://*.thelastprompt.ai/*",
+        "https://sameep.ai/*",
+        "https://*.sameep.ai/*",
         "https://sameeeeeeep.github.io/*",
         "http://127.0.0.1/*",
         "http://localhost/*"
@@ -42,6 +44,8 @@
       "matches": [
         "https://thelastprompt.ai/*",
         "https://*.thelastprompt.ai/*",
+        "https://sameep.ai/*",
+        "https://*.sameep.ai/*",
         "https://sameeeeeeep.github.io/*",
         "http://127.0.0.1/*",
         "http://localhost/*",
@@ -89,6 +93,8 @@
       "matches": [
         "https://thelastprompt.ai/*",
         "https://*.thelastprompt.ai/*",
+        "https://sameep.ai/*",
+        "https://*.sameep.ai/*",
         "https://sameeeeeeep.github.io/*",
         "http://127.0.0.1/*",
         "http://localhost/*"
