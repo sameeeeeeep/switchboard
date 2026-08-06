@@ -837,6 +837,17 @@ Edits autosave + version; archive → `.trash`. Merge-duplicates is a single jou
 Reads/writes `dictionary-*.md`. Feeds (read-only) into tooltips across every surface and into God's
 context (so answers use the user's vocabulary).
 
+### Grounding — Dictionary + Graph, what's real today (native build)
+
+- **Dictionary** reads real `dictionary-*.md` across the bound vault folders (front-matter
+  term/definition/scope/source + first body line as fallback), A–Z bucketed + searchable, count pill.
+  No vault holds terms yet, so the truthful render is the **teach-state** ("Teach Switchboard your
+  words") — never sample vocabulary.
+- **Graph** is built from real state: the active project (else most recent) is the hub, its real
+  artifacts (same storage+vault sources as Bank's Artifacts facet) orbit it, and the other real
+  projects ring the outside as sibling hubs — deterministic radial layout, real inspector counts,
+  real neighbor jumps. No invented nodes; empty vault → an honest coming-state.
+
 ---
 
 ## 3.8 Apps — the installed tools
