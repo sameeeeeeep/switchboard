@@ -882,63 +882,69 @@ private struct Routine: Identifiable {
     var runDisabled: Bool = false
 }
 
-private enum RoutineSample {
-    static let list: [Routine] = [
-        Routine(id: "daily-brief", name: "Daily brief", register: .active, pillLabel: "active", dot: .lime,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "every day 08:00", kind: .strong)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✓ today 08:00", kind: .ok)],
-                    [Seg(t: "next ", kind: .dim), Seg(t: "tomorrow 08:00", kind: .strong), Seg(t: " · in 11h", kind: .dim)],
-                ],
-                outsPrefix: "outputs: ", outsLink: "5 briefs", outsSuffix: " · latest \"Tue market + inbox digest\"",
-                grant: [GrantChip(glyph: "⛁", text: "sb_http", ungranted: false),
-                        GrantChip(glyph: "✎", text: "Bank write", ungranted: false)],
-                acts: [RAct(label: "Run now", kind: .pri, act: .run),
-                       RAct(label: "Pause", kind: .plain, act: .pause),
-                       RAct(label: "Edit", kind: .plain, act: .edit)]),
-        Routine(id: "email-triage", name: "Email triage", register: .running, pillLabel: "running…", dot: .indigo,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "on new mail", kind: .strong)],
-                    [Seg(t: "running since ", kind: .dim), Seg(t: "14:20", kind: .strong), Seg(t: " · step 2 of 3", kind: .dim)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✓ 12:05", kind: .ok)],
-                ],
-                outsPlain: "grant holds ActionConsent per outbound send — each reply is gated",
-                grant: [GrantChip(glyph: "✉", text: "email connector", ungranted: false),
-                        GrantChip(glyph: "⛊", text: "ActionConsent / send", ungranted: false)],
-                acts: [RAct(label: "Open log", kind: .plain, act: .log),
-                       RAct(label: "Pause", kind: .plain, act: .pause)]),
-        Routine(id: "invoice-filer", name: "Invoice filer", register: .waiting, pillLabel: "waiting for you", dot: sbAmber,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "on receipt email", kind: .strong)],
-                    [Seg(t: "held ", kind: .dim), Seg(t: "since 10:14", kind: .strong)],
-                    [Seg(t: "needs a consent it can't get unattended", kind: .dim)],
-                ],
-                attn: "◐ waiting → grant needed: Drive write (folder /Receipts) · holds, does not proceed",
-                grant: [GrantChip(glyph: "⛁", text: "email read", ungranted: false),
-                        GrantChip(glyph: "?", text: "Drive write — ungranted", ungranted: true)],
-                acts: [RAct(label: "Grant & continue", kind: .pri, act: .grant),
-                       RAct(label: "Open log", kind: .plain, act: .log)]),
-        Routine(id: "weekly-deck", name: "Weekly deck", register: .failed, pillLabel: "paused · 3 fails", dot: .danger,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "Mondays 09:00", kind: .strong)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✗ step 2 (Prism: no model)", kind: .bad)],
-                    [Seg(t: "auto-paused after 3 consecutive fails", kind: .dim)],
-                ],
-                attn: "✗ escalated to Needs attention · Retry / Edit / Resolve the model requirement",
-                grant: [GrantChip(glyph: "▥", text: "Prism", ungranted: false),
-                        GrantChip(glyph: "✎", text: "Bank write", ungranted: false)],
-                acts: [RAct(label: "Resume", kind: .pri, act: .resume),
-                       RAct(label: "Edit", kind: .plain, act: .edit),
-                       RAct(label: "Revoke", kind: .warn, act: .revoke)]),
-    ]
+// ═══ LIVE registry — routines.json is the daemon's record ({id,title,tier,active,lastRunAt,runs,
+// tokens} + globalPaused); routines-control.json {off} is the user's master switch (the ~/.relay
+// control plane — the daemon polls it). The OS reads both truthfully and writes ONLY the control file.
+
+private func routinesLive() -> (list: [Routine], off: Bool, updatedMs: Double, hasFile: Bool) {
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    let obj = readJSON(relay + "/routines.json") as? [String: Any]
+    let off = ((readJSON(relay + "/routines-control.json") as? [String: Any])?["off"] as? Bool == true)
+        || (obj?["globalPaused"] as? Bool == true)
+    let now = Date().timeIntervalSince1970 * 1000
+    var list: [Routine] = []
+    for r in (obj?["routines"] as? [[String: Any]]) ?? [] {
+        let id = (r["id"] as? String) ?? UUID().uuidString
+        let active = (r["active"] as? Bool) ?? false
+        let lastMs = (r["lastRunAt"] as? NSNumber)?.doubleValue ?? 0
+        let runs = (r["runs"] as? NSNumber)?.intValue ?? 0
+        let tokens = (r["tokens"] as? NSNumber)?.intValue ?? 0
+        let lastError = r["lastError"] as? String
+        let failed = lastError != nil || (r["lastOutcome"] as? String) == "error"
+        let reg: RReg = failed ? .failed : (active && !off ? .active : .paused)
+        let pill = failed ? "failed" : (active && !off ? "active" : (active ? "held — routines off" : "off"))
+        var sched: [[Seg]] = [[Seg(t: "⛭ tier ", kind: .dim), Seg(t: (r["tier"] as? String) ?? "daemon", kind: .strong)]]
+        sched.append(lastMs > 0
+            ? [Seg(t: "last ", kind: .dim), Seg(t: failed ? "✗ " : "✓ ", kind: failed ? .bad : .ok),
+               Seg(t: relAgo(now - lastMs) + " ago", kind: .strong)]
+            : [Seg(t: "never ran", kind: .dim)])
+        list.append(Routine(
+            id: id,
+            name: (r["title"] as? String) ?? id,
+            register: reg, pillLabel: pill,
+            dot: reg == .active ? .lime : (reg == .failed ? .danger : .inkFaint),
+            sched: sched,
+            outsPlain: runs > 0 ? "\(runs) run\(runs == 1 ? "" : "s") · \(tokens) tokens spent" : "no runs recorded yet",
+            attn: lastError.map { "✗ \($0)" },
+            grant: [GrantChip(glyph: "⛭", text: "tier: \((r["tier"] as? String) ?? "daemon")", ungranted: false)],
+            acts: [RAct(label: "Runs in History", kind: .plain, act: .log)]))
+    }
+    return (list, off, (obj?["updatedAt"] as? NSNumber)?.doubleValue ?? 0, obj != nil)
+}
+
+// the real master switch — writes routines-control.json; the daemon picks it up on its next tick
+private func routinesSetOff(_ off: Bool) {
+    let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/routines-control.json")
+    var obj = (readJSON(p) as? [String: Any]) ?? [:]
+    obj["off"] = off
+    if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+        try? data.write(to: URL(fileURLWithPath: p), options: .atomic)
+    }
 }
 
 struct RoutinesSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
-    @State private var routines = RoutineSample.list
+    @State private var routines: [Routine] = []
+    @State private var off = false
+    @State private var hasFile = true
     @State private var filter = "All"
 
     private var activeCount: Int { routines.filter { regGroup($0.register) == "active" }.count }
+
+    private func load() {
+        let r = routinesLive()
+        routines = r.list; off = r.off; hasFile = r.hasFile
+    }
 
     private func shows(_ r: Routine) -> Bool {
         switch filter {
@@ -966,6 +972,26 @@ struct RoutinesSurface: View {
                 .padding(.bottom, 14)
                 .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
 
+                // the master switch — the one real global control (routines-control.json)
+                HStack(spacing: 12) {
+                    Circle().fill(off ? Color.inkFaint : Color.lime).frame(width: 7, height: 7)
+                    (Text(off ? "Routines are switched off " : "Routines are on ").font(.hanken(13, .medium)).foregroundColor(.ink)
+                        + Text(off ? "— nothing runs on schedule until you flip this." : "— active routines run on their schedule.").font(.hanken(13)).foregroundColor(.inkSec))
+                    Spacer(minLength: 0)
+                    SBActButton(label: off ? "Turn on" : "Turn off", kind: off ? .pri : .plain) {
+                        routinesSetOff(!off); load()
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 13)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(off ? Color.edge : Color.lime.opacity(0.3), lineWidth: 1))
+                .padding(.top, 16)
+
+                if !hasFile {
+                    Text("No routines.json yet — the daemon writes it once a routine exists.")
+                        .font(.hanken(12.5)).foregroundColor(.inkDim).padding(.top, 14)
+                }
+
                 VStack(spacing: 12) {
                     ForEach($routines) { $r in
                         if shows(r) {
@@ -973,15 +999,16 @@ struct RoutinesSurface: View {
                         }
                     }
                 }
-                .padding(.top, 18)
+                .padding(.top, 16)
 
                 RoutineCreateCTA(onNavigate: onNavigate).padding(.top, 16)
 
-                FootNote(text: "the automation monitor · failures escalate to Needs attention · each row shows only the actions that make sense in its state")
+                FootNote(text: "the automation monitor · reads the daemon's routines.json truthfully · the one write is the master switch (routines-control.json) · failures escalate to Needs attention")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
     }
 }
 
@@ -1134,15 +1161,15 @@ private struct RoutineCreateCTA: View {
     var onNavigate: (Surface) -> Void
     @State private var hover = false
     var body: some View {
-        Button { onNavigate(.workflows) } label: {
+        Button { OSLaunch.launchOr("autopilot", .init(kind: "routine")) { onNavigate(.apps) } } label: {
             HStack(spacing: 12) {
                 Text("+").font(.hanken(15)).foregroundColor(.lime)
                     .frame(width: 26, height: 26)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
-                (Text("Create a routine").font(.hanken(13, .medium)).foregroundColor(.inkSec)
-                    + Text(" — record a flow (CopyFlow) or promote an autopilot. Start from a template: ").font(.hanken(13)).foregroundColor(.inkDim)
-                    + Text("Daily brief · Email triage · Weekly report").font(.hanken(13)).foregroundColor(.inkSec))
+                (Text("Add a routine").font(.hanken(13, .medium)).foregroundColor(.inkSec)
+                    + Text(" — a wrapp requests one and it appears here. ").font(.hanken(13)).foregroundColor(.inkDim)
+                    + Text("Autopilot is routine #1 — open it to activate.").font(.hanken(13)).foregroundColor(.inkSec))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
