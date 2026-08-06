@@ -388,13 +388,16 @@ struct GuideCaptionView: View {
                         .padding(3).background(Circle().fill(Color.page.opacity(0.75))).padding(4)
                 }
             }
-            HStack(spacing: 4) {
+            // labels + details WRAP (cards grow) — a cut "Build voi…" is an unreadable option
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(sel ? "\(letter)✓" : letter).font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
-                Text(opt.label).font(.hanken(11, .semibold)).foregroundColor(sel ? .ink : .inkDim).lineLimit(1)
+                Text(opt.label).font(.hanken(11, .semibold)).foregroundColor(sel ? .ink : .inkDim)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
             }
             if let d = opt.detail, !d.isEmpty {
                 Text(d).font(.hanken(9.5)).foregroundColor(.inkFaint)
-                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(5).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(7)
