@@ -577,6 +577,25 @@ Bank is the **read/write root** for `project-*.md`, `note-*.md`, `dictionary-*.m
 project slice of `tasks.md`, and `artifact-*.md` metadata. It's the only surface allowed to *create
 projects* and *establish* context. Other surfaces write narrow slices; Bank writes the whole model.
 
+### Grounding — what's real today (native build)
+
+The native surface reads only real state, no samples:
+
+- **Projects** = `~/.relay/contexts.json` (recency-sorted); active = `context-selection.json` `*global*`.
+- **Vault folder** = the context's `data.folder`, else the `storage-bindings.json` folder of its source
+  origin. Shown in the hero (or the honest "no folder bound" line).
+- **Overview** = the context's real `data` fields (products/positioning/audience/voice/palette,
+  idea/problem/market/…, oneLine/summary/repo, decisions). Empty fields don't render; an empty Overview
+  is an Establish CTA.
+- **Tasks** = `tasks.md` checkbox lines in the vault folder (`- [ ] text @wrapp #project`); quick-add
+  appends a line (creates the file on first use). No folder → honest bind CTA.
+- **Brain** = `note-*/dictionary-*/project-*/brand-*.md` in the vault folder, newest first; row click
+  opens the file. Empty → "Bank it" CTA.
+- **Artifacts** = real blobs from `~/.relay/storage/<origin>/` AND the bound folder itself (a bound
+  origin's storage IS its folder).
+- **Writes**: capture ("Bank it") = clipboard → `note-<ts>.md` (falls back to `~/.relay/bank/<id>/` when
+  nothing is bound); New/Rename mutate `contexts.json` (atomic write; one-shot `.os-bak` guard).
+
 ---
 
 ## 3.5 History — the retrospective lens

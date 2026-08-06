@@ -813,8 +813,6 @@ private struct AgendaRow: View {
 
 private enum BankFacet: String { case overview = "Overview", tasks = "Tasks", brain = "Brain", artifacts = "Artifacts" }
 
-private struct BankProject: Identifiable { let id: String; let name: String; let active: Bool }
-
 private struct RoadStage: Identifiable { let id = UUID(); let name: String; let state: String }
 
 private struct OverviewField: Identifiable {
@@ -828,71 +826,259 @@ private struct OverviewField: Identifiable {
 }
 
 private struct BankTask: Identifiable { let id = UUID(); let t: String; let meta: String; let state: String }
-private struct BrainNote: Identifiable { let id = UUID(); let t: String; let note: String; let src: String }
+private struct BrainNote: Identifiable { let id = UUID(); let t: String; let note: String; let src: String; let path: String }
 private struct BankArtifactItem: Identifiable { let id = UUID(); let t: String; let kind: String; let src: String; let time: String }
 
-private let BANK_PROJECTS: [BankProject] = [
-    BankProject(id: "indeur", name: "IndEur Club", active: true),
-    BankProject(id: "nailinit", name: "Nailinit", active: false),
-    BankProject(id: "pockettts", name: "Idea: pocket-tts", active: false),
-    BankProject(id: "switchboard", name: "Switchboard", active: false),
-]
-private let BANK_PATH = "~/Bank/projects/indeur-club/project-indeur.md"
-private let BANK_COUNTS = (tasks: 6, brain: 14, artifacts: 23)
+// ═══ LIVE readers — Bank renders the REAL model: ~/.relay/contexts.json (projects), the project's
+// vault folder (data.folder, else the storage-binding of its source origin), tasks.md checkbox lines,
+// note-*/dictionary-*/project-*.md files, and ~/.relay/storage/<origin> blobs. No fictional samples.
 
-private let BANK_OVERVIEW: [OverviewField] = [
-    OverviewField(lbl: "Essence", val: "A membership community for the Indian-European diaspora — cultural events, professional network, a sense of home away from home."),
-    OverviewField(lbl: "Audience", val: "First & second-gen Indians in the EU, 24–40, city-based, seeking belonging + opportunity."),
-    OverviewField(lbl: "Goals", val: "500 founding members before launch · a monthly flagship event in 3 cities · a warm, ownable brand."),
-    OverviewField(lbl: "Brand set", val: "Palette: Terracotta & Indigo. 4 logo marks in Crest.",
-                  swatches: ["E0764A", "5b4fe8", "E8B04A", "1b1a2e"]),
-    OverviewField(lbl: "Roadmap", roadmap: [
-        RoadStage(name: "Name", state: "done"), RoadStage(name: "Brand", state: "done"),
-        RoadStage(name: "Launch page", state: "now"), RoadStage(name: "First event", state: ""),
-        RoadStage(name: "500 members", state: "")]),
-    OverviewField(lbl: "Voice & tone", val: "No voice profile yet — brandbrain can extract one from your notes.",
-                  empty: true, cta: "↻ Extract voice"),
-]
-private let BANK_TASKS: [BankTask] = [
-    BankTask(t: "Finalize Q4 palette", meta: "@brandbrain · due Fri", state: "now"),
-    BankTask(t: "Ship the launch page", meta: "@Crest · in progress", state: "now"),
-    BankTask(t: "Book 3 event venues", meta: "due next week", state: ""),
-    BankTask(t: "Draft founding-member email", meta: "@AdForge", state: ""),
-    BankTask(t: "Extract brand voice", meta: "@brandbrain", state: ""),
-    BankTask(t: "Confirm pricing tiers", meta: "blocked · needs decision", state: "blocked"),
-]
-private let BANK_BRAIN: [BrainNote] = [
-    BrainNote(t: "project-indeur.md", note: "the root essence + audience + goals", src: "manual"),
-    BrainNote(t: "meetup-notes.md", note: "what the first 30 members want from a chapter", src: "Flow · transcript"),
-    BrainNote(t: "pricing-thesis.md", note: "founding vs monthly tiers; €9 anchor", src: "ideabrain run"),
-    BrainNote(t: "voice-scratch.md", note: "warm, plural, never corporate — draft phrases", src: "manual"),
-]
-private let BANK_ARTIFACTS: [BankArtifactItem] = [
-    BankArtifactItem(t: "Switch-ligature monogram", kind: "mark", src: "Crest", time: "20m"),
-    BankArtifactItem(t: "IndEur — 4 marks", kind: "gallery", src: "Crest", time: "22m"),
-    BankArtifactItem(t: "Terracotta beam render", kind: "image", src: "Prism", time: "1h"),
-    BankArtifactItem(t: "\"Find your people\" ad", kind: "ad", src: "AdForge", time: "1h"),
-]
+struct BankCtx: Identifiable {
+    let id: String; let name: String; let kind: String
+    let origin: String?                       // the wrapp/panel that published it
+    let data: [String: Any]
+    let updatedMs: Double
+    var folder: String? { data["folder"] as? String }
+}
+
+func bankContexts() -> [BankCtx] {
+    guard let arr = readJSON(CONTEXTS_FILE) as? [[String: Any]] else { return [] }
+    return arr.compactMap { c in
+        guard let id = c["id"] as? String, let name = c["name"] as? String else { return nil }
+        return BankCtx(id: id, name: name, kind: (c["kind"] as? String) ?? "context",
+                       origin: (c["source"] as? String) ?? (c["publishedBy"] as? String),
+                       data: (c["data"] as? [String: Any]) ?? [:],
+                       updatedMs: (c["updatedAt"] as? NSNumber)?.doubleValue ?? 0)
+    }.sorted { $0.updatedMs > $1.updatedMs }
+}
+
+// The project's vault: its own folder if it has one, else the folder its source origin is bound to.
+func bankVaultFolder(_ c: BankCtx) -> String? {
+    if let f = c.folder, FileManager.default.fileExists(atPath: f) { return f }
+    guard let o = c.origin,
+          let bindings = readJSON((NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage-bindings.json")) as? [String: Any],
+          let m = bindings[o] as? [String: Any], let f = m["folder"] as? String,
+          FileManager.default.fileExists(atPath: f) else { return nil }
+    return f
+}
+
+// Overview = the context's real data fields, rendered in a stable order. Only non-empty fields show;
+// a thin profile is handled by the surface (Establish leads), never padded with invented content.
+private func bankOverviewFields(_ c: BankCtx) -> [OverviewField] {
+    let d = c.data
+    func str(_ k: String) -> String? { if let v = d[k] as? String, !v.isEmpty, v != "{}" { return v }; return nil }
+    var out: [OverviewField] = []
+    if let prods = d["products"] as? [String], !prods.isEmpty {
+        out.append(OverviewField(lbl: "Products", val: prods.joined(separator: " · ")))
+    }
+    for (lbl, key) in [("One-liner", "oneLine"), ("Idea", "idea"), ("Summary", "summary"),
+                       ("Positioning", "positioning"), ("Audience", "audience"), ("Voice & tone", "voice"),
+                       ("Problem", "problem"), ("Market", "market"), ("Insight", "insight"),
+                       ("Solution", "solution"), ("Model", "model"), ("Moat", "moat"),
+                       ("Category", "category"), ("Repo", "repo")] {
+        if let v = str(key) { out.append(OverviewField(lbl: lbl, val: v)) }
+    }
+    var hexes: [String] = []
+    if let rich = d["paletteRich"] as? [[String: Any]] { hexes = rich.compactMap { $0["hex"] as? String } }
+    if hexes.isEmpty, let p = d["palette"] as? [String] { hexes = p }
+    if !hexes.isEmpty {
+        out.append(OverviewField(lbl: "Palette", swatches: hexes.map { $0.replacingOccurrences(of: "#", with: "") }))
+    }
+    if let dec = d["decisions"] as? [String], !dec.isEmpty {
+        out.append(OverviewField(lbl: "Decisions", val: dec.prefix(4).map { "· " + $0 }.joined(separator: "\n")))
+    }
+    return out
+}
+
+// tasks.md — the shared-list dialect: "- [ ] text @wrapp #project" lines. done = "- [x]".
+private func bankTasks(folder: String?) -> [BankTask] {
+    guard let folder, let text = try? String(contentsOfFile: folder + "/tasks.md", encoding: .utf8) else { return [] }
+    var out: [BankTask] = []
+    for raw in text.split(separator: "\n") {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let done = t.hasPrefix("- [x]") || t.hasPrefix("- [X]")
+        guard done || t.hasPrefix("- [ ]") else { continue }
+        var body = String(t.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+        let tags = body.split(separator: " ").filter { $0.hasPrefix("@") || $0.hasPrefix("#") }.map(String.init)
+        for tag in tags { body = body.replacingOccurrences(of: tag, with: "") }
+        body = body.replacingOccurrences(of: "  ", with: " ").trimmingCharacters(in: .whitespaces)
+        out.append(BankTask(t: body, meta: tags.joined(separator: " "), state: done ? "done" : ""))
+    }
+    return out
+}
+
+@discardableResult
+private func bankAddTask(folder: String, text: String) -> Bool {
+    let line = "- [ ] " + text.trimmingCharacters(in: .whitespaces)
+    let path = folder + "/tasks.md"
+    if let existing = try? String(contentsOfFile: path, encoding: .utf8) {
+        let sep = existing.hasSuffix("\n") ? "" : "\n"
+        return (try? (existing + sep + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
+    }
+    return (try? ("# Tasks\n\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
+}
+
+// Brain — the vault's own .md knowledge files (the Bank dialect), newest first, first body line as gist.
+private func bankNotes(folder: String?) -> [BrainNote] {
+    guard let folder, let files = try? FileManager.default.contentsOfDirectory(atPath: folder) else { return [] }
+    let fm = FileManager.default
+    let now = Date().timeIntervalSince1970 * 1000
+    var out: [(BrainNote, Double)] = []
+    for f in files where f.hasSuffix(".md") &&
+        (f.hasPrefix("note-") || f.hasPrefix("dictionary-") || f.hasPrefix("project-") || f.hasPrefix("brand-")) {
+        let path = folder + "/" + f
+        let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        var gist = ""; var inFM = false
+        for raw in text.split(separator: "\n") {
+            let l = raw.trimmingCharacters(in: .whitespaces)
+            if l == "---" { inFM.toggle(); continue }
+            if inFM || l.isEmpty || l.hasPrefix("#") { continue }
+            gist = l; break
+        }
+        if gist.count > 80 { gist = String(gist.prefix(78)) + "…" }
+        let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+        out.append((BrainNote(t: f, note: gist, src: relAgo(now - m), path: path), m))
+    }
+    return out.sorted { $0.1 > $1.1 }.map { $0.0 }
+}
+
+// Artifacts — the real blobs the project's wrapps saved. Two real locations: ~/.relay/storage/<origin>/
+// (unbound origins) and the bound vault folder itself (a bound origin's storage IS its folder).
+private func bankArtifacts(_ c: BankCtx) -> [BankArtifactItem] {
+    let fm = FileManager.default
+    let now = Date().timeIntervalSince1970 * 1000
+    var out: [(BankArtifactItem, Double)] = []
+    func scan(_ dir: String, src: String) {
+        guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return }
+        for f in files where f.hasSuffix(".json") && !f.contains(".bak") && !f.hasPrefix(".") {
+            let path = dir + "/" + f
+            let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+            let (title, _, kind) = classifyArtifact(path, key: f)
+            out.append((BankArtifactItem(t: title, kind: kind, src: src, time: relAgo(now - m)), m))
+        }
+    }
+    if let o = c.origin {
+        let dirName = o.replacingOccurrences(of: "://", with: "_")
+            .replacingOccurrences(of: ":", with: "_").replacingOccurrences(of: "/", with: "_")
+        let app = wrappFromOrigin(o)
+        scan((NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage/" + dirName),
+             src: app.isEmpty ? "panel" : app)
+    }
+    if let folder = bankVaultFolder(c) {
+        let app = c.origin.map(wrappFromOrigin) ?? ""
+        scan(folder, src: app.isEmpty ? "vault" : app)
+    }
+    return out.sorted { $0.1 > $1.1 }.map { $0.0 }
+}
+
+// Capture — "Bank it": the clipboard becomes a note-*.md in the project's vault (or ~/.relay/bank/<id>
+// when nothing is bound — additive, never destructive). Returns the written filename.
+private func bankCapture(_ c: BankCtx) -> String? {
+    guard let text = NSPasteboard.general.string(forType: .string)?
+        .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+    let folder = bankVaultFolder(c) ?? {
+        let d = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/bank/" + c.id)
+        try? FileManager.default.createDirectory(atPath: d, withIntermediateDirectories: true)
+        return d
+    }()
+    let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmmss"
+    let name = "note-" + df.string(from: Date()) + ".md"
+    let head = "---\nkind: note\nproject: \(c.name)\nsource: capture\n---\n\n"
+    return (try? (head + text + "\n").write(toFile: folder + "/" + name, atomically: true, encoding: .utf8)) != nil ? name : nil
+}
+
+// Contexts mutations (New · Rename) — explicit user actions only; a one-shot .os-bak guards the file.
+private func bankMutateContexts(_ mutate: (inout [[String: Any]]) -> Void) -> Bool {
+    var arr = (readJSON(CONTEXTS_FILE) as? [[String: Any]]) ?? []
+    let bak = CONTEXTS_FILE + ".os-bak"
+    if !FileManager.default.fileExists(atPath: bak) { try? FileManager.default.copyItem(atPath: CONTEXTS_FILE, toPath: bak) }
+    mutate(&arr)
+    guard let data = try? JSONSerialization.data(withJSONObject: arr, options: [.prettyPrinted]) else { return false }
+    return (try? data.write(to: URL(fileURLWithPath: CONTEXTS_FILE), options: .atomic)) != nil
+}
+func bankCreateProject(name: String) -> String? {
+    let id = UUID().uuidString.lowercased()
+    let ok = bankMutateContexts { arr in
+        arr.append(["id": id, "name": name, "kind": "project", "data": [String: Any](),
+                    "publishedBy": "os", "updatedAt": Date().timeIntervalSince1970 * 1000])
+    }
+    if ok { writeGlobalContext(id) }
+    return ok ? id : nil
+}
+@discardableResult
+func bankRename(id: String, to name: String) -> Bool {
+    bankMutateContexts { arr in
+        for i in arr.indices where (arr[i]["id"] as? String) == id {
+            arr[i]["name"] = name
+            arr[i]["updatedAt"] = Date().timeIntervalSince1970 * 1000
+        }
+    }
+}
 
 struct BankSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
     @State private var facet: BankFacet = .overview
-    @State private var activeProject = "indeur"
+    @State private var ctxs: [BankCtx] = []
+    @State private var viewingId: String? = nil
+    @State private var contextsFileBroken = false          // file exists but won't parse → error banner
+    // + New / Rename inline state
+    @State private var newName = ""
+    @State private var showNew = false
+    @State private var renaming: BankCtx? = nil
+    @State private var renameText = ""
+    // capture feedback
+    @State private var bankedNote: String? = nil
+
+    private var viewing: BankCtx? { ctxs.first { $0.id == viewingId } ?? ctxs.first }
+
+    private func load() {
+        ctxs = bankContexts()
+        let file = FileManager.default.fileExists(atPath: CONTEXTS_FILE)
+        contextsFileBroken = ctxs.isEmpty && file && readJSON(CONTEXTS_FILE) == nil
+        if viewingId == nil { viewingId = readDefaultId() ?? ctxs.first?.id }
+    }
+    private func activate(_ id: String) { writeGlobalContext(id); viewingId = id }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 bankHead
-                projectStrip.padding(.top, 20)
-                hero.padding(.top, 16)
-                facetTabs.padding(.top, 16)
-                facetBody.padding(.top, 18)
-                capture.padding(.top, 22)
+                if contextsFileBroken {
+                    BankErrorBanner().padding(.top, 20)
+                } else if ctxs.isEmpty {
+                    BankEstablishState(onNavigate: onNavigate, onCreate: createProject).padding(.top, 20)
+                } else {
+                    projectStrip.padding(.top, 20)
+                    if let c = viewing {
+                        BankHero(c: c, folder: bankVaultFolder(c))
+                            .padding(.top, 16)
+                        facetTabs(c).padding(.top, 16)
+                        facetBody(c).padding(.top, 18)
+                        capture(c).padding(.top, 22)
+                    }
+                }
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
+        .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                if let r = renaming, !renameText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    bankRename(id: r.id, to: renameText.trimmingCharacters(in: .whitespaces)); load()
+                }
+                renaming = nil
+            }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
+    }
+
+    private func createProject(_ name: String) {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        if let id = bankCreateProject(name: name.trimmingCharacters(in: .whitespaces)) { load(); viewingId = id }
+        showNew = false; newName = ""
     }
 
     private var bankHead: some View {
@@ -902,8 +1088,12 @@ struct BankSurface: View {
                 Text("Your vault").font(.hanken(24, .semibold)).foregroundColor(.ink)
             }
             Spacer(minLength: 0)
-            LimeButton(label: "+ Establish a project") { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
-            OSWSGhostButton(label: "Open the folder") { OSLaunch.launchOr("bank") { onNavigate(.apps) } }
+            if !ctxs.isEmpty {   // when the vault is empty the Establish front door IS the surface
+                LimeButton(label: "+ Establish a project") { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
+                if let f = viewing.flatMap(bankVaultFolder) {
+                    OSWSGhostButton(label: "Open the folder") { NSWorkspace.shared.open(URL(fileURLWithPath: f)) }
+                }
+            }
         }
     }
 
@@ -911,98 +1101,194 @@ struct BankSurface: View {
         // Wrap in a horizontally-scrollable row so the body never scrolls sideways.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                ForEach(BANK_PROJECTS) { p in
-                    OSWSProjectChip(project: p, active: activeProject == p.id) { activeProject = p.id }
+                ForEach(ctxs) { c in
+                    OSWSProjectChip(name: c.name, kind: c.kind,
+                                    active: viewing?.id == c.id,
+                                    isGlobal: readDefaultId() == c.id) { activate(c.id) }
+                        .contextMenu {
+                            Button("Set active") { activate(c.id) }
+                            Button("Rename…") { renaming = c; renameText = c.name }
+                            if let f = bankVaultFolder(c) {
+                                Button("Open folder") { NSWorkspace.shared.open(URL(fileURLWithPath: f)) }
+                            }
+                        }
                 }
-                NewOSWSProjectChip { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
+                if showNew {
+                    HStack(spacing: 6) {
+                        TextField("Project name", text: $newName)
+                            .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
+                            .frame(width: 150)
+                            .onSubmit { createProject(newName) }
+                        Button(action: { createProject(newName) }) {
+                            Text("Add").font(.hanken(12, .semibold)).foregroundColor(.lime)
+                        }.buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                } else {
+                    NewOSWSProjectChip { showNew = true }
+                }
             }
         }
     }
 
-    private var hero: some View {
-        HStack(spacing: 16) {
-            IsoTile(hue: hueForId("indeur"))
-                .frame(width: 34, height: 34)
-                .frame(width: 46, height: 46)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(red: 0x1b / 255, green: 0x1a / 255, blue: 0x2e / 255)))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.45), lineWidth: 1))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("IndEur Club").font(.hanken(17, .semibold)).foregroundColor(.ink)
-                Text("\"a community for the Indian-European diaspora — events, belonging, launching Q4\"")
-                    .font(.hanken(12.5)).foregroundColor(.inkDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            Text(BANK_PATH).font(.splMono(11)).foregroundColor(.inkFaint)
-        }
-        .padding(.horizontal, 22).padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16)
-            .fill(LinearGradient(colors: [Color(red: 0x15 / 255, green: 0x13 / 255, blue: 0x1f / 255),
-                                          Color(red: 0x12 / 255, green: 0x13 / 255, blue: 0x19 / 255)],
-                                 startPoint: .top, endPoint: .bottom)))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
-        .overlay(alignment: .leading) {
-            Rectangle().fill(Color.indigo).frame(width: 2).clipShape(RoundedRectangle(cornerRadius: 16))
-        }
-    }
-
-    private var facetTabs: some View {
-        HStack(spacing: 6) {
+    private func facetTabs(_ c: BankCtx) -> some View {
+        let folder = bankVaultFolder(c)
+        let counts = (tasks: bankTasks(folder: folder).count,
+                      brain: bankNotes(folder: folder).count,
+                      artifacts: bankArtifacts(c).count)
+        return HStack(spacing: 6) {
             BankTab(label: "Overview", count: nil, active: facet == .overview) { facet = .overview }
-            BankTab(label: "Tasks", count: BANK_COUNTS.tasks, active: facet == .tasks) { facet = .tasks }
-            BankTab(label: "Brain", count: BANK_COUNTS.brain, active: facet == .brain) { facet = .brain }
-            BankTab(label: "Artifacts", count: BANK_COUNTS.artifacts, active: facet == .artifacts) { facet = .artifacts }
+            BankTab(label: "Tasks", count: counts.tasks, active: facet == .tasks) { facet = .tasks }
+            BankTab(label: "Brain", count: counts.brain, active: facet == .brain) { facet = .brain }
+            BankTab(label: "Artifacts", count: counts.artifacts, active: facet == .artifacts) { facet = .artifacts }
             Spacer(minLength: 0)
         }
         .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
     }
 
-    @ViewBuilder private var facetBody: some View {
+    @ViewBuilder private func facetBody(_ c: BankCtx) -> some View {
+        let folder = bankVaultFolder(c)
         switch facet {
-        case .overview:  BankOverview()
-        case .tasks:     BankTaskList(onNavigate: onNavigate)
-        case .brain:     BankBrainList(onNavigate: onNavigate)
-        case .artifacts: BankArtifactGrid(onNavigate: onNavigate)
+        case .overview:  BankOverview(fields: bankOverviewFields(c), onNavigate: onNavigate)
+        case .tasks:     BankTaskList(folder: folder, onNavigate: onNavigate)
+        case .brain:     BankBrainList(notes: bankNotes(folder: folder), onNavigate: onNavigate)
+        case .artifacts: BankArtifactGrid(items: bankArtifacts(c), onNavigate: onNavigate)
         }
     }
 
-    private var capture: some View {
+    private func capture(_ c: BankCtx) -> some View {
         HStack(spacing: 14) {
             Text("＋").font(.system(size: 17)).foregroundColor(.inkDim)
                 .frame(width: 38, height: 38)
                 .background(RoundedRectangle(cornerRadius: 11).fill(Color(red: 0x0f / 255, green: 0x11 / 255, blue: 0x16 / 255)))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.edge, lineWidth: 1))
-            (Text("Drop a file, paste a note, or \"Bank it.\" ").font(.hanken(13, .medium)).foregroundColor(.ink)
-                + Text("— files it as an artifact or note on IndEur Club, with its source.").font(.hanken(13)).foregroundColor(.inkSec))
-                .fixedSize(horizontal: false, vertical: true)
+            if let n = bankedNote {
+                (Text("Banked ").font(.hanken(13, .medium)).foregroundColor(.lime)
+                    + Text(n + " → Brain facet.").font(.hanken(13)).foregroundColor(.inkSec))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                (Text("Copy anything, then \"Bank it.\" ").font(.hanken(13, .medium)).foregroundColor(.ink)
+                    + Text("— the clipboard becomes a note on \(c.name), filed in \(bankVaultFolder(c) == nil ? "~/.relay/bank" : "its vault").").font(.hanken(13)).foregroundColor(.inkSec))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer(minLength: 0)
-            LimeButton(label: "Bank it") { OSLaunch.launchOr("bank") { onNavigate(.apps) } }
+            LimeButton(label: "Bank it") {
+                bankedNote = bankCapture(c)
+                if bankedNote != nil { facet = .brain }
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14)
-            .fill(LinearGradient(colors: [Color(red: 0x0e / 255, green: 0x0f / 255, blue: 0x14 / 255),
-                                          Color(red: 0x0b / 255, green: 0x0c / 255, blue: 0x11 / 255)],
-                                 startPoint: .top, endPoint: .bottom)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(red: 0x0e / 255, green: 0x0f / 255, blue: 0x14 / 255)))
         .overlay(RoundedRectangle(cornerRadius: 14)
             .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundColor(.edge))
     }
 }
 
+// The Establish front door — the whole surface when the vault is empty (the OS's true onboarding root).
+private struct BankEstablishState: View {
+    let onNavigate: (Surface) -> Void
+    let onCreate: (String) -> Void
+    @State private var name = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Point Switchboard at what you're working on.")
+                .font(.brico(22, .bold)).foregroundColor(.ink)
+            Text("A project is a few .md files you own — essence, tasks, notes, artifacts. Establish one from a site or repo, or start blank.")
+                .font(.hanken(13.5)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                LimeButton(label: "+ Establish a project") { OSLaunch.launchOr("bank", .init(kind: "project")) { onNavigate(.apps) } }
+                TextField("…or name a blank one", text: $name)
+                    .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
+                    .frame(width: 190)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edge, lineWidth: 1))
+                    .onSubmit { onCreate(name) }
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+    }
+}
+
+// contexts.json exists but won't parse — say exactly that, offer the folder. Never a silent blank.
+private struct BankErrorBanner: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("!").font(.splMono(13)).foregroundColor(.amber)
+            (Text("Can't read your Bank ").font(.hanken(13, .medium)).foregroundColor(.ink)
+                + Text("— ~/.relay/contexts.json exists but didn't parse as JSON.").font(.hanken(13)).foregroundColor(.inkSec))
+            Spacer(minLength: 0)
+            OSWSGhostButton(label: "Open ~/.relay") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: (NSHomeDirectory() as NSString).appendingPathComponent(".relay")))
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.amber.opacity(0.4), lineWidth: 1))
+    }
+}
+
+// The active-project hero — flat panel, indigo accent, real name/essence/vault path.
+private struct BankHero: View {
+    let c: BankCtx
+    let folder: String?
+    private var essence: String {
+        for k in ["oneLine", "positioning", "idea", "summary", "audience"] {
+            if let v = c.data[k] as? String, !v.isEmpty { return v.count > 110 ? String(v.prefix(108)) + "…" : v }
+        }
+        if let prods = c.data["products"] as? [String], let p = prods.first, !p.isEmpty {
+            return p.count > 110 ? String(p.prefix(108)) + "…" : p
+        }
+        return c.kind
+    }
+    var body: some View {
+        HStack(spacing: 16) {
+            Monogram(name: c.name, hue: hueForId(c.id), size: 46)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(c.name).font(.hanken(17, .semibold)).foregroundColor(.ink)
+                    Text(c.kind.uppercased()).font(.splMono(9.5)).tracking(1.2).foregroundColor(kindTint(c.kind))
+                }
+                Text(essence).font(.hanken(12.5)).foregroundColor(.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Text(folder.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "no folder bound — capture goes to ~/.relay/bank")
+                .font(.splMono(11)).foregroundColor(.inkFaint)
+                .lineLimit(1).truncationMode(.head)
+        }
+        .padding(.horizontal, 22).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Color.indigo).frame(width: 2).clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+}
+
 private struct OSWSProjectChip: View {
-    let project: BankProject
-    let active: Bool
+    let name: String
+    let kind: String
+    let active: Bool          // the chip being viewed here
+    let isGlobal: Bool        // the OS-wide active project (context-selection.json)
     let action: () -> Void
     @State private var hover = false
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Circle().fill(active ? Color.indigo : Color.inkFaint).frame(width: 8, height: 8)
-                    .shadow(color: active ? Color.indigo.opacity(0.6) : .clear, radius: 3)
-                Text(project.name).font(.hanken(13)).foregroundColor(active ? .ink : .inkSec)
-                if active {
-                    Text("active").font(.splMono(10)).foregroundColor(.inkFaint)
+                Circle().fill(active ? kindTint(kind) : Color.inkFaint).frame(width: 8, height: 8)
+                Text(name).font(.hanken(13)).foregroundColor(active ? .ink : .inkSec)
+                if isGlobal {
+                    Text("active").font(.splMono(10)).foregroundColor(.lime)
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -1064,10 +1350,19 @@ private struct BankTab: View {
 }
 
 private struct BankOverview: View {
+    let fields: [OverviewField]
+    let onNavigate: (Surface) -> Void
     let cols = [GridItem(.adaptive(minimum: 220), spacing: 12)]
     var body: some View {
-        LazyVGrid(columns: cols, alignment: .leading, spacing: 12) {
-            ForEach(BANK_OVERVIEW) { OverviewFieldView(field: $0) }
+        if fields.isEmpty {
+            // a blank facet is always a verb — nothing invented
+            BankViewAllRow(label: "Nothing established yet — extract this project's essence in Bank") {
+                OSLaunch.launchOr("bank") { onNavigate(.apps) }
+            }
+        } else {
+            LazyVGrid(columns: cols, alignment: .leading, spacing: 12) {
+                ForEach(fields) { OverviewFieldView(field: $0) }
+            }
         }
     }
 }
@@ -1133,33 +1428,66 @@ private struct RoadStagePill: View {
 }
 
 private struct BankTaskList: View {
+    let folder: String?
     let onNavigate: (Surface) -> Void
+    @State private var adding = ""
+    @State private var version = 0     // bump to re-read after an add
+    private var live: [BankTask] { _ = version; return bankTasks(folder: folder) }
     var body: some View {
         VStack(spacing: 8) {
-            ForEach(BANK_TASKS) { t in
-                BankRow(box: stateColor(t.state), boxFill: stateFill(t.state), glyph: nil,
-                        title: t.t, dim: nil, meta: t.meta) { onNavigate(.tasks) }
+            if folder == nil {
+                BankViewAllRow(label: "No vault folder bound — bind one in the panel to keep a tasks.md") { onNavigate(.tasks) }
+            } else {
+                ForEach(live) { t in
+                    BankRow(box: stateColor(t.state), boxFill: stateFill(t.state), glyph: nil,
+                            title: t.t, dim: nil, meta: t.meta) { onNavigate(.tasks) }
+                }
+                HStack(spacing: 10) {
+                    Text("+").font(.splMono(12)).foregroundColor(.inkFaint)
+                    TextField(live.isEmpty ? "No tasks.md yet — add the first task" : "Add a task — appends to tasks.md",
+                              text: $adding)
+                        .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
+                        .onSubmit { submit() }
+                    if !adding.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button(action: submit) {
+                            Text("Add").font(.hanken(12, .semibold)).foregroundColor(.lime)
+                        }.buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 15).padding(.vertical, 11)
+                .background(RoundedRectangle(cornerRadius: 11)
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundColor(.edge))
+                if !live.isEmpty { BankViewAllRow(label: "View all in Tasks") { onNavigate(.tasks) } }
             }
-            BankViewAllRow(label: "View all in Tasks") { onNavigate(.tasks) }
         }
     }
+    private func submit() {
+        guard let folder, !adding.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        if bankAddTask(folder: folder, text: adding) { adding = ""; version += 1 }
+    }
     private func stateColor(_ s: String) -> Color {
-        s == "now" ? .indigo : (s == "blocked" ? .danger : .edge)
+        s == "done" ? .lime : (s == "now" ? .indigo : (s == "blocked" ? .danger : .edge))
     }
     private func stateFill(_ s: String) -> Color {
-        s == "now" ? Color.indigo.opacity(0.14) : (s == "blocked" ? Color.danger.opacity(0.14) : .clear)
+        s == "done" ? Color.lime.opacity(0.14) : (s == "now" ? Color.indigo.opacity(0.14) : (s == "blocked" ? Color.danger.opacity(0.14) : .clear))
     }
 }
 
 private struct BankBrainList: View {
+    let notes: [BrainNote]
     let onNavigate: (Surface) -> Void
     var body: some View {
         VStack(spacing: 8) {
-            ForEach(BANK_BRAIN) { n in
-                BankRow(box: nil, boxFill: nil, glyph: "▤",
-                        title: n.t, dim: "— " + n.note, meta: n.src) { onNavigate(.graph) }
+            if notes.isEmpty {
+                BankViewAllRow(label: "Nothing banked yet — copy something and hit \"Bank it\"") { }
+            } else {
+                ForEach(notes) { n in
+                    BankRow(box: nil, boxFill: nil, glyph: "▤",
+                            title: n.t, dim: n.note.isEmpty ? nil : "— " + n.note, meta: n.src) {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: n.path))
+                    }
+                }
             }
-            BankViewAllRow(label: "Open the knowledge graph") { onNavigate(.graph) }
         }
     }
 }
@@ -1224,13 +1552,18 @@ private struct BankViewAllRow: View {
 }
 
 private struct BankArtifactGrid: View {
+    let items: [BankArtifactItem]
     let onNavigate: (Surface) -> Void
     let cols = [GridItem(.adaptive(minimum: 150), spacing: 12)]
     var body: some View {
-        LazyVGrid(columns: cols, spacing: 12) {
-            ForEach(BANK_ARTIFACTS) { a in
-                BankArtifactCard(art: a) {
-                    OSLaunch.launchOr(a.src, .init(artifact: a.t, kind: a.kind)) { onNavigate(.apps) }
+        if items.isEmpty {
+            BankViewAllRow(label: "No artifacts yet — run an app on this project") { onNavigate(.apps) }
+        } else {
+            LazyVGrid(columns: cols, spacing: 12) {
+                ForEach(items) { a in
+                    BankArtifactCard(art: a) {
+                        OSLaunch.launchOr(a.src, .init(artifact: a.t, kind: a.kind)) { onNavigate(.apps) }
+                    }
                 }
             }
         }
@@ -1241,22 +1574,12 @@ private struct BankArtifactCard: View {
     let art: BankArtifactItem
     let action: () -> Void
     @State private var hover = false
-
-    private var thumbColor: Color {
-        switch art.kind {
-        case "image":   return hexColor("9B5DE5")
-        case "ad":      return hexColor("F2994A")
-        default:        return hexColor("E0764A")   // mark / gallery
-        }
-    }
-
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(LinearGradient(colors: [thumbColor, Color(red: 0x0d / 255, green: 0x0e / 255, blue: 0x13 / 255)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(height: 84)
+                ZStack { ArtifactThumb(kind: art.kind, hue: hueForId(art.src)) }
+                    .frame(maxWidth: .infinity).frame(height: 84)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(red: 0x0d / 255, green: 0x0e / 255, blue: 0x13 / 255)))
                 Text(art.t).font(.hanken(12.5, .medium)).foregroundColor(.ink)
                     .lineLimit(1).padding(.top, 9)
                 Text(art.src + " · " + art.time).font(.splMono(10)).foregroundColor(.inkFaint)
