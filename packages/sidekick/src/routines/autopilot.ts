@@ -19,6 +19,10 @@ import type { Routine } from "./registry.js";
 
 interface AutopilotDeps {
   draft: (prompt: string) => Promise<{ text: string; tokens: number }>;
+  /** Call a Switchboard-connector wrapp action on the user's own Claude (the God's-Hands-reuse
+   *  path). `toolSuffix` is a `__wrapp__<id>__<action>` suffix; returns the wrapp's structured JSON.
+   *  Absent (or a not-connected wrapp) ⇒ the routine falls back to a generic draft. */
+  invoke?: (toolSuffix: string, args: Record<string, unknown>) => Promise<{ ok: boolean; json: unknown | null; text: string; error?: string }>;
   log?: (m: string) => void;
 }
 
@@ -79,6 +83,74 @@ function parseMoves(text: string): string[] {
     .filter((l) => l.length > 6).slice(0, 5);
 }
 
+/**
+ * The per-sector MOVE → WRAPP catalog (docs/COMPANY-OS.md §3). A reversible move is produced by a
+ * REAL wrapp action running on the user's own Claude — the same quality as opening that wrapp by
+ * hand — not a generic completion. First binding whose `when` matches the move text wins; no match
+ * (or an unconnected wrapp) falls back to a generic draft, so a tick never fails for lack of a
+ * wrapp. Every bound tool is DRAFT-class (produces content, never sends) — the curated reversible
+ * surface. Grows as more wrapp cores are exposed as connector tools (redline/adpulse want a page or
+ * CSV the routine doesn't yet carry, so they're catalogued but not bound here).
+ */
+interface WrappBinding {
+  wrapp: string;                                                  // "autopilot", "ideabrain"
+  label: string;                                                  // shown in the artifact provenance
+  tool: string;                                                   // `__wrapp__<id>__<action>` suffix
+  when: RegExp;                                                   // tested against the lowercased move
+  args: (co: Company, move: string) => Record<string, unknown>;
+  render: (json: any, co: Company) => string | null;             // structured JSON → artifact body; null ⇒ unusable, fall back
+}
+
+function bulletList(items: string[]): string {
+  return items.filter(Boolean).map((s) => `- ${s}`).join("\n");
+}
+
+const CATALOG: WrappBinding[] = [
+  {
+    // Foundational moves: define/validate the brand, audience, positioning.
+    wrapp: "ideabrain", label: "ideabrain · brand brief", tool: "__wrapp__ideabrain__brief",
+    when: /\b(brief|brand foundation|foundation|positioning|position(?:ing)? the|define (?:the )?(?:brand|product|audience|icp|offer)|validate|who (?:it'?s|its) for|ideal customer|target (?:audience|market)|value prop)\b/,
+    args: (co) => ({ idea: co.essence || co.name }),
+    render: (j) => {
+      const b = j?.brief; if (!b || typeof b !== "object") return null;
+      return `**Brand brief — ${b.category ?? ""}**\n\n` + bulletList([
+        b.productIdea && `**Product:** ${b.productIdea}`,
+        b.audience && `**Audience:** ${b.audience}`,
+        b.demographics && `**Who:** ${b.demographics}`,
+        b.priceTier && `**Price:** ${b.priceTier}`,
+        b.market && `**Market:** ${b.market}`,
+        b.vibe && `**Vibe:** ${b.vibe}`,
+      ].filter(Boolean) as string[]) + (b.positioningHint ? `\n\n**Positioning angle:** ${b.positioningHint}` : "");
+    },
+  },
+  {
+    // Operational moves: voice, ad angle, channel, content, campaign, growth. The "operate this
+    // company" wrapp — sector-agnostic, so it's the broad catch for reversible marketing work.
+    wrapp: "autopilot", label: "autopilot · operating slate", tool: "__wrapp__autopilot__slate",
+    when: /\b(voice|tone|ad(?:s| angle| creative)?|angle|creative|campaign|channel|go[- ]?to[- ]?market|gtm|market(?:ing)?|content|posts?|caption|copy|landing|hero|headline|tagline|page|story|drop|pre[- ]?order|offer|email|messaging|slate|operat|growth|next move|expand|new (?:format|segment|surface)|launch plan|distribution)\b/,
+    args: (co) => ({ company: { name: co.name, oneLine: co.essence } }),
+    render: (j) => {
+      const decisions = j?.decisions; if (!Array.isArray(decisions) || !decisions.length) return null;
+      return decisions.map((d: any) => {
+        const opts: any[] = Array.isArray(d.options) ? d.options : [];
+        const rec = opts.find((o) => o.recommended) ?? opts[0];
+        const alts = opts.filter((o) => o !== rec).map((o) => o.label).filter(Boolean);
+        const recLines = Array.isArray(rec?.lines) ? rec.lines.map((l: string) => `  - "${l}"`).join("\n") : "";
+        const recExtra = [rec?.body, rec?.cta ? `CTA: ${rec.cta}` : ""].filter(Boolean).join(" · ");
+        return `## ${d.label}${d.axis ? ` — ${d.axis}` : ""}\n` +
+          `**★ ${rec?.label ?? ""}** — ${rec?.text ?? ""}` +
+          (recExtra ? `\n  ${recExtra}` : "") + (recLines ? `\n${recLines}` : "") +
+          (alts.length ? `\n_Alt: ${alts.join(" · ")}_` : "");
+      }).join("\n\n");
+    },
+  },
+];
+
+function bindingFor(move: string): WrappBinding | null {
+  const m = move.toLowerCase();
+  return CATALOG.find((b) => b.when.test(m)) ?? null;
+}
+
 export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
   return {
     id: "autopilot",
@@ -107,20 +179,36 @@ export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
         // WOULD be sent, so it's staged with a preview for the founder to review (→ awaiting). Preparing
         // content is always reversible; the send line is the only thing gated.
 
-        // 1) execute the first reversible move — one nudge per company per tick
+        // 1) execute the first reversible move — one nudge per company per tick. God's hands run the
+        //    matching REAL wrapp on the user's own Claude (docs/COMPANY-OS.md §3); if no wrapp fits
+        //    the move, or the wrapp isn't connected, we draft it generically so the tick still lands.
         const first = moves.find((m) => m.lane === "autopilot");
         if (first) {
-          const art = await deps.draft(
-            `For "${co.name}" (${co.sector}), produce the actual deliverable for this move — the real thing, ` +
-            `ready for the founder to review, not a description:\n"${first.txt}"\nKeep it tight.`);
-          spent += art.tokens;
+          let body = ""; let via = "God's hands"; let tokens = 0;
+          const binding = bindingFor(first.txt);
+          if (binding && deps.invoke) {
+            const out = await deps.invoke(binding.tool, binding.args(co, first.txt));
+            const rendered = out.ok ? binding.render(out.json, co) : null;
+            if (out.ok && rendered) {
+              body = rendered; via = `${binding.label} (God's hands)`;
+              deps.log?.(`autopilot: ${co.name} → ran ${binding.wrapp} for "${first.txt.slice(0, 48)}"`);
+            } else {
+              deps.log?.(`autopilot: ${co.name} → ${binding.wrapp} unavailable (${out.error ?? "no result"}), drafting generically`);
+            }
+          }
+          if (!body) {
+            const art = await deps.draft(
+              `For "${co.name}" (${co.sector}), produce the actual deliverable for this move — the real thing, ` +
+              `ready for the founder to review, not a description:\n"${first.txt}"\nKeep it tight.`);
+            body = art.text.trim(); tokens = art.tokens; spent += art.tokens;
+          }
           const n = moves.indexOf(first) + 1;
           try {
             ensureDir();
             writeFileSync(join(STORE_DIR, `autopilot-artifact-${co.id}-${n}.md`),
-              `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${first.txt}\nby: autopilot (reversible · God's hands)\nat: ${new Date().toISOString()}\n---\n\n${art.text.trim()}\n`);
-            first.artifact = `autopilot-artifact-${co.id}-${n}.md`; first.preview = art.text.trim().slice(0, 1400); first.status = "done";
-            deps.log?.(`autopilot: ${co.name} → made ${first.artifact} (${art.tokens} tok)`);
+              `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${first.txt}\nby: reversible move — ${via}\nat: ${new Date().toISOString()}\n---\n\n${body}\n`);
+            first.artifact = `autopilot-artifact-${co.id}-${n}.md`; first.preview = body.slice(0, 1400); first.status = "done"; (first as any).via = via;
+            deps.log?.(`autopilot: ${co.name} → made ${first.artifact} via ${via}${tokens ? ` (${tokens} tok)` : ""}`);
           } catch (e) { deps.log?.("autopilot: could not file — " + String(e)); first.status = "error"; }
         }
 

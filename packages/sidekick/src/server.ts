@@ -1235,6 +1235,49 @@ export class Broker implements ConsentPrompter, NativeHandler {
     }
   }
 
+  /** FIRST-PARTY call of a Switchboard-connector *wrapp* action for a background routine — the
+   *  God's-Hands-reuse path (docs/GOD-HANDS.md), pointed at a routine instead of a hotkey. A
+   *  reversible move ("draft the operating slate", "write the brand brief") names a wrapp action;
+   *  we run that wrapp's real pipeline on the user's own Claude via the switchboard connector and
+   *  return its structured result to file as the company's artifact — the same quality as if the
+   *  founder had opened that wrapp themselves.
+   *
+   *  SAFETY (why a routine may call this without a page gate): this ONLY reaches `mcp__…__wrapp__*`
+   *  tools — the connector's curated *reversible* surface (drafts/analyses that run on your Claude
+   *  and produce text; outward wrapp actions like publish/send are never exposed as connector
+   *  tools, they stay per-click). We hard-check that prefix here so a routine can never reach a
+   *  non-wrapp or outward tool, resolve by SUFFIX (robust to the connector's serverId prefix), and
+   *  AUDIT every call as principal `routine@<id>`. The move-classifier still gates the SEND line
+   *  separately; this is strictly the reversible lane. Not connected / unknown wrapp ⇒ a clean
+   *  `{ ok:false }` so the routine falls back to a generic draft rather than failing the tick. */
+  async routineInvoke(routineId: string, toolSuffix: string, args: Record<string, unknown>): Promise<{ ok: boolean; json: unknown | null; text: string; error?: string }> {
+    const origin = `routine@${routineId}`;
+    const descr = this.deps.mcp.all().find(
+      (t) => t.name.startsWith("mcp__") && t.name.includes("__wrapp__") && t.name.endsWith(toolSuffix),
+    );
+    if (!descr) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: toolSuffix, outcome: "denied", note: "wrapp not connected" });
+      return { ok: false, json: null, text: "", error: "wrapp not connected" };
+    }
+    try {
+      const res = await this.deps.mcp.invoke({ name: descr.name, arguments: args });
+      const text = (res.content ?? [])
+        .filter((c) => c.type === "text" && typeof (c as Record<string, unknown>).text === "string")
+        .map((c) => String((c as Record<string, unknown>).text))
+        .join("\n")
+        .trim();
+      let json: unknown | null = null;
+      try { json = JSON.parse(text); } catch { /* not JSON — keep raw text */ }
+      const jsonOk = !(json && typeof json === "object" && (json as { ok?: unknown }).ok === false);
+      const ok = res.ok && jsonOk;
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: descr.name, outcome: ok ? "ok" : "error", note: ok ? `wrapp draft ${text.length}ch` : "wrapp returned an error" });
+      return { ok, json, text, error: ok ? undefined : (res.error?.message ?? "wrapp error") };
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: descr.name, outcome: "error", note: String((e as Error)?.message).slice(0, 80) });
+      return { ok: false, json: null, text: "", error: String((e as Error)?.message).slice(0, 120) };
+    }
+  }
+
   /** Per-request context for relay__git_commit_push: the origin's EXPLICIT binding (never the
    *  sandbox), its readonly posture, the standard write-consent card, and audit. */
   private gitCtxFor(origin: string): GitPublishContext {
