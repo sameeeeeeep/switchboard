@@ -178,9 +178,51 @@ const ACTION_PROTOCOL =
   "Prefer OPEN, RUN, or POINT over raw CLICK/KEY when a cleaner route exists. Never propose a " +
   "destructive action. If no action is warranted, just use [POINT:x,y:label] or no tag.";
 
+// ── guided FORM FILL (docs/FORM-FILL.md's "upgrade path", now built) ───────────────────────────
+// "Help me fill this form": God maps the form's fields (the attached clipboard/file reference, or the
+// screen) to values it actually HAS — the user's saved identity.json details + the active project's
+// context + anything the user said — and emits ONE [FILLGUIDE] tag. Swift turns it into the native
+// teach fill-guide: one step per field, that value pre-loaded on the clipboard, the USER pastes each
+// (⌘V) — God never types into the form itself. Deliberately read fresh per turn, like identity edits.
+function readIdentity() {
+  try {
+    const id = JSON.parse(readFileSync(join(REAL_RELAY, "identity.json"), "utf8"));
+    const kept = Object.entries(id).filter(([, v]) => typeof v === "string" && v.trim());
+    return kept.length ? Object.fromEntries(kept) : null;
+  } catch { return null; }
+}
+function fillProtocol() {
+  const id = readIdentity();
+  return (
+    "\n\nGUIDED FORM FILL — when the user asks you to help FILL a form (its text is usually an attached " +
+    "clipboard/file reference, or on screen), do NOT [TYPE] into it. Instead end your reply with ONE tag:\n" +
+    '  [FILLGUIDE:[["<field label exactly as the form shows it>","<the value>"],…]]\n' +
+    "listing the fields in the form's own order. Rules: include ONLY fields you have a REAL value for — " +
+    "from the saved details below, the active project's context, or something the user told you. NEVER " +
+    "invent or guess a value; skip fields you don't know. NEVER include passwords, card numbers, or other " +
+    "secrets — those stay manual. The tag raises a native step-by-step guide where each value is pre-loaded " +
+    "on the clipboard and the user pastes it themselves. Keep your spoken line to one short sentence " +
+    "(\"Got it — walking you through the fields.\")." +
+    (id ? "\nSAVED DETAILS (the user's own, fine to use): " + JSON.stringify(id) : "")
+  );
+}
+
 // Parse the ONE action/point tag off the reply. Priority: an explicit RUN or LOCAL action over a
 // bare point. RUN captures a tool name then optional JSON args (or a bare string → {input:string}).
 function parseAction(text) {
+  // [FILLGUIDE:[["label","value"],…]] — parsed FIRST (its JSON body contains "]" so the other tags'
+  // [^\]]+ bodies must never get a crack at it). Greedy body → the LAST "]…]" pair closes the tag.
+  const fill = /\[FILLGUIDE:\s*(\[[\s\S]*\])\s*\]/i.exec(text);
+  if (fill) {
+    try {
+      const arr = JSON.parse(fill[1]);
+      const fields = (Array.isArray(arr) ? arr : [])
+        .map((e) => Array.isArray(e) ? { label: String(e[0] ?? "").trim(), value: String(e[1] ?? "").trim() }
+          : e && typeof e === "object" ? { label: String(e.label ?? "").trim(), value: String(e.value ?? "").trim() } : null)
+        .filter((f) => f && f.label && f.value);
+      if (fields.length) return { kind: "fillguide", fields };
+    } catch { /* malformed JSON → fall through to the other tags */ }
+  }
   // [DRIVE:<wrapp> <input>] or [DRIVE:<wrapp>:<command> <input>] — the optional :command lets God pick
   // one of a multi-command wrapp's tools from the registry; without it the native side auto-discovers.
   const drive = /\[DRIVE:\s*([a-z0-9_-]+)(?::([a-z0-9_]+))?\s+([^\]]+)\]/i.exec(text);
@@ -206,7 +248,7 @@ function parseToolArgs(raw) {
   try { const v = JSON.parse(raw); return v && typeof v === "object" ? v : { input: String(v) }; }
   catch { return { input: raw }; }
 }
-const stripTags = (t) => t.replace(/\[(?:OPEN|TYPE|CLICK|KEY|POINT|DRIVE):[^\]]*\]/gi, "").replace(/\[RUN:[\s\S]*?\]/gi, "").trim();
+const stripTags = (t) => t.replace(/\[FILLGUIDE:\s*\[[\s\S]*\]\s*\]/gi, "").replace(/\[(?:OPEN|TYPE|CLICK|KEY|POINT|DRIVE):[^\]]*\]/gi, "").replace(/\[RUN:[\s\S]*?\]/gi, "").trim();
 
 // The desktop's size in POINTS (screencapture gives PIXELS); the ratio maps image coords → clickable
 // screen points on retina. Cheap, non-prompting.
@@ -217,6 +259,7 @@ function screenPointsSize() {
 }
 function prettyTool(name) { return String(name).replace(/^mcp__[^_]+__/, "").replace(/^wrapp__/, "").replace(/__/g, " · "); }
 function describeAction(a, shot) {
+  if (a.kind === "fillguide") return `guide you through filling ${a.fields.length} field${a.fields.length === 1 ? "" : "s"}`;
   if (a.kind === "drive") return `drive the ${a.wrapp} wrapp — “${String(a.input).slice(0, 50)}”`;
   if (a.kind === "open") return `open ${a.target}`;
   if (a.kind === "type") return `type: “${a.text.slice(0, 60)}”`;
@@ -255,6 +298,12 @@ async function runAction(a, shot, reg) {
     // Swift owns the drive (widget in the notch): hand it off like a local action and exit.
     try { writeFileSync(join(REAL_RELAY, "god-action.json"), JSON.stringify({ ...a, describe: describeAction(a, shot) })); } catch { /* best effort */ }
     return `handed “drive ${a.wrapp}” to the notch — the widget takes it from here`;
+  }
+  if (a.kind === "fillguide") {
+    // Swift owns the guide runtime (CursorGuide): hand the field→value pairs off and exit; the app
+    // raises the teach fill-guide (each value pre-loaded on the clipboard, the user pastes each ⌘V).
+    try { writeFileSync(join(REAL_RELAY, "god-action.json"), JSON.stringify({ ...a, describe: describeAction(a, shot) })); } catch { /* best effort */ }
+    return `raising the fill guide — ${a.fields.length} field${a.fields.length === 1 ? "" : "s"}, each ready to paste`;
   }
   if (a.kind === "open") { spawnSync("open", openArgs(a.target)); return `opened ${a.target}`; }
   if (a.kind === "type") { spawnSync("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(a.text)}`]); return `typed`; }
@@ -832,7 +881,7 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       }
     } catch (e) { log(`skill load skipped: ${e.message}`); }
     const baseProtocol = noScreen ? NO_SCREEN_PROTOCOL : PROTOCOL;
-    const system = `${persona.characteristic}\n\n${baseProtocol}${nameLine}${projLine}${skillBlock}` + (act ? ACTION_PROTOCOL + runBlock : "") + catalogBlock();
+    const system = `${persona.characteristic}\n\n${baseProtocol}${nameLine}${projLine}${skillBlock}` + (act ? ACTION_PROTOCOL + fillProtocol() + runBlock : "") + catalogBlock();
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(noScreen ? " (voice)" : " (vision)")}…`);

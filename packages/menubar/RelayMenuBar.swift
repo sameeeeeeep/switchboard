@@ -3672,22 +3672,31 @@ struct ActionConsentDrop: View {
         let clip = (NSPasteboard.general.string(forType: .string) ?? "").lowercased()
         guard !clip.isEmpty else { raiseFillNote("Copy the form first (⌘A then ⌘C), then try again."); return }
         let id = readIdentity()
-        var steps: [[String: Any]] = []
+        var pairs: [(label: String, value: String)] = []
         for f in fillFields {
             guard let val = id[f.key], !val.isEmpty else { continue }          // only fields I actually have
             guard f.synonyms.contains(where: { clip.contains($0) }) else { continue }   // the form mentions it
-            // Advance on the PASTE keystroke (reliable, no AX) OR the field filling — whichever first.
-            steps.append(["id": f.key, "text": "Click the \(f.label) field, then ⌘V",
-                          "copy": val,
-                          "doneWhen": ["any": [["kind": "pasted"], ["kind": "field-non-empty"]]]])
+            pairs.append((f.label, val))
         }
-        guard !steps.isEmpty else {
+        guard !pairs.isEmpty else {
             raiseFillNote("No fields I have data for matched this form. Add values in ~/.relay/identity.json.")
             return
         }
-        let run: [String: Any] = ["mode": "teach", "title": "Fill this form", "source": "Form fill",
-                                  "project": model.userName.isEmpty ? "" : "you", "autoClipboard": true, "steps": steps]
-        writeGuideRunFile(run)
+        raiseFillGuide(pairs, source: "Form fill")
+    }
+    // The one raiser BOTH fill paths share — the deterministic identity match above and God's
+    // [FILLGUIDE] hand (executeGodAction) — one teach step per (label, value), that value pre-loaded
+    // on the clipboard. Advance on the PASTE keystroke (reliable, no AX) OR the field filling.
+    @MainActor private func raiseFillGuide(_ pairs: [(label: String, value: String)], source: String) {
+        guard !pairs.isEmpty else { return }
+        let steps: [[String: Any]] = pairs.map { p in
+            ["id": p.label.lowercased().replacingOccurrences(of: " ", with: "-"),
+             "text": "Click the \(p.label) field, then ⌘V",
+             "copy": p.value,
+             "doneWhen": ["any": [["kind": "pasted"], ["kind": "field-non-empty"]]]]
+        }
+        writeGuideRunFile(["mode": "teach", "title": "Fill this form", "source": source,
+                           "project": model.userName.isEmpty ? "" : "you", "autoClipboard": true, "steps": steps])
     }
     // A one-step notch note (used for "copy the form first" / "no matches").
     private func raiseFillNote(_ text: String) {
@@ -5126,7 +5135,10 @@ struct ActionConsentDrop: View {
         // Driving an installed wrapp needs NO per-action consent — installing it WAS the consent
         // (docs/GOD-HANDS.md #1); it runs straight into the notch. The wrapp's own write-class actions
         // still hit the daemon gate. Only local hands God held a key for / risky actions keep the drop.
-        if (json["kind"] as? String) == "drive" { executeGodAction(json); return }
+        // A fill-guide rides the same lane: the user ASKED for it, and the guide itself is the consent
+        // surface — every value is visible per step, pasted by the user's own hand, esc aborts.
+        let kind = json["kind"] as? String
+        if kind == "drive" || kind == "fillguide" { executeGodAction(json); return }
         showActionConsent(json["describe"] as? String ?? "do something", json)
     }
 
@@ -5206,6 +5218,25 @@ struct ActionConsentDrop: View {
                 showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No wrapp “\(id)”", openLabel: "Open store",
                     result: .text("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
+            }
+        case "fillguide":
+            // God mapped the form's fields to values ([FILLGUIDE] tag — docs/FORM-FILL.md upgrade path):
+            // raise the native teach fill-guide. Values ride the clipboard one step at a time, the USER
+            // pastes each; nothing is typed into the form by us. god.mjs normalizes fields to
+            // [{label, value}] before the handoff, so that's the only shape read here.
+            var pairs: [(label: String, value: String)] = []
+            for o in (a["fields"] as? [[String: Any]] ?? []) {
+                if let l = (o["label"] as? String)?.trimmingCharacters(in: .whitespaces),
+                   let v = (o["value"] as? String)?.trimmingCharacters(in: .whitespaces),
+                   !l.isEmpty, !v.isEmpty { pairs.append((l, v)) }
+            }
+            if pairs.isEmpty {
+                godLog("executeGodAction: fillguide with no usable fields — \(a)")
+                showNotchWidget(WidgetSpec(kicker: "GOD · FILL", title: "Nothing to fill", openLabel: "Open panel",
+                    result: .text("God proposed a form-fill guide but no field→value pairs survived parsing — nothing was raised.")),
+                    onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            } else {
+                raiseFillGuide(pairs, source: "God")
             }
         case "open":
             // DWIM like god.mjs's openArgs: URL/scheme → open it; path → open the file; else it's an
