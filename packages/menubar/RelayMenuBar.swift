@@ -4820,10 +4820,14 @@ struct ActionConsentDrop: View {
             try? FileManager.default.removeItem(atPath: wav)
             let body = "{\"text\":\"\(line)\",\"voice\":\"\(name)\"}"
             let curl = Process(); curl.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-            curl.arguments = ["-s", "-m", "25", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
+            // 60s (not 25s): the clone-TTS model cold-loads slowly; a 25s timeout left a PARTIAL wav
+            // that afplay then played truncated — the "TTS was brief / didn't finish" bug. Also require
+            // curl to have SUCCEEDED (exit 0), so a timeout/failure falls back to the full macOS voice
+            // instead of speaking a half-rendered clip.
+            curl.arguments = ["-s", "-m", "60", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
             try? curl.run(); curl.waitUntilExit()
             let sz = (try? FileManager.default.attributesOfItem(atPath: wav)[.size] as? Int) ?? 0
-            if sz > 1000 {
+            if curl.terminationStatus == 0, sz > 1000 {
                 let play = Process(); play.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); play.arguments = [wav]
                 Task { @MainActor in self?.guideVoiceProc = play }; try? play.run()
             } else { sayIt() }   // clone server down → macOS voice
