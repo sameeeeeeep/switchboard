@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard Wrapps — one page each</title>
+<style>
+  :root{
+    --page:#0A0C10; --panel:#141416; --edge:#282829;
+    --ink:#E8EDF4; --muted:#8891A0;
+    --lime:#C8F250; --indigo:#5B8DEF; --amber:#F5A623;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--page); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit; text-decoration:none}
+
+  .layout{display:flex; align-items:flex-start}
+
+  /* ---- sidebar ---- */
+  .sidebar{
+    position:sticky; top:0; align-self:flex-start;
+    width:300px; height:100vh; overflow-y:auto;
+    border-right:1px solid var(--edge);
+    background:var(--page);
+    padding:22px 0 40px;
+    flex:0 0 300px;
+  }
+  .brand{padding:0 22px 16px}
+  .brand .kick{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .brand h1{
+    font-size:18px; font-weight:650; margin:4px 0 2px; letter-spacing:-.01em;
+  }
+  .brand .sub{font-size:12px; color:var(--muted)}
+  .search{padding:0 22px 14px}
+  .search input{
+    width:100%; background:var(--panel); border:1px solid var(--edge);
+    color:var(--ink); border-radius:8px; padding:9px 11px; font-size:13px;
+    font-family:var(--sans); outline:none;
+  }
+  .search input:focus{border-color:var(--indigo)}
+  .search input::placeholder{color:var(--muted)}
+
+  .navgroup{margin-top:10px}
+  .navgroup > .glabel{
+    font-family:var(--mono); font-size:10px; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--muted);
+    padding:10px 22px 5px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .navgroup > .glabel .ct{color:var(--edge); font-size:9.5px}
+  .navlink{
+    display:flex; justify-content:space-between; gap:8px;
+    padding:5px 22px; font-size:13.5px; color:var(--muted);
+    border-left:2px solid transparent; cursor:pointer;
+  }
+  .navlink:hover{color:var(--ink); background:var(--panel)}
+  .navlink .nid{font-family:var(--mono); font-size:10px; color:var(--edge)}
+  .navlink.hidden{display:none}
+  .navgroup.empty{display:none}
+
+  /* ---- main ---- */
+  .main{flex:1 1 auto; min-width:0; padding:0 0 120px}
+  .maininner{max-width:820px; margin:0 auto; padding:0 40px}
+  .masthead{padding:52px 0 30px; border-bottom:1px solid var(--edge)}
+  .masthead .kick{
+    font-family:var(--mono); font-size:11px; letter-spacing:.24em;
+    text-transform:uppercase; color:var(--lime);
+  }
+  .masthead h2{font-size:30px; font-weight:680; margin:10px 0 8px; letter-spacing:-.02em}
+  .masthead p{color:var(--muted); max-width:60ch; margin:0}
+
+  /* ---- wrapp page ---- */
+  .wrapp{padding:48px 0; border-bottom:1px solid var(--edge); scroll-margin-top:20px}
+  .wrapp .cat{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--indigo);
+  }
+  .wrapp h3{font-size:23px; font-weight:660; margin:7px 0 3px; letter-spacing:-.01em}
+  .wrapp .tag{color:var(--muted); font-size:15px; margin:0 0 20px}
+
+  .block{margin:16px 0}
+  .block .h{
+    font-family:var(--mono); font-size:10px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:5px;
+  }
+  .block .b{font-size:14.5px; color:var(--ink)}
+  .block .b.dim{color:var(--muted)}
+
+  .io{
+    font-family:var(--mono); font-size:12.5px; color:var(--ink);
+    background:var(--panel); border:1px solid var(--edge); border-radius:8px;
+    padding:10px 12px; margin-top:6px; overflow-x:auto; white-space:nowrap;
+  }
+  .io .arrow{color:var(--lime); padding:0 8px}
+  .io .lbl{color:var(--muted)}
+
+  /* facts strip */
+  .facts{
+    display:grid; grid-template-columns:1fr; gap:0;
+    border:1px solid var(--edge); border-radius:10px; overflow:hidden; margin-top:22px;
+  }
+  .fact{display:flex; gap:14px; padding:11px 14px; border-bottom:1px solid var(--edge); align-items:baseline}
+  .fact:last-child{border-bottom:none}
+  .fact .k{
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); flex:0 0 96px; padding-top:2px;
+  }
+  .fact .v{display:flex; flex-wrap:wrap; gap:6px; flex:1 1 auto}
+  .pill{
+    font-family:var(--mono); font-size:11px; letter-spacing:.02em;
+    background:var(--panel); border:1px solid var(--edge); color:var(--ink);
+    padding:3px 8px; border-radius:999px; white-space:nowrap;
+  }
+  .pill.lime{border-color:rgba(200,242,80,.4); color:var(--lime)}
+  .pill.indigo{border-color:rgba(91,141,239,.45); color:var(--indigo)}
+  .pill.amber{border-color:rgba(245,166,35,.45); color:var(--amber)}
+  .pill.plain{color:var(--muted)}
+
+  .status{display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--muted)}
+  .dot{width:7px; height:7px; border-radius:50%; display:inline-block}
+  .dot.ship{background:var(--lime)}
+  .dot.part{background:var(--amber)}
+  .dot.demo{background:var(--indigo)}
+
+  .noresults{padding:60px 0; color:var(--muted); font-family:var(--mono); font-size:13px; display:none}
+
+  @media (max-width:860px){
+    .sidebar{
+      position:static; width:100%; height:auto; flex-basis:auto;
+      border-right:none; border-bottom:1px solid var(--edge);
+    }
+    .layout{flex-direction:column}
+    .navgroup > .glabel{padding-top:8px}
+    .maininner{padding:0 22px}
+    .masthead{padding:34px 0 24px}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="kick">Switchboard</div>
+      <h1>Wrapps</h1>
+      <div class="sub">76 wrapps · one page each</div>
+    </div>
+    <div class="search"><input id="q" type="text" placeholder="Filter wrapps…" autocomplete="off"></div>
+    <nav id="nav"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="maininner">
+      <header class="masthead">
+        <div class="kick">Reference</div>
+        <h2>Every wrapp, one page each</h2>
+        <p>A wrapp is a thin skin over the user's own Claude — prompts, skills and a small UI, brokered by the daemon so nothing leaks. This is a browsable reference: what each one does, who it's for, what it needs, and how far along it is. Source of truth is the live catalog (76 listings).</p>
+      </header>
+      <div id="pages"></div>
+      <div class="noresults" id="noresults">No wrapps match that filter.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ---- data: 76 wrapps ---- */
+const CATS = [
+  ["studio","Studios","Multi-step workspaces — a whole job in one place"],
+  ["agent","Agents","Wrapps that plan and take gated moves, often headless"],
+  ["tool","Tools","Single-purpose makers and utilities"],
+  ["skill","Skills","One-shot text transforms on the user's own Claude"],
+  ["fun","Fun","For the curious"]
+];
+
+const W = [
+/* ===================== STUDIO ===================== */
+{id:"bank",name:"Bank",cat:"studio",tag:"A second brain your wrapps can borrow from.",
+ what:"An Obsidian-style context vault of the user's own notes that other wrapps can read from. Ask it a question and it answers grounded in the vault, streaming the answer onto the page.",
+ who:"When you want one place for context that every other wrapp opens pre-loaded from.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"],["sb_db","amber"]],
+ comps:["Web UI"], status:"ship", io:["a question","the answer from your vault"]},
+
+{id:"brandbrain",name:"brandbrain",cat:"studio",tag:"Your whole brand, one place.",
+ what:"A living brand system — voice, palette and positioning held in one vault — plus copy review that answers in your own voice and a competitor war-room you can refresh. The parent studio several template wrapps open into.",
+ who:"When you want one durable home for brand context instead of scattered docs.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Cloud model","indigo"],["sb_db","amber"]],
+ comps:["Web UI"], status:"ship", io:["your brand + assets","a reusable brand system"]},
+
+{id:"copyflow",name:"CopyFlow",cat:"studio",tag:"Show a workflow once — it runs itself.",
+ what:"Records a two-step demo (fetch JSON from a URL, then append a row to a target), then generalizes it into a parameterized routine with your Claude and shows it for confirmation. Confirming is the standing grant to run it.",
+ who:"When a repetitive fetch-then-append chore should become a saved, replayable routine.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"]],
+ comps:["Web UI"], status:"ship", io:["a 2-step demo","a confirmed routine"]},
+
+{id:"crest",name:"Crest",cat:"studio",tag:"A brief in, a logo out — foundation, directions, four marks.",
+ what:"Turns a one-line brand brief into a brand foundation, three directions (one recommended), a chosen visual style, and four concrete marks — each an SVG wireframe plus a real image rendered on your Higgsfield.",
+ who:"When you need a first real logo pass from a sentence, not a mood board.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Cloud model","indigo"],["Higgsfield","amber"]],
+ comps:["Web UI"], status:"ship", io:["a one-line brief","4 marks + directions"]},
+
+{id:"deck",name:"Deck",cat:"studio",tag:"Notes in, a real slide deck out — export to PowerPoint.",
+ what:"Turns notes, an outline, or a topic into a structured deck (title slide plus content slides with bullets and optional speaker notes), built live on the page. You export a real .pptx from the page.",
+ who:"When you have the substance and just need it shaped into slides you can hand off.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["Model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["notes or a topic","a deck + .pptx export"]},
+
+{id:"dub",name:"Dub",cat:"studio",tag:"Audio in — revoice each speaker with the TTS voice you pick.",
+ what:"Transcribes an audio clip locally (whisper on the daemon — audio never leaves the machine), has Claude split it into a per-speaker ordered script, then lets you pick a local TTS voice per speaker and regenerate one stitched track.",
+ who:"When you want to re-voice a recording per speaker without sending audio to the cloud.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["Local whisper/TTS","amber"]],
+ comps:["Web UI"], status:"ship", io:["an audio clip","a re-voiced track"]},
+
+{id:"huddle",name:"Huddle",cat:"studio",tag:"Any meeting → clean notes, decisions and action items.",
+ what:"Turns a meeting into structured notes — TL;DR, decisions, action items with owners, and per-topic notes. Takes a transcript or an audio file (transcribed locally on the device).",
+ who:"When a meeting needs to become something you can act on, not just re-listen to.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"]],
+ comps:["Web UI"], status:"ship", io:["a transcript or audio","structured notes"]},
+
+{id:"ideabrain",name:"ideabrain",cat:"studio",tag:"Pressure-test an idea before you build it.",
+ what:"Reads a one-line idea into a brief, runs a research→thesis→plan validation grounded in your notes, and returns a verdict that states the risk rather than hype. Can run headless as a batch brief; produces an investor-grade deck when the thesis holds.",
+ who:"When you want an honest gut-check on an idea before committing to build.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"]],
+ comps:["Web UI","Workflow: brief"], status:"ship", io:["a one-line idea","a risk-first verdict"]},
+
+{id:"ideafetch",name:"ideafetch",cat:"studio",tag:"Point at what you already built — it becomes your project.",
+ what:"Reads a website, repo, folder, URL or paste — real bytes, never a guess — and lets you multi-select what your project actually is (you assert, the model only structures). Emits one kind:project/brand context every other wrapp opens pre-loaded.",
+ who:"When you want to capture an existing thing into structured project context.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"],["sb_brand","amber"]],
+ comps:["Web UI","Workflow: define"], status:"ship", io:["a repo/site/paste","a project context"]},
+
+/* ===================== AGENT ===================== */
+{id:"adpulse",name:"AdPulse",cat:"agent",tag:"Find the ad spend that's being wasted.",
+ what:"Diagnoses a Meta Ads Manager CSV export into a health score, wins, leaks, ranked actions and per-campaign verdicts — a post-mortem on where the budget leaked. Runs headless across accounts and can do scheduled rollups.",
+ who:"When you want to know which campaigns are quietly burning money.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"]],
+ comps:["Web UI","Workflow: analyze"], status:"ship", io:["a Meta Ads CSV","leaks + ranked actions"]},
+
+{id:"autopilot",name:"Autopilot",cat:"agent",tag:"It plans your week and makes the moves.",
+ what:"A finite move-engine (no runaway loops) that plans a slate of work and then runs it headless — every action gated and audited by the daemon. Runs on batch only; the human reviews via an approve-queue.",
+ who:"When you want a week's worth of moves planned and executed under a hard leash.",
+ surfaces:["batch"], needs:[["Daemon","plain"],["Cloud model","indigo"]],
+ comps:["Workflows: plan · moves · slate"], status:"ship", io:["a goal + context","a gated slate of moves"]},
+
+{id:"batch",name:"Batch",cat:"agent",tag:"Run one prompt across a whole list.",
+ what:"Fans one prompt out across many rows. The shipped flagship route drafts a full YC application (all 8 answers, one recommended each, plus two video scripts) from a one-line idea, filled live on the page — nothing locked or submitted.",
+ who:"When the same question has to be answered across a list, or you want a full first-draft application.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"]],
+ comps:["Web UI","Workflow: run"], status:"ship", io:["a prompt + a list","one answer per row"]},
+
+{id:"reachout",name:"Reachout",cat:"agent",tag:"A lead list into personalized outreach — drafted, never auto-sent.",
+ what:"Builds a personalized N-touch sequence per lead, grounded in your ICP and a real hook, and stages each as a Gmail draft — every send stays a human click. The cadence auto-advances as a routine while you're away.",
+ who:"When you want warm, personalized outreach at volume without ceding the send button.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"],["Gmail","lime"]],
+ comps:["Web UI","Workflows: draftSequence · stageNextTouch"], status:"ship", io:["a lead list","staged Gmail drafts"]},
+
+{id:"redline",name:"Redline",cat:"agent",tag:"Mark up a landing page like a doc.",
+ what:"Gives a line-by-line review of any page or doc, and can respond to feedback — audit and respond run as two headless workflows. Carries its own taste.md so the notes sound like you.",
+ who:"When you want a sharp editor's pass on a page or doc in your own voice.",
+ surfaces:["browser","batch"], needs:[["Daemon","plain"],["Cloud model","indigo"]],
+ comps:["Web UI","Workflows: audit · respond"], status:"ship", io:["a page or doc","line-by-line notes"]},
+
+/* ===================== TOOL ===================== */
+{id:"aplus",name:"A-Plus",cat:"tool",tag:"Amazon A+ content, in bulk.",
+ what:"Writes a full Amazon A+ content stack for a product — from a line or a product-page URL — rendered live on the page.",
+ who:"For Amazon sellers filling out A+ modules across a catalog.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a product line or URL","a full A+ stack"]},
+
+{id:"adforge",name:"AdForge",cat:"tool",tag:"Draft this week's ads from your brand.",
+ what:"Forges three Meta ad concepts from a site URL (or the lent brand), rendered live on the page.",
+ who:"When you need this week's ad concepts pulled straight from your site or brand.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a site URL or brand","3 ad concepts"]},
+
+{id:"adgen",name:"Adwall",cat:"tool",tag:"A wall of ad variations at once.",
+ what:"Drafts a wall of six ad directions from a site URL (or the lent brand), all rendered live on the page for quick scanning.",
+ who:"When you want breadth — many directions to react to at once, not one.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a site URL or brand","6 ad directions"]},
+
+{id:"canvas",name:"Canvas",cat:"tool",tag:"Describe it — get an editable diagram or board.",
+ what:"Describe a diagram, board or layout in words and get back an editable, self-contained HTML document rendered live on the page.",
+ who:"When you'd rather describe a diagram than drag boxes around.",
+ surfaces:["browser"], needs:[["Daemon","plain"]],
+ comps:["Web UI"], status:"ship", io:["a description","an editable HTML board"]},
+
+{id:"cartridge",name:"Cartridge",cat:"tool",tag:"Build a little browser game.",
+ what:"Forges a complete, self-contained HTML5 game from one idea, generated live on the page.",
+ who:"For a quick playable toy from a single sentence.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a game idea","a playable HTML game"]},
+
+{id:"cast",name:"Cast",cat:"tool",tag:"A cast of personas you can direct.",
+ what:"Builds and directs a cast of personas (persona-as-context) you can point wrapps at. Full staged builder — spec, stages, generation and state under src/cast.",
+ who:"When you want reusable characters/voices to lend as context to other wrapps.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a persona brief","a directable cast"]},
+
+{id:"capp",name:"Consumer App Planner",cat:"tool",tag:"Plan a consumer app end to end.",
+ what:"An ideabrain idea-studio template pointed at consumer apps — research through plan, in one guided flow. Reuses the brandbrain/idea engine with an app template.",
+ who:"When you're scoping a consumer app and want the whole plan in one pass.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["an app idea","an end-to-end plan"]},
+
+{id:"convert",name:"Convert",cat:"tool",tag:"CSV, JSON & YAML — converted on your device, no AI.",
+ what:"Converts data between CSV / JSON / YAML entirely on-device (no AI, no egress). Auto-detects the source format; you give a target.",
+ who:"When you just need a fast, private format flip without a model in the loop.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["CSV/JSON/YAML","the other format"]},
+
+{id:"cut",name:"Cut",cat:"tool",tag:"Paste a transcript — get captions + a cut list.",
+ what:"Turns a video transcript (or rough notes) into a cut plan: on-screen captions plus a highlight cut list (keep MM:SS–MM:SS with a reason) and what to trim.",
+ who:"When you're editing a talking-head video and want the highlights found for you.",
+ surfaces:["browser"], needs:[["Daemon","plain"]],
+ comps:["Web UI"], status:"ship", io:["a transcript","captions + a cut list"]},
+
+{id:"emboss",name:"Emboss",cat:"tool",tag:"Stamp your brand onto documents & export a PDF — on your device, no AI.",
+ what:"Applies your saved brand profile (letterhead, signature, stamp) to a document and composes a branded PDF entirely on-device — no AI, no egress.",
+ who:"When a plain document needs to go out on branded letterhead as a PDF.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["document text","a branded PDF"]},
+
+{id:"feature",name:"Feature Case",cat:"tool",tag:"Make the case for one feature.",
+ what:"An ideabrain idea-studio template that builds the argument for a single feature — problem, case, and plan. Reuses the brandbrain/idea engine with a feature template.",
+ who:"When you need to justify one feature to a team or a roadmap.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["a feature idea","a written case"]},
+
+{id:"flow",name:"Flow",cat:"tool",tag:"Hold a key, talk — clean text lands at your cursor.",
+ what:"A native dictation app (a Wispr-Flow clone): hold the talk chord, speak, release, and cleaned text pastes where your cursor is. Whisper runs on-device; cleanup runs on your own Claude or a local model — no key, no middleman.",
+ who:"When you'd rather talk than type, anywhere on the Mac, without your audio leaving it.",
+ surfaces:["notch"], needs:[["Daemon","plain"],["Native app","amber"]],
+ comps:["Native app"], status:"ship", io:["your voice","clean text at the cursor"]},
+
+{id:"hardware",name:"Hardware Reality Check",cat:"tool",tag:"The hard questions before you tool up.",
+ what:"An ideabrain idea-studio template that surfaces the tough questions before committing to hardware. Reuses the brandbrain/idea engine with a hardware template.",
+ who:"When a hardware idea needs a reality check before you spend on tooling.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["a hardware idea","the hard questions"]},
+
+{id:"identity",name:"Identity",cat:"tool",tag:"A visual identity from a few words.",
+ what:"Composes an AI creator persona — person, voice, look, audience, pillars (one recommended each) — from a one-line brief, filled live on the page. Drafts the persona; doesn't publish it to Cast.",
+ who:"When you're spinning up a creator identity and want a strong first draft.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a one-line brief","a drafted persona"]},
+
+{id:"mkt",name:"Marketplace Validator",cat:"tool",tag:"Is this marketplace worth building? Find out.",
+ what:"An ideabrain idea-studio template that pressure-tests a marketplace idea (liquidity, sides, take-rate). Reuses the brandbrain/idea engine with a marketplace template.",
+ who:"When you're weighing a marketplace and need the two-sided risks named.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["a marketplace idea","a build/skip read"]},
+
+{id:"marquee",name:"Marquee",cat:"tool",tag:"A landing page that ships to a domain.",
+ what:"Builds a cinematic scrolling landing page from one line — a complete self-contained HTML page in the live preview, with its hero painted on your Higgsfield.",
+ who:"When you want a real, shippable landing page from a sentence.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"],["Higgsfield","amber"]],
+ comps:["Web UI"], status:"ship", io:["a one-line brief","a landing page"]},
+
+{id:"meetnotes",name:"Meeting Notes",cat:"tool",tag:"Paste a transcript — get notes + action items.",
+ what:"Turns a meeting transcript or rough notes into clean structured notes: TL;DR, decisions, action items with owners/dues, and open questions.",
+ who:"When you have the transcript and just want the shaped notes.",
+ surfaces:["browser"], needs:[["Daemon","plain"]],
+ comps:["Web UI"], status:"ship", io:["a transcript","structured notes"]},
+
+{id:"palette",name:"Palette",cat:"tool",tag:"Pull a color palette from any image — on your device, no AI.",
+ what:"Extracts a color palette (dominant colors as HEX + RGB) from an image entirely on-device — no AI, no egress. Pick 4, 6, 8 or 12 swatches.",
+ who:"When you want the colors out of an image, privately and instantly.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["an image","HEX/RGB swatches"]},
+
+{id:"pdftools",name:"PDF Tools",cat:"tool",tag:"Merge, split & compress PDFs — on your device, no AI.",
+ what:"Merges, splits or compresses PDFs entirely on-device — no AI, no egress. Files in as data URLs, resulting PDF(s) back out.",
+ who:"When you need quick, private PDF surgery without an online converter.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["PDF(s)","merged/split/compressed PDF"]},
+
+{id:"prism",name:"Prism",cat:"tool",tag:"Generate on-brand images from a prompt.",
+ what:"Generates an image from a text prompt on your Higgsfield, live on the page — optionally guided by a reference image (image-to-image).",
+ who:"When you need on-brand generated imagery from a prompt.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"],["Higgsfield","amber"]],
+ comps:["Web UI"], status:"ship", io:["a prompt (+ reference)","a generated image"]},
+
+{id:"qr",name:"QR",cat:"tool",tag:"Make a QR code from text or a URL — on your device, no AI.",
+ what:"Generates a QR code from text or a URL entirely on-device — no AI. Returns an SVG string and a PNG data URL, with selectable error-correction and size.",
+ who:"When you just need a QR code and don't want to hit a sketchy generator site.",
+ surfaces:["browser","notch"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["text or a URL","an SVG + PNG QR"]},
+
+{id:"reel",name:"Reel",cat:"tool",tag:"Short-form video from a brand kit.",
+ what:"Drafts a promo/launch reel from one line: a 4–6 scene script with each scene painted on your Higgsfield, live on the page. Returns the scenes; it doesn't render the final video.",
+ who:"When you want a scene-by-scene storyboard for a short-form video.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"],["Higgsfield","amber"]],
+ comps:["Web UI"], status:"ship", io:["a one-line brief","a 4–6 scene reel"]},
+
+{id:"resize",name:"Resize",cat:"tool",tag:"Resize, convert & compress images — on your device, no AI.",
+ what:"Resizes, converts and compresses an image entirely on-device — no AI, no egress. Cap the longest side, set an exact width, or scale by percent; choose JPEG/PNG/WebP.",
+ who:"When you need a quick private image resize without an upload.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["On-device · no AI","lime"]],
+ comps:["Web UI"], status:"ship", io:["an image","a resized image"]},
+
+{id:"retail",name:"Retail Concept",cat:"tool",tag:"Reality-check a retail concept.",
+ what:"An ideabrain idea-studio template that reality-checks a physical-retail concept. Reuses the brandbrain/idea engine with a retail template.",
+ who:"When you're weighing a store or retail concept and want the risks named.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["a retail idea","a reality check"]},
+
+{id:"saas",name:"SaaS Thesis",cat:"tool",tag:"Turn a SaaS hunch into a thesis.",
+ what:"An ideabrain idea-studio template that turns a SaaS hunch into a written thesis. Reuses the brandbrain/idea engine with a SaaS template.",
+ who:"When a SaaS hunch needs to become a defensible thesis.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI","ideabrain template"], status:"part", io:["a SaaS hunch","a thesis"]},
+
+{id:"shelf",name:"Shelf",cat:"tool",tag:"Keep inventory honest.",
+ what:"Triages an inventory sheet (CSV of stock + sales) into reorder / watch / dead-weight, an ABC breakdown and one-week plans, rendered as a live board.",
+ who:"For sellers who need to know what to reorder and what's dead weight.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a stock+sales CSV","a reorder board"]},
+
+{id:"studio",name:"Studio",cat:"tool",tag:"Product photography on your own models.",
+ what:"Shoots a product photo on your Higgsfield from a product description, developing it into a contact sheet.",
+ who:"When you need product shots without a physical shoot.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"],["Higgsfield","amber"]],
+ comps:["Web UI"], status:"ship", io:["a product line","a product photo"]},
+
+{id:"take",name:"Take",cat:"tool",tag:"One take, many cuts.",
+ what:"Drafts a recording script — beats for a screen or camera take — from a line describing what you're recording. Renders the recommended script; it doesn't start a recording.",
+ who:"When you want a tight script before you hit record.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["what you're recording","a recording script"]},
+
+/* ===================== SKILL ===================== */
+{id:"actions",name:"Action Items",cat:"skill",tag:"Notes or a transcript into a clean checklist.",
+ what:"Extracts a clean action-item checklist (owners and due dates where implied) from meeting notes or a transcript.",
+ who:"When a wall of notes needs to become a to-do list.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["notes/transcript","an action checklist"]},
+
+{id:"caption",name:"Caption",cat:"skill",tag:"Social captions with hashtags — five options, one pick.",
+ what:"Writes five social captions plus a hashtag set for a post, one marked recommended.",
+ who:"When a post needs a caption and you want options to pick from.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["what the post is","5 captions + hashtags"]},
+
+{id:"clipfix",name:"Clip Doctor",cat:"skill",tag:"Clean up pasted text — quotes, breaks, tracking junk.",
+ what:"Cleans pasted text: fixes smart-quotes, unwraps hard line breaks, strips tracking params from URLs, tidies whitespace.",
+ who:"When you paste something and it arrives mangled.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["messy pasted text","clean text"]},
+
+{id:"coldemail",name:"Cold Email",cat:"skill",tag:"A target and an ask into a short, non-cringe cold email.",
+ what:"Writes a short cold email — subject, body, one clear ask — from a target and an ask.",
+ who:"When you need one crisp outreach email without the cringe.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["target + ask","a cold email"]},
+
+{id:"commit",name:"Commit",cat:"skill",tag:"A diff into a Conventional Commits message.",
+ what:"Writes a Conventional Commits message (typed subject + body bullets) from a diff or change summary.",
+ who:"When you want a clean commit message without composing it by hand.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a diff","a commit message"]},
+
+{id:"compare",name:"Compare",cat:"skill",tag:"Options side by side, pros/cons, one pick.",
+ what:"Compares options side by side with pros/cons each and one recommendation.",
+ who:"When you're stuck between choices and want them laid out.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["A vs B vs C","a comparison + pick"]},
+
+{id:"cron",name:"Cron",cat:"skill",tag:"A schedule into a cron expression, and back to English.",
+ what:"Converts a plain-English schedule into a cron expression (with a human-readable confirmation), or explains a cron expression field by field.",
+ who:"When you can never remember cron syntax.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a schedule or cron line","the other"]},
+
+{id:"docstring",name:"Docstring",cat:"skill",tag:"A function into a clear docstring/JSDoc with an example.",
+ what:"Writes a clear docstring/JSDoc — params, returns, one example — in the language's own convention, from a function's source.",
+ who:"When you want documented functions without writing the boilerplate.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["function source","a docstring"]},
+
+{id:"errslate",name:"Errslate",cat:"skill",tag:"Decode any error or stack trace: meaning, cause, fix.",
+ what:"Decodes an error message or stack trace: what it means, the likely cause, and the fix.",
+ who:"When an error message is opaque and you want the fix fast.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["an error/stack trace","meaning + fix"]},
+
+{id:"explainthis",name:"Explain This",cat:"skill",tag:"Turn confusing text into plain English.",
+ what:"Explains a bit of text in plain English for a smart non-expert.",
+ who:"When something dense needs to be made legible.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["confusing text","plain English"]},
+
+{id:"extract",name:"Extract",cat:"skill",tag:"Pull key fields into a clean labeled list.",
+ what:"Pulls the key fields and entities out of a bit of text into a clean labeled list.",
+ who:"When you need the structured bits out of unstructured text.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["freeform text","a labeled field list"]},
+
+{id:"formula",name:"Formula",cat:"skill",tag:"Plain English into the exact spreadsheet formula.",
+ what:"Writes the exact spreadsheet formula for a plain-English need (Google Sheets + Excel), with one line explaining it.",
+ who:"When you know what you want the sheet to do but not the formula.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a plain-English need","a formula"]},
+
+{id:"gist",name:"Gist",cat:"skill",tag:"Paste anything, get a tight TL;DR.",
+ what:"Summarizes a bit of text into a tight TL;DR (two sentences plus up to four bullets). Also available as a skill God can wear.",
+ who:"When something long needs to become something short.",
+ surfaces:["god","browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI","Skill: summarize"], status:"ship", io:["long text","a TL;DR"]},
+
+{id:"hooks",name:"Hooks",cat:"skill",tag:"Scroll-stopping opening lines for posts, videos, and emails.",
+ what:"Writes seven scroll-stopping opening lines (hooks) for a topic, one marked recommended.",
+ who:"When the first line has to earn the second.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a topic","7 hooks"]},
+
+{id:"nameit",name:"Name It",cat:"skill",tag:"Six strong name options, each with a rationale.",
+ what:"Proposes six strong name options — each with a rationale — for a product, company, feature or project.",
+ who:"When you're naming something and want reasoned options.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a description","6 names + rationales"]},
+
+{id:"objection",name:"Objection",cat:"skill",tag:"A sales or investor objection into a calm, honest response.",
+ what:"Reframes a sales or investor objection and drafts a calm, honest response plus a one-liner.",
+ who:"When you need a composed answer to a hard question.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["an objection","a response + one-liner"]},
+
+{id:"outline",name:"Outline",cat:"skill",tag:"A clean structure for a post, talk, or doc.",
+ what:"Produces a clean hierarchical outline for a post, talk or doc, with a suggested hook and CTA.",
+ who:"When you have a topic and need the skeleton.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a topic","an outline + hook/CTA"]},
+
+{id:"polish",name:"Polish",cat:"skill",tag:"Proofread and clarify — your voice intact.",
+ what:"Proofreads and clarifies a bit of text while keeping the author's voice.",
+ who:"When something's nearly right and needs a final pass.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["rough text","polished text"]},
+
+{id:"recap",name:"Recap",cat:"skill",tag:"Long doc into TL;DR, key points, decisions, next steps.",
+ what:"Summarizes a long doc or thread into a structured recap: TL;DR, key points, decisions, next steps.",
+ who:"When you need to catch up on a long thread fast.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a long doc/thread","a structured recap"]},
+
+{id:"regex",name:"Regex",cat:"skill",tag:"A matching need into a regular expression, with test cases.",
+ what:"Writes a regular expression for a plain-English matching need, with three matching + three non-matching test cases and a brief breakdown.",
+ who:"When you need a regex and proof it works.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a matching need","a regex + tests"]},
+
+{id:"rephrase",name:"Rephrase",cat:"skill",tag:"Rewrite text in any tone — meaning kept.",
+ what:"Rewrites a bit of text in a requested tone/length while keeping its meaning.",
+ who:"When the message is right but the tone isn't.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["text + a tone","rewritten text"]},
+
+{id:"reply",name:"Reply",cat:"skill",tag:"Three replies to any message — concise, warm, firm.",
+ what:"Drafts three reply options — concise, warm, firm — to a message or thread.",
+ who:"When you're not sure how to answer and want options.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a message","3 reply options"]},
+
+{id:"repurpose",name:"Repurpose",cat:"skill",tag:"One piece of content, tuned for every channel.",
+ what:"Rewrites one piece of content into an X thread, a LinkedIn post, an Instagram caption and a short-form video script.",
+ who:"When one thing you made should show up everywhere.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["one piece","four channel versions"]},
+
+{id:"shell",name:"Shell",cat:"skill",tag:"A task into the exact shell command, every flag explained.",
+ what:"Gives the exact shell command(s) for a task, each flag explained, with a warning above anything destructive.",
+ who:"When you know the goal but not the incantation.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a task","a shell command"]},
+
+{id:"snap",name:"Snap Answer",cat:"skill",tag:"One question, one direct answer — no chat thread.",
+ what:"Answers a question directly and concisely on your own Claude — no chat thread, just the answer.",
+ who:"When you want one answer, not a conversation.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a question","a direct answer"]},
+
+{id:"spellout",name:"Spellout",cat:"skill",tag:"A rough phrase into a clear line.",
+ what:"Expands a rough phrase or shorthand into a clear, well-formed sentence or short paragraph, keeping the meaning and voice.",
+ who:"When you have the gist jotted down and need it written out.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["shorthand","a clear line"]},
+
+{id:"standup",name:"Standup",cat:"skill",tag:"Notes or commits into a crisp standup update.",
+ what:"Turns raw notes or commits into a crisp Yesterday / Today / Blockers standup.",
+ who:"When you need a standup update and don't want to think about format.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["notes/commits","a standup update"]},
+
+{id:"steps",name:"Steps",cat:"skill",tag:"Name a goal, get a few step-by-step plans.",
+ what:"Turns a goal into a few distinct step-by-step plans, each a numbered checklist.",
+ who:"When you want more than one way to get somewhere.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a goal","step-by-step plans"]},
+
+{id:"titles",name:"Titles",cat:"skill",tag:"Headline and title options you can A/B.",
+ what:"Writes eight headline/title options for a topic across styles, one marked recommended.",
+ who:"When you want title options to A/B, not just one.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a topic","8 titles"]},
+
+{id:"translate",name:"Translate",cat:"skill",tag:"Translate any text, tone preserved.",
+ what:"Translates a bit of text into a target language, preserving tone.",
+ who:"When you need a translation that doesn't sound like a machine.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["text + a language","a translation"]},
+
+{id:"unjargon",name:"Unjargon",cat:"skill",tag:"Acronyms, legalese, and jargon into plain English.",
+ what:"Decodes dense text — acronyms, legalese, jargon — into plain English.",
+ who:"When a document is armored in jargon.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Your own Claude","indigo"]],
+ comps:["Web UI"], status:"ship", io:["jargon-heavy text","plain English"]},
+
+{id:"yc",name:"YC Application",cat:"skill",tag:"Write YC answers in the house dialect.",
+ what:"Wears the YC register plus live RFS hooks as a skill: answer conversationally and God writes in the dialect, or open the composer to draft in a page. Backed by yc/register and yc/rfs skills.",
+ who:"When you're filling out a YC application and want it to sound like YC.",
+ surfaces:["god","browser"], needs:[["Cloud model","indigo"],["screen-record","amber"]],
+ comps:["Web UI","Skills: register · rfs"], status:"ship", io:["your idea","YC-dialect answers"]},
+
+/* ===================== FUN ===================== */
+{id:"arcana",name:"Arcana",cat:"fun",tag:"A tarot pull with a real read.",
+ what:"Deals a fresh three-card tarot spread for a question and reads it live on the page.",
+ who:"When you want a reflective tarot read, for fun.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["a question","a 3-card read"]},
+
+{id:"natal",name:"NATAL",cat:"fun",tag:"Your chart, read plainly.",
+ what:"Reads a natal/birth chart from birth data (date, place, optional time), rendered on the page.",
+ who:"When you want your astrology chart explained in plain language.",
+ surfaces:["browser"], needs:[["Daemon","plain"],["Local model","indigo"]],
+ comps:["Web UI"], status:"ship", io:["birth data","a plain chart read"]}
+];
+
+/* ---- render ---- */
+const STATUS = {
+  ship:["ship","Shipped — real, deployed build"],
+  part:["part","Shipped — ideabrain template (reuses the idea engine)"],
+  demo:["demo","Demo — one-route prototype"]
+};
+const surfLabel = s => ({browser:"Browser",notch:"Notch",batch:"Batch (headless)",god:"God",native:"Native"}[s]||s);
+
+const nav = document.getElementById('nav');
+const pages = document.getElementById('pages');
+
+CATS.forEach(([cid,label,desc])=>{
+  const group = document.createElement('div');
+  group.className='navgroup'; group.dataset.group=cid;
+  const items = W.filter(w=>w.cat===cid);
+  group.innerHTML = `<div class="glabel">${label}<span class="ct">${items.length}</span></div>`;
+  items.forEach(w=>{
+    const a=document.createElement('a');
+    a.className='navlink'; a.href='#'+w.id; a.dataset.name=w.name.toLowerCase(); a.dataset.id=w.id;
+    a.innerHTML=`<span>${w.name}</span><span class="nid">${w.id}</span>`;
+    group.appendChild(a);
+  });
+  nav.appendChild(group);
+});
+
+W.forEach(w=>{
+  const st = STATUS[w.status];
+  const section=document.createElement('section');
+  section.className='wrapp'; section.id=w.id; section.dataset.name=w.name.toLowerCase(); section.dataset.id=w.id;
+  const surfPills = w.surfaces.map(s=>`<span class="pill">${surfLabel(s)}</span>`).join('');
+  const needPills = w.needs.map(([n,c])=>`<span class="pill ${c}">${n}</span>`).join('');
+  const compPills = w.comps.map(c=>`<span class="pill plain">${c}</span>`).join('');
+  section.innerHTML = `
+    <div class="cat">${w.cat}</div>
+    <h3>${w.name}</h3>
+    <p class="tag">${w.tag}</p>
+    <div class="block"><div class="h">What it does</div><div class="b">${w.what}</div></div>
+    <div class="block"><div class="h">When you'd use it</div><div class="b dim">${w.who}</div></div>
+    ${w.io ? `<div class="block"><div class="h">Flow</div><div class="io"><span class="lbl">${w.io[0]}</span><span class="arrow">→</span>${w.io[1]}</div></div>`:''}
+    <div class="facts">
+      <div class="fact"><div class="k">Category</div><div class="v"><span class="pill">${w.cat}</span></div></div>
+      <div class="fact"><div class="k">Surfaces</div><div class="v">${surfPills}</div></div>
+      <div class="fact"><div class="k">Needs</div><div class="v">${needPills}</div></div>
+      <div class="fact"><div class="k">Components</div><div class="v">${compPills}</div></div>
+      <div class="fact"><div class="k">Status</div><div class="v"><span class="status"><span class="dot ${st[0]}"></span>${st[1]}</span></div></div>
+    </div>`;
+  pages.appendChild(section);
+});
+
+/* ---- filter ---- */
+const q=document.getElementById('q');
+const noresults=document.getElementById('noresults');
+q.addEventListener('input',()=>{
+  const term=q.value.trim().toLowerCase();
+  let anyPage=false;
+  document.querySelectorAll('.navlink').forEach(a=>{
+    const hit=!term || a.dataset.name.includes(term) || a.dataset.id.includes(term);
+    a.classList.toggle('hidden',!hit);
+  });
+  document.querySelectorAll('.navgroup').forEach(g=>{
+    const vis=[...g.querySelectorAll('.navlink')].some(a=>!a.classList.contains('hidden'));
+    g.classList.toggle('empty',!vis);
+  });
+  document.querySelectorAll('.wrapp').forEach(s=>{
+    const hit=!term || s.dataset.name.includes(term) || s.dataset.id.includes(term);
+    s.style.display=hit?'':'none'; if(hit) anyPage=true;
+  });
+  noresults.style.display=anyPage?'none':'block';
+});
+</script>
+</body>
+</html>
