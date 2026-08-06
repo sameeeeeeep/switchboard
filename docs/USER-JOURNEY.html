@@ -1,636 +1,315 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Switchboard — User Journey</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Switchboard — User Journey (wireframes)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{
-  --page:#0A0C10; --panel:#141416; --raised:#1B1B1F; --edge:#282829;
-  --ink:#E8EDF4; --muted:#8891A0; --faint:#63697A;
-  --lime:#C8F250; --indigo:#5B8DEF; --amber:#F5A623; --danger:#FF2D6E; --cyan:#4FD3D0;
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  --accent:var(--lime);
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1180px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:236px 1fr;gap:44px}
-@media(max-width:900px){.wrap{grid-template-columns:1fr;gap:0;padding:0 18px}}
-
-/* ---- Sticky ToC ---- */
-nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:34px 0 40px;border-right:1px solid var(--edge)}
-@media(max-width:900px){nav.toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--edge);padding:20px 0}}
-nav.toc .brand{font-weight:680;letter-spacing:-.01em;font-size:15px;margin-bottom:2px}
-nav.toc .brandsub{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:22px}
-nav.toc a{display:block;color:var(--muted);text-decoration:none;font-size:12.5px;padding:3px 0;border-left:2px solid transparent;padding-left:12px;margin-left:-2px;transition:color .12s}
-nav.toc a:hover{color:var(--ink)}
-nav.toc a.sec{color:var(--ink);font-weight:600;margin-top:16px;font-size:12px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;border:0;padding-left:0}
-nav.toc a.num{color:var(--faint);font-family:var(--mono);font-size:10px;margin-right:7px}
-
-/* ---- Content ---- */
-main{padding:40px 0 120px;min-width:0}
-.kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
-h1{font-size:36px;line-height:1.08;letter-spacing:-.02em;font-weight:720;margin:0 0 16px}
-h1 .sub{display:block;color:var(--muted);font-size:17px;font-weight:400;letter-spacing:0;margin-top:12px;max-width:60ch;line-height:1.5}
-h2{font-size:24px;letter-spacing:-.015em;font-weight:680;margin:0 0 6px;scroll-margin-top:20px}
-h3{font-size:16.5px;letter-spacing:-.01em;font-weight:640;margin:26px 0 8px;color:var(--ink)}
-section{padding:44px 0;border-top:1px solid var(--edge)}
-section:first-of-type{border-top:0;padding-top:8px}
-p{margin:0 0 14px;color:var(--ink)}
-p.lead{color:var(--muted);max-width:70ch}
-.sechead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
-.sechead .idx{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
-a.inl{color:var(--indigo);text-decoration:none;border-bottom:1px solid rgba(91,141,239,.35)}
-code,.mono{font-family:var(--mono);font-size:.86em}
-code{background:var(--raised);border:1px solid var(--edge);border-radius:5px;padding:1px 6px;color:var(--cyan)}
-.muted{color:var(--muted)}
-.faint{color:var(--faint)}
-strong{color:var(--ink);font-weight:640}
-hr{border:0;border-top:1px solid var(--edge);margin:26px 0}
-
-/* pills */
-.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap;vertical-align:middle}
-.pill.shipped{color:#0A0C10;background:var(--lime);border-color:var(--lime);font-weight:700}
-.pill.partial{color:var(--amber);border-color:rgba(245,166,35,.4)}
-.pill.mock{color:var(--indigo);border-color:rgba(91,141,239,.45)}
-.pill.asp{color:var(--faint);border-color:var(--edge)}
-.pill.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-.pill.lime{color:var(--lime);border-color:rgba(200,242,80,.4)}
-.pill.amber{color:var(--amber);border-color:rgba(245,166,35,.4)}
-.pill.danger{color:var(--danger);border-color:rgba(255,45,110,.4)}
-.pill.indigo{color:var(--indigo);border-color:rgba(91,141,239,.4)}
-
-/* callouts */
-.note{border:1px solid var(--edge);border-left:2px solid var(--accent);background:var(--panel);border-radius:8px;padding:14px 18px;margin:18px 0;font-size:13.5px}
-.note .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
-.note.warn{border-left-color:var(--amber)} .note.warn .lbl{color:var(--amber)}
-.note.honest{border-left-color:var(--indigo)} .note.honest .lbl{color:var(--indigo)}
-
-/* steps */
-ol.steps{counter-reset:s;list-style:none;padding:0;margin:16px 0}
-ol.steps>li{counter-increment:s;position:relative;padding:8px 0 8px 42px;border-bottom:1px solid var(--edge)}
-ol.steps>li:last-child{border-bottom:0}
-ol.steps>li::before{content:counter(s);position:absolute;left:0;top:7px;width:26px;height:26px;border-radius:7px;background:var(--raised);border:1px solid var(--edge);color:var(--accent);font-family:var(--mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
-
-/* screens list */
-ul.screens{list-style:none;padding:0;margin:14px 0}
-ul.screens li{padding:9px 0;border-bottom:1px solid var(--edge);display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:baseline}
-@media(max-width:640px){ul.screens li{grid-template-columns:1fr;gap:2px}}
-ul.screens li:last-child{border-bottom:0}
-ul.screens .nm{font-weight:600;font-size:13.5px}
-ul.screens .nm .k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);display:block;margin-top:2px}
-ul.screens .ds{color:var(--muted);font-size:13px}
-
-/* decision chips */
-.decis{margin:14px 0;padding:14px 16px;border:1px dashed var(--edge);border-radius:8px;background:rgba(255,255,255,.012)}
-.decis .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
-.decis ul{margin:0;padding-left:18px}
-.decis li{margin:4px 0;color:var(--ink);font-size:13.5px}
-
-/* tables */
-.tbox{overflow-x:auto;margin:16px 0;border:1px solid var(--edge);border-radius:10px}
-table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
-th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--edge);vertical-align:top}
-th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--panel);position:sticky;top:0}
-tr:last-child td{border-bottom:0}
-td.mono,th.mono{font-family:var(--mono);font-size:11.5px}
-td .st{color:var(--cyan);font-family:var(--mono);font-size:11px}
-tbody tr:hover{background:rgba(255,255,255,.014)}
-
-.legend{display:flex;flex-wrap:wrap;gap:10px 20px;margin:18px 0 6px;font-size:12.5px;color:var(--muted)}
-.legend span{display:inline-flex;align-items:center;gap:7px}
-
-.spineflow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0}
-.spineflow .rung{border:1px solid var(--edge);border-radius:7px;padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel)}
-.spineflow .rung b{color:var(--ink);font-weight:600}
-.spineflow .arw{color:var(--faint)}
-.spineflow .rung.rdy{border-color:var(--lime);color:var(--lime)}
-
-footer{color:var(--faint);font-size:12px;padding:30px 0 60px;border-top:1px solid var(--edge)}
-</style>
-</head>
-<body>
-<div class="wrap">
-
-<nav class="toc">
-  <div class="brand">Switchboard</div>
-  <div class="brandsub">User Journey · companion to the PRD</div>
-  <a href="#intro" class="sec">Overview</a>
-  <a href="#spine"><span class="num">00</span>The spine — one ladder</a>
-  <a href="#journeys" class="sec">Journeys</a>
-  <a href="#j1"><span class="num">01</span>Discover &amp; install</a>
-  <a href="#j2"><span class="num">02</span>First-run onboarding</a>
-  <a href="#j3"><span class="num">03</span>Use a wrapp — core loop</a>
-  <a href="#j4"><span class="num">04</span>The menu-bar panel</a>
-  <a href="#j5"><span class="num">05</span>The store</a>
-  <a href="#j6"><span class="num">06</span>Notch / Presence</a>
-  <a href="#j7"><span class="num">07</span>God</a>
-  <a href="#j8"><span class="num">08</span>Autopilot / Company-OS</a>
-  <a href="#j9"><span class="num">09</span>Team Mode &amp; Bank</a>
-  <a href="#states" class="sec">Reference</a>
-  <a href="#states"><span class="num">S</span>States by surface</a>
-  <a href="#edges"><span class="num">E</span>Edge cases</a>
-  <a href="#audit"><span class="num">A</span>Audit — shipped vs not</a>
-</nav>
-
-<main>
-
-<!-- ===================== INTRO ===================== -->
-<section id="intro">
-  <p class="kicker">The last prompt · private · local · yours</p>
-  <h1>The Switchboard User Journey
-    <span class="sub">A narrative companion to the PRD. It walks every journey end to end — states, edge cases, and the honest boundary between what ships today and what is still a drawing — as prose and tables, not a canvas.</span>
-  </h1>
-  <p class="lead">Switchboard runs <em>your own</em> Claude across every app you use. A stranger installs two halves (a Chrome extension and a notarized Mac app), signs into a third thing (Claude Code), pairs a fourth (this browser to the local daemon), then approves a scope — before anything happens. Every one of those is a place to lose them. This document is the map of that path and everything hanging off it.</p>
-
-  <div class="note honest">
-    <div class="lbl">How to read the status marks</div>
-    Every screen and state carries an honest mark. This document trusts the <strong>code</strong> over the docs, and keeps the marks the audit assigned.
-    <div class="legend" style="margin-top:12px">
-      <span><span class="pill shipped">shipped</span> in main / live — code exists and is exercised</span>
-      <span><span class="pill partial">partial</span> real code with a named gap — the honest majority</span>
-      <span><span class="pill mock">mock</span> renders but doesn't persist or isn't in the shipped surface</span>
-      <span><span class="pill asp">aspirational</span> designed in docs, not built</span>
-    </div>
-  </div>
-
-  <div class="note">
-    <div class="lbl">The one invariant, restated</div>
-    The engine drafts and decides. <strong>A human gates every irreversible act.</strong> <strong>Connectors act, not the engine.</strong> The per-action consent gate — exact-match, fail-closed — is the moat, and it is the same gate whether the caller is a wrapp, God, or Autopilot.
-  </div>
-</section>
-
-<!-- ===================== SPINE ===================== -->
-<section id="spine">
-  <div class="sechead"><span class="idx">00</span><h2>The spine — one setup ladder</h2></div>
-  <p class="lead">Every readiness question the product can ask is one rung of a single, strictly-ordered ladder in <code>packages/protocol/src/health.ts</code>. Rung <em>N</em> is meaningless until <em>N−1</em> holds. The ladder is rendered the <strong>same way everywhere</strong> — the connect chip on the page, the widget, and the menu-bar panel all read <code>HealthStatus.stage</code> and never re-derive it. Surfacing the <em>first unmet rung only</em> is what stops four simultaneous nags.</p>
-
-  <div class="spineflow">
-    <span class="rung"><b>0</b> no-extension</span><span class="arw">→</span>
-    <span class="rung"><b>1</b> no-app</span><span class="arw">→</span>
-    <span class="rung"><b>2</b> app-asleep</span><span class="arw">→</span>
-    <span class="rung"><b>3</b> unpaired</span><span class="arw">→</span>
-    <span class="rung"><b>4</b> signed-out</span><span class="arw">→</span>
-    <span class="rung"><b>5</b> disconnected</span><span class="arw">→</span>
-    <span class="rung"><b>6</b> unmet</span><span class="arw">→</span>
-    <span class="rung rdy"><b>7</b> ready</span>
-  </div>
-
-  <div class="tbox">
-  <table>
-    <thead><tr><th>#</th><th>Rung</th><th>Holds when</th><th>Primary owner (who resolves it)</th><th>Mark</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">0</td><td class="mono">no-extension</td><td><code>window.claude</code> absent</td><td>page chip — you are where the intent is</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">1</td><td class="mono">no-app</td><td>extension present, <code>installedHere === false</code></td><td>page chip + panel card</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">2</td><td class="mono">app-asleep</td><td><code>installedHere</code> true, <code>reachable === false</code></td><td>page chip + menubar glyph; panel shows calm "asleep" card</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">3</td><td class="mono">unpaired</td><td><code>reachable</code> true, <code>paired === false</code></td><td>side panel — the token input lives there</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">4</td><td class="mono">signed-out</td><td>paired, but no backend has models</td><td>menubar — the invisible cliff (§4 of STATES)</td><td><span class="pill partial">partial</span></td></tr>
-      <tr><td class="mono">5</td><td class="mono">disconnected</td><td>signed in, this origin has no grant</td><td>page chip — per-origin, on the page</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">6</td><td class="mono">unmet</td><td>connected, grant lacks something the app needs</td><td>consent sheet at connect, then the app's surface</td><td><span class="pill partial">partial</span></td></tr>
-      <tr><td class="mono">7</td><td class="mono st">ready</td><td>—</td><td>—</td><td><span class="pill shipped">shipped</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-
-  <p>Two lanes hang <em>off the side</em> of the ladder because they are opt-in and their absence is not a failure: <strong>team</strong> (off / off-ladder / hosting / joined) and <strong>cloud</strong> (off / keyed / entitled). They must never block or decorate rungs 0–7.</p>
-
-  <h3>The rules about when to speak</h3>
-  <p>The failure mode is not "no guidance" — it is guidance that fires on arrival, four times at once, or nags about rung 6 while rung 1 is unmet. Five rules hold everywhere:</p>
-  <div class="decis">
-    <div class="lbl">Quieting rules (docs/STATES.md §3)</div>
-    <ul>
-      <li><strong>One rung at a time.</strong> Render <code>stage</code>, never a checklist. The ordinal guarantees it.</li>
-      <li><strong>At the moment of intent, not on arrival.</strong> A first-timer gets the page, not a wall; guidance appears when they press the thing that needs the missing piece.</li>
-      <li><strong>Never a dead end.</strong> Every state has exactly one primary action and it is never disabled — <em>"the button is NEVER dead"</em> (<code>sidepanel.ts</code>).</li>
-      <li><strong>Sticky bits beat probes for negative claims.</strong> Never render "you don't have X" — render "we haven't seen X on this machine." True, reversible, degrades correctly when a probe is slow.</li>
-      <li><strong>Calm words.</strong> <code>on</code> / <code>pair to finish setup</code> / <code>sidekick asleep</code> / <code>not set up</code>. Amber for asleep; <strong>red only for a genuine mismatch</strong> (a rejected token).</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== JOURNEYS HEADER ===================== -->
-<section id="journeys" style="padding-bottom:8px">
-  <p class="kicker">Nine journeys, end to end</p>
-  <h2 style="font-size:20px">Each journey below gives the happy path as numbered steps, the screens involved (named, one line each), and the decision points — then the states, edges, and audit follow as reference tables.</h2>
-</section>
-
-<!-- ===================== J1 INSTALL ===================== -->
-<section id="j1" style="--accent:var(--lime)">
-  <div class="sechead"><span class="idx">01</span><h2>Discover &amp; install</h2></div>
-  <p class="lead">A two-part install (Chrome extension + notarized Mac DMG) then pairing the browser to the local daemon. This is the longest, leakiest stretch of the funnel — and the copy-paste token is its sharpest friction point.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>Visitor lands on the marketing page, reads "run your own Claude across every app," and presses <strong>Get Switchboard</strong>.</li>
-    <li>They install <strong>step A — the Chrome extension</strong> from the Web Store (<code>window.claude</code> now injects on allowlisted origins).</li>
-    <li>They install <strong>step B — the Mac app</strong>: drag <code>Switchboard.dmg</code> (~207&nbsp;MB) into <code>/Applications</code>. The installer refuses to plant the LaunchAgent anywhere else (a Gatekeeper-translocation defense).</li>
-    <li>First launch: the menu-bar app comes up <span class="pill lime dot">running</span> and shows a pairing token (e.g. <code>A1B2-C3D4</code>), stored <code>0600</code> in <code>~/.relay</code>.</li>
-    <li>In the extension side panel the user follows the 3-step card: find the menu-bar mark → copy the token → paste &amp; <strong>Pair</strong>.</li>
-    <li>Paired. They are on rung 3 — but still one short: Claude Code sign-in (rung 4) surfaces later, not here.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Landing page <span class="k">marketing · separate repo</span></span><span class="ds">"Run your own Claude…" hero, single download button, macOS-13+/Apple-Silicon fine print. <span class="pill partial">partial</span> — lives in the <code>the-last-prompt</code> deploy repo; <code>docs/index.html</code> is a redirect.</span></li>
-    <li><span class="nm">Two-part install <span class="k">flow</span></span><span class="ds">Step A "Add to Chrome" + step B "drag to /Applications." <span class="pill shipped">shipped</span> — signed + notarized since 0.1.3; first launch just works.</span></li>
-    <li><span class="nm">First launch + pairing <span class="k">menubar + side panel</span></span><span class="ds">Menu-bar shows status + token button; side panel shows the 3-step paste card. <span class="pill shipped">shipped</span>.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Arch check (missing).</strong> The button ships one arm64 DMG to everyone — no OS/arch detection exists repo-wide. An Intel-Mac or Windows visitor gets a dead download. <span class="pill asp">aspirational</span></li>
-      <li><strong>Paired?</strong> On success → onboarding. Token mismatch → the panel goes red and the button re-arms for a re-paste (the one justified red state). <span class="pill shipped">shipped</span></li>
-    </ul>
-  </div>
-  <div class="note warn"><div class="lbl">Honest boundary</div>The tokenless "dial" (hello → approve → mint) is specced in <code>PAIRING.md</code> but <strong>not built</strong>. Copy-paste-token is the real friction of the whole funnel.</div>
-</section>
-
-<!-- ===================== J2 ONBOARDING ===================== -->
-<section id="j2" style="--accent:var(--indigo)">
-  <div class="sechead"><span class="idx">02</span><h2>First-run onboarding</h2></div>
-  <p class="lead">A menu-bar popover, a readiness ladder that shows only the first unmet rung, and a teach-by-doing strip that carries a stranger to their first connected wrapp. A file marker at <code>~/.relay/onboarded</code> stops it replaying.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>Right after install, a <strong>first-run popover</strong> appears once: "Let's get you running." The user presses <strong>Start setup</strong> (or Skip).</li>
-    <li>The <strong>setup ladder</strong> renders the first unmet rung — daemon ✓, signed-in ✓, then "Senses (screen · mic) — now." They grant senses.</li>
-    <li>The <strong>teach-by-doing strip</strong> teaches three gestures by doing them: <code>⌃⌃</code> launcher, <code>⚙</code> settings, <code>⌃⌥</code> summon God. It auto-advances per gesture.</li>
-    <li>They <strong>pick a first wrapp</strong> (ideabrain / flow / redline) and press Open &amp; connect — which hands them straight into the core loop.</li>
-    <li><code>~/.relay/onboarded</code> is written; the tour won't replay. "Replay the welcome tour" in Settings re-arms it.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">First-run popover <span class="k">menubar · once</span></span><span class="ds">Welcome + Start setup / Skip. <span class="pill shipped">shipped</span> (0.2.8); <code>~/.relay/onboarded</code> prevents replays.</span></li>
-    <li><span class="nm">Setup ladder <span class="k">first unmet rung</span></span><span class="ds">One ordinal, three consumers; surfaces only the first unmet rung, never re-derives. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Teach-by-doing strip <span class="k">practice</span></span><span class="ds">Learn the three gestures by performing them. <span class="pill shipped">shipped</span> — auto-advances (unverified on a signed build); house fonts not yet dropped (system-font fallback).</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Skip vs Start.</strong> Skip leaves the ladder resolvable later from any surface; nothing dead-ends.</li>
-      <li><strong>Connect a first wrapp.</strong> The choice of first "aha" wrapp hands the user into Journey 03. <span class="pill shipped">shipped</span></li>
-    </ul>
-  </div>
-  <div class="note honest"><div class="lbl">Open question</div>The 8-rung ladder itself is <span class="pill partial">partial</span>: <code>signed-out</code> (4, red menubar glyph) and <code>unmet</code> (6, needs resolver) are the two soft rungs. <code>signedIn</code> is a sticky verdict + <code>~/.claude.json</code> marker, not <code>models.length</code>.</div>
-</section>
-
-<!-- ===================== J3 CORE LOOP ===================== -->
-<section id="j3" style="--accent:var(--cyan)">
-  <div class="sechead"><span class="idx">03</span><h2>Use a wrapp — the core loop</h2></div>
-  <p class="lead">The heart of the product: open a wrapp → connect chip → per-origin consent → single input → options + one recommended → per-action gate on every write. This is where the consent grammar is taught and where the moat lives.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>The user opens a wrapp (say <strong>ideabrain</strong>). Its header mounts the <strong>connect chip</strong> — the one affordance every wrapp carries, the MetaMask-account button of Switchboard, rendered in a shadow root so host CSS can't restyle it.</li>
-    <li>The chip reads its way up the ladder and settles on <strong>Connect Switchboard</strong>. The user clicks it.</li>
-    <li>The <strong>connect-consent card</strong> appears: the models, tools, budget and context the wrapp is asking for, plus a <em>why</em>. The <strong>needs resolver</strong> checks what the grant is missing. The user presses <strong>Allow</strong> — the grant is created, never wider than requested.</li>
-    <li>The chip flips to the <strong>identity pill</strong> ("Hi Sameep · StayOften"). The user types one line into the wrapp's single input and presses the primary action.</li>
-    <li>Streaming deltas render. A write-class call (e.g. <code>__generate_image</code>) trips the <strong>per-action consent</strong> card — the moat. The user Allows this one action.</li>
-    <li>Results land: ideabrain returns a single <strong>verdict card</strong>; redline returns <strong>A/B/C options with one ⭐recommended</strong>, and "Lock" writes the real file.</li>
-    <li>Grants, budgets, trust-mode and revoke all live in the <strong>side panel</strong> — the chip carries identity only. Context lending rides in from the menu-bar panel's context selector.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Connect chip <span class="k">shadow root · 6 states</span></span><span class="ds">Identity-only header affordance; <code>State = booting | not-installed | unreachable | unpaired | disconnected | connected</code>. <span class="pill shipped">shipped</span> — <code>rungFromError</code> covers old extensions.</span></li>
-    <li><span class="nm">Connect-consent card <span class="k">rung 5a</span></span><span class="ds">Models · Tools · Budget · Context, each a row, with a <em>why</em>. <span class="pill partial">partial</span> — native card is binary Allow/Deny; silently drops unavailable models (→ <code>SCOPE_EXCEEDED</code>) and renders tools for connectors you may not have (→ <code>unknown_tool</code>).</span></li>
-    <li><span class="nm">Per-action consent <span class="k">rung 5b · the moat</span></span><span class="ds">"Allow this action?" — call name, args, class, token cost. <span class="pill shipped">shipped</span> — exact-match, fail-closed; Deny is default-safe; classifier defaults to WRITE; 120s timeout fails closed.</span></li>
-    <li><span class="nm">Representative wrapp <span class="k">ideabrain / redline</span></span><span class="ds">Single input → streamed result. ideabrain = one verdict card; redline = options + one starred pick → Lock writes a real file. Disconnected shows a dashed sample block. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Needs resolver <span class="k">rung 6</span></span><span class="ds">Met / substitute? / unknown, per connector class. <span class="pill partial">partial</span> — substitution offer designed; claude.ai connectors are unenumerable → <code>inherited:"unknown"</code>; today the gap surfaces at invoke as <code>unknown_tool</code>.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Allow / Deny at connect.</strong> Grant created only on Allow, scoped to the request.</li>
-      <li><strong>Grant mode governs every write:</strong> <code>ask</code> (default → surfaces the per-action card) · <code>trust</code> (auto-allow within grant) · <code>readonly</code> (refuses writes). Set in the side panel / daemon <code>setMode</code>, not on the chip.</li>
-      <li><strong>Needs met / substitute / blocked.</strong> A missing <em>optional</em> need degrades to a quieter app; only a missing <em>required</em> need blocks, and it blocks with a remedy.</li>
-    </ul>
-  </div>
-  <div class="note honest"><div class="lbl">The house atom</div>One input → options + one starred pick is the pattern the wrapp doctrine converges on. ideabrain returns a verdict; redline returns options — both drafts, both gated on write.</div>
-</section>
-
-<!-- ===================== J4 PANEL ===================== -->
-<section id="j4" style="--accent:var(--amber)">
-  <div class="sechead"><span class="idx">04</span><h2>The menu-bar panel</h2></div>
-  <p class="lead">The black window that drops from the notch — connected apps, the model cloud (cloud + local), tools, context, settings, and the daemon controls. It's the OS surface: the always-there home for everything the chip deliberately doesn't carry.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>The user clicks the menu-bar mark; the panel drops from the notch (620pt) in its <strong>expanded</strong> state.</li>
-    <li>Left rail: a DotMatrix status ("Working — flow · transcription 3s"), the <strong>context selector</strong> ("No context" by default), and daemon controls (logs · restart · ⚙ · power).</li>
-    <li>Right pane: <strong>connected apps</strong> (favicon tiles + a store button), the <strong>command centre</strong> model list (Opus / Sonnet / Haiku + local llama), and the <strong>tools</strong> list.</li>
-    <li>They flip <code>⚙</code> to <strong>Settings</strong> — nine accordion rows — or press <code>⌥⌥</code> to open the <strong>notch launcher</strong>.</li>
-    <li>A <strong>stale-daemon banner</strong> ("Update ready — restart") appears when the bundle mtime outruns the running pid; Restart resolves it.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Menu-bar panel <span class="k">expanded · 620pt</span></span><span class="ds">Left status/context/daemon column + right apps/models/tools rails. <span class="pill partial">partial</span> — only the expanded state is built; the closed grey-dot pill + hover-peek is the next task. Team is NOT mounted here.</span></li>
-    <li><span class="nm">Settings <span class="k">accordion · 9 rows</span></span><span class="ds">Name · God's voice · Mode · Models · Shortcuts · What God sees · Connections + Replay tour. <span class="pill shipped">shipped</span> — ≤1 open at a time; "Economy" writes <code>~/.relay/economy</code>, a model deny-list (opus→sonnet→haiku), never a silent hosted/local swap.</span></li>
-    <li><span class="nm">Notch launcher <span class="k">⌥⌥ · HOME / SPOTLIGHT</span></span><span class="ds">Jump-back-in + recent, or typed query → grouped results; a file-drop bar makes it file-first. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Context selector <span class="k">running only</span></span><span class="ds">Lends a project (a Bank vault) into every wrapp's grant as the Context row; default "No context." <span class="pill shipped">shipped</span>.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Which context to lend.</strong> Default is none; the lent project rides into consent, so it is an explicit privacy opt-in.</li>
-      <li><strong>Economy mode.</strong> A post-gate model downgrade — no extra grant needed, and it can't do tools locally, so tool calls stay on the hosted route.</li>
-      <li><strong>Stale daemon → Restart.</strong> The detector is real; the version train (Info.plist / manifest / tag) drifts, so the number a user reads isn't yet trustworthy. <span class="pill partial">partial</span></li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== J5 STORE ===================== -->
-<section id="j5" style="--accent:var(--lime)">
-  <div class="sechead"><span class="idx">05</span><h2>The store</h2></div>
-  <p class="lead">Two real tiers over <code>~/.relay/catalog.json</code> (~76 entries): a featured front and a classic rail/detail. "Add local" is real; GitHub import and live skins are drawings.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>From the panel's STORE button, the user lands on the <strong>featured front</strong> (Tier 1): category chips (All / Apps / Skills) with real counts, "apps we love right now," and the honest pitch <em>"Free · runs on your Claude."</em></li>
-    <li>They browse into the <strong>classic view</strong> (Tier 2): a category rail + a detail pane showing what a wrapp is "made of" (skills · workflows · UI) and what it "needs."</li>
-    <li>They install via one of three doors: <strong>Get</strong> (from the catalog), <strong>Add local</strong> (a folder picker that validates <code>switchboard.json</code>), or GitHub import (a gap).</li>
-    <li>Install hands them into the core loop (Journey 03) via the connect chip.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Store — featured <span class="k">Tier 1</span></span><span class="ds">App-Store-style front, real category counts. <span class="pill shipped">shipped</span> — Add local is a real folder picker validating <code>switchboard.json</code>.</span></li>
-    <li><span class="nm">Store — classic <span class="k">Tier 2 · rail + detail</span></span><span class="ds">Backed by <code>catalog.json</code> + bundled fallback; icons from <code>Resources/icons/&lt;id&gt;.png</code>. <span class="pill shipped">shipped</span> — the NEEDS resolver is honestly read-only (fill-drawer is Phase 2).</span></li>
-    <li><span class="nm">GitHub import (+Create) <span class="k">paste an OSS link</span></span><span class="ds">AI assesses port-readiness → add as a wrapp. <span class="pill asp">aspirational</span> — port-assess and Spotify-style rev-share monetisation both unbuilt.</span></li>
-    <li><span class="nm">Skins <span class="k">live renderers</span></span><span class="ds">One catalog, N live-switchable layout renderers + DESIGN.md tokens. <span class="pill mock">mock</span> — 4-skin demo artifact, not wired into the shipped store.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>How to add:</strong> Get (catalog) · Add local (folder) — both real — vs GitHub import (gap).</li>
-      <li><strong>"Resolve 2 &amp; Run".</strong> Honest-read only today — connector/native reqs aren't yet observable, so the button promises more than the fill-drawer can keep. <span class="pill partial">partial</span></li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== J6 PRESENCE ===================== -->
-<section id="j6" style="--accent:var(--indigo)">
-  <div class="sechead"><span class="idx">06</span><h2>The notch / Presence (Guru)</h2></div>
-  <p class="lead">One card grammar — <strong>ask · guide · notify</strong> — that descends from the notch, is clickable there, carries provenance (thread · project), and returns an answer as JSON. The founder works away from the terminal; presence is how any thread reaches them.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>A Claude Code thread (say <em>migrate-db</em>) needs a decision. It raises a <strong>presence card</strong> that descends from the notch, headed with its provenance (◆ StayOften).</li>
-    <li>The card shows the question and options: <code>⌥1 Ship ⭐ · ⌥2 Hold · ⌥3 Ask me later</code>. It's clickable at the notch (bounded hit-rect; the rest stays click-through); dock/cursor placements use the ⌥-keys.</li>
-    <li>The human answers. The answer returns as JSON and appends to <code>guide-history.jsonl</code>.</li>
-    <li>A <strong>guide</strong> card instead runs a walkthrough — a ring points at the target; if a sense is missing it degrades to "do it yourself, then ⌥→." A <strong>notify</strong> card carries an action row.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Presence card <span class="k">notch · clickable</span></span><span class="ds">Provenance header + question + option row; answer returns as JSON. <span class="pill shipped">shipped</span> — the full <code>window.claude.ask</code> verb + queue polish is deferred.</span></li>
-    <li><span class="nm">Card shapes <span class="k">ask / guide / notify</span></span><span class="ds">One card, three shapes; provenance on all. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Guide lifecycle <span class="k">arming → summary</span></span><span class="ds">arming → waiting → sensing → advancing → summary → aborted; never dead-ends; single on-screen cursor enforced. <span class="pill shipped">shipped</span>.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Urgency.</strong> ambient (auto-dismiss, no sound) · normal (waits, single chime) · blocking (stays until answered).</li>
-      <li><strong>Queue.</strong> One card on screen at a time; the pill shows <code>+1</code> when queued.</li>
-      <li><strong>Caller gone.</strong> Resolves locally but is still written — the answer isn't lost even if the asker left. <span class="pill shipped">shipped</span></li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== J7 GOD ===================== -->
-<section id="j7" style="--accent:var(--cyan)">
-  <div class="sechead"><span class="idx">07</span><h2>God</h2></div>
-  <p class="lead"><code>⌃⌥</code> summons an ambient assistant that <strong>sees</strong> (screencap + vision), <strong>speaks</strong> (native MLX TTS), <strong>points</strong> (<code>[POINT:x,y]</code>), and <strong>acts</strong> via gated, audited hands — the same gate as every wrapp.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>The user holds <code>⌃⌥</code>. The glow cursor arms → listening (live transcript). God sees the screen via screencap + vision (it auto-treats on-screen text as untrusted).</li>
-    <li>God answers by speaking, and can point with <code>[POINT:x,y]</code> or open a draggable canvas (Save / Copy).</li>
-    <li>To <em>act</em>, God's hands (open / type / click / key + <code>[RUN]</code> a wrapp) run inside a floating WKWebView with an injected <code>window.claude</code> shim.</li>
-    <li>Any write trips <strong>"Allow this action?"</strong> — the same fail-closed, audited gate every wrapp uses (trust-mode grant + per-action notch gate).</li>
-    <li>The menu-bar dot maps to health: lime idle · slate offline · <span class="pill danger">red signed-out</span>.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">God — notch states <span class="k">⌃⌥ hold</span></span><span class="ds">dot idle → working (breathing) → listening (transcript) → canvas → consent. <span class="pill shipped">shipped</span> — persona is swappable JSON; can load offscreen so the notch drop is the surface.</span></li>
-    <li><span class="nm">God cursor + health <span class="k">glow states</span></span><span class="ds">Full-screen, click-through cursor; health colour maps to the dot. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Allow this action? <span class="k">same gate</span></span><span class="ds">God's hands ride each wrapp's own gate + audit, not a new one. <span class="pill shipped">shipped</span>.</span></li>
-    <li><span class="nm">Permission grants <span class="k">AX · Screen · Mic</span></span><span class="ds">TCC grants; Accessibility is drag-in. <span class="pill shipped">shipped</span> — signing-identity changes churn TCC grant persistence.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Senses granted?</strong> Missing AX/Screen/Mic → onboarding re-requests; God never silently fails.</li>
-      <li><strong>Every hand is a gated action.</strong> Reversible → trust-mode auto within grant; irreversible → the per-action card.</li>
-      <li><strong>Hands = reused wrapp actions.</strong> God grows by <code>[RUN]</code>-ing existing actions via the switchboard connector, not by rebuilding them. <span class="pill partial">partial</span> — God is per-hotkey, not self-running; the observe→act loop and AX-tree targeting are still ahead.</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== J8 AUTOPILOT ===================== -->
-<section id="j8" style="--accent:var(--amber)">
-  <div class="sechead"><span class="idx">08</span><h2>Autopilot / Company-OS</h2></div>
-  <p class="lead">A portfolio of companies, each drilling into a command centre read as an <strong>autonomy gradient</strong>: <em>Made · Waiting · Your call</em>. Every move is sorted by one question — <em>can this be undone?</em> Reversible moves run while you sleep; irreversible ones wait at a gate for one tap; strategic ones surface as decisions only you can make.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>The founder locks a company's <strong>4 decisions</strong> (Offer · Who · Edge · Model — draft is the machine's, <strong>lock is yours</strong>). The daily loop reads Identity and drafts 3–5 highest-leverage moves.</li>
-    <li>The <strong>portfolio</strong> shows every company advancing at once: "made 3 · waiting 2 · calls 1."</li>
-    <li>Drilling into a <strong>command centre</strong>, the reading order <em>is</em> the gradient: <strong>Made</strong> (reversible, done — a draft filed in Bank) → <strong>Waiting</strong> (gated, one tap) → <strong>Your call</strong> (founder decision).</li>
-    <li>For a Waiting move, God prepares the exact content as a reversible <strong>preview</strong>. The founder reviews the real thing and presses <strong>Approve &amp; send</strong> — which calls <code>relay__autopilot_dispatch</code> through a connected sender and the daemon's gate.</li>
-    <li>If no sender is connected for that channel, the button is honestly <strong>Connect to send</strong>; the move stays staged. <strong>Zero unattended sends, ever.</strong></li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Portfolio <span class="k">many companies</span></span><span class="ds">Per-company made/waiting/calls counts, reads real portfolio storage. <span class="pill partial">partial</span> — the cockpit runs at sameep.ai, NOT in the manifest allowlist, so in-extension it's only been tested with a mock provider.</span></li>
-    <li><span class="nm">Command centre <span class="k">drill-in · gradient</span></span><span class="ds">Identity above; Made / Waiting / Your call lanes. <span class="pill partial">partial</span> — "Approve &amp; send" calls <code>relay__autopilot_dispatch</code>; <code>routineDispatch/pageDispatch</code> is the one audited outward path.</span></li>
-    <li><span class="nm">Company-OS states <span class="k">8 states</span></span><span class="ds">fresh · running · awaiting you · paused · out-of-runway · no-connector · failed · no-sender. <span class="pill partial">partial</span> — out-of-runway isn't rendered in <code>cockpit.html</code> (metering lives only in the separate autopilot/index.html).</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">The gradient — who acts</div>
-    <ul>
-      <li><strong>Reversible → autopilot / God's hands.</strong> Produces a draft or artifact; undoing it is deleting a draft. <span class="pill shipped">shipped</span></li>
-      <li><strong>Irreversible → gate, one tap.</strong> Publish / send / deploy / charge. The send line never moves; no autonomy promotes a GATE move.</li>
-      <li><strong>Strategic → founder decision.</strong> Hiring, pricing, legal, relationship. God never touches these.</li>
-      <li><strong>Auto-mode toggle</strong> (Assisted vs Full auto) is per-company in <code>~/.relay/autopilot.json</code> — but the cockpit toggle is <span class="pill mock">mock</span>: it mutates local JS only, unreachable from origin storage.</li>
-    </ul>
-  </div>
-  <div class="note honest"><div class="lbl">The honest boundary</div>Full-auto is wired in the routine, but <strong>every channel is <code>no-sender</code> today</strong> (no publisher/email connector connected) — so nothing sends until one is. The one number always honest is <em>tokens spent</em>; metered exactly, so background work is never invisible.</div>
-</section>
-
-<!-- ===================== J9 TEAM & BANK ===================== -->
-<section id="j9" style="--accent:var(--lime)">
-  <div class="sechead"><span class="idx">09</span><h2>Team Mode &amp; Bank</h2></div>
-  <p class="lead"><strong>Team</strong> = host / join-with-code, with <em>no login</em> (invite = membership; Pro rides inside the code). <strong>Bank</strong> = the context vault (<code>contexts.json</code> + <code>.md</code> notes) that feeds every wrapp as lent context. A bound folder is a real vault.</p>
-
-  <h3>Happy path</h3>
-  <ol class="steps">
-    <li>A user turns on Team Mode in the side panel and either <strong>Hosts a team</strong> (an invite code goes live) or <strong>Joins with a code</strong>.</li>
-    <li>There is no account and no login: membership is possession of the invite code; the Pro entitlement is a signed string that rides <em>inside</em> the code, so members inherit it without signing up. Seats are enforced by counting live sockets.</li>
-    <li>Joining adopts the shared folder as the active project.</li>
-    <li>Separately, the user's <strong>Bank</strong> holds a bound folder as a vault; its <code>.md</code> notes are lent into every wrapp's grant via the menu-bar context selector.</li>
-  </ol>
-
-  <h3>Screens involved</h3>
-  <ul class="screens">
-    <li><span class="nm">Team mode <span class="k">side panel</span></span><span class="ds">Host / Join-with-code; no login. <span class="pill partial">partial</span> — daemon <code>team.*</code> (status/host/join/leave/entitlement/git) is wired, but the Mac panel does NOT surface team (<code>TeamSection.swift</code> drafted, unmounted); billing unbuilt.</span></li>
-    <li><span class="nm">Bank — context vault <span class="k">contexts.json + .md</span></span><span class="ds">Bound folder = a real vault; feeds every wrapp as lent context. <span class="pill shipped">shipped</span> — renders truthful-empty until a vault has notes; the Bank connector (push to-dos from any thread) is next.</span></li>
-    <li><span class="nm">Team lane states <span class="k">off-ladder</span></span><span class="ds">off · hosting · joined · billing. <span class="pill partial">partial</span> — an off-ladder lane that never blocks rungs 0–7; billing (Stripe → entitlement minting) is the missing piece.</span></li>
-  </ul>
-
-  <h3>Decision points</h3>
-  <div class="decis">
-    <div class="lbl">Gates in this journey</div>
-    <ul>
-      <li><strong>Host vs Join.</strong> Both work today, free; no page to open, no login to help with.</li>
-      <li><strong>Origin allowlist.</strong> <code>window.claude</code> injects only on <code>thelastprompt.ai</code> / <code>*.thelastprompt.ai</code> / localhost. A new origin (e.g. <code>sameep.ai</code>) silently shows "Get Switchboard" until added to BOTH lists + the extension reloaded. <span class="pill asp">aspirational-fix</span></li>
-      <li><strong>Cloud backup → Pro.</strong> The gate exists and refuses correctly; billing is the one honest "not yet."</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ===================== STATES ===================== -->
-<section id="states" style="--accent:var(--indigo)">
-  <div class="sechead"><span class="idx">S</span><h2>States — a table per surface</h2></div>
-  <p class="lead">The same ladder renders everywhere, but each surface has its own local state machine layered on top. These are the verified state sets, per surface.</p>
-
-  <h3>Connect chip — the 6-state union</h3>
-  <p class="muted">From the actual <code>State</code> union in <code>connect-chip.ts</code>. <code>booting</code> shows nothing (avoids a flash of the wrong state); a fast <code>4900</code> re-reads the ladder.</p>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>State</th><th>Label shown</th><th>Colour</th><th>Action</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">booting</td><td>— (nothing)</td><td class="muted">none</td><td>probing the provider; render nothing</td></tr>
-      <tr><td class="mono">not-installed</td><td>Get Switchboard ↗</td><td class="muted">muted glyph</td><td>menu: Add to Chrome / full setup guide</td></tr>
-      <tr><td class="mono">unreachable</td><td>Your sidekick is asleep <span class="faint">(or "Get Switchboard for Mac" if <code>appMissing</code>)</span></td><td class="mono" style="color:var(--amber)">amber dot</td><td>auto-recovers on the health push; Download Switchboard.dmg</td></tr>
-      <tr><td class="mono">unpaired</td><td>Almost there — pair in the side panel</td><td class="mono" style="color:var(--amber)">amber</td><td>points at the side panel</td></tr>
-      <tr><td class="mono">disconnected</td><td>Connect Switchboard</td><td class="mono" style="color:var(--lime)">lit</td><td>runs the consent flow</td></tr>
-      <tr><td class="mono">connected</td><td>Hi {name} · {project} ▾</td><td class="mono" style="color:var(--indigo)">identity pill</td><td>small menu (Disconnect = soft per-session forget, not revoke)</td></tr>
-    </tbody>
-  </table>
-  </div>
-
-  <h3>Grant modes — the per-write safety dial</h3>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>Mode</th><th>Behaviour on a write-class call</th><th>Set where</th></tr></thead>
-    <tbody>
-      <tr><td class="mono"><strong>ask</strong> (default)</td><td>surfaces the per-action consent card</td><td>side panel / daemon <code>setMode</code></td></tr>
-      <tr><td class="mono"><strong>trust</strong></td><td>auto-allows within the grant scope</td><td>side panel</td></tr>
-      <tr><td class="mono"><strong>readonly</strong></td><td>refuses writes outright</td><td>side panel</td></tr>
-      <tr><td class="mono">expired</td><td>lazily deleted on next read</td><td>—</td></tr>
-      <tr><td class="mono">modelOverride</td><td>a per-site model pin</td><td>side panel</td></tr>
-      <tr><td class="mono">revoked</td><td>hard revoke (chip Disconnect is only a soft forget)</td><td>side panel only</td></tr>
-    </tbody>
-  </table>
-  </div>
-
-  <h3>Autopilot / Company-OS — the 8 states</h3>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>State</th><th>What you see</th><th>Mark</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">fresh</td><td>Identity has drafts, no locks → "Lock your 4 decisions to start"; empty board, one CTA</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">running</td><td>reversible moves flow drafting → done; heartbeat pulses; artifacts accrue</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">awaiting you</td><td>the GATE lane has N staged moves, each one tap from acting; rail badge counts them</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">paused</td><td>everything frozen; "Turn Autopilot on to resume"; no ticks, no spend</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">out of runway</td><td>token budget hit → the loop self-pauses and says so; no silent stop</td><td><span class="pill partial">partial</span> — not rendered in cockpit.html</td></tr>
-      <tr><td class="mono">no-connector</td><td>a metric has no source → "— not connected," never a placeholder number</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">failed</td><td>the move shows the real error + Retry; the loop keeps going</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td class="mono">no-sender</td><td><code>findSender()</code> finds nothing → honest "Connect to send"; move stays staged, 0 sends</td><td><span class="pill shipped">shipped</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-
-  <h3>Presence / God states</h3>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>Surface</th><th>States</th></tr></thead>
-    <tbody>
-      <tr><td>Presence card — <strong>shape</strong></td><td class="mono">ask (A/B/C + ⭐recommended) · guide (ring / walkthrough) · notify (action row)</td></tr>
-      <tr><td>Presence — <strong>urgency</strong></td><td class="mono">ambient (auto-dismiss, no sound) · normal (waits, single chime) · blocking (stays until answered) · queued (one at a time, +1) · caller-gone (resolves, still written)</td></tr>
-      <tr><td>Guide — <strong>lifecycle</strong></td><td class="mono">arming → waiting → sensing → advancing → summary → aborted (never dead-ends)</td></tr>
-      <tr><td>God — <strong>glow / health</strong></td><td class="mono">idle (lime) · offline (slate) · signed-out (red) · armed → listening → thinking → pointing [POINT]</td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<!-- ===================== EDGES ===================== -->
-<section id="edges" style="--accent:var(--danger)">
-  <div class="sechead"><span class="idx">E</span><h2>Edge cases — and where each surfaces</h2></div>
-  <p class="lead">The honest failure modes, each tied to the surface where a real user meets it. Amber for a calm "not yet"; red only where a genuine mismatch justifies it.</p>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>Edge case</th><th>What happens</th><th>Where it surfaces</th><th>Mark</th></tr></thead>
-    <tbody>
-      <tr><td><strong>Daemon asleep</strong></td><td>calm amber "sidekick asleep" card with Retry; auto-recovers on the health push — never "offline/error"</td><td>chip (rung 2), panel, menubar glyph</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td><strong>Token rejected</strong></td><td>the one justified red state — panel goes red, button never dead, re-paste to retry</td><td>side panel pairing (<code>?state=rejected</code>)</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td><strong>No backend / signed-out</strong></td><td>the invisible cliff — everything reads green until the first action throws the sign-in remediation string; menubar should go red proactively</td><td>menubar (rung 4), chip + panel one-liner</td><td><span class="pill partial">partial</span></td></tr>
-      <tr><td><strong>Budget exhausted</strong></td><td>Autopilot self-pauses and says so; per-action gate carries the token cost so it's never a silent stop</td><td>autopilot out-of-runway; per-action card</td><td><span class="pill partial">partial</span></td></tr>
-      <tr><td><strong>Connector missing / substitute</strong></td><td>substitution offer for a declared need ("you have Leonardo — use that?"); else "this needs an image connector" with the known-working names</td><td>connect-consent card (rung 6), needs resolver</td><td><span class="pill partial">partial</span></td></tr>
-      <tr><td><strong>Consent denied</strong></td><td>Deny is the default-safe choice; no grant is created; the wrapp shows a dashed sample block while disconnected</td><td>connect-consent + per-action card</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td><strong>Offline / unreachable</strong></td><td><code>rungFromError</code> reads a <code>4900</code> as unreachable (the safe default) even for extensions too old to answer <code>claude_health</code></td><td>connect chip</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td><strong>Origin not allowlisted</strong></td><td><code>window.claude</code> injects only on the allowlist; a new origin silently shows "Get Switchboard" until added to BOTH lists + reloaded</td><td>connect chip (masquerades as not-installed)</td><td><span class="pill asp">aspirational-fix</span></td></tr>
-      <tr><td><strong>No sender</strong></td><td><code>findSender()</code> finds nothing → honest "Connect to send"; the move stays staged; every channel is no-sender today</td><td>autopilot command centre (Approve &amp; send)</td><td><span class="pill shipped">shipped</span></td></tr>
-      <tr><td><strong>Wrong-arch visitor</strong></td><td>no OS/arch detection repo-wide; an Intel-Mac or Windows visitor is handed the same arm64 DMG and gets a dead install</td><td>landing download button</td><td><span class="pill asp">aspirational</span></td></tr>
-      <tr><td><strong>Stale daemon / version skew</strong></td><td>banner compares bundle mtime vs running pid → "Update ready — restart"; the version train drifts, so the number isn't yet trustworthy</td><td>menu-bar panel</td><td><span class="pill partial">partial</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<!-- ===================== AUDIT ===================== -->
-<section id="audit" style="--accent:var(--lime)">
-  <div class="sechead"><span class="idx">A</span><h2>Audit — shipped vs aspirational, per journey</h2></div>
-  <p class="lead">The honest ledger. The through-line under all of it: the engine <strong>drafts and decides</strong>; a human <strong>gates every irreversible act</strong>; <strong>connectors act, not the engine</strong>.</p>
-  <div class="tbox">
-  <table>
-    <thead><tr><th>Journey</th><th>Shipped &amp; exercised</th><th>Partial / aspirational — the named gap</th></tr></thead>
-    <tbody>
-      <tr><td><strong>01 Install</strong></td><td>Signed + notarized DMG; /Applications-gated LaunchAgent; token pairing; the one justified red (token mismatch)</td><td><span class="pill partial">partial</span> landing in a separate repo · <span class="pill asp">asp</span> no OS/arch detection (dead download for Intel/Windows) · tokenless dial specced not built</td></tr>
-      <tr><td><strong>02 Onboarding</strong></td><td>First-run popover (once); setup ladder (first unmet rung); teach-by-doing strip; <code>~/.relay/onboarded</code> marker</td><td><span class="pill partial">partial</span> ladder rungs 4 (signed-out glyph) &amp; 6 (needs resolver) soft; house fonts not dropped (system fallback)</td></tr>
-      <tr><td><strong>03 Core loop</strong></td><td>Connect chip (6 states, shadow root); per-action gate (exact-match, fail-closed — the moat); ask/trust/readonly; representative wrapps</td><td><span class="pill partial">partial</span> connect-consent is binary Allow/Deny &amp; silently drops unavailable models / phantom connector tools; needs-resolver substitution designed</td></tr>
-      <tr><td><strong>04 Panel</strong></td><td>Expanded panel; Settings accordion (9 rows); notch launcher (⌥⌥); context selector; Economy deny-list; stale-daemon detector</td><td><span class="pill partial">partial</span> only the expanded state exists (closed pill + hover-peek is next); version train drifts; Team not mounted here</td></tr>
-      <tr><td><strong>05 Store</strong></td><td>Featured (Tier 1) + classic (Tier 2) over catalog.json (~76); Add local folder picker validating switchboard.json</td><td><span class="pill partial">partial</span> NEEDS resolver read-only ("Resolve 2 &amp; Run" over-promises) · <span class="pill asp">asp</span> GitHub import + rev-share · <span class="pill mock">mock</span> skins</td></tr>
-      <tr><td><strong>06 Presence</strong></td><td>One card grammar (ask/guide/notify) clickable at the notch; provenance header; JSON answer + guide-history.jsonl; urgency + single-surface queue; guide lifecycle</td><td><span class="pill partial">partial</span> full <code>window.claude.ask</code> verb + queue polish deferred; Claude-Code Notification/Elicitation hook not wired</td></tr>
-      <tr><td><strong>07 God</strong></td><td>Sees/speaks/points; hands (open/type/click/key + [RUN]) in a WKWebView shim; same gate + audit as a wrapp; swappable persona; TCC onboarding</td><td><span class="pill partial">partial</span> God is per-hotkey, not self-running; the observe→act loop, AX-tree targeting &amp; routines-into-God still ahead</td></tr>
-      <tr><td><strong>08 Autopilot</strong></td><td>Run layer / routines clock; move classifier; portfolio; reversible moves executed by real wrapps (routineInvoke); GATE dispatch path (routineDispatch); autonomy gradient enforced (0 unattended sends)</td><td><span class="pill partial">partial</span> cockpit outside the allowlist (mock provider only); out-of-runway not rendered · <span class="pill mock">mock</span> auto-mode toggle not persisted · every channel no-sender today</td></tr>
-      <tr><td><strong>09 Team &amp; Bank</strong></td><td>Daemon <code>team.*</code> (host/join/leave/entitlement/git); no-login membership via signed invite code; Bank renders real vault state (truthful-empty)</td><td><span class="pill partial">partial</span> Team has no Mac-panel surface (TeamSection drafted, unmounted); billing (Stripe → entitlement) unbuilt · <span class="pill asp">asp</span> origin-allowlist self-heal · Bank connector next</td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<footer>
-  Switchboard — User Journey · companion to the PRD. Status marks trust code over docs, verified against
-  <code>connect-chip.ts</code>, <code>sidepanel.ts</code>, <code>docs/STATES.md</code> (the readiness ladder) and <code>docs/COMPANY-OS.md</code>.
-  The engine drafts and decides; a human gates every irreversible act; connectors act, not the engine.
-</footer>
-
-</main>
-</div>
-</body>
-</html>
+:root{--page:#0A0C10;--panel:#141416;--raised:#161B24;--edge:#282829;--edgeSoft:#1b1f26;--ink:#E8EDF4;--inkSec:#AEB6C2;--inkDim:#8891A0;--inkFaint:#5b6270;--lime:#C8F250;--indigo:#5B8DEF;--amber:#F5A623;--danger:#FF2D6E;--brico:'Bricolage Grotesque',serif;--hanken:'Hanken Grotesk',system-ui,sans-serif;--mono:'Spline Sans Mono',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--ink);font-family:var(--hanken);-webkit-font-smoothing:antialiased;line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding:56px 28px 120px}
+header .kick{font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--inkFaint)}
+header h1{font-family:var(--brico);font-weight:700;font-size:46px;letter-spacing:-.02em;margin:10px 0 8px}
+header .dek{color:var(--inkSec);font-size:16px;max-width:760px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:22px 0 6px;font-size:12.5px;color:var(--inkDim)}
+.pill{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--edge);border-radius:999px;padding:2px 8px;white-space:nowrap;margin-left:auto}
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 22px;margin:28px 0 8px;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);padding:18px 0}
+.toc a{display:flex;gap:10px;align-items:baseline;padding:5px 0;color:var(--inkSec);text-decoration:none;font-size:14px}
+.toc a:hover{color:var(--ink)} .toc a .n{font-family:var(--mono);font-size:11px;color:var(--inkFaint)}
+section{padding:44px 0 8px;border-top:1px solid var(--edgeSoft)}
+.jhead{display:flex;align-items:center;gap:12px}
+.jdot{width:11px;height:11px;border-radius:50%}
+.jnum{font-family:var(--mono);font-size:13px;color:var(--inkFaint)}
+.jhead h2{font-family:var(--brico);font-weight:700;font-size:26px;letter-spacing:-.015em}
+.jsum{color:var(--inkSec);font-size:14.5px;margin:8px 0 0;max-width:820px}
+.flow{display:flex;flex-wrap:wrap;gap:8px 14px;margin:16px 0 4px;font-family:var(--mono);font-size:11.5px;color:var(--inkDim)}
+.flow .fe{background:var(--panel);border:1px solid var(--edgeSoft);border-radius:8px;padding:5px 9px}
+.flow .fa{color:var(--lime)} .flow em{color:var(--inkSec);font-style:normal}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;margin-top:20px;align-items:start}
+.scard{background:var(--panel);border:1px solid var(--edge);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.scard.k-state{background:#101014} .scard.k-edge{border-style:dashed} .scard.k-decision .skind{color:var(--amber)}
+.shead{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:1px solid var(--edgeSoft);background:var(--raised)}
+.skind{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--inkFaint)}
+.shead h3{font-family:var(--brico);font-weight:600;font-size:15.5px;letter-spacing:-.01em}
+.swf{padding:14px}
+.stext{padding:14px;color:var(--inkSec);font-size:13.5px;white-space:pre-wrap}
+.snote{padding:9px 13px;border-top:1px solid var(--edgeSoft);font-size:11.5px;color:var(--inkFaint);font-style:italic}
+.sanchor{padding:6px 13px 11px;font-family:var(--mono);font-size:10px;color:var(--inkFaint)}
+.wf{--page:#000;--rail:#0A0A0B;--panel:#141416;--raised:#1E1E21;--edge:#282829;--ink:#E8EDF4;--dim:#9A9AA2;--faint:#6C6C74;--lime:#C8F250;--indigo:#5B8DEF;--amber:#E8B84B;--danger:#FF2D6E;--cyan:#4FD3D0;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;--sans:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--panel);border:1px solid var(--edge);border-radius:12px;overflow:hidden;font-family:var(--sans);color:var(--ink);font-size:12px;line-height:1.45} .wf *{box-sizing:border-box} .wf-top{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--edge);background:var(--rail)} .wf-dot{width:7px;height:7px;border-radius:50%;background:var(--lime);flex:none} .wf-dot.amber{background:var(--amber)} .wf-dot.red{background:var(--danger)} .wf-dot.slate{background:var(--faint)} .wf-ttl{font-weight:600;font-size:12px;color:var(--ink)} .wf-kick{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)} .wf-b{padding:12px} .wf-h{font-size:14px;font-weight:640;letter-spacing:-.01em;margin:0 0 4px;color:var(--ink)} .wf-p{color:var(--dim);margin:0 0 8px} .wf-field{border:1px solid var(--edge);border-radius:8px;padding:8px 10px;color:var(--faint);background:var(--page);margin:6px 0} .wf-btn{display:inline-block;border:1px solid var(--edge);border-radius:8px;padding:7px 12px;color:var(--dim);text-align:center;font-size:11px} .wf-btn.primary{background:var(--lime);color:#000;border-color:var(--lime);font-weight:600} .wf-btn.block{display:block} .wf-btn.ghost{background:transparent} .wf-row{display:flex;gap:6px;align-items:center;margin:5px 0} .wf-row.sb{justify-content:space-between} .wf-pill{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--edge);color:var(--dim)} .wf-pill.lime{color:#000;background:var(--lime);border-color:var(--lime)} .wf-pill.amber{color:var(--amber);border-color:rgba(232,184,75,.4)} .wf-pill.indigo{color:var(--indigo);border-color:rgba(91,141,239,.4)} .wf-pill.red{color:var(--danger);border-color:rgba(255,45,110,.4)} .wf-hr{height:1px;background:var(--edge);margin:9px 0;border:0} .wf-dim{color:var(--dim)} .wf-faint{color:var(--faint)} .wf-lime{color:var(--lime)} .wf-indigo{color:var(--indigo)} .wf-amber{color:var(--amber)} .wf-mono{font-family:var(--mono)} .wf-list{list-style:none;margin:0;padding:0} .wf-list li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--edge);color:var(--dim)} .wf-list li:last-child{border-bottom:0} .wf-list li b,.wf-list li span b{color:var(--ink)} .wf-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;padding:5px 10px;font-size:11px;color:var(--dim)} .wf-grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px} .wf-box{border:1px solid var(--edge);border-radius:8px;padding:8px;background:var(--rail)} .wf-sq{width:34px;height:34px;border:1px solid var(--edge);border-radius:8px;background:var(--raised);flex:none;display:inline-block} .wf-kbd{font-family:var(--mono);font-size:9px;border:1px solid var(--edge);border-radius:4px;padding:1px 4px;color:var(--dim)}
+</style></head>
+<body><div class="wrap">
+<header>
+<div class="kick">Switchboard · User Journey</div>
+<h1>The complete journey — with wireframes</h1>
+<p class="dek">Every screen the user meets, laid out journey by journey, as high-fidelity wireframes reused from the canvas. Status is marked honestly against the code.</p>
+<div class="legend"><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span> shipped · <span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span> partial · <span class="pill" style="color:#5B8DEF;border-color:#5B8DEF55">mock</span> mock · <span class="pill" style="color:#8891A0;border-color:#8891A055">aspirational</span> aspirational</div>
+</header>
+<nav class="toc"><a href="#install"><span class="n">01</span>Discover &amp; Install</a><a href="#onboarding"><span class="n">02</span>First-run Onboarding</a><a href="#usewrapp"><span class="n">03</span>Use a Wrapp — the core loop</a><a href="#panel"><span class="n">04</span>Menu-bar Panel (notch app)</a><a href="#store"><span class="n">05</span>The Store</a><a href="#notch"><span class="n">06</span>Notch / Presence</a><a href="#god"><span class="n">07</span>God (ambient assistant)</a><a href="#autopilot"><span class="n">08</span>Autopilot / Company OS</a><a href="#teambank"><span class="n">09</span>Team Mode &amp; Bank</a></nav>
+<section id="install"><div class="jhead"><span class="jdot" style="background:#C8F250"></span><span class="jnum">01</span><h2>Discover &amp; Install</h2></div>
+    <p class="jsum">Two-part install (Chrome extension + notarized Mac DMG) then pair the browser to the local daemon.</p>
+    <div class="flow"><span class="fe">landing <span class="fa">→</span> <em>get → install</em> install2part</span><span class="fe">install2part <span class="fa">→</span> <em>install → pair</em> pairing</span><span class="fe">pairing <span class="fa">→</span> <em>paste token</em> install-paired</span><span class="fe">pairing <span class="fa">→</span> <em>mismatch</em> edge-token-rejected</span><span class="fe">install-paired <span class="fa">→</span> <em>first launch →</em> firstrun</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Landing page</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Switchboard</span><span style='margin-left:auto' class='wf-kick'>the last prompt</span></div><div class='wf-b'><div class='wf-kick'>private · local · yours</div><div class='wf-h'>Run your own Claude across every app you use.</div><p class='wf-p'>Costs nothing beyond your subscription.</p><a class='wf-btn primary block'>Get Switchboard  ↓</a><div class='wf-row' style='margin-top:8px'><span class='wf-faint wf-mono' style='font-size:9px'>macOS 13+ · Apple Silicon · Claude Code signed in</span></div><hr class='wf-hr'><div class='wf-grid2'><div class='wf-box wf-faint'>product film</div><div class='wf-box wf-faint'>76 wrapps</div></div></div></div></div>
+      <div class="snote">partial — lives in a separate deploy repo (docs/index.html is a redirect). Download points at unversioned releases/latest/download/Switchboard.dmg.</div>
+      <div class="sanchor">the-last-prompt/switchboard/index.html (separate repo); docs/STATES.md §8</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Two-part install</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Install — two halves</span></div><div class='wf-b'><div class='wf-kick'>step a · browser</div><div class='wf-box' style='margin:6px 0'><div class='wf-row sb'><span>Chrome Web Store</span><span class='wf-pill'>ext</span></div><a class='wf-btn primary block' style='margin-top:6px'>Add to Chrome</a></div><div class='wf-kick' style='margin-top:10px'>step b · mac app</div><div class='wf-box' style='margin:6px 0'><div class='wf-row sb'><span>Switchboard.dmg</span><span class='wf-faint'>~207 MB</span></div><div class='wf-row' style='margin-top:6px'><span class='wf-sq'></span><span class='wf-lime' style='font-size:16px'>→</span><span class='wf-sq'></span><span class='wf-faint'>/Applications</span></div><p class='wf-p' style='margin:6px 0 0'>Refuses to install the daemon unless in /Applications.</p></div></div></div></div>
+      <div class="snote">shipped — signed + notarized since 0.1.3; first launch just works. Blocks the LaunchAgent under Gatekeeper translocation.</div>
+      <div class="sanchor">docs/DAEMON-DISTRIBUTION.md §3</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>First launch + pairing</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Pair this browser</span></div><div class='wf-b'><div class='wf-grid2'><div class='wf-box'><div class='wf-kick'>menu-bar</div><div class='wf-row sb' style='margin-top:6px'><span>status</span><span class='wf-lime'>running</span></div><div class='wf-row'><span class='wf-btn ghost' style='flex:1'>start</span><span class='wf-btn ghost' style='flex:1'>token</span></div><div class='wf-mono wf-indigo' style='font-size:11px;margin-top:4px'>A1B2-C3D4</div></div><div class='wf-box'><div class='wf-kick'>side panel</div><ol style='margin:6px 0 0;padding-left:16px' class='wf-dim'><li>menu-bar mark</li><li>copy the token</li><li>paste &amp; pair</li></ol><a class='wf-btn primary block' style='margin-top:6px'>Pair</a></div></div><p class='wf-p' style='margin:8px 0 0'>status: pair to finish →</p></div></div></div>
+      <div class="snote">shipped — token in ~/.relay (0600), 3-step paste card. Tokenless dial (hello→approve→mint) is speced in PAIRING.md, not built.</div>
+      <div class="sanchor">RelayMenuBar.swift; extension sidepanel.html #pairHint</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>Paired?</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Gate · paired</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><div class='wf-row sb'><span class='wf-pill lime'>paired</span><span class='wf-dim'>→ onboarding</span></div><hr class='wf-hr'><p class='wf-p' style='margin:0'>Paired but still one rung short: Claude Code sign-in required before anything runs.</p></div></div></div>
+      <div class="snote">shipped — paired is rung 3; sign-in (rung 4) is separate and surfaces later.</div>
+      <div class="sanchor">packages/protocol/src/health.ts (paired flag)</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>Intel / Windows visitor</h3><span class="pill" style="color:#8891A0;border-color:#8891A055">aspirational</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot red'></span><span class='wf-ttl'>Edge · wrong architecture</span><span class='wf-kick' style='margin-left:auto'>gap</span></div><div class='wf-b'><div class='wf-row'><span class='wf-pill red'>arm64 only</span></div><p class='wf-p' style='margin:8px 0 0'>No OS/arch detection — an Intel Mac or Windows visitor is offered the same arm64 DMG and gets a dead install.</p></div></div></div>
+      <div class="snote">gap — surfaces on the landing download button; honest 'not yet' copy or universal2 build both unbuilt.</div>
+      <div class="sanchor">docs/STATES.md §8 Q4 (defect 7)</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>Token rejected</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot red'></span><span class='wf-ttl'>Edge · token mismatch</span></div><div class='wf-b'><div class='wf-row'><span class='wf-pill red'>rejected</span></div><p class='wf-p' style='margin:8px 0 0'>Genuine mismatch — the one place red is warranted. Panel goes red; button never dead, re-paste to retry.</p></div></div></div>
+      <div class="snote">shipped — the only justified red state in pairing.</div>
+      <div class="sanchor">extension sidepanel; ?state=asleep-unpaired preview</div>
+    </div></div></section><section id="onboarding"><div class="jhead"><span class="jdot" style="background:#5B8DEF"></span><span class="jnum">02</span><h2>First-run Onboarding</h2></div>
+    <p class="jsum">Menu-bar popover + a readiness ladder and a teach-by-doing strip that carry a stranger to their first connected wrapp.</p>
+    <div class="flow"><span class="fe">firstrun <span class="fa">→</span> <em>start setup</em> setup-ladder</span><span class="fe">setup-ladder <span class="fa">→</span> <em>senses granted</em> teach-strip</span><span class="fe">teach-strip <span class="fa">→</span> <em>gestures learned</em> connect-first</span><span class="fe">connect-first <span class="fa">→</span> <em>first app connected</em> onboarded-marker</span><span class="fe">connect-first <span class="fa">→</span> <em>open first wrapp →</em> connect-chip</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>First-run popover</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:300px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Welcome to Switchboard</span></div><div class='wf-b'><div class='wf-kick'>menu-bar · first run</div><div class='wf-h'>Let's get you running.</div><p class='wf-p'>Your own Claude, wired into the apps you use — under your consent.</p><a class='wf-btn primary block'>Start setup</a><a class='wf-btn block ghost' style='margin-top:6px'>Skip for now</a></div></div></div>
+      <div class="snote">shipped — appears once after install; marker ~/.relay/onboarded prevents replays.</div>
+      <div class="sanchor">RelayMenuBar.swift (first-run popover, 0.2.8)</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Setup ladder</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Setup</span><span class='wf-kick' style='margin-left:auto'>first unmet rung</span></div><div class='wf-b'><ul class='wf-list'><li><span><span class='wf-lime'>✓</span> Daemon running</span><span class='wf-faint'>done</span></li><li><span><span class='wf-lime'>✓</span> Signed in to Claude</span><span class='wf-faint'>done</span></li><li><span><span class='wf-indigo'>◆</span> Senses (screen · mic)</span><span class='wf-indigo'>now</span></li><li><span>◻ Browser extension</span><span class='wf-faint'>next</span></li><li><span>◻ Connect a first app</span><span class='wf-faint'>next</span></li></ul><a class='wf-btn primary block' style='margin-top:8px'>Grant senses</a></div></div></div>
+      <div class="snote">shipped — one ordinal, three consumers; surfaces only the first unmet rung, never re-derives.</div>
+      <div class="sanchor">docs/STATES.md §1; states-ladder-built</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Teach-by-doing strip</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Try it once</span></div><div class='wf-b'><p class='wf-p'>Learn the three gestures by doing them.</p><div class='wf-row sb'><span class='wf-kbd'>⌃⌃</span><span class='wf-dim'>open the launcher</span><span class='wf-lime'>✓</span></div><div class='wf-row sb'><span class='wf-kbd'>⚙</span><span class='wf-dim'>open settings</span><span class='wf-faint'>—</span></div><div class='wf-row sb'><span class='wf-kbd'>⌃⌥</span><span class='wf-dim'>summon God</span><span class='wf-faint'>—</span></div><a class='wf-btn block ghost' style='margin-top:8px'>Replay the tour</a></div></div></div>
+      <div class="snote">shipped — auto-advances per gesture (unverified on a signed build); house TTFs not yet dropped (system-font fallback).</div>
+      <div class="sanchor">RelayMenuBar.swift practice strip (0.2.8)</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>Connect a first wrapp</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Pick a first app</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><div class='wf-row'><span class='wf-chip'>ideabrain</span><span class='wf-chip'>flow</span><span class='wf-chip'>redline</span></div><a class='wf-btn primary block' style='margin-top:8px'>Open &amp; connect</a></div></div></div>
+      <div class="snote">shipped — hands the user into the core loop (cluster 3).</div>
+      <div class="sanchor">onboarding flow → connect chip</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Readiness ladder — 8 rungs</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:300px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>The ladder</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list' style='font-family:var(--mono);font-size:10px'><li><span>0 no-extension</span><span class='wf-lime'>ship</span></li><li><span>1 no-app</span><span class='wf-lime'>ship</span></li><li><span>2 app-asleep</span><span class='wf-lime'>ship</span></li><li><span>3 unpaired</span><span class='wf-lime'>ship</span></li><li><span>— no-backend</span><span class='wf-lime'>ship</span></li><li><span>4 signed-out</span><span class='wf-amber'>part</span></li><li><span>5 disconnected</span><span class='wf-lime'>ship</span></li><li><span>6 unmet</span><span class='wf-amber'>part</span></li><li><span>7 ready</span><span class='wf-lime'>ship</span></li></ul></div></div></div>
+      <div class="snote">partial — signed-out (4) menubar red-glyph + unmet (6) resolver are the two soft rungs. Signed-in is a sticky verdict + ~/.claude.json marker, not models.length.</div>
+      <div class="sanchor">docs/STATES.md §1; HealthStatus (health.ts)</div>
+    </div><div class="scard k-note">
+      <div class="shead"><span class="skind">note</span><h3>Marker · ~/.relay/onboarded</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Onboarding complete</span><span class='wf-kick' style='margin-left:auto'>note</span></div><div class='wf-b'><p class='wf-p' style='margin:0'>A file marker at <span class='wf-mono wf-indigo'>~/.relay/onboarded</span> stops the tour replaying. 'Replay the welcome tour' in Settings re-arms it.</p></div></div></div>
+      <div class="snote">shipped — durable, file-based marker.</div>
+      <div class="sanchor">~/.relay/onboarded</div>
+    </div></div></section><section id="usewrapp"><div class="jhead"><span class="jdot" style="background:#4CC9E0"></span><span class="jnum">03</span><h2>Use a Wrapp — the core loop</h2></div>
+    <p class="jsum">Open a wrapp → connect chip → per-origin consent → single input → options + one recommended → per-action gate on writes.</p>
+    <div class="flow"><span class="fe">connect-chip <span class="fa">→</span> <em>Connect → consent</em> connect-consent</span><span class="fe">chip-states <span class="fa">→</span> <em>state</em> connect-chip</span><span class="fe">connect-consent <span class="fa">→</span> <em>checks needs</em> needs-resolver</span><span class="fe">needs-resolver <span class="fa">→</span> <em>run</em> representative-wrapp</span><span class="fe">representative-wrapp <span class="fa">→</span> <em>write-class call</em> per-action-consent</span><span class="fe">per-action-consent <span class="fa">→</span> <em>mode governs</em> grants-state</span><span class="fe">connect-chip <span class="fa">→</span> <em>grants live in panel →</em> menubar-panel</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Connect chip — 5 states</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Connect chip</span><span class='wf-kick' style='margin-left:auto'>shadow root</span></div><div class='wf-b'><p class='wf-p'>The one header affordance every wrapp mounts — the MetaMask account button.</p><div class='wf-chip' style='margin:5px 0'><span class='wf-sq' style='width:18px;height:18px'></span><span class='wf-faint'>Get Switchboard ▾</span></div><div class='wf-chip' style='margin:5px 0'><span class='wf-dot amber'></span><span class='wf-amber'>Your sidekick is asleep</span></div><div class='wf-chip' style='margin:5px 0'><span class='wf-dot amber'></span><span class='wf-amber'>Almost there — pair in side panel</span></div><div class='wf-chip' style='margin:5px 0;border-color:var(--lime)'><span class='wf-dot'></span><span class='wf-lime'>Connect Switchboard</span></div><div class='wf-chip' style='margin:5px 0'><span class='wf-pill indigo'>SA</span><span>Hi Sameep · <span class='wf-indigo'>StayOften</span> ▾</span></div></div></div></div>
+      <div class="snote">shipped — rendered in a shadow root (host CSS can't restyle). Carries identity only; connectors/budgets/trust/revoke live in the side panel. rungFromError covers old extensions.</div>
+      <div class="sanchor">packages/sdk/src/connect-chip.ts (State union)</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Chip states (+booting)</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Chip · state union</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list'><li><span>booting</span><span class='wf-faint'>probing provider</span></li><li><span>not-installed</span><span class='wf-faint'>glyph muted</span></li><li><span>unreachable / asleep</span><span class='wf-amber'>amber dot</span></li><li><span>unpaired</span><span class='wf-amber'>→ side panel</span></li><li><span>disconnected</span><span class='wf-lime'>lit / consent</span></li><li><span>connected</span><span class='wf-indigo'>identity pill</span></li></ul></div></div></div>
+      <div class="snote">shipped — booting shows nothing (avoids a flash of the wrong state); a fast 4900 re-reads the ladder.</div>
+      <div class="sanchor">connect-chip.ts State = booting|not-installed|unreachable|unpaired|disconnected|connected</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Connect-consent card (5a)</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>ideabrain wants to connect</span></div><div class='wf-b'><ul class='wf-list'><li><span>◇ Models</span><span class='wf-dim'>Sonnet, Haiku</span></li><li><span>◇ Tools</span><span class='wf-indigo'>Higgsfield connector</span></li><li><span>◇ Budget</span><span class='wf-dim'>50k tokens / day</span></li><li><span>◇ Context</span><span class='wf-indigo'>lend StayOften ▾</span></li></ul><p class='wf-p' style='margin:8px 0'>why: to draft your brand brief</p><div class='wf-kick'>needs</div><div class='wf-row sb'><span class='wf-lime'>✓ image connector met</span><span class='wf-amber'>substitute?</span></div><div class='wf-row' style='margin-top:8px'><span class='wf-btn ghost' style='flex:1'>Deny</span><span class='wf-btn primary' style='flex:1'>Allow</span></div></div></div></div>
+      <div class="snote">partial — native card is binary Allow/Deny; grant created only on Allow, never wider than requested. ask/trust/readonly is a daemon mode set in the side panel, not a radio here. Known defects: silently drops unavailable models (→ SCOPE_EXCEEDED) and renders tools for connectors you may not have (→ unknown_tool).</div>
+      <div class="sanchor">extension consent-view.ts; native ConsentDrop; docs/STATES.md §5</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Per-action consent (5b)</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Allow this action?</span></div><div class='wf-b'><div class='wf-row'><span class='wf-dim'>⌘ ideabrain ·</span><span class='wf-indigo'>StayOften</span></div><hr class='wf-hr'><div class='wf-row sb'><span class='wf-faint'>call</span><span class='wf-mono wf-indigo' style='font-size:10px'>__generate_image</span></div><div class='wf-row sb'><span class='wf-faint'>args</span><span class='wf-mono' style='font-size:10px'>{ prompt: hero… }</span></div><div class='wf-row sb'><span class='wf-faint'>class</span><span class='wf-amber'>WRITE · ~1,900 tok</span></div><div class='wf-row' style='margin-top:10px'><span class='wf-btn ghost' style='flex:1'>Deny</span><span class='wf-btn primary' style='flex:1'>Allow</span></div><p class='wf-p' style='margin:6px 0 0'>Deny is the default-safe choice.</p></div></div></div>
+      <div class="snote">shipped — the moat. Exact-match, fail-closed (grant → allowlist → rate → class). ask surfaces this; trust auto-allows within grant; readonly refuses writes. Classifier defaults to WRITE; 120s timeout fails closed.</div>
+      <div class="sanchor">gate.ts authorize(); native ActionConsentDrop</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Representative wrapp — core loop</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>ideabrain</span><span class='wf-pill indigo' style='margin-left:auto'>SA · Stay ▾</span></div><div class='wf-b'><div class='wf-field'>Your idea in one line…</div><a class='wf-btn primary block'>Pressure-test</a><div class='wf-row' style='margin:8px 0;color:var(--faint)'>▰▰▰ pressure-testing riskiest…</div><hr class='wf-hr'><div class='wf-kick'>verdict</div><div class='wf-row sb' style='margin-top:6px'><span class='wf-pill lime'>holds</span><span class='wf-dim'>risk · wedge · why now</span></div><a class='wf-btn block ghost' style='margin-top:8px'>Set as project</a><p class='wf-p' style='margin:8px 0 0;font-size:10px'>redline variant: A/B/C cards, one ⭐recommended → Lock writes the real file.</p></div></div></div>
+      <div class="snote">shipped — loop: waitForProvider → claude_permissions/connect (scope) → claude_stream deltas. ideabrain returns a single verdict card; the options + one recommended pattern lives in redline. Disconnected shows a dashed sample block.</div>
+      <div class="sanchor">examples/apps/ideabrain (verdict); redline (options)</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>Needs resolver</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot amber'></span><span class='wf-ttl'>Needs · resolver</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><ul class='wf-list'><li><span>image connector</span><span class='wf-lime'>met</span></li><li><span>publisher</span><span class='wf-amber'>substitute?</span></li><li><span>claude.ai connectors</span><span class='wf-faint'>unknown</span></li></ul></div></div></div>
+      <div class="snote">partial — substitution offer is designed; claude.ai connectors are unenumerable → inherited:'unknown'; today you discover the gap at invoke as unknown_tool.</div>
+      <div class="sanchor">docs/STATES.md §5; connector-class needs resolver</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Grants — ask / trust / readonly</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Grant modes</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list'><li><span><b>ask</b> (default)</span><span class='wf-dim'>write → consent</span></li><li><span><b>trust</b></span><span class='wf-dim'>auto within grant</span></li><li><span><b>readonly</b></span><span class='wf-dim'>refuses writes</span></li><li><span>expired</span><span class='wf-faint'>lazily deleted</span></li><li><span>modelOverride</span><span class='wf-faint'>per-site pin</span></li><li><span>revoked</span><span class='wf-faint'>panel-only</span></li></ul></div></div></div>
+      <div class="snote">shipped — mode set in the extension side panel / daemon setMode, not the Mac panel (native consent is binary). Chip 'Disconnect' is a soft per-session forget, not revoke.</div>
+      <div class="sanchor">gate.ts / grant-store setMode (default ask)</div>
+    </div></div></section><section id="panel"><div class="jhead"><span class="jdot" style="background:#F5A623"></span><span class="jnum">04</span><h2>Menu-bar Panel (notch app)</h2></div>
+    <p class="jsum">The 620pt black window that drops from the notch — connected apps, model cloud/local, tools, context, settings, daemon controls.</p>
+    <div class="flow"><span class="fe">menubar-panel <span class="fa">→</span> <em>⚙ flips pane</em> settings</span><span class="fe">menubar-panel <span class="fa">→</span> <em>⌥⌥</em> notch-launcher</span><span class="fe">menubar-panel <span class="fa">→</span> <em>context ▾</em> context-selector</span><span class="fe">menubar-panel <span class="fa">→</span> <em>STORE →</em> store-featured</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Menu-bar panel (expanded)</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:440px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>SWITCHBOARD</span><span class='wf-kick' style='margin-left:auto'>drops from notch · 620pt</span></div><div class='wf-b'><div style='display:grid;grid-template-columns:130px 1fr;gap:10px'><div class='wf-box'><div class='wf-kick'>DotMatrix</div><div class='wf-h' style='font-size:13px;margin:4px 0'>Working</div><p class='wf-p' style='font-size:10px'>flow · transcription 3s</p><hr class='wf-hr'><div class='wf-kick'>context ▾</div><div class='wf-indigo' style='font-size:11px'>No context</div><hr class='wf-hr'><div class='wf-kick'>daemon</div><div class='wf-row'><span class='wf-kbd'>logs</span><span class='wf-kbd'>restart</span></div><div class='wf-row'><span class='wf-kbd'>⚙</span><span class='wf-kbd' style='color:var(--danger)'>power</span></div></div><div><div class='wf-row sb'><span class='wf-kick'>connected apps · 4</span><span class='wf-pill'>store</span></div><div class='wf-row' style='margin:6px 0'><span class='wf-sq' style='width:26px;height:26px'></span><span class='wf-sq' style='width:26px;height:26px'></span><span class='wf-sq' style='width:26px;height:26px'></span><span class='wf-sq' style='width:26px;height:26px'></span><span class='wf-faint'>+</span></div><hr class='wf-hr'><div class='wf-grid2'><div><div class='wf-kick'>command centre</div><div class='wf-row'><span class='wf-lime'>◼</span> Opus 4.8</div><div class='wf-row'>◼ Sonnet</div><div class='wf-row'>◼ Haiku</div><div class='wf-row wf-faint'>◼ llama3 4.1GB</div></div><div><div class='wf-kick'>tools · 4</div><div class='wf-dim' style='font-size:11px'>clickup · granola<br>pencil · switchboard</div></div></div></div></div></div></div></div>
+      <div class="snote">partial — only the expanded state is built; the closed grey-dot pill + hover-peek is the next task. Right pane = 3 drag-scroll rails. Icons are first-party favicons (our wrapps 404 → globe). Team is NOT mounted here (TeamSection.swift drafted, unwired).</div>
+      <div class="sanchor">RelayMenuBar.swift:879; docs/NOTCH-PANEL.md</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Settings — accordion</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>‹ Settings</span></div><div class='wf-b'><ul class='wf-list'><li><span>▸ YOUR NAME</span><span class='wf-dim'>Sameep</span></li><li><span>▸ GOD'S VOICE</span><span class='wf-dim'>Moira</span></li><li><span>▸ MODE</span><span class='wf-dim'>Economy</span></li><li><span>▾ MODELS</span><span class='wf-dim'>3 of 6 on</span></li><li style='padding-left:12px'><span class='wf-faint'>☑Opus ☑Sonnet ☑Haiku</span></li><li style='padding-left:12px'><span class='wf-faint'>☑llama3 ☐qwen2.5</span></li><li><span>▸ KEYBOARD SHORTCUTS</span><span class='wf-mono wf-dim'>⌃⌃ · ⌃⌥</span></li><li><span>▸ WHAT GOD SEES</span><span class='wf-dim'>on</span></li><li><span>▸ CONNECTIONS</span><span class='wf-dim'>4 apps</span></li></ul><a class='wf-btn block ghost' style='margin-top:8px'>Replay the welcome tour</a></div></div></div>
+      <div class="snote">shipped — nine accordion rows in this exact order (≤1 open). 'Economy' is a UI toggle writing ~/.relay/economy; effect is the model deny-list ladder (opus→sonnet→haiku), never a silent hosted/local swap.</div>
+      <div class="sanchor">RelayMenuBar.swift:1186-1201</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Notch launcher (⌥⌥)</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>⌥⌥ · HOME</span><span class='wf-pill indigo' style='margin-left:auto'>◆ StayOften</span></div><div class='wf-b'><div class='wf-field'>Search projects, apps…  🎤</div><div class='wf-box' style='border-style:dashed;margin:6px 0'>Drop a file to start file-first</div><div class='wf-row sb'><span class='wf-kick'>jump back in</span><span class='wf-dim'>Aamras · switch →</span></div><div class='wf-row sb'><span class='wf-kick'>recent work</span><span class='wf-dim'>3 captions · redline</span></div><hr class='wf-hr'><div class='wf-row'><span class='wf-chip'>god</span><span class='wf-chip'>prism</span><span class='wf-chip'>convert</span><span class='wf-chip wf-faint'>qr</span></div></div></div></div>
+      <div class="snote">shipped — two modes: HOME (jump-back-in / recent) and SPOTLIGHT (typed query → grouped results). File-drop bar makes it file-first; fileTakerIds (god/pdftools/convert/palette/prism/resize/qr) light up, the rest dim.</div>
+      <div class="sanchor">NotchLauncherView.swift:321 (HOME / SPOTLIGHT)</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Context selector</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Context ▾</span><span class='wf-kick' style='margin-left:auto'>state</span></div><div class='wf-b'><div class='wf-row sb'><span class='wf-indigo'>No context</span><span class='wf-faint'>default</span></div><p class='wf-p' style='margin:6px 0 0'>Lends a project (a Bank vault) into every wrapp's grant as context. Only shown while the daemon is running.</p></div></div></div>
+      <div class="snote">shipped — default is 'No context'; the lent project rides into consent as the Context row.</div>
+      <div class="sanchor">RelayMenuBar.swift context selector (running only)</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>Worktree / version skew</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:440px'><div class='wf-top'><span class='wf-dot amber'></span><span class='wf-ttl'>Edge · stale daemon</span><span class='wf-kick' style='margin-left:auto'>partial</span></div><div class='wf-b'><div class='wf-box' style='border-color:rgba(232,184,75,.4)'><div class='wf-row sb'><span class='wf-amber'>Update ready — restart the daemon</span><span class='wf-btn primary'>Restart</span></div></div><p class='wf-p' style='margin:8px 0 0'>Banner compares bundle mtime vs running pid. Version train inconsistent (Info.plist lagged tags; extension manifest stuck at 0.2.0).</p></div></div></div>
+      <div class="snote">partial — detector works; the version numbers across app/extension/manifest drift.</div>
+      <div class="sanchor">daemonUpdateReady() — bundle mtime vs running pid</div>
+    </div></div></section><section id="store"><div class="jhead"><span class="jdot" style="background:#C8F250"></span><span class="jnum">05</span><h2>The Store</h2></div>
+    <p class="jsum">Two real tiers over ~/.relay/catalog.json (76 entries): a featured front + a classic rail/detail; Add local, GitHub import (gap), skins (demo).</p>
+    <div class="flow"><span class="fe">store-featured <span class="fa">→</span> <em>browse</em> store-classic</span><span class="fe">store-classic <span class="fa">→</span> <em>install</em> store-needs</span><span class="fe">store-needs <span class="fa">→</span> <em>+Create</em> github-import</span><span class="fe">store-classic <span class="fa">→</span> <em>install → run</em> connect-chip</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Store — featured (Tier 1)</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Wrapp Store</span><span class='wf-pill' style='margin-left:auto'>Add local</span></div><div class='wf-b'><div class='wf-row'><span class='wf-pill lime'>All</span><span class='wf-pill'>Apps</span><span class='wf-pill'>Skills</span></div><div class='wf-grid2' style='margin:8px 0'><div class='wf-box' style='height:60px'></div><div class='wf-box' style='height:60px'></div></div><div class='wf-kick'>apps we love right now</div><p class='wf-p' style='margin:6px 0 0'>Free · runs on your Claude</p></div></div></div>
+      <div class="snote">shipped — real category counts, App-Store style. Add local = a real folder picker validating switchboard.json.</div>
+      <div class="sanchor">StoreFrontView.swift:12</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Store — classic (Tier 2)</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Store · classic</span></div><div class='wf-b'><div style='display:grid;grid-template-columns:120px 1fr;gap:10px'><div><div class='wf-row wf-faint' style='font-size:10px'>All img video…</div><ul class='wf-list' style='font-size:11px'><li><span>ideabrain</span></li><li><span>prism</span></li><li><span>redline</span><span class='wf-pill'>installed</span></li><li><span class='wf-indigo'>flow</span><span class='wf-faint'>native</span></li></ul></div><div class='wf-box'><div class='wf-ttl'>ideabrain</div><div class='wf-kick' style='margin-top:6px'>made of</div><p class='wf-p' style='font-size:10px'>skills · workflows · UI</p><div class='wf-kick'>needs</div><div class='wf-row wf-faint' style='font-size:10px'>✓met · <span class='wf-amber'>unmet</span></div><a class='wf-btn primary block' style='margin-top:6px'>Resolve 2 &amp; Run</a></div></div></div></div></div>
+      <div class="snote">shipped — backed by catalog.json (76) + bundled fallback; icons from Resources/icons/&lt;id&gt;.png. NEEDS resolver is honestly read-only (fill-drawer is Phase 2; connector/native reqs not observable yet).</div>
+      <div class="sanchor">StoreView RelayMenuBar.swift:6432</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>Install path</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>How to add a wrapp</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><ul class='wf-list'><li><span>Get (catalog)</span><span class='wf-lime'>ship</span></li><li><span>Add local (folder)</span><span class='wf-lime'>ship</span></li><li><span>GitHub import</span><span class='wf-amber'>gap</span></li></ul></div></div></div>
+      <div class="snote">partial — Get + Add local are real; GitHub import (paste OSS link → port-assess) is a design.</div>
+      <div class="sanchor">Add local (folder picker) · Get · GitHub import (gap)</div>
+    </div><div class="scard k-note">
+      <div class="shead"><span class="skind">note</span><h3>GitHub import (+Create)</h3><span class="pill" style="color:#8891A0;border-color:#8891A055">aspirational</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot slate'></span><span class='wf-ttl'>+ Create · GitHub import</span><span class='wf-kick' style='margin-left:auto'>gap</span></div><div class='wf-b'><div class='wf-field'>Paste an OSS GitHub link…</div><a class='wf-btn block ghost' style='margin-top:6px'>Assess port-readiness</a><p class='wf-p' style='margin:6px 0 0;font-size:10px'>AI assesses → add as a wrapp. Monetisation (Spotify-style rev-share) is doctrine, unbuilt.</p></div></div></div>
+      <div class="snote">aspirational — port-assess + monetisation both unbuilt.</div>
+      <div class="sanchor">memory/ROADMAP; relay-wrapp-github-import</div>
+    </div><div class="scard k-note">
+      <div class="shead"><span class="skind">note</span><h3>Skins (live renderers)</h3><span class="pill" style="color:#5B8DEF;border-color:#5B8DEF55">mock</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Skins</span><span class='wf-kick' style='margin-left:auto'>mock</span></div><div class='wf-b'><div class='wf-row'><span class='wf-pill lime'>editorial</span><span class='wf-pill'>getmd</span><span class='wf-pill'>grid</span><span class='wf-pill'>cards</span></div><p class='wf-p' style='margin:8px 0 0'>One catalog, N live-switchable layout renderers + DESIGN.md tokens. 4-skin demo only — not in the shipped store.</p></div></div></div>
+      <div class="snote">mock — 4-skin demo artifact, not wired into the shipped store.</div>
+      <div class="sanchor">relay-store-skins (4-skin demo)</div>
+    </div></div></section><section id="notch"><div class="jhead"><span class="jdot" style="background:#5B8DEF"></span><span class="jnum">06</span><h2>Notch / Presence</h2></div>
+    <p class="jsum">One card grammar (ask · guide · notify) that descends from the notch, is clickable there, carries provenance, and returns an answer as JSON.</p>
+    <div class="flow"><span class="fe">presence-card <span class="fa">→</span> <em>shape</em> card-shapes</span><span class="fe">presence-card <span class="fa">→</span> <em>urgency</em> urgency-queue</span><span class="fe">card-shapes <span class="fa">→</span> <em>guide</em> guide-lifecycle</span><span class="fe">presence-card <span class="fa">→</span> <em>God speaks here →</em> god-notch</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Presence card</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Claude Code · migrate-db</span></div><div class='wf-b'><div class='wf-indigo' style='font-size:11px'>◆ StayOften</div><hr class='wf-hr'><div class='wf-h' style='font-size:14px'>Ship the migration now, or hold for review?</div><div class='wf-row' style='margin-top:10px'><span class='wf-btn primary' style='flex:1'>⌥1 Ship ⭐</span><span class='wf-btn ghost' style='flex:1'>⌥2 Hold</span></div><a class='wf-btn block ghost' style='margin-top:6px'>⌥3 Ask me later</a><hr class='wf-hr'><div class='wf-row wf-faint' style='font-size:10px'>⌥→ Next · ⌥↓ note · esc</div></div></div></div>
+      <div class="snote">shipped — clickable at the notch (bounded hit-rect, rest click-through); dock/cursor use keys. Answer returns as JSON + appends to guide-history.jsonl. The full window.claude.ask verb + queue polish deferred (gap).</div>
+      <div class="sanchor">CursorGuide.swift; docs/PRESENCE.md; GUIDE-CARD-SPEC</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Card shapes</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>One card · three shapes</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list'><li><span><b>ask</b></span><span class='wf-dim'>A/B/C + ⭐recommended</span></li><li><span><b>guide</b></span><span class='wf-dim'>ring points · walkthrough</span></li><li><span><b>notify</b></span><span class='wf-dim'>action row</span></li></ul><div class='wf-kick' style='margin-top:8px'>placement</div><div class='wf-row wf-dim' style='font-size:11px'>notch (clickable) · dock · cursor</div></div></div></div>
+      <div class="snote">shipped — same card, three shapes; provenance header (thread · project) on all.</div>
+      <div class="sanchor">docs/PRESENCE.md §5 (ask/guide/notify)</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Urgency + queue</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Urgency · queue</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list'><li><span>ambient</span><span class='wf-faint'>auto-dismiss, no sound</span></li><li><span>normal</span><span class='wf-faint'>waits · single chime</span></li><li><span>blocking</span><span class='wf-faint'>stays until answered</span></li><li><span>queued</span><span class='wf-faint'>one at a time · +1</span></li><li><span>caller gone</span><span class='wf-faint'>resolves, still written</span></li></ul></div></div></div>
+      <div class="snote">shipped — one surface at a time; the pill shows +1 when queued.</div>
+      <div class="sanchor">docs/PRESENCE.md (urgency + single-surface queue)</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Guide card lifecycle</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Guide lifecycle</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><div class='wf-row wf-dim' style='font-size:11px'>arming → waiting → sensing → advancing → summary → aborted</div><hr class='wf-hr'><ul class='wf-list' style='font-size:11px'><li><span>permission missing</span><span class='wf-faint'>falls to manual</span></li><li><span>doneWhen timeout</span><span class='wf-faint'>press ⌥→ when done</span></li><li><span>concurrent guide</span><span class='wf-faint'>refused</span></li></ul></div></div></div>
+      <div class="snote">shipped — never dead-ends; single on-screen cursor enforced.</div>
+      <div class="sanchor">docs/GUIDE-CARD-SPEC.md §6</div>
+    </div></div></section><section id="god"><div class="jhead"><span class="jdot" style="background:#4CC9E0"></span><span class="jnum">07</span><h2>God (ambient assistant)</h2></div>
+    <p class="jsum">⌃⌥ summons an assistant that sees (screencap+vision), speaks (MLX TTS), points [POINT], and acts via gated, audited hands.</p>
+    <div class="flow"><span class="fe">god-notch <span class="fa">→</span> <em>hands → gate</em> god-consent</span><span class="fe">god-consent <span class="fa">→</span> <em>needs senses</em> god-onboarding</span><span class="fe">god-notch <span class="fa">→</span> <em>[RUN] a wrapp</em> god-hands</span><span class="fe">god-hands <span class="fa">→</span> <em>routines → hands →</em> portfolio</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>God — notch states</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>God</span><span class='wf-kick' style='margin-left:auto'>⌃⌥ hold</span></div><div class='wf-b'><ul class='wf-list'><li><span>dot</span><span class='wf-faint'>idle (lime/red/slate)</span></li><li><span>working</span><span class='wf-faint'>▰▰▰ breathing</span></li><li><span>listening</span><span class='wf-faint'>~~~ live transcript</span></li><li><span>canvas</span><span class='wf-faint'>draggable · Save/Copy</span></li><li><span>consent</span><span class='wf-faint'>Allow this action?</span></li></ul><hr class='wf-hr'><div class='wf-row wf-dim' style='font-size:10px'>glow cursor: idle→armed→listening→thinking→pointing [POINT:x,y]</div></div></div></div>
+      <div class="snote">shipped — sees/speaks/points + hands (open/type/click/key + [RUN] a wrapp) in a floating WKWebView with an injected window.claude shim; can load offscreen so the notch drop is the surface. Persona = swappable JSON.</div>
+      <div class="sanchor">examples/god/god.mjs; docs/GOD.md §3; GodWebWindow.swift:112</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>God cursor + health</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>God · glow states</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list'><li><span>idle</span><span class='wf-lime'>lime dot</span></li><li><span>daemon offline</span><span class='wf-faint'>slate dot</span></li><li><span>signed-out</span><span class='wf-amber' style='color:var(--danger)'>red dot</span></li><li><span>armed → listening</span><span class='wf-faint'>held ⌃⌥</span></li><li><span>thinking → pointing</span><span class='wf-faint'>[POINT]</span></li></ul><p class='wf-p' style='margin:8px 0 0;font-size:10px'>Full-screen, click-through cursor.</p></div></div></div>
+      <div class="snote">shipped — health colour maps to the dot; cursor is click-through.</div>
+      <div class="sanchor">GodGlowView; GodWidgetKit.swift</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>God — Allow this action?</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Allow this action?</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><div class='wf-row sb'><span class='wf-faint'>hands</span><span class='wf-mono' style='font-size:10px'>click · type · [RUN]</span></div><div class='wf-row sb'><span class='wf-faint'>class</span><span class='wf-amber'>WRITE</span></div><div class='wf-row' style='margin-top:10px'><span class='wf-btn ghost' style='flex:1'>Not now</span><span class='wf-btn primary' style='flex:1'>Allow</span></div><p class='wf-p' style='margin:6px 0 0'>Same gate as every wrapp — fail-closed, audited.</p></div></div></div>
+      <div class="snote">shipped — God's hands ride the same gate + audit as a wrapp; trust-mode grant + per-action notch gate.</div>
+      <div class="sanchor">gate.ts; God notch ActionConsentDrop</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>God — permission grants</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>God needs senses</span><span class='wf-kick' style='margin-left:auto'>onboarding</span></div><div class='wf-b'><ul class='wf-list'><li><span>Accessibility (drag-in)</span><span class='wf-lime'>✓</span></li><li><span>Screen recording</span><span class='wf-amber'>grant</span></li><li><span>Microphone</span><span class='wf-faint'>—</span></li></ul></div></div></div>
+      <div class="snote">shipped — TCC grants; AX is drag-in. Signing identity affects TCC grant persistence (menubar-tcc note).</div>
+      <div class="sanchor">docs/GOD.md §3 (onboarding: AX / Screen / Mic)</div>
+    </div><div class="scard k-note">
+      <div class="shead"><span class="skind">note</span><h3>God's hands — reuse wrapp actions</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Hands = reused actions</span><span class='wf-kick' style='margin-left:auto'>partial</span></div><div class='wf-b'><p class='wf-p' style='margin:0'>God grows hands by [RUN]-ing existing wrapp actions via the switchboard connector, not by rebuilding them. Agentic observe→act→observe loop + AX-tree targeting still ahead.</p><div class='wf-row' style='margin-top:8px'><span class='wf-pill amber'>gap: self-running</span></div></div></div></div>
+      <div class="snote">partial — God is per-hotkey, not self-running; routines not yet wired to God.</div>
+      <div class="sanchor">docs/GOD-HANDS.md; switchboard connector [RUN]</div>
+    </div></div></section><section id="autopilot"><div class="jhead"><span class="jdot" style="background:#F5A623"></span><span class="jnum">08</span><h2>Autopilot / Company OS</h2></div>
+    <p class="jsum">Portfolio → per-company command centre read as an autonomy gradient (Made · Waiting · Your call); the Run layer drafts &amp; executes reversible moves, humans gate the rest.</p>
+    <div class="flow"><span class="fe">portfolio <span class="fa">→</span> <em>drill in</em> command-center</span><span class="fe">command-center <span class="fa">→</span> <em>reading order</em> autonomy-gradient</span><span class="fe">command-center <span class="fa">→</span> <em>Approve &amp; send</em> edge-no-sender</span><span class="fe">portfolio <span class="fa">→</span> <em>state</em> autopilot-states</span><span class="fe">autopilot-states <span class="fa">→</span> <em>paused</em> edge-auto-toggle</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Autopilot — portfolio</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>3 companies ran themselves</span><span class='wf-pill lime' style='margin-left:auto'>autopilot on</span></div><div class='wf-b'><div class='wf-box' style='margin:5px 0'><div class='wf-row sb'><span><b>Aamras</b> · brand</span><span class='wf-faint'>center ↗</span></div><div class='wf-row wf-dim' style='font-size:11px'>made 3 · waiting 2 · calls 1</div></div><div class='wf-box' style='margin:5px 0'><div class='wf-row sb'><span><b>Haazma</b> · software</span></div><div class='wf-row wf-dim' style='font-size:11px'>made 1 · waiting 3 · calls 0</div></div><div class='wf-box' style='margin:5px 0'><div class='wf-row sb'><span><b>Switchboard</b> · software</span></div><div class='wf-row wf-dim' style='font-size:11px'>made 1 · waiting 1 · calls 2</div></div></div></div></div>
+      <div class="snote">partial — reads real portfolio storage. In-extension unverified: cockpit runs at sameep.ai, NOT in the manifest allowlist (browser test used a mock provider). Outside Switchboard degrades to a marked '· sample' view.</div>
+      <div class="sanchor">examples/autopilot/cockpit.html; docs/COMPANY-OS.md</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Command centre (drill-in)</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:380px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Aamras · brand</span><span class='wf-kick' style='margin-left:auto'>ran overnight</span></div><div class='wf-b'><div class='wf-row wf-dim' style='font-size:11px'>Identity: Hero ◆ Who ◆ Voice ◆</div><hr class='wf-hr'><div class='wf-kick'>made · autopilot · reversible</div><div class='wf-row sb'><span class='wf-lime'>✓ 3 captions</span><span class='wf-faint'>draft in Bank</span></div><hr class='wf-hr'><div class='wf-kick'>waiting · gate · one tap</div><div class='wf-row sb'><span class='wf-amber'>▲ Publish posts</span><span class='wf-btn primary'>Approve &amp; send</span></div><div class='wf-row wf-amber' style='font-size:10px'>→ Connect to send (no sender)</div><hr class='wf-hr'><div class='wf-kick'>your call · founder</div><div class='wf-row'>◆ Pricing for launch tier</div></div></div></div>
+      <div class="snote">partial — reading order IS the autonomy gradient (Made / Waiting / Your call). 'Approve &amp; send' calls relay__autopilot_dispatch; routineDispatch/pageDispatch is the one audited outward path.</div>
+      <div class="sanchor">examples/autopilot/cockpit.html; relay__autopilot_dispatch</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Autopilot — 8 states</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Company OS states</span><span class='wf-kick' style='margin-left:auto'>states</span></div><div class='wf-b'><ul class='wf-list' style='font-size:11px'><li><span>fresh</span><span class='wf-faint'>lock 4 decisions</span></li><li><span>running</span><span class='wf-faint'>heartbeat</span></li><li><span>awaiting you</span><span class='wf-faint'>N staged</span></li><li><span>paused</span><span class='wf-faint'>no spend</span></li><li><span>out of runway</span><span class='wf-amber'>self-pauses</span></li><li><span>no-connector</span><span class='wf-faint'>— not connected</span></li><li><span>failed</span><span class='wf-faint'>error + Retry</span></li><li><span>no-sender</span><span class='wf-amber'>Connect to send</span></li></ul></div></div></div>
+      <div class="snote">partial — out-of-runway is NOT rendered in cockpit.html (metering lives only in the separate autopilot/index.html).</div>
+      <div class="sanchor">docs/COMPANY-OS.md §5</div>
+    </div><div class="scard k-decision">
+      <div class="shead"><span class="skind">decision</span><h3>Autonomy gradient</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:360px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Who acts?</span><span class='wf-kick' style='margin-left:auto'>decision</span></div><div class='wf-b'><ul class='wf-list'><li><span>reversible</span><span class='wf-lime'>autopilot · God's hands</span></li><li><span>irreversible</span><span class='wf-amber'>gate · one tap</span></li><li><span>strategic</span><span class='wf-dim'>founder · decision</span></li></ul></div></div></div>
+      <div class="snote">shipped — reversibility decides autonomy; the send-line is honest and enforced (0 unattended sends ever).</div>
+      <div class="sanchor">routineInvoke (reversible) vs staged gate/founder</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>No sender connected</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:380px'><div class='wf-top'><span class='wf-dot amber'></span><span class='wf-ttl'>Edge · no-sender</span><span class='wf-kick' style='margin-left:auto'>shipped</span></div><div class='wf-b'><div class='wf-row sb'><span class='wf-amber'>▲ Publish posts</span><span class='wf-faint'>staged</span></div><p class='wf-p' style='margin:8px 0 0'>findSender() finds nothing → honest 'Connect to send'. Move stays staged; 0 sends. Every channel is no-sender today.</p></div></div></div>
+      <div class="snote">shipped — the honest failure: no publisher/email connector connected, so the outward path can't fire.</div>
+      <div class="sanchor">findSender() — clickup=tasks, granola=meetings, none serve email/chat</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>Auto-mode toggle (mock)</h3><span class="pill" style="color:#5B8DEF;border-color:#5B8DEF55">mock</span></div>
+      <div class="swf"><div class='wf' style='width:320px'><div class='wf-top'><span class='wf-dot slate'></span><span class='wf-ttl'>Edge · toggle not persisted</span><span class='wf-kick' style='margin-left:auto'>mock</span></div><div class='wf-b'><div class='wf-row sb'><span>Autopilot</span><span class='wf-pill'>on / paused</span></div><p class='wf-p' style='margin:8px 0 0'>Running/paused &amp; per-company auto toggles only mutate local JS. Auto truth lives in ~/.relay/autopilot.json, unreachable from origin storage.</p></div></div></div>
+      <div class="snote">mock — the toggle is cosmetic until the origin can reach ~/.relay/autopilot.json.</div>
+      <div class="sanchor">cockpit.html local JS state vs ~/.relay/autopilot.json</div>
+    </div></div></section><section id="teambank"><div class="jhead"><span class="jdot" style="background:#C8F250"></span><span class="jnum">09</span><h2>Team Mode &amp; Bank</h2></div>
+    <p class="jsum">Team = host/join-with-code (no login; invite = membership; Pro rides in the code). Bank = the context vault (contexts.json + .md) that feeds every wrapp as lent context.</p>
+    <div class="flow"><span class="fe">team <span class="fa">→</span> <em>lane</em> team-states</span><span class="fe">team <span class="fa">→</span> <em>origin gate</em> edge-allowlist</span><span class="fe">bank <span class="fa">→</span> <em>lent as context →</em> context-selector</span></div>
+    <div class="grid"><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Team mode</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Team</span><span class='wf-kick' style='margin-left:auto'>side panel</span></div><div class='wf-b'><div class='wf-row sb'><span>Team mode</span><span class='wf-pill'>off</span></div><hr class='wf-hr'><a class='wf-btn primary block'>Host a team</a><div class='wf-row' style='margin:8px 0'><div class='wf-field' style='flex:1;margin:0'>Join with a code…</div><span class='wf-btn ghost'>Join</span></div><p class='wf-p' style='margin:6px 0 0;font-size:10px'>No login — invite = membership. Pro entitlement rides inside the code. Join adopts the shared folder as active project.</p></div></div></div>
+      <div class="snote">partial — daemon team.* (status/host/join/leave/entitlement/git) wired; but the Mac panel does NOT surface team (TeamSection.swift drafted, unmounted) — team lives in the extension side panel. Billing unbuilt.</div>
+      <div class="sanchor">daemon team.* control actions; TeamSection.swift (drafted, unmounted)</div>
+    </div><div class="scard k-screen">
+      <div class="shead"><span class="skind">screen</span><h3>Bank — context vault</h3><span class="pill" style="color:#C8F250;border-color:#C8F25055">shipped</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Bank</span><span class='wf-kick' style='margin-left:auto'>context vault</span></div><div class='wf-b'><div class='wf-row sb'><span class='wf-indigo'>◆ StayOften</span><span class='wf-faint'>bound folder</span></div><hr class='wf-hr'><ul class='wf-list'><li><span>note-brand.md</span><span class='wf-faint'>empty</span></li><li><span>tasks.md</span><span class='wf-faint'>empty</span></li></ul><p class='wf-p' style='margin:8px 0 0;font-size:10px'>Bound folder = a real vault; feeds every wrapp as lent context. Renders truthful empty until a vault has notes.</p></div></div></div>
+      <div class="snote">shipped — renders real state; no vault has note-*/tasks.md yet → truthful empty. Bank connector (MCP) to push to-dos from any Claude thread is the next step.</div>
+      <div class="sanchor">contexts.json + .md notes; bound folder = a real vault</div>
+    </div><div class="scard k-state">
+      <div class="shead"><span class="skind">state</span><h3>Team lane states</h3><span class="pill" style="color:#F5A623;border-color:#F5A62355">partial</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot'></span><span class='wf-ttl'>Team lane</span><span class='wf-kick' style='margin-left:auto'>off-ladder</span></div><div class='wf-b'><ul class='wf-list'><li><span>off</span><span class='wf-faint'>solo</span></li><li><span>hosting</span><span class='wf-lime'>invite code live</span></li><li><span>joined</span><span class='wf-dim'>shared folder active</span></li><li><span>billing</span><span class='wf-amber'>unbuilt</span></li></ul><p class='wf-p' style='margin:6px 0 0;font-size:10px'>Never blocks rungs 0–7.</p></div></div></div>
+      <div class="snote">partial — team is an off-ladder lane; billing (Stripe → entitlement minting) is the missing piece.</div>
+      <div class="sanchor">docs/STATES.md §1 (team lane: off/off-ladder/hosting/joined)</div>
+    </div><div class="scard k-edge">
+      <div class="shead"><span class="skind">edge</span><h3>Origin not allowlisted</h3><span class="pill" style="color:#8891A0;border-color:#8891A055">aspirational</span></div>
+      <div class="swf"><div class='wf' style='width:340px'><div class='wf-top'><span class='wf-dot red'></span><span class='wf-ttl'>Edge · origin not allowlisted</span><span class='wf-kick' style='margin-left:auto'>gap</span></div><div class='wf-b'><p class='wf-p' style='margin:0'>window.claude injects only on thelastprompt.ai / *.thelastprompt.ai / localhost. A new origin (e.g. <span class='wf-mono wf-indigo'>sameep.ai</span>) silently shows 'Get Switchboard' until added to BOTH lists + the extension reloaded.</p><div class='wf-row' style='margin-top:8px'><span class='wf-pill red'>silent fail</span></div></div></div></div>
+      <div class="snote">aspirational-fix — this is the same wall that leaves the autopilot cockpit untestable in-extension (cluster 8).</div>
+      <div class="sanchor">extension manifest origin allowlist; relay-extension-origin-allowlist</div>
+    </div></div></section>
+</div></body></html>
