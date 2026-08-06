@@ -881,6 +881,8 @@ final class CursorGuide {
     private var flagsMonitorL: Any?
     private var keyMonitorG: Any?
     private var keyMonitorL: Any?
+    private var mouseMonitorG: Any?
+    private var mouseMonitorL: Any?
 
     // ── run state
     private var mode: GuideMode = .tour
@@ -1375,12 +1377,11 @@ final class CursorGuide {
         onOptionPreview?(steps[idx].id, model.options[i].id)
     }
 
-    // ── mouse policy: the overlay ACCEPTS mouse events, but GuideHostingView.hitTest restricts them to the
-    //    card's rect (model.cardFrame) and passes every other pixel through — so the card + its buttons are
-    //    clickable while the app underneath stays fully interactive. (No separate bounded panel needed: the
-    //    hosting view's frame-gated hit-test is the safe way to make the full-screen overlay selectively
-    //    clickable.) A collapsed/hidden card reports no frame → the overlay is fully click-through. ──
-    private func applyMousePolicy() { overlay?.ignoresMouseEvents = false }
+    // ── mouse policy: the overlay is click-through by DEFAULT and becomes clickable ONLY while the
+    //    pointer is over the card (updateMousePassthrough, driven by the mouse-move monitors). A
+    //    full-screen `ignoresMouseEvents=false` window eats every click regardless of hitTest — that
+    //    locked the screen — so we never do that; cursor-tracking is the lock-proof approach. ──
+    private func applyMousePolicy() { updateMousePassthrough() }
     func tapPrimary()      { handleAdvance(fail: false) }
     func tapFail()         { if mode == .test { handleAdvance(fail: true) } }
     // Click an option: pick it; clicking the already-selected/recommended card approves (same as ⌥→).
@@ -1613,7 +1614,7 @@ final class CursorGuide {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .screenSaver
-        panel.ignoresMouseEvents = false     // accept clicks — the hosting view restricts them to the card rect
+        panel.ignoresMouseEvents = true      // DEFAULT click-through; the cursor-tracking monitor flips it clickable ONLY while the pointer is over the card (lock-proof)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.contentView = host
         panel.setFrame(screen.frame, display: false)
@@ -1665,11 +1666,38 @@ final class CursorGuide {
             MainActor.assumeIsolated { swallow = self?.onKey(ev.keyCode, ev.modifierFlags) ?? false }
             return swallow ? nil : ev
         }
+        // Cursor tracking → the overlay only ACCEPTS clicks while the pointer is over the card, and is
+        // otherwise fully click-through. This is the lock-proof way to make a full-screen overlay
+        // selectively clickable: a full-screen `ignoresMouseEvents=false` window eats EVERY click
+        // (hitTest returning nil does NOT forward to the app below) — that locked the screen. Here the
+        // DEFAULT is pass-through and we flip to clickable only when the pointer is provably inside a
+        // sane-sized card rect, so any mis-computation fails safe to pass-through, never a lock.
+        mouseMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMousePassthrough() }
+        }
+        mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] ev in
+            MainActor.assumeIsolated { self?.updateMousePassthrough() }; return ev
+        }
+    }
+
+    /// Set the overlay click-through UNLESS the pointer is over the card. Default-safe: only captures
+    /// when the cursor is inside a validly-sized card rect (never near full-screen), so a coord bug
+    /// degrades to "card not clickable", not a locked screen. esc/⌥-keys work regardless.
+    @MainActor private func updateMousePassthrough() {
+        guard let ov = overlay else { return }
+        guard model.visible, !model.collapsed else { ov.ignoresMouseEvents = true; return }
+        let cf = model.cardFrame, win = ov.frame
+        guard cf.width > 1, cf.height > 1,
+              cf.width < win.width * 0.9, cf.height < win.height * 0.9 else { ov.ignoresMouseEvents = true; return }
+        // cardFrame is SwiftUI .global (window space, top-left origin); the overlay fills the screen.
+        // Convert to screen coords (bottom-left origin) to test against NSEvent.mouseLocation.
+        let cardScreen = CGRect(x: win.minX + cf.minX, y: win.maxY - cf.maxY, width: cf.width, height: cf.height).insetBy(dx: -4, dy: -4)
+        ov.ignoresMouseEvents = !cardScreen.contains(NSEvent.mouseLocation)
     }
 
     private func removeMonitors() {
-        for mon in [flagsMonitorG, flagsMonitorL, keyMonitorG, keyMonitorL] { if let m = mon { NSEvent.removeMonitor(m) } }
-        flagsMonitorG = nil; flagsMonitorL = nil; keyMonitorG = nil; keyMonitorL = nil
+        for mon in [flagsMonitorG, flagsMonitorL, keyMonitorG, keyMonitorL, mouseMonitorG, mouseMonitorL] { if let m = mon { NSEvent.removeMonitor(m) } }
+        flagsMonitorG = nil; flagsMonitorL = nil; keyMonitorG = nil; keyMonitorL = nil; mouseMonitorG = nil; mouseMonitorL = nil
     }
 
     // No-op: guide signals moved to fn+arrow keys (onKey) so they never collide with ⌃⌥ dictation, which
@@ -1705,6 +1733,7 @@ final class CursorGuide {
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
         case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
         case 44:  model.placement = (model.placement == .notch ? .dock : .notch); applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
+        case 41:  model.placement = (model.placement == .cursor ? .notch : .cursor); applyMousePolicy(); return true  // ⌥; — notch ↔ cursor
         case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
         case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
         case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C
