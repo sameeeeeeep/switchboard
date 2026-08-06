@@ -1098,6 +1098,16 @@ delegated control-plane action, not a Dashboard write.
 
 ---
 
+### Grounding — Dashboard, what's real today (native build)
+
+Every tile/pane derives from the same readers the other surfaces use — contexts.json (Projects tile +
+touched-per-day spark), routines.json/control (Routines tile + state pane), the audit receipts
+(**Acts** tile with an ok/denied split + per-day bars, Recent-acts pane, Activity sessions pane),
+status.json (Connectors tile + Subsystem health incl. backends + daemon-freshness), osPending (Needs
+tile). The Today/7d/30d segment re-scopes the audit window. **No usage/token tile** — there is no
+truthful per-day usage receipt yet; a fake meter is worse than none (see the gate token-accounting
+history). Health alerts each carry the →fix door to Needs attention.
+
 ## 3.11 Needs attention — the action inbox
 
 **One job:** *Show me everything waiting on ME, and give me the one action for each.* This is the OS's

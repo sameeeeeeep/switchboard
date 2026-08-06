@@ -165,49 +165,119 @@ private struct DashLine: Identifiable {
     var retry: Bool = false
 }
 
-private enum DashSample {
-    static let tiles: [DashTile] = [
-        DashTile(kicker: "Projects",  big: "4", sub: "1 stalled", drill: .bank,      drillLabel: "Bank",
-                 spark: DashSpark(bars: false, data: [3,3,4,4,4,4,4], color: .inkDim)),
-        DashTile(kicker: "Routines",  big: "3", sub: "active · next 08:00", drill: .routines, drillLabel: "Routines",
-                 spark: DashSpark(bars: false, data: [2,3,3,2,3,3,3], color: .inkDim)),
-        DashTile(kicker: "Workflows", big: "12", ok: (10, 2), drill: .workflows, drillLabel: "Workflows",
-                 spark: DashSpark(bars: true, data: [2,1,3,2,1,2,1], color: .inkDim)),
-        DashTile(kicker: "Usage",     big: "4.2M", suffix: " /8M", sub: "tokens · 53% of budget", drill: .history, drillLabel: "History",
-                 spark: DashSpark(bars: true, data: [3,5,4,6,5,7,6], color: .lime)),
-        DashTile(kicker: "Needs attention", big: "5", sub: "2 blocking", drill: .needs, drillLabel: "Needs", alert: true,
-                 spark: DashSpark(bars: false, data: [0,1,1,2,3,4,5], color: .danger)),
-    ]
+// ═══ LIVE dashboard — every tile/pane derives from the same real readers the other surfaces use:
+// contexts.json (projects), routines.json+control (routines), the audit log (runs + activity),
+// status.json (connector/backends health), osPending (needs). No usage/token tile — there is no
+// truthful per-day usage receipt yet, and a fake meter is worse than none.
 
-    static let routines: [DashLine] = [
-        DashLine(ic: "⟳", icColor: .lime,   name: "Daily brief",         status: "next 08:00",  mark: "✓", markColor: .lime),
-        DashLine(ic: "⟳", icColor: .indigo, name: "Email triage",        status: "running…", statusColor: .indigo, mark: "•", markColor: .indigo),
-        DashLine(ic: "⟳", icColor: .lime,   name: "IndEur social recap", status: "next Fri",    mark: "✓", markColor: .lime),
-        DashLine(ic: "⟳", icColor: .inkFaint, name: "Weekly deck", nameMuted: true, status: "paused"),
-    ]
+private struct DashLive {
+    var tiles: [DashTile] = []
+    var routines: [DashLine] = []
+    var runs: [DashLine] = []
+    var healthOK: [String] = []
+    var healthAlerts: [String] = []
+    var activity: [DashLine] = []
+}
 
-    static let runs: [DashLine] = [
-        DashLine(ic: "✓", icColor: .lime,   name: "CopyFlow — launch emails", status: "14:02"),
-        DashLine(ic: "✗", icColor: .danger, name: "Sheet sync",               status: "11:40", retry: true),
-        DashLine(ic: "✓", icColor: .lime,   name: "Autopilot slate",          status: "09:15"),
-        DashLine(ic: "✓", icColor: .lime,   name: "Prism — beam render",      status: "08:41"),
-    ]
+private func dashLive(rangeDays: Double) -> DashLive {
+    var out = DashLive()
+    let now = Date().timeIntervalSince1970 * 1000
 
-    static let health: [String] = ["daemon", "cloud model", "3 connectors"]
-    static let healthAlert = "Granola connector needs reconnect"
+    // projects tile — spark = contexts touched per day over the window (from updatedAt)
+    let ctxs = bankContexts()
+    var perDay = [Double](repeating: 0, count: max(Int(rangeDays), 1))
+    for c in ctxs {
+        let age = now - c.updatedMs
+        let day = Int(age / 86_400_000)
+        if day >= 0 && day < perDay.count { perDay[perDay.count - 1 - day] += 1 }
+    }
+    let brands = ctxs.filter { $0.kind == "brand" }.count
+    let ideas = ctxs.filter { $0.kind == "idea" }.count
+    out.tiles.append(DashTile(kicker: "Projects", big: "\(ctxs.count)",
+                              sub: "\(brands) brands · \(ideas) ideas", drill: .bank, drillLabel: "Bank",
+                              spark: DashSpark(bars: false, data: perDay, color: .inkDim)))
 
-    static let activity: [DashLine] = [
-        DashLine(ic: "↻", icColor: .inkFaint, name: "14:22 · Prism image made"),
-        DashLine(ic: "⟳", icColor: .inkFaint, name: "08:00 · Daily brief delivered"),
-        DashLine(ic: "↻", icColor: .inkFaint, name: "Yesterday · 4 marks generated in Crest"),
-    ]
+    // routines tile
+    let r = routinesLive()
+    let activeR = r.list.filter { regGroup($0.register) == "active" }.count
+    out.tiles.append(DashTile(kicker: "Routines", big: "\(activeR)",
+                              sub: r.off ? "master switch off" : "\(r.list.count) registered",
+                              drill: .routines, drillLabel: "Routines",
+                              spark: DashSpark(bars: false, data: [], color: .inkDim)))
+    out.routines = r.list.map { rt in
+        DashLine(ic: "⟳", icColor: rt.register == .active ? .lime : .inkFaint,
+                 name: rt.name, nameMuted: rt.register != .active, status: rt.pillLabel)
+    }
+    if out.routines.isEmpty { out.routines = [DashLine(ic: "⟳", icColor: .inkFaint, name: "No routines registered yet", nameMuted: true)] }
+
+    // runs tile + recent-runs pane — from the real receipts (audit + guide), window-scoped
+    let days = histReceipts(days: rangeDays)
+    let allRuns = days.flatMap { $0.runs }
+    let denied = allRuns.filter { $0.result == "denied" }.count
+    var runsPerDay = [Double](repeating: 0, count: max(Int(rangeDays), 1))
+    // day index from the receipt's day label is lossy; count via a fresh grouping over receipts/day list
+    for (i, d) in days.enumerated() where i < runsPerDay.count { runsPerDay[runsPerDay.count - 1 - i] = Double(d.runs.count) }
+    out.tiles.append(DashTile(kicker: "Acts", big: "\(allRuns.count)",
+                              ok: (allRuns.count - denied, denied),
+                              drill: .history, drillLabel: "History",
+                              spark: DashSpark(bars: true, data: runsPerDay, color: .lime)))
+    out.runs = allRuns.prefix(4).map { run in
+        DashLine(ic: run.result == "denied" ? "✗" : "✓",
+                 icColor: run.result == "denied" ? .danger : .lime,
+                 name: "\(run.wrapp) — \(run.prompt)", status: run.tm)
+    }
+    if out.runs.isEmpty { out.runs = [DashLine(ic: "·", icColor: .inkFaint, name: "No acts in this window", nameMuted: true)] }
+
+    // connectors tile + health pane — status.json
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    var up = 0, down: [String] = []
+    var backends: [String] = []
+    var statusFresh = false
+    if let st = readJSON(relay + "/status.json") as? [String: Any] {
+        for c in (st["connectors"] as? [[String: Any]]) ?? [] {
+            if (c["ok"] as? Bool) == true { up += 1 } else { down.append((c["name"] as? String) ?? "?") }
+        }
+        backends = (st["backends"] as? [String]) ?? []
+        if let u = (st["updatedAt"] as? NSNumber)?.doubleValue { statusFresh = now - u < 2 * 3_600_000 }
+    }
+    out.tiles.append(DashTile(kicker: "Connectors", big: "\(up)", suffix: " /\(up + down.count)",
+                              sub: down.isEmpty ? "all up" : down.joined(separator: " · "),
+                              drill: .needs, drillLabel: "Needs", alert: !down.isEmpty,
+                              spark: DashSpark(bars: false, data: [], color: .inkDim)))
+    out.healthOK = (statusFresh ? ["daemon"] : []) + backends
+    if !statusFresh { out.healthAlerts.append("status.json is stale — daemon heartbeat missing") }
+    for d in down { out.healthAlerts.append("\(d) connector needs reconnect") }
+
+    // needs tile
+    let pending = osPending()
+    out.tiles.append(DashTile(kicker: "Needs attention", big: "\(pending.count)",
+                              sub: pending.first?.title ?? "you're clear",
+                              drill: .needs, drillLabel: "Needs", alert: !pending.isEmpty,
+                              spark: DashSpark(bars: false, data: [], color: .danger)))
+
+    // activity pane — latest sessions per app
+    let plural = ["run": "runs", "save": "saves", "dictation": "dictations", "publish": "publishes", "reply": "replies"]
+    out.activity = osSessions(windowDays: min(rangeDays, 7))
+        .sorted { $0.endMs > $1.endMs }.prefix(4).map { s in
+            DashLine(ic: "↻", icColor: .inkFaint,
+                     name: "\(relAgo(now - s.endMs)) ago · \(s.app) — " +
+                           s.counts.sorted { $0.value > $1.value }.prefix(2)
+                               .map { "\($0.value) \($0.value == 1 ? $0.key : (plural[$0.key] ?? $0.key))" }
+                               .joined(separator: " · "))
+        }
+    if out.activity.isEmpty { out.activity = [DashLine(ic: "·", icColor: .inkFaint, name: "Quiet — no sessions in this window", nameMuted: true)] }
+
+    return out
 }
 
 struct DashboardSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
     @State private var range = "7d"
+    @State private var live = DashLive()
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
+    private var rangeDays: Double { range == "Today" ? 1 : (range == "30d" ? 30 : 7) }
+    private func load() { live = dashLive(rangeDays: rangeDays) }
 
     var body: some View {
         ScrollView {
@@ -217,38 +287,40 @@ struct DashboardSurface: View {
                 }
 
                 LazyVGrid(columns: cols, spacing: 14) {
-                    ForEach(DashSample.tiles) { t in DashTileView(tile: t, onNavigate: onNavigate) }
+                    ForEach(live.tiles) { t in DashTileView(tile: t, onNavigate: onNavigate) }
                 }
                 .padding(.top, 20)
 
                 HStack(alignment: .top, spacing: 14) {
-                    DashPane(title: "Routines — running / next fire", moreLabel: "→ Routines",
+                    DashPane(title: "Routines — state", moreLabel: "→ Routines",
                              moreSurface: .routines, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.routines, onNavigate: onNavigate)
+                        DashLineList(rows: live.routines, onNavigate: onNavigate)
                     }
-                    DashPane(title: "Recent runs — pass / fail", moreLabel: "→ Workflows",
-                             moreSurface: .workflows, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.runs, onNavigate: onNavigate)
+                    DashPane(title: "Recent acts — from the audit trail", moreLabel: "→ History",
+                             moreSurface: .history, onNavigate: onNavigate) {
+                        DashLineList(rows: live.runs, onNavigate: onNavigate)
                     }
                 }
                 .padding(.top, 14)
 
                 HStack(alignment: .top, spacing: 14) {
                     DashPane(title: "Subsystem health", onNavigate: onNavigate) {
-                        DashHealth(onNavigate: onNavigate)
+                        DashHealth(ok: live.healthOK, alerts: live.healthAlerts, onNavigate: onNavigate)
                     }
-                    DashPane(title: "Activity feed", moreLabel: "→ History",
+                    DashPane(title: "Activity — latest sessions", moreLabel: "→ History",
                              moreSurface: .history, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.activity, onNavigate: onNavigate)
+                        DashLineList(rows: live.activity, onNavigate: onNavigate)
                     }
                 }
                 .padding(.top, 14)
 
-                FootNote(text: "dashboard is the state of the machine, not your work · every tile is a door, not a dead number · a red tile always names the action")
+                FootNote(text: "dashboard is the state of the machine, not your work · every tile is a door, not a dead number · no usage meter until there's a truthful usage receipt")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
+        .onChange(of: range) { _ in load() }
     }
 }
 
@@ -413,36 +485,49 @@ private struct DashRetryPill: View {
 }
 
 private struct DashHealth: View {
+    let ok: [String]
+    let alerts: [String]
     var onNavigate: (Surface) -> Void
     @State private var fixHover = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 16) {
-                ForEach(DashSample.health, id: \.self) { label in
+                ForEach(ok, id: \.self) { label in
                     HStack(spacing: 7) {
                         Circle().fill(Color.lime).frame(width: 7, height: 7)
-                            .shadow(color: Color.lime.opacity(0.5), radius: 3)
                         Text(label).font(.hanken(12.5)).foregroundColor(.inkSec)
                     }
                 }
+                if ok.isEmpty { Text("no green subsystems right now").font(.hanken(12)).foregroundColor(.inkDim) }
                 Spacer(minLength: 0)
             }
             .padding(.top, 4).padding(.bottom, 8)
-            HStack(spacing: 10) {
-                Text("◐").font(.splMono(12)).foregroundColor(.danger).frame(width: 16)
-                Text(DashSample.healthAlert).font(.hanken(13)).foregroundColor(.inkSec).lineLimit(1)
-                Spacer(minLength: 8)
-                Button { onNavigate(.needs) } label: {
-                    Text("→ fix").font(.splMono(10)).foregroundColor(.lime)
-                        .padding(.horizontal, 8).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.lime.opacity(0.12)))
-                        .overlay(Capsule().stroke(Color.lime.opacity(fixHover ? 0.6 : 0.4), lineWidth: 1))
+            ForEach(alerts, id: \.self) { alert in
+                HStack(spacing: 10) {
+                    Text("◐").font(.splMono(12)).foregroundColor(.danger).frame(width: 16)
+                    Text(alert).font(.hanken(13)).foregroundColor(.inkSec).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button { onNavigate(.needs) } label: {
+                        Text("→ fix").font(.splMono(10)).foregroundColor(.lime)
+                            .padding(.horizontal, 8).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.lime.opacity(0.12)))
+                            .overlay(Capsule().stroke(Color.lime.opacity(fixHover ? 0.6 : 0.4), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { fixHover = $0 }
                 }
-                .buttonStyle(.plain)
-                .onHover { fixHover = $0 }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
             }
-            .padding(.vertical, 8)
-            .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
+            if alerts.isEmpty {
+                HStack(spacing: 10) {
+                    Text("✓").font(.splMono(12)).foregroundColor(.lime).frame(width: 16)
+                    Text("all subsystems healthy").font(.hanken(13)).foregroundColor(.inkSec)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
+            }
         }
     }
 }
