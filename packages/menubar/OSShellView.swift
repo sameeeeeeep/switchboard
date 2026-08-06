@@ -463,13 +463,23 @@ private func walkNames(_ q: String, in folder: String, limit: Int) -> [String] {
 // global routine loop. Real, actionable; empty when nothing needs the user.
 func osPending() -> [SBTask] {
     var out: [SBTask] = []
-    let statusPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/status.json")
-    if let st = readJSON(statusPath) as? [String: Any], let cs = st["connectors"] as? [[String: Any]] {
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    if let st = readJSON(relay + "/status.json") as? [String: Any], let cs = st["connectors"] as? [[String: Any]] {
         for c in cs where (c["ok"] as? Bool) == false {
             if let n = c["name"] as? String {
                 out.append(SBTask(glyph: "⚠", title: "Reconnect \(n)", detail: "connector is down — 0 tools", suggested: false))
             }
         }
+    }
+    // the same real states the Needs-attention inbox derives — the strip and badge never disagree with it
+    if readJSON(relay + "/guide-suspended.json") != nil {
+        out.append(SBTask(glyph: "▸", title: "Resume the tour", detail: "you left a walkthrough partway", suggested: false))
+    }
+    if (readJSON(relay + "/routines-control.json") as? [String: Any])?["off"] as? Bool == true {
+        out.append(SBTask(glyph: "⏸", title: "Routines are off", detail: "nothing will run on schedule", suggested: false))
+    }
+    for t in osTasksAll().tasks.filter({ $0.over }).prefix(5) {
+        out.append(SBTask(glyph: "☐", title: "Overdue: \(t.title)", detail: t.due.map { "due \($0)" } ?? "", suggested: false))
     }
     return out
 }
@@ -562,6 +572,7 @@ struct OSShellView: View {
 // ---- the left rail: groups, the 13 items, active highlight (lime), the needs-attention badge ----
 struct RailView: View {
     @Binding var selected: Surface
+    @State private var needsCount = 0     // live inbox size — the badge never disagrees with the surface
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -572,6 +583,7 @@ struct RailView: View {
                 Text("Switchboard").font(.hanken(14, .semibold)).foregroundColor(.ink)
             }
             .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 14)
+            .onAppear { needsCount = osPending().count }
 
             ForEach(OS_GROUPS) { group in
                 Text(group.name.uppercased())
@@ -580,7 +592,7 @@ struct RailView: View {
                 ForEach(group.items) { item in
                     RailItem(surface: item,
                              active: selected == item,
-                             badge: item == .needs && Sample.needsCount > 0 ? Sample.needsCount : nil,
+                             badge: item == .needs && needsCount > 0 ? needsCount : nil,
                              action: { selected = item })
                 }
             }

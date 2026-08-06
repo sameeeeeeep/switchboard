@@ -1158,6 +1158,23 @@ the Dashboard activity feed); hold items the OS could resolve itself; keep an it
 |---|---|
 | Click primary action | Resolve in place (Approve/Retry/Grant/Decide…) — the item leaves the inbox on success |
 | Click "why…" | Expand the full context (what asked, what it will do, the blast radius) |
+
+### Grounding — what's real today (native build)
+
+Every item derives from a real `~/.relay` state, and every primary action is real:
+
+- ▲ **Blocking**: down connectors from `status.json` (`ok:false`) → **Open panel** (writes the
+  `~/.relay/open-panel` trigger; the menu-bar app fronts the real panel). A `status.json` older than
+  2h → the stale-daemon item.
+- ● **Failed**: routines whose record carries `lastOutcome: error/failed` or a `lastError` (renders
+  only when the control plane actually records it — no invented failures).
+- ○ **Waiting**: a suspended guide from `guide-suspended.json` → **Resume** genuinely resumes (moves
+  suspended → `guide-run.json`; the CursorGuide watcher picks it up, exactly like the menu item);
+  routines switched off (`routines-control.json off:true` / `globalPaused`) → Open Routines; overdue
+  tasks (`due:` past) → Open Tasks.
+- The rail badge and the Home strip read the same states (`osPending()`), so the count never
+  disagrees with the inbox. Empty = the calm "you're clear" state. Snooze/Later hides for the visit
+  only; an item truly leaves when its underlying state clears.
 | Click the source chip | Deep-link to the origin (routine / workflow run / task / artifact) |
 | Dismiss | Remove without acting (journaled → **undoable**) |
 | Snooze | Re-surface later (a time chip) |
