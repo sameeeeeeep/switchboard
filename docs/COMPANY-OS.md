@@ -110,6 +110,17 @@ the real work on *your* Claude, and the output lands as an artifact on the compa
 `drafting → done` with the artifact attached. Nothing about this can send or charge — the wrapp's own
 outward actions are themselves GATE-class and never auto-fire.
 
+**How the routine picks the wrapp (live).** The routine carries an ordered **move→wrapp catalog**
+(`packages/sidekick/src/routines/autopilot.ts` `CATALOG`): each tick, the first reversible move is
+matched by intent to a real wrapp action and run on your own Claude via the Switchboard connector
+(`broker.routineInvoke` → `mcp__…__wrapp__*`, audited as `routine@autopilot`). Its structured result
+is rendered into the artifact — the same output as if you'd opened that wrapp by hand. If no wrapp
+fits the move, or the named wrapp isn't connected, the routine falls back to a generic draft so the
+tick still lands. **Bound today:** foundational moves → *ideabrain · brand brief*; operational moves
+(voice/angle/channel/content/growth) → *autopilot · operating slate*. **Catalogued, not yet bound:**
+redline/adpulse want a page's HTML or an ads CSV the routine doesn't yet carry — they wait on a
+source artifact. Only ever DRAFT-class wrapp actions are bound; outward actions stay in the GATE lane.
+
 Per-sector move catalog (v1 — the reversible ones God runs, and the gated ones it stages):
 
 **Software**
@@ -171,11 +182,13 @@ spend is metered and visible.
 
 ## 6. What's built vs next
 
-- **Built:** the Run layer / routines clock (routine #1 drafts the day's moves — [[routines]]).
-- **This spec's build:** the cockpit UI (§ below) + the **move classifier** + **God's-hands execution of
-  one reversible move end-to-end** (draft → wrapp action → artifact filed → move done).
-- **Next:** the full per-sector catalog wired to real wrapps; the GATE approve-queue acting on a tap; the
-  portfolio view (many companies advancing at once); real metric connectors.
+- **Built:** the Run layer / routines clock (routine #1 drafts the day's moves — [[routines]]); the
+  cockpit UI (§ below); the move classifier; the portfolio view (many companies advancing at once);
+  **reversible moves executed by real wrapps** (`routineInvoke` → the move→wrapp catalog above:
+  ideabrain/operating-slate on your own Claude, generic-draft fallback).
+- **Next:** the GATE approve-queue acting on a tap (real sender dispatch through a connected sender +
+  the consent gate); more wrapp bindings as their cores are exposed (a page/CSV source for
+  redline/adpulse); real metric connectors.
 
 ---
 
