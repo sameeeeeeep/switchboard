@@ -69,6 +69,7 @@ async function main() {
   routines.register(makeAutopilotRoutine({
     draft: (prompt) => broker.routineDraft("autopilot", prompt),
     invoke: (toolSuffix, args) => broker.routineInvoke("autopilot", toolSuffix, args),
+    dispatch: (p) => broker.routineDispatch("autopilot", p),
     log: (m) => console.error("[relay/routines]", m),
   }));
   routines.start();

@@ -185,10 +185,14 @@ spend is metered and visible.
 - **Built:** the Run layer / routines clock (routine #1 drafts the day's moves — [[routines]]); the
   cockpit UI (§ below); the move classifier; the portfolio view (many companies advancing at once);
   **reversible moves executed by real wrapps** (`routineInvoke` → the move→wrapp catalog above:
-  ideabrain/operating-slate on your own Claude, generic-draft fallback).
-- **Next:** the GATE approve-queue acting on a tap (real sender dispatch through a connected sender +
-  the consent gate); more wrapp bindings as their cores are exposed (a page/CSV source for
-  redline/adpulse); real metric connectors.
+  ideabrain/operating-slate on your own Claude, generic-draft fallback); the **GATE dispatch path**
+  (`routineDispatch` → resolve a sender for the move's channel → the write-consent card is the founder's
+  tap, or a standing full-auto grant → send through a real connector + audit; no sender ⇒ an honest
+  `no-sender`, staged, nothing leaves the machine). Full-auto is wired in the routine; every channel is
+  `no-sender` today (no publisher/email connector connected), so nothing sends until one is.
+- **Next:** the assisted approve-queue TAP surfaced in the cockpit (the cockpit is still a static
+  prototype — wire it to the real portfolio/gate storage + call `routineDispatch`); more wrapp bindings
+  as their cores are exposed (a page/CSV source for redline/adpulse); real metric connectors.
 
 ---
 
