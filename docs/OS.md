@@ -1385,6 +1385,16 @@ promoting to a routine writes the control-plane object.
 
 # 4. Cross-cutting laws
 
+### Grounding — Workflows, what's real today (native build)
+
+There is **no daemon workflow registry yet**, so the surface invents nothing. The one real multi-step
+pipeline on the machine is the **batch** wrapp — each `batch-state.json` is a recipe of N answer-steps
+(brief + per-step open/selected/locked/error). `workflowsLive()` reads those across storage origins and
+renders each as a real step-chain with its true per-step state and completion (`✓ locked` / `◐ n/N` /
+`✗ error` / `not started`). Empty → an honest coming-state that opens the batch wrapp; the footer names
+the daemon workflow registry as the next layer. Row actions open batch / jump to History (no fake
+Run-now/Promote against a registry that doesn't exist).
+
 ## 4.1 Reversibility doctrine
 
 Grounds on the memory rule "reversibility" + the honesty constraint.

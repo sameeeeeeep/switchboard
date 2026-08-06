@@ -1301,59 +1301,55 @@ private struct Workflow: Identifiable {
     var running: Bool = false
 }
 
-private struct RecentRun: Identifiable {
-    let id = UUID(); let wf: String; let st: String; let tm: String; let desc: String; let app: String
-}
+// ═══ LIVE workflows — there is no daemon workflow registry yet, so we don't invent one. The one REAL
+// multi-step pipeline on this machine is the **batch** wrapp: each batch-state.json is a recipe of N
+// answer-steps (brief + per-step open/selected/locked/error). We surface those truthfully; when none
+// exist the surface is an honest "coming" state, never fabricated pipelines.
 
-private enum WorkflowSample {
-    static let list: [Workflow] = [
-        Workflow(id: "launch-day", name: "Launch-day pipeline", lastKind: "bad", lastLabel: "✗ failed at ③",
-                 steps: [WFStep(no: 1, t: "fetch signals", state: "done"),
-                         WFStep(no: 2, t: "draft copy", state: "done"),
-                         WFStep(no: 3, t: "Prism hero", state: "fail"),
-                         WFStep(no: 4, t: "assemble deck", state: "skip")],
-                 inputs: "inputs: project = Acme · tone = bold · channels = X, LinkedIn",
-                 acts: [WFAct(label: "Run now", kind: .pri, act: .run),
-                        WFAct(label: "Edit", kind: .plain, act: .edit),
-                        WFAct(label: "Promote to routine", kind: .plain, act: .promote)],
-                 history: [WFRun(st: "bad", tm: "11:40", desc: "failed at ③ — Prism: no model · steps ①② kept", link: "Retry from ③ ▸", retry: true),
-                           WFRun(st: "ok", tm: "09:15", desc: "full · 4 artifacts written to Bank", link: "Open log", retry: false),
-                           WFRun(st: "part", tm: "08:02", desc: "partial — ③④ skipped (no hero requested)", link: "Open log", retry: false)],
-                 attn: "✗ posted to Needs attention · Retry-from-③ reuses ①② — never re-pays for completed steps"),
-        Workflow(id: "weekly-report", name: "Weekly report", lastKind: "part", lastLabel: "◐ running · step 2 of 3",
-                 steps: [WFStep(no: 1, t: "pull metrics", state: "done"),
-                         WFStep(no: 2, t: "summarize", state: "run"),
-                         WFStep(no: 3, t: "post to Bank", state: "")],
-                 inputs: "inputs: window = last 7d · project = IndEur Club",
-                 acts: [WFAct(label: "Open log", kind: .plain, act: .log),
-                        WFAct(label: "Edit", kind: .plain, act: .edit)]),
-        Workflow(id: "vendor-sync", name: "Vendor sync", lastKind: "neu", lastLabel: "not run yet",
-                 steps: [WFStep(no: 1, t: "scrape quotes", state: ""),
-                         WFStep(no: 2, t: "normalize", state: ""),
-                         WFStep(no: 3, t: "update canvas", state: "")],
-                 inputs: "inputs: source = Alibaba · list = nailinit vendors — composing is available before first run",
-                 acts: [WFAct(label: "Run now", kind: .pri, act: .run),
-                        WFAct(label: "Edit", kind: .plain, act: .edit)]),
-        Workflow(id: "content-batch", name: "Content batch", lastKind: "ok", lastLabel: "✓ full · yesterday 17:22",
-                 steps: [WFStep(no: 1, t: "gather sources", state: "done"),
-                         WFStep(no: 2, t: "draft posts", state: "done"),
-                         WFStep(no: 3, t: "queue schedule", state: "done")],
-                 compact: true, dots: 5),
-    ]
-
-    static let recent: [RecentRun] = [
-        RecentRun(wf: "Launch-day pipeline", st: "bad", tm: "today 11:40", desc: "failed at ③ — Prism: no model · steps ①② kept", app: "Prism"),
-        RecentRun(wf: "Weekly report", st: "part", tm: "today 10:05", desc: "running · summarizing metrics (step 2 of 3)", app: "Bank"),
-        RecentRun(wf: "Launch-day pipeline", st: "ok", tm: "today 09:15", desc: "full · 4 artifacts written to Bank", app: "Bank"),
-        RecentRun(wf: "Content batch", st: "ok", tm: "yesterday 17:22", desc: "full · 5 posts drafted", app: "brandbrain"),
-        RecentRun(wf: "Launch-day pipeline", st: "part", tm: "yesterday 08:02", desc: "partial · ③④ skipped (no hero requested)", app: "AdForge"),
-    ]
+private func workflowsLive() -> [Workflow] {
+    let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
+    let fm = FileManager.default
+    var out: [(Workflow, Double)] = []
+    for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
+        let path = base + "/" + origin + "/batch-state.json"
+        guard fm.fileExists(atPath: path),
+              let obj = readJSON(path) as? [String: Any],
+              let run = obj["run"] as? [String: Any],
+              let answers = run["answers"] as? [[String: Any]], !answers.isEmpty else { continue }
+        let brief = (run["brief"] as? String) ?? "Batch run"
+        let mtime = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+        var steps: [WFStep] = []
+        var done = 0, failed = 0
+        for a in answers {
+            let n = (a["n"] as? NSNumber)?.intValue ?? (steps.count + 1)
+            let err = a["error"] != nil && !(a["error"] is NSNull)
+            let locked = !(a["lockedId"] is NSNull) && a["lockedId"] != nil
+            let selected = !(a["selectedId"] is NSNull) && a["selectedId"] != nil
+            let state = err ? "fail" : (locked ? "done" : (selected ? "run" : ""))
+            if state == "done" { done += 1 }; if state == "fail" { failed += 1 }
+            steps.append(WFStep(no: n, t: "answer \(n)", state: state))
+        }
+        let total = steps.count
+        let kind = failed > 0 ? "bad" : (done == total ? "ok" : (done > 0 ? "part" : "neu"))
+        let label = failed > 0 ? "✗ error at a step"
+            : (done == total ? "✓ locked · \(total) steps"
+            : (done > 0 ? "◐ \(done)/\(total) locked" : "not started"))
+        out.append((Workflow(
+            id: (run["id"] as? String) ?? origin,
+            name: "Batch · \(brief.count > 42 ? String(brief.prefix(40)) + "…" : brief)",
+            lastKind: kind, lastLabel: label,
+            steps: steps,
+            inputs: "wrapp: batch · \(total) answer-steps · a slate you lock one at a time",
+            acts: [WFAct(label: "Open in batch", kind: .pri, act: .run),
+                   WFAct(label: "Runs in History", kind: .plain, act: .log)],
+            compact: total > 5, dots: min(total, 8)), mtime))
+    }
+    return out.sorted { $0.1 > $1.1 }.map { $0.0 }
 }
 
 struct WorkflowsSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
-    @State private var workflows = WorkflowSample.list
-    @State private var tab = "recipes"
+    @State private var workflows: [Workflow] = []
 
     var body: some View {
         ScrollView {
@@ -1371,13 +1367,9 @@ struct WorkflowsSurface: View {
                 .padding(.bottom, 14)
                 .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
 
-                HStack(spacing: 6) {
-                    WFTab(label: "Recipes", count: workflows.count, active: tab == "recipes") { tab = "recipes" }
-                    WFTab(label: "Recent runs", count: WorkflowSample.recent.count, active: tab == "runs") { tab = "runs" }
-                }
-                .padding(.top, 16).padding(.bottom, 16)
-
-                if tab == "recipes" {
+                if workflows.isEmpty {
+                    WorkflowsEmptyState(onNavigate: onNavigate).padding(.top, 20)
+                } else {
                     VStack(spacing: 12) {
                         ForEach($workflows) { $w in
                             if w.compact {
@@ -1387,48 +1379,33 @@ struct WorkflowsSurface: View {
                             }
                         }
                     }
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(WorkflowSample.recent.enumerated()), id: \.element.id) { idx, r in
-                            RecentRunRow(run: r, showTop: idx > 0, onNavigate: onNavigate)
-                        }
-                    }
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.edgeSoft, lineWidth: 1))
+                    .padding(.top, 18)
                 }
 
-                FootNote(text: "a workflow chains steps into one reusable recipe · a partial run never masquerades as ✓ · add a schedule + grant to promote it to a routine")
+                FootNote(text: "a workflow chains steps into one recipe · today that's the batch wrapp (each run = a slate of answer-steps) · a partial run never masquerades as ✓ · a daemon workflow registry is the next layer")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { workflows = workflowsLive() }
     }
 }
 
-private struct WFTab: View {
-    let label: String
-    let count: Int
-    let active: Bool
-    var onTap: () -> Void
-    @State private var hover = false
+// Honest coming-state — no invented pipelines. Points at the real pipeline wrapp (batch).
+private struct WorkflowsEmptyState: View {
+    let onNavigate: (Surface) -> Void
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 7) {
-                Text(label).font(.splMono(11)).tracking(0.5)
-                    .foregroundColor(active ? .ink : (hover ? .inkSec : .inkDim))
-                Text("\(count)").font(.splMono(10)).foregroundColor(active ? .inkSec : .inkFaint)
-                    .padding(.horizontal, 6)
-                    .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
-            }
-            .padding(.horizontal, 13).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9)
-                .fill(active ? Color.indigo.opacity(0.16) : Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: 9)
-                .stroke(active ? Color.indigo : (hover ? Color.indigo.opacity(0.5) : Color.edge), lineWidth: 1))
-            .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 12) {
+            Text("No pipelines yet.").font(.brico(20, .bold)).foregroundColor(.ink)
+            Text("A workflow chains steps into one reusable recipe. Today the pipeline wrapp is batch — start a run and its answer-steps show up here. A first-class daemon workflow registry (schedule + grant + promote-to-routine) is the next layer.")
+                .font(.hanken(13)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            LimeButton(label: "Open batch") { OSLaunch.launchOr("batch", .init(kind: "workflow")) { onNavigate(.apps) } }
         }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
     }
 }
 
@@ -1682,36 +1659,6 @@ private struct WFCompactRow: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
             withAnimation { workflow.running = false; workflow.lastKind = "ok"; workflow.lastLabel = "✓ done · just now" }
         }
-    }
-}
-
-private struct RecentRunRow: View {
-    let run: RecentRun
-    let showTop: Bool
-    var onNavigate: (Surface) -> Void
-    @State private var rowHover = false
-    private var glyph: String { ["ok": "✓", "bad": "✗", "part": "◐"][run.st] ?? "•" }
-    var body: some View {
-        HStack(spacing: 11) {
-            Button { onNavigate(.history) } label: {
-                HStack(spacing: 11) {
-                    Text(glyph).font(.splMono(13)).foregroundColor(wfLastColor(run.st)).frame(width: 18)
-                    Text(run.tm).font(.splMono(11)).foregroundColor(.inkFaint).frame(minWidth: 96, alignment: .leading)
-                    Text(run.wf).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
-                    Text(run.desc).font(.hanken(12.5)).foregroundColor(.inkSec).lineLimit(1)
-                    Spacer(minLength: 8)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            WFChip(app: run.app) {
-                OSLaunch.launchOr(run.app, .init(artifact: run.desc, kind: "run")) { onNavigate(.apps) }
-            }
-        }
-        .padding(.horizontal, 13).padding(.vertical, 10)
-        .background(rowHover ? Color.raised : .clear)
-        .overlay(alignment: .top) { if showTop { Rectangle().fill(Color.edgeSoft).frame(height: 1) } }
-        .onHover { rowHover = $0 }
     }
 }
 
