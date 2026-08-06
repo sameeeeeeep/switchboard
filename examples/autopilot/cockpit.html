@@ -123,9 +123,9 @@ const $=(s,r=document)=>r.querySelector(s);
 const esc=(s)=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const md=(s)=>esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
 
-/* REAL data — the portfolio autopilot advanced this morning. Gate moves carry the PREPARED content
-   (what would be sent) as `preview`, plus where it sends. Nothing here has been sent. */
-const PF = {
+/* SAMPLE — shown only when the page is opened OUTSIDE Switchboard (no provider), clearly marked
+   "· sample ·". Inside Switchboard the real portfolio is loaded from storage (load(), below). */
+const PF_SAMPLE = {
   totals:{ made:3, staged:6, calls:0 },
   companies:[
     { id:"aamras", name:"Aamras", sector:"brand", essence:"scent as vibe — new-age home fragrance for gen-z", auto:false,
@@ -157,16 +157,53 @@ const PF = {
       ]},
   ],
 };
+let PF = { totals:{made:0,staged:0,calls:0}, companies:[] };
+let STATE = "loading", PROVIDER = null, SAMPLE = false;
 const lanes=(m)=>({made:m.filter(x=>x.lane==="autopilot"),wait:m.filter(x=>x.lane==="gate"),call:m.filter(x=>x.lane==="founder")});
 const firm=(id)=>PF.companies.find(c=>c.id===id);
 let VIEW="portfolio", ON=true, OPEN=new Set();
 
-function render(){ $("#sheet").innerHTML = VIEW==="portfolio" ? portfolioView() : companyView(firm(VIEW)); wire(); }
+/* ── Real data: the portfolio autopilot wrote this morning, read from this origin's own storage. ──
+   The routine files autopilot-portfolio.json (aggregate) with every company's moves + PREPARED gate
+   previews. We map it to the render shape; the "Approve & send" tap calls the daemon's real dispatch. */
+async function getProvider(){
+  if (window.claude?.isRelay) return window.claude;
+  return await new Promise((res)=>{ const t=setTimeout(()=>res(null),3000);
+    window.addEventListener("claude#initialized",()=>{clearTimeout(t);res(window.claude?.isRelay?window.claude:null);},{once:true}); });
+}
+const req=(method,params)=>PROVIDER.request({method,params});
+const dispatch=(args)=>req("claude_callTool",{name:"relay__autopilot_dispatch",arguments:args});
+function adapt(pf){
+  return { totals: pf.totals || {made:0,staged:0,calls:0},
+    companies: (pf.companies||[]).map(c=>({ id:c.id, name:c.name, sector:c.sector||"", essence:c.essence||"", auto:!!c.auto,
+      identity: [],
+      moves: (c.moves||[]).map(m=>({ txt:m.txt, lane:m.lane, status:m.status, art:m.artifact||"", preview:m.preview||"",
+        sends: m.channel||"", dispatch: m.dispatch||null })) })) };
+}
+async function load(){
+  PROVIDER = await getProvider();
+  if (!PROVIDER){ SAMPLE=true; PF=PF_SAMPLE; STATE="ready"; render(); return; }
+  try { await req("claude_connect",{}); } catch {}
+  try {
+    const r = await req("claude_storage",{op:"get",key:"autopilot-portfolio"});
+    if (!r || !r.value){ STATE="empty"; render(); return; }
+    PF = adapt(JSON.parse(r.value)); STATE="ready"; render();
+  } catch(e){ console.error("[cockpit] load failed",e); STATE="error"; render(); }
+}
+const stateMsg=()=>({ loading:"Reading this morning's run…",
+  empty:"No run yet — turn Autopilot on in the menu bar and it fills overnight.",
+  error:"Couldn't read the portfolio — is Switchboard running?" }[STATE]||"…");
+
+function render(){
+  if (STATE!=="ready"){ $("#sheet").innerHTML =
+    `<div class="kicker off"><span>AUTOPILOT · YOUR PORTFOLIO</span></div><h1 class="lede">${stateMsg()}</h1>`; return; }
+  $("#sheet").innerHTML = VIEW==="portfolio" ? portfolioView() : companyView(firm(VIEW)); wire();
+}
 
 function portfolioView(){
   const t=PF.totals, autos=PF.companies.filter(c=>c.auto).length;
   return `
-  <div class="kicker ${ON?"":"off"}"><span>AUTOPILOT · YOUR PORTFOLIO · THIS MORNING</span>
+  <div class="kicker ${ON?"":"off"}"><span>AUTOPILOT · YOUR PORTFOLIO${SAMPLE?" · sample":" · THIS MORNING"}</span>
     <button class="sw" id="sw"><span class="dot"></span><b>${ON?"running":"paused"}</b></button></div>
   <h1 class="lede">${PF.companies.length} companies ran themselves <em>overnight.</em></h1>
   <p class="dek"><b>${t.made} things made</b> while you slept · <b>${t.staged} waiting</b> on your tap · <b>${t.calls} calls</b> only you. Open any one for its command center.</p>
@@ -211,17 +248,18 @@ const section=(h,sub,body)=>`<section class="mv"><div class="mvhead"><h3>${h}</h
 const emptyc=(t)=>`<div class="emptyc">${t}</div>`;
 function madeRow(m){ return `<div class="it made"><div class="row"><span class="mk">✓</span><div class="b"><div class="t">${esc(m.txt)}</div><div class="meta"><span class="file">${esc(m.art)}</span><span>· filed to Bank</span></div></div><button class="open">open →</button></div></div>`; }
 function waitRow(m,i,auto){
-  const needsConn = /needs a connector/.test(m.sends||"");
   const key=`${VIEW}-${i}`, open=OPEN.has(key);
-  const action = auto
-    ? `<span class="autoline">◆ autopilot will send this</span>`
-    : (needsConn
-        ? `<button class="approve blocked" data-connect="${i}">Connect to send</button>`
-        : `<button class="approve" data-approve="${i}">Approve &amp; send</button>`);
+  // The tap reaches the real daemon dispatch; the honest outcome (sent / no-sender → connect) comes
+  // back from it. Full-auto moves are sent (or waiting on a sender) by the routine, not tapped here.
+  const action = m.status==="sent"
+    ? `<span class="autoline">◆ sent</span>`
+    : auto
+      ? `<span class="autoline">◆ ${m.dispatch==="no-sender"?"waiting on a sender":"autopilot will send this"}</span>`
+      : `<button class="approve" data-approve="${i}">Approve &amp; send</button>`;
   return `<div class="it wait">
     <div class="row"><span class="mk">▲</span>
       <div class="b"><div class="t">${esc(m.txt)}</div>
-        <div class="meta"><span class="sends">sends → ${esc(m.sends||"")}</span>${m.preview?`<button class="review" data-review="${i}">${open?"hide":"review what it'll send"} →</button>`:""}</div></div>
+        <div class="meta"><span class="sends">sends → ${esc(m.sends||"publish")}</span>${m.preview?`<button class="review" data-review="${i}">${open?"hide":"review what it'll send"} →</button>`:""}</div></div>
       ${action}</div>
     ${m.preview?`<div class="prev ${open?"open":""}" id="prev-${i}"><div class="h">Prepared — awaiting your ${auto?"standing":""} approval</div><div class="body">${md(m.preview)}</div></div>`:""}
   </div>`;
@@ -234,10 +272,20 @@ function wire(){
   const sw=$("#sw"); if(sw) sw.onclick=()=>{ON=!ON;render();};
   const am=$("#automode"); if(am) am.onclick=()=>{const c=firm(VIEW);c.auto=!c.auto;render();};
   document.querySelectorAll("[data-review]").forEach(b=>b.onclick=()=>{const k=`${VIEW}-${b.dataset.review}`;OPEN.has(k)?OPEN.delete(k):OPEN.add(k);render();});
-  document.querySelectorAll("[data-approve]").forEach(b=>b.onclick=()=>{b.textContent="✓ Sent";b.classList.add("sent");});
-  document.querySelectorAll("[data-connect]").forEach(b=>b.onclick=()=>{b.textContent="→ opening connectors";});
+  document.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{
+    const i=+b.dataset.approve, c=firm(VIEW), m=lanes(c.moves).wait[i];
+    if (SAMPLE || !PROVIDER){ b.textContent="✓ Sent (sample)"; b.classList.add("sent"); return; }   // no real send outside Switchboard
+    b.disabled=true; const was=b.textContent; b.textContent="sending…";
+    try {
+      const r = await dispatch({ channel:m.sends||"publish", content:m.preview||m.txt, company:c.name, move:m.txt });
+      if (r.status==="sent"){ b.textContent="✓ Sent"; b.classList.add("sent"); m.status="sent"; }
+      else if (r.status==="no-sender"){ b.textContent="Connect to send"; b.classList.add("blocked"); b.title=r.note||"Connect a sender first."; b.disabled=false; }
+      else if (r.status==="declined"){ b.textContent=was; b.disabled=false; }
+      else { b.textContent="send failed"; b.title=r.note||""; b.disabled=false; }
+    } catch(e){ console.error("[cockpit] dispatch failed",e); b.textContent="Connect to send"; b.classList.add("blocked"); b.title=String(e&&e.message||e); b.disabled=false; }
+  });
 }
-render();
+load();
 </script>
 </body>
 </html>

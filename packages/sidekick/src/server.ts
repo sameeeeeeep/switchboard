@@ -110,6 +110,11 @@ const BUILTIN_TOOLS: Array<{ name: string; server: string; description: string }
 /** App-level keepalive frame (Chrome resets the MV3 idle timer on received WS messages). */
 const PING_MSG = JSON.stringify({ type: "ping" });
 
+/** GATE-dispatch shapes (docs/COMPANY-OS.md §2b) — shared by the routine (full-auto) and the page
+ *  (the cockpit's assisted "Approve & send" tap). */
+export interface DispatchParams { channel: string; content: string; company?: string; move?: string; auto?: boolean }
+export interface DispatchResult { ok: boolean; status: "sent" | "no-sender" | "declined" | "error"; channel: string; class: ConnectorClass | null; connector?: string; suggested?: string[]; note: string }
+
 export class Broker implements ConsentPrompter, NativeHandler {
   private wss: WebSocketServer | null = null;
   private extensions = new Set<WebSocket>();
@@ -297,8 +302,14 @@ export class Broker implements ConsentPrompter, NativeHandler {
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
         return { tools: this.listTools(origin) };
-      case "claude_callTool":
-        return this.deps.gate.gateToolCall(origin, env.params as ToolCallRequest);
+      case "claude_callTool": {
+        const call = env.params as ToolCallRequest;
+        // First-party GATE dispatch (the autopilot cockpit's "Approve & send") — reuse the callTool
+        // channel so no new RPC verb/extension change is needed. pageDispatch applies its own grant
+        // check + write-consent gate + audit; a real send needs a connected sender (else no-sender).
+        if (call?.name === "relay__autopilot_dispatch") return this.pageDispatch(origin, (call.arguments ?? {}) as Record<string, unknown>);
+        return this.deps.gate.gateToolCall(origin, call);
+      }
       case "claude_complete":
         return this.complete(origin, env.params as CompletionParams);
       case "claude_stream":
@@ -1314,8 +1325,26 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *      either that tap or the standing grant — the send line never moves.
    *  NB: the per-connector argument shaping (recipient/subject/body) is filled in when a real sender is
    *  actually connected and founder-tested; until then no send tool exists to reach, by design. */
-  async routineDispatch(routineId: string, p: { channel: string; content: string; company?: string; move?: string; auto?: boolean }): Promise<{ ok: boolean; status: "sent" | "no-sender" | "declined" | "error"; channel: string; class: ConnectorClass | null; connector?: string; suggested?: string[]; note: string }> {
-    const origin = `routine@${routineId}`;
+  async routineDispatch(routineId: string, p: DispatchParams): Promise<DispatchResult> {
+    return this.dispatchSend(`routine@${routineId}`, p);
+  }
+
+  /** Page-initiated dispatch — the cockpit's "Approve & send" tap (via claude_callTool →
+   *  relay__autopilot_dispatch). The principal is the calling wrapp origin, ALWAYS assisted (the
+   *  write-consent card IS the tap), never auto; requires a connected grant so only a wrapp the user
+   *  has Connected can reach it. Same gate + audit + honest no-sender as the routine path. */
+  async pageDispatch(origin: string, args: { channel?: unknown; content?: unknown; company?: unknown; move?: unknown }): Promise<DispatchResult> {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect Switchboard first");
+    return this.dispatchSend(origin, {
+      channel: String(args?.channel ?? ""),
+      content: String(args?.content ?? ""),
+      company: args?.company != null ? String(args.company) : undefined,
+      move: args?.move != null ? String(args.move) : undefined,
+      auto: false,
+    });
+  }
+
+  private async dispatchSend(origin: string, p: DispatchParams): Promise<DispatchResult> {
     const channel = String(p.channel ?? "").trim();
     const cls = Broker.channelClass(channel);
     const sender = cls ? this.findSender(cls) : null;
