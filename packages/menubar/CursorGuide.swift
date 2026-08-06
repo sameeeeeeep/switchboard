@@ -1701,6 +1701,12 @@ final class CursorGuide {
     /// degrades to "card not clickable", not a locked screen. esc/⌥-keys work regardless.
     @MainActor private func updateMousePassthrough() {
         guard let ov = overlay else { return }
+        // In .cursor placement the card FOLLOWS the pointer live (offset in cursorOffset so it trails
+        // the cursor rather than sitting under it) — driven by these same mouse-move events.
+        if model.placement == .cursor, model.visible {
+            let ml = NSEvent.mouseLocation
+            model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
+        }
         guard model.visible, !model.collapsed else { ov.ignoresMouseEvents = true; return }
         let cf = model.cardFrame, win = ov.frame
         guard cf.width > 1, cf.height > 1,
