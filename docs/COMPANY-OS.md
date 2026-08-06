@@ -77,6 +77,29 @@ God stages — a *decision* surfaced with the context to make it. God never touc
 **The send line never moves.** No amount of autonomy promotes a GATE move to AUTOPILOT. Reversibility is
 a property of the move, decided once, in the catalog — not a setting.
 
+## 2b. The GATE line — review, approve, send (and full auto)
+
+A GATE move isn't a bare "approve?" prompt. God **prepares the exact content that would go out** — the
+launch post, the email, the DM — as a reversible draft, and stages it with that content as a **preview**.
+So the founder reviews the *real thing*, not a description, before anything is sent.
+
+Two autonomy modes, chosen **per company** (`~/.relay/autopilot.json → companies.<id>.auto`):
+
+- **Assisted (default).** Each GATE move is staged with its preview. The founder expands it ("review
+  what it'll send"), then **Approve & send** fires the outward action — *through a connected sender and
+  the daemon's consent gate*. No sender connected for that channel → the button is honestly **Connect to
+  send**, routing to the connector flow. Nothing goes out on its own.
+- **Full auto.** The founder has **pre-authorized** sends for this company (a standing grant). GATE moves
+  dispatch automatically — same connector + gate path, just without the per-move tap. Every send is
+  still **audited and stoppable** (the routines master switch, the audit trail). Full auto requires both
+  the `auto` flag *and* a connected sender; absent either, moves stay staged rather than fail silently.
+
+The dispatch itself is the [[God's Hands]] pattern in reverse: an approved GATE move calls its named
+wrapp/connector action (publish/send/charge) through the gate. The daemon never invents a sender — if
+the channel has no connector, the move waits, honestly, until one is connected. **We never fire an
+irreversible outward action without either a tap or a standing auto grant, and always through a real,
+audited connector.**
+
 ---
 
 ## 3. God's hands — how a reversible move actually executes

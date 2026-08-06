@@ -32,7 +32,7 @@ function readJson<T>(path: string): T | null {
   try { return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : null; } catch { return null; }
 }
 
-interface Company { id: string; name: string; sector: string; essence: string }
+interface Company { id: string; name: string; sector: string; essence: string; auto?: boolean }
 
 function inferSector(c: any): string {
   const d = c.data ?? {};
@@ -41,21 +41,21 @@ function inferSector(c: any): string {
   if (c.kind === "idea") return "brand";
   return "agency";
 }
-function toCompany(c: any, sectorOverride?: string): Company | null {
+function toCompany(c: any, sectorOverride?: string, auto?: boolean): Company | null {
   if (!c?.id || !c?.name) return null;
   const d = c.data ?? {};
   const essence = d.oneLine || d.positioning || d.idea || d.summary || (Array.isArray(d.products) ? d.products[0] : "") || "";
-  return { id: c.id, name: c.name, sector: sectorOverride || inferSector(c), essence: String(essence).slice(0, 400) };
+  return { id: c.id, name: c.name, sector: sectorOverride || inferSector(c), essence: String(essence).slice(0, 400), auto: !!auto };
 }
 
 /** The portfolio: companies with Autopilot on, else the single active company (backward compatible). */
 function portfolio(): Company[] {
   const arr = readJson<any[]>(CONTEXTS_FILE);
   if (!Array.isArray(arr) || arr.length === 0) return [];
-  const cfg = readJson<{ companies?: Record<string, { on?: boolean; sector?: string }> }>(AUTOPILOT_FILE);
+  const cfg = readJson<{ companies?: Record<string, { on?: boolean; sector?: string; auto?: boolean }> }>(AUTOPILOT_FILE);
   const on = cfg?.companies ? Object.entries(cfg.companies).filter(([, v]) => v?.on) : [];
   if (on.length) {
-    return on.map(([id, v]) => toCompany(arr.find((c) => c.id === id), v.sector)).filter((c): c is Company => !!c);
+    return on.map(([id, v]) => toCompany(arr.find((c) => c.id === id), v.sector, v.auto)).filter((c): c is Company => !!c);
   }
   const sel = readJson<Record<string, string>>(SELECTION_FILE)?.["*global*"];
   const sorted = [...arr].sort((a, b) => (b?.updatedAt ?? 0) - (a?.updatedAt ?? 0));
@@ -99,34 +99,61 @@ export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
           `Mix reversible drafting work with the occasional publish/send that would follow.\n` +
           `Return only the lines, no preamble.`);
         spent += movesOut.tokens;
-        const moves = parseMoves(movesOut.text).map((txt) => ({ txt, lane: classify(txt), artifact: null as string | null, status: "staged" as string }));
+        const moves = parseMoves(movesOut.text).map((txt) => ({ txt, lane: classify(txt), artifact: null as string | null, preview: null as string | null, status: "staged" as string }));
+        const ensureDir = () => { if (!existsSync(STORE_DIR)) mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 }); };
 
-        // execute the FIRST reversible move — one nudge per company per tick
+        // God's hands PREPARE the content for BOTH lanes — the difference is only what happens next:
+        // a reversible move's content IS the whole move (→ done); a gate move's content is the thing that
+        // WOULD be sent, so it's staged with a preview for the founder to review (→ awaiting). Preparing
+        // content is always reversible; the send line is the only thing gated.
+
+        // 1) execute the first reversible move — one nudge per company per tick
         const first = moves.find((m) => m.lane === "autopilot");
         if (first) {
           const art = await deps.draft(
             `For "${co.name}" (${co.sector}), produce the actual deliverable for this move — the real thing, ` +
-            `ready for the founder to review, not a description:\n"${first.txt}"\n` +
-            `A DRAFT the founder approves before anything is sent/published. Keep it tight.`);
+            `ready for the founder to review, not a description:\n"${first.txt}"\nKeep it tight.`);
           spent += art.tokens;
           const n = moves.indexOf(first) + 1;
-          const file = join(STORE_DIR, `autopilot-artifact-${co.id}-${n}.md`);
           try {
-            if (!existsSync(STORE_DIR)) mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 });
-            writeFileSync(file, `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${first.txt}\nby: autopilot routine (reversible · God's hands)\nat: ${new Date().toISOString()}\n---\n\n${art.text.trim()}\n`);
-            first.artifact = `autopilot-artifact-${co.id}-${n}.md`; first.status = "done";
-            deps.log?.(`autopilot: ${co.name} → executed ${first.artifact} (${art.tokens} tok)`);
+            ensureDir();
+            writeFileSync(join(STORE_DIR, `autopilot-artifact-${co.id}-${n}.md`),
+              `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${first.txt}\nby: autopilot (reversible · God's hands)\nat: ${new Date().toISOString()}\n---\n\n${art.text.trim()}\n`);
+            first.artifact = `autopilot-artifact-${co.id}-${n}.md`; first.preview = art.text.trim().slice(0, 1400); first.status = "done";
+            deps.log?.(`autopilot: ${co.name} → made ${first.artifact} (${art.tokens} tok)`);
           } catch (e) { deps.log?.("autopilot: could not file — " + String(e)); first.status = "error"; }
         }
 
+        // 2) PREPARE the first gate move's content so the founder can review exactly what would be sent.
+        //    Prepared, never sent — the tap (or auto mode) is the only thing that sends.
+        const gate = moves.find((m) => m.lane === "gate");
+        if (gate) {
+          const prep = await deps.draft(
+            `For "${co.name}" (${co.sector}), produce the exact content this move would send/publish — the ` +
+            `final copy, ready to go out:\n"${gate.txt}"\nThis is a PREVIEW the founder reviews before it's sent. Keep it tight.`);
+          spent += prep.tokens;
+          const n = moves.indexOf(gate) + 1;
+          try {
+            ensureDir();
+            writeFileSync(join(STORE_DIR, `autopilot-gate-${co.id}-${n}.md`),
+              `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${gate.txt}\nprepared_by: autopilot (staged — awaiting your approval to send)\nat: ${new Date().toISOString()}\n---\n\n${prep.text.trim()}\n`);
+            gate.artifact = `autopilot-gate-${co.id}-${n}.md`; gate.preview = prep.text.trim().slice(0, 1400); gate.status = "prepared";
+            deps.log?.(`autopilot: ${co.name} → prepared gate move for review (${prep.tokens} tok)`);
+          } catch (e) { deps.log?.("autopilot: could not prepare gate — " + String(e)); }
+        }
+
+        // Auto mode is per-company (autopilot.json companies.<id>.auto). When on, the founder has PRE-
+        // AUTHORIZED sends: the routine would dispatch gate moves through the daemon's connector+consent
+        // path instead of staging them. Not fired here — it requires a connected publisher/sender AND the
+        // founder's standing auto grant; absent either, moves stay staged. See docs/COMPANY-OS.md §2b.
         const summary = {
           made: moves.filter((m) => m.status === "done").length,
           staged: moves.filter((m) => m.lane === "gate").length,
           calls: moves.filter((m) => m.lane === "founder").length,
         };
-        const plan = { at: Date.now(), companyId: co.id, company: co.name, sector: co.sector, moves, summary };
+        const plan = { at: Date.now(), companyId: co.id, company: co.name, sector: co.sector, auto: !!co.auto, moves, summary };
         try { writeFileSync(join(STORE_DIR, `autopilot-plan-${co.id}.json`), JSON.stringify(plan, null, 2)); } catch { /* non-fatal */ }
-        rollup.push({ id: co.id, name: co.name, sector: co.sector, essence: co.essence, summary, moves });
+        rollup.push({ id: co.id, name: co.name, sector: co.sector, essence: co.essence, auto: !!co.auto, summary, moves });
       }
 
       // the portfolio the cockpit reads — every company advancing, at a glance
