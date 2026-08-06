@@ -1204,6 +1204,37 @@ export class Broker implements ConsentPrompter, NativeHandler {
     return { text, model: params.model ?? backend.id, usage: out.usage, stopReason: "end" as const };
   }
 
+  /** FIRST-PARTY draft for a background routine (the Run layer, docs/ROUTINES.md). Runs a non-agentic
+   *  completion on the default backend — no tools, no streaming, no page — attributed to the synthetic
+   *  principal `routine@<id>` and AUDITED, so background model spend is visible in the same trail every
+   *  other act lands in. This is daemon-own code (like speak/transcribe), so it doesn't pass an
+   *  untrusted-origin gate; it draws no page consent and can never act — its only power is to produce
+   *  text a human later approves. Returns the real usage tokens for the background-spend meter. */
+  async routineDraft(routineId: string, prompt: string): Promise<{ text: string; tokens: number }> {
+    const origin = `routine@${routineId}`;
+    const model = this.deps.backends.allowedModels()[0];
+    const backend = this.deps.backends.backendFor(model);
+    if (!backend) { this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: "no backend online" }); return { text: "", tokens: 0 }; }
+    const controller = new AbortController();
+    const ctx = {
+      origin,
+      allowedTools: [] as string[],
+      authorizeToolCall: async () => ({ allow: false, message: "routines draft only — no tools" }),
+      gateToolCall: async () => { throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "routines draft only — no tools"); },
+      emit: (_d: StreamDelta) => { /* one-shot: no page */ },
+      signal: controller.signal,
+    };
+    try {
+      const out = await backend.run({ model, prompt, maxTokens: 700 } as CompletionParams, ctx);
+      const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(out.text);
+      this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "ok", note: `draft ${tokens} tok` });
+      return { text: out.text ?? "", tokens };
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: String((e as Error)?.message).slice(0, 80) });
+      return { text: "", tokens: 0 };
+    }
+  }
+
   /** Per-request context for relay__git_commit_push: the origin's EXPLICIT binding (never the
    *  sandbox), its readonly posture, the standard write-consent card, and audit. */
   private gitCtxFor(origin: string): GitPublishContext {
