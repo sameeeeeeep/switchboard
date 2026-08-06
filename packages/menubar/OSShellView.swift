@@ -254,16 +254,18 @@ private func relAgo(_ ms: Double) -> String {
     return "\(Int(s/604800))w"
 }
 
-// ── LIVE recent work — the most-recently-saved wrapp artifacts across ~/.relay/storage/<origin>/*.json.
-// Each file is a wrapp's saved blob; mtime = recency, its `name`/`title`/`oneLine` (or a prettified key) is
-// the title, the origin resolves to the wrapp. Real activity, no fictional samples.
+// ── LIVE recent work — what you ACTUALLY did, not just what left a file behind.
+// Two evidence streams, merged and ordered by true recency:
+//   · artifacts — wrapp blobs across ~/.relay/storage/<origin>/*.json (mtime = when it was saved)
+//   · sessions  — the audit log (~/.relay/audit.log), the ground truth of every real run: God asks,
+//     dictations, wrapp runs that keep no files. Storage mtimes alone made week-old blobs pose as
+//     "recent" while yesterday's actual work (no blob) was invisible.
 func osRecentWork(limit: Int = 16) -> [SBArtifact] {
     let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
     let fm = FileManager.default
-    guard let origins = try? fm.contentsOfDirectory(atPath: base) else { return [] }
     let now = Date().timeIntervalSince1970 * 1000
     var scored: [(SBArtifact, Double)] = []
-    for origin in origins {
+    for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
         let dir = base + "/" + origin
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
@@ -277,11 +279,85 @@ func osRecentWork(limit: Int = 16) -> [SBArtifact] {
             scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
         }
     }
-    // hierarchy: newest first, but genuine "made" artifacts float above "working" state at the same glance.
-    return scored.sorted { a, b in
-        if (a.0.category == "made") != (b.0.category == "made") { return a.0.category == "made" }
-        return a.1 > b.1
-    }.prefix(limit).map { $0.0 }
+    // audit sessions fill in the work that left no file. One card per app (its latest session);
+    // if a stored artifact from the same app already stands for that session, the file wins.
+    for s in osSessions() {
+        if scored.contains(where: { $0.0.app == s.app && abs($0.1 - s.endMs) < 3 * 3_600_000 }) { continue }
+        scored.append((SBArtifact(title: sessionTitle(s), app: s.app, time: relAgo(now - s.endMs),
+                                  kind: "session", category: "session"), s.endMs))
+    }
+    // strict recency — no category floats above; "recent" must mean recent or the section lies.
+    return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+}
+
+// ── Activity sessions from the audit log. Only WORK events count (runs, dictations, saves, publishes);
+// plumbing (permissions/capabilities/context reads) is not work. Events per app are split into sessions
+// on a 45-min gap; each app contributes its most recent session so one busy wrapp can't flood the grid.
+struct SBSession { let app: String; let endMs: Double; let counts: [String: Int] }
+
+func osSessions(windowDays: Double = 14) -> [SBSession] {
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/audit.log")
+    guard let fh = FileHandle(forReadingAtPath: path) else { return [] }
+    let size = (try? fh.seekToEnd()) ?? 0
+    let cap: UInt64 = 2_000_000                      // tail ≈ weeks of an append-only log
+    let tailed = size > cap
+    try? fh.seek(toOffset: tailed ? size - cap : 0)
+    let data = fh.readDataToEndOfFile(); try? fh.close()
+    guard let text = String(data: data, encoding: .utf8) else { return [] }
+    let minTs = Date().timeIntervalSince1970 * 1000 - windowDays * 86_400_000
+    var lines = text.split(separator: "\n"); if tailed, !lines.isEmpty { lines.removeFirst() }   // torn line
+    var events: [String: [(ts: Double, verb: String)]] = [:]
+    for line in lines {
+        guard let d = line.data(using: .utf8),
+              let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+              let ts = (o["ts"] as? NSNumber)?.doubleValue, ts >= minTs,
+              let origin = o["origin"] as? String,
+              (o["outcome"] as? String) != "denied" else { continue }
+        let name = (o["toolName"] as? String) ?? (o["method"] as? String) ?? ""
+        guard let verb = workVerb(kind: o["kind"] as? String ?? "", name: name) else { continue }
+        let app = wrappFromOrigin(origin)
+        guard !app.isEmpty else { continue }
+        events[app, default: []].append((ts, verb))
+    }
+    var out: [SBSession] = []
+    for (app, evsUnsorted) in events {
+        let evs = evsUnsorted.sorted { $0.ts < $1.ts }
+        // walk back from the newest event to the start of its session (gap between neighbours > 45min ends it)
+        var i = evs.count - 1
+        var counts: [String: Int] = [evs[i].verb: 1]
+        while i > 0, evs[i].ts - evs[i - 1].ts <= 45 * 60_000 {
+            i -= 1
+            counts[evs[i].verb, default: 0] += 1
+        }
+        out.append(SBSession(app: app, endMs: evs.last!.ts, counts: counts))
+    }
+    return out
+}
+// what counts as work, and what to call it on the card
+private func workVerb(kind: String, name: String) -> String? {
+    if kind == "tool_call" {
+        if name.contains("transcribe") { return "dictation" }
+        if name.contains("storage__set") { return "save" }
+        if name.contains("context__publish") { return "publish" }
+        if name.contains("__get") || name.contains("__list") { return nil }   // reads aren't work
+        return "run"
+    }
+    if kind == "request" {
+        switch name {
+        case "claude_complete", "claude_stream": return "run"
+        case "claude_transcribe": return "dictation"
+        case "claude_speak": return "reply"
+        default: return nil
+        }
+    }
+    return nil
+}
+private func sessionTitle(_ s: SBSession) -> String {
+    let plural = ["run": "runs", "save": "saves", "dictation": "dictations", "publish": "publishes", "reply": "replies"]
+    let parts = s.counts.sorted { $0.value > $1.value }.prefix(2)
+        .map { "\($0.value) \($0.value == 1 ? $0.key : (plural[$0.key] ?? $0.key))" }
+    let t = parts.joined(separator: " · ")
+    return t.isEmpty ? "Session" : t.prefix(1).uppercased() + t.dropFirst()
 }
 // Nothing is dropped — each file is TAGGED: "made" (a real created object — the blob names itself) vs
 // "working" (wrapp state/config). The Recent-work section filters on this, defaulting to Made.
@@ -302,12 +378,26 @@ private func classifyArtifact(_ path: String, key: String) -> (title: String, ca
     let titled = pretty.prefix(1).uppercased() + pretty.dropFirst()
     return (String(titled), looksState ? "working" : "made", looksState ? "text" : "doc")
 }
+// Resolves BOTH origin spellings to a wrapp id: storage-dir form ("https_batch.thelastprompt.ai")
+// and audit-log form ("https://batch.thelastprompt.ai", "native@ai.thelastprompt.god", "panel").
+// Returns "" for chrome that isn't a wrapp (the panel itself, unknown origins).
 private func wrappFromOrigin(_ o: String) -> String {
+    if o == "panel" || o == "?" || o.isEmpty { return "" }
     var s = o
-    for p in ["https_", "http_", "tabsidekick_", "bridge_", "native_"] where s.hasPrefix(p) { s = String(s.dropFirst(p.count)); break }
+    if s.hasPrefix("native@") {
+        s = String(s.dropFirst(7))
+        if s.hasPrefix("widget:") { return String(s.dropFirst(7)) }        // native@widget:adforge
+        return s.split(separator: ".").last.map(String.init) ?? s          // ai.thelastprompt.god → god
+    }
+    if let r = s.range(of: "://") { s = String(s[r.upperBound...]) }        // URL form → host[:port]
+    for p in ["https_", "http_", "tabsidekick_", "bridge_"] where s.hasPrefix(p) { s = String(s.dropFirst(p.count)); break }
     if let r = s.range(of: ".thelastprompt.ai") { return String(s[..<r.lowerBound]) }   // subdomain = wrapp id
     if s.contains("5178") { return "brandbrain" }
     if s.contains("5190") { return "os" }
+    if s.contains("5188") { return "batch" }                               // local dev ports with a known tenant
+    if s.contains("5174") { return "store" }
+    if s.contains("sameep.ai") { return "autopilot" }
+    if s.contains("github.io") { return "store" }
     return s.split(separator: ".").first.map(String.init) ?? s
 }
 // ── The bound "vault" folders (from storage-bindings.json) — the search scope for ⌥⌥ file search.
@@ -945,21 +1035,28 @@ struct NeedsStrip: View {
 
 struct RecentWorkGrid: View {
     let items: [SBArtifact]
-    @State private var filter = "made"     // Made (default) · Working · All — noise is one tap away, never gone
+    // All (default — strict recency, the honest view) · Made (named blobs) · Activity (state saves + sessions).
+    // The old Made-first default let week-old blobs pose as "recent work"; recency truth now leads.
+    @State private var filter = "all"
     let cols = [GridItem(.adaptive(minimum: 184), spacing: 14)]
 
     private var madeCount: Int { items.filter { $0.category == "made" }.count }
-    private var workingCount: Int { items.filter { $0.category == "working" }.count }
-    // default to Made, but if there are no made items fall back to All so the section is never empty-looking
-    private var effective: String { (filter == "made" && madeCount == 0) ? "all" : filter }
-    private var shown: [SBArtifact] { effective == "all" ? items : items.filter { $0.category == effective } }
+    private var activityCount: Int { items.filter { $0.category != "made" }.count }
+    private var effective: String { filter }
+    private var shown: [SBArtifact] {
+        switch effective {
+        case "made": return items.filter { $0.category == "made" }
+        case "activity": return items.filter { $0.category != "made" }
+        default: return items
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 7) {
-                chip("made", "Made", madeCount)
-                chip("working", "Working", workingCount)
                 chip("all", "All", items.count)
+                chip("made", "Made", madeCount)
+                chip("activity", "Activity", activityCount)
                 Spacer(minLength: 0)
             }
             LazyVGrid(columns: cols, spacing: 14) {
@@ -1046,6 +1143,14 @@ struct ArtifactThumb: View {
             LazyVGrid(columns: [GridItem(.fixed(22), spacing: 4), GridItem(.fixed(22), spacing: 4)], spacing: 4) {
                 ForEach(0..<4, id: \.self) { _ in RoundedRectangle(cornerRadius: 5).fill(c.opacity(0.85)).frame(width: 22, height: 22) }
             }.frame(width: 48)
+        case "session":
+            // an activity pulse — event bars of varying height, reads as "a work session", not a file
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array([0.35, 0.7, 0.5, 1.0, 0.6, 0.85].enumerated()), id: \.offset) { _, h in
+                    RoundedRectangle(cornerRadius: 2).fill(c.opacity(h == 1.0 ? 1 : 0.55))
+                        .frame(width: 7, height: 40 * h)
+                }
+            }
         case "ad":
             RoundedRectangle(cornerRadius: 8).fill(c.opacity(0.9)).frame(width: 78, height: 56)
                 .overlay(VStack(alignment: .leading, spacing: 4) {
