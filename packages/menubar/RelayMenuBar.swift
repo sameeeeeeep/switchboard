@@ -3740,6 +3740,13 @@ struct ActionConsentDrop: View {
             try? FileManager.default.removeItem(atPath: t)
             startWelcomeTour()
         }
+        // `touch ~/.relay/open-panel` → front the menu-bar panel (the OS window's Needs-attention items
+        // use this so "fix it in the panel" is a real one-click action, not a dead hint).
+        let pp = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-panel")
+        if FileManager.default.fileExists(atPath: pp) {
+            try? FileManager.default.removeItem(atPath: pp)
+            openedByHover = false; showPanel()
+        }
     }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
         guard let spec = sender.representedObject as? WidgetSpec else { return }

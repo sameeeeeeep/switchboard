@@ -500,76 +500,140 @@ private struct NeedBand: Identifiable {
 }
 
 private enum NeedSample {
-    static let bands: [NeedBand] = [
-        NeedBand(id: "blocking", mk: "▲", mkColor: .danger, lb: "Blocking", hint: "act to continue", barColor: .danger, items: [
-            NeedItem(id: "n-approve", mk: "⚠", mkColor: .danger,
-                     title: [TP(t: "Approve: ", kind: .bold), TP(t: "CopyFlow wants to send 3 launch emails", kind: .normal)],
-                     why: "why…",
-                     detail: "3 emails were drafted for the IndEur launch and queued by a routine. Approve to send them now, or Deny to hold.",
-                     src: "◦ from Routine · IndEur launch",
-                     acts: [NeedAct(label: "Approve", tone: .lime, primary: true, behavior: .resolve("Approved")),
-                            NeedAct(label: "Deny", behavior: .resolve("Dismissed"))]),
-            NeedItem(id: "n-regrant", mk: "⚠", mkColor: .danger,
-                     title: [TP(t: "Regrant: ", kind: .bold), TP(t: "Prism lost its model access", kind: .normal)],
-                     why: "why…",
-                     detail: "Prism's model grant was revoked, so image generation is paused. Regrant opens Prism to restore access.",
-                     src: "◦ from Apps · Prism",
-                     acts: [NeedAct(label: "Grant", tone: .indigo, primary: true, behavior: .launch("Prism")),
-                            NeedAct(label: "Later", behavior: .resolve("Snoozed"))]),
-        ]),
-        NeedBand(id: "failed", mk: "●", mkColor: sbAmber, lb: "Failed", hint: "retry or investigate", barColor: sbAmber, items: [
-            NeedItem(id: "n-sheet", mk: "✗", mkColor: sbAmber,
-                     title: [TP(t: "Routine ", kind: .normal), TP(t: "\"Sheet sync\"", kind: .bold), TP(t: " failed 11:40", kind: .normal)],
-                     why: "log…",
-                     detail: "11:40 — the auth token expired mid-run. Retry re-runs the routine now; Pause stops the schedule.",
-                     src: "◦ from Routines",
-                     acts: [NeedAct(label: "Retry", tone: .lime, primary: true, behavior: .resolve("Retrying…")),
-                            NeedAct(label: "Pause", behavior: .resolve("Paused"))]),
-            NeedItem(id: "n-deck", mk: "✗", mkColor: sbAmber,
-                     title: [TP(t: "Workflow ", kind: .normal), TP(t: "\"Launch deck\"", kind: .bold), TP(t: " failed at step 3", kind: .normal)],
-                     why: "log…",
-                     detail: "Step 3 (export slides) threw a timeout. Retry the step, or Edit opens the workflow to fix it.",
-                     src: "◦ from Workflows",
-                     acts: [NeedAct(label: "Retry", tone: .lime, primary: true, behavior: .resolve("Retrying…")),
-                            NeedAct(label: "Edit", behavior: .route(.workflows))]),
-        ]),
-        NeedBand(id: "waiting", mk: "○", mkColor: .inkDim, lb: "Waiting", hint: "your call, not blocking", barColor: .edge, items: [
-            NeedItem(id: "n-decide", mk: "◆", mkColor: .inkDim,
-                     title: [TP(t: "Decide: ", kind: .bold), TP(t: "pick a launch date for IndEur Club ", kind: .normal), TP(t: "(a / b / c)", kind: .muted)],
-                     why: "options…",
-                     detail: "a) Sep 12 · b) Sep 19 · c) Sep 26 — ideabrain has the reasoning for each. Decide opens it.",
-                     src: "◦ from ideabrain",
-                     acts: [NeedAct(label: "Decide", tone: .indigo, primary: true, behavior: .launch("ideabrain"))]),
-            NeedItem(id: "n-venue", mk: "☐", mkColor: .inkDim,
-                     title: [TP(t: "Overdue: ", kind: .bold), TP(t: "Reply to the venue email ", kind: .normal), TP(t: "(2 days)", kind: .muted)],
-                     src: "◦ from Tasks · #indeur",
-                     acts: [NeedAct(label: "Open", behavior: .route(.tasks)),
-                            NeedAct(label: "Snooze", behavior: .resolve("Snoozed"))]),
-            NeedItem(id: "n-review", mk: "▭", mkColor: .inkDim,
-                     title: [TP(t: "Review: ", kind: .bold), TP(t: "4 marks from the Crest batch", kind: .normal)],
-                     why: "preview…",
-                     detail: "4 new marks are awaiting review in the Crest batch. Review opens Crest to approve or send back.",
-                     src: "◦ from Crest",
-                     acts: [NeedAct(label: "Review", tone: .lime, primary: true, behavior: .launch("Crest"))]),
-        ]),
-    ]
-
     static let filterOrder = ["all", "blocking", "failed", "waiting"]
     static let filterLabel: [String: String] = ["all": "All", "blocking": "Blocking", "failed": "Failed", "waiting": "Waiting"]
+}
+
+// ═══ LIVE bands — every item derives from a real ~/.relay state, and every action is real:
+//   ▲ Blocking — down connectors (status.json ok:false) + a stale daemon status file
+//   ● Failed   — routines whose last run failed (routines.json, when the fields exist)
+//   ○ Waiting  — a suspended guide (resume really resumes), routines switched off, overdue tasks
+// Nothing invented: a source with no real evidence contributes no items, and an empty inbox is the
+// calm "you're clear" state.
+
+private enum NeedTrigger {
+    // `touch ~/.relay/open-panel` — RelayMenuBar's trigger loop fronts the real menu-bar panel.
+    static func openPanel() {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-panel")
+        FileManager.default.createFile(atPath: p, contents: Data())
+    }
+    // Resume a suspended guide exactly like the menu item: move suspended → run; the watcher resumes it.
+    static func resumeGuide() {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+        let src = (dir as NSString).appendingPathComponent("guide-suspended.json")
+        let dst = (dir as NSString).appendingPathComponent("guide-run.json")
+        try? FileManager.default.removeItem(atPath: dst)
+        try? FileManager.default.moveItem(atPath: src, toPath: dst)
+    }
+}
+
+private func needsLiveBands() -> [NeedBand] {
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    var blocking: [NeedItem] = []
+    var failed: [NeedItem] = []
+    var waiting: [NeedItem] = []
+
+    // ▲ down connectors — the daemon reports them in status.json; the fix lives in the panel
+    if let st = readJSON(relay + "/status.json") as? [String: Any] {
+        for c in (st["connectors"] as? [[String: Any]]) ?? [] where (c["ok"] as? Bool) == false {
+            let n = (c["name"] as? String) ?? "connector"
+            blocking.append(NeedItem(
+                id: "conn-\(n)", mk: "⚠", mkColor: .danger,
+                title: [TP(t: "Reconnect: ", kind: .bold), TP(t: n, kind: .normal),
+                        TP(t: " — connector is down, 0 tools", kind: .muted)],
+                why: "why…",
+                detail: "The daemon couldn't start \(n), so its tools are unavailable to every wrapp and to God. Open the panel → Connections to restart it; if it keeps failing, its command or keys need fixing.",
+                src: "◦ from status.json",
+                acts: [NeedAct(label: "Open panel", tone: .indigo, primary: true, behavior: .resolve("panel")),
+                       NeedAct(label: "Later", behavior: .resolve("Snoozed"))]))
+        }
+        // ▲ stale status — the file stopped refreshing, so everything above it is guesswork
+        if let up = (st["updatedAt"] as? NSNumber)?.doubleValue,
+           Date().timeIntervalSince1970 * 1000 - up > 2 * 3_600_000 {
+            blocking.append(NeedItem(
+                id: "stale-status", mk: "⚠", mkColor: .danger,
+                title: [TP(t: "Daemon status is stale ", kind: .bold),
+                        TP(t: "— last heartbeat \(relAgo(Date().timeIntervalSince1970 * 1000 - up)) ago", kind: .muted)],
+                why: "why…",
+                detail: "status.json hasn't refreshed, so connector/tool health shown anywhere in the OS may be out of date. Open the panel to check the daemon.",
+                src: "◦ from status.json",
+                acts: [NeedAct(label: "Open panel", tone: .indigo, primary: true, behavior: .resolve("panel"))]))
+        }
+    }
+
+    // ● routines whose last run failed (only when the control plane actually records it)
+    if let r = readJSON(relay + "/routines.json") as? [String: Any] {
+        for routine in (r["routines"] as? [[String: Any]]) ?? [] {
+            let outcome = (routine["lastOutcome"] as? String) ?? (routine["lastError"] != nil ? "error" : "")
+            guard outcome == "error" || outcome == "failed" else { continue }
+            let t = (routine["title"] as? String) ?? (routine["id"] as? String) ?? "routine"
+            failed.append(NeedItem(
+                id: "routine-\((routine["id"] as? String) ?? t)", mk: "✗", mkColor: sbAmber,
+                title: [TP(t: "Routine ", kind: .normal), TP(t: "\"\(t)\"", kind: .bold), TP(t: " failed its last run", kind: .normal)],
+                why: (routine["lastError"] as? String).map { _ in "log…" },
+                detail: routine["lastError"] as? String,
+                src: "◦ from Routines",
+                acts: [NeedAct(label: "Open Routines", tone: .lime, primary: true, behavior: .route(.routines))]))
+        }
+    }
+
+    // ○ a guide you left partway — Resume genuinely resumes it (suspended → run, watcher picks it up)
+    if let g = readJSON(relay + "/guide-suspended.json") as? [String: Any] {
+        let n = ((g["steps"] as? [[String: Any]]) ?? []).count
+        let at = (g["startIndex"] as? NSNumber)?.intValue ?? 0
+        waiting.append(NeedItem(
+            id: "guide-suspended", mk: "▸", mkColor: .inkDim,
+            title: [TP(t: "Resume the tour ", kind: .bold),
+                    TP(t: n > 0 ? "— you left it at step \(min(at + 1, n)) of \(n)" : "— left partway", kind: .muted)],
+            why: "why…",
+            detail: "A guided walkthrough was abandoned mid-way and saved. Resume picks it up exactly where you left it.",
+            src: "◦ from guide-suspended.json",
+            acts: [NeedAct(label: "Resume", tone: .lime, primary: true, behavior: .resolve("resume-guide")),
+                   NeedAct(label: "Later", behavior: .resolve("Snoozed"))]))
+    }
+
+    // ○ routines switched off — nothing scheduled will run until flipped back
+    let control = readJSON(relay + "/routines-control.json") as? [String: Any]
+    let routinesObj = readJSON(relay + "/routines.json") as? [String: Any]
+    if (control?["off"] as? Bool) == true || (routinesObj?["globalPaused"] as? Bool) == true {
+        waiting.append(NeedItem(
+            id: "routines-off", mk: "⏸", mkColor: .inkDim,
+            title: [TP(t: "Routines are switched off ", kind: .bold),
+                    TP(t: "— nothing will run on schedule", kind: .muted)],
+            src: "◦ from routines-control.json",
+            acts: [NeedAct(label: "Open Routines", tone: .indigo, primary: true, behavior: .route(.routines))]))
+    }
+
+    // ○ overdue tasks — real lines in tasks.md with a past due:
+    for t in osTasksAll().tasks.filter({ $0.over }).prefix(5) {
+        waiting.append(NeedItem(
+            id: "task-\(t.raw.hashValue)", mk: "☐", mkColor: .inkDim,
+            title: [TP(t: "Overdue: ", kind: .bold), TP(t: t.title, kind: .normal),
+                    TP(t: t.due.map { " (due \($0))" } ?? "", kind: .muted)],
+            src: "◦ from Tasks · \((t.folder as NSString).lastPathComponent)/tasks.md",
+            acts: [NeedAct(label: "Open", tone: .lime, primary: true, behavior: .route(.tasks))]))
+    }
+
+    return [
+        NeedBand(id: "blocking", mk: "▲", mkColor: .danger, lb: "Blocking", hint: "act to continue", barColor: .danger, items: blocking),
+        NeedBand(id: "failed", mk: "●", mkColor: sbAmber, lb: "Failed", hint: "retry or investigate", barColor: sbAmber, items: failed),
+        NeedBand(id: "waiting", mk: "○", mkColor: .inkDim, lb: "Waiting", hint: "your call, not blocking", barColor: .edge, items: waiting),
+    ].filter { !$0.items.isEmpty }
 }
 
 struct NeedsSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
+    @State private var bands: [NeedBand] = []
     @State private var resolved: Set<String> = []
     @State private var whyOpen: Set<String> = []
     @State private var filter = "all"
 
     private var total: Int {
-        NeedSample.bands.reduce(0) { $0 + $1.items.filter { !resolved.contains($0.id) }.count }
+        bands.reduce(0) { $0 + $1.items.filter { !resolved.contains($0.id) }.count }
     }
     private var shownBands: [NeedBand] {
-        NeedSample.bands
+        bands
             .filter { filter == "all" || $0.id == filter }
             .filter { band in band.items.contains { !resolved.contains($0.id) } }
     }
@@ -597,11 +661,12 @@ struct NeedsSurface: View {
                     }
                 }
 
-                FootNote(text: "the action inbox · blocking first, then failures, then your call · every item is what · why · one action · dismiss is undoable")
+                FootNote(text: "the action inbox · blocking first, then failures, then your call · every item derives from real ~/.relay state · an item leaves when its state clears")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { bands = needsLiveBands() }
     }
 
     private func cycleFilter() {
@@ -613,7 +678,15 @@ struct NeedsSurface: View {
     }
     private func handle(_ item: NeedItem, _ act: NeedAct) {
         switch act.behavior {
-        case .resolve:
+        case .resolve(let what):
+            switch what {
+            case "panel":                       // real: fronts the menu-bar panel via the trigger file
+                NeedTrigger.openPanel()
+            case "resume-guide":                // real: suspended → run; the guide watcher resumes it
+                NeedTrigger.resumeGuide()
+                bands = needsLiveBands()        // the suspended file is gone → the item leaves honestly
+            default: break                      // Snooze/Later — hide for this visit only
+            }
             withAnimation(.easeInOut(duration: 0.28)) { _ = resolved.insert(item.id) }
         case .launch(let app):
             OSLaunch.launchOr(app, .init(kind: "need")) { onNavigate(.apps) }   // open the tool this item is about
