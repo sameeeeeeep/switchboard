@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autopilot — this morning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Switchboard's own tokens — flat, hairline, no gradients/shadows/pulses. lime=done, amber=you, indigo=project. */
+:root{
+  --page:#0B0C10; --panel:#101319; --edge:#20242E; --edgeSoft:#171B22;
+  --ink:#ECEFEA; --inkSec:#C3C8CC; --inkDim:#8B929C; --inkFaint:#5B626C;
+  --lime:#C8F250; --amber:#F2A64C; --indigo:#8A8CF0;
+  --brico:"Bricolage Grotesque",Georgia,serif;
+  --hanken:"Hanken Grotesk",system-ui,sans-serif;
+  --mono:"Spline Sans Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--page)}
+body{background:var(--page);color:var(--ink);font-family:var(--hanken);
+  -webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;letter-spacing:-.006em}
+.sheet{max-width:720px;margin:0 auto;padding:64px 28px 120px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+:focus-visible{outline:1.5px solid var(--lime);outline-offset:3px;border-radius:3px}
+
+/* masthead */
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--inkFaint);text-transform:uppercase;
+  display:flex;align-items:center;gap:10px}
+.kicker .sw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;letter-spacing:.14em}
+.kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--lime)}
+.kicker.off .dot{background:var(--inkFaint)}
+.kicker .sw b{color:var(--inkDim);font-weight:400}
+.lede{font-family:var(--brico);font-weight:600;font-size:40px;line-height:1.04;letter-spacing:-.03em;
+  margin:22px 0 0}
+.lede em{font-style:normal;color:var(--inkFaint)}
+.dek{font-size:16px;color:var(--inkDim);margin-top:14px;line-height:1.45;max-width:56ch}
+.dek b{color:var(--ink);font-weight:500}
+
+/* identity line — quiet, factual, not cards */
+.ident{margin-top:22px;padding-top:16px;border-top:1px solid var(--edge);
+  display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px}
+.ident .f{display:flex;gap:8px;align-items:baseline}
+.ident .f .r{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkFaint)}
+.ident .f .v{color:var(--inkSec)}
+.ident .f.draft .v{color:var(--inkFaint);font-style:italic}
+
+/* a section = one movement of the morning */
+.mv{margin-top:52px}
+.mvhead{display:flex;align-items:baseline;gap:14px;padding-bottom:4px}
+.mvhead h2{font-family:var(--brico);font-weight:600;font-size:15px;letter-spacing:.02em}
+.mvhead .n{font-family:var(--mono);font-size:12px;color:var(--inkFaint);margin-left:auto}
+.mvhead .rule{position:relative}
+.mvsub{font-size:13px;color:var(--inkFaint);margin-top:3px;line-height:1.4}
+.items{margin-top:14px;border-top:1px solid var(--edge)}
+
+/* one entry — reads like a line in a brief, not a card */
+.it{display:flex;gap:16px;padding:16px 2px;border-bottom:1px solid var(--edgeSoft);align-items:baseline}
+.it .mk{font-family:var(--mono);font-size:12px;flex:none;width:14px;line-height:1.7;color:var(--inkFaint)}
+.it .b{flex:1;min-width:0}
+.it .t{font-size:15.5px;color:var(--ink);line-height:1.4}
+.it .meta{font-family:var(--mono);font-size:12px;color:var(--inkFaint);margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.it .meta .file{color:var(--lime)}
+.it .meta .doc{color:var(--inkDim);border-bottom:1px solid var(--edge)}
+.it .act{flex:none;align-self:center}
+
+/* made — lime tick, an artifact you can open */
+.it.made .mk{color:var(--lime)}
+.open{font-family:var(--mono);font-size:12px;color:var(--inkDim);white-space:nowrap}
+.open:hover{color:var(--ink)}
+.run{font-family:var(--mono);font-size:12px;color:var(--lime);white-space:nowrap}
+.run:hover{text-decoration:underline}
+.it.working .mk{color:var(--amber)}
+.it.working .t{color:var(--inkSec)}
+.working .doing{color:var(--amber)}
+
+/* waiting — amber, one tap acts */
+.it.wait .mk{color:var(--amber)}
+.approve{font-family:var(--hanken);font-size:13px;font-weight:600;color:var(--page);
+  background:var(--amber);padding:7px 14px;border-radius:8px;white-space:nowrap}
+.approve:hover{filter:brightness(1.06)}
+.approve.done{background:transparent;color:var(--lime);border:1px solid var(--edge);pointer-events:none}
+
+/* your call — indigo, a decision with its context */
+.it.call .mk{color:var(--indigo)}
+.decide{font-family:var(--mono);font-size:12px;color:var(--indigo);white-space:nowrap}
+.decide:hover{text-decoration:underline}
+
+/* footer — honest metrics + the boundary, in the quiet voice */
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--edge);
+  display:flex;gap:28px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--inkFaint)}
+.foot .m b{color:var(--inkSec);font-weight:500}
+.foot .m .na{color:var(--inkFaint)}
+.foot .m .na a{color:var(--indigo);border-bottom:1px dashed var(--edge)}
+.foot .boundary{flex-basis:100%;color:var(--inkFaint);line-height:1.7;margin-top:4px}
+.foot .boundary b{color:var(--inkDim);font-weight:400}
+
+/* company switch — a quiet text tab row, not chrome */
+.cos{display:flex;gap:18px;margin-top:8px;font-family:var(--mono);font-size:12px}
+.cos button{color:var(--inkFaint);letter-spacing:.06em;padding-bottom:3px;border-bottom:1px solid transparent}
+.cos button.on{color:var(--ink);border-color:var(--lime)}
+.cos button:hover{color:var(--inkDim)}
+
+@media(max-width:560px){ .lede{font-size:32px} .sheet{padding:44px 20px 90px} }
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="kicker" id="kicker">
+    <span id="kdate">AUTOPILOT · THIS MORNING</span>
+    <button class="sw" id="sw" title="toggle autopilot"><span class="dot"></span><b id="swt">running</b></button>
+  </div>
+  <div class="cos" id="cos"></div>
+
+  <h1 class="lede" id="lede"></h1>
+  <p class="dek" id="dek"></p>
+
+  <div class="ident" id="ident"></div>
+
+  <section class="mv" id="mv-made">
+    <div class="mvhead"><h2>Made while you slept</h2><span class="n" id="n-made"></span></div>
+    <div class="mvsub">Reversible work — God's hands drafted it on your Claude. Nothing left the machine.</div>
+    <div class="items" id="l-made"></div>
+  </section>
+
+  <section class="mv" id="mv-wait">
+    <div class="mvhead"><h2>Waiting on you</h2><span class="n" id="n-wait"></span></div>
+    <div class="mvsub">Each one is prepared to the last inch. It sends, publishes, or charges — so it waits for your tap.</div>
+    <div class="items" id="l-wait"></div>
+  </section>
+
+  <section class="mv" id="mv-call">
+    <div class="mvhead"><h2>Your call</h2><span class="n" id="n-call"></span></div>
+    <div class="mvsub">Judgment only you make. God brought the context, not a recommendation.</div>
+    <div class="items" id="l-call"></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script type="module">
+const $=(s)=>document.querySelector(s);
+const esc=(s)=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* Aamras is REAL — identity + moves are the live autopilot draft
+   (~/.relay/storage/https_sameep.ai/autopilot-plan.json). Software/agency stay honest & empty. */
+const CO={
+  aamras:{
+    name:"Aamras", sector:"brand",
+    essence:"scent as vibe — new-age home fragrance for gen-z, Indian maximalism made hip",
+    identity:[
+      {r:"Hero", v:"one scent, three intensities"},
+      {r:"Who", v:"gen-z, first-apartment"},
+      {r:"Voice", v:"cultural insider"},
+      {r:"Price", v:"limited pre-order drops", draft:true},
+    ],
+    made:[
+      {t:"Drafted this week's 3 posts — “scent as vibe”", art:"3-post-plan.md", state:"done"},
+      {t:"Drafted outreach to 5 fragrance & lifestyle micro-influencers", art:"influencer-outreach.md", state:"idle", wrapp:"reachout"},
+      {t:"Drafted the next drop's pre-order page + price", art:"preorder-copy.md", state:"done"},
+    ],
+    wait:[
+      {t:"Publish the 3 posts to Instagram and TikTok", why:"posts publicly"},
+      {t:"Open the pre-order page", why:"takes real orders and money"},
+    ],
+    call:[
+      {t:"Pick the drop date", ctx:"Sep 12 / 19 / 26"},
+      {t:"Choose the first batch size", ctx:"cash vs sell-out risk"},
+    ],
+    tokens:22378,
+  },
+  software:{ name:"— no software company yet", sector:"software", empty:true },
+  agency:{ name:"— no agency yet", sector:"agency", empty:true },
+};
+let ACTIVE="aamras", ON=true;
+const c=()=>CO[ACTIVE];
+
+function renderCos(){
+  const items=[["aamras","Aamras"],["software","Software"],["agency","Agency"]];
+  $("#cos").innerHTML=items.map(([k,l])=>`<button data-co="${k}" class="${ACTIVE===k?"on":""}">${l}</button>`).join("");
+  $("#cos").querySelectorAll("[data-co]").forEach(b=>b.onclick=()=>{ACTIVE=b.dataset.co;render();});
+}
+
+function render(){
+  renderCos();
+  const co=c();
+  if(co.empty){
+    $("#lede").innerHTML=`No ${co.sector} company <em>yet.</em>`;
+    $("#dek").innerHTML=`Establish one and Autopilot starts running it overnight — the same three movements you see for Aamras.`;
+    $("#ident").innerHTML="";
+    ["made","wait","call"].forEach(s=>{$("#l-"+s).innerHTML=`<div class="it"><span class="b" style="color:var(--inkFaint);font-size:14px">— nothing yet</span></div>`;$("#n-"+s).textContent="";});
+    foot(); return;
+  }
+  const made=co.made.filter(m=>m.state==="done").length;
+  $("#lede").innerHTML=`${esc(co.name)} ran itself <em>overnight.</em>`;
+  $("#dek").innerHTML=`<b>${made} things made</b> while you slept · <b>${co.wait.length} waiting</b> on your tap · <b>${co.call.length} calls</b> only you can make.`;
+  $("#ident").innerHTML=co.identity.map(f=>`<span class="f ${f.draft?"draft":""}"><span class="r">${esc(f.r)}</span><span class="v">${esc(f.v)}</span></span>`).join("");
+
+  $("#l-made").innerHTML=co.made.map(madeRow).join("");
+  $("#l-wait").innerHTML=co.wait.map(waitRow).join("");
+  $("#l-call").innerHTML=co.call.map(callRow).join("");
+  $("#n-made").textContent=`${made}/${co.made.length}`;
+  $("#n-wait").textContent=co.wait.length;
+  $("#n-call").textContent=co.call.length;
+  wire(); foot();
+}
+
+function madeRow(m,i){
+  if(m.state==="working") return `<div class="it working" data-i="${i}"><span class="mk">→</span><div class="b"><div class="t">${esc(m.t)}</div><div class="meta"><span class="doing">God's hands · drafting…</span></div></div></div>`;
+  if(m.state==="done") return `<div class="it made" data-i="${i}"><span class="mk">✓</span><div class="b"><div class="t">${esc(m.t)}</div><div class="meta"><span class="file">${esc(m.art)}</span><span>·</span><span>filed to Bank</span></div></div><button class="open act" data-open="${i}">open →</button></div>`;
+  return `<div class="it made" data-i="${i}"><span class="mk">·</span><div class="b"><div class="t">${esc(m.t)}</div><div class="meta"><span>ready to run</span></div></div><button class="run act" data-run="${i}">let God run it →</button></div>`;
+}
+function waitRow(m,i){
+  return `<div class="it wait" data-i="${i}"><span class="mk">▲</span><div class="b"><div class="t">${esc(m.t)}</div><div class="meta">${esc(m.why)}</div></div><button class="approve act" data-approve="${i}">Approve</button></div>`;
+}
+function callRow(m,i){
+  return `<div class="it call" data-i="${i}"><span class="mk">◆</span><div class="b"><div class="t">${esc(m.t)}</div><div class="meta"><button class="decide" data-decide="${i}">${esc(m.ctx)} →</button></div></div></div>`;
+}
+
+function wire(){
+  document.querySelectorAll("[data-run]").forEach(b=>b.onclick=()=>{
+    const m=c().made[+b.dataset.run]; m.state="working"; render();
+    setTimeout(()=>{ m.state="done"; m.art=m.art||"draft.md"; c().tokens+=7000; render(); },1900);
+  });
+  document.querySelectorAll("[data-approve]").forEach(b=>b.onclick=()=>{b.textContent="✓ Sent";b.classList.add("done");});
+}
+
+function foot(){
+  const co=c();
+  $("#foot").innerHTML = co.empty ? `<span class="boundary"><b>the boundary:</b> Autopilot drafts freely; it never sends, publishes, or charges without your tap.</span>` :
+   `<span class="m">Revenue <span class="na"><a href="#">— connect Stripe</a></span></span>
+    <span class="m">Traffic <span class="na"><a href="#">— connect analytics</a></span></span>
+    <span class="m">Tokens · autopilot <b>${(co.tokens/1000).toFixed(1)}k</b></span>
+    <span class="boundary"><b>the clock:</b> daemon routine #1, every 30 min while on · <b>the boundary:</b> reversible work runs itself; the send line never moves.</span>`;
+}
+
+$("#sw").onclick=()=>{
+  ON=!ON; $("#kicker").classList.toggle("off",!ON); $("#swt").textContent=ON?"running":"paused";
+};
+
+render();
+</script>
+</body>
+</html>
