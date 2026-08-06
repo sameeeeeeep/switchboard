@@ -39,6 +39,11 @@ SDK_DIR="$(cd "$(dirname "$SDK_NATIVE_DIR")" 2>/dev/null && pwd)/claude-agent-sd
 [ -f "$SDK_DIR/package.json" ] || die "agent-sdk JS package not found at $SDK_DIR"
 
 # ---------- 1. build the daemon (tsc -> packages/sidekick/dist) ----------
+# @relay/sidekick imports types from @relay/protocol's BUILT dist, so protocol must be built first —
+# a stale protocol dist makes sidekick's tsc fail (e.g. a method missing from BYOPMethods) and, with
+# `set -e`, kills the whole DMG. Build it up front so a fresh checkout (or a drifted dist) just works.
+say "building @relay/protocol…"
+(cd "$ROOT" && npm run build -w @relay/protocol >/dev/null)
 say "building @relay/sidekick…"
 (cd "$ROOT" && npm run build -w @relay/sidekick >/dev/null)
 [ -f "$ROOT/packages/sidekick/dist/index.js" ] || die "sidekick dist missing after build"
@@ -99,10 +104,15 @@ say "God client staged (+ ws)"
 
 # ---------- 7. compile the menubar app + Info.plist ----------
 say "compiling the menu-bar app (all Swift files)…"
+# Keep this list in sync with build.sh (the dev build) — the OS surface files below drifted out once
+# and broke the DMG while the dev build worked. *.preview.swift are standalone ImageRenderer previews
+# (never in the app); TeamSection.swift is intentionally excluded, matching build.sh.
 swiftc -O -o "$STAGE/Contents/MacOS/Relay" \
   "$HERE/main.swift" "$HERE/RelayMenuBar.swift" "$HERE/CursorGuide.swift" "$HERE/NotchLauncherView.swift" \
   "$HERE/GodWidgetKit.swift" "$HERE/GodWebWindow.swift" "$HERE/StoreFrontView.swift" "$HERE/HtmlCapability.swift" \
   "$HERE/SkillRunner.swift" "$HERE/AmbientSensor.swift" "$HERE/AmbientCanvas.swift" \
+  "$HERE/OSShellView.swift" "$HERE/OSSurfaceWorkspace.swift" "$HERE/OSSurfaceAutomate.swift" \
+  "$HERE/OSSurfaceKnowledge.swift" "$HERE/OSSurfaceDo.swift" \
   -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices
 
 # House fonts (optional; the panel falls back to the system font if the dir is empty).
