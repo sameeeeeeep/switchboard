@@ -207,6 +207,9 @@ final class GuideOverlayModel: ObservableObject {
     // The card's rendered frame in the overlay (SwiftUI top-left coords). The hosting view hit-tests ONLY
     // inside this rect so the card + its buttons are clickable while every other pixel passes clicks THROUGH.
     @Published var cardFrame: CGRect = .zero
+    // Where the card sits in .cursor placement — a SNAPSHOT of the pointer (overlay top-left pts) taken
+    // when ⌥; cycles into cursor mode, so the card appears where you're working and stays put (clickable).
+    @Published var cursorAnchor: CGPoint = .zero
     // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
     @Published var muted: Bool = UserDefaults.standard.bool(forKey: "relay.guide.muted")
 }
@@ -285,12 +288,25 @@ struct GuideCaptionView: View {
         case .notch:
             VStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }   // flush at top — the drop merges into the notch
         case .cursor:
-            VStack(spacing: 0) { Spacer(minLength: 0); cardOrPill }.padding(.bottom, 54)   // (rides-cursor is a later refinement; docks bottom for now)
+            // Anchored at the pointer snapshot (⌥; into cursor mode), offset down-right so it doesn't sit
+            // under the cursor, clamped so the whole card stays on-screen. Publishes its frame like the
+            // others → the click-tracking follows it here too.
+            VStack(spacing: 0) { HStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }; Spacer(minLength: 0) }
+                .offset(cursorOffset)
         case .dock:
             VStack(spacing: 0) {
                 if m.dockTop { cardOrPill; Spacer(minLength: 0) } else { Spacer(minLength: 0); cardOrPill }
             }.padding(m.dockTop ? .top : .bottom, 54)
         }
+    }
+
+    // The card's top-left offset in .cursor placement: near the pointer snapshot (+14,+14 so it clears
+    // the cursor), clamped so the whole card stays on-screen.
+    private var cursorOffset: CGSize {
+        let cw = cardW
+        let ax = min(max(m.cursorAnchor.x + 14, 8), max(8, m.screenSize.width - cw - 8))
+        let ay = min(max(m.cursorAnchor.y + 14, 8), max(8, m.screenSize.height - 380))
+        return CGSize(width: ax, height: ay)
     }
 
     @ViewBuilder private var cardOrPill: some View {
@@ -1733,7 +1749,13 @@ final class CursorGuide {
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
         case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
         case 44:  model.placement = (model.placement == .notch ? .dock : .notch); applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
-        case 41:  model.placement = (model.placement == .cursor ? .notch : .cursor); applyMousePolicy(); return true  // ⌥; — notch ↔ cursor
+        case 41:                                                                       // ⌥; — cycle notch → below → cursor
+            let nextPl: GuidePlacement = model.placement == .notch ? .dock : (model.placement == .dock ? .cursor : .notch)
+            if nextPl == .cursor, let ov = overlay {
+                let ml = NSEvent.mouseLocation                                          // screen bottom-left → overlay top-left
+                model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
+            }
+            model.placement = nextPl; applyMousePolicy(); return true
         case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
         case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
         case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C
