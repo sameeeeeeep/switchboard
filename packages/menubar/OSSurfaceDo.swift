@@ -20,33 +20,63 @@ import SwiftUI
 // MARK: - Apps surface — private model + sample catalog (mirrors apps.js SAMPLE)
 // =====================================================================================================
 
-/// A richer app record than the shared `SBApp` (which is just {id,name,live}): carries the category
-/// and the pinned / god flags the grouped dock needs. Private so it never collides with `SBApp`.
+// ═══ LIVE model — Apps renders the REAL install state: ~/.relay/catalog.json (the 76 WrappListings),
+// grants.json (which wrapps hold a standing grant = your working set), and the audit log (which were
+// active today). No invented live/pinned flags.
+
 private struct DoApp: Identifiable {
-    let id: String            // also the display name here (matches apps.js, where id == the shown name)
-    let cat: String           // "studio" | "tool" | "agent" | "fun"
-    let live: Bool            // running right now (lime dot)
-    let god: Bool             // a granted hand God can drive (indigo badge)
-    let pinned: Bool          // shows in the Pinned group + drives the Home dock order
+    let id: String            // listing id (also the icon + hue key)
+    let name: String
+    let tagline: String
+    let cat: String           // "studio" | "tool" | "skill" | "agent" | "fun"
+    let toolCount: Int        // hands a wrapp exposes (what God/the connector can drive)
+    let needCount: Int        // requires[] — surfaced, never hidden
+    let connected: Bool       // has a standing grant in grants.json (indigo)
+    let lastActive: Double    // ms epoch of the latest audit session, 0 = none
+    let broken: Bool          // listing failed minimal validation → dimmed, never dropped
+
+    var activeToday: Bool { lastActive > Date().timeIntervalSince1970 * 1000 - 86_400_000 }
 }
 
-private let DO_APPS: [DoApp] = [
-    DoApp(id: "brandbrain", cat: "studio", live: true,  god: true,  pinned: true),
-    DoApp(id: "Crest",      cat: "studio", live: true,  god: true,  pinned: true),
-    DoApp(id: "ideabrain",  cat: "studio", live: false, god: true,  pinned: false),
-    DoApp(id: "Prism",      cat: "tool",   live: false, god: true,  pinned: false),
-    DoApp(id: "Bank",       cat: "tool",   live: false, god: true,  pinned: true),
-    DoApp(id: "Redline",    cat: "tool",   live: false, god: true,  pinned: true),
-    DoApp(id: "AdPulse",    cat: "tool",   live: false, god: false, pinned: false),
-    DoApp(id: "God",        cat: "agent",  live: true,  god: false, pinned: true),
-    DoApp(id: "Autopilot",  cat: "agent",  live: false, god: true,  pinned: false),
-    DoApp(id: "Sidequest",  cat: "fun",    live: false, god: false, pinned: false),
-]
+func doAppsCatalogPath() -> String { (NSHomeDirectory() as NSString).appendingPathComponent(".relay/catalog.json") }
 
-/// The category filter segment (All / Studios / Tools / Fun / Agents — matches apps.js `.seg`).
+private func doApps() -> [DoApp] {
+    guard let obj = readJSON(doAppsCatalogPath()) as? [String: Any],
+          let listings = obj["listings"] as? [[String: Any]] else { return [] }
+    // wrapp ids holding a standing grant — resolved from grant origins the same way storage origins are
+    var granted = Set<String>()
+    if let grants = readJSON((NSHomeDirectory() as NSString).appendingPathComponent(".relay/grants.json")) as? [[String: Any]] {
+        for g in grants { if let o = g["origin"] as? String { granted.insert(wrappFromOrigin(o).lowercased()) } }
+    }
+    var lastActive: [String: Double] = [:]
+    for s in osSessions(windowDays: 7) { lastActive[s.app.lowercased()] = s.endMs }
+    return listings.map { l in
+        let id = (l["id"] as? String) ?? ""
+        let name = (l["name"] as? String) ?? ""
+        return DoApp(id: id,
+                     name: name.isEmpty ? id : name,
+                     tagline: (l["tagline"] as? String) ?? "",
+                     cat: (l["category"] as? String) ?? "tool",
+                     toolCount: ((l["tools"] as? [[String: Any]]) ?? []).count,
+                     needCount: ((l["requires"] as? [[String: Any]]) ?? []).count,
+                     connected: granted.contains(id.lowercased()),
+                     lastActive: lastActive[id.lowercased()] ?? 0,
+                     broken: id.isEmpty || name.isEmpty)
+    }
+    .sorted { a, b in a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending }
+}
+
+/// The category filter segment — the REAL catalog categories (skill is the biggest shelf).
 private enum AppFilter: String, CaseIterable, Identifiable {
-    case all = "All", studios = "Studios", tools = "Tools", fun = "Fun", agents = "Agents"
+    case all = "All", studios = "Studios", tools = "Tools", skills = "Skills", agents = "Agents", fun = "Fun"
     var id: String { rawValue }
+    var cat: String? {
+        switch self {
+        case .all: return nil
+        case .studios: return "studio"; case .tools: return "tool"
+        case .skills: return "skill"; case .agents: return "agent"; case .fun: return "fun"
+        }
+    }
 }
 
 /// A rendered group of tiles (title + optional note + apps). Non-empty groups only.
@@ -59,35 +89,56 @@ private struct AppGroup: Identifiable { let title: String; let note: String?; le
 struct AppsSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
     @State private var filter: AppFilter = .all
+    @State private var query = ""
+    @State private var apps: [DoApp] = []
 
-    /// The groups to render for the current filter. All → the four escalation shelves; a specific
-    /// filter → just its matching shelf (mirrors apps.js `wire`, which hides the non-matching groups).
+    private var searched: [DoApp] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return apps }
+        return apps.filter { $0.name.lowercased().contains(q) || $0.id.lowercased().contains(q) || $0.tagline.lowercased().contains(q) }
+    }
+
+    /// All → Connected (the working set — wrapps with a standing grant) leads, then the real category
+    /// shelves. A specific filter → just its shelf. Search cuts across everything.
     private var groups: [AppGroup] {
         func nonEmpty(_ gs: [AppGroup]) -> [AppGroup] { gs.filter { !$0.apps.isEmpty } }
-        switch filter {
-        case .all:
-            return nonEmpty([
-                AppGroup(title: "Pinned", note: "drives the Home dock order", apps: DO_APPS.filter { $0.pinned }),
-                AppGroup(title: "Studios", note: nil, apps: DO_APPS.filter { $0.cat == "studio" }),
-                AppGroup(title: "Tools & Agents", note: nil, apps: DO_APPS.filter { $0.cat == "tool" || $0.cat == "agent" }),
-                AppGroup(title: "Fun", note: nil, apps: DO_APPS.filter { $0.cat == "fun" }),
-            ])
-        case .studios:
-            return nonEmpty([AppGroup(title: "Studios", note: nil, apps: DO_APPS.filter { $0.cat == "studio" })])
-        case .tools:
-            return nonEmpty([AppGroup(title: "Tools & Agents", note: nil, apps: DO_APPS.filter { $0.cat == "tool" || $0.cat == "agent" })])
-        case .agents:
-            return nonEmpty([AppGroup(title: "Agents", note: nil, apps: DO_APPS.filter { $0.cat == "agent" })])
-        case .fun:
-            return nonEmpty([AppGroup(title: "Fun", note: nil, apps: DO_APPS.filter { $0.cat == "fun" })])
+        let src = searched
+        if let c = filter.cat {
+            return nonEmpty([AppGroup(title: filter.rawValue, note: nil, apps: src.filter { $0.cat == c })])
         }
+        let connected = src.filter { $0.connected }
+        return nonEmpty([
+            AppGroup(title: "Connected", note: "your working set — wrapps holding a standing grant", apps: connected),
+            AppGroup(title: "Studios", note: nil, apps: src.filter { $0.cat == "studio" && !$0.connected }),
+            AppGroup(title: "Tools", note: nil, apps: src.filter { $0.cat == "tool" && !$0.connected }),
+            AppGroup(title: "Skills", note: "small hands — most expose tools God can drive", apps: src.filter { $0.cat == "skill" && !$0.connected }),
+            AppGroup(title: "Agents", note: nil, apps: src.filter { $0.cat == "agent" && !$0.connected }),
+            AppGroup(title: "Fun", note: nil, apps: src.filter { $0.cat == "fun" && !$0.connected }),
+        ])
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                AppsHead(count: DO_APPS.count, filter: $filter)
+                AppsHead(total: apps.count, connected: apps.filter { $0.connected }.count,
+                         filter: $filter, query: $query)
                 AppsLegend()
+
+                if apps.isEmpty {
+                    // catalog.json missing/unreadable — say so, point at the real fix
+                    HStack(spacing: 12) {
+                        Text("!").font(.splMono(13)).foregroundColor(.amber)
+                        Text("No catalog at ~/.relay/catalog.json — is the daemon running? The Store rebuilds it.")
+                            .font(.hanken(13)).foregroundColor(.inkSec)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.amber.opacity(0.4), lineWidth: 1))
+                    .padding(.top, 16)
+                } else if groups.isEmpty {
+                    Text("Nothing matches \"\(query)\".").font(.hanken(13)).foregroundColor(.inkDim).padding(.top, 20)
+                }
 
                 ForEach(groups) { g in
                     AppGroupHead(title: g.title, note: g.note)
@@ -103,24 +154,39 @@ struct AppsSurface: View {
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { apps = doApps() }
     }
 }
 
-// ---- header: kicker · title · count pill · filter segment ----
+// ---- header: kicker · title · real counts · filter segment · search ----
 private struct AppsHead: View {
-    let count: Int
+    let total: Int
+    let connected: Int
     @Binding var filter: AppFilter
+    @Binding var query: String
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("APPS").font(.splMono(10.5)).tracking(1.8).foregroundColor(.inkFaint)
                 Text("Your installed tools").font(.hanken(20, .semibold)).foregroundColor(.ink)
-                Text("\(count) installed").font(.splMono(11)).foregroundColor(.inkDim)
+                Text("\(total) in catalog · \(connected) connected").font(.splMono(11)).foregroundColor(.inkDim)
                     .padding(.horizontal, 10).padding(.vertical, 2)
                     .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
                 Spacer(minLength: 0)
             }
-            FilterSegment(filter: $filter)
+            HStack(spacing: 10) {
+                FilterSegment(filter: $filter)
+                HStack(spacing: 7) {
+                    Text("⌕").font(.system(size: 12)).foregroundColor(.inkFaint)
+                    TextField("Search apps", text: $query)
+                        .textFieldStyle(.plain).font(.hanken(12.5)).foregroundColor(.ink)
+                        .frame(width: 160)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.panel))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1))
+                Spacer(minLength: 0)
+            }
         }
         .padding(.top, 2).padding(.bottom, 6)
     }
@@ -157,19 +223,19 @@ private struct FilterChip: View {
     }
 }
 
-// ---- legend: live now · God can drive · the hint ----
+// ---- legend: active today · connected · the hint (every mark is a real state) ----
 private struct AppsLegend: View {
     var body: some View {
         HStack(spacing: 16) {
             HStack(spacing: 6) {
                 Circle().fill(Color.lime).frame(width: 6, height: 6)
-                Text("live now").font(.hanken(11)).foregroundColor(.inkDim)
+                Text("active today").font(.hanken(11)).foregroundColor(.inkDim)
             }
             HStack(spacing: 6) {
                 Circle().fill(Color.indigo).frame(width: 6, height: 6)
-                Text("God can drive (a granted hand)").font(.hanken(11)).foregroundColor(.inkDim)
+                Text("connected — holds a standing grant").font(.hanken(11)).foregroundColor(.inkDim)
             }
-            Text("click a tile to launch").font(.hanken(11)).foregroundColor(.inkFaint)
+            Text("click a tile to launch · hover for its hands + needs").font(.hanken(11)).foregroundColor(.inkFaint)
             Spacer(minLength: 0)
         }
         .padding(.top, 8)
@@ -205,43 +271,40 @@ private struct AppTile: View {
     let app: DoApp
     let onTap: () -> Void
     @State private var hover = false
+    private var tip: String {
+        var bits: [String] = []
+        if !app.tagline.isEmpty { bits.append(app.tagline) }
+        if app.toolCount > 0 { bits.append("\(app.toolCount) tool\(app.toolCount == 1 ? "" : "s") God can drive") }
+        if app.needCount > 0 { bits.append("\(app.needCount) need\(app.needCount == 1 ? "" : "s")") }
+        if app.lastActive > 0 { bits.append("active \(relAgo(Date().timeIntervalSince1970 * 1000 - app.lastActive)) ago") }
+        return bits.joined(separator: " · ")
+    }
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 9) {
                 OSAppGlyph(id: app.id, size: 72)
-                    .background(RoundedRectangle(cornerRadius: 18)
-                        .fill(LinearGradient(colors: [Color(red: 0x15/255, green: 0x16/255, blue: 0x1d/255),
-                                                      Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Color(red: 0x11/255, green: 0x12/255, blue: 0x18/255)))
                     .overlay(RoundedRectangle(cornerRadius: 18)
                         .stroke(hover ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
                     .overlay(alignment: .topTrailing) {
-                        if app.live {
-                            Circle().fill(Color.lime).frame(width: 6, height: 6)
-                                .shadow(color: Color.lime.opacity(0.6), radius: 3)
-                                .padding(9)
+                        if app.activeToday {
+                            Circle().fill(Color.lime).frame(width: 6, height: 6).padding(9)
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if app.god {
-                            HStack(spacing: 3) {
-                                Circle().fill(Color.indigo).frame(width: 5, height: 5)
-                                Text("God").font(.splMono(8.5)).foregroundColor(.indigo)
-                            }
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.indigo.opacity(0.14)))
-                            .overlay(Capsule().stroke(Color.indigo.opacity(0.35), lineWidth: 1))
-                            .padding(8)
+                        if app.connected {
+                            Circle().fill(Color.indigo).frame(width: 6, height: 6).padding(9)
                         }
                     }
-                Text(app.id).font(.hanken(12.5, .medium)).foregroundColor(.inkSec)
+                Text(app.name).font(.hanken(12.5, .medium)).foregroundColor(.inkSec).lineLimit(1)
                 Text(app.cat).font(.splMono(10)).foregroundColor(.inkFaint)
             }
-            .offset(y: hover ? -2 : 0)
+            .opacity(app.broken ? 0.45 : 1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
+        .help(tip)
     }
 }
 

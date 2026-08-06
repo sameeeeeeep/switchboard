@@ -869,6 +869,19 @@ or weight; auto-run anything.
 | Hover tile | Name + tagline + last-used |
 | Right-click | Open · Pin/unpin · Give God this hand / revoke · Requirements ▸ · Uninstall (guarded) |
 | Drag tile | Reorder pinned (drives Home dock) |
+
+### Grounding — what's real today (native build)
+
+- **Catalog** = `~/.relay/catalog.json` (`listings[]`: id/name/tagline/category/requires/tools). The
+  real categories are studio · tool · **skill** (the biggest shelf) · agent · fun.
+- **Connected shelf** replaces the invented "Pinned": wrapps whose origin holds a standing grant in
+  `grants.json` (grant origin → wrapp id, same resolution as storage origins). Indigo dot = connected.
+- **Lime dot** = active today (latest audit-log session < 24h) — not a fake "live" flag.
+- **Hover tip** = tagline · N tools God can drive (`tools[]`) · N needs (`requires[]`) · last active.
+- **States**: missing/unreadable catalog → honest banner (daemon rebuilds it); a listing missing
+  id/name renders dimmed, never dropped; search cuts across name/id/tagline.
+- Not built yet (needs new state or daemon work): pin/reorder persistence, per-tile uninstall,
+  God-hand grant/revoke from the tile.
 | Click "God can drive" dot | Toggle the God-hand grant (consent) |
 | `⌃⌃` | Find/launch an app by name |
 
