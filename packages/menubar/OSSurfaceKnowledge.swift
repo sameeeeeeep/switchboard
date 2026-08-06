@@ -64,70 +64,151 @@ private struct HistDay: Identifiable {
     let id = UUID(); let day: String; let runs: [HistRun]
 }
 
-private enum HistorySample {
-    static let days: [HistDay] = [
-        HistDay(day: "Today", runs: [
-            HistRun(tm: "14:22", wrapp: "Prism", prompt: "make a launch hero — terracotta beam",
-                    kind: "image", result: "image",
-                    params: ["ref: brand-set", "ar 3:2", "model: nano_banana"],
-                    out: "artifact-0447.png · 1536×1024",
-                    prov: "IndEur Club · lent: brand-set, palette · 8.4k tokens"),
-            HistRun(tm: "13:58", wrapp: "Crest", prompt: "tighten the switch-ligature monogram",
-                    kind: "mark", result: "mark",
-                    params: ["ref: mark-v3", "vector", "model: nano_banana"],
-                    out: "monogram-v4.svg · 512×512",
-                    prov: "IndEur Club · lent: brand-set · 3.1k tokens"),
-            HistRun(tm: "11:05", wrapp: "Redline", prompt: "audit the founding-members deck",
-                    kind: "notes", result: "notes",
-                    params: ["scope: deck", "12 slides"],
-                    out: "9 notes · 2 blockers",
-                    prov: "IndEur Club · lent: pricing-thesis · 6.0k tokens"),
-            HistRun(tm: "09:40", wrapp: "God", prompt: "what did we decide about the Q4 event cities?",
-                    kind: "text", result: "text",
-                    params: ["recall", "scope: project"],
-                    out: "3 cities: Berlin, Amsterdam, Lisbon",
-                    prov: "IndEur Club · lent: meetup-notes · 2.2k tokens"),
-        ]),
-        HistDay(day: "Yesterday", runs: [
-            HistRun(tm: "18:40", wrapp: "God", prompt: "summarize the week for IndEur",
-                    kind: "text", result: "text",
-                    params: ["recall", "range: 7d"],
-                    out: "weekly-digest.md",
-                    prov: "IndEur Club · lent: brain × 14 · 5.8k tokens"),
-            HistRun(tm: "16:12", wrapp: "AdForge", prompt: "\"Find your people\" — 3 ad variants",
-                    kind: "doc", result: "ad set",
-                    params: ["variants: 3", "tone: warm"],
-                    out: "ad-set-0331 · 3 variants",
-                    prov: "IndEur Club · lent: voice-scratch · 4.4k tokens"),
-            HistRun(tm: "10:03", wrapp: "ideabrain", prompt: "validate the membership pricing thesis",
-                    kind: "doc", result: "doc",
-                    params: ["research", "cohort: EU"],
-                    out: "pricing-thesis.md",
-                    prov: "IndEur Club · lent: audience · 9.1k tokens"),
-        ]),
-        HistDay(day: "Mon · Aug 1", runs: [
-            HistRun(tm: "21:15", wrapp: "brandbrain", prompt: "draft the launch announcement post",
-                    kind: "text", result: "text",
-                    params: ["channel: IG", "tone: warm"],
-                    out: "launch-post.md",
-                    prov: "IndEur Club · lent: voice-scratch · 3.3k tokens"),
-            HistRun(tm: "15:47", wrapp: "Crest", prompt: "generate 4 logo directions",
-                    kind: "gallery", result: "4 marks",
-                    params: ["variants: 4", "vector"],
-                    out: "marks-0208 · 4 marks",
-                    prov: "IndEur Club · lent: brand-set · 5.0k tokens"),
-            HistRun(tm: "12:30", wrapp: "Flow", prompt: "transcribe the community meetup notes",
-                    kind: "notes", result: "notes",
-                    params: ["source: audio", "18m"],
-                    out: "meetup-notes.md",
-                    prov: "IndEur Club · lent: — · 1.7k tokens"),
-        ]),
-    ]
+// ═══ LIVE receipts — History is the lens on the REAL activity trail: ~/.relay/audit.log (every
+// broker request/tool_call: ts · origin · method · outcome — no prompt text is logged, so rows show
+// the ACT, honestly) + guide-history.jsonl (guided-cursor runs with title + pass/fail). Consecutive
+// same-act events merge into one receipt ("Saved ×12") so a busy wrapp reads as work, not spam.
 
-    static var wrapps: [String] {
-        var seen: [String] = []
-        for d in days { for r in d.runs where !seen.contains(r.wrapp) { seen.append(r.wrapp) } }
-        return seen
+private func histReceipts(days windowDays: Double = 14) -> [HistDay] {
+    struct Ev { let ts: Double; let app: String; let verb: String; let method: String; let outcome: String; let note: String }
+    var evs: [Ev] = []
+
+    // audit.log tail (append-only; ~2MB covers weeks)
+    let auditPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/audit.log")
+    if let fh = FileHandle(forReadingAtPath: auditPath) {
+        let size = (try? fh.seekToEnd()) ?? 0
+        let cap: UInt64 = 2_000_000
+        let tailed = size > cap
+        try? fh.seek(toOffset: tailed ? size - cap : 0)
+        let data = fh.readDataToEndOfFile(); try? fh.close()
+        let minTs = Date().timeIntervalSince1970 * 1000 - windowDays * 86_400_000
+        var lines = (String(data: data, encoding: .utf8) ?? "").split(separator: "\n")
+        if tailed, !lines.isEmpty { lines.removeFirst() }
+        for line in lines {
+            guard let d = line.data(using: .utf8),
+                  let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+                  let ts = (o["ts"] as? NSNumber)?.doubleValue, ts >= minTs,
+                  let origin = o["origin"] as? String else { continue }
+            let name = (o["toolName"] as? String) ?? (o["method"] as? String) ?? ""
+            let outcome = (o["outcome"] as? String) ?? ""
+            // denied acts are receipts too — the consent story, visible
+            guard let verb = histVerb(kind: o["kind"] as? String ?? "", name: name) else { continue }
+            let app = wrappFromOrigin(origin)
+            guard !app.isEmpty else { continue }
+            evs.append(Ev(ts: ts, app: app, verb: verb, method: name, outcome: outcome,
+                          note: (o["note"] as? String) ?? ""))
+        }
+    }
+
+    // merge consecutive identical (app, verb, outcome) events within 10 min → one receipt ×N
+    evs.sort { $0.ts < $1.ts }
+    struct Merged { var first: Ev; var last: Double; var n: Int }
+    var merged: [Merged] = []
+    for e in evs {
+        if var m = merged.last, m.first.app == e.app, m.first.verb == e.verb,
+           m.first.outcome == e.outcome, e.ts - m.last <= 10 * 60_000 {
+            m.n += 1; m.last = e.ts; merged[merged.count - 1] = m
+        } else {
+            merged.append(Merged(first: e, last: e.ts, n: 1))
+        }
+    }
+
+    let tf = DateFormatter(); tf.dateFormat = "HH:mm"
+    var runs: [(Double, HistRun)] = merged.map { m in
+        let label = m.n == 1 ? histLabel(m.first.verb) : "\(histLabel(m.first.verb)) ×\(m.n)"
+        let denied = m.first.outcome == "denied"
+        return (m.last, HistRun(
+            tm: tf.string(from: Date(timeIntervalSince1970: m.last / 1000)),
+            wrapp: m.first.app,
+            prompt: label,
+            kind: histKind(m.first.verb),
+            result: denied ? "denied" : m.first.outcome,
+            params: [m.first.method],
+            out: m.first.note.isEmpty ? (m.n > 1 ? "\(m.n) events" : "1 event") : m.first.note,
+            prov: "origin-verified · audit.log"))
+    }
+
+    // guided-cursor runs — titled receipts with pass/fail
+    let guidePath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/guide-history.jsonl")
+    if let text = try? String(contentsOfFile: guidePath, encoding: .utf8) {
+        let minTs = Date().timeIntervalSince1970 * 1000 - windowDays * 86_400_000
+        for line in text.split(separator: "\n") {
+            guard let d = line.data(using: .utf8),
+                  let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+            let ts = (o["finishedAt"] as? NSNumber)?.doubleValue ?? (o["startedAt"] as? NSNumber)?.doubleValue ?? 0
+            guard ts >= minTs else { continue }
+            let passed = (o["passed"] as? NSNumber)?.intValue ?? 0
+            let total = (o["total"] as? NSNumber)?.intValue ?? 0
+            runs.append((ts, HistRun(
+                tm: tf.string(from: Date(timeIntervalSince1970: ts / 1000)),
+                wrapp: "guide",
+                prompt: (o["title"] as? String) ?? "Guided run",
+                kind: "notes",
+                result: (o["outcome"] as? String) ?? "done",
+                params: [(o["mode"] as? String) ?? "guide"],
+                out: total > 0 ? "\(passed)/\(total) steps passed" : "",
+                prov: "guide-history.jsonl")))
+        }
+    }
+
+    // day-group, newest first
+    runs.sort { $0.0 > $1.0 }
+    let df = DateFormatter(); df.dateFormat = "EEE · MMM d"
+    let cal = Calendar.current
+    var out: [HistDay] = []
+    var curKey = ""
+    var bucket: [HistRun] = []
+    func dayLabel(_ ts: Double) -> String {
+        let d = Date(timeIntervalSince1970: ts / 1000)
+        if cal.isDateInToday(d) { return "Today" }
+        if cal.isDateInYesterday(d) { return "Yesterday" }
+        return df.string(from: d)
+    }
+    for (ts, r) in runs {
+        let key = dayLabel(ts)
+        if key != curKey {
+            if !bucket.isEmpty { out.append(HistDay(day: curKey, runs: bucket)) }
+            curKey = key; bucket = []
+        }
+        bucket.append(r)
+    }
+    if !bucket.isEmpty { out.append(HistDay(day: curKey, runs: bucket)) }
+    return out
+}
+
+// what counts as an act worth a receipt (reads/plumbing don't)
+private func histVerb(kind: String, name: String) -> String? {
+    if kind == "tool_call" {
+        if name.contains("transcribe") { return "dictation" }
+        if name.contains("storage__set") { return "save" }
+        if name.contains("context__publish") { return "publish" }
+        if name.contains("__get") || name.contains("__list") { return nil }
+        return "run"
+    }
+    if kind == "request" {
+        switch name {
+        case "claude_complete", "claude_stream": return "run"
+        case "claude_transcribe": return "dictation"
+        case "claude_speak": return "reply"
+        default: return nil
+        }
+    }
+    return nil
+}
+private func histLabel(_ verb: String) -> String {
+    switch verb {
+    case "dictation": return "Dictated"
+    case "save": return "Saved work"
+    case "publish": return "Published context"
+    case "reply": return "Spoke a reply"
+    default: return "Ran the model"
+    }
+}
+private func histKind(_ verb: String) -> String {
+    switch verb {
+    case "save", "publish": return "doc"
+    case "dictation": return "notes"
+    default: return "text"
     }
 }
 
@@ -143,6 +224,7 @@ private func histGlyph(_ kind: String) -> String {
 struct HistorySurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
+    @State private var days: [HistDay] = []
     @State private var collapsedDays: Set<String> = []
     @State private var openRuns: Set<UUID> = []
     @State private var searchOn = false
@@ -150,8 +232,13 @@ struct HistorySurface: View {
     @State private var wrappIx = 0
     @State private var dateIx = 0
 
-    private var wrappOpts: [String] { ["all"] + HistorySample.wrapps }
-    private var dateOpts: [String] { ["7d"] + HistorySample.days.map { $0.day } }
+    private var allWrapps: [String] {
+        var seen: [String] = []
+        for d in days { for r in d.runs where !seen.contains(r.wrapp) { seen.append(r.wrapp) } }
+        return seen
+    }
+    private var wrappOpts: [String] { ["all"] + allWrapps }
+    private var dateOpts: [String] { ["14d"] + days.map { $0.day } }
     private var curWrapp: String { wrappOpts[min(wrappIx, wrappOpts.count - 1)] }
     private var curDate: String { dateOpts[min(dateIx, dateOpts.count - 1)] }
 
@@ -159,14 +246,14 @@ struct HistorySurface: View {
         let ql = q.trimmingCharacters(in: .whitespaces).lowercased()
         return d.runs.filter { r in
             let wOk = curWrapp == "all" || r.wrapp == curWrapp
-            let hay = (r.prompt + " " + r.wrapp + " " + r.result + " " + r.out).lowercased()
+            let hay = (r.prompt + " " + r.wrapp + " " + r.result + " " + r.out + " " + r.params.joined(separator: " ")).lowercased()
             let sOk = ql.isEmpty || hay.contains(ql)
             return wOk && sOk
         }
     }
     private var visibleDays: [HistDay] {
-        HistorySample.days.filter { d in
-            (curDate == "7d" || curDate == d.day) && !runsFor(d).isEmpty
+        days.filter { d in
+            (curDate == "14d" || curDate == d.day) && !runsFor(d).isEmpty
         }
     }
 
@@ -174,7 +261,21 @@ struct HistorySurface: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                if visibleDays.isEmpty {
+                if days.isEmpty {
+                    // first-run: nothing in the trail yet — a verb, not a dead pane
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Your runs will show up here.").font(.brico(20, .bold)).foregroundColor(.ink)
+                        Text("Every act through the broker — runs, dictations, saves, guided fills — lands in the audit trail as a receipt. Run an app to start.")
+                            .font(.hanken(13)).foregroundColor(.inkSec)
+                            .fixedSize(horizontal: false, vertical: true)
+                        LimeButton(label: "Open your apps") { onNavigate(.apps) }
+                    }
+                    .padding(22)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+                    .padding(.top, 20)
+                } else if visibleDays.isEmpty {
                     Text("No runs match these filters.")
                         .font(.hanken(12.5)).foregroundColor(.inkDim)
                         .frame(maxWidth: .infinity)
@@ -184,11 +285,15 @@ struct HistorySurface: View {
                         .padding(.top, 20)
                 } else {
                     ForEach(visibleDays) { d in daySection(d) }
+                    Text("last 14 days of the audit trail · older receipts stay in ~/.relay/audit.log — nothing is deleted")
+                        .font(.splMono(10.5)).foregroundColor(.inkFaint)
+                        .padding(.top, 28)
                 }
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { days = histReceipts() }
     }
 
     private var header: some View {
@@ -200,9 +305,8 @@ struct HistorySurface: View {
                 }
                 Spacer(minLength: 0)
             }
-            // scope + filters
+            // filters (acts carry no project tag in the log — no fake project scope, just real filters)
             HStack(spacing: 8) {
-                KChip(text: "◐ IndEur Club", accent: .indigo) { onNavigate(.bank) }
                 Spacer(minLength: 0)
                 KChip(text: "wrapp \(curWrapp) ▾") { wrappIx = (wrappIx + 1) % wrappOpts.count }
                 KChip(text: "date \(curDate) ▾") { dateIx = (dateIx + 1) % dateOpts.count }
@@ -272,7 +376,7 @@ private struct HistoryRunRow: View {
                     Text(run.wrapp).font(.hanken(12.5, .medium)).foregroundColor(.inkSec)
                 }
                 .frame(width: 118, alignment: .leading)
-                Text("\"\(run.prompt)\"").font(.hanken(13)).foregroundColor(.ink).lineLimit(1)
+                Text(run.prompt).font(.hanken(13)).foregroundColor(.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 Text("→").font(.splMono(12)).foregroundColor(.inkFaint)
                 HStack(spacing: 7) {
@@ -301,8 +405,8 @@ private struct HistoryRunRow: View {
     private var receipt: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 24) {
-                ReceiptCell(label: "Input", value: "\"\(run.prompt)\"")
-                ReceiptCell(label: "Params", value: run.params.joined(separator: "   "), mono: true)
+                ReceiptCell(label: "Act", value: run.prompt)
+                ReceiptCell(label: "Method", value: run.params.joined(separator: "   "), mono: true)
             }
             HStack(alignment: .top, spacing: 24) {
                 ReceiptCell(label: "Result", value: "\(run.result) → \(run.out)")
