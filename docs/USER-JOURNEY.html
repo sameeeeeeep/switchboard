@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — User Journey</title>
+<style>
+:root{
+  --page:#0A0C10; --panel:#141416; --raised:#1B1B1F; --edge:#282829;
+  --ink:#E8EDF4; --muted:#8891A0; --faint:#63697A;
+  --lime:#C8F250; --indigo:#5B8DEF; --amber:#F5A623; --danger:#FF2D6E; --cyan:#4FD3D0;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --accent:var(--lime);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:236px 1fr;gap:44px}
+@media(max-width:900px){.wrap{grid-template-columns:1fr;gap:0;padding:0 18px}}
+
+/* ---- Sticky ToC ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:34px 0 40px;border-right:1px solid var(--edge)}
+@media(max-width:900px){nav.toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--edge);padding:20px 0}}
+nav.toc .brand{font-weight:680;letter-spacing:-.01em;font-size:15px;margin-bottom:2px}
+nav.toc .brandsub{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:22px}
+nav.toc a{display:block;color:var(--muted);text-decoration:none;font-size:12.5px;padding:3px 0;border-left:2px solid transparent;padding-left:12px;margin-left:-2px;transition:color .12s}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.sec{color:var(--ink);font-weight:600;margin-top:16px;font-size:12px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;border:0;padding-left:0}
+nav.toc a.num{color:var(--faint);font-family:var(--mono);font-size:10px;margin-right:7px}
+
+/* ---- Content ---- */
+main{padding:40px 0 120px;min-width:0}
+.kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+h1{font-size:36px;line-height:1.08;letter-spacing:-.02em;font-weight:720;margin:0 0 16px}
+h1 .sub{display:block;color:var(--muted);font-size:17px;font-weight:400;letter-spacing:0;margin-top:12px;max-width:60ch;line-height:1.5}
+h2{font-size:24px;letter-spacing:-.015em;font-weight:680;margin:0 0 6px;scroll-margin-top:20px}
+h3{font-size:16.5px;letter-spacing:-.01em;font-weight:640;margin:26px 0 8px;color:var(--ink)}
+section{padding:44px 0;border-top:1px solid var(--edge)}
+section:first-of-type{border-top:0;padding-top:8px}
+p{margin:0 0 14px;color:var(--ink)}
+p.lead{color:var(--muted);max-width:70ch}
+.sechead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
+.sechead .idx{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
+a.inl{color:var(--indigo);text-decoration:none;border-bottom:1px solid rgba(91,141,239,.35)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--raised);border:1px solid var(--edge);border-radius:5px;padding:1px 6px;color:var(--cyan)}
+.muted{color:var(--muted)}
+.faint{color:var(--faint)}
+strong{color:var(--ink);font-weight:640}
+hr{border:0;border-top:1px solid var(--edge);margin:26px 0}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap;vertical-align:middle}
+.pill.shipped{color:#0A0C10;background:var(--lime);border-color:var(--lime);font-weight:700}
+.pill.partial{color:var(--amber);border-color:rgba(245,166,35,.4)}
+.pill.mock{color:var(--indigo);border-color:rgba(91,141,239,.45)}
+.pill.asp{color:var(--faint);border-color:var(--edge)}
+.pill.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.lime{color:var(--lime);border-color:rgba(200,242,80,.4)}
+.pill.amber{color:var(--amber);border-color:rgba(245,166,35,.4)}
+.pill.danger{color:var(--danger);border-color:rgba(255,45,110,.4)}
+.pill.indigo{color:var(--indigo);border-color:rgba(91,141,239,.4)}
+
+/* callouts */
+.note{border:1px solid var(--edge);border-left:2px solid var(--accent);background:var(--panel);border-radius:8px;padding:14px 18px;margin:18px 0;font-size:13.5px}
+.note .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.note.warn{border-left-color:var(--amber)} .note.warn .lbl{color:var(--amber)}
+.note.honest{border-left-color:var(--indigo)} .note.honest .lbl{color:var(--indigo)}
+
+/* steps */
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:16px 0}
+ol.steps>li{counter-increment:s;position:relative;padding:8px 0 8px 42px;border-bottom:1px solid var(--edge)}
+ol.steps>li:last-child{border-bottom:0}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:7px;width:26px;height:26px;border-radius:7px;background:var(--raised);border:1px solid var(--edge);color:var(--accent);font-family:var(--mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+/* screens list */
+ul.screens{list-style:none;padding:0;margin:14px 0}
+ul.screens li{padding:9px 0;border-bottom:1px solid var(--edge);display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:baseline}
+@media(max-width:640px){ul.screens li{grid-template-columns:1fr;gap:2px}}
+ul.screens li:last-child{border-bottom:0}
+ul.screens .nm{font-weight:600;font-size:13.5px}
+ul.screens .nm .k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);display:block;margin-top:2px}
+ul.screens .ds{color:var(--muted);font-size:13px}
+
+/* decision chips */
+.decis{margin:14px 0;padding:14px 16px;border:1px dashed var(--edge);border-radius:8px;background:rgba(255,255,255,.012)}
+.decis .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.decis ul{margin:0;padding-left:18px}
+.decis li{margin:4px 0;color:var(--ink);font-size:13.5px}
+
+/* tables */
+.tbox{overflow-x:auto;margin:16px 0;border:1px solid var(--edge);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--edge);vertical-align:top}
+th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--panel);position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:var(--mono);font-size:11.5px}
+td .st{color:var(--cyan);font-family:var(--mono);font-size:11px}
+tbody tr:hover{background:rgba(255,255,255,.014)}
+
+.legend{display:flex;flex-wrap:wrap;gap:10px 20px;margin:18px 0 6px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+
+.spineflow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0}
+.spineflow .rung{border:1px solid var(--edge);border-radius:7px;padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel)}
+.spineflow .rung b{color:var(--ink);font-weight:600}
+.spineflow .arw{color:var(--faint)}
+.spineflow .rung.rdy{border-color:var(--lime);color:var(--lime)}
+
+footer{color:var(--faint);font-size:12px;padding:30px 0 60px;border-top:1px solid var(--edge)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="brand">Switchboard</div>
+  <div class="brandsub">User Journey · companion to the PRD</div>
+  <a href="#intro" class="sec">Overview</a>
+  <a href="#spine"><span class="num">00</span>The spine — one ladder</a>
+  <a href="#journeys" class="sec">Journeys</a>
+  <a href="#j1"><span class="num">01</span>Discover &amp; install</a>
+  <a href="#j2"><span class="num">02</span>First-run onboarding</a>
+  <a href="#j3"><span class="num">03</span>Use a wrapp — core loop</a>
+  <a href="#j4"><span class="num">04</span>The menu-bar panel</a>
+  <a href="#j5"><span class="num">05</span>The store</a>
+  <a href="#j6"><span class="num">06</span>Notch / Presence</a>
+  <a href="#j7"><span class="num">07</span>God</a>
+  <a href="#j8"><span class="num">08</span>Autopilot / Company-OS</a>
+  <a href="#j9"><span class="num">09</span>Team Mode &amp; Bank</a>
+  <a href="#states" class="sec">Reference</a>
+  <a href="#states"><span class="num">S</span>States by surface</a>
+  <a href="#edges"><span class="num">E</span>Edge cases</a>
+  <a href="#audit"><span class="num">A</span>Audit — shipped vs not</a>
+</nav>
+
+<main>
+
+<!-- ===================== INTRO ===================== -->
+<section id="intro">
+  <p class="kicker">The last prompt · private · local · yours</p>
+  <h1>The Switchboard User Journey
+    <span class="sub">A narrative companion to the PRD. It walks every journey end to end — states, edge cases, and the honest boundary between what ships today and what is still a drawing — as prose and tables, not a canvas.</span>
+  </h1>
+  <p class="lead">Switchboard runs <em>your own</em> Claude across every app you use. A stranger installs two halves (a Chrome extension and a notarized Mac app), signs into a third thing (Claude Code), pairs a fourth (this browser to the local daemon), then approves a scope — before anything happens. Every one of those is a place to lose them. This document is the map of that path and everything hanging off it.</p>
+
+  <div class="note honest">
+    <div class="lbl">How to read the status marks</div>
+    Every screen and state carries an honest mark. This document trusts the <strong>code</strong> over the docs, and keeps the marks the audit assigned.
+    <div class="legend" style="margin-top:12px">
+      <span><span class="pill shipped">shipped</span> in main / live — code exists and is exercised</span>
+      <span><span class="pill partial">partial</span> real code with a named gap — the honest majority</span>
+      <span><span class="pill mock">mock</span> renders but doesn't persist or isn't in the shipped surface</span>
+      <span><span class="pill asp">aspirational</span> designed in docs, not built</span>
+    </div>
+  </div>
+
+  <div class="note">
+    <div class="lbl">The one invariant, restated</div>
+    The engine drafts and decides. <strong>A human gates every irreversible act.</strong> <strong>Connectors act, not the engine.</strong> The per-action consent gate — exact-match, fail-closed — is the moat, and it is the same gate whether the caller is a wrapp, God, or Autopilot.
+  </div>
+</section>
+
+<!-- ===================== SPINE ===================== -->
+<section id="spine">
+  <div class="sechead"><span class="idx">00</span><h2>The spine — one setup ladder</h2></div>
+  <p class="lead">Every readiness question the product can ask is one rung of a single, strictly-ordered ladder in <code>packages/protocol/src/health.ts</code>. Rung <em>N</em> is meaningless until <em>N−1</em> holds. The ladder is rendered the <strong>same way everywhere</strong> — the connect chip on the page, the widget, and the menu-bar panel all read <code>HealthStatus.stage</code> and never re-derive it. Surfacing the <em>first unmet rung only</em> is what stops four simultaneous nags.</p>
+
+  <div class="spineflow">
+    <span class="rung"><b>0</b> no-extension</span><span class="arw">→</span>
+    <span class="rung"><b>1</b> no-app</span><span class="arw">→</span>
+    <span class="rung"><b>2</b> app-asleep</span><span class="arw">→</span>
+    <span class="rung"><b>3</b> unpaired</span><span class="arw">→</span>
+    <span class="rung"><b>4</b> signed-out</span><span class="arw">→</span>
+    <span class="rung"><b>5</b> disconnected</span><span class="arw">→</span>
+    <span class="rung"><b>6</b> unmet</span><span class="arw">→</span>
+    <span class="rung rdy"><b>7</b> ready</span>
+  </div>
+
+  <div class="tbox">
+  <table>
+    <thead><tr><th>#</th><th>Rung</th><th>Holds when</th><th>Primary owner (who resolves it)</th><th>Mark</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">0</td><td class="mono">no-extension</td><td><code>window.claude</code> absent</td><td>page chip — you are where the intent is</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">1</td><td class="mono">no-app</td><td>extension present, <code>installedHere === false</code></td><td>page chip + panel card</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">2</td><td class="mono">app-asleep</td><td><code>installedHere</code> true, <code>reachable === false</code></td><td>page chip + menubar glyph; panel shows calm "asleep" card</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">3</td><td class="mono">unpaired</td><td><code>reachable</code> true, <code>paired === false</code></td><td>side panel — the token input lives there</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">4</td><td class="mono">signed-out</td><td>paired, but no backend has models</td><td>menubar — the invisible cliff (§4 of STATES)</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td class="mono">5</td><td class="mono">disconnected</td><td>signed in, this origin has no grant</td><td>page chip — per-origin, on the page</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">6</td><td class="mono">unmet</td><td>connected, grant lacks something the app needs</td><td>consent sheet at connect, then the app's surface</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td class="mono">7</td><td class="mono st">ready</td><td>—</td><td>—</td><td><span class="pill shipped">shipped</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Two lanes hang <em>off the side</em> of the ladder because they are opt-in and their absence is not a failure: <strong>team</strong> (off / off-ladder / hosting / joined) and <strong>cloud</strong> (off / keyed / entitled). They must never block or decorate rungs 0–7.</p>
+
+  <h3>The rules about when to speak</h3>
+  <p>The failure mode is not "no guidance" — it is guidance that fires on arrival, four times at once, or nags about rung 6 while rung 1 is unmet. Five rules hold everywhere:</p>
+  <div class="decis">
+    <div class="lbl">Quieting rules (docs/STATES.md §3)</div>
+    <ul>
+      <li><strong>One rung at a time.</strong> Render <code>stage</code>, never a checklist. The ordinal guarantees it.</li>
+      <li><strong>At the moment of intent, not on arrival.</strong> A first-timer gets the page, not a wall; guidance appears when they press the thing that needs the missing piece.</li>
+      <li><strong>Never a dead end.</strong> Every state has exactly one primary action and it is never disabled — <em>"the button is NEVER dead"</em> (<code>sidepanel.ts</code>).</li>
+      <li><strong>Sticky bits beat probes for negative claims.</strong> Never render "you don't have X" — render "we haven't seen X on this machine." True, reversible, degrades correctly when a probe is slow.</li>
+      <li><strong>Calm words.</strong> <code>on</code> / <code>pair to finish setup</code> / <code>sidekick asleep</code> / <code>not set up</code>. Amber for asleep; <strong>red only for a genuine mismatch</strong> (a rejected token).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== JOURNEYS HEADER ===================== -->
+<section id="journeys" style="padding-bottom:8px">
+  <p class="kicker">Nine journeys, end to end</p>
+  <h2 style="font-size:20px">Each journey below gives the happy path as numbered steps, the screens involved (named, one line each), and the decision points — then the states, edges, and audit follow as reference tables.</h2>
+</section>
+
+<!-- ===================== J1 INSTALL ===================== -->
+<section id="j1" style="--accent:var(--lime)">
+  <div class="sechead"><span class="idx">01</span><h2>Discover &amp; install</h2></div>
+  <p class="lead">A two-part install (Chrome extension + notarized Mac DMG) then pairing the browser to the local daemon. This is the longest, leakiest stretch of the funnel — and the copy-paste token is its sharpest friction point.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>Visitor lands on the marketing page, reads "run your own Claude across every app," and presses <strong>Get Switchboard</strong>.</li>
+    <li>They install <strong>step A — the Chrome extension</strong> from the Web Store (<code>window.claude</code> now injects on allowlisted origins).</li>
+    <li>They install <strong>step B — the Mac app</strong>: drag <code>Switchboard.dmg</code> (~207&nbsp;MB) into <code>/Applications</code>. The installer refuses to plant the LaunchAgent anywhere else (a Gatekeeper-translocation defense).</li>
+    <li>First launch: the menu-bar app comes up <span class="pill lime dot">running</span> and shows a pairing token (e.g. <code>A1B2-C3D4</code>), stored <code>0600</code> in <code>~/.relay</code>.</li>
+    <li>In the extension side panel the user follows the 3-step card: find the menu-bar mark → copy the token → paste &amp; <strong>Pair</strong>.</li>
+    <li>Paired. They are on rung 3 — but still one short: Claude Code sign-in (rung 4) surfaces later, not here.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Landing page <span class="k">marketing · separate repo</span></span><span class="ds">"Run your own Claude…" hero, single download button, macOS-13+/Apple-Silicon fine print. <span class="pill partial">partial</span> — lives in the <code>the-last-prompt</code> deploy repo; <code>docs/index.html</code> is a redirect.</span></li>
+    <li><span class="nm">Two-part install <span class="k">flow</span></span><span class="ds">Step A "Add to Chrome" + step B "drag to /Applications." <span class="pill shipped">shipped</span> — signed + notarized since 0.1.3; first launch just works.</span></li>
+    <li><span class="nm">First launch + pairing <span class="k">menubar + side panel</span></span><span class="ds">Menu-bar shows status + token button; side panel shows the 3-step paste card. <span class="pill shipped">shipped</span>.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Arch check (missing).</strong> The button ships one arm64 DMG to everyone — no OS/arch detection exists repo-wide. An Intel-Mac or Windows visitor gets a dead download. <span class="pill asp">aspirational</span></li>
+      <li><strong>Paired?</strong> On success → onboarding. Token mismatch → the panel goes red and the button re-arms for a re-paste (the one justified red state). <span class="pill shipped">shipped</span></li>
+    </ul>
+  </div>
+  <div class="note warn"><div class="lbl">Honest boundary</div>The tokenless "dial" (hello → approve → mint) is specced in <code>PAIRING.md</code> but <strong>not built</strong>. Copy-paste-token is the real friction of the whole funnel.</div>
+</section>
+
+<!-- ===================== J2 ONBOARDING ===================== -->
+<section id="j2" style="--accent:var(--indigo)">
+  <div class="sechead"><span class="idx">02</span><h2>First-run onboarding</h2></div>
+  <p class="lead">A menu-bar popover, a readiness ladder that shows only the first unmet rung, and a teach-by-doing strip that carries a stranger to their first connected wrapp. A file marker at <code>~/.relay/onboarded</code> stops it replaying.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>Right after install, a <strong>first-run popover</strong> appears once: "Let's get you running." The user presses <strong>Start setup</strong> (or Skip).</li>
+    <li>The <strong>setup ladder</strong> renders the first unmet rung — daemon ✓, signed-in ✓, then "Senses (screen · mic) — now." They grant senses.</li>
+    <li>The <strong>teach-by-doing strip</strong> teaches three gestures by doing them: <code>⌃⌃</code> launcher, <code>⚙</code> settings, <code>⌃⌥</code> summon God. It auto-advances per gesture.</li>
+    <li>They <strong>pick a first wrapp</strong> (ideabrain / flow / redline) and press Open &amp; connect — which hands them straight into the core loop.</li>
+    <li><code>~/.relay/onboarded</code> is written; the tour won't replay. "Replay the welcome tour" in Settings re-arms it.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">First-run popover <span class="k">menubar · once</span></span><span class="ds">Welcome + Start setup / Skip. <span class="pill shipped">shipped</span> (0.2.8); <code>~/.relay/onboarded</code> prevents replays.</span></li>
+    <li><span class="nm">Setup ladder <span class="k">first unmet rung</span></span><span class="ds">One ordinal, three consumers; surfaces only the first unmet rung, never re-derives. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Teach-by-doing strip <span class="k">practice</span></span><span class="ds">Learn the three gestures by performing them. <span class="pill shipped">shipped</span> — auto-advances (unverified on a signed build); house fonts not yet dropped (system-font fallback).</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Skip vs Start.</strong> Skip leaves the ladder resolvable later from any surface; nothing dead-ends.</li>
+      <li><strong>Connect a first wrapp.</strong> The choice of first "aha" wrapp hands the user into Journey 03. <span class="pill shipped">shipped</span></li>
+    </ul>
+  </div>
+  <div class="note honest"><div class="lbl">Open question</div>The 8-rung ladder itself is <span class="pill partial">partial</span>: <code>signed-out</code> (4, red menubar glyph) and <code>unmet</code> (6, needs resolver) are the two soft rungs. <code>signedIn</code> is a sticky verdict + <code>~/.claude.json</code> marker, not <code>models.length</code>.</div>
+</section>
+
+<!-- ===================== J3 CORE LOOP ===================== -->
+<section id="j3" style="--accent:var(--cyan)">
+  <div class="sechead"><span class="idx">03</span><h2>Use a wrapp — the core loop</h2></div>
+  <p class="lead">The heart of the product: open a wrapp → connect chip → per-origin consent → single input → options + one recommended → per-action gate on every write. This is where the consent grammar is taught and where the moat lives.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>The user opens a wrapp (say <strong>ideabrain</strong>). Its header mounts the <strong>connect chip</strong> — the one affordance every wrapp carries, the MetaMask-account button of Switchboard, rendered in a shadow root so host CSS can't restyle it.</li>
+    <li>The chip reads its way up the ladder and settles on <strong>Connect Switchboard</strong>. The user clicks it.</li>
+    <li>The <strong>connect-consent card</strong> appears: the models, tools, budget and context the wrapp is asking for, plus a <em>why</em>. The <strong>needs resolver</strong> checks what the grant is missing. The user presses <strong>Allow</strong> — the grant is created, never wider than requested.</li>
+    <li>The chip flips to the <strong>identity pill</strong> ("Hi Sameep · StayOften"). The user types one line into the wrapp's single input and presses the primary action.</li>
+    <li>Streaming deltas render. A write-class call (e.g. <code>__generate_image</code>) trips the <strong>per-action consent</strong> card — the moat. The user Allows this one action.</li>
+    <li>Results land: ideabrain returns a single <strong>verdict card</strong>; redline returns <strong>A/B/C options with one ⭐recommended</strong>, and "Lock" writes the real file.</li>
+    <li>Grants, budgets, trust-mode and revoke all live in the <strong>side panel</strong> — the chip carries identity only. Context lending rides in from the menu-bar panel's context selector.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Connect chip <span class="k">shadow root · 6 states</span></span><span class="ds">Identity-only header affordance; <code>State = booting | not-installed | unreachable | unpaired | disconnected | connected</code>. <span class="pill shipped">shipped</span> — <code>rungFromError</code> covers old extensions.</span></li>
+    <li><span class="nm">Connect-consent card <span class="k">rung 5a</span></span><span class="ds">Models · Tools · Budget · Context, each a row, with a <em>why</em>. <span class="pill partial">partial</span> — native card is binary Allow/Deny; silently drops unavailable models (→ <code>SCOPE_EXCEEDED</code>) and renders tools for connectors you may not have (→ <code>unknown_tool</code>).</span></li>
+    <li><span class="nm">Per-action consent <span class="k">rung 5b · the moat</span></span><span class="ds">"Allow this action?" — call name, args, class, token cost. <span class="pill shipped">shipped</span> — exact-match, fail-closed; Deny is default-safe; classifier defaults to WRITE; 120s timeout fails closed.</span></li>
+    <li><span class="nm">Representative wrapp <span class="k">ideabrain / redline</span></span><span class="ds">Single input → streamed result. ideabrain = one verdict card; redline = options + one starred pick → Lock writes a real file. Disconnected shows a dashed sample block. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Needs resolver <span class="k">rung 6</span></span><span class="ds">Met / substitute? / unknown, per connector class. <span class="pill partial">partial</span> — substitution offer designed; claude.ai connectors are unenumerable → <code>inherited:"unknown"</code>; today the gap surfaces at invoke as <code>unknown_tool</code>.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Allow / Deny at connect.</strong> Grant created only on Allow, scoped to the request.</li>
+      <li><strong>Grant mode governs every write:</strong> <code>ask</code> (default → surfaces the per-action card) · <code>trust</code> (auto-allow within grant) · <code>readonly</code> (refuses writes). Set in the side panel / daemon <code>setMode</code>, not on the chip.</li>
+      <li><strong>Needs met / substitute / blocked.</strong> A missing <em>optional</em> need degrades to a quieter app; only a missing <em>required</em> need blocks, and it blocks with a remedy.</li>
+    </ul>
+  </div>
+  <div class="note honest"><div class="lbl">The house atom</div>One input → options + one starred pick is the pattern the wrapp doctrine converges on. ideabrain returns a verdict; redline returns options — both drafts, both gated on write.</div>
+</section>
+
+<!-- ===================== J4 PANEL ===================== -->
+<section id="j4" style="--accent:var(--amber)">
+  <div class="sechead"><span class="idx">04</span><h2>The menu-bar panel</h2></div>
+  <p class="lead">The black window that drops from the notch — connected apps, the model cloud (cloud + local), tools, context, settings, and the daemon controls. It's the OS surface: the always-there home for everything the chip deliberately doesn't carry.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>The user clicks the menu-bar mark; the panel drops from the notch (620pt) in its <strong>expanded</strong> state.</li>
+    <li>Left rail: a DotMatrix status ("Working — flow · transcription 3s"), the <strong>context selector</strong> ("No context" by default), and daemon controls (logs · restart · ⚙ · power).</li>
+    <li>Right pane: <strong>connected apps</strong> (favicon tiles + a store button), the <strong>command centre</strong> model list (Opus / Sonnet / Haiku + local llama), and the <strong>tools</strong> list.</li>
+    <li>They flip <code>⚙</code> to <strong>Settings</strong> — nine accordion rows — or press <code>⌥⌥</code> to open the <strong>notch launcher</strong>.</li>
+    <li>A <strong>stale-daemon banner</strong> ("Update ready — restart") appears when the bundle mtime outruns the running pid; Restart resolves it.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Menu-bar panel <span class="k">expanded · 620pt</span></span><span class="ds">Left status/context/daemon column + right apps/models/tools rails. <span class="pill partial">partial</span> — only the expanded state is built; the closed grey-dot pill + hover-peek is the next task. Team is NOT mounted here.</span></li>
+    <li><span class="nm">Settings <span class="k">accordion · 9 rows</span></span><span class="ds">Name · God's voice · Mode · Models · Shortcuts · What God sees · Connections + Replay tour. <span class="pill shipped">shipped</span> — ≤1 open at a time; "Economy" writes <code>~/.relay/economy</code>, a model deny-list (opus→sonnet→haiku), never a silent hosted/local swap.</span></li>
+    <li><span class="nm">Notch launcher <span class="k">⌥⌥ · HOME / SPOTLIGHT</span></span><span class="ds">Jump-back-in + recent, or typed query → grouped results; a file-drop bar makes it file-first. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Context selector <span class="k">running only</span></span><span class="ds">Lends a project (a Bank vault) into every wrapp's grant as the Context row; default "No context." <span class="pill shipped">shipped</span>.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Which context to lend.</strong> Default is none; the lent project rides into consent, so it is an explicit privacy opt-in.</li>
+      <li><strong>Economy mode.</strong> A post-gate model downgrade — no extra grant needed, and it can't do tools locally, so tool calls stay on the hosted route.</li>
+      <li><strong>Stale daemon → Restart.</strong> The detector is real; the version train (Info.plist / manifest / tag) drifts, so the number a user reads isn't yet trustworthy. <span class="pill partial">partial</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== J5 STORE ===================== -->
+<section id="j5" style="--accent:var(--lime)">
+  <div class="sechead"><span class="idx">05</span><h2>The store</h2></div>
+  <p class="lead">Two real tiers over <code>~/.relay/catalog.json</code> (~76 entries): a featured front and a classic rail/detail. "Add local" is real; GitHub import and live skins are drawings.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>From the panel's STORE button, the user lands on the <strong>featured front</strong> (Tier 1): category chips (All / Apps / Skills) with real counts, "apps we love right now," and the honest pitch <em>"Free · runs on your Claude."</em></li>
+    <li>They browse into the <strong>classic view</strong> (Tier 2): a category rail + a detail pane showing what a wrapp is "made of" (skills · workflows · UI) and what it "needs."</li>
+    <li>They install via one of three doors: <strong>Get</strong> (from the catalog), <strong>Add local</strong> (a folder picker that validates <code>switchboard.json</code>), or GitHub import (a gap).</li>
+    <li>Install hands them into the core loop (Journey 03) via the connect chip.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Store — featured <span class="k">Tier 1</span></span><span class="ds">App-Store-style front, real category counts. <span class="pill shipped">shipped</span> — Add local is a real folder picker validating <code>switchboard.json</code>.</span></li>
+    <li><span class="nm">Store — classic <span class="k">Tier 2 · rail + detail</span></span><span class="ds">Backed by <code>catalog.json</code> + bundled fallback; icons from <code>Resources/icons/&lt;id&gt;.png</code>. <span class="pill shipped">shipped</span> — the NEEDS resolver is honestly read-only (fill-drawer is Phase 2).</span></li>
+    <li><span class="nm">GitHub import (+Create) <span class="k">paste an OSS link</span></span><span class="ds">AI assesses port-readiness → add as a wrapp. <span class="pill asp">aspirational</span> — port-assess and Spotify-style rev-share monetisation both unbuilt.</span></li>
+    <li><span class="nm">Skins <span class="k">live renderers</span></span><span class="ds">One catalog, N live-switchable layout renderers + DESIGN.md tokens. <span class="pill mock">mock</span> — 4-skin demo artifact, not wired into the shipped store.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>How to add:</strong> Get (catalog) · Add local (folder) — both real — vs GitHub import (gap).</li>
+      <li><strong>"Resolve 2 &amp; Run".</strong> Honest-read only today — connector/native reqs aren't yet observable, so the button promises more than the fill-drawer can keep. <span class="pill partial">partial</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== J6 PRESENCE ===================== -->
+<section id="j6" style="--accent:var(--indigo)">
+  <div class="sechead"><span class="idx">06</span><h2>The notch / Presence (Guru)</h2></div>
+  <p class="lead">One card grammar — <strong>ask · guide · notify</strong> — that descends from the notch, is clickable there, carries provenance (thread · project), and returns an answer as JSON. The founder works away from the terminal; presence is how any thread reaches them.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>A Claude Code thread (say <em>migrate-db</em>) needs a decision. It raises a <strong>presence card</strong> that descends from the notch, headed with its provenance (◆ StayOften).</li>
+    <li>The card shows the question and options: <code>⌥1 Ship ⭐ · ⌥2 Hold · ⌥3 Ask me later</code>. It's clickable at the notch (bounded hit-rect; the rest stays click-through); dock/cursor placements use the ⌥-keys.</li>
+    <li>The human answers. The answer returns as JSON and appends to <code>guide-history.jsonl</code>.</li>
+    <li>A <strong>guide</strong> card instead runs a walkthrough — a ring points at the target; if a sense is missing it degrades to "do it yourself, then ⌥→." A <strong>notify</strong> card carries an action row.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Presence card <span class="k">notch · clickable</span></span><span class="ds">Provenance header + question + option row; answer returns as JSON. <span class="pill shipped">shipped</span> — the full <code>window.claude.ask</code> verb + queue polish is deferred.</span></li>
+    <li><span class="nm">Card shapes <span class="k">ask / guide / notify</span></span><span class="ds">One card, three shapes; provenance on all. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Guide lifecycle <span class="k">arming → summary</span></span><span class="ds">arming → waiting → sensing → advancing → summary → aborted; never dead-ends; single on-screen cursor enforced. <span class="pill shipped">shipped</span>.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Urgency.</strong> ambient (auto-dismiss, no sound) · normal (waits, single chime) · blocking (stays until answered).</li>
+      <li><strong>Queue.</strong> One card on screen at a time; the pill shows <code>+1</code> when queued.</li>
+      <li><strong>Caller gone.</strong> Resolves locally but is still written — the answer isn't lost even if the asker left. <span class="pill shipped">shipped</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== J7 GOD ===================== -->
+<section id="j7" style="--accent:var(--cyan)">
+  <div class="sechead"><span class="idx">07</span><h2>God</h2></div>
+  <p class="lead"><code>⌃⌥</code> summons an ambient assistant that <strong>sees</strong> (screencap + vision), <strong>speaks</strong> (native MLX TTS), <strong>points</strong> (<code>[POINT:x,y]</code>), and <strong>acts</strong> via gated, audited hands — the same gate as every wrapp.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>The user holds <code>⌃⌥</code>. The glow cursor arms → listening (live transcript). God sees the screen via screencap + vision (it auto-treats on-screen text as untrusted).</li>
+    <li>God answers by speaking, and can point with <code>[POINT:x,y]</code> or open a draggable canvas (Save / Copy).</li>
+    <li>To <em>act</em>, God's hands (open / type / click / key + <code>[RUN]</code> a wrapp) run inside a floating WKWebView with an injected <code>window.claude</code> shim.</li>
+    <li>Any write trips <strong>"Allow this action?"</strong> — the same fail-closed, audited gate every wrapp uses (trust-mode grant + per-action notch gate).</li>
+    <li>The menu-bar dot maps to health: lime idle · slate offline · <span class="pill danger">red signed-out</span>.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">God — notch states <span class="k">⌃⌥ hold</span></span><span class="ds">dot idle → working (breathing) → listening (transcript) → canvas → consent. <span class="pill shipped">shipped</span> — persona is swappable JSON; can load offscreen so the notch drop is the surface.</span></li>
+    <li><span class="nm">God cursor + health <span class="k">glow states</span></span><span class="ds">Full-screen, click-through cursor; health colour maps to the dot. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Allow this action? <span class="k">same gate</span></span><span class="ds">God's hands ride each wrapp's own gate + audit, not a new one. <span class="pill shipped">shipped</span>.</span></li>
+    <li><span class="nm">Permission grants <span class="k">AX · Screen · Mic</span></span><span class="ds">TCC grants; Accessibility is drag-in. <span class="pill shipped">shipped</span> — signing-identity changes churn TCC grant persistence.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Senses granted?</strong> Missing AX/Screen/Mic → onboarding re-requests; God never silently fails.</li>
+      <li><strong>Every hand is a gated action.</strong> Reversible → trust-mode auto within grant; irreversible → the per-action card.</li>
+      <li><strong>Hands = reused wrapp actions.</strong> God grows by <code>[RUN]</code>-ing existing actions via the switchboard connector, not by rebuilding them. <span class="pill partial">partial</span> — God is per-hotkey, not self-running; the observe→act loop and AX-tree targeting are still ahead.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== J8 AUTOPILOT ===================== -->
+<section id="j8" style="--accent:var(--amber)">
+  <div class="sechead"><span class="idx">08</span><h2>Autopilot / Company-OS</h2></div>
+  <p class="lead">A portfolio of companies, each drilling into a command centre read as an <strong>autonomy gradient</strong>: <em>Made · Waiting · Your call</em>. Every move is sorted by one question — <em>can this be undone?</em> Reversible moves run while you sleep; irreversible ones wait at a gate for one tap; strategic ones surface as decisions only you can make.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>The founder locks a company's <strong>4 decisions</strong> (Offer · Who · Edge · Model — draft is the machine's, <strong>lock is yours</strong>). The daily loop reads Identity and drafts 3–5 highest-leverage moves.</li>
+    <li>The <strong>portfolio</strong> shows every company advancing at once: "made 3 · waiting 2 · calls 1."</li>
+    <li>Drilling into a <strong>command centre</strong>, the reading order <em>is</em> the gradient: <strong>Made</strong> (reversible, done — a draft filed in Bank) → <strong>Waiting</strong> (gated, one tap) → <strong>Your call</strong> (founder decision).</li>
+    <li>For a Waiting move, God prepares the exact content as a reversible <strong>preview</strong>. The founder reviews the real thing and presses <strong>Approve &amp; send</strong> — which calls <code>relay__autopilot_dispatch</code> through a connected sender and the daemon's gate.</li>
+    <li>If no sender is connected for that channel, the button is honestly <strong>Connect to send</strong>; the move stays staged. <strong>Zero unattended sends, ever.</strong></li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Portfolio <span class="k">many companies</span></span><span class="ds">Per-company made/waiting/calls counts, reads real portfolio storage. <span class="pill partial">partial</span> — the cockpit runs at sameep.ai, NOT in the manifest allowlist, so in-extension it's only been tested with a mock provider.</span></li>
+    <li><span class="nm">Command centre <span class="k">drill-in · gradient</span></span><span class="ds">Identity above; Made / Waiting / Your call lanes. <span class="pill partial">partial</span> — "Approve &amp; send" calls <code>relay__autopilot_dispatch</code>; <code>routineDispatch/pageDispatch</code> is the one audited outward path.</span></li>
+    <li><span class="nm">Company-OS states <span class="k">8 states</span></span><span class="ds">fresh · running · awaiting you · paused · out-of-runway · no-connector · failed · no-sender. <span class="pill partial">partial</span> — out-of-runway isn't rendered in <code>cockpit.html</code> (metering lives only in the separate autopilot/index.html).</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">The gradient — who acts</div>
+    <ul>
+      <li><strong>Reversible → autopilot / God's hands.</strong> Produces a draft or artifact; undoing it is deleting a draft. <span class="pill shipped">shipped</span></li>
+      <li><strong>Irreversible → gate, one tap.</strong> Publish / send / deploy / charge. The send line never moves; no autonomy promotes a GATE move.</li>
+      <li><strong>Strategic → founder decision.</strong> Hiring, pricing, legal, relationship. God never touches these.</li>
+      <li><strong>Auto-mode toggle</strong> (Assisted vs Full auto) is per-company in <code>~/.relay/autopilot.json</code> — but the cockpit toggle is <span class="pill mock">mock</span>: it mutates local JS only, unreachable from origin storage.</li>
+    </ul>
+  </div>
+  <div class="note honest"><div class="lbl">The honest boundary</div>Full-auto is wired in the routine, but <strong>every channel is <code>no-sender</code> today</strong> (no publisher/email connector connected) — so nothing sends until one is. The one number always honest is <em>tokens spent</em>; metered exactly, so background work is never invisible.</div>
+</section>
+
+<!-- ===================== J9 TEAM & BANK ===================== -->
+<section id="j9" style="--accent:var(--lime)">
+  <div class="sechead"><span class="idx">09</span><h2>Team Mode &amp; Bank</h2></div>
+  <p class="lead"><strong>Team</strong> = host / join-with-code, with <em>no login</em> (invite = membership; Pro rides inside the code). <strong>Bank</strong> = the context vault (<code>contexts.json</code> + <code>.md</code> notes) that feeds every wrapp as lent context. A bound folder is a real vault.</p>
+
+  <h3>Happy path</h3>
+  <ol class="steps">
+    <li>A user turns on Team Mode in the side panel and either <strong>Hosts a team</strong> (an invite code goes live) or <strong>Joins with a code</strong>.</li>
+    <li>There is no account and no login: membership is possession of the invite code; the Pro entitlement is a signed string that rides <em>inside</em> the code, so members inherit it without signing up. Seats are enforced by counting live sockets.</li>
+    <li>Joining adopts the shared folder as the active project.</li>
+    <li>Separately, the user's <strong>Bank</strong> holds a bound folder as a vault; its <code>.md</code> notes are lent into every wrapp's grant via the menu-bar context selector.</li>
+  </ol>
+
+  <h3>Screens involved</h3>
+  <ul class="screens">
+    <li><span class="nm">Team mode <span class="k">side panel</span></span><span class="ds">Host / Join-with-code; no login. <span class="pill partial">partial</span> — daemon <code>team.*</code> (status/host/join/leave/entitlement/git) is wired, but the Mac panel does NOT surface team (<code>TeamSection.swift</code> drafted, unmounted); billing unbuilt.</span></li>
+    <li><span class="nm">Bank — context vault <span class="k">contexts.json + .md</span></span><span class="ds">Bound folder = a real vault; feeds every wrapp as lent context. <span class="pill shipped">shipped</span> — renders truthful-empty until a vault has notes; the Bank connector (push to-dos from any thread) is next.</span></li>
+    <li><span class="nm">Team lane states <span class="k">off-ladder</span></span><span class="ds">off · hosting · joined · billing. <span class="pill partial">partial</span> — an off-ladder lane that never blocks rungs 0–7; billing (Stripe → entitlement minting) is the missing piece.</span></li>
+  </ul>
+
+  <h3>Decision points</h3>
+  <div class="decis">
+    <div class="lbl">Gates in this journey</div>
+    <ul>
+      <li><strong>Host vs Join.</strong> Both work today, free; no page to open, no login to help with.</li>
+      <li><strong>Origin allowlist.</strong> <code>window.claude</code> injects only on <code>thelastprompt.ai</code> / <code>*.thelastprompt.ai</code> / localhost. A new origin (e.g. <code>sameep.ai</code>) silently shows "Get Switchboard" until added to BOTH lists + the extension reloaded. <span class="pill asp">aspirational-fix</span></li>
+      <li><strong>Cloud backup → Pro.</strong> The gate exists and refuses correctly; billing is the one honest "not yet."</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== STATES ===================== -->
+<section id="states" style="--accent:var(--indigo)">
+  <div class="sechead"><span class="idx">S</span><h2>States — a table per surface</h2></div>
+  <p class="lead">The same ladder renders everywhere, but each surface has its own local state machine layered on top. These are the verified state sets, per surface.</p>
+
+  <h3>Connect chip — the 6-state union</h3>
+  <p class="muted">From the actual <code>State</code> union in <code>connect-chip.ts</code>. <code>booting</code> shows nothing (avoids a flash of the wrong state); a fast <code>4900</code> re-reads the ladder.</p>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>State</th><th>Label shown</th><th>Colour</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">booting</td><td>— (nothing)</td><td class="muted">none</td><td>probing the provider; render nothing</td></tr>
+      <tr><td class="mono">not-installed</td><td>Get Switchboard ↗</td><td class="muted">muted glyph</td><td>menu: Add to Chrome / full setup guide</td></tr>
+      <tr><td class="mono">unreachable</td><td>Your sidekick is asleep <span class="faint">(or "Get Switchboard for Mac" if <code>appMissing</code>)</span></td><td class="mono" style="color:var(--amber)">amber dot</td><td>auto-recovers on the health push; Download Switchboard.dmg</td></tr>
+      <tr><td class="mono">unpaired</td><td>Almost there — pair in the side panel</td><td class="mono" style="color:var(--amber)">amber</td><td>points at the side panel</td></tr>
+      <tr><td class="mono">disconnected</td><td>Connect Switchboard</td><td class="mono" style="color:var(--lime)">lit</td><td>runs the consent flow</td></tr>
+      <tr><td class="mono">connected</td><td>Hi {name} · {project} ▾</td><td class="mono" style="color:var(--indigo)">identity pill</td><td>small menu (Disconnect = soft per-session forget, not revoke)</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Grant modes — the per-write safety dial</h3>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour on a write-class call</th><th>Set where</th></tr></thead>
+    <tbody>
+      <tr><td class="mono"><strong>ask</strong> (default)</td><td>surfaces the per-action consent card</td><td>side panel / daemon <code>setMode</code></td></tr>
+      <tr><td class="mono"><strong>trust</strong></td><td>auto-allows within the grant scope</td><td>side panel</td></tr>
+      <tr><td class="mono"><strong>readonly</strong></td><td>refuses writes outright</td><td>side panel</td></tr>
+      <tr><td class="mono">expired</td><td>lazily deleted on next read</td><td>—</td></tr>
+      <tr><td class="mono">modelOverride</td><td>a per-site model pin</td><td>side panel</td></tr>
+      <tr><td class="mono">revoked</td><td>hard revoke (chip Disconnect is only a soft forget)</td><td>side panel only</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Autopilot / Company-OS — the 8 states</h3>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>State</th><th>What you see</th><th>Mark</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">fresh</td><td>Identity has drafts, no locks → "Lock your 4 decisions to start"; empty board, one CTA</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">running</td><td>reversible moves flow drafting → done; heartbeat pulses; artifacts accrue</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">awaiting you</td><td>the GATE lane has N staged moves, each one tap from acting; rail badge counts them</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">paused</td><td>everything frozen; "Turn Autopilot on to resume"; no ticks, no spend</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">out of runway</td><td>token budget hit → the loop self-pauses and says so; no silent stop</td><td><span class="pill partial">partial</span> — not rendered in cockpit.html</td></tr>
+      <tr><td class="mono">no-connector</td><td>a metric has no source → "— not connected," never a placeholder number</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">failed</td><td>the move shows the real error + Retry; the loop keeps going</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td class="mono">no-sender</td><td><code>findSender()</code> finds nothing → honest "Connect to send"; move stays staged, 0 sends</td><td><span class="pill shipped">shipped</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Presence / God states</h3>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>Surface</th><th>States</th></tr></thead>
+    <tbody>
+      <tr><td>Presence card — <strong>shape</strong></td><td class="mono">ask (A/B/C + ⭐recommended) · guide (ring / walkthrough) · notify (action row)</td></tr>
+      <tr><td>Presence — <strong>urgency</strong></td><td class="mono">ambient (auto-dismiss, no sound) · normal (waits, single chime) · blocking (stays until answered) · queued (one at a time, +1) · caller-gone (resolves, still written)</td></tr>
+      <tr><td>Guide — <strong>lifecycle</strong></td><td class="mono">arming → waiting → sensing → advancing → summary → aborted (never dead-ends)</td></tr>
+      <tr><td>God — <strong>glow / health</strong></td><td class="mono">idle (lime) · offline (slate) · signed-out (red) · armed → listening → thinking → pointing [POINT]</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================== EDGES ===================== -->
+<section id="edges" style="--accent:var(--danger)">
+  <div class="sechead"><span class="idx">E</span><h2>Edge cases — and where each surfaces</h2></div>
+  <p class="lead">The honest failure modes, each tied to the surface where a real user meets it. Amber for a calm "not yet"; red only where a genuine mismatch justifies it.</p>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>Edge case</th><th>What happens</th><th>Where it surfaces</th><th>Mark</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Daemon asleep</strong></td><td>calm amber "sidekick asleep" card with Retry; auto-recovers on the health push — never "offline/error"</td><td>chip (rung 2), panel, menubar glyph</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td><strong>Token rejected</strong></td><td>the one justified red state — panel goes red, button never dead, re-paste to retry</td><td>side panel pairing (<code>?state=rejected</code>)</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td><strong>No backend / signed-out</strong></td><td>the invisible cliff — everything reads green until the first action throws the sign-in remediation string; menubar should go red proactively</td><td>menubar (rung 4), chip + panel one-liner</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td><strong>Budget exhausted</strong></td><td>Autopilot self-pauses and says so; per-action gate carries the token cost so it's never a silent stop</td><td>autopilot out-of-runway; per-action card</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td><strong>Connector missing / substitute</strong></td><td>substitution offer for a declared need ("you have Leonardo — use that?"); else "this needs an image connector" with the known-working names</td><td>connect-consent card (rung 6), needs resolver</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td><strong>Consent denied</strong></td><td>Deny is the default-safe choice; no grant is created; the wrapp shows a dashed sample block while disconnected</td><td>connect-consent + per-action card</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td><strong>Offline / unreachable</strong></td><td><code>rungFromError</code> reads a <code>4900</code> as unreachable (the safe default) even for extensions too old to answer <code>claude_health</code></td><td>connect chip</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td><strong>Origin not allowlisted</strong></td><td><code>window.claude</code> injects only on the allowlist; a new origin silently shows "Get Switchboard" until added to BOTH lists + reloaded</td><td>connect chip (masquerades as not-installed)</td><td><span class="pill asp">aspirational-fix</span></td></tr>
+      <tr><td><strong>No sender</strong></td><td><code>findSender()</code> finds nothing → honest "Connect to send"; the move stays staged; every channel is no-sender today</td><td>autopilot command centre (Approve &amp; send)</td><td><span class="pill shipped">shipped</span></td></tr>
+      <tr><td><strong>Wrong-arch visitor</strong></td><td>no OS/arch detection repo-wide; an Intel-Mac or Windows visitor is handed the same arm64 DMG and gets a dead install</td><td>landing download button</td><td><span class="pill asp">aspirational</span></td></tr>
+      <tr><td><strong>Stale daemon / version skew</strong></td><td>banner compares bundle mtime vs running pid → "Update ready — restart"; the version train drifts, so the number isn't yet trustworthy</td><td>menu-bar panel</td><td><span class="pill partial">partial</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================== AUDIT ===================== -->
+<section id="audit" style="--accent:var(--lime)">
+  <div class="sechead"><span class="idx">A</span><h2>Audit — shipped vs aspirational, per journey</h2></div>
+  <p class="lead">The honest ledger. The through-line under all of it: the engine <strong>drafts and decides</strong>; a human <strong>gates every irreversible act</strong>; <strong>connectors act, not the engine</strong>.</p>
+  <div class="tbox">
+  <table>
+    <thead><tr><th>Journey</th><th>Shipped &amp; exercised</th><th>Partial / aspirational — the named gap</th></tr></thead>
+    <tbody>
+      <tr><td><strong>01 Install</strong></td><td>Signed + notarized DMG; /Applications-gated LaunchAgent; token pairing; the one justified red (token mismatch)</td><td><span class="pill partial">partial</span> landing in a separate repo · <span class="pill asp">asp</span> no OS/arch detection (dead download for Intel/Windows) · tokenless dial specced not built</td></tr>
+      <tr><td><strong>02 Onboarding</strong></td><td>First-run popover (once); setup ladder (first unmet rung); teach-by-doing strip; <code>~/.relay/onboarded</code> marker</td><td><span class="pill partial">partial</span> ladder rungs 4 (signed-out glyph) &amp; 6 (needs resolver) soft; house fonts not dropped (system fallback)</td></tr>
+      <tr><td><strong>03 Core loop</strong></td><td>Connect chip (6 states, shadow root); per-action gate (exact-match, fail-closed — the moat); ask/trust/readonly; representative wrapps</td><td><span class="pill partial">partial</span> connect-consent is binary Allow/Deny &amp; silently drops unavailable models / phantom connector tools; needs-resolver substitution designed</td></tr>
+      <tr><td><strong>04 Panel</strong></td><td>Expanded panel; Settings accordion (9 rows); notch launcher (⌥⌥); context selector; Economy deny-list; stale-daemon detector</td><td><span class="pill partial">partial</span> only the expanded state exists (closed pill + hover-peek is next); version train drifts; Team not mounted here</td></tr>
+      <tr><td><strong>05 Store</strong></td><td>Featured (Tier 1) + classic (Tier 2) over catalog.json (~76); Add local folder picker validating switchboard.json</td><td><span class="pill partial">partial</span> NEEDS resolver read-only ("Resolve 2 &amp; Run" over-promises) · <span class="pill asp">asp</span> GitHub import + rev-share · <span class="pill mock">mock</span> skins</td></tr>
+      <tr><td><strong>06 Presence</strong></td><td>One card grammar (ask/guide/notify) clickable at the notch; provenance header; JSON answer + guide-history.jsonl; urgency + single-surface queue; guide lifecycle</td><td><span class="pill partial">partial</span> full <code>window.claude.ask</code> verb + queue polish deferred; Claude-Code Notification/Elicitation hook not wired</td></tr>
+      <tr><td><strong>07 God</strong></td><td>Sees/speaks/points; hands (open/type/click/key + [RUN]) in a WKWebView shim; same gate + audit as a wrapp; swappable persona; TCC onboarding</td><td><span class="pill partial">partial</span> God is per-hotkey, not self-running; the observe→act loop, AX-tree targeting &amp; routines-into-God still ahead</td></tr>
+      <tr><td><strong>08 Autopilot</strong></td><td>Run layer / routines clock; move classifier; portfolio; reversible moves executed by real wrapps (routineInvoke); GATE dispatch path (routineDispatch); autonomy gradient enforced (0 unattended sends)</td><td><span class="pill partial">partial</span> cockpit outside the allowlist (mock provider only); out-of-runway not rendered · <span class="pill mock">mock</span> auto-mode toggle not persisted · every channel no-sender today</td></tr>
+      <tr><td><strong>09 Team &amp; Bank</strong></td><td>Daemon <code>team.*</code> (host/join/leave/entitlement/git); no-login membership via signed invite code; Bank renders real vault state (truthful-empty)</td><td><span class="pill partial">partial</span> Team has no Mac-panel surface (TeamSection drafted, unmounted); billing (Stripe → entitlement) unbuilt · <span class="pill asp">asp</span> origin-allowlist self-heal · Bank connector next</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  Switchboard — User Journey · companion to the PRD. Status marks trust code over docs, verified against
+  <code>connect-chip.ts</code>, <code>sidepanel.ts</code>, <code>docs/STATES.md</code> (the readiness ladder) and <code>docs/COMPANY-OS.md</code>.
+  The engine drafts and decides; a human gates every irreversible act; connectors act, not the engine.
+</footer>
+
+</main>
+</div>
+</body>
+</html>
