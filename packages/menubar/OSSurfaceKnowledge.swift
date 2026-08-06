@@ -54,13 +54,13 @@ private struct KChip: View {
 // MARK: - HistorySurface
 // =====================================================================================================
 
-private struct HistRun: Identifiable {
+struct HistRun: Identifiable {
     let id = UUID()
     let tm: String; let wrapp: String; let prompt: String
     let kind: String; let result: String
     let params: [String]; let out: String; let prov: String
 }
-private struct HistDay: Identifiable {
+struct HistDay: Identifiable {
     let id = UUID(); let day: String; let runs: [HistRun]
 }
 
@@ -69,7 +69,7 @@ private struct HistDay: Identifiable {
 // the ACT, honestly) + guide-history.jsonl (guided-cursor runs with title + pass/fail). Consecutive
 // same-act events merge into one receipt ("Saved ×12") so a busy wrapp reads as work, not spam.
 
-private func histReceipts(days windowDays: Double = 14) -> [HistDay] {
+func histReceipts(days windowDays: Double = 14) -> [HistDay] {
     struct Ev { let ts: Double; let app: String; let verb: String; let method: String; let outcome: String; let note: String }
     var evs: [Ev] = []
 
