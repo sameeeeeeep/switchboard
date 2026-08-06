@@ -70,6 +70,12 @@ enum OSAsk {
     static var handler: ((String) -> Void)? = nil
     static func ask(_ q: String) { handler?(q) }
 }
+// The Store door — the OS never rebuilds the store; this opens the REAL native front (StoreFrontView
+// via showStore()). Host wires it at launch; under the harness it degrades to the fallback navigation.
+enum OSStoreDoor {
+    static var handler: (() -> Void)? = nil
+    static func open(else fallback: () -> Void) { if let h = handler { h() } else { fallback() } }
+}
 
 // =====================================================================================================
 // MARK: - Deterministic per-app hue (OS.md §3.1 — "one hue each, from the app id")

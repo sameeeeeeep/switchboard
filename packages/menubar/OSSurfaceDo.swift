@@ -343,30 +343,43 @@ private struct StoreFootDoor: View {
 // MARK: - Store surface — private teaser model (mirrors store.js CATS + TEASERS)
 // =====================================================================================================
 
-private struct StoreCat: Identifiable { let title: String; var id: String { title } }
 private struct StoreChip: Identifiable { let title: String; let app: String?; var id: String { title } }
 private struct StoreTeaser: Identifiable { let kicker: String; let desc: String; let items: [StoreChip]; var id: String { kicker } }
 
-private let STORE_CATS: [StoreCat] = [
-    StoreCat(title: "Browse all"), StoreCat(title: "Studios"),
-    StoreCat(title: "Skills"), StoreCat(title: "Fun & personal"),
-]
+// The door's chips come from the REAL catalog: category counts, the founder-curated Start-here hero
+// (brandbrain), community ports (listings carrying an author), and skills you haven't connected yet.
+private func storeCats(_ apps: [DoApp]) -> [String] {
+    var out = ["Browse all (\(apps.count))"]
+    let order = [("studio", "Studios"), ("tool", "Tools"), ("skill", "Skills"), ("agent", "Agents"), ("fun", "Fun")]
+    for (cat, label) in order {
+        let n = apps.filter { $0.cat == cat }.count
+        if n > 0 { out.append("\(label) (\(n))") }
+    }
+    return out
+}
 
-private let STORE_TEASERS: [StoreTeaser] = [
-    StoreTeaser(kicker: "Featured",
-                desc: "Your brand, extracted — voice, palette, positioning.",
-                items: [StoreChip(title: "Brandbrain", app: "brandbrain")]),
-    StoreTeaser(kicker: "Apps we love",
-                desc: "Studios and tools — resource profile shown before Get.",
-                items: [StoreChip(title: "Prism", app: "Prism"),
-                        StoreChip(title: "Redline", app: "Redline"),
-                        StoreChip(title: "ideabrain", app: "ideabrain")]),
-    StoreTeaser(kicker: "New skills",
-                desc: "Small hands you can give God to drive.",
-                items: [StoreChip(title: "Cast", app: nil),
-                        StoreChip(title: "Flow", app: "Flow"),
-                        StoreChip(title: "Batch", app: nil)]),
-]
+private func storeTeasers(_ apps: [DoApp]) -> [StoreTeaser] {
+    guard !apps.isEmpty else { return [] }
+    var out: [StoreTeaser] = []
+    if let bb = apps.first(where: { $0.id == "brandbrain" }) {
+        out.append(StoreTeaser(kicker: "Start here",
+                               desc: bb.tagline.isEmpty ? "Your brand, extracted." : bb.tagline,
+                               items: [StoreChip(title: bb.name, app: bb.id)]))
+    }
+    let skills = apps.filter { $0.cat == "skill" && !$0.connected }.prefix(6)
+    if !skills.isEmpty {
+        out.append(StoreTeaser(kicker: "Skills you haven't connected",
+                               desc: "small hands — most expose tools God can drive; resource profile shown before Get.",
+                               items: skills.map { StoreChip(title: $0.name, app: $0.id) }))
+    }
+    let studios = apps.filter { $0.cat == "studio" && !$0.connected }.prefix(6)
+    if !studios.isEmpty {
+        out.append(StoreTeaser(kicker: "Studios",
+                               desc: "the big rooms — a whole working surface per craft.",
+                               items: studios.map { StoreChip(title: $0.name, app: $0.id) }))
+    }
+    return out
+}
 
 // =====================================================================================================
 // MARK: - StoreSurface (door only — the OS never rebuilds the store; every chip is a real navigation)
@@ -374,6 +387,7 @@ private let STORE_TEASERS: [StoreTeaser] = [
 
 struct StoreSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
+    @State private var apps: [DoApp] = []
 
     var body: some View {
         ScrollView {
@@ -382,27 +396,45 @@ struct StoreSurface: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("STORE").font(.splMono(10.5)).tracking(1.8).foregroundColor(.inkFaint)
                     Text("Get more capability").font(.hanken(20, .semibold)).foregroundColor(.ink)
+                    if !apps.isEmpty {
+                        Text("\(apps.count) in catalog").font(.splMono(11)).foregroundColor(.inkDim)
+                            .padding(.horizontal, 10).padding(.vertical, 2)
+                            .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
+                    }
                     Spacer(minLength: 0)
                 }
                 .padding(.top, 2)
                 Rectangle().fill(Color.edgeSoft).frame(height: 1).padding(.top, 14).padding(.bottom, 20)
 
-                // the primary door — for native this stays in-app (.store); no dead end.
-                StoreOpenDoor { onNavigate(.store) }   // TODO open ./index.html external store
+                // the primary door — opens the REAL native store front (featured page + shelves + detail)
+                StoreOpenDoor { OSStoreDoor.open { onNavigate(.apps) } }
 
-                // category chips — each a real door into the store view
-                OSDoFlowChips(items: STORE_CATS.map { $0.title }) { _ in onNavigate(.store) }
+                if apps.isEmpty {
+                    HStack(spacing: 12) {
+                        Text("!").font(.splMono(13)).foregroundColor(.amber)
+                        Text("No catalog at ~/.relay/catalog.json — is the daemon running? The Store rebuilds it.")
+                            .font(.hanken(13)).foregroundColor(.inkSec)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.amber.opacity(0.4), lineWidth: 1))
                     .padding(.top, 16)
+                } else {
+                    // real category counts — each chip opens the store front (its tabs pre-filter there)
+                    OSDoFlowChips(items: storeCats(apps)) { _ in OSStoreDoor.open { onNavigate(.apps) } }
+                        .padding(.top, 16)
 
-                // teasers — each app chip is a live launch (no inert element)
-                VStack(spacing: 12) {
-                    ForEach(STORE_TEASERS) { t in
-                        StoreTeaserCard(teaser: t) { chip in
-                            OSLaunch.launchOr(chip.app) { onNavigate(.apps) }   // nil-app chip (unlisted) → the store grid
+                    // teasers from the live catalog — every chip launches that real wrapp
+                    VStack(spacing: 12) {
+                        ForEach(storeTeasers(apps)) { t in
+                            StoreTeaserCard(teaser: t) { chip in
+                                OSLaunch.launchOr(chip.app) { onNavigate(.apps) }
+                            }
                         }
                     }
+                    .padding(.top, 16)
                 }
-                .padding(.top, 16)
 
                 Text("you're shopping, not working — the store opens in its own view · nothing installs without resolving its requirements first")
                     .font(.splMono(11)).foregroundColor(.inkFaint)
@@ -412,6 +444,7 @@ struct StoreSurface: View {
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { apps = doApps() }
     }
 }
 
