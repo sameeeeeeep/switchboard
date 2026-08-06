@@ -110,7 +110,7 @@ private struct OSWSGhostButton: View {
 }
 
 /// The lime CTA ("+ Add", "Bank it", "Establish").
-private struct LimeButton: View {
+struct LimeButton: View {
     let label: String
     let action: () -> Void
     @State private var hover = false

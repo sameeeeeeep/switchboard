@@ -679,6 +679,22 @@ recoverable from `.trash`. Pinning/unpinning is trivially reversible.
 Reads `history-*.md`. Writes only: pin flags, roll-up summaries, and (guarded) moves to `.trash`. Every
 other surface *appends* to history on a run; History itself is a near-read-only lens.
 
+### Grounding — what's real today (native build)
+
+- **Receipts** come from the two real trails: `~/.relay/audit.log` (every broker act: ts · origin ·
+  method · outcome) and `guide-history.jsonl` (guided runs with title + steps passed). The audit log
+  logs **no prompt text** — rows show the ACT ("Ran the model", "Dictated ×2", "Saved work"), honestly,
+  instead of a fabricated prompt.
+- Consecutive same-act events within 10 min merge into one receipt (×N) so a busy wrapp reads as work,
+  not spam. Denied acts are receipts too — the consent story stays visible.
+- Day-grouped (Today/Yesterday/real dates), last 14 days; footer states that older receipts stay in
+  the log untouched. Filters: wrapp · date · search. No fake project scope — acts carry no project tag
+  in the log (a future daemon change could add one).
+- **Reopen** launches that wrapp via the real OSLaunch seam. Expanded receipt = act · method ·
+  outcome/result · provenance (which trail file).
+- **States**: empty trail → verb CTA ("Run an app to start"); filters-match-nothing row; read-only lens
+  (no deletes anywhere).
+
 ---
 
 ## 3.6 Graph — the relational lens
