@@ -502,6 +502,14 @@ Reads: `due:` on `tasks.md` lines, roadmap/milestone dates in `project-*.md`, ti
 `history-*.md`, routine schedules. Writes: only `due:` on task lines and quick-add task creation.
 Everything else is read-only projection.
 
+### Grounding — what's real today (native build)
+
+A real month grid built from `Calendar.current` (correct weekday alignment, real today marked lime,
+‹/›/Today navigate real months). Two real dated sources: open tasks' `due:YYYY-MM-DD` (● lime if
+overdue, dim if later) and audit-log acts merged per app per day (↻ past, dim). **No milestones** —
+project roadmaps carry no dates in the vault yet, so none are invented. Month · Week (the real week
+containing today) · Agenda (only days with items). Empty → an honest hint, never fake events.
+
 ---
 
 ## 3.4 Bank — the substrate home

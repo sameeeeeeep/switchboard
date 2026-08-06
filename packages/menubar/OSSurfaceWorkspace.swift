@@ -710,70 +710,95 @@ private struct TaskListRow: View {
 
 private struct CalEvent: Identifiable {
     let id = UUID()
-    let cls: String        // task | over | mil | run | rou
+    let cls: String        // task | over | run
     let glyph: String
     let title: String
     var app: String? = nil // wrapp-referencing chip → launch it; else → Tasks
 }
 
-private let CAL_ITEMS: [Int: [CalEvent]] = [
-    3: [CalEvent(cls: "rou", glyph: "⟳", title: "Daily brief", app: "Autopilot")],
-    4: [CalEvent(cls: "over", glyph: "●", title: "Reply venue email"),
-        CalEvent(cls: "run", glyph: "↻", title: "Prism render", app: "Prism")],
-    5: [CalEvent(cls: "task", glyph: "●", title: "Render beam @prism", app: "Prism"),
-        CalEvent(cls: "rou", glyph: "⟳", title: "Daily brief", app: "Autopilot")],
-    7: [CalEvent(cls: "over", glyph: "●", title: "Finalize wordmark", app: "brandbrain"),
-        CalEvent(cls: "task", glyph: "●", title: "Ad variations", app: "AdForge")],
-    11: [CalEvent(cls: "mil", glyph: "■", title: "Brand pack v1")],
-    12: [CalEvent(cls: "task", glyph: "●", title: "Pick meetup date")],
-    14: [CalEvent(cls: "run", glyph: "↻", title: "CopyFlow run"),
-         CalEvent(cls: "task", glyph: "●", title: "Launch post")],
-    18: [CalEvent(cls: "task", glyph: "●", title: "Legal sign-off"),
-         CalEvent(cls: "task", glyph: "●", title: "Venue deposit"),
-         CalEvent(cls: "task", glyph: "●", title: "Guest list"),
-         CalEvent(cls: "run", glyph: "↻", title: "sync")],
-    21: [CalEvent(cls: "mil", glyph: "■", title: "Launch — IndEur Club")],
-    26: [CalEvent(cls: "task", glyph: "●", title: "Post-launch recap")],
-]
-
-private let CAL_LEAD = [27, 28, 29, 30, 31]
-private let CAL_DAYS = 31
-private let CAL_TODAY = 4
-private let CAL_MONTHS = ["April 2026", "May 2026", "June 2026", "July 2026", "August 2026",
-                         "September 2026", "October 2026", "November 2026"]
-private let CAL_HOME_MONTH = 4   // "August 2026"
 private let DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-private func dowFor(_ d: Int) -> String { DOW[((5 + (d - 1)) % 7 + 7) % 7] }   // Aug 1 2026 = Saturday
-
 private enum CalView { case month, week, agenda }
 
 private struct CalCellModel: Identifiable {
     let id = UUID()
-    let day: Int
-    let dim: Bool
+    let day: Int          // day-of-month (0 = a blank lead/trail pad)
+    let dim: Bool         // outside the current month
+    let key: String       // "yyyy-MM-dd" for real cells, "" for pads
 }
 
+// ═══ LIVE calendar — a temporal PROJECTION of real dated vault items, per docs/OS.md §3.3. Two real
+// sources keyed by real dates: `due:` on tasks.md lines (● / overdue ●-lime) and audit-log acts by
+// day (↻ past run, dim). No invented milestones — a project roadmap has no dates in the vault yet.
 struct CalendarSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
     @State private var view: CalView = .month
-    @State private var monthIdx = CAL_HOME_MONTH
+    @State private var monthOffset = 0     // 0 = current month; ‹ / › step it
+    @State private var events: [String: [CalEvent]] = [:]
 
+    private let cal = Calendar.current
+    private let grid = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+
+    private var shownMonth: Date {
+        cal.date(byAdding: .month, value: monthOffset, to: cal.startOfDay(for: Date())) ?? Date()
+    }
+    private var monthTitle: String {
+        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f.string(from: shownMonth)
+    }
+    private var todayKey: String { dayKey(Date()) }
+    private func dayKey(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)
+    }
+
+    // real month grid: lead pads to the Monday before the 1st, then each real day, then trailing pads
     private var cells: [CalCellModel] {
-        var out: [CalCellModel] = CAL_LEAD.map { CalCellModel(day: $0, dim: true) }
-        for d in 1...CAL_DAYS { out.append(CalCellModel(day: d, dim: false)) }
-        var tail = 1
-        while out.count % 7 != 0 { out.append(CalCellModel(day: tail, dim: true)); tail += 1 }
+        guard let range = cal.range(of: .day, in: .month, for: shownMonth),
+              let first = cal.date(from: cal.dateComponents([.year, .month], from: shownMonth)) else { return [] }
+        var out: [CalCellModel] = []
+        let weekdayOfFirst = cal.component(.weekday, from: first)      // 1=Sun … 7=Sat
+        let lead = (weekdayOfFirst + 5) % 7                            // days since Monday
+        for _ in 0..<lead { out.append(CalCellModel(day: 0, dim: true, key: "")) }
+        for d in range {
+            if let date = cal.date(byAdding: .day, value: d - 1, to: first) {
+                out.append(CalCellModel(day: d, dim: false, key: dayKey(date)))
+            }
+        }
+        while out.count % 7 != 0 { out.append(CalCellModel(day: 0, dim: true, key: "")) }
         return out
     }
 
-    private let grid = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+    private func load() {
+        var ev: [String: [CalEvent]] = [:]
+        let today = cal.startOfDay(for: Date())
+        // due tasks — real due: dates on open tasks
+        for t in osTasksAll().tasks where !t.done {
+            guard let due = t.due, due.count == 10 else { continue }
+            ev[due, default: []].append(CalEvent(
+                cls: t.over ? "over" : "task", glyph: "●",
+                title: t.title, app: t.wrapp))
+        }
+        // past acts — one merged "N acts" chip per app per day, from the audit sessions
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        for s in osSessions(windowDays: 45) {
+            let d = Date(timeIntervalSince1970: s.endMs / 1000)
+            guard d <= today else { continue }
+            let n = s.counts.values.reduce(0, +)
+            ev[f.string(from: d), default: []].append(CalEvent(
+                cls: "run", glyph: "↻", title: "\(s.app) · \(n) act\(n == 1 ? "" : "s")", app: s.app))
+        }
+        events = ev
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 legend.padding(.top, 16)
+                if events.isEmpty {
+                    Text("Nothing dated yet — give a task a due date (due:YYYY-MM-DD) and it lands here. Past acts fill in as you work.")
+                        .font(.hanken(12.5)).foregroundColor(.inkDim)
+                        .padding(.top, 14)
+                }
                 Group {
                     switch view {
                     case .month:  monthView
@@ -782,21 +807,18 @@ struct CalendarSurface: View {
                     }
                 }
                 .padding(.top, 12)
-                SurfaceFoot(text: "calendar is a temporal projection of the vault · it invents no events · the past is dim, not gone")
+                SurfaceFoot(text: "calendar is a temporal projection of the vault · it invents no events · due tasks + past acts, keyed by real dates · the past is dim, not gone")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            (Text("◦ ").foregroundColor(.inkDim)
-                + Text(CAL_MONTHS[monthIdx]).foregroundColor(.inkDim)
-                + Text(" · ").foregroundColor(.inkDim)
-                + Text(Sample.project.name).foregroundColor(.ink))
+            (Text("◦ ").foregroundColor(.inkDim) + Text(monthTitle).foregroundColor(.ink))
                 .font(.splMono(11)).tracking(0.6)
-            ScopePill(label: "All projects ▾") { onNavigate(.bank) }         // switch project (Bank)
             Spacer(minLength: 0)
             SegBar {
                 SegButton(label: "Month", active: view == .month) { view = .month }
@@ -804,9 +826,9 @@ struct CalendarSurface: View {
                 SegButton(label: "Agenda", active: view == .agenda) { view = .agenda }
             }
             SegBar {
-                SegButton(label: "‹", active: false) { monthIdx = max(0, monthIdx - 1) }
-                SegButton(label: "Today", active: true) { monthIdx = CAL_HOME_MONTH }
-                SegButton(label: "›", active: false) { monthIdx = min(CAL_MONTHS.count - 1, monthIdx + 1) }
+                SegButton(label: "‹", active: false) { monthOffset -= 1 }
+                SegButton(label: "Today", active: monthOffset == 0) { monthOffset = 0 }
+                SegButton(label: "›", active: false) { monthOffset += 1 }
             }
         }
         .padding(.bottom, 14)
@@ -815,10 +837,9 @@ struct CalendarSurface: View {
 
     private var legend: some View {
         HStack(spacing: 16) {
-            LegendItem(glyph: "●", color: .lime, label: "due task", strong: true)
-            LegendItem(glyph: "■", color: .indigo, label: "milestone", strong: true)
-            LegendItem(glyph: "↻", color: .inkFaint, label: "past run", strong: false)
-            LegendItem(glyph: "⟳", color: .inkFaint, label: "routine", strong: false)
+            LegendItem(glyph: "●", color: .lime, label: "due / overdue task", strong: true)
+            LegendItem(glyph: "●", color: .inkDim, label: "due later", strong: true)
+            LegendItem(glyph: "↻", color: .inkFaint, label: "past act", strong: false)
         }
     }
 
@@ -832,28 +853,46 @@ struct CalendarSurface: View {
             }
             LazyVGrid(columns: grid, spacing: 8) {
                 ForEach(cells) { cell in
-                    CalCell(cell: cell, events: cell.dim ? [] : (CAL_ITEMS[cell.day] ?? []),
-                            isToday: !cell.dim && cell.day == CAL_TODAY, onNavigate: onNavigate)
+                    CalCell(cell: cell, events: cell.dim ? [] : (events[cell.key] ?? []),
+                            isToday: cell.key == todayKey, onNavigate: onNavigate)
                 }
             }
         }
     }
 
+    // Week = the seven real days of the shown month's week containing today (or its 1st week)
+    private var weekCells: [CalCellModel] { cells.filter { !$0.dim } }
     private var weekView: some View {
-        LazyVGrid(columns: grid, spacing: 8) {
-            ForEach([3, 4, 5, 6, 7, 8, 9], id: \.self) { d in
-                WeekCol(day: d, events: CAL_ITEMS[d] ?? [], isToday: d == CAL_TODAY, onNavigate: onNavigate)
+        let real = weekCells
+        let anchor = real.firstIndex { $0.key == todayKey } ?? 0
+        let start = (anchor / 7) * 7
+        let slice = Array(real[start..<min(start + 7, real.count)])
+        return LazyVGrid(columns: grid, spacing: 8) {
+            ForEach(slice) { c in
+                WeekCol(dayNum: c.day, dow: dowFromKey(c.key), events: events[c.key] ?? [],
+                        isToday: c.key == todayKey, onNavigate: onNavigate)
             }
         }
     }
 
     private var agendaView: some View {
-        VStack(spacing: 0) {
-            ForEach(CAL_ITEMS.keys.sorted(), id: \.self) { d in
-                AgendaRow(day: d, events: CAL_ITEMS[d] ?? [], isToday: d == CAL_TODAY, onNavigate: onNavigate)
+        let dated = cells.filter { !$0.dim && !(events[$0.key] ?? []).isEmpty }
+        return VStack(spacing: 0) {
+            if dated.isEmpty {
+                Text("No dated items this month.").font(.hanken(12.5)).foregroundColor(.inkDim).padding(.vertical, 16)
+            }
+            ForEach(dated) { c in
+                AgendaRow(dayNum: c.day, dow: dowFromKey(c.key), events: events[c.key] ?? [],
+                          isToday: c.key == todayKey, onNavigate: onNavigate)
             }
         }
         .frame(maxWidth: 640, alignment: .leading)
+    }
+
+    private func dowFromKey(_ key: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: key) else { return "" }
+        return DOW[(cal.component(.weekday, from: d) + 5) % 7]
     }
 }
 
@@ -920,8 +959,7 @@ private struct CalCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(cell.day)").font(.splMono(11))
-                .foregroundColor(cell.dim ? .inkFaint : (isToday ? .lime : .inkDim))
+            if !cell.dim { Text("\(cell.day)").font(.splMono(11)).foregroundColor(isToday ? .lime : .inkDim) }
             ForEach(events.prefix(3)) { CalChip(event: $0, onNavigate: onNavigate) }
             if events.count > 3 {
                 Button(action: { onNavigate(.tasks) }) {
@@ -946,7 +984,8 @@ private struct CalCell: View {
 }
 
 private struct WeekCol: View {
-    let day: Int
+    let dayNum: Int
+    let dow: String
     let events: [CalEvent]
     let isToday: Bool
     let onNavigate: (Surface) -> Void
@@ -955,9 +994,9 @@ private struct WeekCol: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(dowFor(day).uppercased()).font(.splMono(9.5)).tracking(1.0).foregroundColor(.inkFaint)
+                Text(dow.uppercased()).font(.splMono(9.5)).tracking(1.0).foregroundColor(.inkFaint)
                 Spacer()
-                Text("\(day)").font(.splMono(13)).foregroundColor(isToday ? .lime : .inkDim)
+                Text("\(dayNum)").font(.splMono(13)).foregroundColor(isToday ? .lime : .inkDim)
             }
             .padding(.bottom, 6)
             .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
@@ -979,15 +1018,16 @@ private struct WeekCol: View {
 }
 
 private struct AgendaRow: View {
-    let day: Int
+    let dayNum: Int
+    let dow: String
     let events: [CalEvent]
     let isToday: Bool
     let onNavigate: (Surface) -> Void
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(dowFor(day).uppercased()).font(.splMono(9.5)).tracking(1.0).foregroundColor(.inkFaint)
-                Text("\(day)").font(.splMono(18)).foregroundColor(isToday ? .lime : .inkSec)
+                Text(dow.uppercased()).font(.splMono(9.5)).tracking(1.0).foregroundColor(.inkFaint)
+                Text("\(dayNum)").font(.splMono(18)).foregroundColor(isToday ? .lime : .inkSec)
             }
             .frame(width: 62, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
