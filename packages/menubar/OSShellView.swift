@@ -246,7 +246,7 @@ func osProjects() -> [SBProject] {
     .sorted { $0.updatedMs > $1.updatedMs }   // recency-first — the command centre leads with what's warm
 }
 func osActiveId() -> String? { readDefaultId() }
-private func relAgo(_ ms: Double) -> String {
+func relAgo(_ ms: Double) -> String {
     let s = ms / 1000
     if s < 3600 { return "\(max(1, Int(s/60)))m" }
     if s < 86400 { return "\(Int(s/3600))h" }
@@ -361,7 +361,7 @@ private func sessionTitle(_ s: SBSession) -> String {
 }
 // Nothing is dropped — each file is TAGGED: "made" (a real created object — the blob names itself) vs
 // "working" (wrapp state/config). The Recent-work section filters on this, defaulting to Made.
-private func classifyArtifact(_ path: String, key: String) -> (title: String, category: String, kind: String) {
+func classifyArtifact(_ path: String, key: String) -> (title: String, category: String, kind: String) {
     let name = key.hasSuffix(".json") ? String(key.dropLast(5)) : key
     let lower = name.lowercased()
     let stateHints = ["state", "profile", "workspace", "recents", "wallet", "vendors", "bindings", "config", "settings", "session", "prefs", "cache"]
@@ -381,7 +381,7 @@ private func classifyArtifact(_ path: String, key: String) -> (title: String, ca
 // Resolves BOTH origin spellings to a wrapp id: storage-dir form ("https_batch.thelastprompt.ai")
 // and audit-log form ("https://batch.thelastprompt.ai", "native@ai.thelastprompt.god", "panel").
 // Returns "" for chrome that isn't a wrapp (the panel itself, unknown origins).
-private func wrappFromOrigin(_ o: String) -> String {
+func wrappFromOrigin(_ o: String) -> String {
     if o == "panel" || o == "?" || o.isEmpty { return "" }
     var s = o
     if s.hasPrefix("native@") {
