@@ -158,6 +158,8 @@ private struct TaskItem: Identifiable {
     let statusId: String
     let statusName: String
     let colIndex: Int
+    var checkedNow: Bool = false
+    var refIdx: Int = -1                                       // index into the surface's live RealTask array
 
     var dueWeight: Int { over ? 0 : (due != nil ? 1 : 2) }
     var groupKey: String { tag ?? proj ?? "~" }
@@ -172,42 +174,167 @@ private struct TaskColumn: Identifiable {
     let tasks: [TaskItem]
 }
 
-private let TASK_COLUMNS: [TaskColumn] = [
-    TaskColumn(id: "todo", name: "Todo", dot: .inkDim, tasks: [
-        TaskItem(title: "Finalize IndEur wordmark", tag: "@crest", swHex: "E0764A", due: "Fri",
-                 statusId: "todo", statusName: "Todo", colIndex: 0),
-        TaskItem(title: "Write the launch announcement", tag: "@brandbrain", swHex: "E8B04A",
-                 statusId: "todo", statusName: "Todo", colIndex: 0),
-        TaskItem(title: "Reply to the venue email", proj: "#indeur", due: "2d overdue", over: true,
-                 statusId: "todo", statusName: "Todo", colIndex: 0),
-        TaskItem(title: "Pick the meetup date", tag: "@flow", swHex: "A8D84A",
-                 statusId: "todo", statusName: "Todo", colIndex: 0),
-    ]),
-    TaskColumn(id: "doing", name: "Doing", dot: .lime, tasks: [
-        TaskItem(title: "Render the terracotta beam", tag: "@prism", swHex: "9B5DE5", prog: true, due: "today",
-                 statusId: "doing", statusName: "Doing", colIndex: 1),
-        TaskItem(title: "Launch ad variations — \"Find your people\"", tag: "@adforge", swHex: "F2994A", prog: true,
-                 statusId: "doing", statusName: "Doing", colIndex: 1),
-    ]),
-    TaskColumn(id: "blocked", name: "Blocked", dot: .danger, tasks: [
-        TaskItem(title: "Legal OK on the club name", proj: "#indeur", wait: "waiting: counsel",
-                 statusId: "blocked", statusName: "Blocked", colIndex: 2),
-    ]),
-]
+// ═══ LIVE tasks — every tasks.md across the real vaults (bound folders + context folders).
+// A task IS a line in a file: "- [ ] text @wrapp #project due:YYYY-MM-DD". Toggling rewrites only
+// that line's checkbox token; adds append a line. No invented statuses — the dialect has todo/done.
 
-private let TASK_FLAT: [TaskItem] = TASK_COLUMNS.flatMap { $0.tasks }
-private let TASK_DONE_COUNT = 12
+struct RealTask: Identifiable {
+    let id = UUID()
+    let raw: String            // the exact source line — the match key for a safe line rewrite
+    let title: String
+    let wrapp: String?         // @tag, without the @
+    let projTag: String?       // #tag, without the #
+    let due: String?
+    let over: Bool
+    let done: Bool
+    let file: String
+    let folder: String
+}
+
+func osTaskFolders() -> [String] {
+    var set = Set(osVaultFolders())
+    for c in bankContexts() { if let f = c.folder, FileManager.default.fileExists(atPath: f) { set.insert(f) } }
+    return set.sorted()
+}
+
+// (tasks, unreadable-files) — a tasks.md that exists but won't read is surfaced, never silently dropped.
+func osTasksAll() -> (tasks: [RealTask], broken: [String]) {
+    var out: [RealTask] = []
+    var broken: [String] = []
+    for folder in osTaskFolders() {
+        let path = folder + "/tasks.md"
+        guard FileManager.default.fileExists(atPath: path) else { continue }
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { broken.append(path); continue }
+        out.append(contentsOf: osParseTasks(text, file: path, folder: folder))
+    }
+    return (out, broken)
+}
+
+func osParseTasks(_ text: String, file: String, folder: String) -> [RealTask] {
+    var out: [RealTask] = []
+    for raw in text.components(separatedBy: "\n") {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let done = t.hasPrefix("- [x]") || t.hasPrefix("- [X]")
+        guard done || t.hasPrefix("- [ ]") else { continue }
+        var wrapp: String?, proj: String?, due: String?
+        var kept: [String] = []
+        for tok in String(t.dropFirst(5)).split(separator: " ") {
+            if tok.hasPrefix("@"), tok.count > 1 { wrapp = String(tok.dropFirst()) }
+            else if tok.hasPrefix("#"), tok.count > 1 { proj = String(tok.dropFirst()) }
+            else if tok.lowercased().hasPrefix("due:"), tok.count > 4 { due = String(tok.dropFirst(4)) }
+            else { kept.append(String(tok)) }
+        }
+        let title = kept.joined(separator: " ")
+        guard !title.isEmpty || wrapp != nil else { continue }
+        out.append(RealTask(raw: raw, title: title.isEmpty ? "@" + (wrapp ?? "") : title,
+                            wrapp: wrapp, projTag: proj, due: due,
+                            over: !done && osDueIsPast(due), done: done, file: file, folder: folder))
+    }
+    return out
+}
+
+private func osDueIsPast(_ due: String?) -> Bool {
+    guard let due, due.count == 10 else { return false }
+    let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = .current
+    guard let d = df.date(from: due) else { return false }
+    return d < Calendar.current.startOfDay(for: Date())
+}
+
+// Line-oriented toggle: flip ONLY this line's checkbox token; the rest of the file is untouched.
+@discardableResult
+func osToggleTask(_ t: RealTask) -> Bool {
+    guard let text = try? String(contentsOfFile: t.file, encoding: .utf8) else { return false }
+    var lines = text.components(separatedBy: "\n")
+    guard let i = lines.firstIndex(of: t.raw) else { return false }   // file changed under us → no blind write
+    lines[i] = t.done
+        ? t.raw.replacingOccurrences(of: "[x]", with: "[ ]").replacingOccurrences(of: "[X]", with: "[ ]")
+        : t.raw.replacingOccurrences(of: "[ ]", with: "[x]")
+    return (try? lines.joined(separator: "\n").write(toFile: t.file, atomically: true, encoding: .utf8)) != nil
+}
+
+@discardableResult
+func osAppendTask(folder: String, text: String) -> Bool {
+    let line = "- [ ] " + text.trimmingCharacters(in: .whitespaces)
+    let path = folder + "/tasks.md"
+    if let existing = try? String(contentsOfFile: path, encoding: .utf8) {
+        let sep = existing.hasSuffix("\n") ? "" : "\n"
+        return (try? (existing + sep + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
+    }
+    return (try? ("# Tasks\n\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
+}
 
 struct TasksSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
     @State private var view: TaskView = .board
-    @State private var activeFilter: String? = nil            // status id, or nil = all
+    @State private var activeFilter: String? = nil            // column id, or nil = all
     @State private var groupMode: GroupMode = .status
-    @State private var doneIDs: Set<UUID> = []
+    @State private var all: [RealTask] = []
+    @State private var broken: [String] = []
+    @State private var scopeAll = false
+    @State private var showDone = false
+    @State private var adding = ""
 
-    private var sortedRows: [TaskItem] {
-        TASK_FLAT.sorted { a, b in
+    private var activeCtx: BankCtx? { bankContexts().first { $0.id == readDefaultId() } }
+    private func load() { let r = osTasksAll(); all = r.tasks; broken = r.broken }
+
+    // scope: the active project's vault folder + its #tag; "All projects" lifts it
+    private var scoped: [RealTask] {
+        guard !scopeAll, let c = activeCtx else { return all }
+        let folder = bankVaultFolder(c)
+        let slug = c.name.lowercased().replacingOccurrences(of: " ", with: "-")
+        let hits = all.filter { t in
+            (folder != nil && t.folder == folder) ||
+            (t.projTag?.lowercased() == slug)
+        }
+        return hits.isEmpty ? all : hits    // a scope that matches nothing falls open honestly (chip says All)
+    }
+    private var scopeIsAll: Bool { scopeAll || activeCtx == nil || scoped.count == all.count }
+    private var open: [RealTask] { scoped.filter { !$0.done } }
+    private var doneTasks: [RealTask] { scoped.filter { $0.done } }
+    // where quick-add writes: the scoped project's vault, else the first vault with (or for) a tasks.md
+    private var addFolder: String? {
+        if !scopeIsAll, let c = activeCtx, let f = bankVaultFolder(c) { return f }
+        return osTaskFolders().first { FileManager.default.fileExists(atPath: $0 + "/tasks.md") } ?? osTaskFolders().first
+    }
+
+    private func item(_ t: RealTask, statusId: String, statusName: String, col: Int) -> TaskItem {
+        TaskItem(title: t.title, tag: t.wrapp.map { "@" + $0 }, proj: t.projTag.map { "#" + $0 },
+                 due: t.due, over: t.over, statusId: statusId, statusName: statusName, colIndex: col,
+                 checkedNow: t.done, refIdx: all.firstIndex { $0.id == t.id } ?? -1)
+    }
+
+    private var columns: [TaskColumn] {
+        switch groupMode {
+        case .status:
+            return [TaskColumn(id: "todo", name: "Todo", dot: .inkDim,
+                               tasks: open.map { item($0, statusId: "todo", statusName: "Todo", col: 0) })]
+        case .project:
+            let groups = Dictionary(grouping: open) { $0.projTag ?? ($0.folder as NSString).lastPathComponent }
+            return groups.keys.sorted().enumerated().map { i, key in
+                TaskColumn(id: key, name: key, dot: .indigo,
+                           tasks: groups[key]!.map { item($0, statusId: key, statusName: key, col: i) })
+            }
+        case .due:
+            let overdue = open.filter { $0.over }
+            let dated = open.filter { $0.due != nil && !$0.over }
+            let someday = open.filter { $0.due == nil }
+            return [
+                TaskColumn(id: "overdue", name: "Overdue", dot: .danger,
+                           tasks: overdue.map { item($0, statusId: "overdue", statusName: "Overdue", col: 0) }),
+                TaskColumn(id: "dated", name: "Due", dot: .lime,
+                           tasks: dated.map { item($0, statusId: "dated", statusName: "Due", col: 1) }),
+                TaskColumn(id: "someday", name: "No date", dot: .inkDim,
+                           tasks: someday.map { item($0, statusId: "someday", statusName: "No date", col: 2) }),
+            ].filter { !$0.tasks.isEmpty }
+        }
+    }
+
+    private var listRows: [TaskItem] {
+        let src = showDone ? scoped : open
+        let items = src.map { t in item(t, statusId: t.done ? "done" : "todo",
+                                        statusName: t.done ? "Done" : "Todo", col: t.done ? 1 : 0) }
+        return items.sorted { a, b in
             switch groupMode {
             case .status:  return a.colIndex < b.colIndex
             case .due:     return a.dueWeight < b.dueWeight
@@ -219,70 +346,152 @@ struct TasksSurface: View {
     private func toggleFilter(_ id: String) { activeFilter = (activeFilter == id) ? nil : id }
     private func cycleGroup() {
         groupMode = groupMode == .status ? .project : (groupMode == .project ? .due : .status)
+        activeFilter = nil
+    }
+    private func toggleTask(_ it: TaskItem) {
+        guard it.refIdx >= 0, it.refIdx < all.count else { return }
+        if osToggleTask(all[it.refIdx]) { load() }
+    }
+    private func submitAdd() {
+        guard let f = addFolder, !adding.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        if osAppendTask(folder: f, text: adding) { adding = ""; load() }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                if view == .board { board.padding(.top, 20) }
-                else { list.padding(.top, 20) }
-                SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · status = a token you can drag · nothing here is invented")
+                ForEach(broken, id: \.self) { path in TasksBrokenBanner(path: path).padding(.top, 14) }
+                if scoped.isEmpty {
+                    emptyState.padding(.top, 20)
+                } else if view == .board {
+                    board.padding(.top, 20)
+                } else {
+                    list.padding(.top, 20)
+                }
+                SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · checking it rewrites that line · nothing here is invented")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            SurfaceKicker(title: "Tasks", project: Sample.project.name)
-            ScopePill(label: "All projects ▾") { onNavigate(.dashboard) }   // view across all projects
+            SurfaceKicker(title: "Tasks", project: scopeIsAll ? "All projects" : (activeCtx?.name ?? "All projects"))
+            ScopePill(label: scopeIsAll ? "All projects ▾" : "\(activeCtx?.name ?? "") ▾") { scopeAll.toggle() }
             Spacer(minLength: 0)
             SegBar {
                 SegButton(label: "Board", active: view == .board) { view = .board }
                 SegButton(label: "List", active: view == .list) { view = .list }
             }
             OSWSGhostButton(label: "Group: \(groupMode.rawValue) ▾") { cycleGroup() }
-            LimeButton(label: "+ Add") { onNavigate(.bank) }               // add a line to tasks.md in Bank
         }
         .padding(.bottom, 14)
         .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
     }
 
+    // First-run: no tasks anywhere. One verb (the quick-add works right here), never a dead grid.
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Nothing here yet.").font(.brico(20, .bold)).foregroundColor(.ink)
+            Text("A task is a line in your vault's tasks.md — add one below, tag it @wrapp or #project, or let God capture them.")
+                .font(.hanken(13)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            if addFolder != nil {
+                TaskAddInline(text: $adding, placeholder: "Add the first task…", onSubmit: submitAdd)
+            } else {
+                Text("No vault folder is bound yet — bind one in the panel, then tasks.md lives there.")
+                    .font(.hanken(12.5)).foregroundColor(.inkDim)
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+    }
+
     private var board: some View {
         HStack(alignment: .top, spacing: 14) {
-            ForEach(TASK_COLUMNS) { col in
+            ForEach(columns) { col in
                 TaskColumnView(
                     column: col,
                     dimmed: activeFilter != nil && activeFilter != col.id,
                     selected: activeFilter == col.id,
-                    doneIDs: $doneIDs,
+                    canAdd: groupMode == .status && addFolder != nil,
+                    addText: $adding,
                     onHeader: { toggleFilter(col.id) },
+                    onToggle: toggleTask,
+                    onSubmitAdd: submitAdd,
                     onNavigate: onNavigate)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
-            DoneColumn(count: TASK_DONE_COUNT) { onNavigate(.history) }     // completed tasks live in History
+            DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
                 .frame(width: 132)
         }
     }
 
     private var list: some View {
         VStack(spacing: 0) {
-            ForEach(sortedRows.filter { activeFilter == nil || $0.statusId == activeFilter }) { item in
-                TaskListRow(item: item, dot: dotFor(item.statusId),
-                            checked: doneIDs.contains(item.id),
-                            onToggle: { toggle(item.id) },
+            if showDone {
+                HStack {
+                    Spacer()
+                    OSWSGhostButton(label: "Hide done") { showDone = false }
+                }.padding(.bottom, 8)
+            }
+            ForEach(listRows.filter { activeFilter == nil || $0.statusId == activeFilter }) { it in
+                TaskListRow(item: it, dot: it.checkedNow ? .lime : .inkDim,
+                            checked: it.checkedNow,
+                            onToggle: { toggleTask(it) },
                             onNavigate: onNavigate)
+            }
+            if addFolder != nil {
+                TaskAddInline(text: $adding, placeholder: "Add a task — appends to tasks.md", onSubmit: submitAdd)
+                    .padding(.top, 10)
             }
         }
     }
+}
 
-    private func dotFor(_ id: String) -> Color {
-        TASK_COLUMNS.first { $0.id == id }?.dot ?? .inkFaint
+// tasks.md exists but couldn't be read — surface it, never silently drop lines.
+private struct TasksBrokenBanner: View {
+    let path: String
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("!").font(.splMono(13)).foregroundColor(.amber)
+            Text("Couldn't read \((path as NSString).abbreviatingWithTildeInPath)")
+                .font(.hanken(13)).foregroundColor(.inkSec)
+            Spacer(minLength: 0)
+            OSWSGhostButton(label: "Open tasks.md") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.amber.opacity(0.4), lineWidth: 1))
     }
-    private func toggle(_ id: UUID) {
-        if doneIDs.contains(id) { doneIDs.remove(id) } else { doneIDs.insert(id) }
+}
+
+// The inline quick-add — typing "@wrapp #project due:2026-08-20" goes into the line verbatim (the dialect).
+private struct TaskAddInline: View {
+    @Binding var text: String
+    let placeholder: String
+    let onSubmit: () -> Void
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("+").font(.splMono(12)).foregroundColor(.inkFaint)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain).font(.hanken(13)).foregroundColor(.ink)
+                .onSubmit(onSubmit)
+            if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button(action: onSubmit) {
+                    Text("Add").font(.hanken(12, .semibold)).foregroundColor(.lime)
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundColor(.edge))
     }
 }
 
@@ -290,8 +499,11 @@ private struct TaskColumnView: View {
     let column: TaskColumn
     let dimmed: Bool
     let selected: Bool
-    @Binding var doneIDs: Set<UUID>
+    let canAdd: Bool
+    @Binding var addText: String
     let onHeader: () -> Void
+    let onToggle: (TaskItem) -> Void
+    let onSubmitAdd: () -> Void
     let onNavigate: (Surface) -> Void
     @State private var headHover = false
 
@@ -315,17 +527,15 @@ private struct TaskColumnView: View {
             .onHover { headHover = $0 }
 
             ForEach(column.tasks) { t in
-                TaskCardView(task: t, checked: doneIDs.contains(t.id),
-                             onToggle: { toggle(t.id) }, onNavigate: onNavigate)
+                TaskCardView(task: t, checked: t.checkedNow,
+                             onToggle: { onToggle(t) }, onNavigate: onNavigate)
             }
 
-            AddCardRow { onNavigate(.bank) }                                // add a line to tasks.md in Bank
+            if canAdd {
+                TaskAddInline(text: $addText, placeholder: "+ add a task…", onSubmit: onSubmitAdd)
+            }
         }
         .opacity(dimmed ? 0.4 : 1.0)
-    }
-
-    private func toggle(_ id: UUID) {
-        if doneIDs.contains(id) { doneIDs.remove(id) } else { doneIDs.insert(id) }
     }
 }
 
@@ -396,7 +606,9 @@ private struct TaskRowBits: View {
             if let tag = task.tag {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(hexColor(task.swHex ?? "3a3f4b")).frame(width: 8, height: 8)
+                        .fill(task.swHex.map { hexColor($0) }
+                            ?? Color(hue: hueForId(task.appName), saturation: 0.6, brightness: 0.8))
+                        .frame(width: 8, height: 8)
                     Text(tag).font(.splMono(10)).foregroundColor(.inkDim)
                 }
                 .padding(.horizontal, 7).padding(.vertical, 1)
@@ -431,25 +643,6 @@ private struct DueChip: View {
     }
 }
 
-private struct AddCardRow: View {
-    let action: () -> Void
-    @State private var hover = false
-    var body: some View {
-        Button(action: action) {
-            Text("+ add a task…").font(.hanken(12))
-                .foregroundColor(hover ? .inkDim : .inkFaint)
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12)
-                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .foregroundColor(hover ? .inkFaint : .edge))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-    }
-}
-
 private struct DoneColumn: View {
     let count: Int
     let onOpen: () -> Void
@@ -459,7 +652,7 @@ private struct DoneColumn: View {
             VStack(spacing: 4) {
                 Text("\(count)").font(.splMono(22)).foregroundColor(.inkDim)
                 Text("Done ▾").font(.hanken(12)).foregroundColor(hover ? .inkDim : .inkFaint)
-                Text("this week").font(.hanken(11)).foregroundColor(.inkFaint)
+                Text("in tasks.md").font(.hanken(11)).foregroundColor(.inkFaint)
             }
             .padding(.horizontal, 12).padding(.vertical, 14)
             .frame(maxWidth: .infinity)
@@ -905,17 +1098,6 @@ private func bankTasks(folder: String?) -> [BankTask] {
         out.append(BankTask(t: body, meta: tags.joined(separator: " "), state: done ? "done" : ""))
     }
     return out
-}
-
-@discardableResult
-private func bankAddTask(folder: String, text: String) -> Bool {
-    let line = "- [ ] " + text.trimmingCharacters(in: .whitespaces)
-    let path = folder + "/tasks.md"
-    if let existing = try? String(contentsOfFile: path, encoding: .utf8) {
-        let sep = existing.hasSuffix("\n") ? "" : "\n"
-        return (try? (existing + sep + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
-    }
-    return (try? ("# Tasks\n\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
 }
 
 // Brain — the vault's own .md knowledge files (the Bank dialect), newest first, first body line as gist.
@@ -1463,7 +1645,7 @@ private struct BankTaskList: View {
     }
     private func submit() {
         guard let folder, !adding.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        if bankAddTask(folder: folder, text: adding) { adding = ""; version += 1 }
+        if osAppendTask(folder: folder, text: adding) { adding = ""; version += 1 }
     }
     private func stateColor(_ s: String) -> Color {
         s == "done" ? .lime : (s == "now" ? .indigo : (s == "blocked" ? .danger : .edge))

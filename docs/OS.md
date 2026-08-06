@@ -417,6 +417,23 @@ Sole lens on `tasks.md`. Reads/writes task lines in place (status token, `@`, `#
 surrounding lines/comments (line-oriented edit, never a rewrite of the whole file). Expanding a task may
 link to `note-*.md` / `artifact-*.md`.
 
+### Grounding — what's real today (native build)
+
+- **Source** = every `tasks.md` across the real vaults: bound folders (`storage-bindings.json`) ∪
+  context `data.folder`s. Line dialect: `- [ ] text @wrapp #project due:YYYY-MM-DD`; `- [x]` = done.
+  The dialect has exactly two statuses (todo/done) — the board doesn't invent Doing/Blocked columns;
+  richness comes from **Group: Status / Project / Due** (Due = Overdue · Due · No date).
+- **Scope** = the active project (its vault folder or `#slug` tag); the chip lifts to All projects.
+  A scope that matches nothing falls open to All, honestly labeled.
+- **Writes**: checkbox toggle rewrites ONLY that line's checkbox token (exact-line match; if the file
+  changed underneath, it refuses rather than blind-writes). Quick-add appends a line (creates the file
+  with a `# Tasks` header on first use), into the scoped project's vault.
+- **States**: no tasks anywhere → CTA card with a working quick-add (or the bind-a-folder truth);
+  unreadable `tasks.md` → per-file banner with **Open tasks.md**; Done lives in a collapsed count
+  column → expands in List view.
+- Verified by a headless logic test (parse dialect ✓, append ✓, line-precise toggle ✓, round-trip
+  restores the exact file ✓, stale-handle refuses to write ✓).
+
 ---
 
 ## 3.3 Calendar — the time lens
