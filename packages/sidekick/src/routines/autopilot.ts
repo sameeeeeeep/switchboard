@@ -23,6 +23,9 @@ interface AutopilotDeps {
    *  path). `toolSuffix` is a `__wrapp__<id>__<action>` suffix; returns the wrapp's structured JSON.
    *  Absent (or a not-connected wrapp) ⇒ the routine falls back to a generic draft. */
   invoke?: (toolSuffix: string, args: Record<string, unknown>) => Promise<{ ok: boolean; json: unknown | null; text: string; error?: string }>;
+  /** Dispatch an approved gate move to a real sender (docs/COMPANY-OS.md §2b). Only used for FULL-AUTO
+   *  companies here — assisted moves stay staged for the founder's tap. No sender ⇒ `no-sender`, staged. */
+  dispatch?: (p: { channel: string; content: string; company?: string; move?: string; auto?: boolean }) => Promise<{ ok: boolean; status: string; note: string }>;
   log?: (m: string) => void;
 }
 
@@ -151,6 +154,19 @@ function bindingFor(move: string): WrappBinding | null {
   return CATALOG.find((b) => b.when.test(m)) ?? null;
 }
 
+/** A short channel label for a gate move — where its send would go. Feeds dispatch (which maps the
+ *  label to a connector class); social channels have no sender class yet, so they stay staged. */
+function channelOf(move: string): string {
+  const m = move.toLowerCase();
+  if (/\b(e-?mail|newsletter|waitlist)\b/.test(m)) return "email";
+  if (/\b(dm|dms)\b/.test(m)) return "DM";
+  if (/instagram|\binsta\b/.test(m)) return "Instagram";
+  if (/tiktok/.test(m)) return "TikTok";
+  if (/linkedin/.test(m)) return "LinkedIn";
+  if (/\b(x|twitter)\b/.test(m)) return "X";
+  return "publish";
+}
+
 export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
   return {
     id: "autopilot",
@@ -225,15 +241,22 @@ export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
             ensureDir();
             writeFileSync(join(STORE_DIR, `autopilot-gate-${co.id}-${n}.md`),
               `---\ncompany: ${co.name}\nsector: ${co.sector}\nmove: ${gate.txt}\nprepared_by: autopilot (staged — awaiting your approval to send)\nat: ${new Date().toISOString()}\n---\n\n${prep.text.trim()}\n`);
-            gate.artifact = `autopilot-gate-${co.id}-${n}.md`; gate.preview = prep.text.trim().slice(0, 1400); gate.status = "prepared";
+            const channel = channelOf(gate.txt);
+            gate.artifact = `autopilot-gate-${co.id}-${n}.md`; gate.preview = prep.text.trim().slice(0, 1400); gate.status = "prepared"; (gate as any).channel = channel;
             deps.log?.(`autopilot: ${co.name} → prepared gate move for review (${prep.tokens} tok)`);
+
+            // FULL AUTO (autopilot.json companies.<id>.auto): the founder pre-authorized sends, so the
+            // routine dispatches the prepared content through a real sender + the daemon's audit — same
+            // path the assisted tap uses, minus the card. No sender connected ⇒ `no-sender`, stays staged
+            // (honest). Assisted companies always stay staged here; their send fires on the founder's tap.
+            if (co.auto && deps.dispatch) {
+              const d = await deps.dispatch({ channel, content: prep.text.trim(), company: co.name, move: gate.txt, auto: true });
+              (gate as any).dispatch = d.status;
+              if (d.status === "sent") gate.status = "sent";
+              deps.log?.(`autopilot: ${co.name} → auto-dispatch ${channel}: ${d.status} — ${d.note}`);
+            }
           } catch (e) { deps.log?.("autopilot: could not prepare gate — " + String(e)); }
         }
-
-        // Auto mode is per-company (autopilot.json companies.<id>.auto). When on, the founder has PRE-
-        // AUTHORIZED sends: the routine would dispatch gate moves through the daemon's connector+consent
-        // path instead of staging them. Not fired here — it requires a connected publisher/sender AND the
-        // founder's standing auto grant; absent either, moves stay staged. See docs/COMPANY-OS.md §2b.
         const summary = {
           made: moves.filter((m) => m.status === "done").length,
           staged: moves.filter((m) => m.lane === "gate").length,
@@ -254,7 +277,7 @@ export function makeAutopilotRoutine(deps: AutopilotDeps): Routine {
             staged: rollup.reduce((s, c) => s + c.summary.staged, 0),
             calls: rollup.reduce((s, c) => s + c.summary.calls, 0),
           },
-          note: "reversible moves executed by God's hands; gate/founder staged — nothing sent unattended",
+          note: "reversible moves made by God's hands; assisted gate moves staged for your tap; full-auto sends fire only through a connected sender + audit (none connected ⇒ staged)",
         }, null, 2));
       } catch (e) { deps.log?.("autopilot: could not write portfolio — " + String(e)); }
 

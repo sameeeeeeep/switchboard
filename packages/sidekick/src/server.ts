@@ -29,6 +29,7 @@ import type {
   GuideResult,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
+import { CONNECTOR_META, connectorIdOf, connectorsInClass, type ConnectorClass } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
@@ -1276,6 +1277,74 @@ export class Broker implements ConsentPrompter, NativeHandler {
       this.deps.audit.record({ origin, kind: "tool_call", toolName: descr.name, outcome: "error", note: String((e as Error)?.message).slice(0, 80) });
       return { ok: false, json: null, text: "", error: String((e as Error)?.message).slice(0, 120) };
     }
+  }
+
+  /** The connector CLASS that could SEND a given channel. Social publishing (Instagram/TikTok/X/…)
+   *  has no class in the taxonomy yet, so it resolves to null → an honest no-sender. */
+  private static channelClass(channel: string): ConnectorClass | null {
+    const c = channel.toLowerCase();
+    if (/\b(e-?mail|newsletter|waitlist|inbox)\b/.test(c)) return "email";
+    if (/\b(dm|dms|message|slack|whatsapp|telegram|discord)\b/.test(c)) return "chat";
+    return null; // instagram/tiktok/x/twitter/linkedin/facebook — no send class today
+  }
+
+  /** Resolve a CONNECTED sender for a class: a tool whose connector serves that class AND whose name
+   *  is a write/send action (per the out-of-band classifier + a send-verb name check). Returns the
+   *  first match, or null. Read-only — draws no consent, invokes nothing. */
+  private findSender(cls: ConnectorClass): { connector: string; tool: string } | null {
+    const SEND = /(send|post|publish|create[_-]?(draft|message|comment)|dm|message|deploy|charge|invoice)/i;
+    for (const t of this.deps.mcp.all()) {
+      const id = connectorIdOf(t.name);
+      if (!id || !(CONNECTOR_META[id]?.classes.includes(cls))) continue;
+      const short = t.name.split("__").pop() ?? t.name;
+      if (classifyTool(t.name) === "write" && SEND.test(short)) return { connector: id, tool: t.name };
+    }
+    return null;
+  }
+
+  /** DISPATCH an approved GATE move to a real sender (docs/COMPANY-OS.md §2b — the God's-Hands pattern
+   *  in reverse). This is the ONLY path that fires an OUTWARD action for the autonomous company, and it
+   *  is deliberately narrow:
+   *    • It resolves a CONNECTED sender for the move's channel. None connected ⇒ `no-sender`, nothing
+   *      leaves the machine — the honest "connect a sender first". (Every channel is no-sender today.)
+   *    • With a sender, ASSISTED mode (default) raises the standard write-consent card — the founder's
+   *      "one tap" at the notch — and only sends on approval. FULL-AUTO (`auto`, a standing per-company
+   *      grant) skips the card but is still audited + stoppable (the routines master switch, the trail).
+   *    • Every outcome is AUDITED as principal `routine@<id>`. We NEVER invoke an outward tool without
+   *      either that tap or the standing grant — the send line never moves.
+   *  NB: the per-connector argument shaping (recipient/subject/body) is filled in when a real sender is
+   *  actually connected and founder-tested; until then no send tool exists to reach, by design. */
+  async routineDispatch(routineId: string, p: { channel: string; content: string; company?: string; move?: string; auto?: boolean }): Promise<{ ok: boolean; status: "sent" | "no-sender" | "declined" | "error"; channel: string; class: ConnectorClass | null; connector?: string; suggested?: string[]; note: string }> {
+    const origin = `routine@${routineId}`;
+    const channel = String(p.channel ?? "").trim();
+    const cls = Broker.channelClass(channel);
+    const sender = cls ? this.findSender(cls) : null;
+    if (!sender) {
+      const suggested = cls ? connectorsInClass(cls) : [];
+      const note = cls
+        ? `No ${cls} sender connected — connect one to send.`
+        : `"${channel || "this channel"}" has no sender wired yet — social publishing waits on a connector.`;
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `dispatch:${channel || "?"}`, outcome: "denied", note: `no sender (${cls ?? "no class"})` });
+      return { ok: false, status: "no-sender", channel, class: cls, suggested, note };
+    }
+    // A real sender exists — gate it. Assisted: the write-consent card IS the founder's tap. Full-auto:
+    // a standing grant pre-authorized this company's sends (the card is skipped, the audit is not).
+    if (!p.auto) {
+      const approved = await this.requestWriteConsent({
+        id: randomUUID(), origin,
+        tool: { name: sender.tool, arguments: { channel, company: p.company, move: p.move, preview: p.content.slice(0, 240) } },
+        reason: "write-action",
+      });
+      if (!approved) {
+        this.deps.audit.record({ origin, kind: "tool_call", toolName: sender.tool, outcome: "denied", note: `send declined · ${channel}` });
+        return { ok: false, status: "declined", channel, class: cls, connector: sender.connector, note: `You declined the ${channel} send.` };
+      }
+    }
+    const res = await this.deps.mcp.invoke({ name: sender.tool, arguments: { text: p.content } });
+    this.deps.audit.record({ origin, kind: "tool_call", toolName: sender.tool, outcome: res.ok ? "ok" : "error", note: `${p.auto ? "auto-" : ""}send · ${channel}${res.ok ? "" : " · failed"}` });
+    return res.ok
+      ? { ok: true, status: "sent", channel, class: cls, connector: sender.connector, note: `Sent via ${sender.connector}.` }
+      : { ok: false, status: "error", channel, class: cls, connector: sender.connector, note: `The ${sender.connector} send failed.` };
   }
 
   /** Per-request context for relay__git_commit_push: the origin's EXPLICIT binding (never the
