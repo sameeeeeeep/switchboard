@@ -1284,6 +1284,20 @@ Dashboard.
 
 ---
 
+### Grounding — Routines, what's real today (native build)
+
+- Reads `routines.json` (the daemon's record: id/title/tier/active/lastRunAt/runs/tokens +
+  `globalPaused`) and `routines-control.json` (`off` — the user's master switch) truthfully. Register
+  mapping: failure evidence → failed; active&on → active; else paused/off/held.
+- The ONE write is the master switch → `routines-control.json` (atomic; the daemon polls it). The OS
+  never writes the daemon-owned `routines.json` (no per-routine toggle yet — that needs a daemon RPC
+  or a per-routine control file).
+- Row actions: "Runs in History" (the audit trail holds the real runs). No fake Run-now/Pause.
+- The add-CTA is honest: routines arrive when a wrapp requests one; Autopilot (routine #1) opens via
+  the real launcher. Missing `routines.json` → stated plainly.
+
+---
+
 ## 3.13 Workflows — the pipeline layer
 
 **One job:** *Run and manage my multi-step pipelines — the reusable batch recipes.* The lens on the
