@@ -3375,6 +3375,8 @@ struct ActionConsentDrop: View {
                 .prefix(6).map { OmniApp(id: $0.id, name: $0.name, sub: $0.tagline) }
         }
         OSAsk.handler = { [weak self] q in Task { @MainActor in if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } } }
+        // The OS Store surface is a door, not a rebuild — it opens the real native store front.
+        OSStoreDoor.handler = { [weak self] in Task { @MainActor in self?.showStore() } }
         // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
         consent = ConsentClient(port: PORT,
             tokenProvider: {

@@ -967,6 +967,17 @@ of scope for auto-execution entirely).
 Store writes to the **app registry** (install/grant state), not the vault directly. It never writes
 `.md`. (Installing a wrapp later *enables* vault writes when the wrapp runs.)
 
+### Grounding — what's real today (native build)
+
+The OS Store surface is the **door**, not a rebuild — the real store is `StoreFrontView` (featured
+page + shelves + detail + resource profile), opened via the `OSStoreDoor` seam → `showStore()`.
+On the door itself, everything comes from the live catalog: the count pill, category chips with real
+counts (Browse all · Studios · Tools · Skills · Agents · Fun), the founder-curated **Start here**
+hero (brandbrain, real tagline), **Skills you haven't connected** (skill listings minus granted
+origins), and **Studios**. Every chip launches the real wrapp; missing catalog → honest daemon
+banner. Under the SnapshotOS harness (no host) the door degrades to in-OS navigation, never a dead
+end.
+
 ---
 
 > **§3.10–3.13 — the Automate group.** The four surfaces below are the operational half of the OS. They
