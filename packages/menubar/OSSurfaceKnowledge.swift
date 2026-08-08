@@ -574,7 +574,7 @@ private func graphDest(_ n: GNode) -> (Surface, String) {
 struct GraphSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
-    @State private var enabled: Set<String> = ["projects", "notes", "artifacts"]
+    @State private var enabled: Set<String> = ["projects", "artifacts"]
     @State private var selectedId: String = "hub"
     @State private var asList = false
     @State private var model = GraphModel(nodes: [], edges: [])
@@ -642,9 +642,7 @@ struct GraphSurface: View {
                 KChip(text: "◐ \(model.nodes.first(where: { $0.hub })?.label ?? "your vault")", accent: .indigo) { onNavigate(.bank) }
                 Spacer(minLength: 0)
                 GraphToggle(label: "projects", tint: .indigo, on: enabled.contains("projects")) { toggle("projects") }
-                GraphToggle(label: "notes", tint: .lime, on: enabled.contains("notes")) { toggle("notes") }
                 GraphToggle(label: "artifacts", tint: amber, on: enabled.contains("artifacts")) { toggle("artifacts") }
-                GraphToggle(label: "terms", tint: .indigo, on: enabled.contains("terms")) { toggle("terms") }
                 KChip(text: asList ? "◈ Graph view" : "☰ List view") { asList.toggle() }
             }
         }
@@ -658,10 +656,7 @@ struct GraphSurface: View {
     private var legend: some View {
         HStack(spacing: 16) {
             legendItem(.indigo, "project")
-            legendItem(.lime, "note")
             legendItem(colorForId("mark"), "artifact")
-            legendItem(amber, "run")
-            legendItem(Color.indigo.opacity(0.6), "term (off)")
         }
         .padding(.top, 14)
     }
@@ -913,7 +908,6 @@ private struct OpenButton: View {
 private struct DTerm: Identifiable {
     let id: Int; let t: String; let d: String
     let scope: String; let src: String
-    var usages: [String] = []
     var isProject: Bool { scope == "project" }
     var letter: String { String(t.prefix(1)).uppercased() }
 }
@@ -969,7 +963,6 @@ struct DictionarySurface: View {
 
     @State private var q = ""
     @State private var bucket = "all"
-    @State private var openTerms: Set<Int> = []
     @State private var terms: [DTerm] = []
 
     private var filtered: [DTerm] {
@@ -1018,14 +1011,7 @@ struct DictionarySurface: View {
                             .foregroundColor(.lime)
                             .padding(.top, 20).padding(.bottom, 8)
                         ForEach(section.terms) { term in
-                            DictTermRow(term: term,
-                                        open: openTerms.contains(term.id),
-                                        onToggle: {
-                                            if term.usages.isEmpty { onNavigate(.graph); return }
-                                            if openTerms.contains(term.id) { openTerms.remove(term.id) }
-                                            else { openTerms.insert(term.id) }
-                                        },
-                                        onNavigate: onNavigate)
+                            DictTermRow(term: term, onTap: { onNavigate(.graph) })
                         }
                     }
                 }
@@ -1096,75 +1082,35 @@ struct DictionarySurface: View {
 
 private struct DictTermRow: View {
     let term: DTerm
-    let open: Bool
-    let onToggle: () -> Void
-    let onNavigate: (Surface) -> Void
+    let onTap: () -> Void
     @State private var hover = false
 
-    private var hasExp: Bool { !term.usages.isEmpty }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 14) {
-                Text(term.t).font(.hanken(14, .semibold)).foregroundColor(.ink)
-                    .frame(width: 118, alignment: .leading)
-                Text("\"\(term.d)\"").font(.hanken(13)).foregroundColor(.inkSec)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(term.scope).font(.splMono(10))
-                        .foregroundColor(term.isProject ? .indigo : .inkFaint)
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 6)
-                            .fill(term.isProject ? Color.indigo.opacity(0.14) : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 6)
-                            .stroke(term.isProject ? Color.indigo.opacity(0.35) : Color.edge, lineWidth: 1))
-                    Text("↻ \(term.src)").font(.splMono(10)).foregroundColor(.inkFaint)
-                }
-                Text(hasExp ? "▾" : "↗").font(.splMono(11))
-                    .foregroundColor(hasExp ? .inkFaint : .indigo)
-                    .rotationEffect(.degrees(hasExp && open ? 180 : 0))
-                    .frame(width: 14)
+        HStack(alignment: .top, spacing: 14) {
+            Text(term.t).font(.hanken(14, .semibold)).foregroundColor(.ink)
+                .frame(width: 118, alignment: .leading)
+            Text("\"\(term.d)\"").font(.hanken(13)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(term.scope).font(.splMono(10))
+                    .foregroundColor(term.isProject ? .indigo : .inkFaint)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 6)
+                        .fill(term.isProject ? Color.indigo.opacity(0.14) : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: 6)
+                        .stroke(term.isProject ? Color.indigo.opacity(0.35) : Color.edge, lineWidth: 1))
+                Text("↻ \(term.src)").font(.splMono(10)).foregroundColor(.inkFaint)
             }
-            if open && hasExp {
-                VStack(alignment: .leading, spacing: 8) {
-                    (Text("Learned from ").font(.hanken(12.5)).foregroundColor(.inkDim)
-                        + Text(term.src).font(.hanken(12.5, .medium)).foregroundColor(.inkSec)
-                        + Text(" · used in the vault:").font(.hanken(12.5)).foregroundColor(.inkDim))
-                    HStack(spacing: 8) {
-                        ForEach(term.usages, id: \.self) { u in
-                            UsageChip(text: u) { onNavigate(.graph) }
-                        }
-                    }
-                }
-                .padding(.top, 12).padding(.leading, 132)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .top)
-            }
+            Text("↗").font(.splMono(11)).foregroundColor(.indigo).frame(width: 14)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
         .overlay(RoundedRectangle(cornerRadius: 11)
-            .stroke((hover || open) ? Color(red: 0.20, green: 0.22, blue: 0.29) : Color.edge, lineWidth: 1))
+            .stroke(hover ? Color(red: 0.20, green: 0.22, blue: 0.29) : Color.edge, lineWidth: 1))
         .padding(.bottom, 8)
         .contentShape(Rectangle())
-        .onTapGesture { onToggle() }
-        .onHover { hover = $0 }
-    }
-}
-
-private struct UsageChip: View {
-    let text: String; let action: () -> Void
-    @State private var hover = false
-    var body: some View {
-        Button(action: action) {
-            Text(text).font(.hanken(11)).foregroundColor(hover ? .ink : .inkSec)
-                .padding(.horizontal, 9).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color(red: 0.06, green: 0.07, blue: 0.09)))
-                .overlay(RoundedRectangle(cornerRadius: 6)
-                    .stroke(hover ? Color.indigo.opacity(0.6) : Color.edge, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        .onTapGesture { onTap() }
         .onHover { hover = $0 }
     }
 }
