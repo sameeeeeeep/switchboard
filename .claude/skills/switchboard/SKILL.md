@@ -9,7 +9,8 @@ description: >-
   who's asking (thread + project), and the answer comes back as JSON. **Default to this whenever you need
   the user to decide, approve, test on the real app, or do something at their keyboard.** Trigger for:
   "ask the user", "present options", "let them pick / decide / approve", "walk me through…", "test this on
-  the real app", "let me test it", "guided test", "have the human grant X", "check the notch renders".
+  the real app", "let me test it", "guided test", "have the human grant X", "check the notch renders",
+  "guru with eyes", "live guide", "guide me through this on any app" (the dynamic closed-loop mode).
 ---
 
 # Switchboard — talk to the user through the notch (ask · approve · guide · notify)
@@ -39,6 +40,29 @@ collapse · **esc** aborts), and a summary returns to you. Steps mostly **auto-a
 
 Do **not** use it for anything Claude can already do headlessly (files, builds, harness, HTTP). It is
 specifically for the human-in-the-loop boundary.
+
+## Guru with eyes — dynamic mode (closed loop)
+
+Everything below is the **static** guide: you pre-author the steps in `guide-run.json`. There's also a
+**dynamic / live** mode — *"guru with eyes"* — where God screenshots the screen, plans, then **re-sees
+after every step and re-points/edits the next one** on the live screen. Use it when the flow is
+multi-screen, unknown, or must adapt to what the user actually does — a printed manual can't handle a
+menu that only appears *after* a click; this can. Full spec: `docs/GURU-LIVE.md` in the switchboard repo.
+
+Trigger it (needs the daemon running + the switchboard repo's God client):
+
+```bash
+GOD_ATTACH=1 node /Users/sameeprehlan/Documents/Projects/relay/examples/god/god.mjs guide-live "help me <goal>"
+# GOD_DRYRUN=1 → plan + walk WITHOUT taking over the screen (a safe smoke test)
+```
+
+- **Static vs dynamic:** static (write `guide-run.json`) when you already know the exact steps; dynamic
+  (`guide-live`) when it must adapt to the live screen.
+- **One warm thread:** the plan + every re-see share one cached session (goal + history resident), so
+  each step only adds a screenshot; the per-step re-see runs on **haiku** for speed (`GOD_GUIDE_MODEL`
+  overrides the model).
+- **Guidance, not automation:** it POINTS; the human clicks. An **auto** rung (guru moves the hands,
+  gating only irreversible steps — the ring becomes a dot) is the next layer — see `docs/GURU-LIVE.md`.
 
 ## Prerequisite
 
