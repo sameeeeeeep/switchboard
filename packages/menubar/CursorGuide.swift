@@ -63,7 +63,8 @@ struct GuideStep {
     // ── teach-mode additions (all optional; absent → behaves exactly like a tour/test step) ──
     var say: String? = nil          // line to speak (falls back to `text`)
     var point: CGPoint? = nil       // overlay top-left coords (already mapped from shot pixels in begin())
-    var copy: String? = nil         // TEXT clipboard payload to pre-load when the step shows (opt-in via autoClipboard)
+    var copy: String? = nil         // TEXT clipboard payload to pre-load when the step shows (explicit → always loads)
+    var value: String? = nil        // a value the step asks the user to TYPE — pre-copied so they paste (priority over copy)
     var copyImage: String? = nil    // IMAGE (file path / http url) to pre-load onto the clipboard — the user just pastes it
     var hold: Double? = nil         // ms to dwell before auto-advancing (teach only)
     var doneWhen: Predicate? = nil  // locally-sensed completion condition → auto-advance
@@ -198,6 +199,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var selectedOption = 0             // ⌥1/2/3 highlight; ⌥→ approves this one
     @Published var dockTop = false                // dock the card at the TOP when the target is in the bottom band
     @Published var placement: GuidePlacement = .dock   // notch / dock / cursor (⌥/ toggles notch↔dock)
+    var placementPinned = false                        // user MOVED the card (⌥/ or ⌥;) → keep that placement across steps; don't re-derive per step
     @Published var source: String? = nil          // provenance: who's asking (thread/agent/wrapp), e.g. "Claude Code · migrate-db"
     @Published var sourceId: String? = nil        // stable THREAD identity → a deterministic colour (tell threads apart)
     @Published var project: String? = nil         // provenance: the project this run is grounded in
@@ -899,6 +901,14 @@ final class CursorGuide {
     private var keyMonitorL: Any?
     private var mouseMonitorG: Any?
     private var mouseMonitorL: Any?
+    // The key-consuming TAP — layered on top of the passive monitors while a guide is active. A passive
+    // monitor can only OBSERVE, so an Option-chord (⌥;=…, ⌥/=÷, ⌥.=≥, ⌥M=µ, ⌥1/2/3=¡™£) also leaks its
+    // character into the focused field. A session tap sits in front of the app and returns nil to DELETE
+    // the event, so the chord does its action and NO character lands. It swallows ONLY the guide's own
+    // Option-chords; typing, esc, ⌘V and everything else pass straight through. If the tap can't be created
+    // (accessibility not yet granted) we simply don't install it → behaviour is exactly as before.
+    private var keyTap: CFMachPort?
+    private var keyTapSource: CFRunLoopSource?
 
     // ── run state
     private var mode: GuideMode = .tour
@@ -912,6 +922,7 @@ final class CursorGuide {
     // ── teach run state
     private var autoClipboard = false
     private var savedClipboard: String?      // the user's clipboard before the run — restored on end/abort
+    private var clipboardSaved = false       // did any step overwrite the clipboard? (drives capture-once + restore, independent of autoClipboard)
     private var doneStreak = 0               // consecutive satisfied ticks (debounce: advance on 2)
     private var ocrInFlight = false          // one Vision pass at a time
     private var ocrMatched = false           // last OCR verdict for the current step
@@ -1005,6 +1016,7 @@ final class CursorGuide {
             // ── teach fields (all optional) ──
             step.say = s["say"] as? String
             step.copy = s["copy"] as? String
+            step.value = s["value"] as? String
             step.copyImage = s["copyImage"] as? String
             if let h = (s["hold"] as? NSNumber)?.doubleValue { step.hold = h }
             if let t = (s["timeoutMs"] as? NSNumber)?.doubleValue { step.timeoutMs = t }
@@ -1041,6 +1053,7 @@ final class CursorGuide {
         self.mode = m
         self.title = title
         self.steps = parsed
+        model.placementPinned = false              // a fresh guide re-derives per-step smart placement again (until the user moves the card)
         self.rawRun = obj                          // keep the raw run so we can re-save it (with startIndex) to resume
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
@@ -1054,8 +1067,9 @@ final class CursorGuide {
         self.isActive = true
         self.spokenStepIdx = -1                     // fresh run → speak from the first step shown
         self.autoClipboard = autoClip
-        // Preserve the user's clipboard for the whole run when we're going to overwrite it per step.
-        if autoClip { savedClipboard = NSPasteboard.general.string(forType: .string) }
+        // Preserve the user's clipboard for the whole run — captured lazily the first time a step actually
+        // overwrites it (so explicit copy/value work even when autoClipboard is off, and we still restore).
+        clipboardSaved = false; savedClipboard = nil
 
         ensureOverlay()
         installMonitors()
@@ -1108,6 +1122,22 @@ final class CursorGuide {
         NSLog("[cursor-guide] trigger malformed — ignored (need {title, steps:[{text|instruction}]})")
     }
 
+    /// Save the user's real clipboard the FIRST time a step overwrites it, so end/abort can restore it —
+    /// independent of the `autoClipboard` flag (explicit copy/value load regardless, and must still restore).
+    private func captureClipboardOnce() {
+        if clipboardSaved { return }
+        savedClipboard = NSPasteboard.general.string(forType: .string)
+        clipboardSaved = true
+    }
+
+    /// The first http(s) URL mentioned in a step's caption, so "go to <site>" becomes one paste.
+    private func firstURL(in text: String) -> String? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let m = detector.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text))
+        guard let url = m?.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url.absoluteString
+    }
+
     private func showStep() {
         guard idx >= 0, idx < steps.count else { return }
         let s = steps[idx]
@@ -1137,8 +1167,11 @@ final class CursorGuide {
         // to the clickable NOTCH, everything else docks. ⌥/ can move it live afterwards.
         // Smart default: presence lives at the NOTCH. Only a step that POINTS at a target docks (bottom),
         // so the card never covers the ring's target. Everything else — asks, questions, reading — → notch.
-        if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
-        else { model.placement = (s.point != nil) ? .dock : .notch }
+        // Honor a manual placement (⌥/ or ⌥;) across steps: only re-derive when the user hasn't moved the card.
+        if !model.placementPinned {
+            if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
+            else { model.placement = (s.point != nil) ? .dock : .notch }
+        }
         applyMousePolicy()   // notch → the card becomes clickable; else pure click-through
         model.target = s.point        // teach: point the ring + anchor the chip; nil → chip rides the cursor
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
@@ -1154,14 +1187,26 @@ final class CursorGuide {
         // Pre-load the clipboard with this step's paste payload (opt-in; user's clipboard is restored on end).
         // An IMAGE wins if present (copyImage); else text (copy). The cursor hint tells the user it's ready.
         model.clipboardHint = nil
-        if autoClipboard, let imgSrc = s.copyImage, let img = loadImage(imgSrc) {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.writeObjects([img])
+        // Clipboard leverage: pre-load so the user just pastes. EXPLICIT payloads (image/value/copy) load
+        // whether or not autoClipboard is set — the author put them there on purpose. autoClipboard only
+        // governs the URL auto-detect heuristic (so legacy tours aren't surprised). Priority:
+        // image → value (type this) → copy (paste this) → a URL found in the step's own caption.
+        if let imgSrc = s.copyImage, let img = loadImage(imgSrc) {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([img])
             model.clipboardHint = "⌘V — image ready"
-        } else if autoClipboard, let c = s.copy {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(c, forType: .string)
+        } else if let v = s.value, !v.isEmpty {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(v, forType: .string)
+            model.clipboardHint = "⌘V — type ready"
+        } else if let c = s.copy, !c.isEmpty {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(c, forType: .string)
             model.clipboardHint = "⌘V — pasted for you"
+        } else if autoClipboard, let link = firstURL(in: s.text) {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(link, forType: .string)
+            model.clipboardHint = "⌘V — link ready"
         }
         armStepWatchers()
     }
@@ -1601,12 +1646,13 @@ final class CursorGuide {
         holdTimer?.invalidate(); holdTimer = nil
         doneTimer?.invalidate(); doneTimer = nil
         timeoutTimer?.invalidate(); timeoutTimer = nil
-        if autoClipboard {
+        if clipboardSaved {
             NSPasteboard.general.clearContents()
             if let s = savedClipboard { NSPasteboard.general.setString(s, forType: .string) }
             savedClipboard = nil
-            autoClipboard = false
+            clipboardSaved = false
         }
+        autoClipboard = false
         model.visible = false
         model.done = nil
         model.flash = nil
@@ -1694,6 +1740,7 @@ final class CursorGuide {
         mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] ev in
             MainActor.assumeIsolated { self?.updateMousePassthrough() }; return ev
         }
+        _ = installKeyTap()   // additive: swallow the Option-chords so their character never leaks (best-effort)
     }
 
     /// Set the overlay click-through UNLESS the pointer is over the card. Default-safe: only captures
@@ -1720,6 +1767,62 @@ final class CursorGuide {
     private func removeMonitors() {
         for mon in [flagsMonitorG, flagsMonitorL, keyMonitorG, keyMonitorL, mouseMonitorG, mouseMonitorL] { if let m = mon { NSEvent.removeMonitor(m) } }
         flagsMonitorG = nil; flagsMonitorL = nil; keyMonitorG = nil; keyMonitorL = nil; mouseMonitorG = nil; mouseMonitorL = nil
+        removeKeyTap()
+    }
+
+    // The guide's Option-chords (keyCodes bound in onKey under the OPTION modifier). Kept in sync with
+    // onKey's switch: ⌥→123/124, ⌥↑↓125/126, ⌥M46, ⌥.47, ⌥/44, ⌥;41, ⌥1/2/3 18/19/20. These are the ones
+    // whose bare Option press would ALSO emit a character, so the tap swallows exactly this set.
+    private static let optionChordCodes: Set<UInt16> = [124, 123, 126, 125, 46, 47, 44, 41, 18, 19, 20]
+
+    /// Side-effect-free test: would onKey act on this key AND is it an Option-chord that leaks a character?
+    /// (Mirrors onKey's own guards: active, not capturing feedback, Option held, no Control/Command.)
+    @MainActor private func isGuideOptionChord(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags) -> Bool {
+        isActive && !capturingFeedback
+            && flags.contains(.option) && !flags.contains(.control) && !flags.contains(.command)
+            && CursorGuide.optionChordCodes.contains(keyCode)
+    }
+
+    /// Install the consuming tap (best-effort). Returns false if the OS won't give us a tap (e.g.
+    /// accessibility not yet granted) — the passive monitors still run, so the chords still WORK, they
+    /// just also leak a character until the grant lands. Tap only runs while a guide is active.
+    private func installKeyTap() -> Bool {
+        removeKeyTap()
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        let callback: CGEventTapCallBack = { _, type, event, refcon in
+            guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+            let me = Unmanaged<CursorGuide>.fromOpaque(refcon).takeUnretainedValue()
+            // The system disables a tap if a callback is too slow or on user input — re-enable and pass.
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                MainActor.assumeIsolated { if let t = me.keyTap { CGEvent.tapEnable(tap: t, enable: true) } }
+                return Unmanaged.passUnretained(event)
+            }
+            guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+            let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+            let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+            var swallow = false
+            // We attach the source to the MAIN run loop, so the callback runs on the main thread.
+            MainActor.assumeIsolated {
+                if me.isGuideOptionChord(keyCode, flags) { _ = me.onKey(keyCode, flags); swallow = true }
+            }
+            return swallow ? nil : Unmanaged.passUnretained(event)
+        }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                          options: .defaultTap, eventsOfInterest: mask,
+                                          callback: callback, userInfo: refcon) else { return false }
+        keyTap = tap
+        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        keyTapSource = src
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    private func removeKeyTap() {
+        if let tap = keyTap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let src = keyTapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
+        keyTap = nil; keyTapSource = nil
     }
 
     // No-op: guide signals moved to fn+arrow keys (onKey) so they never collide with ⌃⌥ dictation, which
@@ -1754,14 +1857,14 @@ final class CursorGuide {
         case 125: beginFeedback(); return true                                         // ⌥↓ — screenshot + note
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
         case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
-        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
+        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); model.placementPinned = true; applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
         case 41:                                                                       // ⌥; — cycle notch → below → cursor
             let nextPl: GuidePlacement = model.placement == .notch ? .dock : (model.placement == .dock ? .cursor : .notch)
             if nextPl == .cursor, let ov = overlay {
                 let ml = NSEvent.mouseLocation                                          // screen bottom-left → overlay top-left
                 model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
             }
-            model.placement = nextPl; applyMousePolicy(); return true
+            model.placement = nextPl; model.placementPinned = true; applyMousePolicy(); return true
         case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
         case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
         case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C

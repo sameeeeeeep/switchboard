@@ -17,7 +17,9 @@ import { RELAY_DIR } from "../config.js";
  *                                     { off?: bool (global kill switch), routines?: { <id>: { off?: bool } } }
  *
  * Two files so neither side clobbers the other. The menubar's master switch (`off`) is the pause;
- * default is dormant on a fresh machine only because the shipped control file is `{ off: true }`.
+ * default is dormant on a fresh machine because the daemon SEEDS the control file `{ off: true }` at
+ * first boot (`seedControlIfAbsent`), and `control()` treats an absent/unreadable file as OFF anyway —
+ * autonomous routines never run without an explicit opt-in.
  * The doctrine boundary holds regardless: a routine tick may DRAFT (reversible), never ACT — every
  * irreversible move stays gated by a human. This is the "retire the RELAY_AUTOPILOT env flag" step:
  * a real, visible control replaces a hidden env var.
@@ -56,6 +58,7 @@ export class RoutineRegistry {
 
   start(): void {
     if (this.timer || this.routines.size === 0) return;
+    this.seedControlIfAbsent();             // fresh machine ⇒ default-off (the documented default) before any sweep
     this.writeStatus();                     // publish the registry the instant we boot, even before any tick
     this.timer = setInterval(() => void this.sweep(), SWEEP_MS);
     this.timer.unref?.();                   // never hold the process open just for routines
@@ -63,10 +66,22 @@ export class RoutineRegistry {
   }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
 
-  /** CONTROL: the menubar's pause. Global `off` stops everything; per-routine `off` stops one. */
+  /** Fresh machine: seed the master switch OFF so no routine runs without an explicit opt-in — the
+   *  documented default. Existing installs keep whatever the user last set (we never overwrite). */
+  private seedControlIfAbsent(): void {
+    if (existsSync(CONTROL_FILE)) return;
+    try {
+      mkdirSync(RELAY_DIR, { recursive: true });
+      writeFileSync(CONTROL_FILE, JSON.stringify({ off: true }, null, 2) + "\n");
+      this.log?.("seeded routines-control.json { off: true } — routines default-off until opted in");
+    } catch { /* best-effort; control() still defends by treating an absent file as OFF */ }
+  }
+
+  /** CONTROL: the menubar's pause. Global `off` stops everything; per-routine `off` stops one.
+   *  An absent or unreadable control file is treated as OFF — never a silent autonomous default. */
   private control(): RoutineControl {
-    try { if (existsSync(CONTROL_FILE)) return JSON.parse(readFileSync(CONTROL_FILE, "utf8")) as RoutineControl; } catch { /* bad json ⇒ treat as no control */ }
-    return {};
+    try { if (existsSync(CONTROL_FILE)) return JSON.parse(readFileSync(CONTROL_FILE, "utf8")) as RoutineControl; } catch { return { off: true }; }
+    return { off: true };
   }
   private isActive(id: string, ctrl: RoutineControl): boolean {
     if (ctrl.off) return false;                          // global kill switch (the menubar master toggle)
