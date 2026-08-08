@@ -352,7 +352,9 @@ struct HistorySurface: View {
                                       else { openRuns.insert(run.id) }
                                   },
                                   onReopen: {
-                                      OSLaunch.launchOr(run.wrapp, .init(artifact: run.prompt, kind: run.kind)) { onNavigate(.apps) }
+                                      // #3/C4 — audit receipts carry no result payload, so don't seed the wrapp
+                                      // with the synthesized verb ("Saved"). Open the tool clean by its kind.
+                                      OSLaunch.launchOr(run.wrapp, .init(kind: run.kind)) { onNavigate(.apps) }
                                   })
                 }
             }

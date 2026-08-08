@@ -40,7 +40,8 @@ struct OSLaunchContext {
     var artifact: String? = nil   // the thing the user clicked (a doc/mark/ad title)
     var kind: String? = nil       // its kind (doc/mark/ad/image/text…)
     var project: String? = nil    // the owning project id, when known
-    var isEmpty: Bool { artifact == nil && kind == nil && project == nil }
+    var artifactKey: String? = nil // #3 — the storage key to REOPEN the exact item (not just relaunch the tool)
+    var isEmpty: Bool { artifact == nil && kind == nil && project == nil && artifactKey == nil }
 }
 
 enum OSLaunch {
@@ -224,7 +225,7 @@ let OS_GROUPS: [RailGroup] = [
 // =====================================================================================================
 
 struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
-struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made" }
+struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made"; var artifactKey: String? = nil }
 struct SpotFile: Identifiable { let id = UUID(); let name: String; let path: String; let folder: String }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
 struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = ""; var updatedMs: Double = 0 }
@@ -287,7 +288,8 @@ func osRecentWork(limit: Int = 16) -> [SBArtifact] {
         let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
         guard m > 0 else { return }
         let (title, cat, kind) = classifyArtifact(path, key: key)
-        scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
+        let ak = key.hasSuffix(".json") ? String(key.dropLast(5)) : key   // #3 — the storage key to reopen
+        scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat, artifactKey: ak), m))
     }
     for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
         let dir = base + "/" + origin
@@ -1091,7 +1093,14 @@ struct RecentWorkGrid: View {
                 Spacer(minLength: 0)
             }
             LazyVGrid(columns: cols, spacing: 14) {
-                ForEach(shown) { w in ArtifactCard(art: w) }
+                ForEach(shown) { w in
+                    // #3 — the cards were inert (a click did NOTHING). Now a tap opens the item: it carries the
+                    // artifactKey so a wrapp can reopen the exact blob (once launchFromOS forwards the key +
+                    // the wrapp loads by key); today it at least launches the right tool instead of dying.
+                    ArtifactCard(art: w)
+                        .contentShape(Rectangle())
+                        .onTapGesture { OSLaunch.launchOr(w.app, .init(artifact: w.title, kind: w.kind, artifactKey: w.artifactKey)) { } }
+                }
             }
         }
     }
