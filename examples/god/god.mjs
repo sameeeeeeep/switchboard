@@ -29,7 +29,7 @@
  * real ~/.relay. In production it attaches to the menubar daemon instead.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, renameSync, fstatSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, renameSync, fstatSync, statSync, readdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -78,6 +78,40 @@ function activeProject() {
     const ctxs = JSON.parse(readFileSync(join(REAL_RELAY, "contexts.json"), "utf8"));
     return (Array.isArray(ctxs) ? ctxs : []).find((c) => c.id === id) || null;
   } catch { return null; }
+}
+
+// P1.1 — fold the active project's VAULT into God's context, not just the contexts.json blob. This is what
+// makes "your Claude sees your work" true: a curated data subset + key decisions (handling the object-map
+// shape) + open tasks + note gists read from the bound folder. Bounded so it never blows the prompt.
+function projectBrief(proj) {
+  if (!proj) return "";
+  const d = proj.data || {};
+  const parts = [`\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.`];
+  const pick = ["oneLine", "summary", "positioning", "audience", "voice", "insight", "state"]
+    .map((k) => d[k] && `${k}: ${String(d[k]).slice(0, 240)}`).filter(Boolean);
+  if (pick.length) parts.push("Project: " + pick.join(" · "));
+  let dec = [];
+  if (Array.isArray(d.decisions)) dec = d.decisions.map((x) => typeof x === "string" ? x : (x.title || x.body)).filter(Boolean);
+  else if (d.decisions && typeof d.decisions === "object") dec = Object.values(d.decisions).map((x) => x && (x.title || x.body)).filter(Boolean);
+  if (dec.length) parts.push("Key decisions: " + dec.slice(0, 6).join(" · "));
+  const folder = d.folder;
+  if (folder && existsSync(folder)) {
+    try {
+      const tf = join(folder, "tasks.md");
+      if (existsSync(tf)) {
+        const open = readFileSync(tf, "utf8").split("\n").filter((l) => /^- \[ \]/.test(l))
+          .map((l) => l.replace(/^- \[ \]\s*/, "").replace(/\s*[@#]\S+/g, "").trim()).filter(Boolean).slice(0, 8);
+        if (open.length) parts.push("Open tasks:\n" + open.map((t) => "- " + t).join("\n"));
+      }
+      const notes = readdirSync(folder).filter((f) => f.startsWith("note-") && f.endsWith(".md")).slice(0, 3);
+      const gists = notes.map((f) => {
+        const body = readFileSync(join(folder, f), "utf8").replace(/^---[\s\S]*?---\s*/, "");
+        return "- " + body.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 2).join(" ").slice(0, 160);
+      }).filter((g) => g.length > 2);
+      if (gists.length) parts.push("Recent notes:\n" + gists.join("\n"));
+    } catch { /* vault unreadable → skip, never block the turn */ }
+  }
+  return parts.join("\n");
 }
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
@@ -880,10 +914,7 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       (prompt || (noScreen ? "What can you help me with?" : "What's on my screen? Point me at the most important thing and help.")) +
       screenNote + pointLine + fileCtx.block;
     const proj = activeProject();
-    const projLine = proj
-      ? `\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.` +
-        (proj.data ? ` Project context: ${JSON.stringify(proj.data).slice(0, 700)}` : "")
-      : "";
+    const projLine = projectBrief(proj);   // P1.1 — curated data + decisions + open tasks + note gists from the vault
     // RUN discovery: when acting, ask the daemon which wrapp/connector tools God's grant covers and
     // advertise them so the model can only ever propose a tool that actually exists + is allowed.
     // Empty (no connectors configured / not granted) → no RUNNABLE block, so the model won't invent one.
