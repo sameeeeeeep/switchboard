@@ -1,6 +1,6 @@
 # Switchboard — Vision Spec
 
-*"MetaMask, but for AI." A local sidekick daemon holds the visitor's Claude and their MCP tools; a browser extension injects `window.claude` into every page; any website runs on the visitor's own model, tools, context, and data — the operator holds no API key and pays no inference bill. Every sensitive action is brokered through explicit, scoped, per-origin consent.*
+*Your private AI workspace. A local sidekick daemon holds the visitor's Claude and their MCP tools; a browser extension injects `window.claude` into every page; any website runs on the visitor's own model, tools, context, and data — the operator holds no API key and pays no inference bill. Every sensitive action is brokered through explicit, scoped, per-origin consent.*
 
 ---
 

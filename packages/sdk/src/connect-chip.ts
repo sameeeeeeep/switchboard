@@ -4,7 +4,7 @@ import { Relay, whenRelayReady } from "./index.js";
 
 /**
  * mountConnect — the ONE standard header affordance every wrapp drops in, so connecting feels the
- * same everywhere and the app becomes "yours" the moment you connect. It is the MetaMask account
+ * same everywhere and the app becomes "yours" the moment you connect. It is the account / connect
  * button for Switchboard:
  *
  *   • not installed        → "Get Switchboard"     (menu: Add to Chrome / full setup guide)
@@ -83,7 +83,7 @@ const STYLE = `
 .chip, .btn { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; border: 0;
   font-size: 13px; font-weight: 600; line-height: 1; border-radius: 10px; }
 /* The canonical connect lockup — the SAME mark + wordmark on every wrapp, so users recognize
-   "Connect Switchboard" the way they knew the MetaMask button. Dark pill, lime glyph, locked in
+   "Connect Switchboard" the way they'd know an account button. Dark pill, lime glyph, locked in
    the shadow root so a host app can't restyle it away. */
 .btn { padding: 9px 15px 9px 11px; background: #12151C; color: #E8EDF4; border: 1px solid #2C3444; }
 .btn.connect:hover { background: #161B24; border-color: #3A4A18; }
@@ -149,7 +149,7 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
   let seq = 0; // guards against out-of-order async renders
   let wasConnected = false; // so onConnect/onDisconnect fire on real transitions, incl. auto-reconnect on load
   let lastProjectKey: string | null | undefined; // undefined = never observed; detects panel-side switches
-  // "Disconnect this app" is a SOFT, per-session disconnect (like MetaMask disconnecting a site): the
+  // "Disconnect this app" is a SOFT, per-session disconnect (a per-site disconnect): the
   // grant persists (full revoke is panel-only), so we forget locally and reconnect silently on demand.
   let sessionDisconnected = false;
 

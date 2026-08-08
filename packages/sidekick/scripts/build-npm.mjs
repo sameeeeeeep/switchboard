@@ -39,7 +39,7 @@ const deps = Object.fromEntries(EXTERNAL.map((d) => [d, src.dependencies[d]]));
 writeFileSync(join(OUT, "package.json"), JSON.stringify({
   name: "@thelastprompt/switchboard",
   version: VERSION,
-  description: "Switchboard sidekick — the local daemon that lends your own Claude, tools, context and data to any wrapp, under per-site consent. MetaMask, but for AI.",
+  description: "Switchboard sidekick — the local daemon that lends your own Claude, tools, context and data to any wrapp, under per-site consent. Your data stays yours.",
   bin: { switchboard: "./cli.js" },
   type: "module",
   engines: { node: ">=20" },

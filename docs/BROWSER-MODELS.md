@@ -244,7 +244,7 @@ Per the backend-expansion decision (models ≠ app-scope → `requirements` + `e
 
 `local-browser` is the tier that makes the airgapped-runner story complete for the
 store: an untrusted wrapp in the sandbox, routed to a browser model, is end-to-end
-incapable of exfiltration — the strongest "MetaMask for AI" demo we have. Panel shows
+incapable of exfiltration — the strongest bring-your-own-AI demo we have. Panel shows
 the tier badge on every origin row; the store (Phase 5) gets a "runs fully local"
 filter driven by wrapp `requirements` metadata.
 
