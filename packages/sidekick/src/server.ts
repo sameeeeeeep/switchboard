@@ -957,6 +957,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
         case "set": {
           if (grant.mode === "readonly") { log("set", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
           store.set(origin, requireKey(req.key), req.value ?? "");
+          // 2b — attribute the artifact to the project this origin is currently lent (best-effort sidecar),
+          // so the OS can scope "recent work" to the active project.
+          try { const pid = this.deps.contexts.active(origin)?.id; if (pid) store.attribute(origin, requireKey(req.key), pid); } catch { /* best-effort */ }
           log("set", "ok");
           return { ok: true };
         }

@@ -267,30 +267,54 @@ func relAgo(_ ms: Double) -> String {
 //     dictations, wrapp runs that keep no files. Storage mtimes alone made week-old blobs pose as
 //     "recent" while yesterday's actual work (no blob) was invisible.
 func osRecentWork(limit: Int = 16) -> [SBArtifact] {
-    let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
+    let H = NSHomeDirectory() as NSString
+    let base = H.appendingPathComponent(".relay/storage")
     let fm = FileManager.default
     let now = Date().timeIntervalSince1970 * 1000
+    // 2b — SCOPE recents to the ACTIVE PROJECT. An artifact belongs to it when: it's in the project's own
+    // vault folder, OR its origin's attribution sidecar maps its key → the project, OR (no per-key record)
+    // the origin is currently lent to the project. With no active project we fall back to global + sessions.
+    let activeId = osActiveId()
+    let sel = (readJSON(H.appendingPathComponent(".relay/context-selection.json")) as? [String: String]) ?? [:]
+    var activeFolder: String? = nil
+    if let id = activeId, let ctxs = readJSON(H.appendingPathComponent(".relay/contexts.json")) as? [[String: Any]],
+       let c = ctxs.first(where: { $0["id"] as? String == id }) {
+        activeFolder = (c["data"] as? [String: Any])?["folder"] as? String
+    }
     var scored: [(SBArtifact, Double)] = []
+    func addFile(_ path: String, key: String, app: String) {
+        let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+        guard m > 0 else { return }
+        let (title, cat, kind) = classifyArtifact(path, key: key)
+        scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
+    }
     for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
         let dir = base + "/" + origin
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
               let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
         let app = wrappFromOrigin(origin)
-        for f in files where f.hasSuffix(".json") {
-            let path = dir + "/" + f
-            let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
-            guard m > 0 else { continue }
-            let (title, cat, kind) = classifyArtifact(path, key: f)
-            scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
+        let attr = (readJSON(dir + "/.attribution.json") as? [String: String]) ?? [:]
+        let originLentToActive = (activeId != nil && sel[origin] == activeId)
+        for f in files where f.hasSuffix(".json") && f != ".attribution.json" {
+            if let id = activeId {                                  // scoped: only THIS project's artifacts
+                let pid = attr[f] ?? attr[String(f.dropLast(5))]
+                guard pid == id || (pid == nil && originLentToActive) else { continue }
+            }
+            addFile(dir + "/" + f, key: f, app: app)
         }
     }
-    // audit sessions fill in the work that left no file. One card per app (its latest session);
-    // if a stored artifact from the same app already stands for that session, the file wins.
-    for s in osSessions() {
-        if scored.contains(where: { $0.0.app == s.app && abs($0.1 - s.endMs) < 3 * 3_600_000 }) { continue }
-        scored.append((SBArtifact(title: sessionTitle(s), app: s.app, time: relAgo(now - s.endMs),
-                                  kind: "session", category: "session"), s.endMs))
+    // the active project's own vault folder — its files ARE this project's artifacts
+    if let folder = activeFolder, let files = try? fm.contentsOfDirectory(atPath: folder) {
+        for f in files where f.hasSuffix(".json") { addFile(folder + "/" + f, key: f, app: "bank") }
+    }
+    // audit sessions fill in work that left no file — GLOBAL view only (scoped recents = this project's artifacts).
+    if activeId == nil {
+        for s in osSessions() {
+            if scored.contains(where: { $0.0.app == s.app && abs($0.1 - s.endMs) < 3 * 3_600_000 }) { continue }
+            scored.append((SBArtifact(title: sessionTitle(s), app: s.app, time: relAgo(now - s.endMs),
+                                      kind: "session", category: "session"), s.endMs))
+        }
     }
     // strict recency — no category floats above; "recent" must mean recent or the section lies.
     return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }

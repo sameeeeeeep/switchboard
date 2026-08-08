@@ -158,6 +158,22 @@ export class StorageStore {
     }
   }
 
+  /** 2b — record which project (context id) an artifact key belongs to, in a per-origin `.attribution.json`
+   *  sidecar. Non-invasive: the wrapp's own blob is never touched. Lets the OS scope "recent work" to the
+   *  active project. Best-effort — attribution must never fail a real write. */
+  attribute(origin: string, key: string, projectId: string): void {
+    if (!projectId) return;
+    try {
+      const { folder } = this.folderFor(origin);
+      const f = join(folder, ".attribution.json");
+      let map: Record<string, string> = {};
+      if (existsSync(f)) { try { map = JSON.parse(readFileSync(f, "utf8")) as Record<string, string>; } catch { map = {}; } }
+      map[key.endsWith(".json") ? key : key + ".json"] = projectId;
+      mkdirSync(resolve(folder), { recursive: true });
+      writeFileSync(f, JSON.stringify(map, null, 2), { mode: 0o600 });
+    } catch { /* best-effort */ }
+  }
+
   delete(origin: string, key: string): boolean {
     const file = this.fileFor(origin, key);
     if (!existsSync(file)) return false;
