@@ -30,9 +30,11 @@ never hold your API key and never see your data.
 ## Apps
 
 ### Included (native, in the box)
-- **Flow** — workflows, automations, and multi-step tasks.
-- **God** — your all-purpose assistant, with access to every capability.
-- **Guru** — deep research and analysis.
+- **Flow** — dictation, done right. Talk and it types — anywhere on your Mac, transcribed on-device.
+- **God** — your all-purpose assistant. It sees your screen and can point, type, click, and run apps for
+  you, always under your consent.
+- **Guru** — a guide for anything. It walks you through any task on any app step by step, adapting live to
+  what's actually on your screen.
 
 ### Available in the store
 - **BrandBrain** — brand strategy.
