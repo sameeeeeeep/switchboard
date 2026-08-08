@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { RELAY_DIR } from "../config.js";
+import { slugOrigin } from "../storage/store.js";
 import type { Routine } from "./registry.js";
 
 /**
@@ -32,7 +33,15 @@ interface AutopilotDeps {
 const CONTEXTS_FILE = join(RELAY_DIR, "contexts.json");
 const SELECTION_FILE = join(RELAY_DIR, "context-selection.json");
 const AUTOPILOT_FILE = join(RELAY_DIR, "autopilot.json");
-const STORE_DIR = join(RELAY_DIR, "storage", "https_sameep.ai");
+// The cockpit reads the portfolio via `claude_storage {op:"get", key:"autopilot-portfolio"}`, which
+// resolves to the storage sandbox of the ORIGIN the cockpit page runs under. So the routine MUST write
+// into that SAME origin's folder, or the cockpit loads null (the "empty" state). This origin is a single
+// coupling point between the daemon routine and the cockpit's serve origin — it MUST equal wherever the
+// cockpit is actually served/launched (see the native-window/serving decision in docs/GO-LIVE.md, task 8).
+// Configurable so it can be pointed at the real deploy origin without a code change; slugOrigin keeps it
+// in lockstep with the storage layer's own folder-naming (no hand-maintained "https_sameep.ai" literal).
+const AUTOPILOT_ORIGIN = process.env.RELAY_AUTOPILOT_ORIGIN || "https://sameep.ai";
+const STORE_DIR = join(RELAY_DIR, "storage", slugOrigin(AUTOPILOT_ORIGIN));
 const PORTFOLIO_FILE = join(STORE_DIR, "autopilot-portfolio.json");
 
 function readJson<T>(path: string): T | null {

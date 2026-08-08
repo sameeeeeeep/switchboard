@@ -102,6 +102,54 @@ mkdir -p "$RES/god/node_modules/ws"
 cp -R "$WS_DIR/." "$RES/god/node_modules/ws/"
 say "God client staged (+ ws)"
 
+# ---------- 6c. bundle whisper.cpp so Flow's dictation works with ZERO user setup ----------
+# Without a bundled engine, Flow's STT needs the user to `brew install whisper-cpp` + fetch a model —
+# a dealbreaker on a fresh install. We ship a SELF-CONTAINED whisper-cli (static, CPU-only, no Metal
+# metallib to carry) + the tiny English model in Resources/stt; RelayMenuBar points RELAY_WHISPER_BIN/
+# MODEL at them (and prefers them over Homebrew). Best-effort + CACHED under build/whisper-cache: if the
+# toolchain is missing or a download fails, warn and continue — Flow just degrades to the prior
+# "install whisper" behaviour, never blocking the release.
+STT_OUT="$RES/stt"; mkdir -p "$STT_OUT"
+STT_CACHE="$HERE/build/whisper-cache"; mkdir -p "$STT_CACHE"
+WHISPER_TAG="${RELAY_WHISPER_TAG:-v1.7.4}"
+STT_MODEL="ggml-tiny.en.bin"   # ~75MB; swap to ggml-base.en.bin for better accuracy at ~142MB
+STT_MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${STT_MODEL}"
+
+if [ ! -f "$STT_CACHE/$STT_MODEL" ]; then
+  say "fetching whisper model ($STT_MODEL)…"
+  if curl -fL --retry 2 "$STT_MODEL_URL" -o "$STT_CACHE/$STT_MODEL.tmp" 2>/dev/null; then
+    mv "$STT_CACHE/$STT_MODEL.tmp" "$STT_CACHE/$STT_MODEL"
+  else
+    rm -f "$STT_CACHE/$STT_MODEL.tmp"; say "⚠︎ whisper model download failed — Flow will need a user-installed model"
+  fi
+fi
+
+if [ ! -x "$STT_CACHE/whisper-cli" ]; then
+  if command -v cmake >/dev/null && command -v git >/dev/null; then
+    say "building whisper.cpp $WHISPER_TAG (self-contained, CPU)…"
+    WSRC="$STT_CACHE/src"; rm -rf "$WSRC"
+    if git clone --depth 1 --branch "$WHISPER_TAG" https://github.com/ggerganov/whisper.cpp "$WSRC" >/dev/null 2>&1 \
+       && cmake -S "$WSRC" -B "$WSRC/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=OFF >/dev/null 2>&1 \
+       && cmake --build "$WSRC/build" --target whisper-cli -j >/dev/null 2>&1 \
+       && [ -x "$WSRC/build/bin/whisper-cli" ]; then
+      cp "$WSRC/build/bin/whisper-cli" "$STT_CACHE/whisper-cli"; say "whisper-cli built"
+    else
+      say "⚠︎ whisper.cpp build failed — Flow will need a user-installed whisper"
+    fi
+  else
+    say "⚠︎ cmake/git not found — skipping bundled STT (Flow will need a user-installed whisper)"
+  fi
+fi
+
+if [ -x "$STT_CACHE/whisper-cli" ] && [ -f "$STT_CACHE/$STT_MODEL" ]; then
+  cp "$STT_CACHE/whisper-cli" "$STT_OUT/whisper-cli"; chmod +x "$STT_OUT/whisper-cli"
+  cp "$STT_CACHE/$STT_MODEL" "$STT_OUT/$STT_MODEL"
+  say "bundled whisper.cpp STT — Flow dictation works out of the box ($(du -sh "$STT_OUT" | cut -f1))"
+else
+  rmdir "$STT_OUT" 2>/dev/null || true
+  say "⚠︎ bundled STT incomplete — Flow falls back to a user-installed whisper"
+fi
+
 # ---------- 7. compile the menubar app + Info.plist ----------
 say "compiling the menu-bar app (all Swift files)…"
 # Keep this list in sync with build.sh (the dev build) — the OS surface files below drifted out once
@@ -179,12 +227,15 @@ if [ -n "${IDENTITY:-}" ]; then
   # back in, and a node without allow-jit cannot boot V8 at all (step 10 catches it).
   codesign --force --options runtime --timestamp \
     --entitlements "$HERE/node.entitlements" --sign "$IDENTITY" "$RES/node"
+  # our bundled whisper.cpp CLI (if present) — hardened runtime, no special entitlements (pure compute).
+  [ -f "$RES/stt/whisper-cli" ] && codesign --force --options runtime --timestamp --sign "$IDENTITY" "$RES/stt/whisper-cli"
   # Relay.entitlements gives the APP itself mic (audio-input) + automation (apple-events) so the
   # hardened runtime never blocks God's ear/hands, and so the app is the microphone client TCC lists.
   codesign --force --options runtime --timestamp \
     --entitlements "$HERE/Relay.entitlements" --sign "$IDENTITY" "$STAGE"
 else
   say "signing ad-hoc (no Developer ID identity in keychain)"
+  [ -f "$RES/stt/whisper-cli" ] && codesign --force --sign - "$RES/stt/whisper-cli"
   codesign --force --sign - "$STAGE"
 fi
 codesign -v "$STAGE" || die "app signature verify failed"

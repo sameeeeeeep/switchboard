@@ -87,12 +87,18 @@ func writeDaemonPlist(to path: String = PLIST) throws {
     // FAST STT: if whisper.cpp + a ggml model are installed, prefer them — localSTT checks WHISPER_BIN
     // before the STT_CMD fallback, and whisper.cpp is ~0.5s warm vs OpenAI whisper's ~4s. Detected at
     // plist-write time; the launcher's plistEnvOutdated refresh re-runs this after an install.
-    let wcpp = ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+    // Prefer the whisper.cpp we SHIP (Resources/stt) so Flow's dictation works with ZERO user setup on a
+    // fresh install; fall back to a user-installed whisper.cpp (Homebrew + a model in ~/.relay/models).
+    let bundledSTT = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/whisper-cli")
+    let bundledModel = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/ggml-tiny.en.bin")
+    let wcpp = [bundledSTT, "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
     let mdir = (home as NSString).appendingPathComponent(".relay/models")
-    let model = (try? FileManager.default.contentsOfDirectory(atPath: mdir))?.first { $0.hasSuffix(".bin") && ($0.contains("base.en") || $0.contains("ggml")) }
-    if let wcpp = wcpp, let model = model {
+    let userModel = (try? FileManager.default.contentsOfDirectory(atPath: mdir))?.first { $0.hasSuffix(".bin") && ($0.contains("base.en") || $0.contains("ggml")) }
+    let modelPath: String? = FileManager.default.fileExists(atPath: bundledModel) ? bundledModel
+        : userModel.map { (mdir as NSString).appendingPathComponent($0) }
+    if let wcpp = wcpp, let modelPath = modelPath {
         envVars["RELAY_WHISPER_BIN"] = wcpp
-        envVars["RELAY_WHISPER_MODEL"] = (mdir as NSString).appendingPathComponent(model)
+        envVars["RELAY_WHISPER_MODEL"] = modelPath
     }
     let spec: [String: Any] = [
         "Label": LABEL,
@@ -3105,6 +3111,8 @@ struct ActionConsentDrop: View {
     private var lastGodAudio: String?             // the last voice turn's clip — so switching the project can RE-RUN it grounded anew
     private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
+    private var pointMarkPinned = false           // explicit, time-limited latch to keep a model-chosen ring briefly AFTER a run ends — the sanctioned replacement for the old buggy `target != nil` gate
+    private var pointMarkPinTimer: Timer?         // auto-expiry that forces a pinned mark back to idle so the ring can never be orphaned
     // ── Ambient mode (strictly-local awareness → contextual helper canvas) ────────────────────────
     private let ambientSensor = AmbientSensor()   // NSWorkspace + AX detection; no network/screenshot/model
     private var ambientPanel: NotchPanel?         // the helper canvas, a notch drop like God's pills
@@ -4963,9 +4971,14 @@ struct ActionConsentDrop: View {
     // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —
     //    a pure Wispr-Flow-style dictation gesture folded in as God's sibling. ─────────────────────────
     private func whisperCliPath() -> String? {
-        ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+        // The whisper.cpp we ship (Resources/stt) wins so ⌃⌥ dictation works with zero user setup; then Homebrew.
+        let bundled = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/whisper-cli")
+        return [bundled, "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
     }
     private func whisperModelPath() -> String? {
+        // The bundled tiny model wins; else a user-installed model in ~/.relay/models.
+        let bundled = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/ggml-tiny.en.bin")
+        if FileManager.default.fileExists(atPath: bundled) { return bundled }
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/models")
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return nil }
         // Prefer an English base model, else any ggml .bin.
@@ -5315,6 +5328,7 @@ struct ActionConsentDrop: View {
     // The proven pipeline: hand god.mjs the staged references (GOD_IMAGES screenshots + GOD_FILES) → vision+
     // persona → speak; poll god-state for the notch phase; gate every write. Screens+files come from godRefs.
     @MainActor private func spawnGod(point: CGPoint?, audio: String?, instruction: String?, node: String, god: String, skill: String? = nil, sessionOverride: String? = nil, forceFullScreen: Bool = false) {
+        pointMarkPinned = false; pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil   // a new run supersedes any pinned afterglow from the last one
         setGlow(.thinking)
         godStateTimer?.invalidate()
         godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -5391,8 +5405,10 @@ struct ActionConsentDrop: View {
             // re-triggered). If so, THIS stale process's exit must NOT reset the live run — otherwise it
             // shuts the notch out from under it. Only the current process's termination cleans up.
             guard let self, self.godProc === p else { return }
-            self.godProc = nil; self.godStateTimer?.invalidate(); self.godRunning = false; self.glowModel.target = nil
+            self.godProc = nil; self.godStateTimer?.invalidate(); self.godRunning = false
             self.clearGodRefs()   // the turn consumed them — don't let a screenshot/file leak into the next ⌃⌥ dictation
+            // Don't nil the target here: a just-read model point would be wiped before it's drawn. setGlow(.idle)
+            // is authoritative — it keeps a PINNED mark up briefly, otherwise tears the ring down.
             self.setGlow(.idle); self.checkPendingAction()
         } }
         godProc = proc
@@ -5628,7 +5644,17 @@ struct ActionConsentDrop: View {
     @MainActor private func readGodState() {
         readGodPoint()   // model-chosen [POINT] → the shared pulsing ring (God + guide use one ring)
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
-        let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Staleness guard: God rewrites its phase every few seconds during a live run and writes "idle" when
+        // it finishes. If a non-idle phase (other than user-gated "consent") has sat UNCHANGED for a long
+        // time, God died/hung WITHOUT writing idle — so a stale "speaking"/"thinking" would otherwise keep
+        // the glow (and its ring) alive forever. Treat an old non-idle state as idle. 45s is well beyond a
+        // normal think+speak turn but bounds any orphan.
+        if !s.isEmpty, s != "consent",
+           let m = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+           Date().timeIntervalSince(m) > 45 {
+            s = ""
+        }
         switch s {
         case "listening": setGlow(.listening); onboard.note(.glance)   // tour step 0: ⌃⌃ fired
         case "thinking": setGlow(.thinking); onboard.note(.glance)
@@ -5639,28 +5665,55 @@ struct ActionConsentDrop: View {
             // drop the local hands use, once, and write the decision back for god.mjs to execute.
             setGlow(.thinking)
             if !godConsentPending { godConsentPending = true; showRunConsent() }
-        default: break   // idle handled on termination
+        default:
+            // idle / empty / absent god-state → God isn't in an active phase. Make the POLLER authoritative
+            // about teardown: the process terminationHandler never fires for a God run this app didn't spawn
+            // (or one that was killed), so relying on it alone orphaned the ring. Return to idle (a PINNED
+            // model mark still gets its brief afterglow inside setGlow). Guarded so it's a no-op when nothing
+            // is showing — never a per-tick thrash.
+            if glowModel.state != .idle || glowModel.target != nil { setGlow(.idle) }
         }
         // setGlow() drives the cursor glow AND the notch phase drop; nothing more to do per tick.
     }
 
-    // God's model-chosen [POINT] → the SAME pulsing ring the guide uses. Today glowModel.target is only
-    // ever set from the user's ⌃⌥ click (triggerGod ~L4981); companion.point() is a console stub, so a
-    // point the MODEL chose never reaches the ring. This reads ~/.relay/god-point.json (x,y in GLOBAL
-    // bottom-left screen points, matching the ⌃⌥-click convention) and marks the ring from it — so God
-    // and the teach-guide share one ring visual.
-    //
-    // TODO(god.mjs, out of this file's scope): god.mjs must WRITE ~/.relay/god-point.json when it parses
-    // a [POINT:x,y] from the model (and delete/emit {} to clear). This is the READ side only; until the
-    // write side ships this is simply inert (the file never appears). god.mjs is owned by another agent.
+    // God's model-chosen [POINT] → the SAME pulsing ring the guide uses. companion.point() is a console
+    // stub, so a point the MODEL chose reaches the ring only through this file. god.mjs writes
+    // ~/.relay/god-point.json in SCREENSHOT-PIXEL coordinates (the frame the model actually reasoned over):
+    //   { "x": <int px>, "y": <int px>, "w": <int screenshot width px>, "h": <int screenshot height px>,
+    //     "label": "...", "ts": <epoch ms> }
+    // We map px → the main screen by fraction (resolution-independent), then into the overlay's top-left
+    // coordinate space — the SAME space the manual ⌃⌥ point and GodGlowView's ring use.
     @MainActor private func readGodPoint() {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-point.json")
-        guard FileManager.default.fileExists(atPath: path) else { return }   // absent → keep any ⌃⌥-set mark
-        guard let obj = readJSON(path) as? [String: Any] else { return }
-        // An explicit clear ({} or {"clear":true} / no numeric x,y) drops the mark.
-        guard let x = (obj["x"] as? NSNumber)?.doubleValue, let y = (obj["y"] as? NSNumber)?.doubleValue,
-              let screen = NSScreen.main else { glowModel.target = nil; return }
-        glowModel.target = CGPoint(x: x - screen.frame.minX, y: screen.frame.maxY - y)   // → overlay top-left (same as L4981)
+        guard FileManager.default.fileExists(atPath: path) else { return }   // absent → keep any current mark
+        let obj = readJSON(path) as? [String: Any]
+        // CONSUME-ONCE: delete on read (whatever it contained) so a stale file from a prior run can never
+        // re-mark an old location on the next poll.
+        try? FileManager.default.removeItem(atPath: path)
+        // An explicit clear ({} / malformed / no numeric x,y) drops the mark and any pinned afterglow.
+        guard let obj = obj,
+              let xN = obj["x"] as? NSNumber, let yN = obj["y"] as? NSNumber,
+              let wN = obj["w"] as? NSNumber, let hN = obj["h"] as? NSNumber,
+              let screen = NSScreen.main else {
+            glowModel.target = nil; pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
+            return
+        }
+        let w = wN.doubleValue, h = hN.doubleValue
+        guard w > 0, h > 0 else {   // guard div-by-zero → treat a degenerate frame as a clear
+            glowModel.target = nil; pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
+            return
+        }
+        // Screenshot-pixel → screen fraction (top-left origin) → overlay top-left points. This matches the
+        // manual point at triggerGod (`x - minX`, `maxY - y`): for the main screen origin, x-from-left and
+        // y-from-top are exactly `width*fracX` and `height*fracY`.
+        let fracX = xN.doubleValue / w
+        let fracY = yN.doubleValue / h
+        let overlayX = screen.frame.width * fracX
+        let overlayY = screen.frame.height * fracY
+        glowModel.target = CGPoint(x: overlayX, y: overlayY)
+        pointMarkPinned = true   // a fresh model-chosen mark survives briefly after the run ends (see setGlow/terminationHandler)
     }
 
     // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
@@ -5716,10 +5769,34 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor private func setGlow(_ s: GlowState) {
-        if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
         if s != .idle, ambientPanel?.isVisible == true { ambientPanel?.orderOut(nil); ambientContextKey = "" }   // God takes the notch
+        // A model-chosen mark that was explicitly PINNED (readGodPoint) survives briefly after the run
+        // ends — but only as a single, time-limited latch, NEVER the old `target != nil` gate that left the
+        // ring pulsing forever. Sparkles stop (phase is idle) while the ring lingers; a timer then forces
+        // authoritative idle, guaranteeing the ring can't be orphaned.
+        if s == .idle && pointMarkPinned && glowModel.target != nil {
+            glowModel.state = .idle
+            stopGlowTracking()
+            updateGodStatusDrop(.idle)
+            if pointMarkPinTimer == nil {
+                pointMarkPinTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.pointMarkPinned = false
+                        self.pointMarkPinTimer = nil
+                        self.setGlow(.idle)   // expiry → real teardown (pin now clear)
+                    }
+                }
+            }
+            return
+        }
         glowModel.state = s
         if s == .idle {
+            // idle is authoritative: clear the mark and tear the overlay down. The ring's lifetime follows
+            // one source of truth — state → idle always removes it.
+            glowModel.target = nil
+            pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
             glow.orderOut(nil); stopGlowTracking()
         } else {
             if let scr = NSScreen.main { glow.setFrame(scr.frame, display: false) }  // re-anchor (resolution/monitor may have changed)

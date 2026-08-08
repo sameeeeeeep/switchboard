@@ -72,6 +72,9 @@ export interface GuideStepFile {
   point?: Point;
   /** Non-secret helper content pre-loaded onto the clipboard for this step (see `autoClipboard`). */
   copy?: string;
+  /** A value the step asks the user to TYPE — pre-copied so they paste instead of type (non-secret).
+   *  Takes clipboard priority over `copy`; the native runtime shows a "type ready" hint. */
+  value?: string;
   /** Milliseconds to keep the step visible before auto-advancing. */
   hold?: number;
   /** Local auto-advance condition (AX first, Vision OCR only when needed). */
