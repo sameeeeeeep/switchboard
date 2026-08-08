@@ -19,11 +19,68 @@ Switchboard brings everything together in one private workspace where AI apps sh
 data**. The model, the tools, the context, and the files stay on your machine. Apps bring only a UI — they
 never hold your API key and never see your data.
 
-- **Bring your own AI** — your Claude subscription, a local model, or a hybrid setup.
-- **Shared context, private data** — every app reads the same project context; nothing leaves your Mac
-  without per-app consent.
-- **One ecosystem** — native apps that ship in the box, plus a store of web apps that run on *your*
-  infrastructure.
+---
+
+## What it does
+
+Switchboard lives in your **menu bar** and surfaces right at the **notch** — an ambient assistant, a
+launcher, and a full private workspace, always one keystroke away and all sharing the same context.
+
+### The assistants — always there
+
+- **God — `⌃⌥ click`.** Your all-purpose assistant. It *sees your screen* and helps: points at the right
+  thing, types, clicks, and runs apps for you — always under your consent. Talk to it, and it talks back.
+- **Ask — `⌃⌃`.** Type a question across everything you're working on — projects, tasks, notes, history —
+  and God answers grounded in *your own* work, not a blank slate.
+- **Guru.** A live guide. It walks you through any task on any app, step by step, pointing a cursor and
+  adapting to what's actually on your screen — a manual can't do that.
+- **Flow — `⌃⌥ hold`.** Dictation, done right. Hold, talk, and it types — anywhere on your Mac, transcribed
+  on-device.
+
+### The notch is the interface
+
+Decisions, approvals, and guided steps appear as **cards right at the notch** — you answer with a keystroke
+(`⌥1/2/3` to pick, `⌥→` to confirm), never a context-switch. Every card shows who's asking and which project
+it belongs to, so it's never a mystery prompt.
+
+### The launcher — `⌥⌥`
+
+A spotlight for your work: jump to a project, launch an app, find a file, or ask across everything — from
+anywhere, without leaving what you're doing.
+
+### The workspace — `⌘O`
+
+A full private workspace built over your vault. Thirteen surfaces, each a **lens on the same data** — never
+a separate silo:
+
+**Home · Tasks · Calendar · Bank** (your projects) **· Dashboard · Needs · Routines · Workflows · History ·
+Graph · Dictionary · Apps · Store.**
+
+Add a task and it lands on the calendar; finish a run and it's a receipt in History; establish a project in
+Bank and every surface — and your Claude — reads the same context.
+
+### The store
+
+Native and web apps that share your context and run on *your* AI. Install what you need, nothing you don't.
+
+### Your vault
+
+A project is a few `.md` files you own — essence, tasks, notes, artifacts. Every app reads the same context;
+nothing is copied out, and you can revoke any grant at any time.
+
+---
+
+## Keyboard shortcuts
+
+| Shortcut | What it does |
+|---|---|
+| `⌃⌥` + click | God looks at your screen and helps |
+| `⌃⌥` hold | Dictate (Flow) — talk, it types |
+| `⌃⌃` | Ask across your work |
+| `⌥⌥` | Launcher / spotlight |
+| `⌘O` | Open the workspace |
+
+On a notch card: `⌥1/2/3` pick · `⌥→` confirm · `⌥↑` back · `Esc` dismiss.
 
 ---
 
@@ -48,11 +105,24 @@ tools for orchestration, review, storytelling, analytics, and autonomy.
 
 ---
 
+## Bring your own AI
+
+Switchboard runs on **your** infrastructure — your choice:
+
+- **Your subscription** — bring your Claude and every app runs on it.
+- **A local model** — keep everything on-device.
+- **Hybrid** — local by default, reach for the cloud only when you opt in.
+
+The broker never holds a key and never sees your data — it only routes the calls you've consented to.
+
+---
+
 ## Install
 
-Switchboard is a macOS app. Download the signed, notarized `Switchboard.dmg`, drag it to Applications,
-and launch it — the workspace lives in your menu bar. First run walks you through the one-time setup
-(your model, permissions, first app); nothing else is required.
+Switchboard is a macOS app for Apple Silicon (macOS 13+). Download the signed, notarized
+[`Switchboard.dmg`](https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg),
+drag it to Applications, and launch it — the workspace lives in your menu bar. First run walks you through
+the one-time setup (your model, permissions, first app).
 
 The Chrome extension is an optional layer-2 upgrade — it lets you run your Claude on *any* website. You
 never need it to get value from the app.
@@ -61,23 +131,29 @@ never need it to get value from the app.
 
 ## How it works
 
-A local **daemon** holds your model (Claude via your subscription, or a local model) and your connected
-MCP tools. Apps — native or web — request capabilities through a single consent broker: they can only
-ever touch what you've granted, for as long as you've granted it.
-
-- **The broker never holds a key** and **never sees your data** — it only routes consented calls.
-- **Your project context** (a vault of `.md` files you own) is lent to apps, so they share what you're
-  working on without copying it anywhere.
-- **A browser extension** (optional) injects the same provider into web pages, so any site can run on your
-  own model, tools, and data under per-site consent.
+A local **daemon** holds your model and your connected MCP tools. Apps — native or web — request
+capabilities through a single **consent broker**: they can only ever touch what you've granted, for as long
+as you've granted it. Your project context (a vault of `.md` files you own) is *lent* to apps, so they share
+what you're working on without copying it anywhere. An optional browser extension injects the same provider
+into web pages, so any site can run on your own model, tools, and data under per-site consent.
 
 Isolation is structural: every app is scoped to its own sandbox and the context you explicitly lend it.
 
 ---
 
+## Privacy — the five noes
+
+- **No account** to create.
+- **No data** leaves your Mac without a grant.
+- **No key** resold — you bring your own.
+- **No lock-in** — your vault is plain `.md` files you own.
+- **No training** on your data.
+
+---
+
 ## For developers
 
-Switchboard is open source. The repo is an npm-workspaces monorepo:
+Switchboard is open source — an npm-workspaces monorepo:
 
 - `packages/protocol` — the wire types + error codes (BYOP).
 - `packages/sdk` — `getRelay` / `whenRelayReady` + the connect chip.
