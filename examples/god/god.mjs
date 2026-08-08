@@ -29,7 +29,7 @@
  * real ~/.relay. In production it attaches to the menubar daemon instead.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, renameSync, fstatSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, renameSync, fstatSync, statSync, readdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,6 +56,8 @@ const PORT = Number(process.env.GOD_PORT || (ATTACH ? 8787 : 8797));
 const NATIVE_PORT = Number(process.env.GOD_NATIVE_PORT || (ATTACH ? 8788 : 8798));
 const MIC = process.env.GOD_MIC || ":0";
 const MAX_SIDE = 1600; // downscale the screenshot's long side — smaller payload + cheaper vision
+const GUIDE_SEE_MAX_SIDE = 1200; // the live re-see only needs to FIND the next element → a smaller, faster image
+let __seeSeq = 0; // per-call id for the live re-see so each runs constant-context (no ballooning thread)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.error("\x1b[2m[god]\x1b[0m", ...a);
@@ -76,6 +78,40 @@ function activeProject() {
     const ctxs = JSON.parse(readFileSync(join(REAL_RELAY, "contexts.json"), "utf8"));
     return (Array.isArray(ctxs) ? ctxs : []).find((c) => c.id === id) || null;
   } catch { return null; }
+}
+
+// P1.1 — fold the active project's VAULT into God's context, not just the contexts.json blob. This is what
+// makes "your Claude sees your work" true: a curated data subset + key decisions (handling the object-map
+// shape) + open tasks + note gists read from the bound folder. Bounded so it never blows the prompt.
+function projectBrief(proj) {
+  if (!proj) return "";
+  const d = proj.data || {};
+  const parts = [`\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.`];
+  const pick = ["oneLine", "summary", "positioning", "audience", "voice", "insight", "state"]
+    .map((k) => d[k] && `${k}: ${String(d[k]).slice(0, 240)}`).filter(Boolean);
+  if (pick.length) parts.push("Project: " + pick.join(" · "));
+  let dec = [];
+  if (Array.isArray(d.decisions)) dec = d.decisions.map((x) => typeof x === "string" ? x : (x.title || x.body)).filter(Boolean);
+  else if (d.decisions && typeof d.decisions === "object") dec = Object.values(d.decisions).map((x) => x && (x.title || x.body)).filter(Boolean);
+  if (dec.length) parts.push("Key decisions: " + dec.slice(0, 6).join(" · "));
+  const folder = d.folder;
+  if (folder && existsSync(folder)) {
+    try {
+      const tf = join(folder, "tasks.md");
+      if (existsSync(tf)) {
+        const open = readFileSync(tf, "utf8").split("\n").filter((l) => /^- \[ \]/.test(l))
+          .map((l) => l.replace(/^- \[ \]\s*/, "").replace(/\s*[@#]\S+/g, "").trim()).filter(Boolean).slice(0, 8);
+        if (open.length) parts.push("Open tasks:\n" + open.map((t) => "- " + t).join("\n"));
+      }
+      const notes = readdirSync(folder).filter((f) => f.startsWith("note-") && f.endsWith(".md")).slice(0, 3);
+      const gists = notes.map((f) => {
+        const body = readFileSync(join(folder, f), "utf8").replace(/^---[\s\S]*?---\s*/, "");
+        return "- " + body.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 2).join(" ").slice(0, 160);
+      }).filter((g) => g.length > 2);
+      if (gists.length) parts.push("Recent notes:\n" + gists.join("\n"));
+    } catch { /* vault unreadable → skip, never block the turn */ }
+  }
+  return parts.join("\n");
 }
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
@@ -468,7 +504,7 @@ async function setup(pairingToken) {
 }
 
 // ── the eye: screen + clipboard ────────────────────────────────────────────────────────────────
-function captureScreen(region) {
+function captureScreen(region, maxSide = MAX_SIDE) {
   const dir = mkdtempSync(join(tmpdir(), "god-cap-"));
   const raw = join(dir, "screen.jpg");
   // GOD_IMAGE lets God look at a saved screenshot instead of the live screen — a clean test seam
@@ -484,7 +520,7 @@ function captureScreen(region) {
   }
   // Downscale the long side (JPEG) to keep the WS payload + vision cost small.
   const scaled = join(dir, "screen-scaled.jpg");
-  spawnSync("sips", ["-Z", String(MAX_SIDE), raw, "--out", scaled], { stdio: "ignore" });
+  spawnSync("sips", ["-Z", String(maxSide), raw, "--out", scaled], { stdio: "ignore" });
   const path = existsSync(scaled) ? scaled : raw;
   const { w, h } = readDims(path);
   return { dataUrl: `data:image/jpeg;base64,${readFileSync(path).toString("base64")}`, w, h };
@@ -878,10 +914,7 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       (prompt || (noScreen ? "What can you help me with?" : "What's on my screen? Point me at the most important thing and help.")) +
       screenNote + pointLine + fileCtx.block;
     const proj = activeProject();
-    const projLine = proj
-      ? `\n\nYou are helping with the user's active project "${proj.name}"${proj.kind ? ` (${proj.kind})` : ""}.` +
-        (proj.data ? ` Project context: ${JSON.stringify(proj.data).slice(0, 700)}` : "")
-      : "";
+    const projLine = projectBrief(proj);   // P1.1 — curated data + decisions + open tasks + note gists from the vault
     // RUN discovery: when acting, ask the daemon which wrapp/connector tools God's grant covers and
     // advertise them so the model can only ever propose a tool that actually exists + is allowed.
     // Empty (no connectors configured / not granted) → no RUNNABLE block, so the model won't invent one.
@@ -991,7 +1024,7 @@ function parseLiveStep(text) {
 async function nextLiveStep(reg, persona, goal, plan, doneIdx) {
   const { request, close } = await connectNative(reg.token);
   try {
-    const shot = captureScreen();
+    const shot = captureScreen(undefined, GUIDE_SEE_MAX_SIDE);
     if (!shot?.dataUrl) return { shot: null };            // can't see → caller keeps the planned point
     // The per-step re-see is a SIMPLE "find the next element on THIS screen" task — use the FASTEST vision
     // model (haiku) so the loop isn't gated by a heavyweight call each step. The initial PLAN keeps full
@@ -1004,7 +1037,10 @@ async function nextLiveStep(reg, persona, goal, plan, doneIdx) {
     const userText = `Goal: ${goal}\n\nDone so far:\n${done}\n\nPlanned next:\n${ahead}\n\n[screen is ${shot.w}x${shot.h} px]`;
     const cmp = await request("claude_complete", {
       model, system: `${persona.characteristic}\n\n${LIVE_PROTOCOL}`, prompt: userText, maxTokens: 200,
-      sessionId: process.env.GOD_SESSION || "god-guide-live",
+      // Constant-context: a FRESH session each re-see. The plan + progress are already re-sent as text
+      // (userText above), so we lose nothing by not resuming a warm thread — and the thread never balloons
+      // with an accumulating screenshot per step (which made later steps slower). Off the critical path now.
+      sessionId: process.env.GOD_SESSION || `god-guide-see-${__seeSeq++}`,
       attachments: [{ handle: "screen", filename: "screen.jpg", contentType: "image/jpeg", dataUrl: shot.dataUrl }],
     });
     if (cmp.error) return { shot };
@@ -1013,11 +1049,13 @@ async function nextLiveStep(reg, persona, goal, plan, doneIdx) {
 }
 
 // Write ONE step as a single-step guide-run.json the CursorGuide runtime renders + auto-advances.
-function writeLiveStep(goal, step, shot, idx, total) {
+function writeLiveStep(goal, step, shot, idx, total, sayText) {
   return atomicWriteJson(join(REAL_RELAY, "guide-run.json"), {
     title: goal, mode: "teach",
     shot: { w: shot?.w || 0, h: shot?.h || 0, screen: 0 },
-    steps: [{ text: `${idx + 1}${total ? "/" + total : ""} · ${step.text}`, point: { x: step.x, y: step.y }, say: step.text }],
+    // sayText override: "" silences the voiceover (used when a background correction only nudges the point,
+    // so the same instruction isn't spoken twice); undefined → speak the step text as usual.
+    steps: [{ text: `${idx + 1}${total ? "/" + total : ""} · ${step.text}`, point: { x: step.x, y: step.y }, say: sayText !== undefined ? sayText : step.text }],
   });
 }
 
@@ -1119,28 +1157,54 @@ async function main() {
     if (!plan.length) { loud("✖ guide produced no steps"); godState("idle"); process.exitCode = 1; return; }
     let shot = g.shot;
     const MAX = 25;
+    const RESULT = join(REAL_RELAY, "guide-result.json");
     console.log(`\n\x1b[1m${persona.name}\x1b[0m ${dim("· live · " + g.model)} — planned ${plan.length} steps`);
     surfaceAnswer(`Guiding you live through "${goal}".`);
-    for (let i = 0; i < plan.length && i < MAX; i++) {
-      const step = plan[i];
-      log(`step ${i + 1}/${plan.length}: ${step.text} ${dim(`(${step.x},${step.y})`)}`);
-      try { rmSync(join(REAL_RELAY, "guide-result.json"), { force: true }); } catch { /* fine */ }
-      if (process.env.GOD_DRYRUN !== "1") writeLiveStep(goal, step, shot, i, plan.length);
+
+    // OPTIMISTIC LIVE LOOP (docs/GURU-LIVE.md "Hybrid"): the plan already holds every step, so the moment the
+    // user finishes one we show the next PLANNED step INSTANTLY (no wait), then re-see in the BACKGROUND and
+    // patch that card's point/text in place before they reach for the mouse. The vision round-trip is off the
+    // critical path → the guide feels instant while staying accurate. Re-sees are constant-context (fresh
+    // session, small image, plan+progress re-sent as text) so the thread never balloons as the guide runs.
+    let cur = 0;
+    let stopped = false;   // set on any exit → a late background re-see must never redraw after we've stopped
+    let earlyDone = false; // a re-see judged the goal already reached → finish once the current step is done
+    const showCard = (idx, useShot, sayText) => {
+      if (process.env.GOD_DRYRUN !== "1") writeLiveStep(goal, plan[idx], useShot || shot, idx, plan.length, sayText);
+    };
+    // Background: correct card `idx` on the CURRENT screen — but only while the user is still on it.
+    const refine = (idx) => {
+      nextLiveStep(reg, persona, goal, plan, idx - 1).then((nx) => {
+        if (stopped || earlyDone || cur !== idx) return;   // moved on / finishing → drop the stale patch
+        if (nx.shot) shot = nx.shot;
+        if (nx.done) { earlyDone = true; log("re-see: goal already reached — finishing after this step"); return; }
+        if (nx.step) {
+          const was = plan[idx]?.text;
+          plan[idx] = nx.step;
+          const changed = !!was && was !== nx.step.text;
+          showCard(idx, nx.shot || shot, changed ? nx.step.text : "");   // re-speak ONLY when the words changed
+          log(changed ? `↻ corrected step ${idx + 1}: "${nx.step.text}"` : `↻ re-pointed step ${idx + 1} (${nx.step.x},${nx.step.y})`);
+        }
+      }).catch(() => { /* a failed re-see just leaves the planned card standing — never blocks the user */ });
+    };
+
+    try { rmSync(RESULT, { force: true }); } catch { /* fine */ }
+    if (process.env.GOD_DRYRUN !== "1") showCard(0);                 // first card = the sonnet plan, already pointed
+    log(`step 1/${plan.length}: ${plan[0].text} ${dim(`(${plan[0].x},${plan[0].y})`)}`);
+    for (let n = 0; n < MAX; n++) {
       const res = process.env.GOD_DRYRUN === "1" ? { outcome: "done" } : await waitForGuideStep();
-      if (res.outcome === "aborted") { log("aborted by user"); break; }
-      if (res.outcome === "timeout") { log("timed out waiting for the step"); break; }
-      if (i >= plan.length - 1) break;                 // finished the plan
-      if (process.env.GOD_DRYRUN === "1") continue;     // dry-run: don't re-see, just walk the plan
-      // RE-SEE: next step, pointed on the CURRENT screen, guided by the plan (and free to revise/redirect).
-      const nx = await nextLiveStep(reg, persona, goal, plan, i);
-      if (nx.done) { log("model says DONE — goal reached"); break; }
-      if (nx.shot) shot = nx.shot;                      // subsequent points live in this new screenshot's space
-      if (nx.step) {
-        const was = plan[i + 1]?.text;
-        plan[i + 1] = nx.step;
-        log(was && was !== nx.step.text ? `↻ revised next step: "${nx.step.text}"` : `↻ re-pointed (${nx.step.x},${nx.step.y})`);
-      }
+      if (res.outcome === "aborted") { log("aborted by user"); stopped = true; break; }
+      if (res.outcome === "timeout") { log("timed out waiting for the step"); stopped = true; break; }
+      const nextI = cur + 1;
+      if (nextI >= plan.length || earlyDone) { stopped = true; break; }   // plan complete, or goal already reached
+      cur = nextI;
+      if (process.env.GOD_DRYRUN === "1") { log(`step ${cur + 1}/${plan.length}: ${plan[cur].text}`); continue; }
+      try { rmSync(RESULT, { force: true }); } catch { /* fine */ }
+      log(`step ${cur + 1}/${plan.length}: ${plan[cur].text} ${dim(`(${plan[cur].x},${plan[cur].y})`)}`);
+      showCard(cur);   // OPTIMISTIC — the next planned step, shown immediately (no round-trip on the path)
+      refine(cur);     // BACKGROUND — correct its point/text on the now-current screen
     }
+    stopped = true;
     godState("idle");
     loud("✓ guru live finished");
     return;

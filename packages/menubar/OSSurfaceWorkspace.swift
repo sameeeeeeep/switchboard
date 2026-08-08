@@ -307,8 +307,13 @@ struct TasksSurface: View {
     private var columns: [TaskColumn] {
         switch groupMode {
         case .status:
-            return [TaskColumn(id: "todo", name: "Todo", dot: .inkDim,
-                               tasks: open.map { item($0, statusId: "todo", statusName: "Todo", col: 0) })]
+            // The dialect has exactly two states — not-done and done. A real two-column board, not a stub.
+            return [
+                TaskColumn(id: "todo", name: "Todo", dot: .inkDim,
+                           tasks: open.map { item($0, statusId: "todo", statusName: "Todo", col: 0) }),
+                TaskColumn(id: "done", name: "Done", dot: .lime,
+                           tasks: doneTasks.map { item($0, statusId: "done", statusName: "Done", col: 1) }),
+            ]
         case .project:
             let groups = Dictionary(grouping: open) { $0.projTag ?? ($0.folder as NSString).lastPathComponent }
             return groups.keys.sorted().enumerated().map { i, key in
@@ -419,7 +424,7 @@ struct TasksSurface: View {
                     column: col,
                     dimmed: activeFilter != nil && activeFilter != col.id,
                     selected: activeFilter == col.id,
-                    canAdd: groupMode == .status && addFolder != nil,
+                    canAdd: groupMode == .status && col.id == "todo" && addFolder != nil,
                     addText: $adding,
                     onHeader: { toggleFilter(col.id) },
                     onToggle: toggleTask,
@@ -427,8 +432,11 @@ struct TasksSurface: View {
                     onNavigate: onNavigate)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
-            DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
-                .frame(width: 132)
+            // Status board already carries a real Done column; the peek-stub is only for the other groupings.
+            if groupMode != .status {
+                DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
+                    .frame(width: 132)
+            }
         }
     }
 
@@ -1117,8 +1125,18 @@ private func bankOverviewFields(_ c: BankCtx) -> [OverviewField] {
     if !hexes.isEmpty {
         out.append(OverviewField(lbl: "Palette", swatches: hexes.map { $0.replacingOccurrences(of: "#", with: "") }))
     }
-    if let dec = d["decisions"] as? [String], !dec.isEmpty {
-        out.append(OverviewField(lbl: "Decisions", val: dec.prefix(4).map { "· " + $0 }.joined(separator: "\n")))
+    // Decisions come in two writer shapes: a plain [String], OR an object map {key:{title,body}} (ideabrain/
+    // brandbrain/the OS seed). Handle both — the object form was silently dropped before (the "why" of every
+    // AI-made project vanished). Object → show the titles.
+    var decisions: [String] = []
+    if let dec = d["decisions"] as? [String] { decisions = dec }
+    else if let map = d["decisions"] as? [String: [String: Any]] {
+        decisions = map.values.compactMap { ($0["title"] as? String) ?? ($0["body"] as? String) }
+    } else if let arr = d["decisions"] as? [[String: Any]] {
+        decisions = arr.compactMap { ($0["title"] as? String) ?? ($0["body"] as? String) }
+    }
+    if !decisions.isEmpty {
+        out.append(OverviewField(lbl: "Decisions", val: decisions.prefix(4).map { "· " + $0 }.joined(separator: "\n")))
     }
     return out
 }

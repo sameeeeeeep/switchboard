@@ -162,7 +162,6 @@ private struct DashLine: Identifiable {
     var statusColor: Color = .inkDim
     var mark: String? = nil
     var markColor: Color = .lime
-    var retry: Bool = false
 }
 
 // ═══ LIVE dashboard — every tile/pane derives from the same real readers the other surfaces use:
@@ -374,7 +373,9 @@ private struct DashTileView: View {
                 bigText.padding(.top, 6)
                 subView.padding(.top, 2)
                 Spacer(minLength: 8)
-                DashSparkline(spark: tile.spark).frame(height: 30).padding(.top, 10)
+                if !tile.spark.data.isEmpty {
+                    DashSparkline(spark: tile.spark).frame(height: 30).padding(.top, 10)
+                }
                 Text("→ " + tile.drillLabel).font(.splMono(9.5))
                     .foregroundColor(hover ? .inkSec : .inkFaint).padding(.top, 8)
             }
@@ -455,32 +456,12 @@ private struct DashLineRow: View {
             Text(row.name).font(.hanken(13)).foregroundColor(row.nameMuted ? .inkDim : .inkSec).lineLimit(1)
             Spacer(minLength: 8)
             if let s = row.status { Text(s).font(.splMono(11)).foregroundColor(row.statusColor) }
-            if row.retry { DashRetryPill() }
             if let m = row.mark { Text(m).font(.splMono(11)).foregroundColor(row.markColor) }
         }
         .padding(.vertical, 8)
         .overlay(alignment: .top) {
             if showTop { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
         }
-    }
-}
-
-private struct DashRetryPill: View {
-    @State private var busy = false
-    @State private var hover = false
-    var body: some View {
-        Button { busy = true } label: {
-            Text(busy ? "Retrying…" : "Retry")
-                .font(.splMono(10))
-                .foregroundColor(busy ? .inkDim : .lime)
-                .padding(.horizontal, 8).padding(.vertical, 1)
-                .background(Capsule().fill(busy ? Color.raised : Color.lime.opacity(0.12)))
-                .overlay(Capsule().stroke(busy ? Color.edge : Color.lime.opacity(0.4), lineWidth: 1))
-                .opacity(busy ? 0.7 : (hover ? 0.85 : 1))
-        }
-        .buttonStyle(.plain)
-        .disabled(busy)
-        .onHover { hover = $0 }
     }
 }
 
@@ -1534,11 +1515,9 @@ private struct WorkflowRowView: View {
         case .edit: withAnimation { workflow.editing.toggle() }
         case .promote: withAnimation { workflow.promoted.toggle() }
         case .run:
-            guard !workflow.running else { return }
-            withAnimation { workflow.running = true; workflow.lastKind = "part"; workflow.lastLabel = "◐ running…" }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-                withAnimation { workflow.running = false; workflow.lastKind = "ok"; workflow.lastLabel = "✓ done · just now" }
-            }
+            // Real run: open the batch wrapp (the actual pipeline engine) — same path the empty state uses.
+            // The row's state refreshes honestly from batch-state.json on next load; no simulated "done".
+            OSLaunch.launchOr("batch", .init(kind: "workflow")) { onNavigate(.apps) }
         }
     }
 }
@@ -1654,11 +1633,8 @@ private struct WFCompactRow: View {
         .onHover { hover = $0 }
     }
     private func run() {
-        guard !workflow.running else { return }
-        withAnimation { workflow.running = true; workflow.lastKind = "part"; workflow.lastLabel = "◐ running…" }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-            withAnimation { workflow.running = false; workflow.lastKind = "ok"; workflow.lastLabel = "✓ done · just now" }
-        }
+        // Real run: open the batch wrapp (no simulated success). State refreshes from batch-state.json.
+        OSLaunch.launch("batch", .init(kind: "workflow"))
     }
 }
 

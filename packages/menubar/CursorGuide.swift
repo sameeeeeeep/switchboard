@@ -34,6 +34,7 @@ enum GuideMode: String { case tour, test, teach }
 struct GuideMedia {
     let src: String
     var caption: String? = nil
+    var tall: Bool = false   // true → render as a full board/diagram (fit, taller) instead of the 96px thumbnail
 }
 
 // A shortcut to TEACH, rendered as keycap buttons + a name (e.g. [⌃][⌃] Ask). Prominent in the card body
@@ -484,13 +485,19 @@ struct GuideCaptionView: View {
             // ── permission strip: keys need Accessibility. Shown only when not trusted; the guide still
             //    renders + esc works, but keyboard signals won't fire until granted (spec §6). ──
             if !AXIsProcessTrusted() {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
-                    Text("Keys need Accessibility — grant it in Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                Button(action: { CursorGuide.shared.openAccessibilitySettings() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                        Text("Keys need Accessibility — tap to open Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.danger.opacity(0.85))
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+                .buttonStyle(.plain)
             }
             // ── header rail: segment progress · title · AUTO pill · voice ──
             HStack(spacing: 8) {
@@ -726,7 +733,7 @@ struct GuideMediaView: View {
     let media: GuideMedia
     var reduceMotion = false
     var compact = false
-    private var h: CGFloat { compact ? 40 : 96 }
+    private var h: CGFloat { media.tall ? 420 : (compact ? 40 : 96) }
 
     var body: some View {
         content
@@ -740,13 +747,13 @@ struct GuideMediaView: View {
         if media.src.hasPrefix("http"), let url = URL(string: media.src) {
             AsyncImage(url: url) { phase in
                 switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                case .success(let img): img.resizable().aspectRatio(contentMode: media.tall ? .fit : .fill)
                 case .failure: unavailable
                 default: loading
                 }
             }
         } else if let img = NSImage(contentsOfFile: media.src) {
-            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+            Image(nsImage: img).resizable().aspectRatio(contentMode: media.tall ? .fit : .fill)
         } else {
             unavailable
         }
@@ -1073,6 +1080,15 @@ final class CursorGuide {
 
         ensureOverlay()
         installMonitors()
+        // Keys need Accessibility — BOTH the CGEvent tap AND the global keyDown monitor are gated on it, so
+        // without the grant every ⌥-chord is silently dead in whatever app the user is being guided through.
+        // Don't just show the strip: proactively OPEN the grant pane (once per launch). An ad-hoc-signed
+        // rebuild churns the TCC grant, which is the usual reason a previously-working guide goes key-dead.
+        if !AXIsProcessTrusted() {
+            NSLog("[cursor-guide] Accessibility NOT granted — ⌥-chords will not fire; opening Settings")
+            if !didOpenAxSettings { didOpenAxSettings = true; openAccessibilitySettings() }
+            if !model.muted { onSpeak?("The guide keys need Accessibility permission. I've opened Settings — switch Switchboard on, then relaunch.") }
+        }
         model.mode = m
         model.done = nil
         model.target = nil
@@ -1081,6 +1097,16 @@ final class CursorGuide {
         showOverlay()
         startCursorTimer()
         NSLog("[cursor-guide] START mode=\(m.rawValue) title=\"\(title)\" steps=\(parsed.count) autoClipboard=\(autoClip)")
+    }
+
+    // Whether we've already popped the Accessibility grant pane this launch (don't re-open it on every guide).
+    private var didOpenAxSettings = false
+
+    /// Open System Settings → Privacy & Security → Accessibility. Called at guide start when the process
+    /// isn't trusted (keys can't fire) and from the tappable permission strip on the card.
+    func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     // Build a pixel→overlay-point mapper from the run's `shot`. The overlay fills the main screen in
@@ -1109,7 +1135,7 @@ final class CursorGuide {
         guard let d = raw as? [String: Any] else { return nil }
         let src = (d["src"] as? String) ?? (d["url"] as? String) ?? (d["path"] as? String)
         guard let src, !src.isEmpty else { return nil }
-        return GuideMedia(src: src, caption: d["caption"] as? String)
+        return GuideMedia(src: src, caption: d["caption"] as? String, tall: (d["tall"] as? Bool) ?? false)
     }
 
     // Load an image for the clipboard-preload (file path or http url). Small helper images only.
@@ -1720,12 +1746,25 @@ final class CursorGuide {
         flagsMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] ev in
             MainActor.assumeIsolated { self?.onFlags(ev.modifierFlags) }; return ev
         }
+        // MUTUAL EXCLUSION with the CGEvent tap: when the tap is live it already handles+swallows the
+        // Option-chords, so the monitors must NOT fire onKey for those too — a second call cancels every
+        // TOGGLE/CYCLE chord (⌥/ ⌥. ⌥M ⌥;) back to a no-op and over-advances ⌥→. The monitors STILL own
+        // Esc (53) and ⌘V (9), which the tap never touches. When the tap is dead (no accessibility grant),
+        // keyTap == nil → the monitors handle everything (chords work, char just leaks) — the old fallback.
         keyMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
-            MainActor.assumeIsolated { _ = self?.onKey(ev.keyCode, ev.modifierFlags) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.keyTap != nil && self.isGuideOptionChord(ev.keyCode, ev.modifierFlags) { return }  // tap owns it
+                _ = self.onKey(ev.keyCode, ev.modifierFlags)
+            }
         }
         keyMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
             var swallow = false
-            MainActor.assumeIsolated { swallow = self?.onKey(ev.keyCode, ev.modifierFlags) ?? false }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.keyTap != nil && self.isGuideOptionChord(ev.keyCode, ev.modifierFlags) { return }  // tap owns it
+                swallow = self.onKey(ev.keyCode, ev.modifierFlags)
+            }
             return swallow ? nil : ev
         }
         // Cursor tracking → the overlay only ACCEPTS clicks while the pointer is over the card, and is
