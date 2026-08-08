@@ -15,6 +15,7 @@
 
 import AppKit
 import SwiftUI
+import CoreServices   // FSEvents — the no-AI liveness watcher (see OSPulse)
 
 // ---- tokens this surface adds (the rest come from RelayMenuBar.swift's Color/Font extensions) ----
 extension Color {
@@ -527,9 +528,40 @@ enum Sample {
 // MARK: - The shell (persistent rail + a SINGLE content pane that swaps on selection — OS.md §2.1)
 // =====================================================================================================
 
+// LIVENESS (#4) — a pure file-watcher, NO AI, no polling-a-model, no tokens. FSEvents on ~/.relay (+ the
+// active vault) tells us a file changed; we bump `tick`, surfaces re-read. Robust to atomic tmp+rename
+// writes (dir-level events). Only runs while the OS window is open (device-light — nothing idles).
+final class OSPulse: ObservableObject {
+    static let shared = OSPulse()
+    @Published var tick = 0
+    private var stream: FSEventStreamRef?
+    func start() {
+        stop()
+        var paths = [(NSHomeDirectory() as NSString).appendingPathComponent(".relay")]
+        for f in osVaultFolders() { paths.append(f) }   // the bound project vaults (tasks.md, notes)
+        var ctx = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
+                                       retain: nil, release: nil, copyDescription: nil)
+        let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
+            guard let info = info else { return }
+            let me = Unmanaged<OSPulse>.fromOpaque(info).takeUnretainedValue()
+            me.tick &+= 1   // dispatch queue is main (set below), so this is already on the main thread
+        }
+        guard let s = FSEventStreamCreate(kCFAllocatorDefault, cb, &ctx, paths as CFArray,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.4,   // 0.4s coalesce = debounce
+                FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)) else { return }
+        FSEventStreamSetDispatchQueue(s, DispatchQueue.main)
+        FSEventStreamStart(s)
+        stream = s
+    }
+    func stop() {
+        if let s = stream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s); stream = nil }
+    }
+}
+
 struct OSShellView: View {
     @State private var selected: Surface     // the one-window nav: rail sets this, detail swaps
     @State private var homeReload = 0        // bumped on a project switch so Home re-grounds
+    @ObservedObject private var pulse = OSPulse.shared   // #4 — file-watch liveness; surfaces re-read on change
     init(initial: Surface = .home) { _selected = State(initialValue: initial) }
 
     var body: some View {
@@ -556,6 +588,7 @@ struct OSShellView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .id(pulse.tick)   // #4 liveness — a watched file changed → re-init the open surface (re-reads)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.page)
@@ -563,6 +596,8 @@ struct OSShellView: View {
         .frame(minWidth: 920, minHeight: 620)
         .background(Color.page)
         .preferredColorScheme(.dark)
+        .onAppear { pulse.start() }      // #4 — watch ~/.relay + vaults only while the OS window is open
+        .onDisappear { pulse.stop() }
     }
 }
 
@@ -570,6 +605,7 @@ struct OSShellView: View {
 struct RailView: View {
     @Binding var selected: Surface
     @State private var needsCount = 0     // live inbox size — the badge never disagrees with the surface
+    @ObservedObject private var pulse = OSPulse.shared   // #4 — recompute the badge when data changes
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -581,6 +617,7 @@ struct RailView: View {
             }
             .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 14)
             .onAppear { needsCount = osPending().count }
+            .onChange(of: pulse.tick) { _ in needsCount = osPending().count }   // #4 — live badge
 
             ForEach(OS_GROUPS) { group in
                 Text(group.name.uppercased())
