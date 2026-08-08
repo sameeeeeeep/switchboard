@@ -1,6 +1,6 @@
 # Switchboard — Roadmap
 
-**Switchboard** = MetaMask, but for AI. A local **sidekick** daemon holds your Claude + connected
+**Switchboard** = your private AI workspace. A local **sidekick** daemon holds your Claude + connected
 tools; a browser **extension** injects `window.claude` into every page so any website can run on the
 visitor's own model + tools, under per-origin consent you control. Apps can run **airgapped** (no
 network egress) so a stranger's app can't exfiltrate your data — the basis for a "wrapper app store."
@@ -162,7 +162,7 @@ path-consent. New BYOP method `claude_storage` (get/set/list/delete/bind/info). 
 (`examples/apps/brandbrain.html`) now surfaces the bound folder + existing brands.
 
 ### B. Panel launcher / wrapp store — near-term
-Make the side panel the hub (MetaMask's dApp browser). A **Wrapps** view: a curated grid from a static
+Make the side panel the hub (an app browser). A **Wrapps** view: a curated grid from a static
 registry JSON (name, icon, url) — click to open in a new tab, Switchboard already there to connect —
 plus "open any URL" quick-launch and a "recently used" row from the grants list. `chrome.tabs.create`
 to open; listing ≠ endorsement (per-origin consent still gates; untrusted wrapps run in the airgap
@@ -189,7 +189,7 @@ listing. Needs an Apple Developer ID (the one un-fakeable last mile).
 
 ### 8. "Sign in with Switchboard" (identity)
 `claude_connect` = sign-in + authorize. A relay-native identity key that signs site challenges
-(passwordless login, MetaMask-style), and/or identity-via-connected-account. New method
+(passwordless login), and/or identity-via-connected-account. New method
 `claude_signIn` / `claude_identity`, gated like everything else.
 
 ### 9. Data-egress hardening (beyond the airgap)
