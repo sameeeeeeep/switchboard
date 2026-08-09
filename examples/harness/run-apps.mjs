@@ -4,7 +4,7 @@
  * consent) through the dev-extension stand-in. This is the runnable version of the browser walk
  * in TESTING.md; the apps themselves also exist as real pages under examples/apps/.
  *
- *   App 1  chat.example       — pure completion on your own Claude (like MetaMask "connect + read")
+ *   App 1  chat.example       — pure completion on your own Claude (a pure connect + read)
  *   App 2  notes.example      — agentic: reads a note via an MCP tool (auto-approved read)
  *   App 3  outbox.example     — agentic write: one send APPROVED at consent, one DENIED
  *

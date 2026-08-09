@@ -3,7 +3,7 @@
 // Grounds on docs/OS.md: §2 (the persistent left rail + single-window content swap), §3.1 (Home is the
 // canonical landing), and the surface list §3.1–3.13. This is the desk the notch points back to — one
 // window, one @State selected surface, the detail pane swaps (never a second window). Home + rail + nav
-// are REAL; the other 12 surfaces are honest stub panes (title + section kickers + a "building" note) so
+// are REAL; every surface routes to a real view that reads live ~/.relay data (no stub panes).
 // the navigation is real and the skeletons are correct.
 //
 // Design law (NOTCH-DESIGN / OS.md §3.1): "discipline in the frame, color in the icons." The chrome is
@@ -15,6 +15,7 @@
 
 import AppKit
 import SwiftUI
+import CoreServices   // FSEvents — the no-AI liveness watcher (see OSPulse)
 
 // ---- tokens this surface adds (the rest come from RelayMenuBar.swift's Color/Font extensions) ----
 extension Color {
@@ -39,7 +40,8 @@ struct OSLaunchContext {
     var artifact: String? = nil   // the thing the user clicked (a doc/mark/ad title)
     var kind: String? = nil       // its kind (doc/mark/ad/image/text…)
     var project: String? = nil    // the owning project id, when known
-    var isEmpty: Bool { artifact == nil && kind == nil && project == nil }
+    var artifactKey: String? = nil // #3 — the storage key to REOPEN the exact item (not just relaunch the tool)
+    var isEmpty: Bool { artifact == nil && kind == nil && project == nil && artifactKey == nil }
 }
 
 enum OSLaunch {
@@ -194,7 +196,7 @@ enum Surface: String, CaseIterable, Identifiable {
     var kickers: [String] {
         switch self {
         case .home: return []
-        case .tasks: return ["Board / List", "Todo", "Doing", "Blocked", "Done"]
+        case .tasks: return ["Board / List", "Todo", "Done"]
         case .calendar: return ["Month / Week / Agenda", "Due tasks", "Milestones", "Past runs"]
         case .bank: return ["Establish", "Projects", "Overview", "Tasks", "Brain", "Artifacts", "Capture"]
         case .dashboard: return ["Stat tiles", "Projects", "Routines", "Workflows", "Subsystems"]
@@ -223,7 +225,7 @@ let OS_GROUPS: [RailGroup] = [
 // =====================================================================================================
 
 struct SBApp: Identifiable { let id: String; let name: String; let live: Bool }
-struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made" }
+struct SBArtifact: Identifiable { let id = UUID(); let title: String; let app: String; let time: String; let kind: String; var category: String = "made"; var artifactKey: String? = nil }
 struct SpotFile: Identifiable { let id = UUID(); let name: String; let path: String; let folder: String }
 struct SBTask: Identifiable { let id = UUID(); let glyph: String; let title: String; let detail: String; let suggested: Bool }
 struct SBProject: Identifiable { let id: String; let name: String; let essence: String; let facets: [String]; let progress: Double; var kind: String = "project"; var pending: Int = 0; var updated: String = ""; var updatedMs: Double = 0 }
@@ -267,30 +269,55 @@ func relAgo(_ ms: Double) -> String {
 //     dictations, wrapp runs that keep no files. Storage mtimes alone made week-old blobs pose as
 //     "recent" while yesterday's actual work (no blob) was invisible.
 func osRecentWork(limit: Int = 16) -> [SBArtifact] {
-    let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
+    let H = NSHomeDirectory() as NSString
+    let base = H.appendingPathComponent(".relay/storage")
     let fm = FileManager.default
     let now = Date().timeIntervalSince1970 * 1000
+    // 2b — SCOPE recents to the ACTIVE PROJECT. An artifact belongs to it when: it's in the project's own
+    // vault folder, OR its origin's attribution sidecar maps its key → the project, OR (no per-key record)
+    // the origin is currently lent to the project. With no active project we fall back to global + sessions.
+    let activeId = osActiveId()
+    let sel = (readJSON(H.appendingPathComponent(".relay/context-selection.json")) as? [String: String]) ?? [:]
+    var activeFolder: String? = nil
+    if let id = activeId, let ctxs = readJSON(H.appendingPathComponent(".relay/contexts.json")) as? [[String: Any]],
+       let c = ctxs.first(where: { $0["id"] as? String == id }) {
+        activeFolder = (c["data"] as? [String: Any])?["folder"] as? String
+    }
     var scored: [(SBArtifact, Double)] = []
+    func addFile(_ path: String, key: String, app: String) {
+        let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+        guard m > 0 else { return }
+        let (title, cat, kind) = classifyArtifact(path, key: key)
+        let ak = key.hasSuffix(".json") ? String(key.dropLast(5)) : key   // #3 — the storage key to reopen
+        scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat, artifactKey: ak), m))
+    }
     for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
         let dir = base + "/" + origin
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
               let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
         let app = wrappFromOrigin(origin)
-        for f in files where f.hasSuffix(".json") {
-            let path = dir + "/" + f
-            let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
-            guard m > 0 else { continue }
-            let (title, cat, kind) = classifyArtifact(path, key: f)
-            scored.append((SBArtifact(title: title, app: app, time: relAgo(now - m), kind: kind, category: cat), m))
+        let attr = (readJSON(dir + "/.attribution.json") as? [String: String]) ?? [:]
+        let originLentToActive = (activeId != nil && sel[origin] == activeId)
+        for f in files where f.hasSuffix(".json") && f != ".attribution.json" {
+            if let id = activeId {                                  // scoped: only THIS project's artifacts
+                let pid = attr[f] ?? attr[String(f.dropLast(5))]
+                guard pid == id || (pid == nil && originLentToActive) else { continue }
+            }
+            addFile(dir + "/" + f, key: f, app: app)
         }
     }
-    // audit sessions fill in the work that left no file. One card per app (its latest session);
-    // if a stored artifact from the same app already stands for that session, the file wins.
-    for s in osSessions() {
-        if scored.contains(where: { $0.0.app == s.app && abs($0.1 - s.endMs) < 3 * 3_600_000 }) { continue }
-        scored.append((SBArtifact(title: sessionTitle(s), app: s.app, time: relAgo(now - s.endMs),
-                                  kind: "session", category: "session"), s.endMs))
+    // the active project's own vault folder — its files ARE this project's artifacts
+    if let folder = activeFolder, let files = try? fm.contentsOfDirectory(atPath: folder) {
+        for f in files where f.hasSuffix(".json") { addFile(folder + "/" + f, key: f, app: "bank") }
+    }
+    // audit sessions fill in work that left no file — GLOBAL view only (scoped recents = this project's artifacts).
+    if activeId == nil {
+        for s in osSessions() {
+            if scored.contains(where: { $0.0.app == s.app && abs($0.1 - s.endMs) < 3 * 3_600_000 }) { continue }
+            scored.append((SBArtifact(title: sessionTitle(s), app: s.app, time: relAgo(now - s.endMs),
+                                      kind: "session", category: "session"), s.endMs))
+        }
     }
     // strict recency — no category floats above; "recent" must mean recent or the section lies.
     return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
@@ -491,33 +518,6 @@ enum Sample {
         facets: ["brand", "4 logo marks", "palette: Terracotta & Indigo", "updated 20m ago"],
         progress: 0.62)
 
-    static let apps: [SBApp] = [
-        .init(id: "brandbrain", name: "brandbrain", live: true),
-        .init(id: "crest", name: "Crest", live: true),
-        .init(id: "flow", name: "Flow", live: true),
-        .init(id: "god", name: "God", live: true),
-        .init(id: "adforge", name: "AdForge", live: false),
-        .init(id: "ideabrain", name: "ideabrain", live: false),
-        .init(id: "prism", name: "Prism", live: false),
-        .init(id: "bank", name: "Bank", live: false),
-        .init(id: "redline", name: "Redline", live: false),
-        .init(id: "adpulse", name: "AdPulse", live: false),
-    ]
-
-    static let work: [SBArtifact] = [
-        .init(title: "Switch Ligature monogram", app: "crest", time: "20m", kind: "mark"),
-        .init(title: "IndEur — 4 marks", app: "crest", time: "22m", kind: "gallery"),
-        .init(title: "Launch ad — \"Find your people\"", app: "adforge", time: "1h", kind: "ad"),
-        .init(title: "Community meetup — notes", app: "flow", time: "3h", kind: "text"),
-        .init(title: "Terracotta beam render", app: "prism", time: "yesterday", kind: "image"),
-        .init(title: "IndEur thesis + reach-outs", app: "ideabrain", time: "yesterday", kind: "doc"),
-    ]
-
-    static let whatsNext: [SBTask] = [
-        .init(glyph: "✦", title: "Render your IndEur mark", detail: "you kept 2 wireframes in Crest — turn one into an image.", suggested: true),
-        .init(glyph: "↻", title: "Draft the launch post", detail: "brandbrain has your voice — write the IndEur announce.", suggested: true),
-    ]
-
     // Needs-attention drives the rail badge (§2.1) and the top-of-Home strip when non-empty.
     static let needs: [SBTask] = [
         .init(glyph: "⧗", title: "Q4 palette needs a decision", detail: "brandbrain paused, waiting on your pick.", suggested: false),
@@ -530,9 +530,40 @@ enum Sample {
 // MARK: - The shell (persistent rail + a SINGLE content pane that swaps on selection — OS.md §2.1)
 // =====================================================================================================
 
+// LIVENESS (#4) — a pure file-watcher, NO AI, no polling-a-model, no tokens. FSEvents on ~/.relay (+ the
+// active vault) tells us a file changed; we bump `tick`, surfaces re-read. Robust to atomic tmp+rename
+// writes (dir-level events). Only runs while the OS window is open (device-light — nothing idles).
+final class OSPulse: ObservableObject {
+    static let shared = OSPulse()
+    @Published var tick = 0
+    private var stream: FSEventStreamRef?
+    func start() {
+        stop()
+        var paths = [(NSHomeDirectory() as NSString).appendingPathComponent(".relay")]
+        for f in osVaultFolders() { paths.append(f) }   // the bound project vaults (tasks.md, notes)
+        var ctx = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
+                                       retain: nil, release: nil, copyDescription: nil)
+        let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
+            guard let info = info else { return }
+            let me = Unmanaged<OSPulse>.fromOpaque(info).takeUnretainedValue()
+            me.tick &+= 1   // dispatch queue is main (set below), so this is already on the main thread
+        }
+        guard let s = FSEventStreamCreate(kCFAllocatorDefault, cb, &ctx, paths as CFArray,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.4,   // 0.4s coalesce = debounce
+                FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)) else { return }
+        FSEventStreamSetDispatchQueue(s, DispatchQueue.main)
+        FSEventStreamStart(s)
+        stream = s
+    }
+    func stop() {
+        if let s = stream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s); stream = nil }
+    }
+}
+
 struct OSShellView: View {
     @State private var selected: Surface     // the one-window nav: rail sets this, detail swaps
     @State private var homeReload = 0        // bumped on a project switch so Home re-grounds
+    @ObservedObject private var pulse = OSPulse.shared   // #4 — file-watch liveness; surfaces re-read on change
     init(initial: Surface = .home) { _selected = State(initialValue: initial) }
 
     var body: some View {
@@ -559,6 +590,7 @@ struct OSShellView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .id(pulse.tick)   // #4 liveness — a watched file changed → re-init the open surface (re-reads)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.page)
@@ -566,6 +598,8 @@ struct OSShellView: View {
         .frame(minWidth: 920, minHeight: 620)
         .background(Color.page)
         .preferredColorScheme(.dark)
+        .onAppear { pulse.start() }      // #4 — watch ~/.relay + vaults only while the OS window is open
+        .onDisappear { pulse.stop() }
     }
 }
 
@@ -573,6 +607,7 @@ struct OSShellView: View {
 struct RailView: View {
     @Binding var selected: Surface
     @State private var needsCount = 0     // live inbox size — the badge never disagrees with the surface
+    @ObservedObject private var pulse = OSPulse.shared   // #4 — recompute the badge when data changes
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -584,6 +619,7 @@ struct RailView: View {
             }
             .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 14)
             .onAppear { needsCount = osPending().count }
+            .onChange(of: pulse.tick) { _ in needsCount = osPending().count }   // #4 — live badge
 
             ForEach(OS_GROUPS) { group in
                 Text(group.name.uppercased())
@@ -811,15 +847,24 @@ struct HomeDetail: View {
     private var active: SBProject? { projects.first { $0.id == activeId } ?? projects.first }
     private var others: [SBProject] { projects.filter { $0.id != active?.id } }
 
+    // Real greeting — time-of-day + the name from ~/.relay/profile.json (readUserName). No hardcoded name;
+    // when the name is unset we greet by time alone rather than inventing one.
+    private var greeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        let part = h < 12 ? "Morning" : (h < 17 ? "Afternoon" : "Evening")
+        let name = readUserName()
+        return name.isEmpty ? part : "\(part), \(name)"
+    }
+
     private func load() { projects = osProjects(); activeId = osActiveId(); recent = osRecentWork(); pending = osPending() }
     private func switchTo(_ id: String) { writeGlobalContext(id); activeId = id }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // greeting — the command centre spans EVERY project
-                (Text("Evening, Sameep. ").foregroundColor(.ink)
-                    + Text(projects.isEmpty ? "Here's where you left off." : "\(projects.count) projects · pick up anywhere.").foregroundColor(.inkDim))
+                // greeting — real name (profile.json) + real time-of-day; the command centre spans EVERY project
+                (Text(greeting + ". ").foregroundColor(.ink)
+                    + Text(projects.isEmpty ? "Open a wrapp to begin." : "\(projects.count) projects · pick up anywhere.").foregroundColor(.inkDim))
                     .font(.brico(28, .bold)).tracking(-0.5)
                     .padding(.top, 6).padding(.bottom, 4)
 
@@ -827,7 +872,16 @@ struct HomeDetail: View {
                     SectionHead(kicker: "Jump back in", more: nil)
                     ProjectCard(p: a, big: true, isActive: true) { switchTo(a.id); selected = .bank }
                 } else {
-                    ActiveProjectCard()   // fallback (no contexts yet) — the sample card
+                    // First-run: an honest Establish CTA — never a fabricated sample project.
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("No project yet").font(.hanken(16, .semibold)).foregroundColor(.ink)
+                        Text("A project is a few .md files you own — essence, tasks, notes. Establish one to make this home yours.")
+                            .font(.hanken(12.5)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+                        LimeButton(label: "+ Establish a project") { OSLaunch.launchOr("bank", .init(kind: "project")) { selected = .apps } }
+                    }
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
                 }
 
                 // ACTIVITY leads (live ~/.relay reads, hidden when empty): what needs you, then what you
@@ -973,45 +1027,6 @@ struct SectionHead: View {
     }
 }
 
-struct ActiveProjectCard: View {
-    let p = Sample.project
-    var body: some View {
-        HStack(spacing: 16) {
-            IsoTile(hue: hueForId(p.id))
-                .frame(width: 46, height: 46)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(red: 0x1b/255, green: 0x1a/255, blue: 0x2e/255)))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.4), lineWidth: 1))
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(p.name).font(.hanken(16, .semibold)).foregroundColor(.ink)
-                    Text(p.essence).font(.hanken(12)).foregroundColor(.inkDim)
-                }
-                // progress + facet chips
-                HStack(spacing: 8) {
-                    ProgressBar(value: p.progress).frame(width: 96, height: 6)
-                    Text("\(Int(p.progress * 100))%").font(.splMono(9)).foregroundColor(.inkFaint)
-                    ForEach(p.facets.prefix(3), id: \.self) { f in
-                        Text(f).font(.hanken(11)).foregroundColor(.inkDim)
-                            .padding(.horizontal, 9).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.panel))
-                            .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-            Text("Switch project ▾").font(.hanken(12)).foregroundColor(.indigo)
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 9).fill(Color.indigo.opacity(0.14)))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.indigo.opacity(0.35), lineWidth: 1))
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
-        .overlay(RoundedRectangle(cornerRadius: 16).fill(.clear)
-            .overlay(HStack { Rectangle().fill(Color.indigo).frame(width: 2); Spacer() })
-            .clipShape(RoundedRectangle(cornerRadius: 16)))
-    }
-}
 
 struct ProgressBar: View {
     let value: Double
@@ -1078,7 +1093,14 @@ struct RecentWorkGrid: View {
                 Spacer(minLength: 0)
             }
             LazyVGrid(columns: cols, spacing: 14) {
-                ForEach(shown) { w in ArtifactCard(art: w) }
+                ForEach(shown) { w in
+                    // #3 — the cards were inert (a click did NOTHING). Now a tap opens the item: it carries the
+                    // artifactKey so a wrapp can reopen the exact blob (once launchFromOS forwards the key +
+                    // the wrapp loads by key); today it at least launches the right tool instead of dying.
+                    ArtifactCard(art: w)
+                        .contentShape(Rectangle())
+                        .onTapGesture { OSLaunch.launchOr(w.app, .init(artifact: w.title, kind: w.kind, artifactKey: w.artifactKey)) { } }
+                }
             }
         }
     }
@@ -1207,110 +1229,63 @@ struct OSAppGlyph: View {
     }
 }
 
+// Real starter apps for the Home dock — read the ACTUAL catalog (~/.relay/catalog.json); connected state
+// from grants.json. Never a hardcoded set. Connected apps first, then alphabetical; capped.
+func osStarterApps(limit: Int = 10) -> [SBApp] {
+    guard let obj = readJSON(doAppsCatalogPath()) as? [String: Any],
+          let listings = obj["listings"] as? [[String: Any]] else { return [] }
+    var granted = Set<String>()
+    if let grants = readJSON((NSHomeDirectory() as NSString).appendingPathComponent(".relay/grants.json")) as? [[String: Any]] {
+        for g in grants { if let o = g["origin"] as? String { granted.insert(wrappFromOrigin(o).lowercased()) } }
+    }
+    let apps: [SBApp] = listings.compactMap { l in
+        guard let id = l["id"] as? String, !id.isEmpty else { return nil }
+        return SBApp(id: id, name: (l["name"] as? String) ?? id, live: granted.contains(id.lowercased()))
+    }
+    return Array(apps.sorted { a, b in
+        if a.live != b.live { return a.live && !b.live }
+        return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+    }.prefix(limit))
+}
+
 struct AppDock: View {
     @Binding var selected: Surface
+    @State private var apps: [SBApp] = []
     let cols = [GridItem(.adaptive(minimum: 96), spacing: 16)]
     var body: some View {
-        LazyVGrid(columns: cols, spacing: 16) {
-            ForEach(Sample.apps) { app in
-                VStack(spacing: 8) {
-                    ZStack(alignment: .bottomTrailing) {
-                        OSAppGlyph(id: app.id, size: 72)
-                            .background(RoundedRectangle(cornerRadius: 18)
-                                .fill(LinearGradient(colors: [Color(red: 0x15/255, green: 0x16/255, blue: 0x1d/255),
-                                                              Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],
-                                                     startPoint: .topLeading, endPoint: .bottomTrailing)))
-                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.edge, lineWidth: 1))
-                        if app.live {
-                            Circle().fill(Color.lime).frame(width: 6, height: 6)
-                                .shadow(color: Color.lime.opacity(0.6), radius: 3)
-                                .padding(9)
+        Group {
+            if apps.isEmpty {
+                // No catalog yet (fresh install before the daemon writes it) — an honest door, not a fake dock.
+                Text("Browse the store →").font(.hanken(12)).foregroundColor(.inkDim)
+                    .contentShape(Rectangle()).onTapGesture { selected = .store }
+            } else {
+                LazyVGrid(columns: cols, spacing: 16) {
+                    ForEach(apps) { app in
+                        VStack(spacing: 8) {
+                            ZStack(alignment: .bottomTrailing) {
+                                OSAppGlyph(id: app.id, size: 72)
+                                    .background(RoundedRectangle(cornerRadius: 18)
+                                        .fill(LinearGradient(colors: [Color(red: 0x15/255, green: 0x16/255, blue: 0x1d/255),
+                                                                      Color(red: 0x0d/255, green: 0x0e/255, blue: 0x13/255)],
+                                                             startPoint: .topLeading, endPoint: .bottomTrailing)))
+                                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.edge, lineWidth: 1))
+                                if app.live {   // live = a real standing grant (connected), never a fabricated flag
+                                    Circle().fill(Color.lime).frame(width: 6, height: 6)
+                                        .shadow(color: Color.lime.opacity(0.6), radius: 3)
+                                        .padding(9)
+                                }
+                            }
+                            Text(app.name).font(.hanken(12)).foregroundColor(.inkSec)
                         }
                     }
-                    Text(app.name).font(.hanken(12)).foregroundColor(.inkSec)
                 }
             }
         }
+        .onAppear { apps = osStarterApps() }
     }
 }
 
-struct WhatsNext: View {
-    var body: some View {
-        // one row per suggestion; a flow layout via a simple VStack of side-by-side pairs
-        VStack(spacing: 12) {
-            ForEach(Sample.whatsNext) { t in
-                HStack(spacing: 12) {
-                    Text(t.glyph).font(.splMono(13))
-                        .foregroundColor(.lime).frame(width: 32, height: 32)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(Color(red: 0x20/255, green: 0x26/255, blue: 0x0c/255)))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.lime.opacity(0.3), lineWidth: 1))
-                    (Text(t.title + " ").font(.hanken(13, .medium)).foregroundColor(.ink)
-                        + Text("— " + t.detail).font(.hanken(13)).foregroundColor(.inkSec))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    if t.suggested {
-                        Text("suggested").font(.splMono(9)).foregroundColor(.inkFaint)
-                    }
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 13).fill(Color.panel))
-                .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.edge, lineWidth: 1))
-            }
-        }
-    }
-}
 
-// =====================================================================================================
-// MARK: - Stub detail (the other 12 surfaces — real nav, correct skeleton, honest "building" note)
-// =====================================================================================================
-
-struct StubDetail: View {
-    let surface: Surface
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Text(surface.glyph).font(.splMono(15)).foregroundColor(.lime)
-                    Text(surface.title.uppercased()).font(.splMono(13)).tracking(2).foregroundColor(.inkFaint)
-                    Text("· \(Sample.project.name)").font(.splMono(11)).foregroundColor(.inkFaint)
-                }
-                Text(surface.oneJob)
-                    .font(.hanken(18, .medium)).foregroundColor(.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 10)
-
-                // the section kickers this surface will scaffold — the skeleton is correct now
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(surface.kickers, id: \.self) { k in
-                        HStack(spacing: 12) {
-                            Text(k.uppercased()).font(.splMono(10)).tracking(1.4).foregroundColor(.inkDim)
-                                .frame(width: 150, alignment: .leading)
-                            DotMatrix(pattern: .thinking, accent: .inkFaint, cols: 22, rows: 2, dot: 2, gap: 3, animated: false)
-                                .frame(height: 12)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 10).padding(.horizontal, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
-                        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.edge, lineWidth: 1))
-                    }
-                }
-                .padding(.top, 26)
-
-                HStack(spacing: 8) {
-                    DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 5, dot: 2, gap: 2.4)
-                        .frame(width: 34, height: 34)
-                    Text("Building — this lens is scaffolded; Home + the rail are live.")
-                        .font(.hanken(12)).foregroundColor(.inkDim)
-                }
-                .padding(.top, 28)
-            }
-            .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
 
 // =====================================================================================================
 // MARK: - Window host (the single OS window — lazily created, shown from the status menu)

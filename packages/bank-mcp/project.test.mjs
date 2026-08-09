@@ -21,7 +21,7 @@ test("isProjectDir rejects a folder with no project markers", () => {
 });
 
 test("the README H1 wins, and its em-dash tagline is split off", () => {
-  const p = buildProject({ readme: "# Switchboard — MetaMask, but for AI\n\nBody.", dirName: "relay" });
+  const p = buildProject({ readme: "# Switchboard — your private AI workspace\n\nBody.", dirName: "relay" });
   assert.equal(p.name, "Switchboard");
   assert.equal(p.slug, "switchboard");
 });
@@ -68,7 +68,7 @@ test("open tasks accept both string and {text} shapes", () => {
 
 test("projectToMarkdown renders a card and omits empty sections", () => {
   const md = projectToMarkdown(buildProject({
-    readme: "# Switchboard — MetaMask, but for AI\n\n> A local broker.",
+    readme: "# Switchboard — your private AI workspace\n\n> A local broker.",
     version: "1.0.0", license: "MIT", stack: ["TypeScript"], roadmap: ["Ship the board"],
   }));
   assert.match(md, /^# Switchboard\n/);

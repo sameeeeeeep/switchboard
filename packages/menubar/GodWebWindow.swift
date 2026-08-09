@@ -121,7 +121,7 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     /// - Parameters:
     ///   - url: the wrapp page (its deployed URL, or a granted localhost origin for dev).
     ///   - token: the daemon pairing token (~/.relay/pairing-token).
-    init(url: URL, token: String, port: UInt16 = 8787) {
+    init(url: URL, token: String, port: UInt16 = 8787, title: String = "God") {
         pageURL = url
         origin = GodWebWindow.originOf(url)
         bridge = GodDaemonBridge(port: port, token: token)
@@ -137,7 +137,7 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
             guard let self, let json = GodWebWindow.jsonStr(payload) else { return }
             DispatchQueue.main.async { self.web.evaluateJavaScript("window.__relayEmit(\(GodWebWindow.jsStr(ev)), \(json))", completionHandler: nil) }
         }
-        window.title = "God"
+        window.title = title
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.contentView = web

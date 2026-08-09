@@ -1484,8 +1484,18 @@ private func bankOverviewFields(_ c: BankCtx) -> [OverviewField] {
     if !hexes.isEmpty {
         out.append(OverviewField(lbl: "Palette", swatches: hexes.map { $0.replacingOccurrences(of: "#", with: "") }))
     }
-    if let dec = d["decisions"] as? [String], !dec.isEmpty {
-        out.append(OverviewField(lbl: "Decisions", val: dec.prefix(4).map { "· " + $0 }.joined(separator: "\n")))
+    // Decisions come in two writer shapes: a plain [String], OR an object map {key:{title,body}} (ideabrain/
+    // brandbrain/the OS seed). Handle both — the object form was silently dropped before (the "why" of every
+    // AI-made project vanished). Object → show the titles.
+    var decisions: [String] = []
+    if let dec = d["decisions"] as? [String] { decisions = dec }
+    else if let map = d["decisions"] as? [String: [String: Any]] {
+        decisions = map.values.compactMap { ($0["title"] as? String) ?? ($0["body"] as? String) }
+    } else if let arr = d["decisions"] as? [[String: Any]] {
+        decisions = arr.compactMap { ($0["title"] as? String) ?? ($0["body"] as? String) }
+    }
+    if !decisions.isEmpty {
+        out.append(OverviewField(lbl: "Decisions", val: decisions.prefix(4).map { "· " + $0 }.joined(separator: "\n")))
     }
     return out
 }

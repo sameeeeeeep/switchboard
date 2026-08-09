@@ -1,266 +1,199 @@
-# Switchboard — MetaMask, but for AI
+# Switchboard
 
-A local **sidekick** daemon holds your Claude (or any local model) and your connected MCP tools. A
-browser **extension** injects a standard provider — `window.claude` — into every page, so **any
-website runs on the visitor's own model, tools, context, and data** without ever holding an API key,
-seeing a credential, or paying for inference. Every sensitive action is brokered through an explicit,
-scoped, per-origin consent UI. Think `window.ethereum` / EIP-1193, where the asset is *your Claude,
-your tools, and your context.*
+**Your private AI workspace.**
 
-> **The consent broker is the product** — the plumbing is commodity. Security design leads here.
->
-> The repo is still scoped `@relay/*`; the product is **Switchboard**. The injected provider stays
-> `window.claude`.
+Run AI apps using your own subscriptions, local models, or hybrid infrastructure. Every app shares the
+same context — your data stays under your control. Install the macOS app and get instant access to a
+growing ecosystem of native and web AI apps, without breaking your workflow.
 
-![Many apps point at one Switchboard, which holds your data, context and inference (Claude or local models); Claude reaches your tools](docs/diagrams/one-connection.svg)
+> **One workspace. Every AI app. Your data stays yours.**
 
-## The idea: a vault you own and lend out
+---
 
-Switchboard is a wallet for AI. You own three things and lend them to apps under consent — **inference**
-(your Claude), **context** (your portable brand/project knowledge), and a **backend** (an app's own
-routes, run locally). An app you don't have to trust with your whole life gets exactly the one thing
-you hand it, for the session, revocably.
+## Why Switchboard?
 
-![Switchboard as a BYO vault — apps publish context, you lend one brand to another app per session](docs/diagrams/context-vault.svg)
+Today's AI is scattered across dozens of apps. Context gets lost, subscriptions are fragmented, and your
+data is spread across multiple providers.
 
-- **Economic inversion** — the site runs on the *visitor's* model/compute, not the operator's bill.
-- **Capability inheritance** — the site instantly gets every MCP tool + connector the visitor already
-  connected; it integrates and OAuths nothing.
-- **Data locality** — credentials + data stay on the user's machine; only prompts reach the model.
-- **Context portability** — build a brand once in one app, use it in any other, on your own compute.
+Switchboard brings everything together in one private workspace where AI apps share **context, not your
+data**. The model, the tools, the context, and the files stay on your machine. Apps bring only a UI — they
+never hold your API key and never see your data.
 
-## The broker primitives
+---
 
-Every primitive funnels through the same out-of-band gate (`packages/sidekick/src/security/gate.ts`).
-Reads pre-approve within scope; writes prompt every time (or auto-approve under a per-site "trust"
-mode); nothing bypasses it.
+## What it does
 
-| Primitive | What it gives an app | Consent model |
-|---|---|---|
-| `claude_complete` / `claude_stream` | the visitor's Claude (agentic tool use) | model in scope; writes gated |
-| `claude_session` | a **warm** per-`(origin, sessionId)` thread — no cold start per turn, pooled | read-only (web reads only) |
-| `claude_storage` | a private per-origin folder; **`bind`** points it at a real project folder | reads free; `bind` = path consent |
-| `claude_context` | shared, cross-app **context** (publish / read the one you're lent) | selection = consent; never enumerable |
-| `claude_callTool` | any MCP tool / claude.ai connector the user granted | read auto · write per-action |
-| `claude_speak` | on-device text-to-speech — a **cloned voice** (Kyutai Pocket TTS on MLX), a local TTS server, or macOS `say` | local · no cloud, no credits |
-| `claude_transcribe` | on-device speech-to-text — a local whisper / STT server (mirror of `speak`) | local · no cloud, no credits |
+Switchboard lives in your **menu bar** and surfaces right at the **notch** — an ambient assistant, a
+launcher, and a full private workspace, always one keystroke away and all sharing the same context.
 
-**Context can be backed by a source you already keep** — a published Google Sheet's CSV is fetched and
-parsed to JSON rows (SSRF-guarded, cached), so a spreadsheet becomes live shared context with zero new
-infra. A global **"working on" project** scopes every connected app at once.
+### The assistants — always there
 
-**One surface, any brain.** `window.claude` looks identical whether it's served by your Claude
-subscription, a local model (Ollama / LM Studio), or an on-device engine — `claude_speak` even
-synthesizes voice locally. Switchboard is the orchestrator: Claude **+** connectors **+** local models,
-all on your compute.
+- **God — `⌃⌥ click`.** Your all-purpose assistant. It *sees your screen* and helps: points at the right
+  thing, types, clicks, and runs apps for you — always under your consent. Talk to it, and it talks back.
+- **Ask — `⌃⌃`.** Type a question across everything you're working on — projects, tasks, notes, history —
+  and God answers grounded in *your own* work, not a blank slate.
+- **Guru.** A live guide. It walks you through any task on any app, step by step, pointing a cursor and
+  adapting to what's actually on your screen — a manual can't do that.
+- **Flow — `⌃⌥ hold`.** Dictation, done right. Hold, talk, and it types — anywhere on your Mac, transcribed
+  on-device.
 
-## Beyond the browser — native apps
+### The notch is the interface
 
-The daemon is the machine's **AI capability runtime**; web wrapps were its first client. A native
-Mac app can talk to the daemon **directly** (no browser) and borrow the same broker — its own Claude,
-local models, gated tools, storage — as its own least-privilege principal `native@<appId>`. It's a
-second loopback listener that authenticates a per-app token; everything below the identity stamp is
-the *same* gate, grants, budgets, and audit as the web path (additive — the web spikes stay green).
-Interactive **"Allow this app"** consent: an unregistered app connects → the panel prompts (rate-limited,
-human-approval gate) → a token is minted. Proof: `packages/sidekick/spike/native-spike.mjs`.
+Decisions, approvals, and guided steps appear as **cards right at the notch** — you answer with a keystroke
+(`⌥1/2/3` to pick, `⌥→` to confirm), never a context-switch. Every card shows who's asking and which project
+it belongs to, so it's never a mystery prompt.
 
-**[Flow](examples/flow)** is the demo — a Wispr-style dictation app: hold a key, talk, and cleaned-up
-text lands at your cursor. It's a thin native shell that transcribes locally (whisper) and cleans up
-on a small **local model** (or your Claude), synthesized entirely on your machine. Ships as a
-notarized `.dmg`. The rule it proves: an app supplies the skin; the *user's* intelligence comes from
-the broker — no key, no bundled model.
+### The launcher — `⌥⌥`
 
-**[God](examples/god)** is the flagship — an ambient, screen-aware assistant that ships *inside* the
-menu-bar app. Double-tap Control, speak, release: it sees your screen (real vision through the daemon —
-or **drag a box while you talk** to send just one region, not the whole screen), answers in a voice you
-**clone** (on-device, Kyutai Pocket TTS on Apple's MLX — no cloud, no credits),
-and acts across your whole Mac — opening, typing, clicking — while
-**irreversible** actions (send / delete / pay) hold for a one-tap consent drop in the notch. It keeps a
-**warm session** (it remembers) and works on the **project you pick** in the menu. The notch becomes an
-LED status panel — `Listening → Thinking → Speaking`, a permissions concierge that walks you through
-mic → accessibility → screen, a second-cursor glow, and a dot-matrix wordmark. Same rule as Flow: the
-app is a skin; the intelligence *and the gate* are the broker's. Full spec: [`docs/GOD.md`](docs/GOD.md).
+A spotlight for your work: jump to a project, launch an app, find a file, or ask across everything — from
+anywhere, without leaving what you're doing.
 
-**The wrapp store** lives in the menu bar too — a modal that lists every wrapp (web and native), shows
-what each **needs** before it runs (live-diffed against your setup), and launches it on the right
-surface: open in a browser or run a workflow headless — every launch through the same gate. God can
-also **drive** a wrapp live: each wrapp exposes its actions as page-tools (`<id>_run`), so God runs
-one on your real Claude and the result lands as a notch widget. (Loading a skill *into* God's own
-context — so it gains the ability rather than driving the page — is designed, next up.) The source of
-truth is a per-repo `switchboard.json`, ingested into one catalog.
-Download the signed, notarized app from
-[**Releases**](https://github.com/sameeeeeeep/switchboard/releases/latest). Specs:
-[`docs/STORE.md`](docs/STORE.md) · [`docs/WRAPPS-FOR-AGENTS.md`](docs/WRAPPS-FOR-AGENTS.md).
+### The workspace — `⌘O`
 
-## Switchboard OS — the workspace you come back to
+A full private workspace built over your vault. Thirteen surfaces, each a **lens on the same data** — never
+a separate silo:
 
-The daemon is the engine; **Switchboard OS** is the desk (open it with **⌘O** from the menu bar). It's
-not a launcher — it's a set of **lenses over one substrate**: your **Bank**, a vault of plain `.md`
-files you own. There's no per-surface database — every surface is a *query + a renderer* over the same
-files, so two views can never disagree, and **Obsidian opens the exact same files**.
+**Home · Tasks · Calendar · Bank** (your projects) **· Dashboard · Needs · Routines · Workflows · History ·
+Graph · Dictionary · Apps · Store.**
 
-- **Home** — pick a project back up, recent work, what's next.
-- **Tasks** — a real **AI kanban**: **Backlog · Todo · Doing · Blocked · Review · Done**, drag between
-  columns. A task is a *line* in `tasks.md`; a few optional, still-plain tokens make it a board —
-  `status:` `id:` `epic:` (bundle) `blocked:` (dependency) `prio:` `due:`, with indented detail lines.
-  Paste a scattered **brain-dump** and your own Claude **specs it into detailed cards** — bundled by
-  epic, with real blockers wired between them — parked in Backlog for you to promote.
-- **Calendar · Bank · History · Graph · Dictionary** — a temporal projection, the vault itself, session
-  receipts, a knowledge graph, and your project glossary — all lenses on the same substrate.
+Add a task and it lands on the calendar; finish a run and it's a receipt in History; establish a project in
+Bank and every surface — and your Claude — reads the same context.
 
-Every surface reads real data (bound folders + published contexts); nothing is invented.
-Specs: [`docs/OS.md`](docs/OS.md).
+**Tasks is a real kanban** — Backlog → Todo → Doing → Blocked → Review → Done, drag to move. Paste a
+scattered brain-dump and your own Claude turns it into detailed cards, bundled together, with blockers
+marked between them — parked in Backlog for you to promote when you're ready.
 
-### Guru — the presence layer
+### Drive it from Claude Code
 
-Over all of it is **Guru**: the system-wide surface where **any Claude — local or remote — gets your
-attention and gets a real answer back**. Guru raises an actionable card at the **notch / dock / cursor**
-to *ask* a question, present *A/B/C options*, request an *approval*, run a *guided test* on your real
-screen, or *notify with actions* — each card is clickable, shows **who's asking** (thread · project),
-and the answer comes back as **JSON**. Beyond point-and-click, **Guru Live** is the closed loop: a
-Claude authors a plan, then walks you through it **on your actual screen** one step at a time,
-**re-seeing after each move** and editing the plan as reality diverges — the model proposes, the human
-physically confirms, brokered end to end. Substance is shipped (`CursorGuide.swift`, the
-[`switchboard` skill](.claude/skills/switchboard)); the arc is Guru graduating from a guide into an
-**orchestrator that invokes wrapps to reason and act**. Specs:
-[`docs/PRESENCE.md`](docs/PRESENCE.md) · [`docs/GUIDE-CARD-SPEC.md`](docs/GUIDE-CARD-SPEC.md).
+It runs the other way, too. Connect a **Claude Code** session to your workspace (one click — a *Connect
+Claude Code* card appears in your notch during setup) and it can **pick up work from your board**: move a
+task to Todo, then tell Claude *"pick up the next task"* — it claims the top unblocked one, does it, and
+marks it done, moving the card across as it goes. It can run your apps headless and scaffold new ones the
+same way. This is how **Guru and the workspace get real hands**.
 
-## The reverse arrow — drive Switchboard from Claude Code
+### The store
 
-The whole thing runs the other way too: **any Claude session** (Claude Code, a claude.ai thread) can
-reach *into* your Switchboard through two MCP connectors, under the same per-origin consent as the
-browser.
+Native and web apps that share your context and run on *your* AI. Install what you need, nothing you don't.
 
-- **`switchboard`** ([`packages/switchboard-mcp`](packages/switchboard-mcp)) — the reverse arrow. It
-  advertises **one tool per installed wrapp action** (run it headless on your own Claude), can
-  **scaffold** a new wrapp from the house template, **guide you through steps on your screen**
-  (`guide_run` → floating cursor captions), and — new — owns the **task board**:
-  `switchboard_list_tasks` · `switchboard_move_task` · `switchboard_next_task` · `add` · `complete`.
-  `switchboard_next_task` is how a session **picks up work** — it claims the top *unblocked* card you
-  promoted to **Todo**, returns its full spec, and moves it to Doing so it isn't taken twice. So the
-  pipeline is: **Backlog → (you promote) → Todo → an agent picks it up → Doing → Review → Done**, and a
-  blocked card auto-parks until its blocker clears. It's the same plain `tasks.md` the OS board renders.
-- **`bank`** ([`packages/bank-mcp`](packages/bank-mcp)) — seed the vault: point it at a repo or a live
-  website and it files a `project-<slug>.md` / `brand-<slug>.md` card (deterministic — it parses facts,
-  it doesn't guess).
+### Your vault
 
-Onboarding closes the loop: a **"Connect Claude Code"** card drops into your notch (and lives in
-Settings → Connections) with the exact `claude mcp add …` — one click wires a Claude session to your
-board so **Guru and the OS get real hands**. The connector is bundled into the app, so the command
-just works.
+A project is a few `.md` files you own — essence, tasks, notes, artifacts. Every app reads the same context;
+nothing is copied out, and you can revoke any grant at any time.
 
-## Porting existing apps
+---
 
-An app is a small set of runtime **seams**; porting is *substituting* each seam with a broker-backed
-shim at build time — not rewriting, and not adopting an invasive SDK. Frameworks collapse to thin
-presets; a portability `doctor` gates fit.
+## Keyboard shortcuts
 
-![Porting = substituting seams, not rewriting — an alias map retargets an app onto gated broker primitives](docs/diagrams/porting-model.svg)
-
-**Proven on the real brandbrain** (`examples/brandbrain-port`): its Next.js frontend static-exports,
-all **32 route handlers** bundle into a client-side fetch-router via seam shims (`@/lib/claude` →
-`window.claude`, `lib/server/*-store` → `claude_storage`, the warm session → `claude_session`), and a
-`switchboard.json` manifest drives the connect scope + folder bind. It runs unchanged on the visitor's
-Claude, reading their existing `.data/` folder — no server, no keys. See
-[`ROADMAP.md`](ROADMAP.md) for what's built.
-
-## The side panel
-
-The extension's side panel is a consumer surface, not a logs dashboard: **Working on** (your active
-project, in its own brand palette) · **Connectors** (friendly capability tiles) · **Apps** (details
-tucked into per-app expanders) · a **Wrapp store** launcher (open any app in a new tab, already
-connected). A bottom-sheet project switcher includes **Connect a Google Sheet**. Activity, budgets,
-and the kill switch live behind a menu. Consent (connect / write / folder-bind / context-pick) renders
-**inline** — and survives an MV3 worker eviction via a durable, re-pushed prompt queue; the panel is
-self-healing, so a new connection appears live without a reopen.
-
-**This tab** shows the site you're on and, when it hasn't opted into Switchboard, suggests a wrapp that
-does the same job on your own compute, context and data. And every wrapp carries the *same* **connect
-chip** (`mountConnect`) — a standard, un-restylable lockup that greets you by name and shows the one
-project lent to that app.
-
-**TabSidekick — your Claude on any page.** From the *This tab* line you can run your own Claude on
-whatever page you're on (any tab, opted-in or not): extract its text, selection, images, or metadata
-(read-only; the page is never written to), act on it, and deliver the result by hand — copy, download,
-drag-and-drop, or **save to your vault**. The actions are **capability packs**: a **Base** pack everywhere
-(explain, summarize, translate, extract-and-steelman, a warm **conversation** about the page, speak it),
-plus **site-aware packs** that light up by domain — e.g. the **Cast** persona pack on Instagram/TikTok/X
-(caption in-voice, on-persona reply, content ideas). **Form Assist** reads a page's form fields and hands
-you ready-to-drop values from your own saved info (personal card, project, links) — you paste each one; it
-never types into the page and **hard-refuses** password / card / SSN fields. Everything runs under a
-separate `tabsidekick@<host>` principal (its own first-use consent, grant, budget, audit, and revoke —
-never the page's), and extracted page content is always fenced as **untrusted data** so nothing inside it
-can act as an instruction. New permissions: `activeTab`, `scripting`, `clipboardWrite` (no DOM automation,
-no injection into the page). Packs are a data registry — adding one is one entry, no view changes.
-
-## Packages
-
-| Package | What it is |
+| Shortcut | What it does |
 |---|---|
-| [`@relay/protocol`](packages/protocol) | BYOP-1 wire contract (types) shared by all three below — the design-in-code |
-| [`@relay/sidekick`](packages/sidekick) | The daemon: model backends + MCP tools + storage + context + warm sessions + **the out-of-band gate** + audit |
-| [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
-| [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
-| [`@relay/switchboard-mcp`](packages/switchboard-mcp) | **The reverse arrow** — an MCP connector so a Claude session runs wrapps, scaffolds new ones, guides on-screen, and drives the **task board** (list / move / **next_task** pick-up / add / complete) |
-| [`@relay/bank-mcp`](packages/bank-mcp) | The vault-ingestion connector — seed the Bank from a repo or a live website (`project-*` / `brand-*` cards); shares the one task dialect (`tasks.mjs`) with the OS board |
-| [`packages/menubar`](packages/menubar) | The native macOS app — the menu-bar broker + **God** + **Switchboard OS** (⌘O) + the notch presence layer; ships the notarized `.dmg` |
-| [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS); the flagships **Canvas / Meeting Notes / Cut**; and a deep **skill shelf** (daily · dev/utility · creator · founder), each a single-input skill that runs on your Claude and is God-drivable. **~76 listings** total. |
-| [`examples/flow`](examples/flow) | **Flow** — the native dictation app (menu-bar Swift + notarized DMG); the "beyond the browser" demo |
-| [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
+| `⌃⌥` + click | God looks at your screen and helps |
+| `⌃⌥` hold | Dictate (Flow) — talk, it types |
+| `⌃⌃` | Ask across your work |
+| `⌥⌥` | Launcher / spotlight |
+| `⌘O` | Open the workspace |
 
-**Also built** (see [`docs/`](docs)): **Routines** — the daemon's temporal half, scheduled Claude runs
-(autopilot is routine #1) · **Team Mode** — N-people / N-Claudes / one shared folder, flag-gated, zero
-protocol change · **Cloud Pro** — opt-in OpenRouter inference + zero-knowledge Cloudflare backup ·
-**WebMCP** — a wrapp's actions exposed as page-tools, drivable by God or any agent
-([`docs/WEBMCP.md`](docs/WEBMCP.md)) · an **iPhone bridge** — a paired phone tunnels a webview's
-`window.claude` to the Mac daemon.
+On a notch card: `⌥1/2/3` pick · `⌥→` confirm · `⌥↑` back · `Esc` dismiss.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the trust chain, the gate, and how a request flows.
+---
 
-## Status
+## Apps
 
-All packages compile; the spine is proven end-to-end by spikes under `packages/sidekick/spike/` and
-`examples/brandbrain-port/proof/`:
+### Included (native, in the box)
+- **Flow** — dictation, done right. Talk and it types — anywhere on your Mac, transcribed on-device.
+- **God** — your all-purpose assistant. It sees your screen and can point, type, click, and run apps for
+  you, always under your consent.
+- **Guru** — a guide for anything. It walks you through any task on any app step by step, adapting live to
+  what's actually on your screen.
 
-| Spike | Proves | Result |
-|---|---|---|
-| `storage-spike` | per-origin store, isolation, traversal-safe, bind existing data | 23/23 |
-| `context-spike` | cross-app publish → lend-by-selection → read; moat holds | 9/9 |
-| `context-source-spike` | Google Sheet CSV → JSON rows, SSRF guard, cache | 13/13 |
-| `session-spike` | warm thread, sequential turns, later turns ~40% faster | 6/6 |
-| `consent-durable-spike` | consent survives a mid-prompt socket drop | 3/3 |
-| `native-spike` | native app as its own `native@` principal, isolation, + interactive "Allow this app" | 11/11 |
-| `run-live` / `run-context-demo` | real brandbrain data + Claude + a real route, end-to-end | green |
+### Available in the store
+- **BrandBrain** — brand strategy.
+- **IdeaBrain** — product ideas.
+- **Prism** — research and synthesis.
+- **AdForge** — ads and campaigns.
 
-Plus the original gate / MCP / daemon round-trip spikes. Honest gaps (see [ARCHITECTURE.md](ARCHITECTURE.md)):
-the local-model tool loop, and the private-Sheet write path (read-only for now).
+### Coming soon
+OS, Batch, Redline, Crest, Natal, Cast, Identity, Cartridge, AdPulse, Deck, Dub, and **sameep.ai** —
+tools for orchestration, review, storytelling, analytics, and autonomy.
 
-## Dev
+---
+
+## Bring your own AI
+
+Switchboard runs on **your** infrastructure — your choice:
+
+- **Your subscription** — bring your Claude and every app runs on it.
+- **A local model** — keep everything on-device.
+- **Hybrid** — local by default, reach for the cloud only when you opt in.
+
+The broker never holds a key and never sees your data — it only routes the calls you've consented to.
+
+---
+
+## Install
+
+Switchboard is a macOS app for Apple Silicon (macOS 13+). Download the signed, notarized
+[`Switchboard.dmg`](https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg),
+drag it to Applications, and launch it — the workspace lives in your menu bar. First run walks you through
+the one-time setup (your model, permissions, first app).
+
+The Chrome extension is an optional layer-2 upgrade — it lets you run your Claude on *any* website. You
+never need it to get value from the app.
+
+---
+
+## How it works
+
+A local **daemon** holds your model and your connected MCP tools. Apps — native or web — request
+capabilities through a single **consent broker**: they can only ever touch what you've granted, for as long
+as you've granted it. Your project context (a vault of `.md` files you own) is *lent* to apps, so they share
+what you're working on without copying it anywhere. An optional browser extension injects the same provider
+into web pages, so any site can run on your own model, tools, and data under per-site consent.
+
+Isolation is structural: every app is scoped to its own sandbox and the context you explicitly lend it.
+
+---
+
+## Privacy — the five noes
+
+- **No account** to create.
+- **No data** leaves your Mac without a grant.
+- **No key** resold — you bring your own.
+- **No lock-in** — your vault is plain `.md` files you own.
+- **No training** on your data.
+
+---
+
+## For developers
+
+Switchboard is open source — an npm-workspaces monorepo:
+
+- `packages/protocol` — the wire types + error codes (BYOP).
+- `packages/sdk` — `getRelay` / `whenRelayReady` + the connect chip.
+- `packages/extension` — the MV3 browser extension.
+- `packages/sidekick` — the Node daemon: WS server, consent broker, model backends, context library, storage.
+- `packages/menubar` — the macOS menu-bar app (Swift) that supervises the daemon.
+- `packages/bank-mcp` — an MCP server that exposes your vault to any Claude thread.
+- `examples/apps` — the app store and the bundled web apps.
+
+Run it locally:
 
 ```bash
-npm install
-npm run build
+# the daemon (prints a pairing token)
+node packages/sidekick/dist/index.js
 
-# Terminal 1 — the sidekick. Prints a pairing token.
-npm run sidekick
-
-# Load packages/extension as an unpacked MV3 extension; paste the pairing token into the panel.
-
-# Terminal 2 — the wrapp store (Prism, ad generator, …).
-npm run apps          # http://localhost:5174
-
-# The brandbrain port:
-node examples/brandbrain-port/build.mjs        # build (needs ~/Documents/Projects/brandbrain)
-node examples/brandbrain-port/serve.mjs        # http://127.0.0.1:5178
+# the app store (Prism, BrandBrain, …)
+cd examples/apps && node serve.mjs
 ```
 
-## Security invariants (never violate)
+Load `packages/extension` as an unpacked MV3 extension and paste the pairing token into the side panel.
 
-1. The extension is the **origin oracle** — origin comes from the browser, never the page.
-2. The daemon is the **only** enforcement point — never the model.
-3. Reads pre-approve within scope; **writes prompt every time** (or per-site trust), non-bypassable.
-4. Tool danger class is **default-deny**, decided by daemon policy.
-5. Secrets never cross to the page — results only. Context is **selection = consent**; apps never
-   enumerate the library, and receive only the one you hand them.
-6. Everything is audited; per-origin revoke + a global kill switch.
+### Security invariants (never violated)
+- The broker never holds a user's API key and never sees app data in the clear.
+- An app can only reach a capability the user has explicitly granted, scoped to that app's origin.
+- Context and files are lent, never copied out; the user can revoke any grant at any time.
+
+---
+
+## License
+
+MIT.

@@ -436,9 +436,14 @@ export class Broker implements ConsentPrompter, NativeHandler {
         id: (typeof s.id === "string" && s.id.trim()) ? s.id.trim() : `step-${i + 1}`,
         text: s.text.trim(),
         ...(typeof s.hint === "string" && s.hint.trim() ? { hint: s.hint.trim() } : {}),
+        // Clipboard payloads (non-secret) — carried through so a REMOTE guide can pre-load the clipboard,
+        // not just a local guide-run.json writer. The native runtime writes/restores the real pasteboard.
+        ...(typeof s.copy === "string" && s.copy.trim() ? { copy: s.copy } : {}),
+        ...(typeof s.value === "string" && s.value.trim() ? { value: s.value } : {}),
       }));
     if (steps.length === 0) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "guide_run needs at least one step with text");
     const mode: "test" | "tour" = params?.mode === "test" ? "test" : "tour";
+    const autoClipboard = params?.autoClipboard === true;
     const title = (typeof params?.title === "string" && params.title.trim()) ? params.title.trim() : "Guided walkthrough";
 
     // One cursor, one guide. Refuse a second rather than fight over the pointer.
@@ -457,7 +462,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
         this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "denied", note: `consent declined · ${title}` });
         throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "the guide was declined");
       }
-      const result = await runGuide({ title, mode, steps });
+      const result = await runGuide({ title, mode, steps, ...(autoClipboard ? { autoClipboard: true } : {}) });
       this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "ok", note: `${mode} · ${title} · ${result.outcome} (${result.passed}/${result.total})` });
       return result;
     } catch (e) {
@@ -952,6 +957,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
         case "set": {
           if (grant.mode === "readonly") { log("set", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
           store.set(origin, requireKey(req.key), req.value ?? "");
+          // 2b — attribute the artifact to the project this origin is currently lent (best-effort sidecar),
+          // so the OS can scope "recent work" to the active project.
+          try { const pid = this.deps.contexts.active(origin)?.id; if (pid) store.attribute(origin, requireKey(req.key), pid); } catch { /* best-effort */ }
           log("set", "ok");
           return { ok: true };
         }

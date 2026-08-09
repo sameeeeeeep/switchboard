@@ -27,7 +27,7 @@ export function isProjectDir(names = []) {
 const oneLine = (s) =>
   String(s || "").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 
-// README "# Switchboard — MetaMask, but for AI" → name "Switchboard", tagline "MetaMask, but for AI".
+// README "# Switchboard — your private AI workspace" → name "Switchboard", tagline "your private AI workspace".
 function splitTitle(h1) {
   const t = oneLine(String(h1 || "").replace(/^#\s+/, ""));
   const m = t.split(/\s+[—–-]\s+/);

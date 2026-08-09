@@ -132,12 +132,21 @@ export interface GuideStep {
   text: string;
   /** Optional secondary line (where to look / what "done" means). */
   hint?: string;
+  /** Non-secret text pre-loaded onto the clipboard when this step shows, so the user just pastes
+   *  (a URL to visit, a snippet to enter). NEVER a password, API key, or other secret. */
+  copy?: string;
+  /** A value the step asks the user to TYPE — pre-copied so they paste instead of type. Non-secret;
+   *  takes clipboard priority over `copy`. */
+  value?: string;
 }
 export interface GuideRunParams {
   /** What this walkthrough is, shown at consent and as the run's heading, e.g. "Connect your first wrapp". */
   title: string;
   /** "tour" = teach/guide (verdicts are just "done"); "test" = pass/fail each step (guided test). Default "tour". */
   mode?: "test" | "tour";
+  /** When true, each step's `copy`/`value` also auto-loads the clipboard when the step shows and the
+   *  user's original clipboard is restored at the end. Explicit per-step `copy`/`value` load either way. */
+  autoClipboard?: boolean;
   /** Ordered steps. At least one required. */
   steps: GuideStep[];
 }
