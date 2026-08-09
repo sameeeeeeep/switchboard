@@ -63,7 +63,7 @@ field conventions in `CONTEXT-KINDS.md`.
 | Object | Stored as | Produced by | Read by (lenses) |
 |---|---|---|---|
 | **Project** | `project-<slug>.md` (front-matter + body) | Bank Establish flow, ideabrain, extractor, a wrapp's `context.publish` | Home (active card), Bank, Graph (node), Calendar (milestones), History (scope) |
-| **Task** | line in `tasks.md`, tagged `@<wrapp>` / `#project` | Bank quick-add, a wrapp, God, the connector (`bank_add_task`) | Tasks (board), Home (What's next), Calendar (dated), Bank (project tasks) |
+| **Task** | line in `tasks.md`, tagged `@<wrapp>` / `#project` | Bank quick-add, a wrapp, God, the Switchboard connector (`switchboard_add_task`) | Tasks (board), Home (What's next), Calendar (dated), Bank (project tasks) |
 | **Note** | `note-<slug>.md` | Bank capture box (`bankIt`), God, dictation | Bank, Graph, Home (Recent), `⌃⌃` search |
 | **Artifact** | `artifact-<id>.md` + blob (image/doc/deck) | any wrapp run (the output of a God tool) | Home (Recent Work), Bank (project facet), Graph, History |
 | **History entry** | `history-<id>.md` (a session receipt) | every God/wrapp run appends one | History, Home (Recent), Graph (edges), `⌃⌃` ask |
@@ -350,9 +350,46 @@ Finder drop → new `artifact-*.md` / `note-*.md`. Home authors little; it mostl
 **One job:** *See and move everything I've committed to, across every project and wrapp, in one board.*
 Tasks is the lens on `tasks.md` (the open-ClickUp-in-Bank model).
 
-**Belongs:** task rows, grouping/filtering, quick-add, the board columns.
-**Must NOT:** become a full PM app with custom fields/gantt/automations; invent statuses beyond the vault
-convention; hide the fact that a task is just a line in a file.
+**Belongs:** task rows, the kanban columns, grouping/filtering, drag-to-move, quick-add, and the AI
+**spec-out** (a brain-dump → detailed cards, bundled, with blockers marked).
+**Must NOT:** become a full PM app with gantt/automations/permissions; store kanban state anywhere but the
+`.md` line; hide the fact that a task is just a line in a file. Every column, blocker, and bundle is a
+plain token in `tasks.md` — Obsidian still opens it, and nothing lives in a sidecar DB.
+
+### The dialect (how the board is still just text)
+
+A task is a line; a few **optional, order-free, still-plain tokens** turn the two-status list into a real
+kanban. `[x]` always wins as Done; everything else refines the open state:
+
+```
+## Switchboard launch
+- [ ] Ship the pricing page @crest status:doing id:pr01 epic:launch prio:high due:2026-08-15
+      Three tiers, monthly/annual toggle, Paddle checkout wired.   ← indented lines = the card's detail
+      - [ ] Wire Paddle checkout                                   ← nested checkbox = a subtask
+- [ ] Legal OK on pricing copy id:leg1 epic:launch blocked:pr01    ← waits on pr01 → lands in Blocked
+```
+
+| Token | Meaning |
+|---|---|
+| `status:backlog\|todo\|doing\|blocked\|review` | the open-state **column** (missing = todo; `[x]` = Done, always). **`backlog` = parked**; promoting a card Backlog→Todo is the deliberate signal that releases it to agents |
+| `id:xxxx` | a stable handle other cards (and Claude) reference |
+| `blocked:xxxx` (a.k.a. `needs:`) | this card waits on task `xxxx` — an unresolved blocker forces the **Blocked** column |
+| `epic:slug` | the **bundle** this card belongs to (Group: Bundle, or the ◇ chip on a card) |
+| `prio:high\|med\|low` | priority |
+| `due:YYYY-MM-DD` | due date (the legacy `— by <hint>` form is still read) |
+
+The one parser lives in [`packages/bank-mcp/tasks.mjs`](../packages/bank-mcp/tasks.mjs) (`parseBody` ·
+`parseTasks` · `columnOf` · `setStatus` · `assignIds`), mirrored 1:1 in the native
+[`OSSurfaceWorkspace.swift`](../packages/menubar/OSSurfaceWorkspace.swift) so the board, the connector,
+and Obsidian never disagree.
+
+### AI spec-out
+
+The **✦ Spec a dump** button opens a box: paste a scattered brain-dump, and the user's own Claude (one
+gated `claude_complete` via `SkillRunner` → the daemon) drafts it into cards — short imperative titles,
+1–3 detail lines each, related tasks sharing an `epic:`, real dependencies wired as `blocked:`, and a
+priority. The output is appended verbatim under the scoped project's heading; ids are backfilled so
+blockers resolve. Nothing is written until it's plain `.md` on disk.
 
 ### Section layout & hierarchy
 
@@ -420,14 +457,23 @@ link to `note-*.md` / `artifact-*.md`.
 ### Grounding — what's real today (native build)
 
 - **Source** = every `tasks.md` across the real vaults: bound folders (`storage-bindings.json`) ∪
-  context `data.folder`s. Line dialect: `- [ ] text @wrapp #project due:YYYY-MM-DD`; `- [x]` = done.
-  The dialect has exactly two statuses (todo/done) — the board doesn't invent Doing/Blocked columns;
-  richness comes from **Group: Status / Project / Due** (Due = Overdue · Due · No date).
+  context `data.folder`s. Line dialect (see above): `- [ ] text @wrapp #project status:… id:… epic:…
+  blocked:… prio:… due:YYYY-MM-DD` + indented detail; `- [x]` = done.
+- **Columns** = a real kanban resolved from the line: **Backlog · Todo · Doing · Blocked · Review**
+  (open) + a collapsed **Done** tally. Fixed-width columns that **scroll horizontally** (Trello/Linear
+  grammar) so titles never wrap-cut. Every open column always shows so you can drag into an empty one.
+  **Backlog is the staging area** — the AI spec-out drops there and `switchboard_next_task` never pulls
+  from it; you promote a card to Todo to release it. `Group:` cycles **Status / Project / Bundle / Due**
+  (Bundle = `epic:`; Due = Overdue · Due · No date).
+- **The pickup pipeline**: Backlog → (you promote) → Todo → an agent/Claude-session claims it via the
+  **Switchboard connector** (`switchboard_next_task`) → Doing → Review → Done. A promoted card with an open blocker parks in
+  Blocked until the blocker clears, then becomes pickable — so agents only ever get unblocked, released work.
 - **Scope** = the active project (its vault folder or `#slug` tag); the chip lifts to All projects.
   A scope that matches nothing falls open to All, honestly labeled.
-- **Writes**: checkbox toggle rewrites ONLY that line's checkbox token (exact-line match; if the file
-  changed underneath, it refuses rather than blind-writes). Quick-add appends a line (creates the file
-  with a `# Tasks` header on first use), into the scoped project's vault.
+- **Writes**: checkbox toggle and **drag-between-columns** rewrite ONLY that line (exact-`raw`-line
+  match; if the file changed underneath, they refuse rather than blind-write) — drag sets/clears the
+  `status:` token. Quick-add appends a line (creates the file with a `# Tasks` header on first use), into
+  the scoped project's vault. **✦ Spec a dump** appends AI-drafted cards, then backfills `id:`s.
 - **States**: no tasks anywhere → CTA card with a working quick-add (or the bind-a-folder truth);
   unreadable `tasks.md` → per-file banner with **Open tasks.md**; Done lives in a collapsed count
   column → expands in List view.

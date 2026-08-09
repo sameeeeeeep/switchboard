@@ -70,6 +70,19 @@ say "bundling daemon (esbuild, single ESM file)…"
   --outfile="$RES/daemon/sidekick.mjs" \
   --log-level=warning
 
+# ---------- 4b. the Switchboard connector (Claude Code MCP) ----------
+# One ESM file so the onboarding "Connect Claude Code" step has a real path: it lets a Claude Code
+# session read the project board (pick up tasks) + run wrapps. Same createRequire banner as the daemon
+# (the MCP stdio transport does dynamic require()s). Runs on the bundled Resources/node.
+say "bundling Switchboard connector (esbuild, single ESM file)…"
+mkdir -p "$RES/connector"
+"$ESBUILD" "$ROOT/packages/switchboard-mcp/switchboard-mcp.mjs" \
+  --bundle --platform=node --format=esm --target=node18 \
+  --external:bufferutil --external:utf-8-validate \
+  --banner:js="import { createRequire as __relayCreateRequire } from 'node:module'; const require = __relayCreateRequire(import.meta.url);" \
+  --outfile="$RES/connector/switchboard.mjs" \
+  --log-level=warning
+
 # ---------- 5. the SDK's native claude CLI, verbatim, beside the bundle ----------
 # sdk.mjs resolves it via createRequire(import.meta.url).resolve(
 #   "@anthropic-ai/claude-agent-sdk-darwin-arm64/claude") — i.e. relative to sidekick.mjs,

@@ -1,18 +1,19 @@
 # @relay/bank-mcp — the Bank connector
 
-An MCP server that lets **any Claude thread push to-dos into your Bank**.
+An MCP server that **seeds your Bank from the work you already have** — point it at a repo or a live
+website and it files a `project-<slug>.md` / `brand-<slug>.md` card into your vault.
 
-Your Bank's vault is a folder of plain `.md` files you own. Three things write to it, and they all
-read each other's work because it's just text:
+Your Bank's vault is a folder of plain `.md` files you own; everything that touches it (the Bank web
+app, Obsidian, this connector) reads each other's work because it's just text — no database, no API.
 
-1. the **Bank web app** (through the Switchboard consent daemon),
-2. **Obsidian** (you, editing the files by hand),
-3. **this connector** — a conversation in Claude Code or claude.ai.
+> **Managing the task board moved to the Switchboard connector.** Adding, listing, moving, completing,
+> and *picking up* tasks now lives in [`packages/switchboard-mcp`](../switchboard-mcp) (`switchboard_add_task`,
+> `switchboard_list_tasks`, `switchboard_move_task`, `switchboard_complete_task`, `switchboard_next_task`),
+> reusing the same pure transforms in [`tasks.mjs`](./tasks.mjs). Bank still *reads* the dialect (below)
+> because `bank_extract_project` syncs a repo's open `- [ ]` tasks onto the board — but the board's
+> **tools** are the Switchboard connector's job now. One dialect, one `tasks.md`; the two never disagree.
 
-So a coding session on a repo, a brandbrain thread, or a chat on your phone can all drop tasks
-straight onto your list. No database, no API, no sync — one folder of markdown is the source of truth.
-
-## The dialect
+## The dialect (shared with the Switchboard connector)
 
 A task is a `- [ ] text` line. The nearest `## Heading` above it is its **list** (the Bank shows that
 heading as the task's source). That's the whole contract — the same format the Bank app and Obsidian
@@ -29,16 +30,29 @@ already use. New tasks are written to `tasks.md` in the vault; listing scans eve
 - [x] Buy oat milk
 ```
 
+A line may also carry a few **optional, still-plain** tokens that make the same file a real kanban —
+`status:doing`, `id:pr01`, `epic:launch`, `prio:high`, `blocked:leg1`, `due:2026-08-15` — and indented
+lines under a task are its detail/subtasks. `[x]` always means Done; a missing `status:` means Todo; an
+unresolved `blocked:` lands the card in Blocked. Everything round-trips through Obsidian untouched.
+
+```markdown
+## Switchboard launch
+- [ ] Ship the pricing page status:doing id:pr01 epic:launch prio:high
+      Three tiers, monthly/annual toggle, Paddle checkout wired.
+      - [ ] Wire Paddle checkout
+- [ ] Legal OK on pricing copy id:leg1 epic:launch blocked:pr01
+```
+
 ## Tools
 
 | tool | what it does |
 | --- | --- |
-| `bank_add_task` | add a to-do (`text`, optional `list`, optional `due`); deduped by text |
-| `bank_list_tasks` | read to-dos across the vault (`status`: open/done/all, optional `list`) |
-| `bank_complete_task` | flip the first open task matching `match` to `- [x]` |
 | `bank_extract_project` | read ONE repo → a `project-<slug>.md` card + its open tasks onto the board |
 | `bank_extract_projects` | scan a folder OF projects → a card per project (the cold-start seed) |
 | `bank_extract_brand` | read a live website → a `brand-<slug>.md` card with its real palette + catalogue |
+
+Task-board tools (`add` / `list` / `move` / `complete` / `next`) live on the
+**[Switchboard connector](../switchboard-mcp)** — see its README.
 
 ## The extractors
 

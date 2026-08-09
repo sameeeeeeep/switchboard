@@ -59,6 +59,18 @@ Graph · Dictionary · Apps · Store.**
 Add a task and it lands on the calendar; finish a run and it's a receipt in History; establish a project in
 Bank and every surface — and your Claude — reads the same context.
 
+**Tasks is a real kanban** — Backlog → Todo → Doing → Blocked → Review → Done, drag to move. Paste a
+scattered brain-dump and your own Claude turns it into detailed cards, bundled together, with blockers
+marked between them — parked in Backlog for you to promote when you're ready.
+
+### Drive it from Claude Code
+
+It runs the other way, too. Connect a **Claude Code** session to your workspace (one click — a *Connect
+Claude Code* card appears in your notch during setup) and it can **pick up work from your board**: move a
+task to Todo, then tell Claude *"pick up the next task"* — it claims the top unblocked one, does it, and
+marks it done, moving the card across as it goes. It can run your apps headless and scaffold new ones the
+same way. This is how **Guru and the workspace get real hands**.
+
 ### The store
 
 Native and web apps that share your context and run on *your* AI. Install what you need, nothing you don't.

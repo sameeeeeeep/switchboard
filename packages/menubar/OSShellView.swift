@@ -1307,7 +1307,11 @@ final class OSShellWindowController: NSObject, NSWindowDelegate {
             w.title = "Switchboard OS"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
-            w.isMovableByWindowBackground = true
+            // Move the window ONLY by its title-bar strip (the header), never by dragging content — else
+            // dragging a kanban card across columns drags the whole window instead. (.titled keeps the
+            // top strip grabbable even with the titlebar transparent + hidden.)
+            w.isMovableByWindowBackground = false
+            w.isMovable = true
             w.backgroundColor = NSColor.black
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 920, height: 620)
