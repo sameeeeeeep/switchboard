@@ -86,5 +86,31 @@ try {
   try { rmSync(scaffoldDir, { recursive: true, force: true }); } catch {}
 }
 
+// 5) The project task board — file-based tools on a throwaway vault (--vault). Proves add → list →
+// next(claim) → complete over real MCP, and that a parked Backlog card is NEVER handed to next_task.
+{
+  const vault = mkdtempSync(join(tmpdir(), "switchboard-vault-"));
+  const t2 = new StdioClientTransport({ command: process.execPath, args: [SERVER, "mcp", "--vault", vault], env: { ...process.env, SWITCHBOARD_SB: "mock" }, stderr: "inherit" });
+  const c2 = new Client({ name: "sb-tasks-test", version: "0.0.0" }, { capabilities: {} });
+  try {
+    await c2.connect(t2);
+    const { tools: tt } = await c2.listTools();
+    check("task tools advertised on the connector", ["switchboard_add_task", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"].every((n) => tt.map((x) => x.name).includes(n)));
+    await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Ship pricing", list: "Proj", status: "todo", epic: "launch", priority: "high", detail: ["Three tiers"] } });
+    await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Someday idea", list: "Proj", status: "backlog" } });
+    const listed = parse(await c2.callTool({ name: "switchboard_list_tasks", arguments: { status: "open", project: "Proj" } }));
+    check("add+list returns both cards", listed.count === 2, String(listed.count));
+    const cols = Object.fromEntries(listed.tasks.map((t) => [t.title, t.column]));
+    check("backlog card parked, todo card ready", cols["Someday idea"] === "backlog" && cols["Ship pricing"] === "todo", JSON.stringify(cols));
+    const next = parse(await c2.callTool({ name: "switchboard_next_task", arguments: { project: "Proj" } }));
+    check("next_task claims the TODO card (never backlog) and moves it to doing", next.ok && next.task.title === "Ship pricing" && next.task.column === "doing", JSON.stringify(next).slice(0, 140));
+    const done = parse(await c2.callTool({ name: "switchboard_complete_task", arguments: { match: "Ship pricing" } }));
+    check("complete_task flips it done", done.ok === true && /Ship pricing/.test(done.completed || ""), JSON.stringify(done));
+  } finally {
+    try { await c2.close(); } catch {}
+    try { rmSync(vault, { recursive: true, force: true }); } catch {}
+  }
+}
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

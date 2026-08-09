@@ -89,8 +89,65 @@ one on your real Claude and the result lands as a notch widget. (Loading a skill
 context — so it gains the ability rather than driving the page — is designed, next up.) The source of
 truth is a per-repo `switchboard.json`, ingested into one catalog.
 Download the signed, notarized app from
-[**Releases**](https://github.com/sameeeeeeep/switchboard/releases/latest). Spec:
-[`docs/WRAPP-STORE-MODAL.md`](docs/WRAPP-STORE-MODAL.md).
+[**Releases**](https://github.com/sameeeeeeep/switchboard/releases/latest). Specs:
+[`docs/STORE.md`](docs/STORE.md) · [`docs/WRAPPS-FOR-AGENTS.md`](docs/WRAPPS-FOR-AGENTS.md).
+
+## Switchboard OS — the workspace you come back to
+
+The daemon is the engine; **Switchboard OS** is the desk (open it with **⌘O** from the menu bar). It's
+not a launcher — it's a set of **lenses over one substrate**: your **Bank**, a vault of plain `.md`
+files you own. There's no per-surface database — every surface is a *query + a renderer* over the same
+files, so two views can never disagree, and **Obsidian opens the exact same files**.
+
+- **Home** — pick a project back up, recent work, what's next.
+- **Tasks** — a real **AI kanban**: **Backlog · Todo · Doing · Blocked · Review · Done**, drag between
+  columns. A task is a *line* in `tasks.md`; a few optional, still-plain tokens make it a board —
+  `status:` `id:` `epic:` (bundle) `blocked:` (dependency) `prio:` `due:`, with indented detail lines.
+  Paste a scattered **brain-dump** and your own Claude **specs it into detailed cards** — bundled by
+  epic, with real blockers wired between them — parked in Backlog for you to promote.
+- **Calendar · Bank · History · Graph · Dictionary** — a temporal projection, the vault itself, session
+  receipts, a knowledge graph, and your project glossary — all lenses on the same substrate.
+
+Every surface reads real data (bound folders + published contexts); nothing is invented.
+Specs: [`docs/OS.md`](docs/OS.md).
+
+### Guru — the presence layer
+
+Over all of it is **Guru**: the system-wide surface where **any Claude — local or remote — gets your
+attention and gets a real answer back**. Guru raises an actionable card at the **notch / dock / cursor**
+to *ask* a question, present *A/B/C options*, request an *approval*, run a *guided test* on your real
+screen, or *notify with actions* — each card is clickable, shows **who's asking** (thread · project),
+and the answer comes back as **JSON**. Beyond point-and-click, **Guru Live** is the closed loop: a
+Claude authors a plan, then walks you through it **on your actual screen** one step at a time,
+**re-seeing after each move** and editing the plan as reality diverges — the model proposes, the human
+physically confirms, brokered end to end. Substance is shipped (`CursorGuide.swift`, the
+[`switchboard` skill](.claude/skills/switchboard)); the arc is Guru graduating from a guide into an
+**orchestrator that invokes wrapps to reason and act**. Specs:
+[`docs/PRESENCE.md`](docs/PRESENCE.md) · [`docs/GUIDE-CARD-SPEC.md`](docs/GUIDE-CARD-SPEC.md).
+
+## The reverse arrow — drive Switchboard from Claude Code
+
+The whole thing runs the other way too: **any Claude session** (Claude Code, a claude.ai thread) can
+reach *into* your Switchboard through two MCP connectors, under the same per-origin consent as the
+browser.
+
+- **`switchboard`** ([`packages/switchboard-mcp`](packages/switchboard-mcp)) — the reverse arrow. It
+  advertises **one tool per installed wrapp action** (run it headless on your own Claude), can
+  **scaffold** a new wrapp from the house template, **guide you through steps on your screen**
+  (`guide_run` → floating cursor captions), and — new — owns the **task board**:
+  `switchboard_list_tasks` · `switchboard_move_task` · `switchboard_next_task` · `add` · `complete`.
+  `switchboard_next_task` is how a session **picks up work** — it claims the top *unblocked* card you
+  promoted to **Todo**, returns its full spec, and moves it to Doing so it isn't taken twice. So the
+  pipeline is: **Backlog → (you promote) → Todo → an agent picks it up → Doing → Review → Done**, and a
+  blocked card auto-parks until its blocker clears. It's the same plain `tasks.md` the OS board renders.
+- **`bank`** ([`packages/bank-mcp`](packages/bank-mcp)) — seed the vault: point it at a repo or a live
+  website and it files a `project-<slug>.md` / `brand-<slug>.md` card (deterministic — it parses facts,
+  it doesn't guess).
+
+Onboarding closes the loop: a **"Connect Claude Code"** card drops into your notch (and lives in
+Settings → Connections) with the exact `claude mcp add …` — one click wires a Claude session to your
+board so **Guru and the OS get real hands**. The connector is bundled into the app, so the command
+just works.
 
 ## Porting existing apps
 
@@ -144,10 +201,20 @@ no injection into the page). Packs are a data registry — adding one is one ent
 | [`@relay/sidekick`](packages/sidekick) | The daemon: model backends + MCP tools + storage + context + warm sessions + **the out-of-band gate** + audit |
 | [`@relay/extension`](packages/extension) | MV3 extension: injects `window.claude`, is the **origin oracle**, holds the pairing token, hosts the panel + consent UI |
 | [`@relay/sdk`](packages/sdk) | The developer wrapper (`relay.complete/stream/storage/context/speak`) + the standard `mountConnect` header chip |
+| [`@relay/switchboard-mcp`](packages/switchboard-mcp) | **The reverse arrow** — an MCP connector so a Claude session runs wrapps, scaffolds new ones, guides on-screen, and drives the **task board** (list / move / **next_task** pick-up / add / complete) |
+| [`@relay/bank-mcp`](packages/bank-mcp) | The vault-ingestion connector — seed the Bank from a repo or a live website (`project-*` / `brand-*` cards); shares the one task dialect (`tasks.mjs`) with the OS board |
+| [`packages/menubar`](packages/menubar) | The native macOS app — the menu-bar broker + **God** + **Switchboard OS** (⌘O) + the notch presence layer; ships the notarized `.dmg` |
 | [`examples/brandbrain-port`](examples/brandbrain-port) | The real brandbrain, ported into the store |
-| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS); the flagships **Canvas / Meeting Notes / Cut**; and a **32-skill shelf** (daily · dev/utility · creator · founder), each a single-input skill that runs on your Claude and is God-drivable. 65 listings total. |
+| [`examples/apps`](examples/apps) | Wrapps + the store home (`index.html`) — the founder stack (AdPulse, AdForge, Shelf, Studio, A-Plus), after hours (NATAL, Arcana), **Cast**, Prism, Cartridge, **Echo** (local TTS); the flagships **Canvas / Meeting Notes / Cut**; and a deep **skill shelf** (daily · dev/utility · creator · founder), each a single-input skill that runs on your Claude and is God-drivable. **~76 listings** total. |
 | [`examples/flow`](examples/flow) | **Flow** — the native dictation app (menu-bar Swift + notarized DMG); the "beyond the browser" demo |
 | [`spec/BYOP-1.md`](spec/BYOP-1.md) | The adoptable provider standard |
+
+**Also built** (see [`docs/`](docs)): **Routines** — the daemon's temporal half, scheduled Claude runs
+(autopilot is routine #1) · **Team Mode** — N-people / N-Claudes / one shared folder, flag-gated, zero
+protocol change · **Cloud Pro** — opt-in OpenRouter inference + zero-knowledge Cloudflare backup ·
+**WebMCP** — a wrapp's actions exposed as page-tools, drivable by God or any agent
+([`docs/WEBMCP.md`](docs/WEBMCP.md)) · an **iPhone bridge** — a paired phone tunnels a webview's
+`window.claude` to the Mac daemon.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the trust chain, the gate, and how a request flows.
 

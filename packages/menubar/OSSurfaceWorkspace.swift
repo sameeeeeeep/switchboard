@@ -109,6 +109,27 @@ private struct OSWSGhostButton: View {
     }
 }
 
+/// The AI spec-out toggle — a lime-tinted "✦ Spec a dump" pill that opens the dump panel.
+private struct SpecButton: View {
+    let active: Bool
+    let action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text("✦").font(.splMono(11)).foregroundColor(.lime)
+                Text("Spec a dump").font(.hanken(12, .semibold)).foregroundColor(active ? .ink : .inkSec)
+            }
+            .padding(.horizontal, 11).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 8).fill(active || hover ? Color.lime.opacity(0.10) : Color.panel))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(active ? Color.lime.opacity(0.55) : (hover ? Color.lime.opacity(0.35) : Color.edge), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+}
+
 /// The lime CTA ("+ Add", "Bank it", "Establish").
 struct LimeButton: View {
     let label: String
@@ -142,7 +163,13 @@ private struct SurfaceFoot: View {
 // =====================================================================================================
 
 private enum TaskView { case board, list }
-private enum GroupMode: String { case status = "Status", project = "Project", due = "Due" }
+private enum GroupMode: String { case status = "Status", project = "Project", epic = "Bundle", due = "Due" }
+
+// The open kanban columns (Done is a separate collapsed tally). Order = flow left→right.
+// Backlog = parked / not-yet-released; promoting a card to Todo is what releases it to agents.
+private let KANBAN: [(id: String, name: String, dot: Color)] = [
+    ("backlog", "Backlog", .inkFaint), ("todo", "Todo", .inkDim), ("doing", "Doing", .lime), ("blocked", "Blocked", .danger), ("review", "Review", .indigo),
+]
 
 private struct TaskItem: Identifiable {
     let id = UUID()
@@ -160,6 +187,10 @@ private struct TaskItem: Identifiable {
     let colIndex: Int
     var checkedNow: Bool = false
     var refIdx: Int = -1                                       // index into the surface's live RealTask array
+    // dialect extras for the kanban card
+    var epic: String? = nil
+    var prio: String? = nil
+    var detail: [TaskDetail] = []
 
     var dueWeight: Int { over ? 0 : (due != nil ? 1 : 2) }
     var groupKey: String { tag ?? proj ?? "~" }
@@ -178,6 +209,9 @@ private struct TaskColumn: Identifiable {
 // A task IS a line in a file: "- [ ] text @wrapp #project due:YYYY-MM-DD". Toggling rewrites only
 // that line's checkbox token; adds append a line. No invented statuses — the dialect has todo/done.
 
+// One detail line under a task: a plain note, or a nested `- [ ]` subtask.
+struct TaskDetail: Identifiable { let id = UUID(); let sub: Bool; let done: Bool; let text: String }
+
 struct RealTask: Identifiable {
     let id = UUID()
     let raw: String            // the exact source line — the match key for a safe line rewrite
@@ -189,6 +223,68 @@ struct RealTask: Identifiable {
     let done: Bool
     let file: String
     let folder: String
+    // dialect tokens (all optional): the kanban lives in these, still plain in the file.
+    let tid: String?           // id: — a stable handle other cards reference
+    let status: String?        // status:todo|doing|blocked|review (nil = todo)
+    let epic: String?          // epic: — the bundle this card belongs to
+    let prio: String?          // prio:high|med|low
+    let blockedBy: [String]    // blocked:/needs: — the ids this card waits on
+    var detail: [TaskDetail]   // indented lines under the task
+    var col: String = "todo"           // resolved column (needs the whole set for blocker done-ness)
+    var blockedTitles: [String] = []   // resolved titles of blockedBy ids
+}
+
+// A task body split into its clean title + the dialect tokens. An unknown `key:val` (a URL) stays in
+// the title — we only ever consume the seven keys. Mirrors packages/bank-mcp/tasks.mjs `parseBody`.
+struct ParsedBody {
+    var title = ""; var tag: String?; var proj: String?
+    var status: String?; var id: String?; var epic: String?; var prio: String?; var due: String?
+    var blockedBy: [String] = []
+}
+func osParseBody(_ bodyRaw: String) -> ParsedBody {
+    var body = bodyRaw.trimmingCharacters(in: .whitespaces)
+    var out = ParsedBody()
+    // legacy "— by <hint>" due (what bank-mcp addTask writes) — pull it before whitespace tokenizing.
+    if let r = body.range(of: " — by ") { out.due = String(body[r.upperBound...]).trimmingCharacters(in: .whitespaces); body = String(body[..<r.lowerBound]) }
+    var words: [String] = []
+    for tok in body.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init) {
+        if tok.hasPrefix("@"), tok.count > 1 { out.tag = String(tok.dropFirst()); continue }
+        if tok.hasPrefix("#"), tok.count > 1 { out.proj = String(tok.dropFirst()); continue }
+        if let ci = tok.firstIndex(of: ":"), ci > tok.startIndex, tok.index(after: ci) < tok.endIndex {
+            let k = tok[tok.startIndex..<ci].lowercased(); let v = String(tok[tok.index(after: ci)...])
+            switch k {
+            case "status": out.status = v.lowercased()
+            case "id": out.id = v
+            case "epic": out.epic = v
+            case "prio": out.prio = v.lowercased()
+            case "due": out.due = v
+            case "blocked", "needs": out.blockedBy.append(v)
+            default: words.append(tok)   // unknown key:val (e.g. a URL) is title text
+            }
+            continue
+        }
+        words.append(tok)
+    }
+    out.title = words.joined(separator: " ")
+    return out
+}
+
+// Resolve each task's kanban column across the whole set: `[x]` = done; an open card with an unresolved
+// blocker (unknown or still-open) or status:blocked → blocked; else its status; else todo.
+func osResolveColumns(_ tasks: inout [RealTask]) {
+    var doneById: [String: Bool] = [:]; var titleById: [String: String] = [:]
+    for t in tasks { if let id = t.tid?.lowercased() { doneById[id] = t.done; titleById[id] = t.title } }
+    for i in tasks.indices {
+        if tasks[i].done { tasks[i].col = "done" }
+        else if tasks[i].status == "backlog" { tasks[i].col = "backlog" }   // parked: not released to agents
+        else {
+            let unresolved = tasks[i].blockedBy.contains { doneById[$0.lowercased()] != true }
+            if unresolved || tasks[i].status == "blocked" { tasks[i].col = "blocked" }
+            else if tasks[i].status == "doing" || tasks[i].status == "review" { tasks[i].col = tasks[i].status! }
+            else { tasks[i].col = "todo" }
+        }
+        tasks[i].blockedTitles = tasks[i].blockedBy.map { titleById[$0.lowercased()] ?? $0 }
+    }
 }
 
 func osTaskFolders() -> [String] {
@@ -207,28 +303,43 @@ func osTasksAll() -> (tasks: [RealTask], broken: [String]) {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { broken.append(path); continue }
         out.append(contentsOf: osParseTasks(text, file: path, folder: folder))
     }
+    osResolveColumns(&out)   // resolve columns globally so a cross-file blocker still counts
     return (out, broken)
 }
 
 func osParseTasks(_ text: String, file: String, folder: String) -> [RealTask] {
     var out: [RealTask] = []
+    var parentIndent = -1   // indent of the current top-level task; deeper lines belong to it
+    func indentOf(_ s: String) -> Int { s.prefix(while: { $0 == " " || $0 == "\t" }).count }
     for raw in text.components(separatedBy: "\n") {
         let t = raw.trimmingCharacters(in: .whitespaces)
+        let ind = indentOf(raw)
         let done = t.hasPrefix("- [x]") || t.hasPrefix("- [X]")
-        guard done || t.hasPrefix("- [ ]") else { continue }
-        var wrapp: String?, proj: String?, due: String?
-        var kept: [String] = []
-        for tok in String(t.dropFirst(5)).split(separator: " ") {
-            if tok.hasPrefix("@"), tok.count > 1 { wrapp = String(tok.dropFirst()) }
-            else if tok.hasPrefix("#"), tok.count > 1 { proj = String(tok.dropFirst()) }
-            else if tok.lowercased().hasPrefix("due:"), tok.count > 4 { due = String(tok.dropFirst(4)) }
-            else { kept.append(String(tok)) }
+        let isTask = done || t.hasPrefix("- [ ]")
+        if isTask {
+            let p = osParseBody(String(t.dropFirst(5)))
+            // deeper than the current top-level task → a subtask captured in the parent's detail
+            if !out.isEmpty, parentIndent >= 0, ind > parentIndent {
+                out[out.count - 1].detail.append(TaskDetail(sub: true, done: done, text: p.title))
+                continue
+            }
+            guard !p.title.isEmpty || p.tag != nil else { continue }
+            out.append(RealTask(raw: raw, title: p.title.isEmpty ? "@" + (p.tag ?? "") : p.title,
+                                wrapp: p.tag, projTag: p.proj, due: p.due,
+                                over: !done && osDueIsPast(p.due), done: done, file: file, folder: folder,
+                                tid: p.id, status: p.status, epic: p.epic, prio: p.prio,
+                                blockedBy: p.blockedBy, detail: []))
+            parentIndent = ind
+            continue
         }
-        let title = kept.joined(separator: " ")
-        guard !title.isEmpty || wrapp != nil else { continue }
-        out.append(RealTask(raw: raw, title: title.isEmpty ? "@" + (wrapp ?? "") : title,
-                            wrapp: wrapp, projTag: proj, due: due,
-                            over: !done && osDueIsPast(due), done: done, file: file, folder: folder))
+        // a non-task line indented under the current task → its detail; blank/dedent ends the run
+        if !out.isEmpty, parentIndent >= 0, !t.isEmpty, ind > parentIndent {
+            var dt = t; if dt.hasPrefix("- ") || dt.hasPrefix("* ") { dt = String(dt.dropFirst(2)) }
+            out[out.count - 1].detail.append(TaskDetail(sub: false, done: false, text: dt))
+            continue
+        }
+        if t.isEmpty { continue }   // blanks tolerated inside a list
+        parentIndent = -1
     }
     return out
 }
@@ -250,6 +361,60 @@ func osToggleTask(_ t: RealTask) -> Bool {
         ? t.raw.replacingOccurrences(of: "[x]", with: "[ ]").replacingOccurrences(of: "[X]", with: "[ ]")
         : t.raw.replacingOccurrences(of: "[ ]", with: "[x]")
     return (try? lines.joined(separator: "\n").write(toFile: t.file, atomically: true, encoding: .utf8)) != nil
+}
+
+// Move a task to a kanban column by rewriting ONLY its line: flip the checkbox for done/reopen, and
+// set/replace/drop the `status:` token for the open columns (todo drops it to keep lines spare).
+// Exact-line match on `raw` — if the file changed underneath, it refuses rather than blind-writes.
+@discardableResult
+func osSetStatus(_ t: RealTask, to status: String) -> Bool {
+    guard let text = try? String(contentsOfFile: t.file, encoding: .utf8) else { return false }
+    var lines = text.components(separatedBy: "\n")
+    guard let i = lines.firstIndex(of: t.raw) else { return false }
+    var line = lines[i].replacingOccurrences(of: #"\s+status:[^\s]+"#, with: "", options: .regularExpression)
+    if status == "done" {
+        line = line.replacingOccurrences(of: "[ ]", with: "[x]")
+    } else {
+        line = line.replacingOccurrences(of: "[x]", with: "[ ]").replacingOccurrences(of: "[X]", with: "[ ]")
+        if status != "todo" { line += " status:\(status)" }
+    }
+    lines[i] = line
+    return (try? lines.joined(separator: "\n").write(toFile: t.file, atomically: true, encoding: .utf8)) != nil
+}
+
+// Backfill an `id:` on any task line in a file that lacks one (base36, unique in the file), so spec-out
+// output can carry blocker references even if the model omitted them. Mirrors tasks.mjs `assignIds`.
+@discardableResult
+func osEnsureIds(file: String) -> Bool {
+    guard let text = try? String(contentsOfFile: file, encoding: .utf8) else { return false }
+    var lines = text.components(separatedBy: "\n")
+    var used = Set<String>()
+    for l in lines { let t = l.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- [") { if let id = osParseBody(String(t.dropFirst(min(5, t.count)))).id { used.insert(id.lowercased()) } } }
+    func gen() -> String { var s: String; repeat { s = String(Int.random(in: 46656..<1679615), radix: 36) } while used.contains(s); used.insert(s); return s }
+    var changed = false
+    for i in lines.indices {
+        let t = lines[i].trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix("- [x]") || t.hasPrefix("- [X]") || t.hasPrefix("- [ ]") else { continue }
+        if osParseBody(String(t.dropFirst(5))).id != nil { continue }
+        lines[i] = lines[i] + " id:\(gen())"; changed = true
+    }
+    if !changed { return true }
+    return (try? lines.joined(separator: "\n").write(toFile: file, atomically: true, encoding: .utf8)) != nil
+}
+
+// Append a spec-out block (markdown task lines, possibly with `## ` headings + indented detail) to a
+// vault's tasks.md, verbatim, after a blank line. The dialect merges cleanly on the next read.
+@discardableResult
+func osAppendBlock(folder: String, markdown: String) -> Bool {
+    let path = folder + "/tasks.md"
+    let block = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !block.isEmpty else { return false }
+    if let existing = try? String(contentsOfFile: path, encoding: .utf8) {
+        let sep = existing.hasSuffix("\n") ? "\n" : "\n\n"
+        return (try? (existing + sep + block + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
+    }
+    return (try? ("# Tasks\n\n" + block + "\n").write(toFile: path, atomically: true, encoding: .utf8)) != nil
 }
 
 @discardableResult
@@ -274,6 +439,11 @@ struct TasksSurface: View {
     @State private var scopeAll = false
     @State private var showDone = false
     @State private var adding = ""
+    // AI spec-out: paste a dump → your Claude turns it into detailed cards, bundles, and blockers.
+    @State private var showSpec = false
+    @State private var dump = ""
+    @State private var specRunning = false
+    @State private var specErr: String? = nil
 
     private var activeCtx: BankCtx? { bankContexts().first { $0.id == readDefaultId() } }
     private func load() { let r = osTasksAll(); all = r.tasks; broken = r.broken }
@@ -300,15 +470,27 @@ struct TasksSurface: View {
 
     private func item(_ t: RealTask, statusId: String, statusName: String, col: Int) -> TaskItem {
         TaskItem(title: t.title, tag: t.wrapp.map { "@" + $0 }, proj: t.projTag.map { "#" + $0 },
+                 prog: t.col == "doing",
+                 wait: t.blockedTitles.isEmpty ? nil : "waiting: " + t.blockedTitles.joined(separator: ", "),
                  due: t.due, over: t.over, statusId: statusId, statusName: statusName, colIndex: col,
-                 checkedNow: t.done, refIdx: all.firstIndex { $0.id == t.id } ?? -1)
+                 checkedNow: t.done, refIdx: all.firstIndex { $0.id == t.id } ?? -1,
+                 epic: t.epic, prio: t.prio, detail: t.detail)
     }
 
     private var columns: [TaskColumn] {
         switch groupMode {
         case .status:
-            return [TaskColumn(id: "todo", name: "Todo", dot: .inkDim,
-                               tasks: open.map { item($0, statusId: "todo", statusName: "Todo", col: 0) })]
+            // Real kanban: one column per open status, always shown (drag into an empty one).
+            return KANBAN.enumerated().map { i, d in
+                TaskColumn(id: d.id, name: d.name, dot: d.dot,
+                           tasks: open.filter { $0.col == d.id }.map { item($0, statusId: d.id, statusName: d.name, col: i) })
+            }
+        case .epic:
+            let groups = Dictionary(grouping: open) { $0.epic ?? "~" }
+            return groups.keys.sorted().enumerated().map { i, key in
+                TaskColumn(id: key, name: key == "~" ? "No bundle" : key, dot: .indigo,
+                           tasks: groups[key]!.map { item($0, statusId: key, statusName: key, col: i) })
+            }
         case .project:
             let groups = Dictionary(grouping: open) { $0.projTag ?? ($0.folder as NSString).lastPathComponent }
             return groups.keys.sorted().enumerated().map { i, key in
@@ -338,6 +520,7 @@ struct TasksSurface: View {
             switch groupMode {
             case .status:  return a.colIndex < b.colIndex
             case .due:     return a.dueWeight < b.dueWeight
+            case .epic:    return (a.epic ?? "~") < (b.epic ?? "~")
             case .project: return a.groupKey.localizedCaseInsensitiveCompare(b.groupKey) == .orderedAscending
             }
         }
@@ -345,22 +528,95 @@ struct TasksSurface: View {
 
     private func toggleFilter(_ id: String) { activeFilter = (activeFilter == id) ? nil : id }
     private func cycleGroup() {
-        groupMode = groupMode == .status ? .project : (groupMode == .project ? .due : .status)
+        switch groupMode {
+        case .status: groupMode = .project
+        case .project: groupMode = .epic
+        case .epic: groupMode = .due
+        case .due: groupMode = .status
+        }
         activeFilter = nil
     }
     private func toggleTask(_ it: TaskItem) {
         guard it.refIdx >= 0, it.refIdx < all.count else { return }
         if osToggleTask(all[it.refIdx]) { load() }
     }
-    private func submitAdd() {
+    // Drag a card onto a column → set that status (only meaningful when columns ARE statuses).
+    private func moveTask(refIdx: Int, to colId: String) {
+        guard groupMode == .status, refIdx >= 0, refIdx < all.count,
+              KANBAN.contains(where: { $0.id == colId }) else { return }
+        if osSetStatus(all[refIdx], to: colId) { load() }
+    }
+    private func submitAdd(status: String = "todo") {
         guard let f = addFolder, !adding.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        if osAppendTask(folder: f, text: adding) { adding = ""; load() }
+        // A typed task defaults to Todo (committed); adding under Backlog parks it with status:backlog.
+        let text = status == "backlog" ? adding.trimmingCharacters(in: .whitespaces) + " status:backlog" : adding
+        if osAppendTask(folder: f, text: text) { adding = ""; load() }
+    }
+
+    // The spec-out brain: turn a brain-dump into the kanban dialect. Output is appended verbatim.
+    private func specSystem(project: String) -> String {
+        return """
+        You are a sharp project manager. Turn the user's brain-dump into a clean set of task cards written in a plain-markdown dialect that a kanban board reads. Output ONLY the markdown — no preamble, no fences, no explanation.
+
+        Rules:
+        - Group every task under a single heading: `## \(project)`.
+        - One task per line: `- [ ] <short imperative title> <tokens>`.
+        - Every task starts PARKED in the backlog — add `status:backlog` to each. (The user promotes the ones they want done to Todo, which is what releases them to an agent.)
+        - Give EVERY task an id token `id:xxxx` (4 lowercase letters/digits, unique in your output) so tasks can reference each other.
+        - Bundle related tasks with the SAME `epic:<slug>` token (a short kebab slug for the theme, e.g. epic:pricing-launch). Use 1–3 bundles; don't over-split.
+        - If task B can't start until task A is done, add `blocked:<A-id>` to task B. Mark real dependencies only.
+        - Priority: add `prio:high`, `prio:med`, or `prio:low` — be selective, most are med.
+        - Only add `due:YYYY-MM-DD` when the dump names a real date. Never invent dates.
+        - Under each task, add 1–3 indented (two-space) detail lines: what "done" means, the specifics, gotchas. For concrete steps use nested `  - [ ] subtask` lines.
+        - Keep titles under ~8 words. Split a vague dump item into the few real tasks it implies.
+
+        Example shape:
+        ## \(project)
+        - [ ] Ship the pricing page status:backlog id:pr01 epic:pricing-launch prio:high
+          Three tiers, monthly/annual toggle, Paddle checkout wired.
+          - [ ] Wire Paddle checkout id:pr0a
+        - [ ] Get legal sign-off on pricing copy status:backlog id:leg2 epic:pricing-launch
+        - [ ] Write the launch post status:backlog id:lp03 epic:pricing-launch prio:low blocked:pr01
+          Announce the new tiers once the page is live.
+        """
+    }
+
+    // The model may wrap output in prose or fences — keep only from the first heading/task line, drop fences.
+    private func sanitizeSpec(_ raw: String) -> String {
+        var s = raw
+        for f in ["```markdown", "```md", "```"] { s = s.replacingOccurrences(of: f, with: "") }
+        let lines = s.components(separatedBy: "\n")
+        if let start = lines.firstIndex(where: { let t = $0.trimmingCharacters(in: .whitespaces); return t.hasPrefix("## ") || t.hasPrefix("- [") }) {
+            s = lines[start...].joined(separator: "\n")
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func runSpec() {
+        let text = dump.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let folder = addFolder else { return }
+        specErr = nil; specRunning = true
+        let projectName = scopeIsAll ? "Inbox" : (activeCtx?.name ?? "Inbox")
+        SkillRunner.shared.run(skillPrompt: specSystem(project: projectName), input: text, maxTokens: 2400, inputLimit: 6000) { result in
+            specRunning = false
+            switch result {
+            case .success(let md):
+                let block = sanitizeSpec(md)
+                if !block.isEmpty, osAppendBlock(folder: folder, markdown: block) {
+                    osEnsureIds(file: folder + "/tasks.md")   // backfill ids if the model omitted any
+                    dump = ""; showSpec = false; load()
+                } else { specErr = "The spec came back empty — try rephrasing the dump." }
+            case .failure(let e):
+                specErr = "Couldn't spec that — \(e)"
+            }
+        }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
+                if showSpec { specPanel }
                 ForEach(broken, id: \.self) { path in TasksBrokenBanner(path: path).padding(.top, 14) }
                 if scoped.isEmpty {
                     emptyState.padding(.top, 20)
@@ -369,7 +625,7 @@ struct TasksSurface: View {
                 } else {
                     list.padding(.top, 20)
                 }
-                SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · checking it rewrites that line · nothing here is invented")
+                SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · drag moves it (rewrites status:) · ✦ specs a dump into cards, bundles & blockers · still plain text, still yours")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -387,9 +643,54 @@ struct TasksSurface: View {
                 SegButton(label: "List", active: view == .list) { view = .list }
             }
             OSWSGhostButton(label: "Group: \(groupMode.rawValue) ▾") { cycleGroup() }
+            SpecButton(active: showSpec) { showSpec.toggle(); specErr = nil }
         }
         .padding(.bottom, 14)
         .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
+    }
+
+    // The AI spec-out panel: paste a dump, your Claude returns detailed cards, bundles, blockers.
+    private var specPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                (Text("✦ ").foregroundColor(.lime) + Text("Spec out a dump").foregroundColor(.ink)).font(.hanken(13, .semibold))
+                Text("paste a brain-dump — your Claude drafts detailed cards, bundles them, and marks blockers")
+                    .font(.hanken(11)).foregroundColor(.inkDim)
+                Spacer(minLength: 0)
+            }
+            ZStack(alignment: .topLeading) {
+                if dump.isEmpty {
+                    Text("e.g. redo the pricing page but legal has to sign off first; write the launch post; ship the Paddle checkout…")
+                        .font(.hanken(12.5)).foregroundColor(.inkFaint).padding(.horizontal, 8).padding(.vertical, 8)
+                }
+                TextEditor(text: $dump)
+                    .font(.hanken(13)).foregroundColor(.ink)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 88).padding(4)
+            }
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.page))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edge, lineWidth: 1))
+            if let e = specErr { Text(e).font(.hanken(12)).foregroundColor(.danger).fixedSize(horizontal: false, vertical: true) }
+            HStack(spacing: 10) {
+                if addFolder == nil {
+                    Text("No vault bound yet — bind one in the panel first.").font(.hanken(12)).foregroundColor(.inkDim)
+                } else {
+                    Text("→ files under \(scopeIsAll ? "Inbox" : (activeCtx?.name ?? "Inbox"))").font(.splMono(10.5)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+                OSWSGhostButton(label: "Cancel") { showSpec = false }
+                if specRunning {
+                    HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Speccing…").font(.hanken(12)).foregroundColor(.inkDim) }
+                } else if addFolder != nil {
+                    LimeButton(label: "Spec it") { runSpec() }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.lime.opacity(0.25), lineWidth: 1))
+        .padding(.top, 16)
     }
 
     // First-run: no tasks anywhere. One verb (the quick-add works right here), never a dead grid.
@@ -400,7 +701,7 @@ struct TasksSurface: View {
                 .font(.hanken(13)).foregroundColor(.inkSec)
                 .fixedSize(horizontal: false, vertical: true)
             if addFolder != nil {
-                TaskAddInline(text: $adding, placeholder: "Add the first task…", onSubmit: submitAdd)
+                TaskAddInline(text: $adding, placeholder: "Add the first task…", onSubmit: { submitAdd() })
             } else {
                 Text("No vault folder is bound yet — bind one in the panel, then tasks.md lives there.")
                     .font(.hanken(12.5)).foregroundColor(.inkDim)
@@ -412,23 +713,30 @@ struct TasksSurface: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
     }
 
+    // Fixed-width columns that scroll horizontally (Trello/Linear grammar) — stays readable no matter how
+    // many columns the grouping produces (5 statuses, or N projects/bundles).
     private var board: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ForEach(columns) { col in
-                TaskColumnView(
-                    column: col,
-                    dimmed: activeFilter != nil && activeFilter != col.id,
-                    selected: activeFilter == col.id,
-                    canAdd: groupMode == .status && addFolder != nil,
-                    addText: $adding,
-                    onHeader: { toggleFilter(col.id) },
-                    onToggle: toggleTask,
-                    onSubmitAdd: submitAdd,
-                    onNavigate: onNavigate)
-                .frame(maxWidth: .infinity, alignment: .top)
+        ScrollView(.horizontal, showsIndicators: true) {
+            HStack(alignment: .top, spacing: 14) {
+                ForEach(columns) { col in
+                    TaskColumnView(
+                        column: col,
+                        dimmed: activeFilter != nil && activeFilter != col.id,
+                        selected: activeFilter == col.id,
+                        canAdd: groupMode == .status && (col.id == "backlog" || col.id == "todo") && addFolder != nil,
+                        canDrop: groupMode == .status,
+                        addText: $adding,
+                        onHeader: { toggleFilter(col.id) },
+                        onToggle: toggleTask,
+                        onSubmitAdd: { submitAdd(status: col.id) },
+                        onDropTask: { refIdx in moveTask(refIdx: refIdx, to: col.id) },
+                        onNavigate: onNavigate)
+                    .frame(width: 216, alignment: .top)
+                }
+                DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
+                    .frame(width: 132)
             }
-            DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
-                .frame(width: 132)
+            .padding(.bottom, 6)
         }
     }
 
@@ -447,7 +755,7 @@ struct TasksSurface: View {
                             onNavigate: onNavigate)
             }
             if addFolder != nil {
-                TaskAddInline(text: $adding, placeholder: "Add a task — appends to tasks.md", onSubmit: submitAdd)
+                TaskAddInline(text: $adding, placeholder: "Add a task — appends to tasks.md", onSubmit: { submitAdd() })
                     .padding(.top, 10)
             }
         }
@@ -500,12 +808,15 @@ private struct TaskColumnView: View {
     let dimmed: Bool
     let selected: Bool
     let canAdd: Bool
+    let canDrop: Bool
     @Binding var addText: String
     let onHeader: () -> Void
     let onToggle: (TaskItem) -> Void
     let onSubmitAdd: () -> Void
+    let onDropTask: (Int) -> Void
     let onNavigate: (Surface) -> Void
     @State private var headHover = false
+    @State private var dropTarget = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -529,13 +840,30 @@ private struct TaskColumnView: View {
             ForEach(column.tasks) { t in
                 TaskCardView(task: t, checked: t.checkedNow,
                              onToggle: { onToggle(t) }, onNavigate: onNavigate)
+                    .draggable(String(t.refIdx))
+            }
+
+            if column.tasks.isEmpty {
+                Text(canDrop ? "drop here" : "—")
+                    .font(.splMono(10.5)).foregroundColor(.inkFaint)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: 10)
+                        .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundColor(.edgeSoft))
             }
 
             if canAdd {
                 TaskAddInline(text: $addText, placeholder: "+ add a task…", onSubmit: onSubmitAdd)
             }
         }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(RoundedRectangle(cornerRadius: 12).fill(dropTarget ? Color.lime.opacity(0.06) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(dropTarget ? Color.lime.opacity(0.5) : Color.clear, lineWidth: 1))
         .opacity(dimmed ? 0.4 : 1.0)
+        .dropDestination(for: String.self) { items, _ in
+            guard canDrop, let s = items.first, let idx = Int(s) else { return false }
+            onDropTask(idx); return true
+        } isTargeted: { dropTarget = canDrop && $0 }
     }
 }
 
@@ -564,6 +892,8 @@ private struct TaskCardView: View {
     let onNavigate: (Surface) -> Void
     @State private var hover = false
 
+    @State private var expanded = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top, spacing: 9) {
@@ -574,8 +904,37 @@ private struct TaskCardView: View {
                     .strikethrough(checked, color: .inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+                if let prio = task.prio, prio != "low" {
+                    Text(prio == "high" ? "●" : "○").font(.splMono(9))
+                        .foregroundColor(prio == "high" ? .danger : sbAmber)
+                        .help("priority: \(prio)")
+                }
             }
             TaskRowBits(task: task)
+            if !task.detail.isEmpty {
+                Button { expanded.toggle() } label: {
+                    HStack(spacing: 5) {
+                        Text(expanded ? "⌄" : "›").font(.splMono(10))
+                        Text("\(task.detail.count) detail\(task.detail.count == 1 ? "" : "s")").font(.splMono(10))
+                    }
+                    .foregroundColor(.inkFaint).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if expanded {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(task.detail) { d in
+                            HStack(alignment: .top, spacing: 6) {
+                                Text(d.sub ? (d.done ? "☑" : "☐") : "·").font(.splMono(10))
+                                    .foregroundColor(d.sub && d.done ? .lime : .inkFaint)
+                                Text(d.text).font(.hanken(12)).foregroundColor(.inkSec)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                    .padding(.leading, 2).padding(.top, 1)
+                }
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -601,31 +960,39 @@ private struct TaskCardView: View {
 
 private struct TaskRowBits: View {
     let task: TaskItem
+    // A flow layout so a narrow kanban column wraps the chips to the next line instead of char-wrapping.
     var body: some View {
-        HStack(spacing: 7) {
+        FlowLayout(spacing: 6) {
             if let tag = task.tag {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(task.swHex.map { hexColor($0) }
                             ?? Color(hue: hueForId(task.appName), saturation: 0.6, brightness: 0.8))
                         .frame(width: 8, height: 8)
-                    Text(tag).font(.splMono(10)).foregroundColor(.inkDim)
+                    Text(tag).font(.splMono(10)).foregroundColor(.inkDim).lineLimit(1).fixedSize()
                 }
                 .padding(.horizontal, 7).padding(.vertical, 1)
                 .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
             }
             if let proj = task.proj {
-                Text(proj).font(.splMono(10)).foregroundColor(.inkFaint)
+                Text(proj).font(.splMono(10)).foregroundColor(.inkFaint).lineLimit(1).fixedSize()
+            }
+            if let epic = task.epic {
+                HStack(spacing: 4) {
+                    Text("◇").font(.splMono(8.5)).foregroundColor(.indigo)
+                    Text(epic).font(.splMono(10)).foregroundColor(.indigo).lineLimit(1).fixedSize()
+                }
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .overlay(Capsule().stroke(Color.indigo.opacity(0.4), lineWidth: 1))
             }
             if task.prog {
                 Circle().fill(sbAmber).frame(width: 8, height: 8)          // in progress
             }
             if let wait = task.wait {
-                Text(wait).font(.splMono(10)).foregroundColor(.danger)
+                Text(wait).font(.splMono(10)).foregroundColor(.danger).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 7).padding(.vertical, 1)
                     .overlay(Capsule().stroke(Color.danger.opacity(0.5), lineWidth: 1))
             }
-            Spacer(minLength: 0)
             if let due = task.due { DueChip(text: due, over: task.over) }
         }
     }
@@ -635,7 +1002,7 @@ private struct DueChip: View {
     let text: String
     let over: Bool
     var body: some View {
-        Text(text).font(.splMono(10))
+        Text(text).font(.splMono(10)).lineLimit(1).fixedSize()
             .foregroundColor(over ? Color(red: 0x0b / 255, green: 0x0c / 255, blue: 0x10 / 255) : .inkDim)
             .padding(.horizontal, 7).padding(.vertical, 1)
             .background(Capsule().fill(over ? Color.lime : .clear))

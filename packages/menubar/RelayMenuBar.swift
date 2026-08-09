@@ -643,6 +643,78 @@ func readSignedIn() -> Bool {
 func hostOf(_ origin: String) -> String {
     origin.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
 }
+
+// ---- Claude Code connector setup (onboarding "Connect Claude Code") ------------------------------
+// The Switchboard MCP connector lets a Claude Code session read this project's board (pick up tasks the
+// user moved to Todo) and run its wrapps. We give the user the exact `claude mcp add …` command; these
+// helpers resolve the connector's path (the app's bundled single-file build, else the repo source in
+// dev) and detect whether it's already registered in ~/.claude.json so the card can say "connected".
+func switchboardConnectorPath() -> String {
+    if let res = Bundle.main.resourcePath {
+        let bundled = res + "/connector/switchboard.mjs"
+        if FileManager.default.fileExists(atPath: bundled) { return bundled }
+    }
+    // dev: the app runs from <repo>/packages/menubar/Switchboard.app → the connector is a sibling package
+    let dev = (Bundle.main.bundlePath as NSString).appendingPathComponent("../../switchboard-mcp/switchboard-mcp.mjs")
+    return (dev as NSString).standardizingPath
+}
+func switchboardConnectorNode() -> String {
+    if let res = Bundle.main.resourcePath { let n = res + "/node"; if FileManager.default.fileExists(atPath: n) { return n } }
+    return "node"
+}
+func claudeMcpAddCommand() -> String {
+    "claude mcp add switchboard -s user -- \"\(switchboardConnectorNode())\" \"\(switchboardConnectorPath())\" mcp"
+}
+// Run `claude mcp add …` in the user's LOGIN shell (so it finds `claude` on their PATH — a GUI app's
+// own PATH is minimal). User-initiated only: fired by a Run button / notch action, which IS the consent
+// for this one config change. Returns (ok, message) on the main thread; "already exists" counts as ok.
+func runClaudeMcpAdd(_ completion: @escaping (Bool, String) -> Void) {
+    let cmd = claudeMcpAddCommand()
+    DispatchQueue.global(qos: .userInitiated).async {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-lc", cmd]
+        let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+        var ok = false, msg = ""
+        do {
+            try p.run(); p.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            msg = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let already = msg.range(of: "already", options: .caseInsensitive) != nil
+            ok = p.terminationStatus == 0 || already
+            if !ok && msg.isEmpty { msg = (p.terminationStatus == 127 ? "Claude Code (`claude`) isn't on your PATH — install it, or run `claude` once to sign in." : "exit \(p.terminationStatus)") }
+        } catch { ok = false; msg = "Couldn't launch a shell: \(error.localizedDescription)" }
+        DispatchQueue.main.async { connectorInstalledCache = nil; completion(ok, msg) }
+    }
+}
+// True if a server referencing the switchboard connector is registered anywhere in ~/.claude.json
+// (top-level user scope, or under any projects.<path>.mcpServers). Cached 20s.
+private var connectorInstalledCache: (at: Date, val: Bool)? = nil
+func claudeCodeConnectorInstalled() -> Bool {
+    if let c = connectorInstalledCache, Date().timeIntervalSince(c.at) < 20 { return c.val }
+    var val = false
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".claude.json")
+    if let obj = readJSON(path) as? [String: Any] {
+        func scan(_ v: Any?) -> Bool {
+            guard let m = v as? [String: Any] else { return false }
+            for (name, cfg) in m {
+                if name.lowercased().contains("switchboard") { return true }
+                if let c = cfg as? [String: Any] {
+                    let cmd = (c["command"] as? String) ?? ""
+                    let args = ((c["args"] as? [String]) ?? []).joined(separator: " ")
+                    if (cmd + " " + args).lowercased().contains("switchboard") { return true }
+                }
+            }
+            return false
+        }
+        if scan(obj["mcpServers"]) { val = true }
+        else if let projects = obj["projects"] as? [String: Any] {
+            for (_, pv) in projects { if let pd = pv as? [String: Any], scan(pd["mcpServers"]) { val = true; break } }
+        }
+    }
+    connectorInstalledCache = (Date(), val)
+    return val
+}
 func agoText(_ ts: Double) -> String {
     let s = max(0, Date().timeIntervalSince1970 - ts / 1000)
     if s < 60 { return "\(Int(s))s" }
@@ -876,6 +948,89 @@ struct FlowLayout: Layout {
     }
 }
 
+// "Connect Claude Code" — the onboarding + Settings card that guides the user to add the Switchboard
+// MCP connector to their Claude Code, so Guru and the OS board get real hands: a Claude session can then
+// read this project's board (pick up tasks moved to Todo) and run its wrapps. Shows the exact command
+// with a copy button, and flips to a green "connected" state once it's registered in ~/.claude.json.
+struct ConnectClaudeCodeCard: View {
+    var compact = false
+    @State private var installed = false
+    @State private var copied = false
+    @State private var running = false
+    @State private var errMsg: String? = nil
+    private var command: String { claudeMcpAddCommand() }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "terminal.fill").font(.system(size: 12)).foregroundColor(installed ? .ok : .lime)
+                Text("Connect Claude Code").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Spacer(minLength: 0)
+                if installed {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundColor(.ok)
+                        Text("connected").font(.splMono(9.5)).foregroundColor(.ok)
+                    }
+                }
+            }
+            Text("Let Guru and your OS board reach a Claude Code session — it can read this project's board, pick up tasks you move to Todo, and run your wrapps.")
+                .font(.hanken(11.5)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+
+            if installed {
+                Text("Try it in a Claude Code session here: “what's on my Switchboard board?” or “pick up the next task.”")
+                    .font(.hanken(11)).foregroundColor(.inkSec).fixedSize(horizontal: false, vertical: true)
+            } else {
+                // Primary: Run it (the app runs `claude mcp add` for you). Secondary: copy to run yourself.
+                HStack(spacing: 8) {
+                    if running {
+                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Adding…").font(.hanken(11)).foregroundColor(.inkDim) }
+                    } else {
+                        Button(action: run) {
+                            Text("Run it").font(.hanken(12, .semibold)).foregroundColor(Color(red: 0x0b/255, green: 0x0c/255, blue: 0x10/255))
+                                .padding(.horizontal, 13).padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                        }.buttonStyle(.plain).help("Run `claude mcp add` for you")
+                    }
+                    Button(action: copy) {
+                        Text(copied ? "copied" : "copy command").font(.hanken(11, .semibold))
+                            .foregroundColor(copied ? .ok : .inkSec)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke((copied ? Color.ok : Color.edge), lineWidth: 1))
+                    }.buttonStyle(.plain)
+                    Spacer(minLength: 0)
+                }
+                if let e = errMsg {
+                    Text(e).font(.splMono(9)).foregroundColor(.danger).fixedSize(horizontal: false, vertical: true)
+                    Text(command).font(.splMono(9)).foregroundColor(.inkFaint).textSelection(.enabled)
+                        .lineLimit(2).truncationMode(.middle)
+                } else {
+                    Text("“Run it” adds it on your Claude Code. Needs `claude` installed — or copy and run it in a project folder yourself.")
+                        .font(.splMono(9)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(compact ? 12 : 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke((installed ? Color.ok : Color.lime).opacity(installed ? 0.35 : 0.25), lineWidth: 1))
+        .onAppear { installed = claudeCodeConnectorInstalled() }
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
+    }
+    private func run() {
+        running = true; errMsg = nil
+        runClaudeMcpAdd { ok, msg in
+            running = false
+            if ok { installed = true } else { errMsg = msg }
+        }
+    }
+}
+
 struct Panel: View {
     @ObservedObject var model: Model
     @ObservedObject var ollama: OllamaMonitor
@@ -905,6 +1060,7 @@ struct Panel: View {
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     let onStore: () -> Void              // open the wrapp store modal (drops from the notch)
     let onTour: () -> Void               // launch the floating-cursor onboarding concierge (CursorGuide .tour)
+    var onConnectClaudeNotch: () -> Void = {}   // raise the "Connect Claude Code" notch card (onboarding finish)
     @State private var breathe = false
     @State private var pickerOpen = false
     @State private var dropTargeted = false
@@ -1542,6 +1698,9 @@ struct Panel: View {
     // (claude.ai connectors themselves are inherited by the SDK and managed in Claude, not here.)
     private var connectionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Wire a Claude Code session to this project's board (task pickup + wrapps) — persistent home
+            // for the same card onboarding shows, so it's findable and shows "connected" once set up.
+            ConnectClaudeCodeCard(compact: true)
             if model.appList.isEmpty {
                 Text("Nothing connected yet — open a wrapp and it'll ask.").font(.hanken(11)).foregroundColor(.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1717,9 +1876,14 @@ struct Panel: View {
             }
             Text("Press ⌃⌃ anytime to summon me. Everything else lives in this panel — replay the tour from Settings whenever.")
                 .font(.hanken(12)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            // One power-up worth doing now: a Claude Code session that reads your board (task pickup) +
+            // runs wrapps. We raise it as a Run-it card in the NOTCH on finish; it also lives in Settings.
+            Text("I've popped a “Connect Claude Code” card into your notch — one click wires a Claude Code session to your board so Guru and this OS can pick up tasks. It's also in Settings → Connections.")
+                .font(.hanken(11.5)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
             GhostButton(icon: "checkmark", label: "done", action: { onboard.finish() })
             Spacer(minLength: 0)
         }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { onConnectClaudeNotch() }
     }
 
     // apps — the real-icon row across the top
@@ -3419,7 +3583,8 @@ struct ActionConsentDrop: View {
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
             onStore: { [weak self] in self?.showStore() },
-            onTour: { [weak self] in self?.startWelcomeTour() }
+            onTour: { [weak self] in self?.startWelcomeTour() },
+            onConnectClaudeNotch: { [weak self] in self?.promptConnectClaudeCodeNotch() }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
@@ -3451,6 +3616,7 @@ struct ActionConsentDrop: View {
         installHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
+        installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
@@ -3724,8 +3890,11 @@ struct ActionConsentDrop: View {
     private func checkOpenOSTrigger() {
         let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-os")
         if FileManager.default.fileExists(atPath: p) {
+            // Optional file body = the surface to land on (e.g. `echo tasks > ~/.relay/open-os`); empty = Home.
+            let want = (try? String(contentsOfFile: p, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             try? FileManager.default.removeItem(atPath: p)
-            OSShellWindowController.shared.show()
+            if !want.isEmpty, let s = Surface(rawValue: want) { OSShellWindowController.shared.show(s) }
+            else { OSShellWindowController.shared.show() }
         }
         // `touch ~/.relay/fill-form` → guided form-fill from the clipboard (scriptable + self-test hook).
         let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/fill-form")
@@ -3746,6 +3915,13 @@ struct ActionConsentDrop: View {
         if FileManager.default.fileExists(atPath: pp) {
             try? FileManager.default.removeItem(atPath: pp)
             openedByHover = false; showPanel()
+        }
+        // `touch ~/.relay/connect-claude` → raise the "Connect Claude Code" notch card (the onboarding
+        // step, also scriptable / self-test). Its "Run it" adds the connector on the user's Claude Code.
+        let cc = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/connect-claude")
+        if FileManager.default.fileExists(atPath: cc) {
+            try? FileManager.default.removeItem(atPath: cc)
+            promptConnectClaudeCodeNotch()
         }
     }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
@@ -4018,6 +4194,35 @@ struct ActionConsentDrop: View {
         if let p = notchWidgetPanel { dismissToNotch(p) }
     }
 
+    // Onboarding "Connect Claude Code", in the NOTCH: an actionable card the user can Run right there,
+    // so a Claude Code session can read their board (pick up tasks) + run wrapps. "Run it" (the openLabel)
+    // fires runClaudeMcpAdd; the copy button (built into a .text widget) is the manual fallback.
+    @MainActor func promptConnectClaudeCodeNotch() {
+        if claudeCodeConnectorInstalled() {
+            showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: "Already connected", openLabel: "Done",
+                result: .text("A Claude Code session can read your board and pick up tasks. Try: “what's on my Switchboard board?” or “pick up the next task.”")),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        let body = "Let Guru and your OS board reach a Claude Code session — it can read this project's board, pick up tasks you move to Todo, and run your wrapps.\n\n\(claudeMcpAddCommand())"
+        showNotchWidget(WidgetSpec(kicker: "ONE MORE THING", title: "Connect Claude Code", openLabel: "Run it",
+            result: .text(body)),
+            onOpen: { [weak self] in self?.runConnectFromNotch() })
+    }
+    @MainActor private func runConnectFromNotch() {
+        showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: "Connecting…", openLabel: "",
+            result: .working("Adding the Switchboard connector to Claude Code")))
+        runClaudeMcpAdd { [weak self] ok, msg in
+            guard let self else { return }
+            let body = ok
+                ? "Connected ✓  A Claude Code session can now read your board. Try: “pick up the next task.”"
+                : "Couldn't add it automatically — \(msg.isEmpty ? "is Claude Code installed?" : msg)\n\nRun this yourself in a project folder:\n\(claudeMcpAddCommand())"
+            self.showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: ok ? "Connected" : "Copy & run", openLabel: "Done",
+                result: .text(body)),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+        }
+    }
+
     // ── NATIVE NOTCH WEB WIDGET — a wrapp's WIDGET-surface URL rendered LIVE in the notch ──────────────
     // Loads the page in a WKWebView with window.claude bridged to the daemon (NotchWidgetWebHost), clipped
     // to the notch silhouette. The new `ideabrain` / `resize` web widgets render here for real. Behind a
@@ -4100,6 +4305,43 @@ struct ActionConsentDrop: View {
     //   shows it (pill flashes done); user elsewhere/window closed → the result DROPS from the notch
     //   like a notification. "Show the wrapp" flips notch→window; closing the window flips back.
     private var godWeb: GodWebWindow?
+    // App windows opened from the launcher/store ("window" surface): user-opened wrapps hosted in the
+    // same bridged webview as drive — kept separate so closing an app never disturbs a drive session.
+    private var appWindows: [GodWebWindow] = []
+    @MainActor func openWrappWindow(url: URL, name: String) {
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
+                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        let web = GodWebWindow(url: url, token: token, title: name)
+        appWindows.append(web)
+        web.onUserClosed = { [weak self, weak web] in self?.appWindows.removeAll { $0 === web } }
+        web.open()
+        NSLog("[open-wrapp] native window opened: %@ → %@", name, url.absoluteString)
+    }
+    // Control-plane trigger: write {"id":"redline"} (or {"url":"…","name":"…"}) to ~/.relay/open-wrapp.json
+    // and the app opens that wrapp in the native bridged window — the same file-handshake pattern as
+    // guide-run.json, so any Claude thread can hand a surface to the human. Poll is fine at 2s.
+    private var openWrappTimer: Timer?
+    private func installOpenWrappTrigger() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-wrapp.json")
+        openWrappTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self, FileManager.default.fileExists(atPath: path) else { return }
+            defer { try? FileManager.default.removeItem(atPath: path) }
+            guard let data = FileManager.default.contents(atPath: path),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+            DispatchQueue.main.async {
+                if let id = obj["id"] as? String, let l = readCatalog().first(where: { $0.id == id }) {
+                    NSLog("[open-wrapp] trigger: launching %@ via window surface", id)
+                    self.launchWrapp(l, "window")
+                } else if let s = obj["url"] as? String, let u = URL(string: s) {
+                    NSLog("[open-wrapp] trigger: opening url %@", s)
+                    self.openWrappWindow(url: u, name: (obj["name"] as? String) ?? "Wrapp")
+                }
+            }
+        }
+    }
     private var driveRunning = false
     private var driveName = "Roast"          // display name of the wrapp being driven
     private var lastDrive: (url: URL, tool: String, input: String?, name: String)?   // for Regenerate
@@ -4413,6 +4655,9 @@ struct ActionConsentDrop: View {
         "deck", "dub",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
+        // A wrapp whose PRIMARY surface is "window" is a full app, not a glance widget — the launcher's
+        // Enter honors the catalog and opens it in the native bridged window instead.
+        if l.surfaces.first == "window" { launchWrapp(l, "window"); return }
         // Skills all share ONE generic widget (paste → run the skill → glance result), selected by
         // ?skill=<id>. skill-widget.html reads the id from the query string AND window.__widgetInput.skill.
         if l.category == "skill", let wurl = URL(string: "http://localhost:5188/skill-widget.html?skill=\(l.id)") {
@@ -6247,7 +6492,15 @@ struct ActionConsentDrop: View {
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
-        case "browser", "window", "notch":
+        case "window":
+            // NATIVE launch — the wrapp runs in the bridged webview (window.claude tunneled to the
+            // daemon by this process), so no browser and no extension are in the loop. Same daemon,
+            // same grants, same consent drops as every other surface.
+            if let s = l.components.ui?.url, let u = URL(string: s) {
+                openWrappWindow(url: u, name: l.name)
+                concierge(l)
+            }
+        case "browser", "notch":
             if let s = l.components.ui?.url, let u = URL(string: s) {
                 NSWorkspace.shared.open(u)
                 concierge(l)   // the notch acknowledges the launch — never a silent open

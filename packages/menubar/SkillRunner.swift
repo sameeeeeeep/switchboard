@@ -26,7 +26,7 @@ import AppKit
 
     /// Run a skill headlessly: `skillPrompt` is the skill body (its know-how), `input` is what to apply
     /// it to. Returns the model's text. No page, no webview — one gated call on the user's Claude.
-    func run(skillPrompt: String, input: String, completion: @escaping (Result<String, Error>) -> Void) {
+    func run(skillPrompt: String, input: String, maxTokens: Int = 1200, inputLimit: Int = 8000, completion: @escaping (Result<String, Error>) -> Void) {
         guard let raw = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8),
               case let token = raw.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             completion(.failure(HtmlCapabilityError("~/.relay/pairing-token is missing — is the daemon set up?")))
@@ -39,7 +39,7 @@ import AppKit
         let bridge = GodDaemonBridge(token: token)
         calls[id] = Call(bridge: bridge, completion: completion)
         bridge.request(origin: origin, method: "claude_complete",
-                       params: ["system": system, "prompt": String(input.prefix(8000)), "maxTokens": 1200]) { [weak self] result, err in
+                       params: ["system": system, "prompt": String(input.prefix(inputLimit)), "maxTokens": maxTokens]) { [weak self] result, err in
             Task { @MainActor in self?.responded(id, result: result, err: err) }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in self?.timedOut(id) }

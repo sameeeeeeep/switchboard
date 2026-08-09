@@ -55,6 +55,24 @@ if compgen -G "fonts/*.ttf" >/dev/null 2>&1 || compgen -G "fonts/*.otf" >/dev/nu
   echo "[menubar] bundled house fonts"
 fi
 
+# The Switchboard connector — bundled as ONE ESM file so the onboarding "Connect Claude Code" step has a
+# real path to hand the user: `claude mcp add switchboard -- <node> <this> mcp`. That connector lets a
+# Claude Code session read this project's board (pick up tasks moved to Todo) and run its wrapps. Mirrors
+# the daemon bundle (createRequire banner — the MCP stdio transport does dynamic require()s). Skipped if
+# esbuild isn't present; a dev build then points the command at the repo source instead.
+ESBUILD="../../node_modules/.bin/esbuild"
+if [ -x "$ESBUILD" ]; then
+  mkdir -p "$APP/Contents/Resources/connector"
+  if "$ESBUILD" ../switchboard-mcp/switchboard-mcp.mjs \
+      --bundle --platform=node --format=esm --target=node18 \
+      --external:bufferutil --external:utf-8-validate \
+      --banner:js="import { createRequire as __relayCreateRequire } from 'node:module'; const require = __relayCreateRequire(import.meta.url);" \
+      --outfile="$APP/Contents/Resources/connector/switchboard.mjs" \
+      --log-level=warning; then
+    echo "[menubar] bundled Switchboard connector (Claude Code MCP: task board + wrapps)"
+  fi
+fi
+
 # Sign with a stable Developer ID so TCC grants (Accessibility, Screen Recording, Microphone, and the
 # Documents/Desktop folder prompts) PERSIST across rebuilds. An ad-hoc signature (`--sign -`) changes
 # every build, so macOS treated each rebuild as a brand-new app and every grant reset — the root cause
