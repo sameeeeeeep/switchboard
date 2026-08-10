@@ -59,11 +59,23 @@ final class DropCatchNSView: NSView {
     }
 }
 
+// One open task, flattened for the launcher's TASKS section. The host maps the live board
+// (osTasksAll()) into these — a lean value so previews/snapshots build one without the full RealTask.
+struct LaunchTask: Identifiable {
+    let id = UUID()
+    let title: String       // clean task title (dialect tokens already stripped)
+    let meta: String        // one-line context: due / epic / @wrapp — already composed by the host
+    let col: String         // resolved kanban column: doing | todo | review | blocked
+    let over: Bool          // past its due date
+    let prio: String?       // high | med | low
+}
+
 struct NotchLauncherView: View {
     // ---- inputs (see the init doc for the exact contract the host wires up) ----
     let listings: [SBListing]                     // the live catalog, already filtered to what should appear
     let projects: [Ctx]                           // the project/context list for the chip
     let recent: [SBArtifact]                       // recent artifacts across wrapps (spotlight "Recent" + home rows)
+    let tasks: [LaunchTask]                        // the live board's open tasks (doing/todo/…), host-ordered — the HOME hero
     let vaultFolders: [String]                     // bound vault folders → Spotlight file search scope (spotlight "Files")
     let homeProjects: [SBProject]                  // recency-sorted projects (the notch HOME rows)
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
@@ -76,6 +88,7 @@ struct NotchLauncherView: View {
     init(listings: [SBListing],
          projects: [Ctx],
          recent: [SBArtifact] = [],
+         tasks: [LaunchTask] = [],
          vaultFolders: [String] = [],
          homeProjects: [SBProject] = [],
          activeProjectId: String?,
@@ -87,6 +100,7 @@ struct NotchLauncherView: View {
         self.listings = listings
         self.projects = projects
         self.recent = recent
+        self.tasks = tasks
         self.vaultFolders = vaultFolders
         self.homeProjects = homeProjects
         self.activeProjectId = activeProjectId
@@ -228,36 +242,111 @@ struct NotchLauncherView: View {
          .onHover { hoveredId = $0 ? r.id : (hoveredId == r.id ? nil : hoveredId) }
     }
 
-    // ── the notch HOME — a compact command centre in the drop. Rows only; acting opens the real thing
-    //    (project → the full Home window grounded on it; artifact → its wrapp). Product row grammar.
+    // ── the notch HOME — a compact command centre in the drop, laid out with the notch panel's section
+    //    grammar: each block leads with a `KICKER · count` header + hairline divider, so the launcher reads
+    //    like the hover menu (docs: notch panel). TASKS leads — the launcher is a "what do I do next" surface,
+    //    so the live queue is the hero — then JUMP BACK IN · RECENT PROJECTS · RECENT WORK. Acting opens the
+    //    real thing (task → the Tasks board; project → the full Home grounded on it; artifact → its wrapp).
     private var homeContent: some View {
         let active = homeProjects.first { $0.id == activeProjectId } ?? homeProjects.first
         let others = homeProjects.filter { $0.id != active?.id }.prefix(3)
         let work = recent.prefix(3)
+        let openTasks = Array(tasks.prefix(4))
+        let empty = openTasks.isEmpty && active == nil && others.isEmpty && work.isEmpty
         return VStack(alignment: .leading, spacing: SB.s2) {
-            if let a = active {
-                homeKicker("JUMP BACK IN", trailing: "open home ↗") { onOpenSurface("home") }
-                notchProjectRow(a, isActive: true)
-            }
-            if !others.isEmpty {
-                homeKicker("RECENT PROJECTS", trailing: nil, action: nil)
-                ForEach(Array(others)) { p in notchProjectRow(p, isActive: false) }
-            }
-            if !work.isEmpty {
-                homeKicker("RECENT WORK", trailing: nil, action: nil)
-                ForEach(Array(work)) { w in notchWorkRow(w) }
+            if empty {
+                homeEmptyState
+            } else {
+                if !openTasks.isEmpty {
+                    homeKicker("TASKS", count: tasks.count, trailing: "board ↗") { onOpenSurface("tasks") }
+                    ForEach(openTasks) { t in taskRow(t) }
+                    homeDivider
+                }
+                if let a = active {
+                    homeKicker("JUMP BACK IN", count: nil, trailing: "open home ↗") { onOpenSurface("home") }
+                    notchProjectRow(a, isActive: true)
+                }
+                if !others.isEmpty {
+                    homeKicker("RECENT PROJECTS", count: homeProjects.count, trailing: nil, action: nil)
+                    ForEach(Array(others)) { p in notchProjectRow(p, isActive: false) }
+                }
+                if !work.isEmpty {
+                    homeKicker("RECENT WORK", count: nil, trailing: nil, action: nil)
+                    ForEach(Array(work)) { w in notchWorkRow(w) }
+                }
             }
         }
     }
-    private func homeKicker(_ t: String, trailing: String?, action: (() -> Void)?) -> some View {
-        HStack {
+
+    // First run / nothing bound yet — never a blank drop. Point at the two doors that populate HOME.
+    private var homeEmptyState: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Nothing queued yet").font(.hanken(13, .semibold)).foregroundColor(.ink)
+            Text("Type to search apps, projects and files — or drop a file above to run it. Tasks you add to your board show up here.")
+                .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.02)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edgeSoft, lineWidth: 1))
+    }
+
+    private var homeDivider: some View {
+        Rectangle().fill(Color.edge).frame(height: 1).padding(.vertical, 2)
+    }
+
+    // Section header in the notch-panel grammar: KICKER · count on the left, an optional lime action on the right.
+    private func homeKicker(_ t: String, count: Int?, trailing: String?, action: (() -> Void)?) -> some View {
+        HStack(spacing: 6) {
             Text(t).font(.splMono(9)).tracking(1.4).foregroundColor(.inkFaint)
+            if let c = count, c > 0 {
+                Text("·").font(.splMono(9)).foregroundColor(.inkFaint)
+                Text("\(c)").font(.splMono(9)).foregroundColor(.inkDim)
+            }
             Spacer(minLength: 0)
             if let tr = trailing {
                 Text(tr).font(.hanken(10.5, .medium)).foregroundColor(.lime)
                     .contentShape(Rectangle()).onTapGesture { action?() }
             }
         }.padding(.top, 3)
+    }
+
+    // ── a live board task, product row grammar: status glyph · title · one-line meta · priority dot.
+    //    Tapping opens the Tasks board (the launcher stays a jump-off, the board is where you work it).
+    private func taskRow(_ t: LaunchTask) -> some View {
+        Button(action: { onOpenSurface("tasks") }) {
+            HStack(spacing: 10) {
+                Text(taskGlyph(t))
+                    .font(.splMono(12)).foregroundColor(taskTint(t))
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    if !t.meta.isEmpty {
+                        Text(t.meta).font(.hanken(10.5)).foregroundColor(t.over ? .amber : .inkFaint).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 6)
+                if t.col == "doing" {
+                    Text("DOING").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
+                } else if let p = t.prio, p == "high" {
+                    Circle().fill(Color.amber).frame(width: 5, height: 5)
+                }
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == "tk-" + t.id.uuidString ? Color.raised : Color.white.opacity(0.02)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.col == "doing" ? Color.lime.opacity(0.3) : Color.edgeSoft, lineWidth: 1))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+         .onHover { hoveredId = $0 ? "tk-" + t.id.uuidString : (hoveredId == "tk-" + t.id.uuidString ? nil : hoveredId) }
+    }
+    private func taskGlyph(_ t: LaunchTask) -> String {
+        switch t.col { case "doing": return "◐"; case "review": return "◑"; case "blocked": return "⊘"; default: return "○" }
+    }
+    private func taskTint(_ t: LaunchTask) -> Color {
+        if t.over { return .amber }
+        switch t.col { case "doing", "review": return .lime; case "blocked": return .amber; default: return .inkDim }
     }
     private func notchProjectRow(_ p: SBProject, isActive: Bool) -> some View {
         Button(action: {

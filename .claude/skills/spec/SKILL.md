@@ -69,8 +69,12 @@ founder's default decision channel:
   as `feedback.note`. If they typed something, THAT is the instruction: fold it into the spec (§2) and
   re-decompose (§3) before releasing. Read BOTH `chosenOption` and `feedback.note`.
 - **A picture when it helps:** if the shape is a pipeline / before-after / dependency graph, generate a
-  small diagram (the `visualize` tool → SVG, or an image tool → PNG; save to a path) and attach it as
-  the card's `media` so the founder sees the shape, not prose.
+  small diagram — and make it **part of the durable spec, not an ephemeral notch attachment**. Save the
+  PNG into the vault at **`<vault>/specs/<slug>.png`** (default `~/SwitchboardBrain/specs/`), **embed it
+  in the parent card's `detail`** with an Obsidian embed line `![[specs/<slug>.png]]` (renders in
+  Obsidian, stays a plain pointer on the board), AND pass that **same file path as the notch card's
+  `media`** so the founder sees the shape. One image, three homes: the spec, the vault, the notch.
+  Author SVG → rasterize (qlmanage) → crop the padding (PIL/sips) → verify the PNG before embedding.
 
 ## 5 · RELEASE — hand it to the runners
 

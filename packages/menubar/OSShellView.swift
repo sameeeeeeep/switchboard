@@ -511,6 +511,29 @@ func osPending() -> [SBTask] {
     return out
 }
 
+// ── LIVE launcher tasks — the ⌥⌥ HOME hero. The real board's OPEN work (doing/todo/review/blocked, never
+// done or parked-backlog), ordered by what wants attention: overdue → doing → high-prio → the rest. Meta is
+// composed once here (due / epic / @wrapp) so the view stays a dumb renderer. Empty when the board is clear.
+func osLaunchTasks() -> [LaunchTask] {
+    let all = osTasksAll().tasks.filter { $0.col != "done" && $0.col != "backlog" }
+    func rank(_ t: RealTask) -> Int {
+        if t.over { return 0 }
+        if t.col == "doing" { return 1 }
+        if t.prio == "high" { return 2 }
+        if t.col == "review" { return 3 }
+        return 4
+    }
+    return all.sorted { rank($0) < rank($1) }.prefix(12).map { t in
+        var bits: [String] = []
+        if let d = t.due, !d.isEmpty { bits.append(t.over ? "overdue · \(d)" : "due \(d)") }
+        if let e = t.epic, !e.isEmpty { bits.append("◆ \(e)") }
+        if let w = t.wrapp, !w.isEmpty { bits.append("@\(w)") }
+        if t.col == "blocked", let b = t.blockedTitles.first { bits.append("waiting on \(b)") }
+        return LaunchTask(title: t.title, meta: bits.joined(separator: "  ·  "),
+                          col: t.col, over: t.over, prio: t.prio)
+    }
+}
+
 enum Sample {
     static let project = SBProject(
         id: "indeur", name: "IndEur Club",
