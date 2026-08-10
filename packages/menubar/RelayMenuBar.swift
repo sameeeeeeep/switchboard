@@ -836,9 +836,17 @@ func readModelPrefs() -> Set<String> {
 // `.flagsChanged` monitor (installHotKey), which only sees MODIFIERS, so the whole grammar is: summon =
 // double-tap ONE modifier; talk = hold a TWO-modifier chord. A real key+modifier hotkey would need Input
 // Monitoring / a CGEventTap; we intentionally don't go there. Rebinding therefore = pick from these presets.
-struct ShortcutCfg { var summon = "control"; var talk = "control+option" }   // defaults = the original ⌃⌃ / ⌃⌥
+// dictationMode picks HOW the talk chord drives dictation:
+//   "latch" (default, the new grammar) — TAP the talk chord to BEGIN dictating; recording LATCHES and
+//            keeps going after the keys are released. A tap of the SUMMON modifier (⌃) COMMITs (stop +
+//            transcribe + act). Holding Fn at commit routes the transcript through the vault FIND lookup
+//            instead of pasting it raw. Esc aborts from any state.
+//   "hold"  (legacy fallback) — HOLD the talk chord to record; release to transcribe + paste. Kept fully
+//            working so a bad edit / a machine where the latch grammar misbehaves always has dictation.
+struct ShortcutCfg { var summon = "control"; var talk = "control+option"; var dictationMode = "latch" }   // defaults = ⌃⌃ / ⌃⌥, latched dictation
 let SUMMON_OPTIONS = ["control", "option", "command", "shift"]
 let TALK_OPTIONS = ["control+option", "control+command", "option+command", "control+shift", "option+shift", "command+shift"]
+let DICTATION_MODES = ["latch", "hold"]
 func modFlag(_ s: String) -> NSEvent.ModifierFlags {
     switch s { case "control": return .control; case "option": return .option; case "command": return .command; case "shift": return .shift; default: return [] }
 }
@@ -857,6 +865,9 @@ func readShortcutCfg() -> ShortcutCfg {
     if let obj = readJSON(f) as? [String: Any] {
         if let s = obj["summon"] as? String, SUMMON_OPTIONS.contains(s) { c.summon = s }
         if let t = obj["talk"] as? String, TALK_OPTIONS.contains(t) { c.talk = t }
+        // Out-of-vocabulary (or absent) → the "latch" default. So a stale/hand-edited file can never
+        // strand the user with an unrecognised dictation mode.
+        if let d = obj["dictationMode"] as? String, DICTATION_MODES.contains(d) { c.dictationMode = d }
     }
     return c
 }
@@ -2904,6 +2915,12 @@ final class ConsentClient: NSObject {
     private let port: UInt16
     private let tokenProvider: () -> String?
     private let onPrompt: (String, [String: Any]) -> Void   // (id, body) for consent:native-connect
+    // Correlated request/response over the SAME authed socket: id → completion. The daemon answers a
+    // `{type:"control", id, action, args}` with `{type:"control_result", id, result}`. Used for
+    // vault.find (dictation FIND mode). Guarded by a lock so the receive callback (URLSession's queue)
+    // and the caller (main) can't race the map. Fires nil on timeout / socket loss — never wedges.
+    private var pending: [String: (Any?) -> Void] = [:]
+    private let pendingLock = NSLock()
 
     init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, [String: Any]) -> Void) {
         self.port = port; self.tokenProvider = tokenProvider; self.onPrompt = onPrompt
@@ -2915,7 +2932,7 @@ final class ConsentClient: NSObject {
         task?.resume(); receive()
         send(["type": "auth", "token": token, "surface": "menubar"])
     }
-    private func retry() { DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in self?.connect() } }
+    private func retry() { failAllPending(); DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in self?.connect() } }
     private func receive() {
         task?.receive { [weak self] result in
             guard let self else { return }
@@ -2923,14 +2940,42 @@ final class ConsentClient: NSObject {
             case .failure: self.retry()
             case .success(let msg):
                 if case let .string(s) = msg, let d = s.data(using: .utf8),
-                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                   o["type"] as? String == "prompt", (o["kind"] as? String) == "consent:native-connect",
-                   let id = o["id"] as? String {
-                    self.onPrompt(id, (o["body"] as? [String: Any]) ?? [:])
+                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                    let type = o["type"] as? String
+                    if type == "prompt", (o["kind"] as? String) == "consent:native-connect", let id = o["id"] as? String {
+                        self.onPrompt(id, (o["body"] as? [String: Any]) ?? [:])
+                    } else if type == "control_result", let id = o["id"] as? String {
+                        // `result` may legitimately be null (e.g. vault.find no-match) — deliver as nil.
+                        self.fulfil(id, o.keys.contains("result") ? o["result"] : nil)
+                    }
                 }
                 self.receive()
             }
         }
+    }
+    // Resolve/clear one pending request. NSNull → nil so callers see a clean "no result".
+    private func fulfil(_ id: String, _ result: Any?) {
+        pendingLock.lock(); let cb = pending.removeValue(forKey: id); pendingLock.unlock()
+        let v = (result is NSNull) ? nil : result
+        cb?(v)
+    }
+    private func failAllPending() {
+        pendingLock.lock(); let cbs = Array(pending.values); pending.removeAll(); pendingLock.unlock()
+        for cb in cbs { cb(nil) }
+    }
+    /// Fire a request over the authed socket and await the daemon's matching `control_result`. Calls
+    /// `completion(nil)` on timeout or socket loss — a find that can't reach the daemon degrades to a
+    /// no-match, never a hang. `completion` is invoked exactly once.
+    func request(action: String, args: [String: Any], timeout: TimeInterval = 6.0, completion: @escaping (Any?) -> Void) {
+        let id = UUID().uuidString
+        var fired = false
+        let once: (Any?) -> Void = { v in
+            self.pendingLock.lock(); let already = fired; fired = true; self.pending.removeValue(forKey: id); self.pendingLock.unlock()
+            if !already { completion(v) }
+        }
+        pendingLock.lock(); pending[id] = once; pendingLock.unlock()
+        send(["type": "control", "id": id, "action": action, "args": args])
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once(nil) }
     }
     func reply(_ id: String, _ result: Bool) { send(["type": "reply", "id": id, "result": result]) }
     /** Fire a daemon control action over the same authed socket (e.g. disconnectNativeApp). The panel
@@ -3264,9 +3309,19 @@ struct ActionConsentDrop: View {
     private var godListening = false              // mic is recording your request
     private var recorder: AVAudioRecorder?        // in-process mic capture — makes THIS app the TCC mic client
     private var recWav: String?                   // where the clip lands
-    private var dictating = false                 // ⌃⌥ hold-to-dictate in progress (raw STT → paste, no God)
+    private var dictating = false                 // ⌃⌥ dictation in progress (raw STT → paste/find, no God). True in BOTH modes.
     private var dictateRecorder: AVAudioRecorder? // separate recorder for the dictation gesture
     private var dictateWav: String?
+    // ── Latched-dictation state machine (dictationMode == "latch") ────────────────────────────────
+    // idle → (talk-chord tap) dictating → (⌃ tap) committing → idle · Esc aborts from any state.
+    // `dictating` above is the single "recording is live" flag both modes share; these drive the LATCH
+    // grammar only. A poll timer (free reads, no extra TCC) owns commit/cancel/find while latched, so it
+    // never fights the flagsChanged summon/launcher edge logic in onFlags.
+    private var dictateLatched = false            // true only in latch mode while recording is latched on
+    private var dictateWatchTimer: Timer?         // ~60fps poll: ⌃-tap commit · Esc cancel · Fn→find indicator
+    private var dictatePrevCtrlDown = false        // edge-detect the commit modifier across ticks
+    private var dictateFindArmed = false           // Fn is currently held → commit routes to vault.find, not paste
+    private var dictateCommitting = false          // guard: a commit/transcribe is already in flight (ignore repeats)
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
@@ -4533,7 +4588,7 @@ struct ActionConsentDrop: View {
 
     // ── Guide FEEDBACK note surface — the notch becomes an anchored input during a guide (docs/FEEDBACK-CAPTURE.md).
     // Raised from CursorGuide.onFeedbackBegin: shows a focused note field + arms the fn-drag screenshot grab.
-    // ⌃⌥ dictation stays live during a guide, and stopDictationAndPaste routes its transcript here (not the app).
+    // ⌃⌥ dictation stays live during a guide, and finishDictation routes its transcript here (not the app).
     @MainActor private func showFeedbackNote() {
         feedbackNote = ""; feedbackShotThumb = nil
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
@@ -5185,10 +5240,14 @@ struct ActionConsentDrop: View {
         let summonMod = modFlag(cfg.summon)
         let m = flags.intersection([.control, .option, .command, .shift])
         let talkHeld = !talk.isEmpty && m == talk
-        // The talk chord takes priority: while it's held we record; the moment either key lifts we
-        // transcribe + paste. (Ignore summon handling entirely while dictating.)
+        let latch = cfg.dictationMode == "latch"
+        // While a dictation is in progress the talk chord / summon logic is OWNED by the active mode:
+        //   • latch — recording is latched ON; ignore ALL modifier changes here (release must NOT stop it,
+        //     and a second talk-chord tap is a deliberate NO-OP so it can't clobber the in-progress take).
+        //     The dictateWatchTimer owns commit (⌃ tap), cancel (Esc), and the Fn→find indicator.
+        //   • hold  — legacy: the moment either chord key lifts we transcribe + paste.
         if dictating {
-            if !talkHeld { stopDictationAndPaste() }
+            if !latch && !talkHeld { finishDictation(find: false) }
             return
         }
         if talkHeld { onboard.lastDictate = Date(); startDictation(); return }
@@ -5242,9 +5301,20 @@ struct ActionConsentDrop: View {
         // show the pill now, then defer the blocking recorder setup to the next runloop tick so the pill
         // actually paints in between.
         dictating = true
+        dictateCommitting = false
         NSSound(named: "Tink")?.play()
         showGodStatus("Dictating", accent: .lime, pattern: .listening)
         onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
+        // LATCH mode: the recording now stays on after the keys lift. Hand the commit/cancel/find lifecycle
+        // to a poll timer (⌃ tap commits, Esc cancels, Fn arms find). Seed the ctrl edge-detector to the
+        // CURRENT state — ctrl is DOWN right now because the talk chord holds it, and we must not read that
+        // held-through ctrl as an instant commit; only a fresh ⌃ press AFTER release counts.
+        if model.shortcuts.dictationMode == "latch" {
+            dictateLatched = true
+            dictateFindArmed = NSEvent.modifierFlags.contains(.function)
+            dictatePrevCtrlDown = NSEvent.modifierFlags.contains(.control)
+            startDictateWatch()
+        }
         let wav = NSTemporaryDirectory() + "god-dictate.wav"
         try? FileManager.default.removeItem(atPath: wav)
         let settings: [String: Any] = [
@@ -5253,24 +5323,76 @@ struct ActionConsentDrop: View {
         ]
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // The user may have released ⌃⌥ before this tick ran — stopDictationAndPaste() already flipped
-            // `dictating` false (and hid the pill). Don't spin up a recorder we'd immediately abandon.
+            // The user may have released ⌃⌥ (hold mode) or aborted before this tick ran — finish/cancel
+            // already flipped `dictating` false (and hid the pill). Don't spin up a recorder we'd abandon.
             guard self.dictating else { return }
             do {
                 let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
-                guard rec.record() else { self.dictating = false; self.hideGodStatus(); godLog("dictation record() returned false"); return }
+                guard rec.record() else { self.dictating = false; self.dictateLatched = false; self.stopDictateWatch(); self.hideGodStatus(); godLog("dictation record() returned false"); return }
                 self.dictateRecorder = rec; self.dictateWav = wav
-            } catch { self.dictating = false; self.hideGodStatus(); godLog("dictation record failed: \(error.localizedDescription)") }
+            } catch { self.dictating = false; self.dictateLatched = false; self.stopDictateWatch(); self.hideGodStatus(); godLog("dictation record failed: \(error.localizedDescription)") }
         }
     }
 
-    @MainActor private func stopDictationAndPaste() {
-        dictating = false
+    // ── Latched-dictation watch: a ~60fps poll (all FREE reads — no Input-Monitoring TCC) that owns the
+    //    commit / cancel / find lifecycle once recording is latched on. Mirrors God's captureFnTimer Esc
+    //    failsafe so a latched take can NEVER wedge the global shortcut: Esc always aborts. ──────────────
+    @MainActor private func startDictateWatch() {
+        stopDictateWatch()
+        dictateWatchTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.dictateLatched, !self.dictateCommitting else { return }
+                // Esc → abort cleanly (key 53). The manual failsafe always wins, from any state.
+                if CGEventSource.keyState(.combinedSessionState, key: 53) { self.cancelDictation(); return }
+                // Fn arms FIND for this take — reflect it live in the pill so the user sees the mode change.
+                let fn = NSEvent.modifierFlags.contains(.function)
+                if fn != self.dictateFindArmed {
+                    self.dictateFindArmed = fn
+                    self.showGodStatus(fn ? "Dictating · Find" : "Dictating", accent: .lime, pattern: .listening)
+                }
+                // ⌃ rising edge → COMMIT (stop + transcribe + act). The summon modifier IS the commit key,
+                // per the founder's "transcribe when ctrl is pressed"; while latched it commits instead of
+                // summoning God (onFlags is short-circuited by the `dictating` guard).
+                let ctrlDown = NSEvent.modifierFlags.contains(.control)
+                if ctrlDown && !self.dictatePrevCtrlDown {
+                    self.dictatePrevCtrlDown = ctrlDown
+                    self.finishDictation(find: self.dictateFindArmed)
+                    return
+                }
+                self.dictatePrevCtrlDown = ctrlDown
+            }
+        }
+    }
+    @MainActor private func stopDictateWatch() { dictateWatchTimer?.invalidate(); dictateWatchTimer = nil }
+
+    // Abort: stop recording, discard the clip, paint nothing. Reachable from any state (Esc / failsafe).
+    @MainActor private func cancelDictation() {
+        guard dictating || dictateLatched else { return }
+        stopDictateWatch()
+        dictating = false; dictateLatched = false; dictateCommitting = false
+        dictateRecorder?.stop(); dictateRecorder = nil
+        if let wav = dictateWav { try? FileManager.default.removeItem(atPath: wav) }
+        dictateWav = nil
+        NSSound(named: "Bottle")?.play()
+        hideGodStatus()
+    }
+
+    // Commit: stop recording, transcribe (whisper.cpp, off-main), then ROUTE the transcript:
+    //   • guide capturing feedback → attach as the step note (unchanged legacy behavior)
+    //   • find == true            → daemon vault.find lookup, paste the returned VALUE (no LLM, ever)
+    //   • otherwise               → paste the raw transcript at the cursor (today's behavior)
+    // Used by BOTH modes: hold mode calls finishDictation(find:false) on key release; latch mode calls it
+    // from the watch timer on a ⌃ commit (find = whether Fn was held).
+    @MainActor private func finishDictation(find: Bool) {
+        guard dictating, !dictateCommitting else { return }
+        dictateCommitting = true
+        stopDictateWatch()
+        dictating = false; dictateLatched = false
         dictateRecorder?.stop(); dictateRecorder = nil
         NSSound(named: "Pop")?.play()
-        showGodStatus("Transcribing", accent: .lime, pattern: .thinking)
-        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); return }
-        // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then paste on the main actor.
+        showGodStatus(find ? "Finding" : "Transcribing", accent: .lime, pattern: .thinking)
+        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); dictateCommitting = false; return }
+        // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then act on the main actor.
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
             p.arguments = ["-m", model, "-f", wav, "-nt", "-np"]
@@ -5279,21 +5401,50 @@ struct ActionConsentDrop: View {
             let data = out.fileHandleForReading.readDataToEndOfFile()
             let text = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             Task { @MainActor in
-                self.hideGodStatus()
                 if CursorGuide.shared.capturingFeedback {
-                    // A guide is capturing feedback → the transcript is the step's NOTE, not a paste into the app.
+                    // A guide is capturing feedback → the transcript is the step's NOTE, not a paste/find.
+                    self.hideGodStatus()
                     CursorGuide.shared.attachFeedbackNote(text, append: true)
                     self.feedbackNote = (self.feedbackNote.isEmpty ? text : self.feedbackNote + " " + text)
                     if let scr = self.statusItem?.button?.window?.screen ?? NSScreen.main { self.rebuildFeedbackPanel(scr) }  // reflect it in the field
+                    self.dictateCommitting = false
+                } else if find {
+                    self.vaultFindAndPaste(text)   // hides status + clears dictateCommitting when it returns
                 } else {
+                    self.hideGodStatus()
                     self.pasteText(text)
+                    self.dictateCommitting = false
                 }
             }
         }
     }
 
-    // Put the raw transcript on the clipboard and paste it at the current focus (⌘V). Raw text — no
-    // model cleanup, which is the point of the dictation gesture.
+    // FIND mode: hand the transcript to the daemon's LOCAL vault lookup (vault.find) — never a model /
+    // Claude call — and paste the returned VALUE at the cursor. `null` → a brief "no match", paste nothing.
+    // Reuses the app's EXISTING daemon channel (the paired ConsentClient websocket on PORT); no new socket,
+    // no network. Contract: request `{action:"vault.find", args:{query, project?}}` →
+    // result `{value, field, entity, source, confidence} | null`.
+    @MainActor private func vaultFindAndPaste(_ query: String) {
+        guard !query.isEmpty else { hideGodStatus(); dictateCommitting = false; return }
+        guard let consent else { toast("Dictation find needs the daemon — is Switchboard paired?"); hideGodStatus(); dictateCommitting = false; return }
+        var args: [String: Any] = ["query": query]
+        if let proj = readDefaultId(), !proj.isEmpty { args["project"] = proj }   // the panel's active project (SELECTION_FILE)
+        consent.request(action: "vault.find", args: args, timeout: 6.0) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.hideGodStatus()
+                self.dictateCommitting = false
+                // null (or a shape we can't read) → no match. Paste nothing; a brief, honest toast.
+                guard let obj = result as? [String: Any], let value = obj["value"] as? String, !value.isEmpty else {
+                    NSSound(named: "Bottle")?.play(); self.toast("No match for “\(query)”"); return
+                }
+                self.pasteText(value)
+            }
+        }
+    }
+
+    // Put text on the clipboard and paste it at the current focus (⌘V). Raw text — no model cleanup,
+    // which is the point of the dictation gesture (and, in find mode, the exact stored value).
     @MainActor private func pasteText(_ text: String) {
         guard !text.isEmpty else { return }
         let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string)
