@@ -4544,6 +4544,7 @@ struct ActionConsentDrop: View {
             listings: listings,
             projects: readContexts(),
             recent: osRecentWork(),
+            tasks: osLaunchTasks(),
             vaultFolders: osVaultFolders(),
             homeProjects: osProjects(),
             activeProjectId: readDefaultId(),

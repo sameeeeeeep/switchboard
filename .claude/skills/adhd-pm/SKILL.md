@@ -20,6 +20,33 @@ mode. Finish, then show.
 
 ---
 
+## 0 · PRE-HANDBACK GATE — run this BEFORE sending any PM reply (non-negotiable)
+
+Every one of these has been violated by handing back a chat wall instead. Before you send a PM
+response, stop and clear all three. If any is unchecked, you are not done composing — fix it first.
+
+- [ ] **Decisions went to the NOTCH, not (only) chat.** Is the Switchboard app up
+      (`pgrep -f "MacOS/Relay"`)? If yes and this reply contains ANY decision / A-B-C pick / approval,
+      it is raised as a presence card via the [[switchboard]] skill (spoken `say`, ⭐recommended
+      pre-set, a `media` diagram when a picture lands better) BEFORE the chat block — the chat block is
+      only the written record. Buried-in-prose decisions = the failure. This rule already lives in §6
+      and has been violated repeatedly anyway; that's why it's the first gate. (Memory alone did not
+      fix it — this checklist is the mechanism.)
+- [ ] **The tail is on the BOARD, spec'd.** Every item you're NOT finishing this pass is written to
+      the vault board as a card (§1 / §6) — `switchboard_add_task` if the connector is wired, else
+      append directly to `<vault>/tasks.md` in the dialect (default `~/SwitchboardBrain/tasks.md`),
+      `status:backlog`, with the spec in `detail` and any gating DECISION named. Rough items ran the
+      spec path (all states / reversibility / edges), not just a one-liner. The board and the intake
+      mirror must not disagree.
+- [ ] **You self-tested with evidence (§3).** The strongest tool ran; the non-happy states too; the
+      evidence is in hand — not "the founder can check."
+
+Only when all three are clear do you send. The reply then = finished-and-verified work + the ONE
+batched decision set (already at the notch) + the persisted board — never a wall of prose or a pile
+of questions.
+
+---
+
 ## 0 · When this fires
 
 Auto-engage PM mode when the message is any of:

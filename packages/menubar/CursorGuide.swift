@@ -407,9 +407,9 @@ struct GuideCaptionView: View {
     private var optionsRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Text("PICK ONE — UPDATES LIVE").font(.splMono(8.5)).tracking(0.6).foregroundColor(.indigo)
+                Text("PICK ONE — UPDATES LIVE").font(.splMono(9.5)).tracking(0.6).foregroundColor(.indigo)
                 if m.options.contains(where: { $0.recommended }) {
-                    Text("★ recommended").font(.splMono(8)).foregroundColor(.lime.opacity(0.9))
+                    Text("★ recommended").font(.splMono(9)).foregroundColor(.lime.opacity(0.9))
                 }
             }
             HStack(alignment: .top, spacing: 7) {
@@ -430,15 +430,15 @@ struct GuideCaptionView: View {
                     .frame(maxWidth: .infinity).frame(height: 3)
             }
             // labels + details WRAP FULLY (cards grow vertically) — a cut "Build voi…" is an unreadable option
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(sel ? "\(letter)✓" : letter).font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
-                Text(opt.label).font(.hanken(11, .semibold)).foregroundColor(sel ? .ink : .inkDim)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(sel ? "\(letter)✓" : letter).font(.splMono(10.5)).foregroundColor(sel ? .lime : .inkFaint)
+                Text(opt.label).font(.hanken(13.5, .semibold)).foregroundColor(sel ? .ink : .inkSec)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let d = opt.detail, !d.isEmpty {
-                Text(d).font(.hanken(9.5)).foregroundColor(.inkFaint)
+                Text(d).font(.hanken(11.5)).foregroundColor(.inkDim)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -733,27 +733,37 @@ struct GuideMediaView: View {
     let media: GuideMedia
     var reduceMotion = false
     var compact = false
-    private var h: CGFloat { media.tall ? 420 : (compact ? 40 : 96) }
+    // compact = the tiny A/B/C option thumbnail (a fixed tile, crop-to-fill is fine). A STEP diagram (zone 4,
+    // non-compact) must never be cropped: fit to the card width, let height follow the image's aspect ratio,
+    // capped so a very tall board can't run off-screen. This is what makes the media zone height DYNAMIC —
+    // a 96px fixed box was chopping wide diagrams.
+    private let stepCapH: CGFloat = 460
+    private var fillMode: ContentMode { compact ? .fill : .fit }   // step media always FITS (no crop)
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity)
-            .frame(height: h)
-            .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
-            .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
+        Group {
+            if compact {
+                content.frame(maxWidth: .infinity).frame(height: media.tall ? 420 : 40)
+            } else {
+                // dynamic: image sizes to width by aspect (fit), height capped so tall boards don't overflow
+                content.frame(maxWidth: .infinity).frame(maxHeight: stepCapH)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
+        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
     }
 
     @ViewBuilder private var content: some View {
         if media.src.hasPrefix("http"), let url = URL(string: media.src) {
             AsyncImage(url: url) { phase in
                 switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: media.tall ? .fit : .fill)
+                case .success(let img): img.resizable().aspectRatio(contentMode: fillMode)
                 case .failure: unavailable
                 default: loading
                 }
             }
         } else if let img = NSImage(contentsOfFile: media.src) {
-            Image(nsImage: img).resizable().aspectRatio(contentMode: media.tall ? .fit : .fill)
+            Image(nsImage: img).resizable().aspectRatio(contentMode: fillMode)
         } else {
             unavailable
         }
@@ -1702,6 +1712,9 @@ final class CursorGuide {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .screenSaver
+        panel.hidesOnDeactivate = false      // NSPanel defaults this TRUE → the card vanished the moment you switched
+                                             // to another app/Space and only returned when Switchboard was frontmost.
+                                             // The presence card must persist across apps/Spaces (you act on it while away).
         panel.ignoresMouseEvents = true      // DEFAULT click-through; the cursor-tracking monitor flips it clickable ONLY while the pointer is over the card (lock-proof)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.contentView = host
