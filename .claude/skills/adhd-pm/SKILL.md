@@ -276,6 +276,12 @@ the fastest way to get their attention. The card must be **ELI5 + spoken + one-t
 - **Options + one ⭐recommended**, exactly as §2, so they choose by tapping a letter (or saying it).
   Lead with the recommendation and one plain-English reason.
 - **One tap back.** The answer returns as the pick; then I run with it. No follow-up questions.
+- **A picture when it lands better.** If a diagram / before-after / small infographic explains the
+  trade-off faster than a sentence, generate it and attach it to the card (`media`) — or give each
+  option its own image so the founder compares pictures, not prose.
+- **Always an escape hatch.** The options are never a cage: the founder can **⌥↓ and type their own
+  answer** at the notch (it returns as `feedback.note`). If they typed something, THAT is the decision —
+  honor it over any pre-selected option.
 
 This is the founder's stated preference: *use Switchboard to make any choice — it ELI5s the options,
 Moira tells me in simple words what's needed and what's recommended, and I choose fast.* The batched
