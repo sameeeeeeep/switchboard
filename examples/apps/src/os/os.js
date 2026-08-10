@@ -16,8 +16,11 @@ import * as S_routines from "./surfaces/routines.js";
 import * as S_workflows from "./surfaces/workflows.js";
 import * as S_apps from "./surfaces/apps.js";
 import * as S_store from "./surfaces/store.js";
+import * as S_project from "./surfaces/project.js";
 import { appIcon, pageFor } from "./icons.js";
-const SURFACES = { tasks: S_tasks, calendar: S_calendar, dashboard: S_dashboard, needs: S_attention, attention: S_attention, bank: S_bank, history: S_history, graph: S_graph, dictionary: S_dictionary, routines: S_routines, workflows: S_workflows, apps: S_apps, store: S_store };
+import { buildBankData } from "./bank-read.js";
+import { whenRelayReady } from "@relay/sdk";
+const SURFACES = { tasks: S_tasks, calendar: S_calendar, dashboard: S_dashboard, needs: S_attention, attention: S_attention, bank: S_bank, history: S_history, graph: S_graph, dictionary: S_dictionary, routines: S_routines, workflows: S_workflows, apps: S_apps, store: S_store, project: S_project };
 const _cssDone = {};
 function ensureSurfaceCss(id, mod) {
   if (_cssDone[id] || !mod || !mod.css) return;
@@ -119,6 +122,69 @@ const DATA = {
     { title: "Grant sb_http for Establish IndEur site", act: "Grant" },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// BANK DATA MODEL — the project-dir / vault lens the `project` + `bank` surfaces read.
+// TEMPORARY seed, shaped to bank-read.js's buildBankData() contract. `initBank()` (bottom)
+// swaps in real relay.storage reads when a daemon is present; offline this seed renders so the
+// design stays grounded. A couple projects are fully populated; the rest degrade to empty-state
+// (which the project surface handles), so both the full and first-run states are verifiable.
+// ---------------------------------------------------------------------------
+const EMPTY_FACETS = { essence: "", audience: "", goals: "", brandSet: { text: "", swatches: [] }, roadmap: [], voice: { empty: true, val: "", cta: "" } };
+const BANK_SEED = {
+  "a-new": {
+    facets: {
+      // NOTE: facet values are PLAIN TEXT — the surface escapes them (vault content is untrusted).
+      // bank-read.js's buildBankData() must likewise emit plain strings, not HTML.
+      essence: "A gen-z incense brand — indian maximalism, hip, unbothered.",
+      audience: "18–28, tier-1 metros, aesthetic-first, buys on vibe and story.",
+      goals: "Launch 3 SKUs · a scroll-stopping IG grid · 1,000 first orders.",
+      brandSet: { text: "Palette: Marigold & Ink. 3 logo marks in Crest.", swatches: ["#E8B04A", "#c4301c", "#1b1a2e"] },
+      roadmap: [["Name", "done"], ["Brand", "now"], ["Packaging", ""], ["Launch grid", ""]],
+      voice: { empty: false, val: "quirky, unbothered, a little cheeky", cta: "" },
+    },
+    counts: { tasks: 5, brain: 9, artifacts: 12 },
+    files: [
+      { key: "project-a-new.md", title: "project-a-new.md", kind: "project", src: "manual", note: "root essence + audience + goals", updated: "20m" },
+      { key: "voice-scratch.md", title: "voice-scratch.md", kind: "note", src: "manual", note: "cheeky one-liners, draft phrases", updated: "1h" },
+      { key: "packaging-notes.md", title: "packaging-notes.md", kind: "note", src: "Flow · transcript", note: "what the box should feel like", updated: "3h" },
+      { key: "skus.csv", title: "skus.csv", kind: "csv", src: "import", note: "3 SKUs · price · scent", updated: "yst" },
+    ],
+    brain: [], artifacts: [], tasks: [],
+  },
+  "nailinit": {
+    facets: {
+      essence: "india's #1 press-ons — salon nails in minutes.",
+      audience: "", goals: "",
+      brandSet: { text: "Palette read off the live storefront by the Bank connector.", swatches: ["#c4301c", "#fc3f75", "#ffe093", "#072835"] },
+      roadmap: [], voice: { empty: true, val: "", cta: "↻ Extract voice" },
+    },
+    counts: { tasks: 3, brain: 6, artifacts: 4 },
+    files: [
+      { key: "brand-nailinit.md", title: "brand-nailinit.md", kind: "brand", src: "Bank connector", note: "palette + products, read from nailin.it", updated: "4h" },
+      { key: "gst-legal.md", title: "gst-legal.md", kind: "note", src: "manual", note: "GSTIN, entity name, registered address", updated: "2d" },
+    ],
+    brain: [], artifacts: [], tasks: [],
+  },
+};
+const DATABANK = {
+  activeProjectId: "a-new",
+  projects: DATA.projects.map((p) => {
+    const seed = BANK_SEED[p.id] || {};
+    return {
+      id: p.id, name: p.name, kind: p.kind, active: !!p.active, essence: p.essence,
+      folder: "~/Bank/projects/" + p.id + "/",
+      path: "~/Bank/projects/" + p.id + "/project-" + p.id + ".md",
+      facets: seed.facets || EMPTY_FACETS,
+      counts: seed.counts || { tasks: 0, brain: 0, artifacts: 0 },
+      files: seed.files || [],
+      brain: seed.brain || [],
+      artifacts: seed.artifacts || [],
+      tasks: seed.tasks || [],
+    };
+  }),
+};
+DATA.bank = DATABANK;
 
 // ---------------------------------------------------------------------------
 // RAIL model — 4 groups. Store is a rail item that opens the existing store.
@@ -291,12 +357,18 @@ function parseRoute() {
   const qi = h.indexOf("?");
   const path = (qi >= 0 ? h.slice(0, qi) : h).trim();
   const params = new URLSearchParams(qi >= 0 ? h.slice(qi + 1) : "");
-  return { route: path || "home", params };
+  const seg = path.split("/").filter(Boolean);   // "#/project/a-new" → ["project","a-new"]
+  return { route: seg[0] || "home", sub: seg[1] || "", params };
 }
 function currentRoute() { return parseRoute().route; }
 function render() {
-  const { params } = parseRoute();
+  const { params, sub } = parseRoute();
   let route = currentRoute();
+  // entering a project's dir ("#/project/<id>") focuses that project in the Bank model
+  if (route === "project" && sub && DATA.bank) {
+    DATA.bank.activeProjectId = sub;
+    (DATA.bank.projects || []).forEach((x) => (x.active = x.id === sub));
+  }
   const pane = document.getElementById("pane");
   if (route === "home") { pane.innerHTML = renderHome(); }
   else if (SURFACES[route] && typeof SURFACES[route].render === "function") {
@@ -333,10 +405,10 @@ document.addEventListener("click", (e) => {
     }
     return;
   }
-  // switch the active project (Home cards) → make it current + re-ground Home. In the native OS this
-  // writes the global context; here it re-renders so the command centre re-centres on that project.
+  // select a project (Home cards / picker chips) → GO INTO its dir. Selecting makes it the active
+  // project and opens its directory surface (files + vault + quick-view basics).
   const proj = e.target.closest("[data-project]");
-  if (proj) { e.preventDefault(); switchProject(proj.getAttribute("data-project")); return; }
+  if (proj) { e.preventDefault(); enterProject(proj.getAttribute("data-project")); return; }
   // open a specific page / artifact in a new tab (surfaces use data-open="./x.html")
   const opener = e.target.closest("[data-open]");
   if (opener) { const u = opener.getAttribute("data-open"); if (u) { e.preventDefault(); window.open(u, "_blank", "noopener"); } return; }
@@ -352,6 +424,19 @@ function switchProject(id) {
   DATA.project = { id: p.id, name: p.name, kind: p.kind, essence: p.essence,
     facets: [p.kind, p.essence, p.updated ? "updated " + p.updated : ""].filter(Boolean) };
   if (currentRoute() !== "home") location.hash = "#/home"; else render();
+}
+
+// select a project → focus it in the Bank model AND open its directory surface (files + vault +
+// quick-view basics). This is the "go into the project dir" gesture from Home / spotlight / chips.
+function enterProject(id) {
+  const all = DATA.projects || [];
+  const p = all.find((x) => x.id === id);
+  if (!p) return;
+  all.forEach((x) => (x.active = x.id === id ? 1 : 0));
+  DATA.project = { id: p.id, name: p.name, kind: p.kind, essence: p.essence,
+    facets: [p.kind, p.essence, p.updated ? "updated " + p.updated : ""].filter(Boolean) };
+  if (DATA.bank) { DATA.bank.activeProjectId = id; (DATA.bank.projects || []).forEach((x) => (x.active = x.id === id)); }
+  location.hash = "#/project/" + id;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +495,7 @@ function renderSpot(q) {
 function chooseSpot(i) {
   const r = spotRows[i]; if (!r) return;
   closeSpot();
-  if (r.go === "switch") switchProject(r.id);
+  if (r.go === "switch") enterProject(r.id);
   else if (r.go === "route") location.hash = "#/" + r.id;
   else if (r.go === "open") { const u = pageFor(r.id); if (u) window.open(u, "_blank", "noopener"); }
   else if (r.go === "act") {
@@ -456,3 +541,26 @@ function wireOmni() {
 window.addEventListener("hashchange", render);
 render();
 wireOmni();
+
+// ---------------------------------------------------------------------------
+// REAL-VAULT BOOT — swap the grounded seed for live relay.storage reads when a daemon/provider is
+// present (native OS webview, or an allowlisted extension origin). In the plain web preview there is
+// no provider → whenRelayReady times out and we keep the seed, so the design always renders. Reads
+// (list/get) aren't consent-gated, so this needs no grant; a failure never blanks the vault.
+// ---------------------------------------------------------------------------
+async function initBank() {
+  let relay = null;
+  try { relay = await whenRelayReady(2500); } catch { return; }         // no provider → keep seed
+  if (!relay || !relay.storage || typeof relay.storage.list !== "function") return;
+  try {
+    const bank = await buildBankData(relay);
+    if (bank && Array.isArray(bank.projects) && bank.projects.length) {
+      // preserve the user's current project focus if the route is on a dir
+      const { route, sub } = parseRoute();
+      if (route === "project" && sub) bank.activeProjectId = sub;
+      DATA.bank = bank;
+      render();
+    }
+  } catch (e) { console.error("[os] vault read failed — keeping seed", e); }
+}
+void initBank();

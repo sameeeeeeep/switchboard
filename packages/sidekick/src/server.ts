@@ -46,6 +46,7 @@ import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError, expandTilde } from "./storage/store.js";
+import { resolveFind, findInFolder, type FindHit } from "./storage/find.js";
 import { pickFolderNative } from "./native-picker.js";
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
@@ -281,6 +282,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   private async dispatch(env: RequestEnvelope, ws: WebSocket): Promise<unknown> {
     const { origin, method } = env;
+    // vault.find — the LOCAL, deterministic lookup path (docs/FIND.md). A READ over the origin's own
+    // vault, gated exactly like storage.get (standing grant, no consent prompt); it calls NO model and
+    // touches NO network. Intercepted here so it needs no new BYOPMethod in @relay/protocol.
+    if ((method as string) === "vault.find") return this.vaultFind(origin, env.params as { query?: string; project?: string });
     switch (method as BYOPMethod) {
       case "claude_capabilities":
         return this.capabilities();
@@ -605,6 +610,22 @@ export class Broker implements ConsentPrompter, NativeHandler {
         };
       case "audit":
         return { entries: this.deps.audit.read(args?.origin, args?.limit ?? 300) };
+      case "vault.find": {
+        // Dictation Fn→FIND (docs/FIND.md) over the TRUSTED menu-bar control channel — the user
+        // themselves, so no per-origin grant. SCOPE = the ACTIVE project's vault (founder's call):
+        // resolve its folder and read it directly. Pure local lookup; NEVER a model call, NEVER the
+        // network. Audit the EVENT only (hit/miss + confidence) — never the query text or the value,
+        // which is the whole privacy point.
+        const query = typeof args?.query === "string" ? args.query : "";
+        if (!query.trim()) return null;
+        const activeId = this.deps.contexts.activeProject();
+        const folder = folderOf(this.deps.contexts.get(activeId ?? "")?.data);
+        if (!folder) return null; // no active project with a bound folder → nothing to search
+        const project = typeof args?.project === "string" && args.project.trim() ? args.project.trim() : undefined;
+        const hit = findInFolder(folder, query, project);
+        this.deps.audit.record({ origin: "*", kind: "tool_call", toolName: "vault_find", outcome: "ok", note: hit ? `hit · ${hit.confidence}` : "miss" });
+        return hit;
+      }
       case "signedIn":
         // Rung 4 (STATES.md §4): the extension folds this into the ladder once paired, so the panel
         // stops reading green while the daemon can't actually run a call. Lean by design — no models
@@ -1005,6 +1026,26 @@ export class Broker implements ConsentPrompter, NativeHandler {
       this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_storage__${req.op}`, outcome: "denied", note: String((err as Error)?.message || err).slice(0, 160) });
       throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, `storage ${req.op} failed: ${String((err as Error)?.message || err).slice(0, 160)}`);
     }
+  }
+
+  /**
+   * vault.find — the privacy-preserving LOCAL lookup (docs/FIND.md). Turns a natural-ish query like
+   * "GST number of nailinit" into the matched value, pulled STRAIGHT from the origin's local `.md`
+   * vault. This is the whole moat: NO model call, NO network, NO shelling out — the returned value
+   * never enters an LLM prompt and never leaves the machine. We do NOT audit the query or the value
+   * (that would be telemetry of exactly the private thing we promised to keep local); only that a
+   * lookup happened, hit-or-miss. Gated like `storage.get`: a standing grant, no per-action consent.
+   */
+  private vaultFind(origin: string, params: { query?: string; project?: string }): FindHit | null {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using find");
+    const query = typeof params?.query === "string" ? params.query : "";
+    if (!query.trim()) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "vault.find requires a query");
+    const project = typeof params?.project === "string" && params.project.trim() ? params.project.trim() : undefined;
+    // resolveFind NEVER throws (a malformed note degrades to null), so a lookup can't wedge anything.
+    const hit = resolveFind(this.deps.storage, origin, query, project);
+    // Audit the EVENT, never the content — no query text, no value; that's the privacy guarantee.
+    this.deps.audit.record({ origin, kind: "tool_call", toolName: "vault_find", outcome: "ok", note: hit ? `hit · ${hit.confidence}` : "miss" });
+    return hit;
   }
 
   /**
