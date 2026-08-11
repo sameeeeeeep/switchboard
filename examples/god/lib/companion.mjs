@@ -20,26 +20,59 @@ function selectedVoice() {
     return existsSync(f) ? readFileSync(f, "utf8").trim() : "";
   } catch { return ""; }
 }
+// Split a reply into speakable chunks (roughly sentences) so we can synth + play them in a PIPELINE
+// instead of waiting for the whole utterance. Whole-utterance synth means time-to-first-audio scales
+// with reply length (a 2–3 sentence reply = ~7–8s of dead air before the first sound); per-sentence
+// streaming makes it ~one sentence (~0.4–1s) no matter how long the reply. Tiny fragments are merged
+// into their neighbour so we never synth a lone "OK." (choppy, and the per-call overhead dominates).
+function splitSentences(text) {
+  const raw = (text.match(/[^.!?\n]+[.!?]+|[^.!?\n]+$/g) || [text]).map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  for (const p of raw) {
+    if (out.length && (out[out.length - 1].length < 24 || p.length < 24)) out[out.length - 1] += " " + p;
+    else out.push(p);
+  }
+  return out.length ? out : [text];
+}
+
+// Synthesise ONE chunk → a temp wav path (or null on any hiccup). 60s cap: the first synth after an
+// idle period can still be a Metal-kernel cold-compile (~20–25s) if keep-warm has lapsed; a shorter
+// cap would abort exactly those and drop God to the default `say` voice, so the clone worked "sometimes."
+async function synthChunk(voice, text) {
+  const res = await fetch(`http://127.0.0.1:${TTS_PORT}/speak`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, voice }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!buf.length) return null;
+  const wav = join(mkdtempSync(join(tmpdir(), "god-tts-")), "v.wav");
+  writeFileSync(wav, buf);
+  return wav;
+}
+
 async function speakCloned(text, onPlay) {
   const voice = selectedVoice();
   if (!voice) return false;
   try {
-    // The FIRST synth after an idle period is a Metal-kernel cold-compile (~20–25s); warm ones are ~3s.
-    // A 20s cap aborted exactly those cold calls → God fell back to the default `say` voice, so the
-    // clone worked "sometimes." 60s lets the cold one finish (slow but CONSISTENTLY the chosen voice).
-    const res = await fetch(`http://127.0.0.1:${TTS_PORT}/speak`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, voice }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!res.ok) return false;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!buf.length) return false;
-    const wav = join(mkdtempSync(join(tmpdir(), "god-tts-")), "v.wav");
-    writeFileSync(wav, buf);
-    onPlay?.();   // synthesis is done — audio is about to sound, flip the notch to "Speaking" now
-    await new Promise((r) => { const p = spawn("afplay", [wav]); p.on("close", r); p.on("error", r); });
-    return true;
+    const chunks = splitSentences(text);
+    let started = false;
+    // Pipeline: keep ONE synth in flight ahead of playback. While chunk i plays (audio-seconds of
+    // wall time), chunk i+1 is already synthesising on the server's GPU thread — synth runs faster
+    // than real-time, so the next wav is ready before the current one finishes sounding.
+    let pending = synthChunk(voice, chunks[0]);
+    for (let i = 0; i < chunks.length; i++) {
+      const wav = await pending;
+      pending = i + 1 < chunks.length ? synthChunk(voice, chunks[i + 1]) : null;
+      if (!wav) {
+        if (!started) return false;   // first chunk failed → let the caller fall back to `say` for the whole line
+        continue;                     // a later chunk failed → we're already committed to the clone; skip the gap
+      }
+      if (!started) { onPlay?.(); started = true; }   // first real audio is about to sound → flip the notch
+      await new Promise((r) => { const p = spawn("afplay", [wav]); p.on("close", r); p.on("error", r); });
+    }
+    return started;
   } catch { return false; }
 }
 
