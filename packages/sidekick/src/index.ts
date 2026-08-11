@@ -12,6 +12,7 @@ import { BackendRegistry } from "./backends/registry.js";
 import { StorageStore } from "./storage/store.js";
 import { ContextLibrary } from "./context/library.js";
 import { seedExampleIfEmpty } from "./seed/example.js";
+import { seedDictionaryIfMissing } from "./media/dictionary.js";
 import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
 import { Broker } from "./server.js";
@@ -40,6 +41,7 @@ async function main() {
   const storage = new StorageStore(config.stateDir);
   const contexts = new ContextLibrary(config.stateDir);
   seedExampleIfEmpty(config.stateDir, contexts, storage, (m) => console.error("[relay/seed]", m)); // fresh machine ⇒ one example project so nothing's empty
+  seedDictionaryIfMissing(); // fresh machine ⇒ a dictation dictionary from the user's name/wrapps/vault (whisper --prompt bias)
   const sessions = new SessionManager();
 
   // The Gate needs a ConsentPrompter, and the Broker IS the prompter. Break the cycle with a
