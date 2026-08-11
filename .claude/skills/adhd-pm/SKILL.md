@@ -40,8 +40,17 @@ response, stop and clear all three. If any is unchecked, you are not done compos
       mirror must not disagree.
 - [ ] **You self-tested with evidence (§3).** The strongest tool ran; the non-happy states too; the
       evidence is in hand — not "the founder can check."
+- [ ] **The board is the LEDGER, reconciled — SACROSANCT (§6).** EVERY task AND EVERY piece of founder
+      feedback this session — approvals, corrections, "that's ugly", "A is good", "make it X" — is on
+      the board as a card or a status note, NOT held only in chat. Each card shows its true state
+      (proposed → approved → built → tested → shipped), and approvals are logged onto their card (with
+      the wireframe/artifact link) so *what shipped* is checkable against *what was approved*. Before
+      ANY handoff (spawn_task / new thread / session end) you walked the board top-to-bottom: every item
+      is either done-and-marked-done or explicitly written into the handoff. **If it isn't on the board,
+      it gets missed** — that is exactly how an approved design shipped as a stopgap and was never passed
+      on. `shipped` ≠ `compiled + merged`; it means *matches what was approved, verified*.
 
-Only when all three are clear do you send. The reply then = finished-and-verified work + the ONE
+Only when all four are clear do you send. The reply then = finished-and-verified work + the ONE
 batched decision set (already at the notch) + the persisted board — never a wall of prose or a pile
 of questions.
 
@@ -291,6 +300,33 @@ The founder's Backlog→Todo drag is the deliberate "agent, go" signal; respect 
 Rule: the 🔴 Now item I'm actively doing stays in *this* thread; everything else I'm NOT touching this
 pass gets written to the board so it's recoverable next session. The intake mirror and the board should
 never disagree — the board is the mirror, persisted.
+
+### THE LEDGER IS SACROSANCT — capture everything, mark the truth, reconcile before every handoff
+
+Non-negotiable. This exists because it was violated: an approved design ("A is good") lived only in
+chat, got silently shipped as a stopgap glyph instead, and wasn't even passed to the next thread —
+because it was never on the board. Never again. The board — not this chat — is the single source of
+truth for *what was asked, what was approved, what got done, and what's left*.
+
+- **Capture on receipt.** Every task AND every piece of founder feedback — a new ask, a correction, a
+  bug report, a taste call, an approval ("A is good"), a rejection ("that's ugly", "too long") —
+  becomes a board card or a status note on an existing card THE MOMENT it lands. Chat is not memory.
+  If the founder said it, it is on the board before you move on.
+- **Log approvals against their item.** An approval or a rejection is a *state*, not a passing comment.
+  Write it onto the relevant card ("design A approved — see <wireframe/artifact link>", "pill card
+  rejected, compact pair-light approved"), so *what shipped* can always be checked against *what was
+  approved*. A design that was approved and a design that shipped must be the same design, or the card
+  says why not.
+- **The board reflects reality, not intent.** The moment something is built / tested / shipped, UPDATE
+  the card — `move_task` and/or a `done:` / `tested:` / `shipped:` note in `detail` naming the evidence.
+  A "shipped ✓" you type in chat that isn't reflected on the board is a lie waiting to be told.
+  `shipped` ≠ `compiled + merged` — a card is only shipped when what shipped *matches what was approved*
+  and was verified (§3). If you downgraded to a stopgap, the card says so, loudly, and stays open.
+- **Reconcile before EVERY handoff.** Before `spawn_task`, before starting a new thread, before ending
+  the session: walk the board top-to-bottom. Every item is either done-and-marked-done, or explicitly
+  written into the handoff prompt. **Build the handoff FROM the board, not from memory.** If an item
+  isn't on the board, it will not make it into the handoff — it will be missed. That reconciliation
+  pass is the whole point of the ledger; skipping it is the failure this rule kills.
 
 **The notch is the DEFAULT channel for decisions — via the `switchboard` skill.** The founder works
 away from the terminal, so a decision buried in a chat wall is a decision that waits. For **any**
