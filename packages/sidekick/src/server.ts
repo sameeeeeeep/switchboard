@@ -252,10 +252,16 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   /** Send a prompt to the currently-connected extension (if any); harmless if none — it's re-pushed
    *  from `promptQueue` the moment an extension (re)connects. */
-  /** Which surface a consent belongs to: a NATIVE app's "Allow this app?" goes to the menu bar (a
-   *  native surface); everything web goes to the browser extension. */
+  /** Which surface a consent belongs to. Native-app connect AND folder consents (bind / pick) go to
+   *  the MENU BAR — a native notch card the menubar app renders (StorageBindDrop). This unifies
+   *  consent at the notch and, crucially, means a NATIVE wrapp window (GodWebWindow, no browser) can
+   *  actually answer a folder-bind: routed to the extension it landed on the browser and, for a
+   *  localhost native origin, timed out → auto-deny ("opening the project…" hang). The fallback in
+   *  pushPrompt still delivers to the extension if the menu bar isn't connected. Everything else
+   *  (write consent, tabsidekick, context-pick) stays on the extension. */
   private surfaceFor(kind: string): "menubar" | "extension" {
-    return kind === "consent:native-connect" ? "menubar" : "extension";
+    const menubarKinds = ["consent:native-connect", "consent:connect", "consent:storage-bind", "consent:storage-pick"];
+    return menubarKinds.includes(kind) ? "menubar" : "extension";
   }
   private pushPrompt(id: string, kind: string, body: unknown) {
     // Prefer the kind's own surface; fall back to the other so a prompt is never undeliverable

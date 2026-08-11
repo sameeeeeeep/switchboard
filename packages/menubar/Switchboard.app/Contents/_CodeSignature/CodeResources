@@ -6,7 +6,11 @@
 	<dict>
 		<key>Resources/catalog.json</key>
 		<data>
-		QLuRGPPC4qhsNYox6Kx69O3abNM=
+		WLWZkaM9y6zdETpiQa0cII25dcY=
+		</data>
+		<key>Resources/connector/switchboard.mjs</key>
+		<data>
+		ddxCkDoHE8z+S5H9ktiFKsx17PU=
 		</data>
 		<key>Resources/fonts/Doto.ttf</key>
 		<data>
@@ -307,7 +311,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			AIwlnNSryyuJPpx777xEeYP977dI3JKc5FXDXT0BIZ4=
+			H1+toaiPalsOVgltFEuy7PjcObYEPxd4LkVAoSXKViE=
+			</data>
+		</dict>
+		<key>Resources/connector/switchboard.mjs</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			TI6BTcKlIVatlgdIyZLkCFiw49xXVIj4l4CErN3rE8Q=
 			</data>
 		</dict>
 		<key>Resources/fonts/Doto.ttf</key>
