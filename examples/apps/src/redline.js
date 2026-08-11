@@ -59,6 +59,7 @@ let isDraft = false;     // the open page was DRAFTED from context, not read off
 let drafting = false;
 let stageOverride = false; // user clicked "change" while a page is open → show the stage over it
 let choosingPage = false;  // bound a folder with >1 page → show the pages as a pick-list (not auto-open one)
+let emptyFolder = false;   // bound a folder with ZERO html pages → offer to draft one (don't auto-hang on a model call)
 let bootstrapped = false;
 let booting = false;
 let relayWired = false;
@@ -176,7 +177,7 @@ async function syncProject() {
   const folder = info && !info.autoAssigned && info.folder ? info.folder : null;
   if ((bound?.folder || null) === folder) return;
   bound = folder ? { folder } : null;
-  pages = []; pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0; stageOverride = false; choosingPage = false;
+  pages = []; pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0; stageOverride = false; choosingPage = false; emptyFolder = false;
   $("page-sel").textContent = "";
   await refreshProjectMetas(); // both paths need it — bind cards when unbound, bank-chip dedupe when bound
   if (bound) await loadProject();
@@ -190,6 +191,10 @@ function reflect() {
   $("canvas-bar").hidden = !pageKey;
   $("cutbar").hidden = !cutMode || !pageKey;
   $("proj-bar").hidden = !bound;
+  // The page dropdown is only worth showing to SWITCH among several open pages. With 0 pages it's an
+  // empty native <select> (ugly) and with 1 there's nothing to switch to — the chooser / empty-folder
+  // card already cover the initial pick. Hide it unless there's a real choice AND a page is open.
+  $("page-sel").hidden = !pageKey || pages.length < 2;
   $("draft-flag").hidden = !isDraft;
   $("save-draft").hidden = !isDraft;
   updatePublish();
@@ -290,6 +295,26 @@ function renderStage() {
     const r = el("div", "researching");
     r.append(el("div", "scan"), el("span", null, "opening the project…"));
     flow.append(r);
+    return;
+  }
+
+  // BOUND to a folder with ZERO html pages → offer to draft one (user-initiated, so the model wait is
+  // expected) or choose another folder. Never auto-fire the draft — that hung on "drafting…".
+  if (emptyFolder && bound) {
+    sub.textContent = "No page in this folder yet — " + bound.folder;
+    flow.append(el("div", "kicker stage-k", "nothing to review here"));
+    const list = el("div", "opts");
+    const draftOpt = el("div", "opt proj");
+    draftOpt.append(el("div", "rec", "recommended"));
+    draftOpt.append(el("div", "go", "draft ▸"));
+    draftOpt.append(el("div", "o-label", "Draft a first page from your project"));
+    draftOpt.onclick = () => { emptyFolder = false; void draftFirstPage(); };
+    list.append(draftOpt);
+    flow.append(list);
+    flow.append(el("div", "kicker stage-k", "or a different folder"));
+    const back = el("button", "mini"); back.textContent = "▸ choose another folder";
+    back.onclick = () => { emptyFolder = false; bound = null; pages = []; pageKey = null; reflect(); };
+    flow.append(back);
     return;
   }
 
@@ -409,10 +434,11 @@ async function loadProject() {
   try { keys = await relay.storage.list(); } catch { /* empty */ }
   pages = keys.filter((k) => /\.html?$/i.test(k)).sort();
   const sel = $("page-sel"); sel.textContent = "";
-  // NO PAGE ON DISK IS NOT A DEAD END. Redline's whole promise is that opening a project starts a
-  // review with zero clicks; an empty folder used to end at a toast and an idle sidebar. Draft the
-  // first page from the project's own context instead, then audit that — same zero-click contract.
-  if (!pages.length) { await draftFirstPage(); return; }
+  // NO PAGE ON DISK IS NOT A DEAD END, but it is NOT a place to auto-fire a multi-minute model call
+  // either — that read as a hang (spinner stuck on "drafting…"). Offer it instead: a real "no page —
+  // draft one?" affordance the user chooses, so the wait is expected and a different folder is one click.
+  if (!pages.length) { emptyFolder = true; reflect(); return; }
+  emptyFolder = false;
   isDraft = false;
   for (const p of pages) sel.append(new Option(p, p));
   const preferred = pages.find((p) => /(^|\/)index\.html?$/i.test(p)) || pages[0];
@@ -473,11 +499,17 @@ function extractHtml(text) {
 
 async function draftFirstPage() {
   if (!relay || drafting) return;
-  drafting = true;
+  drafting = true; emptyFolder = false;
   pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0;
   reflect();
   try {
-    const ctx = await groundingContext();
+    // groundingContext has no timeout of its own (context.active/list could hang) — race it so a stuck
+    // lookup degrades to no-grounding rather than freezing the whole draft on "drafting…". streamText
+    // below carries its own STREAM_TIMEOUT_MS, so the model leg can't hang either.
+    const ctx = await Promise.race([
+      groundingContext().catch(() => null),
+      new Promise((res) => setTimeout(() => res(null), 12000)),
+    ]);
     const text = await streamText({
       prompt: [
         "You are Redline. This project has no page yet — write the FIRST draft of its landing page, so there is something real on the canvas to review.",
