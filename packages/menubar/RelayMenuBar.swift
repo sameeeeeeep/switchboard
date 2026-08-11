@@ -2233,14 +2233,12 @@ struct OrbView: View {
                     .scaleEffect(breathe ? 1.0 : 0.96)
                     .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
             } else {
-                // Idle: a row of three dots — the dot-matrix language at its smallest (a switchboard's
-                // resting lamps), health-tinted. Lime = running+signed-in, red = running not-signed-in,
-                // faint = daemon down.
+                // Idle: the DOT-MATRIX mark at its smallest (the switchboard's resting lamps), health-tinted.
+                // Lime = running+signed-in, red = running not-signed-in, faint = daemon down. A calm
+                // "thinking" sweep when alive; a still frame when the daemon is down.
                 let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-                HStack(spacing: 3) {
-                    ForEach(0..<3, id: \.self) { _ in Circle().fill(tint).frame(width: 5, height: 5) }
-                }
-                .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.35) : .clear, radius: 3)
+                DotMatrix(pattern: .thinking, accent: tint, cols: 6, rows: 3, dot: 1.7, gap: 1.6, animated: model.running)
+                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.30) : .clear, radius: 3)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
@@ -2611,6 +2609,186 @@ struct ConsentDrop: View {
     }
 }
 
+/// A native wrapp asks to open a FOLDER (consent:storage-bind) or raise the folder picker
+/// (consent:storage-pick). The A1 consent (founder pick 2026-08-12): the ask + the exact path, with
+/// Not now / Allow inline on the right — the same notch drop the connect card uses. Reply is a plain
+/// bool → the daemon's ask<boolean> (server.ts requestStorageBindConsent).
+struct StorageBindDrop: View {
+    let app: String
+    let path: String
+    let isPick: Bool
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.amber.opacity(0.16))
+                    .overlay(Image(systemName: "folder").font(.system(size: 15)).foregroundColor(.amber))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Open a folder for \u{201C}\(app)\u{201D}?").font(.hanken(14, .semibold)).foregroundColor(.ink)
+                    Text(isPick ? "You\u{2019}ll choose the folder next"
+                                : "read \u{0026} stage \u{00B7} nothing leaves your Mac")
+                        .font(.hanken(10.5)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            if !path.isEmpty && !isPick {
+                Text(path).font(.splMono(10)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.middle)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.edge, lineWidth: 1))
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text(isPick ? "Choose\u{2026}" : "Allow").font(.hanken(11.5, .semibold)).foregroundColor(.page)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
+/// The native CONNECT-GRANT scope card (founder direction 2026-08-12: move ALL consent to the notch).
+/// Mirrors the extension consent-view: origin + reason, model checkboxes (requested pre-selected), tool
+/// checkboxes with a read/write badge. Approve returns the grant OBJECT
+/// {models, tools:[{name,access}], budgets, contextKinds}; Deny returns nil. Wired via ConsentClient.replyResult.
+struct ConnectGrantDrop: View {
+    let origin: String
+    let reason: String
+    let availableModels: [String]
+    let tools: [(name: String, access: String, label: String)]
+    let budgets: [String: Any]
+    let contextKinds: [String]
+    var onApprove: ([String: Any]) -> Void
+    var onDeny: () -> Void
+
+    @State private var selModels: Set<String>
+    @State private var selTools: Set<String>
+
+    init(origin: String, reason: String, availableModels: [String], requestedModels: [String],
+         tools: [(name: String, access: String, label: String)], budgets: [String: Any], contextKinds: [String],
+         onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
+        self.origin = origin; self.reason = reason; self.availableModels = availableModels; self.tools = tools
+        self.budgets = budgets; self.contextKinds = contextKinds; self.onApprove = onApprove; self.onDeny = onDeny
+        _selModels = State(initialValue: Set(requestedModels.isEmpty ? Array(availableModels.prefix(1)) : requestedModels))
+        _selTools = State(initialValue: Set(tools.map { $0.name }))
+    }
+
+    private func host(_ s: String) -> String { URL(string: s)?.host ?? s }
+    private func box(_ on: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 5)
+            .fill(on ? Color.lime : Color.clear)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(on ? Color.lime : Color.edge, lineWidth: 1.5))
+            .overlay(Group { if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundColor(.page) } })
+            .frame(width: 16, height: 16)
+    }
+    private var writeCount: Int { tools.filter { $0.access == "write" }.count }
+    private func chunked(_ a: [String], _ n: Int) -> [[String]] {
+        stride(from: 0, to: a.count, by: n).map { Array(a[$0..<min($0 + n, a.count)]) }
+    }
+    private func pill(_ m: String, _ on: Bool) -> some View {
+        Text(m).font(.hanken(12, on ? .semibold : .regular)).foregroundColor(on ? .page : .inkDim).lineLimit(1)
+            .padding(.horizontal, 11).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.lime : Color.raised.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.clear : Color.edge, lineWidth: 1))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "link").font(.system(size: 14)).foregroundColor(.lime))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    (Text("Connect to ").foregroundColor(.ink) + Text(host(origin)).foregroundColor(.lime)).font(.hanken(14, .semibold))
+                    if !reason.isEmpty { Text("\u{201C}\(reason)\u{201D}").font(.hanken(10.5)).italic().foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+                }
+                Spacer(minLength: 0)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 13) {
+                    if !availableModels.isEmpty {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                            ForEach(chunked(availableModels, 2), id: \.self) { row in
+                                HStack(spacing: 7) {
+                                    ForEach(row, id: \.self) { m in
+                                        Button { if selModels.contains(m) { selModels.remove(m) } else { selModels.insert(m) } } label: { pill(m, selModels.contains(m)) }.buttonStyle(.plain)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                    }
+                    if !tools.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("TOOLS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                                Spacer(minLength: 0)
+                                Text("\(tools.count) tool\(tools.count == 1 ? "" : "s")\(writeCount > 0 ? " \u{00B7} \(writeCount) write" : "")").font(.splMono(9)).foregroundColor(.inkFaint)
+                            }
+                            ForEach(Array(tools.enumerated()), id: \.offset) { _, t in
+                                Button { if selTools.contains(t.name) { selTools.remove(t.name) } else { selTools.insert(t.name) } } label: {
+                                    HStack(spacing: 9) {
+                                        box(selTools.contains(t.name))
+                                        Text(t.label.isEmpty ? t.name : t.label).font(.hanken(12)).foregroundColor(.ink).lineLimit(1)
+                                        Spacer(minLength: 0)
+                                        Text(t.access.uppercased()).font(.splMono(8)).tracking(0.6).foregroundColor(t.access == "write" ? Color(red: 1, green: 0.42, blue: 0.37) : .inkFaint)
+                                    }
+                                    .padding(.horizontal, 10).padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised.opacity(0.5)))
+                                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }.frame(maxHeight: 230)
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Button {
+                    let grant: [String: Any] = [
+                        "models": Array(selModels),
+                        "tools": tools.filter { selTools.contains($0.name) }.map { ["name": $0.name, "access": $0.access] },
+                        "budgets": budgets,
+                        "contextKinds": contextKinds,
+                    ]
+                    onApprove(grant)
+                } label: {
+                    Text("Approve \u{00B7} \(selTools.count) tool\(selTools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold)).foregroundColor(.page)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
 /// The native Accessibility onboarding — a notch DROP (notch-native), not a terminal walk. It states
 /// the need, opens the exact pane, AND offers the real trick: a draggable app chip you drag straight
 /// into the Accessibility list (`.onDrag` yields the .app bundle URL), instead of hunting via the + button.
@@ -2914,7 +3092,7 @@ final class ConsentClient: NSObject {
     private let session = URLSession(configuration: .default)
     private let port: UInt16
     private let tokenProvider: () -> String?
-    private let onPrompt: (String, [String: Any]) -> Void   // (id, body) for consent:native-connect
+    private let onPrompt: (String, String, [String: Any]) -> Void   // (id, kind, body) for consent prompts
     // Correlated request/response over the SAME authed socket: id → completion. The daemon answers a
     // `{type:"control", id, action, args}` with `{type:"control_result", id, result}`. Used for
     // vault.find (dictation FIND mode). Guarded by a lock so the receive callback (URLSession's queue)
@@ -2922,7 +3100,7 @@ final class ConsentClient: NSObject {
     private var pending: [String: (Any?) -> Void] = [:]
     private let pendingLock = NSLock()
 
-    init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, [String: Any]) -> Void) {
+    init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, String, [String: Any]) -> Void) {
         self.port = port; self.tokenProvider = tokenProvider; self.onPrompt = onPrompt
         super.init(); connect()
     }
@@ -2942,8 +3120,13 @@ final class ConsentClient: NSObject {
                 if case let .string(s) = msg, let d = s.data(using: .utf8),
                    let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                     let type = o["type"] as? String
-                    if type == "prompt", (o["kind"] as? String) == "consent:native-connect", let id = o["id"] as? String {
-                        self.onPrompt(id, (o["body"] as? [String: Any]) ?? [:])
+                    if type == "prompt", let kind = o["kind"] as? String,
+                       ["consent:native-connect", "consent:connect", "consent:storage-bind", "consent:storage-pick"].contains(kind),
+                       let id = o["id"] as? String {
+                        // native-connect → "Allow this app?"; storage-bind/pick → "Open a folder?" (A1).
+                        // The daemon routes these to the menubar surface (fallback) when no extension is
+                        // connected — exactly the native-wrapp case that used to time out and auto-deny.
+                        self.onPrompt(id, kind, (o["body"] as? [String: Any]) ?? [:])
                     } else if type == "control_result", let id = o["id"] as? String {
                         // `result` may legitimately be null (e.g. vault.find no-match) — deliver as nil.
                         self.fulfil(id, o.keys.contains("result") ? o["result"] : nil)
@@ -2978,6 +3161,9 @@ final class ConsentClient: NSObject {
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once(nil) }
     }
     func reply(_ id: String, _ result: Bool) { send(["type": "reply", "id": id, "result": result]) }
+    /// Reply with an OBJECT result (or null) — for consent:connect, whose grant is
+    /// {models, tools, budgets, contextKinds}, not a bool. null = denied.
+    func replyResult(_ id: String, _ result: [String: Any]?) { send(["type": "reply", "id": id, "result": result ?? NSNull()]) }
     /** Fire a daemon control action over the same authed socket (e.g. disconnectNativeApp). The panel
      *  re-reads its files right after, so we don't need the reply. */
     func control(_ action: String, _ args: [String: Any]) { send(["type": "control", "id": UUID().uuidString, "action": action, "args": args]) }
@@ -3384,6 +3570,81 @@ struct ActionConsentDrop: View {
         presentFromNotch(consentPanel)
     }
 
+    // A native wrapp asks to open a folder (consent:storage-bind) or raise the picker
+    // (consent:storage-pick). The A1 consent drop — folder + exact path, Not now / Allow. Reply is a
+    // plain bool the daemon's ask<boolean> awaits; used to time out → auto-deny for native wrapps.
+    private func showStorageBindConsent(_ id: String, _ kind: String, _ body: [String: Any]) {
+        let origin = body["origin"] as? String ?? ""
+        let path = body["path"] as? String ?? ""
+        let app: String = {
+            guard let host = URL(string: origin)?.host else { return "a wrapp" }
+            if host.hasSuffix(".thelastprompt.ai") {
+                let s = String(host.dropLast(".thelastprompt.ai".count))
+                return s.isEmpty ? "a wrapp" : s.prefix(1).uppercased() + s.dropFirst()
+            }
+            if host.contains("localhost") || host.hasPrefix("127.") { return "this wrapp" }
+            return host
+        }()
+        let reply: (Bool) -> Void = { [weak self] allow in
+            self?.consent?.reply(id, allow)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = StorageBindDrop(app: app, path: path, isPick: kind == "consent:storage-pick",
+                                   onAllow: { reply(true) }, onDeny: { reply(false) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(consentPanel)
+    }
+
+    // consent:connect — the models+tools SCOPE grant, at the notch (was extension-only). Approve returns
+    // the grant object {models, tools:[{name,access}], budgets, contextKinds}; Deny returns null.
+    private func showConnectGrant(_ id: String, _ body: [String: Any]) {
+        let origin = body["origin"] as? String ?? ""
+        let reason = body["reason"] as? String ?? ""
+        let modelsDict = body["models"] as? [String: Any] ?? [:]
+        let available = (modelsDict["available"] as? [String]) ?? []
+        let requested = (modelsDict["requested"] as? [String]) ?? []
+        let tools: [(name: String, access: String, label: String)] = ((body["tools"] as? [[String: Any]]) ?? []).map {
+            (name: $0["name"] as? String ?? "", access: $0["access"] as? String ?? "read", label: $0["label"] as? String ?? "")
+        }.filter { !$0.name.isEmpty }
+        let budgets = body["budgets"] as? [String: Any] ?? [:]
+        let contextKinds = (body["contextKinds"] as? [String]) ?? []
+        let finish: ([String: Any]?) -> Void = { [weak self] grant in
+            self?.consent?.replyResult(id, grant)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
+                                    tools: tools, budgets: budgets, contextKinds: contextKinds,
+                                    onApprove: { finish($0) }, onDeny: { finish(nil) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(consentPanel)
+    }
+
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
     // next time) but still a real revocation. Drops the token + grant via the daemon, then refreshes.
     private func disconnectNativeApp(_ appId: String) {
@@ -3611,7 +3872,13 @@ struct ActionConsentDrop: View {
                 let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 return t.isEmpty ? nil : t
             },
-            onPrompt: { [weak self] id, body in Task { @MainActor in self?.showNativeConsent(id, body) } })
+            onPrompt: { [weak self] id, kind, body in Task { @MainActor in
+                switch kind {
+                case "consent:native-connect": self?.showNativeConsent(id, body)
+                case "consent:connect": self?.showConnectGrant(id, body)
+                default: self?.showStorageBindConsent(id, kind, body)   // storage-bind / storage-pick
+                }
+            } })
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
@@ -4377,9 +4644,17 @@ struct ActionConsentDrop: View {
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
+        // A real content window ⇒ stop being a menu-bar-only ACCESSORY (whose windows float as overlays:
+        // no Cmd-Tab, no Mission Control, always-on-top) and behave like a NORMAL app while it's open.
+        // Switch BEFORE creating the window so it's born a normal-level window, not an accessory one.
+        // Revert to .accessory (menu-bar-only, no Dock icon) once the last window closes.
+        if appWindows.isEmpty { NSApp.setActivationPolicy(.regular) }
         let web = GodWebWindow(url: url, token: token, title: name)
         appWindows.append(web)
-        web.onUserClosed = { [weak self, weak web] in self?.appWindows.removeAll { $0 === web } }
+        web.onUserClosed = { [weak self, weak web] in
+            self?.appWindows.removeAll { $0 === web }
+            if self?.appWindows.isEmpty == true { NSApp.setActivationPolicy(.accessory) }
+        }
         web.open()
         NSLog("[open-wrapp] native window opened: %@ → %@", name, url.absoluteString)
     }
