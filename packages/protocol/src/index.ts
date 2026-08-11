@@ -5,6 +5,7 @@
  * a browser SDK alike.
  */
 export * from "./version.js";
+export * from "./origins.js";
 export * from "./permissions.js";
 export * from "./connectors.js";
 export * from "./tabsidekick.js";

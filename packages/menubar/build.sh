@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift NotchLauncherView.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift NotchLauncherView.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
 
 APP="Switchboard.app"
 rm -rf "$APP"
@@ -53,6 +53,24 @@ if compgen -G "fonts/*.ttf" >/dev/null 2>&1 || compgen -G "fonts/*.otf" >/dev/nu
   mkdir -p "$APP/Contents/Resources/fonts"
   cp fonts/*.ttf fonts/*.otf "$APP/Contents/Resources/fonts/" 2>/dev/null || true
   echo "[menubar] bundled house fonts"
+fi
+
+# The Switchboard connector — bundled as ONE ESM file so the onboarding "Connect Claude Code" step has a
+# real path to hand the user: `claude mcp add switchboard -- <node> <this> mcp`. That connector lets a
+# Claude Code session read this project's board (pick up tasks moved to Todo) and run its wrapps. Mirrors
+# the daemon bundle (createRequire banner — the MCP stdio transport does dynamic require()s). Skipped if
+# esbuild isn't present; a dev build then points the command at the repo source instead.
+ESBUILD="../../node_modules/.bin/esbuild"
+if [ -x "$ESBUILD" ]; then
+  mkdir -p "$APP/Contents/Resources/connector"
+  if "$ESBUILD" ../switchboard-mcp/switchboard-mcp.mjs \
+      --bundle --platform=node --format=esm --target=node18 \
+      --external:bufferutil --external:utf-8-validate \
+      --banner:js="import { createRequire as __relayCreateRequire } from 'node:module'; const require = __relayCreateRequire(import.meta.url);" \
+      --outfile="$APP/Contents/Resources/connector/switchboard.mjs" \
+      --log-level=warning; then
+    echo "[menubar] bundled Switchboard connector (Claude Code MCP: task board + wrapps)"
+  fi
 fi
 
 # Sign with a stable Developer ID so TCC grants (Accessibility, Screen Recording, Microphone, and the

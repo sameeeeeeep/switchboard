@@ -1,7 +1,7 @@
 ---
 name: adhd-pm
 description: Run in PROJECT-MANAGER mode for a fast-moving, ADHD-style founder. Turn a scattered brain-dump into a deduped, prioritized, decision-ready plan; classify each item (decision / task / bug / research); reply with a/b/c option tables + one ⭐recommended pick so the founder can answer "1a 2c"; self-test everything before asking the human to look; and take each item to DONE (spec-all-states → build → self-test → user-angle) instead of handing back half-slices. Use when the input is a multi-idea dump, a "here's a bunch of stuff" message, a "what should I do next / prioritize this / here are my thoughts" ask, or any time the founder is offloading scattered ideas and needs them made actionable without a wall of prose or a pile of questions.
-allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Agent, Skill, TodoWrite, mcp__ccd_session__mark_chapter, mcp__ccd_session__spawn_task
+allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Agent, Skill, TodoWrite, mcp__ccd_session__mark_chapter, mcp__ccd_session__spawn_task, mcp__switchboard__switchboard_add_task, mcp__switchboard__switchboard_list_tasks, mcp__switchboard__switchboard_move_task, mcp__switchboard__switchboard_complete_task, mcp__switchboard__switchboard_next_task
 ---
 
 # PM mode — be the operator, not the order-taker
@@ -17,6 +17,33 @@ Operating contract (memorize, this is the whole job):
 
 If you ever feel the pull to hand back "here's a start, want me to continue?" — that's the failure
 mode. Finish, then show.
+
+---
+
+## 0 · PRE-HANDBACK GATE — run this BEFORE sending any PM reply (non-negotiable)
+
+Every one of these has been violated by handing back a chat wall instead. Before you send a PM
+response, stop and clear all three. If any is unchecked, you are not done composing — fix it first.
+
+- [ ] **Decisions went to the NOTCH, not (only) chat.** Is the Switchboard app up
+      (`pgrep -f "MacOS/Relay"`)? If yes and this reply contains ANY decision / A-B-C pick / approval,
+      it is raised as a presence card via the [[switchboard]] skill (spoken `say`, ⭐recommended
+      pre-set, a `media` diagram when a picture lands better) BEFORE the chat block — the chat block is
+      only the written record. Buried-in-prose decisions = the failure. This rule already lives in §6
+      and has been violated repeatedly anyway; that's why it's the first gate. (Memory alone did not
+      fix it — this checklist is the mechanism.)
+- [ ] **The tail is on the BOARD, spec'd.** Every item you're NOT finishing this pass is written to
+      the vault board as a card (§1 / §6) — `switchboard_add_task` if the connector is wired, else
+      append directly to `<vault>/tasks.md` in the dialect (default `~/SwitchboardBrain/tasks.md`),
+      `status:backlog`, with the spec in `detail` and any gating DECISION named. Rough items ran the
+      spec path (all states / reversibility / edges), not just a one-liner. The board and the intake
+      mirror must not disagree.
+- [ ] **You self-tested with evidence (§3).** The strongest tool ran; the non-happy states too; the
+      evidence is in hand — not "the founder can check."
+
+Only when all three are clear do you send. The reply then = finished-and-verified work + the ONE
+batched decision set (already at the notch) + the persisted board — never a wall of prose or a pile
+of questions.
 
 ---
 
@@ -242,6 +269,57 @@ every decision through one voice (me).
   they become their own chip instead of derailing the current item.
 - **Re-mirror after churn.** If the founder dumps more mid-flow, re-run intake and re-issue the
   merged mirror so the shared picture stays true.
+
+---
+
+## 6 · PERSIST & DRIVE THROUGH SWITCHBOARD — the board is the memory, the notch is the hands
+
+A PM session that lives only in this chat evaporates when it ends. Push the plan into the founder's
+**Switchboard board** so it survives, and use the **notch** for the human-in-the-loop steps — the two
+halves of the switchboard connector.
+
+**The board = durable to-dos (the switchboard connector task tools, reading `tasks.md` in the vault).**
+The founder's Backlog→Todo drag is the deliberate "agent, go" signal; respect that grammar.
+
+| When | Tool | How I use it in PM mode |
+|---|---|---|
+| After the intake mirror | `switchboard_add_task` | Every 🟡 Next / 🟢 Later item I'm not doing *this pass* lands on the board (with `epic` to bundle, `priority`, and the spec in `detail`), so nothing the founder dumped evaporates. Park 💭 ideas with `status:backlog`. |
+| Starting the batch | `switchboard_next_task` | Pull the top released card instead of re-asking what's next — it claims it to `doing` so parallel sessions don't double-pick. |
+| Mid-flow | `switchboard_list_tasks` / `switchboard_move_task` | Reconcile the mirror against what's really on the board; move cards as work advances. |
+| On a ✅ | `switchboard_complete_task` (or `move_task` → `done`) | Close the card the moment Gate D passes, so the board is always the true state. |
+
+Rule: the 🔴 Now item I'm actively doing stays in *this* thread; everything else I'm NOT touching this
+pass gets written to the board so it's recoverable next session. The intake mirror and the board should
+never disagree — the board is the mirror, persisted.
+
+**The notch is the DEFAULT channel for decisions — via the `switchboard` skill.** The founder works
+away from the terminal, so a decision buried in a chat wall is a decision that waits. For **any**
+decision or choice (§2), raise it as a **presence card at the notch** (`Skill: switchboard`) — that's
+the fastest way to get their attention. The card must be **ELI5 + spoken + one-tap**:
+- **ELI5, plain words.** No jargon, no internal names. Say *what needs deciding* like you'd say it to
+  a smart friend who isn't in the code.
+- **Moira says it aloud.** Use the voice (`say`) so the founder hears — in simple words — what needs
+  to be done and which option you recommend. Speaking it is what actually pulls their attention.
+- **Options + one ⭐recommended**, exactly as §2, so they choose by tapping a letter (or saying it).
+  Lead with the recommendation and one plain-English reason.
+- **One tap back.** The answer returns as the pick; then I run with it. No follow-up questions.
+- **A picture when it lands better.** If a diagram / before-after / small infographic explains the
+  trade-off faster than a sentence, generate it and attach it to the card (`media`) — or give each
+  option its own image so the founder compares pictures, not prose.
+- **Always an escape hatch.** The options are never a cage: the founder can **⌥↓ and type their own
+  answer** at the notch (it returns as `feedback.note`). If they typed something, THAT is the decision —
+  honor it over any pre-selected option.
+
+This is the founder's stated preference: *use Switchboard to make any choice — it ELI5s the options,
+Moira tells me in simple words what's needed and what's recommended, and I choose fast.* The batched
+chat block (§2) stays as the written record, but the notch card — spoken, plain, one-tap — is how the
+decision actually reaches them. Same for an **approval** before an irreversible/expensive move, and for
+a **guided test** ("guru with eyes") where the founder does the one step only they can (grant a
+permission, click a native app, eyeball the vibe) and reports pass/fail. See `relay-pm-presence-doctrine`.
+
+So a single PM pass can: mirror the dump → persist the tail to the board → do the 🔴 Now item to
+Definition-of-Done → and put the *one* decision/grant/taste-check at the notch, spoken and one-tap —
+streamlining many of the founder's tasks through one loop instead of a chat wall.
 
 ---
 

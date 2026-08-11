@@ -162,52 +162,121 @@ private struct DashLine: Identifiable {
     var statusColor: Color = .inkDim
     var mark: String? = nil
     var markColor: Color = .lime
-    var retry: Bool = false
 }
 
-private enum DashSample {
-    static let tiles: [DashTile] = [
-        DashTile(kicker: "Projects",  big: "4", sub: "1 stalled", drill: .bank,      drillLabel: "Bank",
-                 spark: DashSpark(bars: false, data: [3,3,4,4,4,4,4], color: .inkDim)),
-        DashTile(kicker: "Routines",  big: "3", sub: "active · next 08:00", drill: .routines, drillLabel: "Routines",
-                 spark: DashSpark(bars: false, data: [2,3,3,2,3,3,3], color: .inkDim)),
-        DashTile(kicker: "Workflows", big: "12", ok: (10, 2), drill: .workflows, drillLabel: "Workflows",
-                 spark: DashSpark(bars: true, data: [2,1,3,2,1,2,1], color: .inkDim)),
-        DashTile(kicker: "Usage",     big: "4.2M", suffix: " /8M", sub: "tokens · 53% of budget", drill: .history, drillLabel: "History",
-                 spark: DashSpark(bars: true, data: [3,5,4,6,5,7,6], color: .lime)),
-        DashTile(kicker: "Needs attention", big: "5", sub: "2 blocking", drill: .needs, drillLabel: "Needs", alert: true,
-                 spark: DashSpark(bars: false, data: [0,1,1,2,3,4,5], color: .danger)),
-    ]
+// ═══ LIVE dashboard — every tile/pane derives from the same real readers the other surfaces use:
+// contexts.json (projects), routines.json+control (routines), the audit log (runs + activity),
+// status.json (connector/backends health), osPending (needs). No usage/token tile — there is no
+// truthful per-day usage receipt yet, and a fake meter is worse than none.
 
-    static let routines: [DashLine] = [
-        DashLine(ic: "⟳", icColor: .lime,   name: "Daily brief",         status: "next 08:00",  mark: "✓", markColor: .lime),
-        DashLine(ic: "⟳", icColor: .indigo, name: "Email triage",        status: "running…", statusColor: .indigo, mark: "•", markColor: .indigo),
-        DashLine(ic: "⟳", icColor: .lime,   name: "IndEur social recap", status: "next Fri",    mark: "✓", markColor: .lime),
-        DashLine(ic: "⟳", icColor: .inkFaint, name: "Weekly deck", nameMuted: true, status: "paused"),
-    ]
+private struct DashLive {
+    var tiles: [DashTile] = []
+    var routines: [DashLine] = []
+    var runs: [DashLine] = []
+    var healthOK: [String] = []
+    var healthAlerts: [String] = []
+    var activity: [DashLine] = []
+}
 
-    static let runs: [DashLine] = [
-        DashLine(ic: "✓", icColor: .lime,   name: "CopyFlow — launch emails", status: "14:02"),
-        DashLine(ic: "✗", icColor: .danger, name: "Sheet sync",               status: "11:40", retry: true),
-        DashLine(ic: "✓", icColor: .lime,   name: "Autopilot slate",          status: "09:15"),
-        DashLine(ic: "✓", icColor: .lime,   name: "Prism — beam render",      status: "08:41"),
-    ]
+private func dashLive(rangeDays: Double) -> DashLive {
+    var out = DashLive()
+    let now = Date().timeIntervalSince1970 * 1000
 
-    static let health: [String] = ["daemon", "cloud model", "3 connectors"]
-    static let healthAlert = "Granola connector needs reconnect"
+    // projects tile — spark = contexts touched per day over the window (from updatedAt)
+    let ctxs = bankContexts()
+    var perDay = [Double](repeating: 0, count: max(Int(rangeDays), 1))
+    for c in ctxs {
+        let age = now - c.updatedMs
+        let day = Int(age / 86_400_000)
+        if day >= 0 && day < perDay.count { perDay[perDay.count - 1 - day] += 1 }
+    }
+    let brands = ctxs.filter { $0.kind == "brand" }.count
+    let ideas = ctxs.filter { $0.kind == "idea" }.count
+    out.tiles.append(DashTile(kicker: "Projects", big: "\(ctxs.count)",
+                              sub: "\(brands) brands · \(ideas) ideas", drill: .bank, drillLabel: "Bank",
+                              spark: DashSpark(bars: false, data: perDay, color: .inkDim)))
 
-    static let activity: [DashLine] = [
-        DashLine(ic: "↻", icColor: .inkFaint, name: "14:22 · Prism image made"),
-        DashLine(ic: "⟳", icColor: .inkFaint, name: "08:00 · Daily brief delivered"),
-        DashLine(ic: "↻", icColor: .inkFaint, name: "Yesterday · 4 marks generated in Crest"),
-    ]
+    // routines tile
+    let r = routinesLive()
+    let activeR = r.list.filter { regGroup($0.register) == "active" }.count
+    out.tiles.append(DashTile(kicker: "Routines", big: "\(activeR)",
+                              sub: r.off ? "master switch off" : "\(r.list.count) registered",
+                              drill: .routines, drillLabel: "Routines",
+                              spark: DashSpark(bars: false, data: [], color: .inkDim)))
+    out.routines = r.list.map { rt in
+        DashLine(ic: "⟳", icColor: rt.register == .active ? .lime : .inkFaint,
+                 name: rt.name, nameMuted: rt.register != .active, status: rt.pillLabel)
+    }
+    if out.routines.isEmpty { out.routines = [DashLine(ic: "⟳", icColor: .inkFaint, name: "No routines registered yet", nameMuted: true)] }
+
+    // runs tile + recent-runs pane — from the real receipts (audit + guide), window-scoped
+    let days = histReceipts(days: rangeDays)
+    let allRuns = days.flatMap { $0.runs }
+    let denied = allRuns.filter { $0.result == "denied" }.count
+    var runsPerDay = [Double](repeating: 0, count: max(Int(rangeDays), 1))
+    // day index from the receipt's day label is lossy; count via a fresh grouping over receipts/day list
+    for (i, d) in days.enumerated() where i < runsPerDay.count { runsPerDay[runsPerDay.count - 1 - i] = Double(d.runs.count) }
+    out.tiles.append(DashTile(kicker: "Acts", big: "\(allRuns.count)",
+                              ok: (allRuns.count - denied, denied),
+                              drill: .history, drillLabel: "History",
+                              spark: DashSpark(bars: true, data: runsPerDay, color: .lime)))
+    out.runs = allRuns.prefix(4).map { run in
+        DashLine(ic: run.result == "denied" ? "✗" : "✓",
+                 icColor: run.result == "denied" ? .danger : .lime,
+                 name: "\(run.wrapp) — \(run.prompt)", status: run.tm)
+    }
+    if out.runs.isEmpty { out.runs = [DashLine(ic: "·", icColor: .inkFaint, name: "No acts in this window", nameMuted: true)] }
+
+    // connectors tile + health pane — status.json
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    var up = 0, down: [String] = []
+    var backends: [String] = []
+    var statusFresh = false
+    if let st = readJSON(relay + "/status.json") as? [String: Any] {
+        for c in (st["connectors"] as? [[String: Any]]) ?? [] {
+            if (c["ok"] as? Bool) == true { up += 1 } else { down.append((c["name"] as? String) ?? "?") }
+        }
+        backends = (st["backends"] as? [String]) ?? []
+        if let u = (st["updatedAt"] as? NSNumber)?.doubleValue { statusFresh = now - u < 2 * 3_600_000 }
+    }
+    out.tiles.append(DashTile(kicker: "Connectors", big: "\(up)", suffix: " /\(up + down.count)",
+                              sub: down.isEmpty ? "all up" : down.joined(separator: " · "),
+                              drill: .needs, drillLabel: "Needs", alert: !down.isEmpty,
+                              spark: DashSpark(bars: false, data: [], color: .inkDim)))
+    out.healthOK = (statusFresh ? ["daemon"] : []) + backends
+    if !statusFresh { out.healthAlerts.append("status.json is stale — daemon heartbeat missing") }
+    for d in down { out.healthAlerts.append("\(d) connector needs reconnect") }
+
+    // needs tile
+    let pending = osPending()
+    out.tiles.append(DashTile(kicker: "Needs attention", big: "\(pending.count)",
+                              sub: pending.first?.title ?? "you're clear",
+                              drill: .needs, drillLabel: "Needs", alert: !pending.isEmpty,
+                              spark: DashSpark(bars: false, data: [], color: .danger)))
+
+    // activity pane — latest sessions per app
+    let plural = ["run": "runs", "save": "saves", "dictation": "dictations", "publish": "publishes", "reply": "replies"]
+    out.activity = osSessions(windowDays: min(rangeDays, 7))
+        .sorted { $0.endMs > $1.endMs }.prefix(4).map { s in
+            DashLine(ic: "↻", icColor: .inkFaint,
+                     name: "\(relAgo(now - s.endMs)) ago · \(s.app) — " +
+                           s.counts.sorted { $0.value > $1.value }.prefix(2)
+                               .map { "\($0.value) \($0.value == 1 ? $0.key : (plural[$0.key] ?? $0.key))" }
+                               .joined(separator: " · "))
+        }
+    if out.activity.isEmpty { out.activity = [DashLine(ic: "·", icColor: .inkFaint, name: "Quiet — no sessions in this window", nameMuted: true)] }
+
+    return out
 }
 
 struct DashboardSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
     @State private var range = "7d"
+    @State private var live = DashLive()
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
+    private var rangeDays: Double { range == "Today" ? 1 : (range == "30d" ? 30 : 7) }
+    private func load() { live = dashLive(rangeDays: rangeDays) }
 
     var body: some View {
         ScrollView {
@@ -217,38 +286,40 @@ struct DashboardSurface: View {
                 }
 
                 LazyVGrid(columns: cols, spacing: 14) {
-                    ForEach(DashSample.tiles) { t in DashTileView(tile: t, onNavigate: onNavigate) }
+                    ForEach(live.tiles) { t in DashTileView(tile: t, onNavigate: onNavigate) }
                 }
                 .padding(.top, 20)
 
                 HStack(alignment: .top, spacing: 14) {
-                    DashPane(title: "Routines — running / next fire", moreLabel: "→ Routines",
+                    DashPane(title: "Routines — state", moreLabel: "→ Routines",
                              moreSurface: .routines, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.routines, onNavigate: onNavigate)
+                        DashLineList(rows: live.routines, onNavigate: onNavigate)
                     }
-                    DashPane(title: "Recent runs — pass / fail", moreLabel: "→ Workflows",
-                             moreSurface: .workflows, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.runs, onNavigate: onNavigate)
+                    DashPane(title: "Recent acts — from the audit trail", moreLabel: "→ History",
+                             moreSurface: .history, onNavigate: onNavigate) {
+                        DashLineList(rows: live.runs, onNavigate: onNavigate)
                     }
                 }
                 .padding(.top, 14)
 
                 HStack(alignment: .top, spacing: 14) {
                     DashPane(title: "Subsystem health", onNavigate: onNavigate) {
-                        DashHealth(onNavigate: onNavigate)
+                        DashHealth(ok: live.healthOK, alerts: live.healthAlerts, onNavigate: onNavigate)
                     }
-                    DashPane(title: "Activity feed", moreLabel: "→ History",
+                    DashPane(title: "Activity — latest sessions", moreLabel: "→ History",
                              moreSurface: .history, onNavigate: onNavigate) {
-                        DashLineList(rows: DashSample.activity, onNavigate: onNavigate)
+                        DashLineList(rows: live.activity, onNavigate: onNavigate)
                     }
                 }
                 .padding(.top, 14)
 
-                FootNote(text: "dashboard is the state of the machine, not your work · every tile is a door, not a dead number · a red tile always names the action")
+                FootNote(text: "dashboard is the state of the machine, not your work · every tile is a door, not a dead number · no usage meter until there's a truthful usage receipt")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
+        .onChange(of: range) { _ in load() }
     }
 }
 
@@ -302,7 +373,9 @@ private struct DashTileView: View {
                 bigText.padding(.top, 6)
                 subView.padding(.top, 2)
                 Spacer(minLength: 8)
-                DashSparkline(spark: tile.spark).frame(height: 30).padding(.top, 10)
+                if !tile.spark.data.isEmpty {
+                    DashSparkline(spark: tile.spark).frame(height: 30).padding(.top, 10)
+                }
                 Text("→ " + tile.drillLabel).font(.splMono(9.5))
                     .foregroundColor(hover ? .inkSec : .inkFaint).padding(.top, 8)
             }
@@ -383,7 +456,6 @@ private struct DashLineRow: View {
             Text(row.name).font(.hanken(13)).foregroundColor(row.nameMuted ? .inkDim : .inkSec).lineLimit(1)
             Spacer(minLength: 8)
             if let s = row.status { Text(s).font(.splMono(11)).foregroundColor(row.statusColor) }
-            if row.retry { DashRetryPill() }
             if let m = row.mark { Text(m).font(.splMono(11)).foregroundColor(row.markColor) }
         }
         .padding(.vertical, 8)
@@ -393,56 +465,50 @@ private struct DashLineRow: View {
     }
 }
 
-private struct DashRetryPill: View {
-    @State private var busy = false
-    @State private var hover = false
-    var body: some View {
-        Button { busy = true } label: {
-            Text(busy ? "Retrying…" : "Retry")
-                .font(.splMono(10))
-                .foregroundColor(busy ? .inkDim : .lime)
-                .padding(.horizontal, 8).padding(.vertical, 1)
-                .background(Capsule().fill(busy ? Color.raised : Color.lime.opacity(0.12)))
-                .overlay(Capsule().stroke(busy ? Color.edge : Color.lime.opacity(0.4), lineWidth: 1))
-                .opacity(busy ? 0.7 : (hover ? 0.85 : 1))
-        }
-        .buttonStyle(.plain)
-        .disabled(busy)
-        .onHover { hover = $0 }
-    }
-}
-
 private struct DashHealth: View {
+    let ok: [String]
+    let alerts: [String]
     var onNavigate: (Surface) -> Void
     @State private var fixHover = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 16) {
-                ForEach(DashSample.health, id: \.self) { label in
+                ForEach(ok, id: \.self) { label in
                     HStack(spacing: 7) {
                         Circle().fill(Color.lime).frame(width: 7, height: 7)
-                            .shadow(color: Color.lime.opacity(0.5), radius: 3)
                         Text(label).font(.hanken(12.5)).foregroundColor(.inkSec)
                     }
                 }
+                if ok.isEmpty { Text("no green subsystems right now").font(.hanken(12)).foregroundColor(.inkDim) }
                 Spacer(minLength: 0)
             }
             .padding(.top, 4).padding(.bottom, 8)
-            HStack(spacing: 10) {
-                Text("◐").font(.splMono(12)).foregroundColor(.danger).frame(width: 16)
-                Text(DashSample.healthAlert).font(.hanken(13)).foregroundColor(.inkSec).lineLimit(1)
-                Spacer(minLength: 8)
-                Button { onNavigate(.needs) } label: {
-                    Text("→ fix").font(.splMono(10)).foregroundColor(.lime)
-                        .padding(.horizontal, 8).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.lime.opacity(0.12)))
-                        .overlay(Capsule().stroke(Color.lime.opacity(fixHover ? 0.6 : 0.4), lineWidth: 1))
+            ForEach(alerts, id: \.self) { alert in
+                HStack(spacing: 10) {
+                    Text("◐").font(.splMono(12)).foregroundColor(.danger).frame(width: 16)
+                    Text(alert).font(.hanken(13)).foregroundColor(.inkSec).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button { onNavigate(.needs) } label: {
+                        Text("→ fix").font(.splMono(10)).foregroundColor(.lime)
+                            .padding(.horizontal, 8).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.lime.opacity(0.12)))
+                            .overlay(Capsule().stroke(Color.lime.opacity(fixHover ? 0.6 : 0.4), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { fixHover = $0 }
                 }
-                .buttonStyle(.plain)
-                .onHover { fixHover = $0 }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
             }
-            .padding(.vertical, 8)
-            .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
+            if alerts.isEmpty {
+                HStack(spacing: 10) {
+                    Text("✓").font(.splMono(12)).foregroundColor(.lime).frame(width: 16)
+                    Text("all subsystems healthy").font(.hanken(13)).foregroundColor(.inkSec)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) { Rectangle().fill(Color.edgeSoft).frame(height: 1) }
+            }
         }
     }
 }
@@ -500,76 +566,140 @@ private struct NeedBand: Identifiable {
 }
 
 private enum NeedSample {
-    static let bands: [NeedBand] = [
-        NeedBand(id: "blocking", mk: "▲", mkColor: .danger, lb: "Blocking", hint: "act to continue", barColor: .danger, items: [
-            NeedItem(id: "n-approve", mk: "⚠", mkColor: .danger,
-                     title: [TP(t: "Approve: ", kind: .bold), TP(t: "CopyFlow wants to send 3 launch emails", kind: .normal)],
-                     why: "why…",
-                     detail: "3 emails were drafted for the IndEur launch and queued by a routine. Approve to send them now, or Deny to hold.",
-                     src: "◦ from Routine · IndEur launch",
-                     acts: [NeedAct(label: "Approve", tone: .lime, primary: true, behavior: .resolve("Approved")),
-                            NeedAct(label: "Deny", behavior: .resolve("Dismissed"))]),
-            NeedItem(id: "n-regrant", mk: "⚠", mkColor: .danger,
-                     title: [TP(t: "Regrant: ", kind: .bold), TP(t: "Prism lost its model access", kind: .normal)],
-                     why: "why…",
-                     detail: "Prism's model grant was revoked, so image generation is paused. Regrant opens Prism to restore access.",
-                     src: "◦ from Apps · Prism",
-                     acts: [NeedAct(label: "Grant", tone: .indigo, primary: true, behavior: .launch("Prism")),
-                            NeedAct(label: "Later", behavior: .resolve("Snoozed"))]),
-        ]),
-        NeedBand(id: "failed", mk: "●", mkColor: sbAmber, lb: "Failed", hint: "retry or investigate", barColor: sbAmber, items: [
-            NeedItem(id: "n-sheet", mk: "✗", mkColor: sbAmber,
-                     title: [TP(t: "Routine ", kind: .normal), TP(t: "\"Sheet sync\"", kind: .bold), TP(t: " failed 11:40", kind: .normal)],
-                     why: "log…",
-                     detail: "11:40 — the auth token expired mid-run. Retry re-runs the routine now; Pause stops the schedule.",
-                     src: "◦ from Routines",
-                     acts: [NeedAct(label: "Retry", tone: .lime, primary: true, behavior: .resolve("Retrying…")),
-                            NeedAct(label: "Pause", behavior: .resolve("Paused"))]),
-            NeedItem(id: "n-deck", mk: "✗", mkColor: sbAmber,
-                     title: [TP(t: "Workflow ", kind: .normal), TP(t: "\"Launch deck\"", kind: .bold), TP(t: " failed at step 3", kind: .normal)],
-                     why: "log…",
-                     detail: "Step 3 (export slides) threw a timeout. Retry the step, or Edit opens the workflow to fix it.",
-                     src: "◦ from Workflows",
-                     acts: [NeedAct(label: "Retry", tone: .lime, primary: true, behavior: .resolve("Retrying…")),
-                            NeedAct(label: "Edit", behavior: .route(.workflows))]),
-        ]),
-        NeedBand(id: "waiting", mk: "○", mkColor: .inkDim, lb: "Waiting", hint: "your call, not blocking", barColor: .edge, items: [
-            NeedItem(id: "n-decide", mk: "◆", mkColor: .inkDim,
-                     title: [TP(t: "Decide: ", kind: .bold), TP(t: "pick a launch date for IndEur Club ", kind: .normal), TP(t: "(a / b / c)", kind: .muted)],
-                     why: "options…",
-                     detail: "a) Sep 12 · b) Sep 19 · c) Sep 26 — ideabrain has the reasoning for each. Decide opens it.",
-                     src: "◦ from ideabrain",
-                     acts: [NeedAct(label: "Decide", tone: .indigo, primary: true, behavior: .launch("ideabrain"))]),
-            NeedItem(id: "n-venue", mk: "☐", mkColor: .inkDim,
-                     title: [TP(t: "Overdue: ", kind: .bold), TP(t: "Reply to the venue email ", kind: .normal), TP(t: "(2 days)", kind: .muted)],
-                     src: "◦ from Tasks · #indeur",
-                     acts: [NeedAct(label: "Open", behavior: .route(.tasks)),
-                            NeedAct(label: "Snooze", behavior: .resolve("Snoozed"))]),
-            NeedItem(id: "n-review", mk: "▭", mkColor: .inkDim,
-                     title: [TP(t: "Review: ", kind: .bold), TP(t: "4 marks from the Crest batch", kind: .normal)],
-                     why: "preview…",
-                     detail: "4 new marks are awaiting review in the Crest batch. Review opens Crest to approve or send back.",
-                     src: "◦ from Crest",
-                     acts: [NeedAct(label: "Review", tone: .lime, primary: true, behavior: .launch("Crest"))]),
-        ]),
-    ]
-
     static let filterOrder = ["all", "blocking", "failed", "waiting"]
     static let filterLabel: [String: String] = ["all": "All", "blocking": "Blocking", "failed": "Failed", "waiting": "Waiting"]
+}
+
+// ═══ LIVE bands — every item derives from a real ~/.relay state, and every action is real:
+//   ▲ Blocking — down connectors (status.json ok:false) + a stale daemon status file
+//   ● Failed   — routines whose last run failed (routines.json, when the fields exist)
+//   ○ Waiting  — a suspended guide (resume really resumes), routines switched off, overdue tasks
+// Nothing invented: a source with no real evidence contributes no items, and an empty inbox is the
+// calm "you're clear" state.
+
+private enum NeedTrigger {
+    // `touch ~/.relay/open-panel` — RelayMenuBar's trigger loop fronts the real menu-bar panel.
+    static func openPanel() {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-panel")
+        FileManager.default.createFile(atPath: p, contents: Data())
+    }
+    // Resume a suspended guide exactly like the menu item: move suspended → run; the watcher resumes it.
+    static func resumeGuide() {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+        let src = (dir as NSString).appendingPathComponent("guide-suspended.json")
+        let dst = (dir as NSString).appendingPathComponent("guide-run.json")
+        try? FileManager.default.removeItem(atPath: dst)
+        try? FileManager.default.moveItem(atPath: src, toPath: dst)
+    }
+}
+
+private func needsLiveBands() -> [NeedBand] {
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    var blocking: [NeedItem] = []
+    var failed: [NeedItem] = []
+    var waiting: [NeedItem] = []
+
+    // ▲ down connectors — the daemon reports them in status.json; the fix lives in the panel
+    if let st = readJSON(relay + "/status.json") as? [String: Any] {
+        for c in (st["connectors"] as? [[String: Any]]) ?? [] where (c["ok"] as? Bool) == false {
+            let n = (c["name"] as? String) ?? "connector"
+            blocking.append(NeedItem(
+                id: "conn-\(n)", mk: "⚠", mkColor: .danger,
+                title: [TP(t: "Reconnect: ", kind: .bold), TP(t: n, kind: .normal),
+                        TP(t: " — connector is down, 0 tools", kind: .muted)],
+                why: "why…",
+                detail: "The daemon couldn't start \(n), so its tools are unavailable to every wrapp and to God. Open the panel → Connections to restart it; if it keeps failing, its command or keys need fixing.",
+                src: "◦ from status.json",
+                acts: [NeedAct(label: "Open panel", tone: .indigo, primary: true, behavior: .resolve("panel")),
+                       NeedAct(label: "Later", behavior: .resolve("Snoozed"))]))
+        }
+        // ▲ stale status — the file stopped refreshing, so everything above it is guesswork
+        if let up = (st["updatedAt"] as? NSNumber)?.doubleValue,
+           Date().timeIntervalSince1970 * 1000 - up > 2 * 3_600_000 {
+            blocking.append(NeedItem(
+                id: "stale-status", mk: "⚠", mkColor: .danger,
+                title: [TP(t: "Daemon status is stale ", kind: .bold),
+                        TP(t: "— last heartbeat \(relAgo(Date().timeIntervalSince1970 * 1000 - up)) ago", kind: .muted)],
+                why: "why…",
+                detail: "status.json hasn't refreshed, so connector/tool health shown anywhere in the OS may be out of date. Open the panel to check the daemon.",
+                src: "◦ from status.json",
+                acts: [NeedAct(label: "Open panel", tone: .indigo, primary: true, behavior: .resolve("panel"))]))
+        }
+    }
+
+    // ● routines whose last run failed (only when the control plane actually records it)
+    if let r = readJSON(relay + "/routines.json") as? [String: Any] {
+        for routine in (r["routines"] as? [[String: Any]]) ?? [] {
+            let outcome = (routine["lastOutcome"] as? String) ?? (routine["lastError"] != nil ? "error" : "")
+            guard outcome == "error" || outcome == "failed" else { continue }
+            let t = (routine["title"] as? String) ?? (routine["id"] as? String) ?? "routine"
+            failed.append(NeedItem(
+                id: "routine-\((routine["id"] as? String) ?? t)", mk: "✗", mkColor: sbAmber,
+                title: [TP(t: "Routine ", kind: .normal), TP(t: "\"\(t)\"", kind: .bold), TP(t: " failed its last run", kind: .normal)],
+                why: (routine["lastError"] as? String).map { _ in "log…" },
+                detail: routine["lastError"] as? String,
+                src: "◦ from Routines",
+                acts: [NeedAct(label: "Open Routines", tone: .lime, primary: true, behavior: .route(.routines))]))
+        }
+    }
+
+    // ○ a guide you left partway — Resume genuinely resumes it (suspended → run, watcher picks it up)
+    if let g = readJSON(relay + "/guide-suspended.json") as? [String: Any] {
+        let n = ((g["steps"] as? [[String: Any]]) ?? []).count
+        let at = (g["startIndex"] as? NSNumber)?.intValue ?? 0
+        waiting.append(NeedItem(
+            id: "guide-suspended", mk: "▸", mkColor: .inkDim,
+            title: [TP(t: "Resume the tour ", kind: .bold),
+                    TP(t: n > 0 ? "— you left it at step \(min(at + 1, n)) of \(n)" : "— left partway", kind: .muted)],
+            why: "why…",
+            detail: "A guided walkthrough was abandoned mid-way and saved. Resume picks it up exactly where you left it.",
+            src: "◦ from guide-suspended.json",
+            acts: [NeedAct(label: "Resume", tone: .lime, primary: true, behavior: .resolve("resume-guide")),
+                   NeedAct(label: "Later", behavior: .resolve("Snoozed"))]))
+    }
+
+    // ○ routines switched off — nothing scheduled will run until flipped back
+    let control = readJSON(relay + "/routines-control.json") as? [String: Any]
+    let routinesObj = readJSON(relay + "/routines.json") as? [String: Any]
+    if (control?["off"] as? Bool) == true || (routinesObj?["globalPaused"] as? Bool) == true {
+        waiting.append(NeedItem(
+            id: "routines-off", mk: "⏸", mkColor: .inkDim,
+            title: [TP(t: "Routines are switched off ", kind: .bold),
+                    TP(t: "— nothing will run on schedule", kind: .muted)],
+            src: "◦ from routines-control.json",
+            acts: [NeedAct(label: "Open Routines", tone: .indigo, primary: true, behavior: .route(.routines))]))
+    }
+
+    // ○ overdue tasks — real lines in tasks.md with a past due:
+    for t in osTasksAll().tasks.filter({ $0.over }).prefix(5) {
+        waiting.append(NeedItem(
+            id: "task-\(t.raw.hashValue)", mk: "☐", mkColor: .inkDim,
+            title: [TP(t: "Overdue: ", kind: .bold), TP(t: t.title, kind: .normal),
+                    TP(t: t.due.map { " (due \($0))" } ?? "", kind: .muted)],
+            src: "◦ from Tasks · \((t.folder as NSString).lastPathComponent)/tasks.md",
+            acts: [NeedAct(label: "Open", tone: .lime, primary: true, behavior: .route(.tasks))]))
+    }
+
+    return [
+        NeedBand(id: "blocking", mk: "▲", mkColor: .danger, lb: "Blocking", hint: "act to continue", barColor: .danger, items: blocking),
+        NeedBand(id: "failed", mk: "●", mkColor: sbAmber, lb: "Failed", hint: "retry or investigate", barColor: sbAmber, items: failed),
+        NeedBand(id: "waiting", mk: "○", mkColor: .inkDim, lb: "Waiting", hint: "your call, not blocking", barColor: .edge, items: waiting),
+    ].filter { !$0.items.isEmpty }
 }
 
 struct NeedsSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
+    @State private var bands: [NeedBand] = []
     @State private var resolved: Set<String> = []
     @State private var whyOpen: Set<String> = []
     @State private var filter = "all"
 
     private var total: Int {
-        NeedSample.bands.reduce(0) { $0 + $1.items.filter { !resolved.contains($0.id) }.count }
+        bands.reduce(0) { $0 + $1.items.filter { !resolved.contains($0.id) }.count }
     }
     private var shownBands: [NeedBand] {
-        NeedSample.bands
+        bands
             .filter { filter == "all" || $0.id == filter }
             .filter { band in band.items.contains { !resolved.contains($0.id) } }
     }
@@ -597,11 +727,12 @@ struct NeedsSurface: View {
                     }
                 }
 
-                FootNote(text: "the action inbox · blocking first, then failures, then your call · every item is what · why · one action · dismiss is undoable")
+                FootNote(text: "the action inbox · blocking first, then failures, then your call · every item derives from real ~/.relay state · an item leaves when its state clears")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { bands = needsLiveBands() }
     }
 
     private func cycleFilter() {
@@ -613,7 +744,15 @@ struct NeedsSurface: View {
     }
     private func handle(_ item: NeedItem, _ act: NeedAct) {
         switch act.behavior {
-        case .resolve:
+        case .resolve(let what):
+            switch what {
+            case "panel":                       // real: fronts the menu-bar panel via the trigger file
+                NeedTrigger.openPanel()
+            case "resume-guide":                // real: suspended → run; the guide watcher resumes it
+                NeedTrigger.resumeGuide()
+                bands = needsLiveBands()        // the suspended file is gone → the item leaves honestly
+            default: break                      // Snooze/Later — hide for this visit only
+            }
             withAnimation(.easeInOut(duration: 0.28)) { _ = resolved.insert(item.id) }
         case .launch(let app):
             OSLaunch.launchOr(app, .init(kind: "need")) { onNavigate(.apps) }   // open the tool this item is about
@@ -809,63 +948,69 @@ private struct Routine: Identifiable {
     var runDisabled: Bool = false
 }
 
-private enum RoutineSample {
-    static let list: [Routine] = [
-        Routine(id: "daily-brief", name: "Daily brief", register: .active, pillLabel: "active", dot: .lime,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "every day 08:00", kind: .strong)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✓ today 08:00", kind: .ok)],
-                    [Seg(t: "next ", kind: .dim), Seg(t: "tomorrow 08:00", kind: .strong), Seg(t: " · in 11h", kind: .dim)],
-                ],
-                outsPrefix: "outputs: ", outsLink: "5 briefs", outsSuffix: " · latest \"Tue market + inbox digest\"",
-                grant: [GrantChip(glyph: "⛁", text: "sb_http", ungranted: false),
-                        GrantChip(glyph: "✎", text: "Bank write", ungranted: false)],
-                acts: [RAct(label: "Run now", kind: .pri, act: .run),
-                       RAct(label: "Pause", kind: .plain, act: .pause),
-                       RAct(label: "Edit", kind: .plain, act: .edit)]),
-        Routine(id: "email-triage", name: "Email triage", register: .running, pillLabel: "running…", dot: .indigo,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "on new mail", kind: .strong)],
-                    [Seg(t: "running since ", kind: .dim), Seg(t: "14:20", kind: .strong), Seg(t: " · step 2 of 3", kind: .dim)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✓ 12:05", kind: .ok)],
-                ],
-                outsPlain: "grant holds ActionConsent per outbound send — each reply is gated",
-                grant: [GrantChip(glyph: "✉", text: "email connector", ungranted: false),
-                        GrantChip(glyph: "⛊", text: "ActionConsent / send", ungranted: false)],
-                acts: [RAct(label: "Open log", kind: .plain, act: .log),
-                       RAct(label: "Pause", kind: .plain, act: .pause)]),
-        Routine(id: "invoice-filer", name: "Invoice filer", register: .waiting, pillLabel: "waiting for you", dot: sbAmber,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "on receipt email", kind: .strong)],
-                    [Seg(t: "held ", kind: .dim), Seg(t: "since 10:14", kind: .strong)],
-                    [Seg(t: "needs a consent it can't get unattended", kind: .dim)],
-                ],
-                attn: "◐ waiting → grant needed: Drive write (folder /Receipts) · holds, does not proceed",
-                grant: [GrantChip(glyph: "⛁", text: "email read", ungranted: false),
-                        GrantChip(glyph: "?", text: "Drive write — ungranted", ungranted: true)],
-                acts: [RAct(label: "Grant & continue", kind: .pri, act: .grant),
-                       RAct(label: "Open log", kind: .plain, act: .log)]),
-        Routine(id: "weekly-deck", name: "Weekly deck", register: .failed, pillLabel: "paused · 3 fails", dot: .danger,
-                sched: [
-                    [Seg(t: "⏱ ", kind: .dim), Seg(t: "Mondays 09:00", kind: .strong)],
-                    [Seg(t: "last ", kind: .dim), Seg(t: "✗ step 2 (Prism: no model)", kind: .bad)],
-                    [Seg(t: "auto-paused after 3 consecutive fails", kind: .dim)],
-                ],
-                attn: "✗ escalated to Needs attention · Retry / Edit / Resolve the model requirement",
-                grant: [GrantChip(glyph: "▥", text: "Prism", ungranted: false),
-                        GrantChip(glyph: "✎", text: "Bank write", ungranted: false)],
-                acts: [RAct(label: "Resume", kind: .pri, act: .resume),
-                       RAct(label: "Edit", kind: .plain, act: .edit),
-                       RAct(label: "Revoke", kind: .warn, act: .revoke)]),
-    ]
+// ═══ LIVE registry — routines.json is the daemon's record ({id,title,tier,active,lastRunAt,runs,
+// tokens} + globalPaused); routines-control.json {off} is the user's master switch (the ~/.relay
+// control plane — the daemon polls it). The OS reads both truthfully and writes ONLY the control file.
+
+private func routinesLive() -> (list: [Routine], off: Bool, updatedMs: Double, hasFile: Bool) {
+    let relay = (NSHomeDirectory() as NSString).appendingPathComponent(".relay")
+    let obj = readJSON(relay + "/routines.json") as? [String: Any]
+    let off = ((readJSON(relay + "/routines-control.json") as? [String: Any])?["off"] as? Bool == true)
+        || (obj?["globalPaused"] as? Bool == true)
+    let now = Date().timeIntervalSince1970 * 1000
+    var list: [Routine] = []
+    for r in (obj?["routines"] as? [[String: Any]]) ?? [] {
+        let id = (r["id"] as? String) ?? UUID().uuidString
+        let active = (r["active"] as? Bool) ?? false
+        let lastMs = (r["lastRunAt"] as? NSNumber)?.doubleValue ?? 0
+        let runs = (r["runs"] as? NSNumber)?.intValue ?? 0
+        let tokens = (r["tokens"] as? NSNumber)?.intValue ?? 0
+        let lastError = r["lastError"] as? String
+        let failed = lastError != nil || (r["lastOutcome"] as? String) == "error"
+        let reg: RReg = failed ? .failed : (active && !off ? .active : .paused)
+        let pill = failed ? "failed" : (active && !off ? "active" : (active ? "held — routines off" : "off"))
+        var sched: [[Seg]] = [[Seg(t: "⛭ tier ", kind: .dim), Seg(t: (r["tier"] as? String) ?? "daemon", kind: .strong)]]
+        sched.append(lastMs > 0
+            ? [Seg(t: "last ", kind: .dim), Seg(t: failed ? "✗ " : "✓ ", kind: failed ? .bad : .ok),
+               Seg(t: relAgo(now - lastMs) + " ago", kind: .strong)]
+            : [Seg(t: "never ran", kind: .dim)])
+        list.append(Routine(
+            id: id,
+            name: (r["title"] as? String) ?? id,
+            register: reg, pillLabel: pill,
+            dot: reg == .active ? .lime : (reg == .failed ? .danger : .inkFaint),
+            sched: sched,
+            outsPlain: runs > 0 ? "\(runs) run\(runs == 1 ? "" : "s") · \(tokens) tokens spent" : "no runs recorded yet",
+            attn: lastError.map { "✗ \($0)" },
+            grant: [GrantChip(glyph: "⛭", text: "tier: \((r["tier"] as? String) ?? "daemon")", ungranted: false)],
+            acts: [RAct(label: "Runs in History", kind: .plain, act: .log)]))
+    }
+    return (list, off, (obj?["updatedAt"] as? NSNumber)?.doubleValue ?? 0, obj != nil)
+}
+
+// the real master switch — writes routines-control.json; the daemon picks it up on its next tick
+private func routinesSetOff(_ off: Bool) {
+    let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/routines-control.json")
+    var obj = (readJSON(p) as? [String: Any]) ?? [:]
+    obj["off"] = off
+    if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+        try? data.write(to: URL(fileURLWithPath: p), options: .atomic)
+    }
 }
 
 struct RoutinesSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
-    @State private var routines = RoutineSample.list
+    @State private var routines: [Routine] = []
+    @State private var off = false
+    @State private var hasFile = true
     @State private var filter = "All"
 
     private var activeCount: Int { routines.filter { regGroup($0.register) == "active" }.count }
+
+    private func load() {
+        let r = routinesLive()
+        routines = r.list; off = r.off; hasFile = r.hasFile
+    }
 
     private func shows(_ r: Routine) -> Bool {
         switch filter {
@@ -893,6 +1038,26 @@ struct RoutinesSurface: View {
                 .padding(.bottom, 14)
                 .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
 
+                // the master switch — the one real global control (routines-control.json)
+                HStack(spacing: 12) {
+                    Circle().fill(off ? Color.inkFaint : Color.lime).frame(width: 7, height: 7)
+                    (Text(off ? "Routines are switched off " : "Routines are on ").font(.hanken(13, .medium)).foregroundColor(.ink)
+                        + Text(off ? "— nothing runs on schedule until you flip this." : "— active routines run on their schedule.").font(.hanken(13)).foregroundColor(.inkSec))
+                    Spacer(minLength: 0)
+                    SBActButton(label: off ? "Turn on" : "Turn off", kind: off ? .pri : .plain) {
+                        routinesSetOff(!off); load()
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 13)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(off ? Color.edge : Color.lime.opacity(0.3), lineWidth: 1))
+                .padding(.top, 16)
+
+                if !hasFile {
+                    Text("No routines.json yet — the daemon writes it once a routine exists.")
+                        .font(.hanken(12.5)).foregroundColor(.inkDim).padding(.top, 14)
+                }
+
                 VStack(spacing: 12) {
                     ForEach($routines) { $r in
                         if shows(r) {
@@ -900,15 +1065,16 @@ struct RoutinesSurface: View {
                         }
                     }
                 }
-                .padding(.top, 18)
+                .padding(.top, 16)
 
                 RoutineCreateCTA(onNavigate: onNavigate).padding(.top, 16)
 
-                FootNote(text: "the automation monitor · failures escalate to Needs attention · each row shows only the actions that make sense in its state")
+                FootNote(text: "the automation monitor · reads the daemon's routines.json truthfully · the one write is the master switch (routines-control.json) · failures escalate to Needs attention")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear(perform: load)
     }
 }
 
@@ -1061,15 +1227,15 @@ private struct RoutineCreateCTA: View {
     var onNavigate: (Surface) -> Void
     @State private var hover = false
     var body: some View {
-        Button { onNavigate(.workflows) } label: {
+        Button { OSLaunch.launchOr("autopilot", .init(kind: "routine")) { onNavigate(.apps) } } label: {
             HStack(spacing: 12) {
                 Text("+").font(.hanken(15)).foregroundColor(.lime)
                     .frame(width: 26, height: 26)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
-                (Text("Create a routine").font(.hanken(13, .medium)).foregroundColor(.inkSec)
-                    + Text(" — record a flow (CopyFlow) or promote an autopilot. Start from a template: ").font(.hanken(13)).foregroundColor(.inkDim)
-                    + Text("Daily brief · Email triage · Weekly report").font(.hanken(13)).foregroundColor(.inkSec))
+                (Text("Add a routine").font(.hanken(13, .medium)).foregroundColor(.inkSec)
+                    + Text(" — a wrapp requests one and it appears here. ").font(.hanken(13)).foregroundColor(.inkDim)
+                    + Text("Autopilot is routine #1 — open it to activate.").font(.hanken(13)).foregroundColor(.inkSec))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
@@ -1116,59 +1282,55 @@ private struct Workflow: Identifiable {
     var running: Bool = false
 }
 
-private struct RecentRun: Identifiable {
-    let id = UUID(); let wf: String; let st: String; let tm: String; let desc: String; let app: String
-}
+// ═══ LIVE workflows — there is no daemon workflow registry yet, so we don't invent one. The one REAL
+// multi-step pipeline on this machine is the **batch** wrapp: each batch-state.json is a recipe of N
+// answer-steps (brief + per-step open/selected/locked/error). We surface those truthfully; when none
+// exist the surface is an honest "coming" state, never fabricated pipelines.
 
-private enum WorkflowSample {
-    static let list: [Workflow] = [
-        Workflow(id: "launch-day", name: "Launch-day pipeline", lastKind: "bad", lastLabel: "✗ failed at ③",
-                 steps: [WFStep(no: 1, t: "fetch signals", state: "done"),
-                         WFStep(no: 2, t: "draft copy", state: "done"),
-                         WFStep(no: 3, t: "Prism hero", state: "fail"),
-                         WFStep(no: 4, t: "assemble deck", state: "skip")],
-                 inputs: "inputs: project = Acme · tone = bold · channels = X, LinkedIn",
-                 acts: [WFAct(label: "Run now", kind: .pri, act: .run),
-                        WFAct(label: "Edit", kind: .plain, act: .edit),
-                        WFAct(label: "Promote to routine", kind: .plain, act: .promote)],
-                 history: [WFRun(st: "bad", tm: "11:40", desc: "failed at ③ — Prism: no model · steps ①② kept", link: "Retry from ③ ▸", retry: true),
-                           WFRun(st: "ok", tm: "09:15", desc: "full · 4 artifacts written to Bank", link: "Open log", retry: false),
-                           WFRun(st: "part", tm: "08:02", desc: "partial — ③④ skipped (no hero requested)", link: "Open log", retry: false)],
-                 attn: "✗ posted to Needs attention · Retry-from-③ reuses ①② — never re-pays for completed steps"),
-        Workflow(id: "weekly-report", name: "Weekly report", lastKind: "part", lastLabel: "◐ running · step 2 of 3",
-                 steps: [WFStep(no: 1, t: "pull metrics", state: "done"),
-                         WFStep(no: 2, t: "summarize", state: "run"),
-                         WFStep(no: 3, t: "post to Bank", state: "")],
-                 inputs: "inputs: window = last 7d · project = IndEur Club",
-                 acts: [WFAct(label: "Open log", kind: .plain, act: .log),
-                        WFAct(label: "Edit", kind: .plain, act: .edit)]),
-        Workflow(id: "vendor-sync", name: "Vendor sync", lastKind: "neu", lastLabel: "not run yet",
-                 steps: [WFStep(no: 1, t: "scrape quotes", state: ""),
-                         WFStep(no: 2, t: "normalize", state: ""),
-                         WFStep(no: 3, t: "update canvas", state: "")],
-                 inputs: "inputs: source = Alibaba · list = nailinit vendors — composing is available before first run",
-                 acts: [WFAct(label: "Run now", kind: .pri, act: .run),
-                        WFAct(label: "Edit", kind: .plain, act: .edit)]),
-        Workflow(id: "content-batch", name: "Content batch", lastKind: "ok", lastLabel: "✓ full · yesterday 17:22",
-                 steps: [WFStep(no: 1, t: "gather sources", state: "done"),
-                         WFStep(no: 2, t: "draft posts", state: "done"),
-                         WFStep(no: 3, t: "queue schedule", state: "done")],
-                 compact: true, dots: 5),
-    ]
-
-    static let recent: [RecentRun] = [
-        RecentRun(wf: "Launch-day pipeline", st: "bad", tm: "today 11:40", desc: "failed at ③ — Prism: no model · steps ①② kept", app: "Prism"),
-        RecentRun(wf: "Weekly report", st: "part", tm: "today 10:05", desc: "running · summarizing metrics (step 2 of 3)", app: "Bank"),
-        RecentRun(wf: "Launch-day pipeline", st: "ok", tm: "today 09:15", desc: "full · 4 artifacts written to Bank", app: "Bank"),
-        RecentRun(wf: "Content batch", st: "ok", tm: "yesterday 17:22", desc: "full · 5 posts drafted", app: "brandbrain"),
-        RecentRun(wf: "Launch-day pipeline", st: "part", tm: "yesterday 08:02", desc: "partial · ③④ skipped (no hero requested)", app: "AdForge"),
-    ]
+private func workflowsLive() -> [Workflow] {
+    let base = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage")
+    let fm = FileManager.default
+    var out: [(Workflow, Double)] = []
+    for origin in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
+        let path = base + "/" + origin + "/batch-state.json"
+        guard fm.fileExists(atPath: path),
+              let obj = readJSON(path) as? [String: Any],
+              let run = obj["run"] as? [String: Any],
+              let answers = run["answers"] as? [[String: Any]], !answers.isEmpty else { continue }
+        let brief = (run["brief"] as? String) ?? "Batch run"
+        let mtime = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+        var steps: [WFStep] = []
+        var done = 0, failed = 0
+        for a in answers {
+            let n = (a["n"] as? NSNumber)?.intValue ?? (steps.count + 1)
+            let err = a["error"] != nil && !(a["error"] is NSNull)
+            let locked = !(a["lockedId"] is NSNull) && a["lockedId"] != nil
+            let selected = !(a["selectedId"] is NSNull) && a["selectedId"] != nil
+            let state = err ? "fail" : (locked ? "done" : (selected ? "run" : ""))
+            if state == "done" { done += 1 }; if state == "fail" { failed += 1 }
+            steps.append(WFStep(no: n, t: "answer \(n)", state: state))
+        }
+        let total = steps.count
+        let kind = failed > 0 ? "bad" : (done == total ? "ok" : (done > 0 ? "part" : "neu"))
+        let label = failed > 0 ? "✗ error at a step"
+            : (done == total ? "✓ locked · \(total) steps"
+            : (done > 0 ? "◐ \(done)/\(total) locked" : "not started"))
+        out.append((Workflow(
+            id: (run["id"] as? String) ?? origin,
+            name: "Batch · \(brief.count > 42 ? String(brief.prefix(40)) + "…" : brief)",
+            lastKind: kind, lastLabel: label,
+            steps: steps,
+            inputs: "wrapp: batch · \(total) answer-steps · a slate you lock one at a time",
+            acts: [WFAct(label: "Open in batch", kind: .pri, act: .run),
+                   WFAct(label: "Runs in History", kind: .plain, act: .log)],
+            compact: total > 5, dots: min(total, 8)), mtime))
+    }
+    return out.sorted { $0.1 > $1.1 }.map { $0.0 }
 }
 
 struct WorkflowsSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
-    @State private var workflows = WorkflowSample.list
-    @State private var tab = "recipes"
+    @State private var workflows: [Workflow] = []
 
     var body: some View {
         ScrollView {
@@ -1186,13 +1348,9 @@ struct WorkflowsSurface: View {
                 .padding(.bottom, 14)
                 .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
 
-                HStack(spacing: 6) {
-                    WFTab(label: "Recipes", count: workflows.count, active: tab == "recipes") { tab = "recipes" }
-                    WFTab(label: "Recent runs", count: WorkflowSample.recent.count, active: tab == "runs") { tab = "runs" }
-                }
-                .padding(.top, 16).padding(.bottom, 16)
-
-                if tab == "recipes" {
+                if workflows.isEmpty {
+                    WorkflowsEmptyState(onNavigate: onNavigate).padding(.top, 20)
+                } else {
                     VStack(spacing: 12) {
                         ForEach($workflows) { $w in
                             if w.compact {
@@ -1202,48 +1360,33 @@ struct WorkflowsSurface: View {
                             }
                         }
                     }
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(WorkflowSample.recent.enumerated()), id: \.element.id) { idx, r in
-                            RecentRunRow(run: r, showTop: idx > 0, onNavigate: onNavigate)
-                        }
-                    }
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.edgeSoft, lineWidth: 1))
+                    .padding(.top, 18)
                 }
 
-                FootNote(text: "a workflow chains steps into one reusable recipe · a partial run never masquerades as ✓ · add a schedule + grant to promote it to a routine")
+                FootNote(text: "a workflow chains steps into one recipe · today that's the batch wrapp (each run = a slate of answer-steps) · a partial run never masquerades as ✓ · a daemon workflow registry is the next layer")
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { workflows = workflowsLive() }
     }
 }
 
-private struct WFTab: View {
-    let label: String
-    let count: Int
-    let active: Bool
-    var onTap: () -> Void
-    @State private var hover = false
+// Honest coming-state — no invented pipelines. Points at the real pipeline wrapp (batch).
+private struct WorkflowsEmptyState: View {
+    let onNavigate: (Surface) -> Void
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 7) {
-                Text(label).font(.splMono(11)).tracking(0.5)
-                    .foregroundColor(active ? .ink : (hover ? .inkSec : .inkDim))
-                Text("\(count)").font(.splMono(10)).foregroundColor(active ? .inkSec : .inkFaint)
-                    .padding(.horizontal, 6)
-                    .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
-            }
-            .padding(.horizontal, 13).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9)
-                .fill(active ? Color.indigo.opacity(0.16) : Color.panel))
-            .overlay(RoundedRectangle(cornerRadius: 9)
-                .stroke(active ? Color.indigo : (hover ? Color.indigo.opacity(0.5) : Color.edge), lineWidth: 1))
-            .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 12) {
+            Text("No pipelines yet.").font(.brico(20, .bold)).foregroundColor(.ink)
+            Text("A workflow chains steps into one reusable recipe. Today the pipeline wrapp is batch — start a run and its answer-steps show up here. A first-class daemon workflow registry (schedule + grant + promote-to-routine) is the next layer.")
+                .font(.hanken(13)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            LimeButton(label: "Open batch") { OSLaunch.launchOr("batch", .init(kind: "workflow")) { onNavigate(.apps) } }
         }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
     }
 }
 
@@ -1372,11 +1515,9 @@ private struct WorkflowRowView: View {
         case .edit: withAnimation { workflow.editing.toggle() }
         case .promote: withAnimation { workflow.promoted.toggle() }
         case .run:
-            guard !workflow.running else { return }
-            withAnimation { workflow.running = true; workflow.lastKind = "part"; workflow.lastLabel = "◐ running…" }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-                withAnimation { workflow.running = false; workflow.lastKind = "ok"; workflow.lastLabel = "✓ done · just now" }
-            }
+            // Real run: open the batch wrapp (the actual pipeline engine) — same path the empty state uses.
+            // The row's state refreshes honestly from batch-state.json on next load; no simulated "done".
+            OSLaunch.launchOr("batch", .init(kind: "workflow")) { onNavigate(.apps) }
         }
     }
 }
@@ -1492,41 +1633,8 @@ private struct WFCompactRow: View {
         .onHover { hover = $0 }
     }
     private func run() {
-        guard !workflow.running else { return }
-        withAnimation { workflow.running = true; workflow.lastKind = "part"; workflow.lastLabel = "◐ running…" }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-            withAnimation { workflow.running = false; workflow.lastKind = "ok"; workflow.lastLabel = "✓ done · just now" }
-        }
-    }
-}
-
-private struct RecentRunRow: View {
-    let run: RecentRun
-    let showTop: Bool
-    var onNavigate: (Surface) -> Void
-    @State private var rowHover = false
-    private var glyph: String { ["ok": "✓", "bad": "✗", "part": "◐"][run.st] ?? "•" }
-    var body: some View {
-        HStack(spacing: 11) {
-            Button { onNavigate(.history) } label: {
-                HStack(spacing: 11) {
-                    Text(glyph).font(.splMono(13)).foregroundColor(wfLastColor(run.st)).frame(width: 18)
-                    Text(run.tm).font(.splMono(11)).foregroundColor(.inkFaint).frame(minWidth: 96, alignment: .leading)
-                    Text(run.wf).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
-                    Text(run.desc).font(.hanken(12.5)).foregroundColor(.inkSec).lineLimit(1)
-                    Spacer(minLength: 8)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            WFChip(app: run.app) {
-                OSLaunch.launchOr(run.app, .init(artifact: run.desc, kind: "run")) { onNavigate(.apps) }
-            }
-        }
-        .padding(.horizontal, 13).padding(.vertical, 10)
-        .background(rowHover ? Color.raised : .clear)
-        .overlay(alignment: .top) { if showTop { Rectangle().fill(Color.edgeSoft).frame(height: 1) } }
-        .onHover { rowHover = $0 }
+        // Real run: open the batch wrapp (no simulated success). State refreshes from batch-state.json.
+        OSLaunch.launch("batch", .init(kind: "workflow"))
     }
 }
 

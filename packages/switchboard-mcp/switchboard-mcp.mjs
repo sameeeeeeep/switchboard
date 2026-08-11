@@ -18,10 +18,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { actionTable, toolName, MANIFESTS } from "./registry.mjs";
 import { withDaemon, daemonSbForOrigin, daemonAvailable, readPairingToken, WS_URL } from "./daemon-client.mjs";
 import { mockSb } from "./mock-sb.mjs";
 import { scaffoldWrapp } from "./scaffold.mjs";
+// The task board is the one thing the connector touches by FILE, not daemon: tasks live as plain
+// `tasks.md` lines in the project's vault (the same dialect the OS board + Obsidian read). The pure
+// transforms are shared with the Bank connector so the board can never disagree with itself.
+import { addTask, completeTask, parseTasks, setStatus } from "../bank-mcp/tasks.mjs";
 
 // The origin the daemon attributes a connector-driven guide to (shown on the "Allow?" card). A guide
 // is gated by its per-run human consent, not a standing grant, so this is an honest audit label —
@@ -30,6 +37,165 @@ const GUIDE_ORIGIN = "switchboard-connector";
 
 const ok = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }] });
 const fail = (message, extra) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, error: message, ...extra }) }] });
+
+// ---- the task board (file-based, not daemon) ----------------------------------------------------
+// The vault is THIS project: --vault <path> | $SWITCHBOARD_VAULT | $BANK_VAULT | the current working
+// directory (a Claude Code session runs in the project repo, so cwd is the project's board by default).
+function argVal(flag) { const i = process.argv.indexOf(flag); return i >= 0 ? process.argv[i + 1] : undefined; }
+function expand(p) { return p && p.startsWith("~") ? join(homedir(), p.slice(1)) : p; }
+const VAULT = resolve(expand(argVal("--vault") || process.env.SWITCHBOARD_VAULT || process.env.BANK_VAULT || process.cwd()));
+const TASKS_FILE = "tasks.md";
+function ensureVault() { if (!existsSync(VAULT)) mkdirSync(VAULT, { recursive: true }); }
+function readDoc(name) { const p = join(VAULT, name); return existsSync(p) ? readFileSync(p, "utf8") : ""; }
+function writeDoc(name, text) { ensureVault(); writeFileSync(join(VAULT, name), text); }
+function mdFiles() { try { return readdirSync(VAULT).filter((f) => f.toLowerCase().endsWith(".md")); } catch { return []; } }
+
+// A task's project = its `#proj` tag if present, else the `## Heading` list it sits under. `project`
+// filters loosely (slug-tolerant substring) so "switchboard" matches "#switchboard" and "## Switchboard launch".
+const slugish = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const matchesProject = (t, want) => {
+  if (!want) return true;
+  const w = slugish(want), p = slugish(t.proj), l = slugish(t.list);
+  return (p && (p.includes(w) || w.includes(p))) || (l && (l.includes(w) || w.includes(l)));
+};
+// The card as Claude should see it: clean title + every dialect field, detail flattened.
+const taskView = (t) => ({
+  title: t.title, column: t.col, done: t.done, list: t.list,
+  ...(t.proj ? { project: t.proj } : {}), ...(t.tag ? { wrapp: t.tag } : {}),
+  ...(t.id ? { id: t.id } : {}), ...(t.epic ? { epic: t.epic } : {}),
+  ...(t.prio ? { priority: t.prio } : {}), ...(t.due ? { due: t.due } : {}),
+  ...(t.blockedBy.length ? { blockedBy: t.blockedBy } : {}),
+  ...(t.detail.length ? { detail: t.detail.map((d) => (d.sub ? `☐ ${d.text}` : d.text)) } : {}),
+  file: t.file,
+});
+
+// Register the five task tools on the connector. Vault = this project (see VAULT above).
+function registerTaskTools(server) {
+  server.registerTool(
+    "switchboard_add_task",
+    {
+      title: "Add a task to the project board",
+      description:
+        "Add a to-do to the project's board (tasks.md in the vault). Use whenever the user wants to remember, capture, or track something, or when you finish work and there are clear follow-ups worth saving. Optional dialect: `status` (backlog parks it; default todo), `epic` (bundle related cards), `priority`, and `detail` lines (plain notes and/or nested '- [ ] subtask'). `list` groups it under a `## Heading`.",
+      inputSchema: {
+        text: z.string().describe("the task, as a short imperative action, e.g. 'Reply to Acme about the renewal'"),
+        list: z.string().optional().describe("which list/project to file it under (becomes a `## Heading`). Default 'Inbox'."),
+        due: z.string().optional().describe("optional due — a full date 'YYYY-MM-DD' folds into due:, a soft hint ('Fri') into '— by'"),
+        status: z.enum(["backlog", "todo", "doing", "blocked", "review"]).optional().describe("kanban column; default todo. backlog = parked (not released to agents)"),
+        epic: z.string().optional().describe("group this into an epic/bundle of related cards (a slug, e.g. 'launch-week')"),
+        priority: z.enum(["high", "med", "low"]).optional().describe("priority"),
+        detail: z.array(z.string()).optional().describe("spec lines for the card — plain notes and/or nested '- [ ] subtask' lines; stored indented under the task"),
+      },
+    },
+    async ({ text, list, due, status, epic, priority, detail }) => {
+      const { doc, added, reason, list: filed } = addTask(text, { list, due, status, epic, prio: priority, detail }, readDoc(TASKS_FILE));
+      if (added) writeDoc(TASKS_FILE, doc);
+      return ok({ ok: added, added, list: filed, reason, file: join(VAULT, TASKS_FILE) });
+    },
+  );
+
+  server.registerTool(
+    "switchboard_list_tasks",
+    {
+      title: "List the project's tasks",
+      description:
+        "Read the project's board as kanban cards. Use before adding (to avoid duplicates), to answer 'what's on my list / for <project>', or to review the board. Each task carries its column (backlog · todo · doing · blocked · review · done) and — when present — its id, epic (bundle), priority, due date, blockers, and spec detail. Filter by `column`, `project`, or `epic`.",
+      inputSchema: {
+        status: z.enum(["open", "done", "all"]).optional().describe("coarse filter; default 'open' (everything not done). Use `column` for a specific kanban column."),
+        column: z.enum(["backlog", "todo", "doing", "blocked", "review", "done"]).optional().describe("only tasks in this kanban column (overrides `status`). backlog = parked, not yet released to agents"),
+        list: z.string().optional().describe("only tasks under this exact `## ` list heading (case-insensitive)"),
+        project: z.string().optional().describe("only tasks for this project — matches a task's #proj tag or its list, loosely (slug-tolerant)"),
+        epic: z.string().optional().describe("only tasks in this epic/bundle (case-insensitive)"),
+      },
+    },
+    async ({ status = "open", column, list, project, epic }) => {
+      const all = mdFiles().flatMap((f) => parseTasks(readDoc(f), f));
+      const wantList = list ? String(list).toLowerCase() : null;
+      const wantEpic = epic ? String(epic).toLowerCase() : null;
+      const tasks = all
+        .filter((t) => (column ? t.col === column : status === "all" ? true : status === "done" ? t.done : !t.done))
+        .filter((t) => (wantList ? t.list.toLowerCase() === wantList : true))
+        .filter((t) => matchesProject(t, project))
+        .filter((t) => (wantEpic ? (t.epic || "").toLowerCase() === wantEpic : true))
+        .map(taskView)
+        .slice(0, 200);
+      return ok({ ok: true, count: tasks.length, tasks });
+    },
+  );
+
+  server.registerTool(
+    "switchboard_move_task",
+    {
+      title: "Move a task to a column",
+      description:
+        "Move a task across the kanban by rewriting only its status — backlog · todo · doing · blocked · review · done. Use when you start work ('mark it doing'), hit a wall ('blocked'), finish ('done'), send something for review, or park it ('backlog'). Match by the task's `id:` (exact) or a distinctive fragment of its text.",
+      inputSchema: {
+        match: z.string().describe("the task's id: value (preferred, exact) or a distinctive fragment of its text"),
+        column: z.enum(["backlog", "todo", "doing", "blocked", "review", "done"]).describe("the column to move it to (backlog = park it)"),
+      },
+    },
+    async ({ match, column }) => {
+      for (const f of mdFiles()) {
+        const { doc, changed, title, col } = setStatus(match, column, readDoc(f));
+        if (changed) { writeDoc(f, doc); return ok({ ok: true, moved: title, to: col, file: f }); }
+      }
+      return ok({ ok: false, reason: "no task matches that id/text" });
+    },
+  );
+
+  server.registerTool(
+    "switchboard_complete_task",
+    {
+      title: "Complete a task",
+      description:
+        "Mark a task done by matching its text (case-insensitive substring). Use when the user says something is finished/handled. Flips `- [ ]` to `- [x]` in place so it stays checked off.",
+      inputSchema: { match: z.string().describe("text (or a distinctive fragment) of the task to complete") },
+    },
+    async ({ match }) => {
+      for (const f of mdFiles()) {
+        const { doc, completed } = completeTask(match, readDoc(f));
+        if (completed) { writeDoc(f, doc); return ok({ ok: true, completed, file: f }); }
+      }
+      return ok({ ok: false, reason: "no open task matches that text" });
+    },
+  );
+
+  server.registerTool(
+    "switchboard_next_task",
+    {
+      title: "Pick up the next task to work on",
+      description:
+        "Claim the next actionable task the user has RELEASED for work — the top unblocked `todo` card, optionally scoped to a project or epic. This is how a Claude session PICKS UP work from the board: it returns the card's full spec (title, detail, subtasks) and — unless you pass claim:false — moves it to `doing` so it won't be picked up twice. When you finish, call switchboard_move_task(match:<id>, column:'done'). NEVER pulls from `backlog` (parked items the user hasn't promoted), and skips blocked / doing / review cards — so the user's Backlog→Todo drag is the deliberate 'agent, go' signal.",
+      inputSchema: {
+        project: z.string().optional().describe("only consider tasks for this project (matches #proj tag or list, slug-tolerant)"),
+        epic: z.string().optional().describe("only consider tasks in this epic/bundle"),
+        claim: z.boolean().optional().describe("move the returned task to 'doing' so it isn't picked up twice (default true)"),
+      },
+    },
+    async ({ project, epic, claim = true }) => {
+      const wantEpic = epic ? String(epic).toLowerCase() : null;
+      const prioRank = { high: 0, med: 1, low: 2 };
+      const candidates = mdFiles()
+        .flatMap((f) => parseTasks(readDoc(f), f))
+        .filter((t) => t.col === "todo")
+        .filter((t) => matchesProject(t, project))
+        .filter((t) => (wantEpic ? (t.epic || "").toLowerCase() === wantEpic : true));
+      if (!candidates.length) return ok({ ok: false, reason: project || epic ? "no unblocked todo tasks in that scope" : "no unblocked todo tasks — promote something from Backlog to Todo first" });
+      candidates.sort((a, b) => {
+        const pr = (prioRank[a.prio] ?? 1) - (prioRank[b.prio] ?? 1); if (pr) return pr;
+        const ad = a.due || "9999", bd = b.due || "9999"; if (ad !== bd) return ad < bd ? -1 : 1;
+        return 0;
+      });
+      const t = candidates[0];
+      const card = taskView(t);
+      if (claim) {
+        const { doc: moved, changed, id } = setStatus(t.id || t.title, "doing", readDoc(t.file));
+        if (changed) { writeDoc(t.file, moved); card.column = "doing"; card.id = id || card.id; card.claimed = true; }
+      }
+      return ok({ ok: true, task: card, hint: claim ? "moved to 'doing' — call switchboard_move_task(match:id, column:'done') when finished" : "not claimed" });
+    },
+  );
+}
 
 // Build a zod input shape from an action's `input` doc: keys whose description carries "?" or
 // "optional" are optional; a leading "string"/"object" sets the type. Loose on purpose — the
@@ -175,9 +341,14 @@ async function main() {
     },
   );
 
+  // The project task board — add/list/move/complete/next, reading tasks.md in the vault (this project).
+  registerTaskTools(server);
+
   // Startup banner (stderr — stdout is the MCP transport). Says exactly what's being served and in
   // which mode, so "why did it mock?" is answerable at a glance.
-  const tools = [...table.keys(), "switchboard_scaffold_wrapp"];
+  const taskTools = ["switchboard_add_task", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"];
+  const tools = [...table.keys(), "switchboard_scaffold_wrapp", ...taskTools];
+  console.error(`[switchboard-mcp] task board vault: ${VAULT}`);
   const want = (process.env.SWITCHBOARD_SB || "auto").toLowerCase();
   const why = mode === "daemon" ? `daemon ${WS_URL}`
     : want === "mock" ? "SWITCHBOARD_SB=mock"

@@ -54,80 +54,161 @@ private struct KChip: View {
 // MARK: - HistorySurface
 // =====================================================================================================
 
-private struct HistRun: Identifiable {
+struct HistRun: Identifiable {
     let id = UUID()
     let tm: String; let wrapp: String; let prompt: String
     let kind: String; let result: String
     let params: [String]; let out: String; let prov: String
 }
-private struct HistDay: Identifiable {
+struct HistDay: Identifiable {
     let id = UUID(); let day: String; let runs: [HistRun]
 }
 
-private enum HistorySample {
-    static let days: [HistDay] = [
-        HistDay(day: "Today", runs: [
-            HistRun(tm: "14:22", wrapp: "Prism", prompt: "make a launch hero — terracotta beam",
-                    kind: "image", result: "image",
-                    params: ["ref: brand-set", "ar 3:2", "model: nano_banana"],
-                    out: "artifact-0447.png · 1536×1024",
-                    prov: "IndEur Club · lent: brand-set, palette · 8.4k tokens"),
-            HistRun(tm: "13:58", wrapp: "Crest", prompt: "tighten the switch-ligature monogram",
-                    kind: "mark", result: "mark",
-                    params: ["ref: mark-v3", "vector", "model: nano_banana"],
-                    out: "monogram-v4.svg · 512×512",
-                    prov: "IndEur Club · lent: brand-set · 3.1k tokens"),
-            HistRun(tm: "11:05", wrapp: "Redline", prompt: "audit the founding-members deck",
-                    kind: "notes", result: "notes",
-                    params: ["scope: deck", "12 slides"],
-                    out: "9 notes · 2 blockers",
-                    prov: "IndEur Club · lent: pricing-thesis · 6.0k tokens"),
-            HistRun(tm: "09:40", wrapp: "God", prompt: "what did we decide about the Q4 event cities?",
-                    kind: "text", result: "text",
-                    params: ["recall", "scope: project"],
-                    out: "3 cities: Berlin, Amsterdam, Lisbon",
-                    prov: "IndEur Club · lent: meetup-notes · 2.2k tokens"),
-        ]),
-        HistDay(day: "Yesterday", runs: [
-            HistRun(tm: "18:40", wrapp: "God", prompt: "summarize the week for IndEur",
-                    kind: "text", result: "text",
-                    params: ["recall", "range: 7d"],
-                    out: "weekly-digest.md",
-                    prov: "IndEur Club · lent: brain × 14 · 5.8k tokens"),
-            HistRun(tm: "16:12", wrapp: "AdForge", prompt: "\"Find your people\" — 3 ad variants",
-                    kind: "doc", result: "ad set",
-                    params: ["variants: 3", "tone: warm"],
-                    out: "ad-set-0331 · 3 variants",
-                    prov: "IndEur Club · lent: voice-scratch · 4.4k tokens"),
-            HistRun(tm: "10:03", wrapp: "ideabrain", prompt: "validate the membership pricing thesis",
-                    kind: "doc", result: "doc",
-                    params: ["research", "cohort: EU"],
-                    out: "pricing-thesis.md",
-                    prov: "IndEur Club · lent: audience · 9.1k tokens"),
-        ]),
-        HistDay(day: "Mon · Aug 1", runs: [
-            HistRun(tm: "21:15", wrapp: "brandbrain", prompt: "draft the launch announcement post",
-                    kind: "text", result: "text",
-                    params: ["channel: IG", "tone: warm"],
-                    out: "launch-post.md",
-                    prov: "IndEur Club · lent: voice-scratch · 3.3k tokens"),
-            HistRun(tm: "15:47", wrapp: "Crest", prompt: "generate 4 logo directions",
-                    kind: "gallery", result: "4 marks",
-                    params: ["variants: 4", "vector"],
-                    out: "marks-0208 · 4 marks",
-                    prov: "IndEur Club · lent: brand-set · 5.0k tokens"),
-            HistRun(tm: "12:30", wrapp: "Flow", prompt: "transcribe the community meetup notes",
-                    kind: "notes", result: "notes",
-                    params: ["source: audio", "18m"],
-                    out: "meetup-notes.md",
-                    prov: "IndEur Club · lent: — · 1.7k tokens"),
-        ]),
-    ]
+// ═══ LIVE receipts — History is the lens on the REAL activity trail: ~/.relay/audit.log (every
+// broker request/tool_call: ts · origin · method · outcome — no prompt text is logged, so rows show
+// the ACT, honestly) + guide-history.jsonl (guided-cursor runs with title + pass/fail). Consecutive
+// same-act events merge into one receipt ("Saved ×12") so a busy wrapp reads as work, not spam.
 
-    static var wrapps: [String] {
-        var seen: [String] = []
-        for d in days { for r in d.runs where !seen.contains(r.wrapp) { seen.append(r.wrapp) } }
-        return seen
+func histReceipts(days windowDays: Double = 14) -> [HistDay] {
+    struct Ev { let ts: Double; let app: String; let verb: String; let method: String; let outcome: String; let note: String }
+    var evs: [Ev] = []
+
+    // audit.log tail (append-only; ~2MB covers weeks)
+    let auditPath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/audit.log")
+    if let fh = FileHandle(forReadingAtPath: auditPath) {
+        let size = (try? fh.seekToEnd()) ?? 0
+        let cap: UInt64 = 2_000_000
+        let tailed = size > cap
+        try? fh.seek(toOffset: tailed ? size - cap : 0)
+        let data = fh.readDataToEndOfFile(); try? fh.close()
+        let minTs = Date().timeIntervalSince1970 * 1000 - windowDays * 86_400_000
+        var lines = (String(data: data, encoding: .utf8) ?? "").split(separator: "\n")
+        if tailed, !lines.isEmpty { lines.removeFirst() }
+        for line in lines {
+            guard let d = line.data(using: .utf8),
+                  let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+                  let ts = (o["ts"] as? NSNumber)?.doubleValue, ts >= minTs,
+                  let origin = o["origin"] as? String else { continue }
+            let name = (o["toolName"] as? String) ?? (o["method"] as? String) ?? ""
+            let outcome = (o["outcome"] as? String) ?? ""
+            // denied acts are receipts too — the consent story, visible
+            guard let verb = histVerb(kind: o["kind"] as? String ?? "", name: name) else { continue }
+            let app = wrappFromOrigin(origin)
+            guard !app.isEmpty else { continue }
+            evs.append(Ev(ts: ts, app: app, verb: verb, method: name, outcome: outcome,
+                          note: (o["note"] as? String) ?? ""))
+        }
+    }
+
+    // merge consecutive identical (app, verb, outcome) events within 10 min → one receipt ×N
+    evs.sort { $0.ts < $1.ts }
+    struct Merged { var first: Ev; var last: Double; var n: Int }
+    var merged: [Merged] = []
+    for e in evs {
+        if var m = merged.last, m.first.app == e.app, m.first.verb == e.verb,
+           m.first.outcome == e.outcome, e.ts - m.last <= 10 * 60_000 {
+            m.n += 1; m.last = e.ts; merged[merged.count - 1] = m
+        } else {
+            merged.append(Merged(first: e, last: e.ts, n: 1))
+        }
+    }
+
+    let tf = DateFormatter(); tf.dateFormat = "HH:mm"
+    var runs: [(Double, HistRun)] = merged.map { m in
+        let label = m.n == 1 ? histLabel(m.first.verb) : "\(histLabel(m.first.verb)) ×\(m.n)"
+        let denied = m.first.outcome == "denied"
+        return (m.last, HistRun(
+            tm: tf.string(from: Date(timeIntervalSince1970: m.last / 1000)),
+            wrapp: m.first.app,
+            prompt: label,
+            kind: histKind(m.first.verb),
+            result: denied ? "denied" : m.first.outcome,
+            params: [m.first.method],
+            out: m.first.note.isEmpty ? (m.n > 1 ? "\(m.n) events" : "1 event") : m.first.note,
+            prov: "origin-verified · audit.log"))
+    }
+
+    // guided-cursor runs — titled receipts with pass/fail
+    let guidePath = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/guide-history.jsonl")
+    if let text = try? String(contentsOfFile: guidePath, encoding: .utf8) {
+        let minTs = Date().timeIntervalSince1970 * 1000 - windowDays * 86_400_000
+        for line in text.split(separator: "\n") {
+            guard let d = line.data(using: .utf8),
+                  let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+            let ts = (o["finishedAt"] as? NSNumber)?.doubleValue ?? (o["startedAt"] as? NSNumber)?.doubleValue ?? 0
+            guard ts >= minTs else { continue }
+            let passed = (o["passed"] as? NSNumber)?.intValue ?? 0
+            let total = (o["total"] as? NSNumber)?.intValue ?? 0
+            runs.append((ts, HistRun(
+                tm: tf.string(from: Date(timeIntervalSince1970: ts / 1000)),
+                wrapp: "guide",
+                prompt: (o["title"] as? String) ?? "Guided run",
+                kind: "notes",
+                result: (o["outcome"] as? String) ?? "done",
+                params: [(o["mode"] as? String) ?? "guide"],
+                out: total > 0 ? "\(passed)/\(total) steps passed" : "",
+                prov: "guide-history.jsonl")))
+        }
+    }
+
+    // day-group, newest first
+    runs.sort { $0.0 > $1.0 }
+    let df = DateFormatter(); df.dateFormat = "EEE · MMM d"
+    let cal = Calendar.current
+    var out: [HistDay] = []
+    var curKey = ""
+    var bucket: [HistRun] = []
+    func dayLabel(_ ts: Double) -> String {
+        let d = Date(timeIntervalSince1970: ts / 1000)
+        if cal.isDateInToday(d) { return "Today" }
+        if cal.isDateInYesterday(d) { return "Yesterday" }
+        return df.string(from: d)
+    }
+    for (ts, r) in runs {
+        let key = dayLabel(ts)
+        if key != curKey {
+            if !bucket.isEmpty { out.append(HistDay(day: curKey, runs: bucket)) }
+            curKey = key; bucket = []
+        }
+        bucket.append(r)
+    }
+    if !bucket.isEmpty { out.append(HistDay(day: curKey, runs: bucket)) }
+    return out
+}
+
+// what counts as an act worth a receipt (reads/plumbing don't)
+private func histVerb(kind: String, name: String) -> String? {
+    if kind == "tool_call" {
+        if name.contains("transcribe") { return "dictation" }
+        if name.contains("storage__set") { return "save" }
+        if name.contains("context__publish") { return "publish" }
+        if name.contains("__get") || name.contains("__list") { return nil }
+        return "run"
+    }
+    if kind == "request" {
+        switch name {
+        case "claude_complete", "claude_stream": return "run"
+        case "claude_transcribe": return "dictation"
+        case "claude_speak": return "reply"
+        default: return nil
+        }
+    }
+    return nil
+}
+private func histLabel(_ verb: String) -> String {
+    switch verb {
+    case "dictation": return "Dictated"
+    case "save": return "Saved work"
+    case "publish": return "Published context"
+    case "reply": return "Spoke a reply"
+    default: return "Ran the model"
+    }
+}
+private func histKind(_ verb: String) -> String {
+    switch verb {
+    case "save", "publish": return "doc"
+    case "dictation": return "notes"
+    default: return "text"
     }
 }
 
@@ -143,6 +224,7 @@ private func histGlyph(_ kind: String) -> String {
 struct HistorySurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
+    @State private var days: [HistDay] = []
     @State private var collapsedDays: Set<String> = []
     @State private var openRuns: Set<UUID> = []
     @State private var searchOn = false
@@ -150,8 +232,13 @@ struct HistorySurface: View {
     @State private var wrappIx = 0
     @State private var dateIx = 0
 
-    private var wrappOpts: [String] { ["all"] + HistorySample.wrapps }
-    private var dateOpts: [String] { ["7d"] + HistorySample.days.map { $0.day } }
+    private var allWrapps: [String] {
+        var seen: [String] = []
+        for d in days { for r in d.runs where !seen.contains(r.wrapp) { seen.append(r.wrapp) } }
+        return seen
+    }
+    private var wrappOpts: [String] { ["all"] + allWrapps }
+    private var dateOpts: [String] { ["14d"] + days.map { $0.day } }
     private var curWrapp: String { wrappOpts[min(wrappIx, wrappOpts.count - 1)] }
     private var curDate: String { dateOpts[min(dateIx, dateOpts.count - 1)] }
 
@@ -159,14 +246,14 @@ struct HistorySurface: View {
         let ql = q.trimmingCharacters(in: .whitespaces).lowercased()
         return d.runs.filter { r in
             let wOk = curWrapp == "all" || r.wrapp == curWrapp
-            let hay = (r.prompt + " " + r.wrapp + " " + r.result + " " + r.out).lowercased()
+            let hay = (r.prompt + " " + r.wrapp + " " + r.result + " " + r.out + " " + r.params.joined(separator: " ")).lowercased()
             let sOk = ql.isEmpty || hay.contains(ql)
             return wOk && sOk
         }
     }
     private var visibleDays: [HistDay] {
-        HistorySample.days.filter { d in
-            (curDate == "7d" || curDate == d.day) && !runsFor(d).isEmpty
+        days.filter { d in
+            (curDate == "14d" || curDate == d.day) && !runsFor(d).isEmpty
         }
     }
 
@@ -174,7 +261,21 @@ struct HistorySurface: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                if visibleDays.isEmpty {
+                if days.isEmpty {
+                    // first-run: nothing in the trail yet — a verb, not a dead pane
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Your runs will show up here.").font(.brico(20, .bold)).foregroundColor(.ink)
+                        Text("Every act through the broker — runs, dictations, saves, guided fills — lands in the audit trail as a receipt. Run an app to start.")
+                            .font(.hanken(13)).foregroundColor(.inkSec)
+                            .fixedSize(horizontal: false, vertical: true)
+                        LimeButton(label: "Open your apps") { onNavigate(.apps) }
+                    }
+                    .padding(22)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+                    .padding(.top, 20)
+                } else if visibleDays.isEmpty {
                     Text("No runs match these filters.")
                         .font(.hanken(12.5)).foregroundColor(.inkDim)
                         .frame(maxWidth: .infinity)
@@ -184,11 +285,15 @@ struct HistorySurface: View {
                         .padding(.top, 20)
                 } else {
                     ForEach(visibleDays) { d in daySection(d) }
+                    Text("last 14 days of the audit trail · older receipts stay in ~/.relay/audit.log — nothing is deleted")
+                        .font(.splMono(10.5)).foregroundColor(.inkFaint)
+                        .padding(.top, 28)
                 }
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { days = histReceipts() }
     }
 
     private var header: some View {
@@ -200,9 +305,8 @@ struct HistorySurface: View {
                 }
                 Spacer(minLength: 0)
             }
-            // scope + filters
+            // filters (acts carry no project tag in the log — no fake project scope, just real filters)
             HStack(spacing: 8) {
-                KChip(text: "◐ IndEur Club", accent: .indigo) { onNavigate(.bank) }
                 Spacer(minLength: 0)
                 KChip(text: "wrapp \(curWrapp) ▾") { wrappIx = (wrappIx + 1) % wrappOpts.count }
                 KChip(text: "date \(curDate) ▾") { dateIx = (dateIx + 1) % dateOpts.count }
@@ -248,7 +352,9 @@ struct HistorySurface: View {
                                       else { openRuns.insert(run.id) }
                                   },
                                   onReopen: {
-                                      OSLaunch.launchOr(run.wrapp, .init(artifact: run.prompt, kind: run.kind)) { onNavigate(.apps) }
+                                      // #3/C4 — audit receipts carry no result payload, so don't seed the wrapp
+                                      // with the synthesized verb ("Saved"). Open the tool clean by its kind.
+                                      OSLaunch.launchOr(run.wrapp, .init(kind: run.kind)) { onNavigate(.apps) }
                                   })
                 }
             }
@@ -272,7 +378,7 @@ private struct HistoryRunRow: View {
                     Text(run.wrapp).font(.hanken(12.5, .medium)).foregroundColor(.inkSec)
                 }
                 .frame(width: 118, alignment: .leading)
-                Text("\"\(run.prompt)\"").font(.hanken(13)).foregroundColor(.ink).lineLimit(1)
+                Text(run.prompt).font(.hanken(13)).foregroundColor(.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 Text("→").font(.splMono(12)).foregroundColor(.inkFaint)
                 HStack(spacing: 7) {
@@ -301,8 +407,8 @@ private struct HistoryRunRow: View {
     private var receipt: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 24) {
-                ReceiptCell(label: "Input", value: "\"\(run.prompt)\"")
-                ReceiptCell(label: "Params", value: run.params.joined(separator: "   "), mono: true)
+                ReceiptCell(label: "Act", value: run.prompt)
+                ReceiptCell(label: "Method", value: run.params.joined(separator: "   "), mono: true)
             }
             HStack(alignment: .top, spacing: 24) {
                 ReceiptCell(label: "Result", value: "\(run.result) → \(run.out)")
@@ -363,50 +469,77 @@ private struct GNode: Identifiable {
     var neighbors: [GNeighbor] = []
 }
 
-private enum GraphSample {
-    static let nodes: [GNode] = [
-        GNode(id: "proj", x: 300, y: 255, r: 24, label: "IndEur Club", kind: "project",
-              hub: true, links: 12, artifacts: 23, notes: 14,
-              neighbors: [GNeighbor(label: "Switch mark", rel: "produced-by"),
-                          GNeighbor(label: "Meetup notes", rel: "member"),
-                          GNeighbor(label: "Terracotta beam", rel: "produced-by"),
-                          GNeighbor(label: "\"diaspora\"", rel: "mentions")]),
-        GNode(id: "mark", x: 150, y: 130, r: 15, label: "Switch mark", kind: "artifact · mark",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "produced-for"),
-                          GNeighbor(label: "4 marks", rel: "sibling")]),
-        GNode(id: "gallery", x: 110, y: 250, r: 13, label: "4 marks", kind: "artifact · gallery",
-              neighbors: [GNeighbor(label: "Switch mark", rel: "sibling"),
-                          GNeighbor(label: "IndEur Club", rel: "produced-for")]),
-        GNode(id: "beam", x: 170, y: 380, r: 14, label: "Terracotta beam", kind: "artifact · image",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "produced-for")]),
-        GNode(id: "note1", x: 330, y: 95, r: 12, label: "Meetup notes", kind: "note",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "member"),
-                          GNeighbor(label: "\"diaspora\"", rel: "defines")]),
-        GNode(id: "note2", x: 470, y: 140, r: 11, label: "Pricing note", kind: "note",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "member"),
-                          GNeighbor(label: "8 more", rel: "cluster")]),
-        GNode(id: "ad", x: 490, y: 270, r: 14, label: "Launch ad", kind: "run · AdForge",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "produced-for")]),
-        GNode(id: "thesis", x: 470, y: 400, r: 13, label: "Thesis", kind: "doc · ideabrain",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "member")]),
-        GNode(id: "term", x: 300, y: 430, r: 10, label: "\"diaspora\"", kind: "term", dim: true,
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "mentioned-in"),
-                          GNeighbor(label: "Meetup notes", rel: "defined-in")]),
-        GNode(id: "run", x: 250, y: 395, r: 9, label: "God run", kind: "run · God",
-              neighbors: [GNeighbor(label: "IndEur Club", rel: "ran-on")]),
-        GNode(id: "more", x: 560, y: 200, r: 16, label: "8 more", kind: "cluster", cluster: true),
-    ]
-    static let edges: [(String, String)] = [
-        ("proj", "mark"), ("proj", "gallery"), ("proj", "beam"), ("proj", "note1"),
-        ("proj", "note2"), ("proj", "ad"), ("proj", "thesis"), ("proj", "term"),
-        ("proj", "run"), ("note2", "more"), ("ad", "more"), ("gallery", "mark"),
-    ]
-    static var byId: [String: GNode] {
-        Dictionary(nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+// ═══ LIVE graph — how the vault actually connects. The active project (else the most recent) is the
+// hub; its REAL artifacts (from ~/.relay/storage/<origin>) orbit it; the other real projects ring the
+// outside as sibling hubs. Deterministic radial layout in the canvas' ~600×480 space. No invented
+// nodes — a project with no artifacts is just a bare hub.
+private struct GraphModel {
+    let nodes: [GNode]
+    let edges: [(String, String)]
+    var byId: [String: GNode] { Dictionary(nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
+    var byLabel: [String: GNode] { Dictionary(nodes.map { ($0.label, $0) }, uniquingKeysWith: { a, _ in a }) }
+}
+
+private func graphLive() -> GraphModel {
+    let ctxs = bankContexts()
+    guard !ctxs.isEmpty else { return GraphModel(nodes: [], edges: []) }
+    let hubCtx = ctxs.first { $0.id == readDefaultId() } ?? ctxs[0]
+    let cx: CGFloat = 300, cy: CGFloat = 250
+    var nodes: [GNode] = []
+    var edges: [(String, String)] = []
+
+    // artifacts of the hub project — the real orbit
+    let arts = bankArtifactsFor(hubCtx)
+    let hub = GNode(id: "hub", x: cx, y: cy, r: 24, label: hubCtx.name, kind: "project",
+                    hub: true, links: arts.count, artifacts: arts.count, notes: 0,
+                    neighbors: arts.prefix(6).map { GNeighbor(label: $0.t, rel: "produced-by") }
+                        + [GNeighbor(label: "\(max(ctxs.count - 1, 0)) other projects", rel: "sibling")])
+    nodes.append(hub)
+
+    let shown = Array(arts.prefix(9))
+    for (i, a) in shown.enumerated() {
+        let ang = CGFloat(i) / CGFloat(max(shown.count, 1)) * .pi * 2
+        let rad: CGFloat = 150
+        let id = "art\(i)"
+        nodes.append(GNode(id: id, x: cx + cos(ang) * rad, y: cy + sin(ang) * rad,
+                           r: 13, label: a.t, kind: "artifact · \(a.kind)",
+                           neighbors: [GNeighbor(label: hubCtx.name, rel: "produced-for")]))
+        edges.append(("hub", id))
     }
-    static var byLabel: [String: GNode] {
-        Dictionary(nodes.map { ($0.label, $0) }, uniquingKeysWith: { a, _ in a })
+
+    // sibling projects — a faint outer ring, each a real hub you can jump to
+    let others = ctxs.filter { $0.id != hubCtx.id }.prefix(6)
+    for (i, c) in others.enumerated() {
+        let ang = CGFloat(i) / CGFloat(max(others.count, 1)) * .pi * 2 + 0.4
+        let id = "proj\(i)"
+        nodes.append(GNode(id: id, x: cx + cos(ang) * 250, y: cy + sin(ang) * 210,
+                           r: 15, label: c.name, kind: "project", dim: true,
+                           neighbors: [GNeighbor(label: hubCtx.name, rel: "sibling")]))
+        edges.append(("hub", id))
     }
+    return GraphModel(nodes: nodes, edges: edges)
+}
+
+// artifacts for a context, reusing the same real sources Bank's Artifacts facet reads (storage + vault)
+private func bankArtifactsFor(_ c: BankCtx) -> [(t: String, kind: String)] {
+    let fm = FileManager.default
+    let now = Date().timeIntervalSince1970 * 1000
+    var out: [((t: String, kind: String), Double)] = []
+    func scan(_ dir: String) {
+        guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return }
+        for f in files where f.hasSuffix(".json") && !f.contains(".bak") && !f.hasPrefix(".") {
+            let path = dir + "/" + f
+            let m = (((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000
+            let (title, _, kind) = classifyArtifact(path, key: f)
+            out.append(((title, kind), m))
+        }
+    }
+    if let o = c.origin {
+        let dirName = o.replacingOccurrences(of: "://", with: "_").replacingOccurrences(of: ":", with: "_").replacingOccurrences(of: "/", with: "_")
+        scan((NSHomeDirectory() as NSString).appendingPathComponent(".relay/storage/" + dirName))
+    }
+    if let folder = bankVaultFolder(c) { scan(folder) }
+    return out.sorted { $0.1 > $1.1 }.map { $0.0 }
 }
 
 /// The toggle-category a node belongs to (nil = always shown, e.g. runs / docs / clusters).
@@ -443,14 +576,15 @@ private func graphDest(_ n: GNode) -> (Surface, String) {
 struct GraphSurface: View {
     var onNavigate: (Surface) -> Void = { _ in }
 
-    @State private var enabled: Set<String> = ["projects", "notes", "artifacts"]
-    @State private var selectedId: String = "proj"
+    @State private var enabled: Set<String> = ["projects", "artifacts"]
+    @State private var selectedId: String = "hub"
     @State private var asList = false
+    @State private var model = GraphModel(nodes: [], edges: [])
 
-    private var selectedNode: GNode { GraphSample.byId[selectedId] ?? GraphSample.nodes[0] }
+    private var selectedNode: GNode { model.byId[selectedId] ?? model.nodes.first ?? GNode(id: "none", x: 0, y: 0, r: 0, label: "—", kind: "project") }
 
     private func focus(label: String) {
-        if let n = GraphSample.byLabel[label], !n.cluster, !graphIsOff(n, enabled) {
+        if let n = model.byLabel[label], !n.cluster, !graphIsOff(n, enabled) {
             selectedId = n.id
         }
     }
@@ -459,13 +593,22 @@ struct GraphSurface: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
+                if model.nodes.isEmpty {
+                    Text("Nothing to graph yet — establish a project and run an app, and the connections between projects, artifacts, and notes draw themselves here.")
+                        .font(.hanken(13)).foregroundColor(.inkSec)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+                        .padding(.top, 12)
+                } else {
                 HStack(alignment: .top, spacing: 0) {
                     Group {
                         if asList {
-                            GraphList(enabled: enabled, selectedId: selectedId,
+                            GraphList(model: model, enabled: enabled, selectedId: selectedId,
                                       onSelect: { selectedId = $0.id })
                         } else {
-                            GraphCanvas(enabled: enabled, selectedId: selectedId,
+                            GraphCanvas(model: model, enabled: enabled, selectedId: selectedId,
                                         onSelect: { selectedId = $0.id },
                                         onNavigate: onNavigate)
                         }
@@ -483,10 +626,12 @@ struct GraphSurface: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 legend
+                }
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { model = graphLive(); if model.byId[selectedId] == nil { selectedId = model.nodes.first?.id ?? "hub" } }
     }
 
     private var header: some View {
@@ -496,12 +641,10 @@ struct GraphSurface: View {
                 Text("How it connects").font(.hanken(24, .semibold)).foregroundColor(.ink)
             }
             HStack(spacing: 7) {
-                KChip(text: "◐ IndEur Club", accent: .indigo) { onNavigate(.bank) }
+                KChip(text: "◐ \(model.nodes.first(where: { $0.hub })?.label ?? "your vault")", accent: .indigo) { onNavigate(.bank) }
                 Spacer(minLength: 0)
                 GraphToggle(label: "projects", tint: .indigo, on: enabled.contains("projects")) { toggle("projects") }
-                GraphToggle(label: "notes", tint: .lime, on: enabled.contains("notes")) { toggle("notes") }
                 GraphToggle(label: "artifacts", tint: amber, on: enabled.contains("artifacts")) { toggle("artifacts") }
-                GraphToggle(label: "terms", tint: .indigo, on: enabled.contains("terms")) { toggle("terms") }
                 KChip(text: asList ? "◈ Graph view" : "☰ List view") { asList.toggle() }
             }
         }
@@ -509,16 +652,13 @@ struct GraphSurface: View {
 
     private func toggle(_ cat: String) {
         if enabled.contains(cat) { enabled.remove(cat) } else { enabled.insert(cat) }
-        if graphIsOff(selectedNode, enabled) { selectedId = "proj" }
+        if graphIsOff(selectedNode, enabled) { selectedId = "hub" }
     }
 
     private var legend: some View {
         HStack(spacing: 16) {
             legendItem(.indigo, "project")
-            legendItem(.lime, "note")
             legendItem(colorForId("mark"), "artifact")
-            legendItem(amber, "run")
-            legendItem(Color.indigo.opacity(0.6), "term (off)")
         }
         .padding(.top, 14)
     }
@@ -554,6 +694,7 @@ private struct GraphToggle: View {
 
 /// Fixed-layout node canvas: edges drawn in a Canvas, nodes as positioned circle Buttons.
 private struct GraphCanvas: View {
+    let model: GraphModel
     let enabled: Set<String>
     let selectedId: String
     let onSelect: (GNode) -> Void
@@ -562,8 +703,9 @@ private struct GraphCanvas: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Canvas { ctx, _ in
-                for e in GraphSample.edges {
-                    guard let a = GraphSample.byId[e.0], let b = GraphSample.byId[e.1] else { continue }
+                let byId = model.byId
+                for e in model.edges {
+                    guard let a = byId[e.0], let b = byId[e.1] else { continue }
                     let faded = graphIsOff(a, enabled) || graphIsOff(b, enabled)
                     let hot = !faded && (e.0 == selectedId || e.1 == selectedId)
                     var p = Path()
@@ -575,7 +717,7 @@ private struct GraphCanvas: View {
                                lineWidth: hot ? 1.8 : 1.3)
                 }
             }
-            ForEach(GraphSample.nodes) { n in
+            ForEach(model.nodes) { n in
                 let off = graphIsOff(n, enabled)
                 Button {
                     if n.cluster { onNavigate(.bank) } else if !off { onSelect(n) }
@@ -630,12 +772,13 @@ private struct GraphNodeMark: View {
 }
 
 private struct GraphList: View {
+    let model: GraphModel
     let enabled: Set<String>
     let selectedId: String
     let onSelect: (GNode) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(GraphSample.nodes) { n in
+            ForEach(model.nodes) { n in
                 GraphListRow(node: n, off: graphIsOff(n, enabled),
                              selected: n.id == selectedId, onSelect: onSelect)
             }
@@ -767,33 +910,42 @@ private struct OpenButton: View {
 private struct DTerm: Identifiable {
     let id: Int; let t: String; let d: String
     let scope: String; let src: String
-    var usages: [String] = []
     var isProject: Bool { scope == "project" }
     var letter: String { String(t.prefix(1)).uppercased() }
 }
 
-private enum DictSample {
-    static let terms: [DTerm] = [
-        DTerm(id: 0, t: "ARPU", d: "average revenue per user", scope: "global", src: "ideabrain run"),
-        DTerm(id: 1, t: "Bank", d: "the .md vault the user owns — the substrate every lens reads",
-              scope: "global", src: "manual"),
-        DTerm(id: 2, t: "Diaspora",
-              d: "in IndEur, specifically the first- & second-gen Indian community living in Europe — our whole audience",
-              scope: "project", src: "God · meetup notes",
-              usages: ["project-indeur.md", "Launch ad copy", "note: audience"]),
-        DTerm(id: 3, t: "Facet", d: "one lens on a project's .md — Overview / Tasks / Brain / Artifacts",
-              scope: "global", src: "manual"),
-        DTerm(id: 4, t: "Founding member",
-              d: "one of the first 500 who join before public launch — gets a lifetime badge & founder pricing",
-              scope: "project", src: "pricing note",
-              usages: ["pricing-thesis.md", "Launch ad copy"]),
-        DTerm(id: 5, t: "Flagship event", d: "the monthly in-person meetup that anchors a city's chapter",
-              scope: "project", src: "God run", usages: ["meetup-notes.md"]),
-        DTerm(id: 6, t: "Terracotta", d: "the warm clay-orange primary in the IndEur palette (#E0764A)",
-              scope: "project", src: "Crest run", usages: ["project-indeur.md", "brand-set"]),
-        DTerm(id: 7, t: "Wrapp", d: "an app in Switchboard — prompts + skills + UI over Claude, no middleman",
-              scope: "global", src: "manual"),
-    ]
+// ═══ LIVE dictionary — the project vocabulary as REAL dictionary-*.md files across the vault folders
+// (the Bank dialect: front-matter term/definition/scope/source + body). Nothing invented: when the
+// vault holds no terms yet the surface is an honest teach-state, never sample words.
+private func dictTerms() -> [DTerm] {
+    let fm = FileManager.default
+    var out: [DTerm] = []
+    var i = 0
+    for folder in osVaultFolders() {
+        guard let files = try? fm.contentsOfDirectory(atPath: folder) else { continue }
+        for f in files where f.hasPrefix("dictionary-") && f.hasSuffix(".md") {
+            let text = (try? String(contentsOfFile: folder + "/" + f, encoding: .utf8)) ?? ""
+            var term = "", def = "", scope = "global", src = "manual"
+            var inFM = false, body = ""
+            for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                let l = raw.trimmingCharacters(in: .whitespaces)
+                if l == "---" { inFM.toggle(); continue }
+                if inFM {
+                    if let r = l.range(of: ":") {
+                        let k = String(l[..<r.lowerBound]).trimmingCharacters(in: .whitespaces).lowercased()
+                        let v = String(l[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                        switch k { case "term", "name": term = v; case "definition", "def": def = v
+                                   case "scope": scope = v; case "source", "src": src = v; default: break }
+                    }
+                } else if !l.isEmpty && !l.hasPrefix("#") && body.isEmpty { body = l }
+            }
+            if term.isEmpty { term = f.replacingOccurrences(of: "dictionary-", with: "").replacingOccurrences(of: ".md", with: "").replacingOccurrences(of: "-", with: " ") }
+            if def.isEmpty { def = body }
+            guard !term.isEmpty else { continue }
+            out.append(DTerm(id: i, t: term, d: def, scope: scope, src: src)); i += 1
+        }
+    }
+    return out.sorted { $0.t.localizedCaseInsensitiveCompare($1.t) == .orderedAscending }
 }
 
 private struct DictSection: Identifiable {
@@ -813,11 +965,11 @@ struct DictionarySurface: View {
 
     @State private var q = ""
     @State private var bucket = "all"
-    @State private var openTerms: Set<Int> = []
+    @State private var terms: [DTerm] = []
 
     private var filtered: [DTerm] {
         let ql = q.trimmingCharacters(in: .whitespaces).lowercased()
-        return DictSample.terms.filter { term in
+        return terms.filter { term in
             let inBk = bucket == "all" || dictBucketId(term.letter) == bucket
             let hay = (term.t + " " + term.d).lowercased()
             let inQ = ql.isEmpty || hay.contains(ql)
@@ -836,7 +988,18 @@ struct DictionarySurface: View {
                 header
                 bucketTabs
                 newRow
-                if sections.isEmpty {
+                if terms.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Teach Switchboard your words.").font(.brico(18, .bold)).foregroundColor(.ink)
+                        Text("No terms in your vault yet. Say \"remember that X means…\" to God, or add one above — each becomes a dictionary-*.md you own, and its gloss shows up as a tooltip everywhere in the OS.")
+                            .font(.hanken(13)).foregroundColor(.inkSec)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+                    .padding(.top, 8)
+                } else if sections.isEmpty {
                     Text("No term matches — try another spelling, or teach it above.")
                         .font(.hanken(12.5)).foregroundColor(.inkDim)
                         .frame(maxWidth: .infinity)
@@ -850,14 +1013,7 @@ struct DictionarySurface: View {
                             .foregroundColor(.lime)
                             .padding(.top, 20).padding(.bottom, 8)
                         ForEach(section.terms) { term in
-                            DictTermRow(term: term,
-                                        open: openTerms.contains(term.id),
-                                        onToggle: {
-                                            if term.usages.isEmpty { onNavigate(.graph); return }
-                                            if openTerms.contains(term.id) { openTerms.remove(term.id) }
-                                            else { openTerms.insert(term.id) }
-                                        },
-                                        onNavigate: onNavigate)
+                            DictTermRow(term: term, onTap: { onNavigate(.graph) })
                         }
                     }
                 }
@@ -865,6 +1021,7 @@ struct DictionarySurface: View {
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { terms = dictTerms() }
     }
 
     private var header: some View {
@@ -874,10 +1031,9 @@ struct DictionarySurface: View {
                 Text("What your words mean").font(.hanken(24, .semibold)).foregroundColor(.ink)
             }
             HStack(spacing: 8) {
-                Text("◐ IndEur Club").font(.hanken(12)).foregroundColor(.indigo)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.indigo.opacity(0.14)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.indigo.opacity(0.35), lineWidth: 1))
+                Text("\(terms.count) term\(terms.count == 1 ? "" : "s") in your vault").font(.splMono(11)).foregroundColor(.inkDim)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
                 Spacer(minLength: 0)
                 TextField("⌕ find a term", text: $q)
                     .textFieldStyle(.plain)
@@ -928,75 +1084,35 @@ struct DictionarySurface: View {
 
 private struct DictTermRow: View {
     let term: DTerm
-    let open: Bool
-    let onToggle: () -> Void
-    let onNavigate: (Surface) -> Void
+    let onTap: () -> Void
     @State private var hover = false
 
-    private var hasExp: Bool { !term.usages.isEmpty }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 14) {
-                Text(term.t).font(.hanken(14, .semibold)).foregroundColor(.ink)
-                    .frame(width: 118, alignment: .leading)
-                Text("\"\(term.d)\"").font(.hanken(13)).foregroundColor(.inkSec)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(term.scope).font(.splMono(10))
-                        .foregroundColor(term.isProject ? .indigo : .inkFaint)
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 6)
-                            .fill(term.isProject ? Color.indigo.opacity(0.14) : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 6)
-                            .stroke(term.isProject ? Color.indigo.opacity(0.35) : Color.edge, lineWidth: 1))
-                    Text("↻ \(term.src)").font(.splMono(10)).foregroundColor(.inkFaint)
-                }
-                Text(hasExp ? "▾" : "↗").font(.splMono(11))
-                    .foregroundColor(hasExp ? .inkFaint : .indigo)
-                    .rotationEffect(.degrees(hasExp && open ? 180 : 0))
-                    .frame(width: 14)
+        HStack(alignment: .top, spacing: 14) {
+            Text(term.t).font(.hanken(14, .semibold)).foregroundColor(.ink)
+                .frame(width: 118, alignment: .leading)
+            Text("\"\(term.d)\"").font(.hanken(13)).foregroundColor(.inkSec)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(term.scope).font(.splMono(10))
+                    .foregroundColor(term.isProject ? .indigo : .inkFaint)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 6)
+                        .fill(term.isProject ? Color.indigo.opacity(0.14) : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: 6)
+                        .stroke(term.isProject ? Color.indigo.opacity(0.35) : Color.edge, lineWidth: 1))
+                Text("↻ \(term.src)").font(.splMono(10)).foregroundColor(.inkFaint)
             }
-            if open && hasExp {
-                VStack(alignment: .leading, spacing: 8) {
-                    (Text("Learned from ").font(.hanken(12.5)).foregroundColor(.inkDim)
-                        + Text(term.src).font(.hanken(12.5, .medium)).foregroundColor(.inkSec)
-                        + Text(" · used in the vault:").font(.hanken(12.5)).foregroundColor(.inkDim))
-                    HStack(spacing: 8) {
-                        ForEach(term.usages, id: \.self) { u in
-                            UsageChip(text: u) { onNavigate(.graph) }
-                        }
-                    }
-                }
-                .padding(.top, 12).padding(.leading, 132)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .top)
-            }
+            Text("↗").font(.splMono(11)).foregroundColor(.indigo).frame(width: 14)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 11).fill(Color.panel))
         .overlay(RoundedRectangle(cornerRadius: 11)
-            .stroke((hover || open) ? Color(red: 0.20, green: 0.22, blue: 0.29) : Color.edge, lineWidth: 1))
+            .stroke(hover ? Color(red: 0.20, green: 0.22, blue: 0.29) : Color.edge, lineWidth: 1))
         .padding(.bottom, 8)
         .contentShape(Rectangle())
-        .onTapGesture { onToggle() }
-        .onHover { hover = $0 }
-    }
-}
-
-private struct UsageChip: View {
-    let text: String; let action: () -> Void
-    @State private var hover = false
-    var body: some View {
-        Button(action: action) {
-            Text(text).font(.hanken(11)).foregroundColor(hover ? .ink : .inkSec)
-                .padding(.horizontal, 9).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color(red: 0.06, green: 0.07, blue: 0.09)))
-                .overlay(RoundedRectangle(cornerRadius: 6)
-                    .stroke(hover ? Color.indigo.opacity(0.6) : Color.edge, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        .onTapGesture { onTap() }
         .onHover { hover = $0 }
     }
 }

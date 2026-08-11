@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autopilot — your portfolio, this morning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#0B0C10; --panel:#101319; --edge:#20242E; --edgeSoft:#171B22; --raised:#161B24;
+  --ink:#ECEFEA; --inkSec:#C3C8CC; --inkDim:#8B929C; --inkFaint:#5B626C;
+  --lime:#C8F250; --amber:#F2A64C; --indigo:#8A8CF0;
+  --brico:"Bricolage Grotesque",Georgia,serif;
+  --hanken:"Hanken Grotesk",system-ui,sans-serif;
+  --mono:"Spline Sans Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--page)}
+body{background:var(--page);color:var(--ink);font-family:var(--hanken);
+  -webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;letter-spacing:-.006em}
+.sheet{max-width:760px;margin:0 auto;padding:60px 28px 120px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+a{color:inherit}
+:focus-visible{outline:1.5px solid var(--lime);outline-offset:3px;border-radius:3px}
+
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--inkFaint);text-transform:uppercase;
+  display:flex;align-items:center;gap:12px}
+.kicker .sw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;letter-spacing:.14em}
+.kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--lime)}
+.kicker.off .dot{background:var(--inkFaint)}
+.kicker .sw b{color:var(--inkDim);font-weight:400}
+.back{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--inkDim);text-transform:uppercase}
+.back:hover{color:var(--ink)}
+.lede{font-family:var(--brico);font-weight:600;font-size:40px;line-height:1.04;letter-spacing:-.03em;margin-top:22px}
+.lede em{font-style:normal;color:var(--inkFaint)}
+.dek{font-size:16px;color:var(--inkDim);margin-top:14px;line-height:1.45;max-width:58ch}
+.dek b{color:var(--ink);font-weight:500}
+
+.roster{margin-top:34px;border-top:1px solid var(--edge)}
+.firm{display:block;width:100%;padding:22px 4px;border-bottom:1px solid var(--edgeSoft);transition:.14s}
+.firm:hover{padding-left:12px}
+.firm .r1{display:flex;align-items:baseline;gap:12px}
+.firm h2{font-family:var(--brico);font-weight:600;font-size:23px;letter-spacing:-.02em}
+.firm .sec{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--inkFaint)}
+.firm .auto{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--lime);
+  border:1px solid var(--edge);border-radius:5px;padding:2px 6px}
+.firm .go{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--inkFaint)}
+.firm:hover .go{color:var(--ink)}
+.firm .ess{color:var(--inkDim);font-size:14px;margin-top:4px}
+.firm .tally{display:flex;gap:22px;margin-top:13px;font-family:var(--mono);font-size:12.5px}
+.firm .tally .s{display:flex;align-items:center;gap:7px}
+.firm .tally .made b{color:var(--lime)} .firm .tally .made .k{color:var(--lime)}
+.firm .tally .wait b{color:var(--amber)} .firm .tally .wait .k{color:var(--amber)}
+.firm .tally .call b{color:var(--indigo)} .firm .tally .call .k{color:var(--indigo)}
+.firm .tally .s b{font-weight:500} .firm .tally .s .k{color:var(--inkFaint)}
+.firm .top{margin-top:11px;font-size:13.5px;color:var(--inkSec);display:flex;gap:9px;align-items:baseline}
+.firm .top .mk{color:var(--lime);font-family:var(--mono);font-size:12px}
+.firm .top .f{font-family:var(--mono);font-size:11.5px;color:var(--inkFaint)}
+
+/* command center */
+.ccbar{display:flex;align-items:center;gap:14px;margin-top:22px;padding-top:16px;border-top:1px solid var(--edge)}
+.ident{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;flex:1}
+.ident .f{display:flex;gap:8px;align-items:baseline}
+.ident .f .r{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkFaint)}
+.ident .f .v{color:var(--inkSec)}
+/* auto-mode toggle */
+.automode{display:flex;align-items:center;gap:9px;flex:none;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--inkFaint)}
+.automode .t{width:38px;height:21px;border-radius:11px;background:var(--raised);border:1px solid var(--edge);position:relative;transition:.18s}
+.automode .t::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--inkFaint);transition:.18s}
+.automode.on .t{background:#2d3a12;border-color:#4d5f1f}
+.automode.on .t::after{left:19px;background:var(--lime)}
+.automode.on{color:var(--lime)}
+
+.mv{margin-top:44px}
+.mvhead{display:flex;align-items:baseline;gap:14px}
+.mvhead h3{font-family:var(--brico);font-weight:600;font-size:15px;letter-spacing:.02em}
+.mvsub{font-size:13px;color:var(--inkFaint);margin-top:3px;line-height:1.4}
+.items{margin-top:14px;border-top:1px solid var(--edge)}
+.it{padding:16px 2px;border-bottom:1px solid var(--edgeSoft)}
+.it .row{display:flex;gap:16px;align-items:baseline}
+.it .mk{font-family:var(--mono);font-size:12px;flex:none;width:14px;line-height:1.7;color:var(--inkFaint)}
+.it .b{flex:1;min-width:0}
+.it .t{font-size:15.5px;color:var(--ink);line-height:1.4}
+.it .meta{font-family:var(--mono);font-size:12px;color:var(--inkFaint);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.it .meta .file{color:var(--lime)}
+.it .meta .sends{color:var(--amber)}
+.it.made .mk{color:var(--lime)}
+.it.wait .mk{color:var(--amber)}
+.it.call .mk{color:var(--indigo)}
+.review{font-family:var(--mono);font-size:12px;color:var(--inkDim)}
+.review:hover{color:var(--ink)}
+.open{font-family:var(--mono);font-size:12px;color:var(--inkDim);white-space:nowrap;align-self:center}
+.open:hover{color:var(--ink)}
+.approve{font-family:var(--hanken);font-size:13px;font-weight:600;color:var(--page);background:var(--amber);
+  padding:7px 14px;border-radius:8px;white-space:nowrap;align-self:center;flex:none}
+.approve:hover{filter:brightness(1.06)}
+.approve.sent{background:transparent;color:var(--lime);border:1px solid var(--edge);pointer-events:none}
+.approve.blocked{background:transparent;color:var(--indigo);border:1px solid var(--edge)}
+/* the preview drawer — what you're approving */
+.prev{margin:14px 0 2px 30px;border-left:2px solid var(--edge);padding:2px 0 2px 16px;
+  max-height:0;overflow:hidden;transition:max-height .22s ease}
+.prev.open{max-height:520px;overflow:auto}
+.prev .h{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--inkFaint);margin-bottom:8px}
+.prev .body{font-size:13.5px;color:var(--inkSec);white-space:pre-wrap;line-height:1.55;font-family:var(--hanken)}
+.prev .body b{color:var(--ink);font-weight:600}
+.autoline{margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--lime)}
+.emptyc{color:var(--inkFaint);font-size:13.5px;padding:16px 2px}
+.foot{margin-top:52px;padding-top:20px;border-top:1px solid var(--edge);
+  font-family:var(--mono);font-size:12px;color:var(--inkFaint);line-height:1.7}
+.foot b{color:var(--inkDim);font-weight:400}
+@media(max-width:560px){ .lede{font-size:31px} .firm h2{font-size:20px} .sheet{padding:44px 20px 90px} }
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="sheet" id="sheet"></div>
+
+<script type="module">
+const $=(s,r=document)=>r.querySelector(s);
+const esc=(s)=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const md=(s)=>esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
+
+/* SAMPLE — shown only when the page is opened OUTSIDE Switchboard (no provider), clearly marked
+   "· sample ·". Inside Switchboard the real portfolio is loaded from storage (load(), below). */
+const PF_SAMPLE = {
+  totals:{ made:3, staged:6, calls:0 },
+  companies:[
+    { id:"aamras", name:"Aamras", sector:"brand", essence:"scent as vibe — new-age home fragrance for gen-z", auto:false,
+      identity:[["Hero","one scent, three intensities"],["Who","gen-z, first-apartment"],["Voice","cultural insider"]],
+      moves:[
+        {lane:"autopilot",status:"done",txt:"Draft this week's Instagram/TikTok captions — “scent as vibe”",art:"aamras-captions.md"},
+        {lane:"gate",txt:"Publish the 3 hook videos to Instagram & TikTok",sends:"Instagram · TikTok",
+         preview:`**HOOK 1 — “The Smell Test”**\n*POV, close-up on wrist, no talking first 2s*\nOn-screen (0–2s): **“i made my boyfriend smell 5 perfumes blind. he stopped at this one.”**\nCaption (2–5s): *“This is Aamras — it smells like biting into a ripe mango in peak summer.”*\nCTA: *“Link in bio.”*\n\n**HOOK 2 — “Main Character”**\nOn-screen: **“the scent people stop you to ask about.”**\n…`},
+        {lane:"gate",txt:"Send the founder-voice email to the waitlist",sends:"email · needs a connector",
+         preview:`Subject: a small thing we made for you\n\nHey — you raised your hand early for Aamras, so you get first dibs.\nThe first drop is small on purpose. Here's the link, 24 hours before everyone else.\n— the Aamras team`},
+      ]},
+    { id:"haazma", name:"Haazma", sector:"brand", essence:"the digestive ritual", auto:false,
+      identity:[["Hero","the after-meal ritual"],["Who","health-curious millennials"],["Voice","calm, credible"]],
+      moves:[
+        {lane:"autopilot",status:"done",txt:"Draft the Haazma origin / ritual story page",art:"haazma-origin.md"},
+        {lane:"gate",txt:"Publish the educational carousel",sends:"Instagram",
+         preview:`Slide 1: **Why the after-meal slump is a ritual problem, not a willpower one.**\nSlide 2: the 3-minute practice that resets digestion…\nSlide 3: what Haazma adds, and what it deliberately doesn't.`},
+        {lane:"gate",txt:"Send DMs to 5 targeted micro-creators",sends:"DM · needs a connector",
+         preview:`Hi [name] — your post on gut-health myths was the clearest I've seen.\nWe made Haazma for exactly the person you're talking to. No ask — I'd just love to send you one. Where do I mail it?`},
+      ]},
+    { id:"switchboard", name:"Switchboard", sector:"software", essence:"an app platform where every app runs on your own AI", auto:false,
+      identity:[["Offer","the private AI gateway"],["ICP","people who live in AI tools"],["Wedge","zero-lag, your subscription"]],
+      moves:[
+        {lane:"autopilot",status:"done",txt:"Draft a one-page comparison — Switchboard vs. hosted AI apps",art:"switchboard-compare.md"},
+        {lane:"gate",txt:"Publish the launch post — the “no middleman” model",sends:"X · LinkedIn",
+         preview:`Every AI app you use resells you the same models you already pay for.\nSwitchboard flips it: apps bring the interface, your Claude does the work. No middleman, no second bill, nothing leaves your machine.\nHere's how it works →`},
+        {lane:"gate",txt:"Email the 5 warmest connector-integration prospects",sends:"email · needs a connector",
+         preview:`Subject: a 10-minute integration that makes your tool bring-your-own-AI\n\nHi [name] — Switchboard lets your users run your app on their own Claude, zero inference cost to you. Worth a quick look?`},
+      ]},
+  ],
+};
+let PF = { totals:{made:0,staged:0,calls:0}, companies:[] };
+let STATE = "loading", PROVIDER = null, SAMPLE = false;
+const lanes=(m)=>({made:m.filter(x=>x.lane==="autopilot"),wait:m.filter(x=>x.lane==="gate"),call:m.filter(x=>x.lane==="founder")});
+const firm=(id)=>PF.companies.find(c=>c.id===id);
+let VIEW="portfolio", ON=true, OPEN=new Set();
+
+/* ── Real data: the portfolio autopilot wrote this morning, read from this origin's own storage. ──
+   The routine files autopilot-portfolio.json (aggregate) with every company's moves + PREPARED gate
+   previews. We map it to the render shape; the "Approve & send" tap calls the daemon's real dispatch. */
+async function getProvider(){
+  if (window.claude?.isRelay) return window.claude;
+  return await new Promise((res)=>{ const t=setTimeout(()=>res(null),3000);
+    window.addEventListener("claude#initialized",()=>{clearTimeout(t);res(window.claude?.isRelay?window.claude:null);},{once:true}); });
+}
+const req=(method,params)=>PROVIDER.request({method,params});
+const dispatch=(args)=>req("claude_callTool",{name:"relay__autopilot_dispatch",arguments:args});
+function adapt(pf){
+  return { totals: pf.totals || {made:0,staged:0,calls:0},
+    companies: (pf.companies||[]).map(c=>({ id:c.id, name:c.name, sector:c.sector||"", essence:c.essence||"", auto:!!c.auto,
+      identity: [],
+      moves: (c.moves||[]).map(m=>({ txt:m.txt, lane:m.lane, status:m.status, art:m.artifact||"", preview:m.preview||"",
+        sends: m.channel||"", dispatch: m.dispatch||null })) })) };
+}
+async function load(){
+  PROVIDER = await getProvider();
+  if (!PROVIDER){ SAMPLE=true; PF=PF_SAMPLE; STATE="ready"; render(); return; }
+  try { await req("claude_connect",{}); } catch {}
+  try {
+    const r = await req("claude_storage",{op:"get",key:"autopilot-portfolio"});
+    if (!r || !r.value){ STATE="empty"; render(); return; }
+    PF = adapt(JSON.parse(r.value)); STATE="ready"; render();
+  } catch(e){ console.error("[cockpit] load failed",e); STATE="error"; render(); }
+}
+const stateMsg=()=>({ loading:"Reading this morning's run…",
+  empty:"No run yet — turn Autopilot on in the menu bar and it fills overnight.",
+  error:"Couldn't read the portfolio — is Switchboard running?" }[STATE]||"…");
+
+function render(){
+  if (STATE!=="ready"){ $("#sheet").innerHTML =
+    `<div class="kicker off"><span>AUTOPILOT · YOUR PORTFOLIO</span></div><h1 class="lede">${stateMsg()}</h1>`; return; }
+  $("#sheet").innerHTML = VIEW==="portfolio" ? portfolioView() : companyView(firm(VIEW)); wire();
+}
+
+function portfolioView(){
+  const t=PF.totals, autos=PF.companies.filter(c=>c.auto).length;
+  return `
+  <div class="kicker ${ON?"":"off"}"><span>AUTOPILOT · YOUR PORTFOLIO${SAMPLE?" · sample":" · THIS MORNING"}</span>
+    <button class="sw" id="sw"><span class="dot"></span><b>${ON?"running":"paused"}</b></button></div>
+  <h1 class="lede">${PF.companies.length} companies ran themselves <em>overnight.</em></h1>
+  <p class="dek"><b>${t.made} things made</b> while you slept · <b>${t.staged} waiting</b> on your tap · <b>${t.calls} calls</b> only you. Open any one for its command center.</p>
+  <div class="roster">${PF.companies.map(firmRow).join("")}</div>
+  <div class="foot"><b>the clock:</b> routine #1 nudges every company you've turned on, every 30 min · <b>the boundary:</b> reversible work runs itself; the send line only moves on your tap — or on full auto, per company.</div>`;
+}
+function firmRow(c){
+  const L=lanes(c.moves), top=L.made.find(m=>m.status==="done");
+  return `<button class="firm" data-firm="${c.id}">
+    <div class="r1"><h2>${esc(c.name)}</h2><span class="sec">${esc(c.sector)}</span>${c.auto?`<span class="auto">◆ full auto</span>`:""}<span class="go">command center →</span></div>
+    <div class="ess">${esc(c.essence)}</div>
+    <div class="tally">
+      <span class="s made"><span class="k">●</span><b>${L.made.filter(m=>m.status==="done").length} made</b></span>
+      <span class="s wait"><span class="k">▲</span><b>${L.wait.length} waiting</b></span>
+      <span class="s call"><span class="k">◆</span><b>${L.call.length} calls</b></span></div>
+    ${top?`<div class="top"><span class="mk">✓</span><span>${esc(top.txt)}</span><span class="f">${esc(top.art)}</span></div>`:""}</button>`;
+}
+
+function companyView(c){
+  const L=lanes(c.moves), made=L.made.filter(m=>m.status==="done").length;
+  const waitSub = c.auto
+    ? "Full auto — autopilot sends these itself, on your standing say-so. Flip auto off to review each first."
+    : "Prepared to the last inch. Review the exact content, then one tap sends it. Nothing goes out on its own.";
+  return `
+  <div class="kicker ${ON?"":"off"}"><button class="back" id="back">← portfolio</button>
+    <span style="color:var(--inkDim);letter-spacing:.16em">${esc(c.sector).toUpperCase()}</span>
+    <button class="sw" id="sw"><span class="dot"></span><b>${ON?"running":"paused"}</b></button></div>
+  <h1 class="lede">${esc(c.name)} ran itself <em>overnight.</em></h1>
+  <p class="dek"><b>${made} made</b> · <b>${L.wait.length} ${c.auto?"on full auto":"waiting"}</b> · <b>${L.call.length} calls</b> for you.</p>
+  <div class="ccbar">
+    <div class="ident">${c.identity.map(([r,v])=>`<span class="f"><span class="r">${esc(r)}</span><span class="v">${esc(v)}</span></span>`).join("")}</div>
+    <button class="automode ${c.auto?"on":""}" id="automode" title="full auto sends without asking"><span>Auto mode</span><span class="t"></span></button>
+  </div>
+
+  ${section("Made while you slept","Reversible work — God's hands drafted it on your Claude. Nothing left the machine.",L.made.map(madeRow).join("")||emptyc("nothing yet"))}
+  ${section(c.auto?"Handled on full auto":"Waiting on you",waitSub,L.wait.map((m,i)=>waitRow(m,i,c.auto)).join("")||emptyc("clear — nothing to send"))}
+  ${section("Your call","Judgment only you make. God brings the context, not a recommendation.",L.call.map(callRow).join("")||emptyc("clear — no calls for you today"))}
+
+  <div class="foot"><b>the boundary:</b> ${c.auto?"you turned on full auto — sends fire on your standing authorization, still audited and stoppable.":"reversible runs itself; a send only fires on your tap, and only through a connected sender."}</div>`;
+}
+const section=(h,sub,body)=>`<section class="mv"><div class="mvhead"><h3>${h}</h3></div><div class="mvsub">${sub}</div><div class="items">${body}</div></section>`;
+const emptyc=(t)=>`<div class="emptyc">${t}</div>`;
+function madeRow(m){ return `<div class="it made"><div class="row"><span class="mk">✓</span><div class="b"><div class="t">${esc(m.txt)}</div><div class="meta"><span class="file">${esc(m.art)}</span><span>· filed to Bank</span></div></div><button class="open">open →</button></div></div>`; }
+function waitRow(m,i,auto){
+  const key=`${VIEW}-${i}`, open=OPEN.has(key);
+  // The tap reaches the real daemon dispatch; the honest outcome (sent / no-sender → connect) comes
+  // back from it. Full-auto moves are sent (or waiting on a sender) by the routine, not tapped here.
+  const action = m.status==="sent"
+    ? `<span class="autoline">◆ sent</span>`
+    : auto
+      ? `<span class="autoline">◆ ${m.dispatch==="no-sender"?"waiting on a sender":"autopilot will send this"}</span>`
+      : `<button class="approve" data-approve="${i}">Approve &amp; send</button>`;
+  return `<div class="it wait">
+    <div class="row"><span class="mk">▲</span>
+      <div class="b"><div class="t">${esc(m.txt)}</div>
+        <div class="meta"><span class="sends">sends → ${esc(m.sends||"publish")}</span>${m.preview?`<button class="review" data-review="${i}">${open?"hide":"review what it'll send"} →</button>`:""}</div></div>
+      ${action}</div>
+    ${m.preview?`<div class="prev ${open?"open":""}" id="prev-${i}"><div class="h">Prepared — awaiting your ${auto?"standing":""} approval</div><div class="body">${md(m.preview)}</div></div>`:""}
+  </div>`;
+}
+function callRow(m){ return `<div class="it call"><div class="row"><span class="mk">◆</span><div class="b"><div class="t">${esc(m.txt)}</div><div class="meta">${esc(m.ctx||"")}</div></div></div></div>`; }
+
+function wire(){
+  document.querySelectorAll("[data-firm]").forEach(b=>b.onclick=()=>{VIEW=b.dataset.firm;OPEN.clear();scrollTo(0,0);render();});
+  const back=$("#back"); if(back) back.onclick=()=>{VIEW="portfolio";scrollTo(0,0);render();};
+  const sw=$("#sw"); if(sw) sw.onclick=()=>{ON=!ON;render();};
+  const am=$("#automode"); if(am) am.onclick=()=>{const c=firm(VIEW);c.auto=!c.auto;render();};
+  document.querySelectorAll("[data-review]").forEach(b=>b.onclick=()=>{const k=`${VIEW}-${b.dataset.review}`;OPEN.has(k)?OPEN.delete(k):OPEN.add(k);render();});
+  document.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{
+    const i=+b.dataset.approve, c=firm(VIEW), m=lanes(c.moves).wait[i];
+    if (SAMPLE || !PROVIDER){ b.textContent="✓ Sent (sample)"; b.classList.add("sent"); return; }   // no real send outside Switchboard
+    b.disabled=true; const was=b.textContent; b.textContent="sending…";
+    try {
+      const r = await dispatch({ channel:m.sends||"publish", content:m.preview||m.txt, company:c.name, move:m.txt });
+      if (r.status==="sent"){ b.textContent="✓ Sent"; b.classList.add("sent"); m.status="sent"; }
+      else if (r.status==="no-sender"){ b.textContent="Connect to send"; b.classList.add("blocked"); b.title=r.note||"Connect a sender first."; b.disabled=false; }
+      else if (r.status==="declined"){ b.textContent=was; b.disabled=false; }
+      else { b.textContent="send failed"; b.title=r.note||""; b.disabled=false; }
+    } catch(e){ console.error("[cockpit] dispatch failed",e); b.textContent="Connect to send"; b.classList.add("blocked"); b.title=String(e&&e.message||e); b.disabled=false; }
+  });
+}
+load();
+</script>
+</body>
+</html>

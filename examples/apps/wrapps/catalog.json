@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 76,
+  "count": 77,
   "listings": [
     {
       "id": "bank",
@@ -804,6 +804,47 @@
           "description": "Turn a video transcript (or rough notes) into a cut plan: on-screen captions + a highlight cut list (keep MM:SS–MM:SS with a reason) + what to trim. Writes it live on the page and returns it.",
           "inputSchema": {
             "transcript": "string — the video transcript or rough notes to plan a cut from. Required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "echo",
+      "name": "Echo",
+      "tagline": "Type text, hear it spoken — on-device voices",
+      "category": "tool",
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/echo.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "capability",
+          "name": "sb_speak"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "echo_speak",
+          "description": "Speak text aloud with a local, on-device voice model. Plays the audio on the page and returns which local backend spoke it.",
+          "inputSchema": {
+            "text": "string — the text to read aloud. Required."
           }
         }
       ]

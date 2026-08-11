@@ -63,7 +63,7 @@ field conventions in `CONTEXT-KINDS.md`.
 | Object | Stored as | Produced by | Read by (lenses) |
 |---|---|---|---|
 | **Project** | `project-<slug>.md` (front-matter + body) | Bank Establish flow, ideabrain, extractor, a wrapp's `context.publish` | Home (active card), Bank, Graph (node), Calendar (milestones), History (scope) |
-| **Task** | line in `tasks.md`, tagged `@<wrapp>` / `#project` | Bank quick-add, a wrapp, God, the connector (`bank_add_task`) | Tasks (board), Home (What's next), Calendar (dated), Bank (project tasks) |
+| **Task** | line in `tasks.md`, tagged `@<wrapp>` / `#project` | Bank quick-add, a wrapp, God, the Switchboard connector (`switchboard_add_task`) | Tasks (board), Home (What's next), Calendar (dated), Bank (project tasks) |
 | **Note** | `note-<slug>.md` | Bank capture box (`bankIt`), God, dictation | Bank, Graph, Home (Recent), `⌃⌃` search |
 | **Artifact** | `artifact-<id>.md` + blob (image/doc/deck) | any wrapp run (the output of a God tool) | Home (Recent Work), Bank (project facet), Graph, History |
 | **History entry** | `history-<id>.md` (a session receipt) | every God/wrapp run appends one | History, Home (Recent), Graph (edges), `⌃⌃` ask |
@@ -350,9 +350,46 @@ Finder drop → new `artifact-*.md` / `note-*.md`. Home authors little; it mostl
 **One job:** *See and move everything I've committed to, across every project and wrapp, in one board.*
 Tasks is the lens on `tasks.md` (the open-ClickUp-in-Bank model).
 
-**Belongs:** task rows, grouping/filtering, quick-add, the board columns.
-**Must NOT:** become a full PM app with custom fields/gantt/automations; invent statuses beyond the vault
-convention; hide the fact that a task is just a line in a file.
+**Belongs:** task rows, the kanban columns, grouping/filtering, drag-to-move, quick-add, and the AI
+**spec-out** (a brain-dump → detailed cards, bundled, with blockers marked).
+**Must NOT:** become a full PM app with gantt/automations/permissions; store kanban state anywhere but the
+`.md` line; hide the fact that a task is just a line in a file. Every column, blocker, and bundle is a
+plain token in `tasks.md` — Obsidian still opens it, and nothing lives in a sidecar DB.
+
+### The dialect (how the board is still just text)
+
+A task is a line; a few **optional, order-free, still-plain tokens** turn the two-status list into a real
+kanban. `[x]` always wins as Done; everything else refines the open state:
+
+```
+## Switchboard launch
+- [ ] Ship the pricing page @crest status:doing id:pr01 epic:launch prio:high due:2026-08-15
+      Three tiers, monthly/annual toggle, Paddle checkout wired.   ← indented lines = the card's detail
+      - [ ] Wire Paddle checkout                                   ← nested checkbox = a subtask
+- [ ] Legal OK on pricing copy id:leg1 epic:launch blocked:pr01    ← waits on pr01 → lands in Blocked
+```
+
+| Token | Meaning |
+|---|---|
+| `status:backlog\|todo\|doing\|blocked\|review` | the open-state **column** (missing = todo; `[x]` = Done, always). **`backlog` = parked**; promoting a card Backlog→Todo is the deliberate signal that releases it to agents |
+| `id:xxxx` | a stable handle other cards (and Claude) reference |
+| `blocked:xxxx` (a.k.a. `needs:`) | this card waits on task `xxxx` — an unresolved blocker forces the **Blocked** column |
+| `epic:slug` | the **bundle** this card belongs to (Group: Bundle, or the ◇ chip on a card) |
+| `prio:high\|med\|low` | priority |
+| `due:YYYY-MM-DD` | due date (the legacy `— by <hint>` form is still read) |
+
+The one parser lives in [`packages/bank-mcp/tasks.mjs`](../packages/bank-mcp/tasks.mjs) (`parseBody` ·
+`parseTasks` · `columnOf` · `setStatus` · `assignIds`), mirrored 1:1 in the native
+[`OSSurfaceWorkspace.swift`](../packages/menubar/OSSurfaceWorkspace.swift) so the board, the connector,
+and Obsidian never disagree.
+
+### AI spec-out
+
+The **✦ Spec a dump** button opens a box: paste a scattered brain-dump, and the user's own Claude (one
+gated `claude_complete` via `SkillRunner` → the daemon) drafts it into cards — short imperative titles,
+1–3 detail lines each, related tasks sharing an `epic:`, real dependencies wired as `blocked:`, and a
+priority. The output is appended verbatim under the scoped project's heading; ids are backfilled so
+blockers resolve. Nothing is written until it's plain `.md` on disk.
 
 ### Section layout & hierarchy
 
@@ -416,6 +453,32 @@ Every status change, edit, archive is journaled → `⌘Z`. Bulk actions undo as
 Sole lens on `tasks.md`. Reads/writes task lines in place (status token, `@`, `#`, `due:`), preserving
 surrounding lines/comments (line-oriented edit, never a rewrite of the whole file). Expanding a task may
 link to `note-*.md` / `artifact-*.md`.
+
+### Grounding — what's real today (native build)
+
+- **Source** = every `tasks.md` across the real vaults: bound folders (`storage-bindings.json`) ∪
+  context `data.folder`s. Line dialect (see above): `- [ ] text @wrapp #project status:… id:… epic:…
+  blocked:… prio:… due:YYYY-MM-DD` + indented detail; `- [x]` = done.
+- **Columns** = a real kanban resolved from the line: **Backlog · Todo · Doing · Blocked · Review**
+  (open) + a collapsed **Done** tally. Fixed-width columns that **scroll horizontally** (Trello/Linear
+  grammar) so titles never wrap-cut. Every open column always shows so you can drag into an empty one.
+  **Backlog is the staging area** — the AI spec-out drops there and `switchboard_next_task` never pulls
+  from it; you promote a card to Todo to release it. `Group:` cycles **Status / Project / Bundle / Due**
+  (Bundle = `epic:`; Due = Overdue · Due · No date).
+- **The pickup pipeline**: Backlog → (you promote) → Todo → an agent/Claude-session claims it via the
+  **Switchboard connector** (`switchboard_next_task`) → Doing → Review → Done. A promoted card with an open blocker parks in
+  Blocked until the blocker clears, then becomes pickable — so agents only ever get unblocked, released work.
+- **Scope** = the active project (its vault folder or `#slug` tag); the chip lifts to All projects.
+  A scope that matches nothing falls open to All, honestly labeled.
+- **Writes**: checkbox toggle and **drag-between-columns** rewrite ONLY that line (exact-`raw`-line
+  match; if the file changed underneath, they refuse rather than blind-write) — drag sets/clears the
+  `status:` token. Quick-add appends a line (creates the file with a `# Tasks` header on first use), into
+  the scoped project's vault. **✦ Spec a dump** appends AI-drafted cards, then backfills `id:`s.
+- **States**: no tasks anywhere → CTA card with a working quick-add (or the bind-a-folder truth);
+  unreadable `tasks.md` → per-file banner with **Open tasks.md**; Done lives in a collapsed count
+  column → expands in List view.
+- Verified by a headless logic test (parse dialect ✓, append ✓, line-precise toggle ✓, round-trip
+  restores the exact file ✓, stale-handle refuses to write ✓).
 
 ---
 
@@ -484,6 +547,14 @@ date is an edit, undoable.
 Reads: `due:` on `tasks.md` lines, roadmap/milestone dates in `project-*.md`, timestamps in
 `history-*.md`, routine schedules. Writes: only `due:` on task lines and quick-add task creation.
 Everything else is read-only projection.
+
+### Grounding — what's real today (native build)
+
+A real month grid built from `Calendar.current` (correct weekday alignment, real today marked lime,
+‹/›/Today navigate real months). Two real dated sources: open tasks' `due:YYYY-MM-DD` (● lime if
+overdue, dim if later) and audit-log acts merged per app per day (↻ past, dim). **No milestones** —
+project roadmaps carry no dates in the vault yet, so none are invented. Month · Week (the real week
+containing today) · Agenda (only days with items). Empty → an honest hint, never fake events.
 
 ---
 
@@ -577,6 +648,25 @@ Bank is the **read/write root** for `project-*.md`, `note-*.md`, `dictionary-*.m
 project slice of `tasks.md`, and `artifact-*.md` metadata. It's the only surface allowed to *create
 projects* and *establish* context. Other surfaces write narrow slices; Bank writes the whole model.
 
+### Grounding — what's real today (native build)
+
+The native surface reads only real state, no samples:
+
+- **Projects** = `~/.relay/contexts.json` (recency-sorted); active = `context-selection.json` `*global*`.
+- **Vault folder** = the context's `data.folder`, else the `storage-bindings.json` folder of its source
+  origin. Shown in the hero (or the honest "no folder bound" line).
+- **Overview** = the context's real `data` fields (products/positioning/audience/voice/palette,
+  idea/problem/market/…, oneLine/summary/repo, decisions). Empty fields don't render; an empty Overview
+  is an Establish CTA.
+- **Tasks** = `tasks.md` checkbox lines in the vault folder (`- [ ] text @wrapp #project`); quick-add
+  appends a line (creates the file on first use). No folder → honest bind CTA.
+- **Brain** = `note-*/dictionary-*/project-*/brand-*.md` in the vault folder, newest first; row click
+  opens the file. Empty → "Bank it" CTA.
+- **Artifacts** = real blobs from `~/.relay/storage/<origin>/` AND the bound folder itself (a bound
+  origin's storage IS its folder).
+- **Writes**: capture ("Bank it") = clipboard → `note-<ts>.md` (falls back to `~/.relay/bank/<id>/` when
+  nothing is bound); New/Rename mutate `contexts.json` (atomic write; one-shot `.os-bak` guard).
+
 ---
 
 ## 3.5 History — the retrospective lens
@@ -642,6 +732,22 @@ recoverable from `.trash`. Pinning/unpinning is trivially reversible.
 
 Reads `history-*.md`. Writes only: pin flags, roll-up summaries, and (guarded) moves to `.trash`. Every
 other surface *appends* to history on a run; History itself is a near-read-only lens.
+
+### Grounding — what's real today (native build)
+
+- **Receipts** come from the two real trails: `~/.relay/audit.log` (every broker act: ts · origin ·
+  method · outcome) and `guide-history.jsonl` (guided runs with title + steps passed). The audit log
+  logs **no prompt text** — rows show the ACT ("Ran the model", "Dictated ×2", "Saved work"), honestly,
+  instead of a fabricated prompt.
+- Consecutive same-act events within 10 min merge into one receipt (×N) so a busy wrapp reads as work,
+  not spam. Denied acts are receipts too — the consent story stays visible.
+- Day-grouped (Today/Yesterday/real dates), last 14 days; footer states that older receipts stay in
+  the log untouched. Filters: wrapp · date · search. No fake project scope — acts carry no project tag
+  in the log (a future daemon change could add one).
+- **Reopen** launches that wrapp via the real OSLaunch seam. Expanded receipt = act · method ·
+  outcome/result · provenance (which trail file).
+- **States**: empty trail → verb CTA ("Run an app to start"); filters-match-nothing row; read-only lens
+  (no deletes anywhere).
 
 ---
 
@@ -777,6 +883,17 @@ Edits autosave + version; archive → `.trash`. Merge-duplicates is a single jou
 Reads/writes `dictionary-*.md`. Feeds (read-only) into tooltips across every surface and into God's
 context (so answers use the user's vocabulary).
 
+### Grounding — Dictionary + Graph, what's real today (native build)
+
+- **Dictionary** reads real `dictionary-*.md` across the bound vault folders (front-matter
+  term/definition/scope/source + first body line as fallback), A–Z bucketed + searchable, count pill.
+  No vault holds terms yet, so the truthful render is the **teach-state** ("Teach Switchboard your
+  words") — never sample vocabulary.
+- **Graph** is built from real state: the active project (else most recent) is the hub, its real
+  artifacts (same storage+vault sources as Bank's Artifacts facet) orbit it, and the other real
+  projects ring the outside as sibling hubs — deterministic radial layout, real inspector counts,
+  real neighbor jumps. No invented nodes; empty vault → an honest coming-state.
+
 ---
 
 ## 3.8 Apps — the installed tools
@@ -833,6 +950,19 @@ or weight; auto-run anything.
 | Hover tile | Name + tagline + last-used |
 | Right-click | Open · Pin/unpin · Give God this hand / revoke · Requirements ▸ · Uninstall (guarded) |
 | Drag tile | Reorder pinned (drives Home dock) |
+
+### Grounding — what's real today (native build)
+
+- **Catalog** = `~/.relay/catalog.json` (`listings[]`: id/name/tagline/category/requires/tools). The
+  real categories are studio · tool · **skill** (the biggest shelf) · agent · fun.
+- **Connected shelf** replaces the invented "Pinned": wrapps whose origin holds a standing grant in
+  `grants.json` (grant origin → wrapp id, same resolution as storage origins). Indigo dot = connected.
+- **Lime dot** = active today (latest audit-log session < 24h) — not a fake "live" flag.
+- **Hover tip** = tagline · N tools God can drive (`tools[]`) · N needs (`requires[]`) · last active.
+- **States**: missing/unreadable catalog → honest banner (daemon rebuilds it); a listing missing
+  id/name renders dimmed, never dropped; search cuts across name/id/tagline.
+- Not built yet (needs new state or daemon work): pin/reorder persistence, per-tile uninstall,
+  God-hand grant/revoke from the tile.
 | Click "God can drive" dot | Toggle the God-hand grant (consent) |
 | `⌃⌃` | Find/launch an app by name |
 
@@ -917,6 +1047,17 @@ of scope for auto-execution entirely).
 
 Store writes to the **app registry** (install/grant state), not the vault directly. It never writes
 `.md`. (Installing a wrapp later *enables* vault writes when the wrapp runs.)
+
+### Grounding — what's real today (native build)
+
+The OS Store surface is the **door**, not a rebuild — the real store is `StoreFrontView` (featured
+page + shelves + detail + resource profile), opened via the `OSStoreDoor` seam → `showStore()`.
+On the door itself, everything comes from the live catalog: the count pill, category chips with real
+counts (Browse all · Studios · Tools · Skills · Agents · Fun), the founder-curated **Start here**
+hero (brandbrain, real tagline), **Skills you haven't connected** (skill listings minus granted
+origins), and **Studios**. Every chip launches the real wrapp; missing catalog → honest daemon
+banner. Under the SnapshotOS harness (no host) the door degrades to in-OS navigation, never a dead
+end.
 
 ---
 
@@ -1022,6 +1163,16 @@ delegated control-plane action, not a Dashboard write.
 
 ---
 
+### Grounding — Dashboard, what's real today (native build)
+
+Every tile/pane derives from the same readers the other surfaces use — contexts.json (Projects tile +
+touched-per-day spark), routines.json/control (Routines tile + state pane), the audit receipts
+(**Acts** tile with an ok/denied split + per-day bars, Recent-acts pane, Activity sessions pane),
+status.json (Connectors tile + Subsystem health incl. backends + daemon-freshness), osPending (Needs
+tile). The Today/7d/30d segment re-scopes the audit window. **No usage/token tile** — there is no
+truthful per-day usage receipt yet; a fake meter is worse than none (see the gate token-accounting
+history). Health alerts each carry the →fix door to Needs attention.
+
 ## 3.11 Needs attention — the action inbox
 
 **One job:** *Show me everything waiting on ME, and give me the one action for each.* This is the OS's
@@ -1082,6 +1233,23 @@ the Dashboard activity feed); hold items the OS could resolve itself; keep an it
 |---|---|
 | Click primary action | Resolve in place (Approve/Retry/Grant/Decide…) — the item leaves the inbox on success |
 | Click "why…" | Expand the full context (what asked, what it will do, the blast radius) |
+
+### Grounding — what's real today (native build)
+
+Every item derives from a real `~/.relay` state, and every primary action is real:
+
+- ▲ **Blocking**: down connectors from `status.json` (`ok:false`) → **Open panel** (writes the
+  `~/.relay/open-panel` trigger; the menu-bar app fronts the real panel). A `status.json` older than
+  2h → the stale-daemon item.
+- ● **Failed**: routines whose record carries `lastOutcome: error/failed` or a `lastError` (renders
+  only when the control plane actually records it — no invented failures).
+- ○ **Waiting**: a suspended guide from `guide-suspended.json` → **Resume** genuinely resumes (moves
+  suspended → `guide-run.json`; the CursorGuide watcher picks it up, exactly like the menu item);
+  routines switched off (`routines-control.json off:true` / `globalPaused`) → Open Routines; overdue
+  tasks (`due:` past) → Open Tasks.
+- The rail badge and the Home strip read the same states (`osPending()`), so the count never
+  disagrees with the inbox. Empty = the calm "you're clear" state. Snooze/Later hides for the visit
+  only; an item truly leaves when its underlying state clears.
 | Click the source chip | Deep-link to the origin (routine / workflow run / task / artifact) |
 | Dismiss | Remove without acting (journaled → **undoable**) |
 | Snooze | Re-surface later (a time chip) |
@@ -1191,6 +1359,20 @@ Dashboard.
 
 ---
 
+### Grounding — Routines, what's real today (native build)
+
+- Reads `routines.json` (the daemon's record: id/title/tier/active/lastRunAt/runs/tokens +
+  `globalPaused`) and `routines-control.json` (`off` — the user's master switch) truthfully. Register
+  mapping: failure evidence → failed; active&on → active; else paused/off/held.
+- The ONE write is the master switch → `routines-control.json` (atomic; the daemon polls it). The OS
+  never writes the daemon-owned `routines.json` (no per-routine toggle yet — that needs a daemon RPC
+  or a per-routine control file).
+- Row actions: "Runs in History" (the audit trail holds the real runs). No fake Run-now/Pause.
+- The add-CTA is honest: routines arrive when a wrapp requests one; Autopilot (routine #1) opens via
+  the real launcher. Missing `routines.json` → stated plainly.
+
+---
+
 ## 3.13 Workflows — the pipeline layer
 
 **One job:** *Run and manage my multi-step pipelines — the reusable batch recipes.* The lens on the
@@ -1267,6 +1449,16 @@ promoting to a routine writes the control-plane object.
 ---
 
 # 4. Cross-cutting laws
+
+### Grounding — Workflows, what's real today (native build)
+
+There is **no daemon workflow registry yet**, so the surface invents nothing. The one real multi-step
+pipeline on the machine is the **batch** wrapp — each `batch-state.json` is a recipe of N answer-steps
+(brief + per-step open/selected/locked/error). `workflowsLive()` reads those across storage origins and
+renders each as a real step-chain with its true per-step state and completion (`✓ locked` / `◐ n/N` /
+`✗ error` / `not started`). Empty → an honest coming-state that opens the batch wrapp; the footer names
+the daemon workflow registry as the next layer. Row actions open batch / jump to History (no fake
+Run-now/Promote against a registry that doesn't exist).
 
 ## 4.1 Reversibility doctrine
 

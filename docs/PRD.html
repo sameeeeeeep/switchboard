@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — Product Requirements Document</title>
+<style>
+  :root{
+    --page:#000; --bg:#0A0C10; --panel:#141416; --panel2:#101216; --edge:#282829;
+    --ink:#E8EDF4; --muted:#8891A0; --faint:#5A616E;
+    --lime:#C8F250; --indigo:#5B8DEF; --amber:#F5A623; --danger:#FF2D6E;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+    --serif:"Bricolage Grotesque",Georgia,"Times New Roman",serif;
+    --sans:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --maxw:820px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--page);color:var(--ink);
+    font-family:var(--sans);font-size:16px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--indigo);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* layout */
+  .wrap{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
+  nav.toc{
+    position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+    padding:34px 22px 60px;border-right:1px solid var(--edge);
+  }
+  nav.toc .brand{font-family:var(--serif);font-weight:700;font-size:19px;letter-spacing:-.01em;margin-bottom:2px}
+  nav.toc .brand .dot{color:var(--lime)}
+  nav.toc .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:26px}
+  nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+  nav.toc li{counter-increment:s;margin:0}
+  nav.toc a{
+    display:block;color:var(--muted);font-size:13px;padding:6px 0 6px 30px;position:relative;line-height:1.35;border-left:1px solid transparent
+  }
+  nav.toc a::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:6px;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  nav.toc a:hover{color:var(--ink);text-decoration:none}
+
+  main{padding:64px 56px 140px;max-width:calc(var(--maxw) + 112px)}
+  section{margin:0 0 66px;scroll-margin-top:24px}
+  .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 14px}
+  h1{font-family:var(--serif);font-weight:700;font-size:44px;line-height:1.04;letter-spacing:-.02em;margin:0 0 18px}
+  h2{font-family:var(--serif);font-weight:700;font-size:27px;line-height:1.12;letter-spacing:-.015em;margin:0 0 8px}
+  h3{font-family:var(--sans);font-weight:650;font-size:16px;letter-spacing:.01em;margin:26px 0 8px;color:var(--ink)}
+  h4{font-family:var(--mono);font-weight:600;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+  p{margin:0 0 14px;color:#D2D8E2}
+  .lede{font-size:18.5px;line-height:1.5;color:var(--ink)}
+  strong{color:#fff;font-weight:650}
+  em{color:var(--ink)}
+  code{font-family:var(--mono);font-size:12.5px;background:#17191d;border:1px solid var(--edge);border-radius:4px;padding:1px 5px;color:#CBD3DE}
+  ul,ol{margin:0 0 16px;padding-left:20px}
+  li{margin:0 0 7px;color:#D2D8E2}
+  hr{border:none;border-top:1px solid var(--edge);margin:0 0 40px}
+
+  /* section head rule + accent */
+  .shead{border-top:1px solid var(--edge);padding-top:34px;margin-bottom:26px;position:relative}
+  .shead::before{content:"";position:absolute;top:-1px;left:0;width:44px;height:2px;background:var(--acc,var(--lime))}
+  section[data-acc="lime"]{--acc:var(--lime)}
+  section[data-acc="indigo"]{--acc:var(--indigo)}
+  section[data-acc="amber"]{--acc:var(--amber)}
+  section[data-acc="danger"]{--acc:var(--danger)}
+  .kicker .num{color:var(--acc,var(--lime))}
+
+  /* pills */
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:100px;border:1px solid;vertical-align:middle;white-space:nowrap;font-weight:600}
+  .p-ship{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,transparent);background:color-mix(in srgb,var(--lime) 9%,transparent)}
+  .p-part{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 9%,transparent)}
+  .p-asp{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 45%,transparent);background:color-mix(in srgb,var(--indigo) 9%,transparent)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:18px 0 0}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+
+  /* callout cards */
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:20px 22px;margin:0 0 18px}
+  .card.tight{padding:16px 18px}
+  .card .ct{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+  .moat{border-color:color-mix(in srgb,var(--lime) 30%,var(--edge))}
+  .warn{border-left:2px solid var(--amber)}
+
+  /* tables */
+  .tscroll{overflow-x:auto;margin:0 0 20px;border:1px solid var(--edge);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--edge);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;background:#101216;position:sticky;top:0}
+  tr:last-child td{border-bottom:none}
+  td code{font-size:11.5px;white-space:nowrap}
+  .col-st{white-space:nowrap;width:1%}
+
+  /* two-col mini grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:0 0 18px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 18px}
+  .mini{background:var(--panel);border:1px solid var(--edge);border-radius:9px;padding:15px 16px}
+  .mini h5{margin:0 0 6px;font-size:13.5px;font-weight:650;color:#fff}
+  .mini p{font-size:13px;margin:0;color:var(--muted);line-height:1.5}
+  .mini .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:7px}
+
+  .flow{font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--muted);background:var(--panel2);border:1px solid var(--edge);border-radius:9px;padding:16px 18px;overflow-x:auto;white-space:pre;margin:0 0 18px}
+  .flow b{color:var(--lime);font-weight:400}
+  .flow .g{color:var(--indigo)}
+
+  .meta{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em;margin-top:8px}
+  .quote{border-left:2px solid var(--lime);padding:2px 0 2px 18px;margin:0 0 16px;font-family:var(--serif);font-size:19px;line-height:1.4;color:#fff;font-style:italic}
+  .quote.ind{border-color:var(--indigo)}
+
+  footer{border-top:1px solid var(--edge);padding-top:22px;margin-top:40px;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+
+  @media (max-width:920px){
+    .wrap{grid-template-columns:1fr}
+    nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--edge);padding:24px 22px}
+    nav.toc ol{columns:2;column-gap:20px}
+    main{padding:36px 22px 90px}
+    h1{font-size:34px}
+    .grid2,.grid3{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="brand">Switch<span class="dot">·</span>board</div>
+  <div class="sub">Product Requirements · v1</div>
+  <ol>
+    <li><a href="#s1">One-liner &amp; thesis</a></li>
+    <li><a href="#s2">The problem</a></li>
+    <li><a href="#s3">Users &amp; jobs-to-be-done</a></li>
+    <li><a href="#s4">Product overview</a></li>
+    <li><a href="#s5">The moat / security model</a></li>
+    <li><a href="#s6">Architecture</a></li>
+    <li><a href="#s7">Capabilities &amp; requirements</a></li>
+    <li><a href="#s8">The wrapp ecosystem</a></li>
+    <li><a href="#s9">Autopilot / autonomous company</a></li>
+    <li><a href="#s10">Business model</a></li>
+    <li><a href="#s11">Roadmap / what's next</a></li>
+    <li><a href="#s12">Success metrics &amp; risks</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ HEADER ============ -->
+<header style="margin-bottom:54px">
+  <p class="kicker">Product Requirements Document · Canonical</p>
+  <h1>Switchboard</h1>
+  <p class="lede">The private, personal gateway that runs your own AI across every app you use — under per-site consent you control. Bring your own AI: the wire, not another wall.</p>
+  <p class="meta">Repo <code>~/Documents/Projects/relay</code> · product name Switchboard · packages scoped <code>@relay/*</code> · Grounded in code + docs + the founder memory ledger · Status marked honestly per requirement.</p>
+  <div class="legend">
+    <span><span class="pill p-ship">Shipped</span> wired &amp; proven in main</span>
+    <span><span class="pill p-part">Partial</span> wired, gaps noted</span>
+    <span><span class="pill p-asp">Aspirational</span> designed / unbuilt</span>
+  </div>
+</header>
+
+
+<!-- ============ 1 ============ -->
+<section id="s1" data-acc="lime">
+  <div class="shead">
+    <p class="kicker"><span class="num">01</span> — One-liner &amp; thesis</p>
+    <h2>The last prompt</h2>
+  </div>
+
+  <p class="lede">Superintelligent models are throttled not by capability but by the prompts and interfaces we wrap around them. Switchboard is the private, personalised gateway that lets you run your own AI — your Claude subscription, your local models, your connected tools — <strong>across any app or tool</strong>, with zero added lag and at no cost beyond the subscriptions you already pay for.</p>
+
+  <div class="card moat">
+    <p class="ct">The insight that reframes everything</p>
+    <p style="margin:0"><em>“These are actually skins for Claude Code if you think about it.”</em> If every app is a skin over the user's own model, the app can never be the product — anyone can clone a skin in an afternoon. The durable product is <strong>the wire</strong>: your Claude + your files + the private, consented connection between them. Switchboard sells the wire; the apps are numbers you can dial.</p>
+  </div>
+
+  <p><strong>The metaphor.</strong> Today's AI apps are walled telephone networks — each wants to be the one place you live, your data trapped inside, switching costs total. A telephone switchboard connects a call across networks <em>without owning your phone or listening in</em>. Switchboard is the operator's board for AI: <strong>it connects without owning.</strong> Infrastructure, not a destination — the thing that ends the walled garden rather than being another wall.</p>
+
+  <p><strong>What it opens.</strong> One private gateway unlocks an open, growing ecosystem of <strong>wrapps</strong> — apps that bring nothing but the interface and borrow the user's own AI to do the work. The repo already carries <strong>76 wrapps</strong> in the catalog. The named surfaces below (Flow, God, Guru, Autopilot, Bank) are the first few, not a closed list.</p>
+
+  <div class="quote">Switchboard connects without owning. Your Claude runs the call, your files stay home, the board never hears a word.</div>
+</section>
+
+
+<!-- ============ 2 ============ -->
+<section id="s2" data-acc="danger">
+  <div class="shead">
+    <p class="kicker"><span class="num">02</span> — The problem</p>
+    <h2>Apps resell you what you already own — and there is no consent layer</h2>
+  </div>
+
+  <div class="grid3">
+    <div class="mini">
+      <span class="tag">Double payment</span>
+      <h5>You pay twice for the same intelligence</h5>
+      <p>You already pay for Claude, for GPT, for local compute. Every AI app then charges you again to route a prompt through a model you're already subscribed to. The app operator provisions and marks up inference you could run yourself.</p>
+    </div>
+    <div class="mini">
+      <span class="tag">Data leaves</span>
+      <h5>Your data and compute leave your machine</h5>
+      <p>To use an app, your files, context, and prompts get uploaded to someone else's server. The app holds your credentials, sees your content, and becomes the place your work is trapped. Switching apps means abandoning that data.</p>
+    </div>
+    <div class="mini">
+      <span class="tag">No gate</span>
+      <h5>There is no consent layer for AI</h5>
+      <p>When an AI agent acts — sends, buys, publishes, deletes — nothing stands between the model and the irreversible action but the app's own good behaviour. There is no user-owned broker that classifies, gates, budgets, and audits every action out-of-band.</p>
+    </div>
+  </div>
+
+  <p>Each of these is a wall. The economic wall (you pay the operator's margin), the data wall (your work lives on their disk), and the trust wall (you must trust their code with your credentials and your consequences). Switchboard removes all three by inverting who holds the resources: <strong>the user's machine is the backend</strong>, and a broker on that machine — not the app, not the model — is the single point of enforcement.</p>
+</section>
+
+
+<!-- ============ 3 ============ -->
+<section id="s3" data-acc="indigo">
+  <div class="shead">
+    <p class="kicker"><span class="num">03</span> — Users &amp; jobs-to-be-done</p>
+    <h2>Three users, one gateway</h2>
+  </div>
+
+  <div class="card">
+    <p class="ct">Persona A · The founder-operator</p>
+    <p style="margin:0 0 6px"><strong>JTBD:</strong> “Run my whole operation on my own AI, and let it advance work while I sleep — without ever letting it do something irreversible on its own.”</p>
+    <p style="margin:0;color:var(--muted);font-size:14px">Lives away from the terminal. Wants decisions surfaced as clean A/B/C options, work drafted overnight, and a short approve-queue of the few calls only they can make. Autopilot / Company OS + the notch Presence layer are built for this user. (This is also the primary user of the product itself, dogfooding it.)</p>
+  </div>
+
+  <div class="card">
+    <p class="ct">Persona B · The wrapp user</p>
+    <p style="margin:0 0 6px"><strong>JTBD:</strong> “Use a great little app for a specific job, without signing up, paying twice, or handing over my data.”</p>
+    <p style="margin:0;color:var(--muted);font-size:14px">Installs the gateway once, then opens any wrapp and clicks Connect. Reads run silently within a scope they approved; writes ask for a click. Their Claude runs the work, their files stay home, and their spend is metered honestly in their own panel.</p>
+  </div>
+
+  <div class="card">
+    <p class="ct">Persona C · The wrapp developer</p>
+    <p style="margin:0 0 6px"><strong>JTBD:</strong> “Ship an app with real AI, storage, and data behind it — without provisioning a backend, holding anyone's keys, or paying an inference bill.”</p>
+    <p style="margin:0;color:var(--muted);font-size:14px">Codes against a single stable provider (<code>@relay/sdk</code>). Declares the scope the app needs; the broker gates it. Distribution is a static page. The economic inversion — the visitor's own subscription covers inference — is what makes “I could build this myself” collapse into “why would I.”</p>
+  </div>
+</section>
+
+
+<!-- ============ 4 ============ -->
+<section id="s4" data-acc="lime">
+  <div class="shead">
+    <p class="kicker"><span class="num">04</span> — Product overview</p>
+    <h2>Two halves you install, one gateway everything runs through</h2>
+  </div>
+
+  <p>Switchboard is a <strong>Mac menu-bar daemon</strong> plus a <strong>Chrome extension</strong>. The daemon holds your Claude, your local models, and your connected tools. The extension injects a <code>window.claude</code> provider into allowlisted wrapp pages. Between them sits the consent broker. Everything else is a surface on top of that spine.</p>
+
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Surface</th><th>What it is</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>The daemon</strong> (menu-bar app)</td><td>macOS LaunchAgent that runs the consent gate, backends, grants, budgets, audit log, and the Run layer. Signed + notarized DMG; drag to /Applications.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>Chrome extension</strong> (MV3)</td><td>The origin oracle. Injects <code>window.claude</code>, holds the pairing token, renders inline consent + the side panel (per-site budgets, trust modes, connectors, wrapp launcher).</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>Wrapps</strong></td><td>76-entry catalog of web apps that borrow the user's AI. A wrapp = prompts + skills + workflows + UI over your own Claude.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>Flow</strong> (native)</td><td>Dictation wrapp — the proof that a <em>native</em> app can borrow your Claude through the same daemon (Wispr-Flow-style). The one <code>kind:native</code> catalog UI.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>God</strong> (native, ambient)</td><td>Screen-aware assistant: sees (screencapture + vision), speaks (native MLX TTS), points (<code>[POINT]</code>), and drives a wrapp's real UI (God's Hands). Ships inside the app; first-party principal, every write still gated.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td><strong>Guru</strong> (Presence layer)</td><td>Notch/dock/cursor cards: ask · guide · notify. The system-wide surface where any Claude gets your attention and returns a real answer. Substance shipped (CursorGuide.swift); umbrella brand not yet a wrapp.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td><strong>Autopilot / Company OS</strong></td><td>Runs a company (or a portfolio) on the autonomy gradient: reversible work drafted by God's hands, irreversible work staged for one tap. Cockpit + Run layer live; every send channel is no-sender today.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td><strong>Team Mode</strong></td><td>N people, N Claudes, one shared folder. Sealed peer-to-peer sync; membership = an invite code, no login. Opt-in, off by default.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>Bank</strong> (context vault)</td><td>The shared context library (<code>contexts.json</code> + <code>.md</code> notes). A bound folder becomes a real vault that feeds every wrapp as lent context.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>The store</strong></td><td>Browse the catalog, install, add local, give-God-hands, live-switchable skins. Real door into the catalog; GitHub-import + monetisation are design.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>The core loop, end to end</h4>
+  <div class="flow">open a wrapp  ─▶  <b>Connect</b> chip (consent: models · tools · budget)  ─▶  grant persisted per-origin
+   run  ─▶  single input  ─▶  options + <b>⭐ recommended</b>
+     read tools ........... auto within grant
+     write/irreversible ... <b>per-action consent click</b> (every time)
+   results  ·  context lending  ·  budgets metered  ·  every act <span class="g">audited</span></div>
+</section>
+
+
+<!-- ============ 5 ============ -->
+<section id="s5" data-acc="lime">
+  <div class="shead">
+    <p class="kicker"><span class="num">05</span> — The moat / security model</p>
+    <h2>The consent broker is the product</h2>
+  </div>
+
+  <p class="lede">The moat is not the catalog — a skin is clonable in an afternoon. The moat is the broker: a user-owned enforcement point that no app, and no model, can talk its way past. These invariants are <strong>non-negotiable</strong>. Every feature in this document is built to preserve them.</p>
+
+  <div class="card moat">
+    <p class="ct">The seven invariants</p>
+    <ol style="margin:0">
+      <li><strong>The extension is the origin oracle.</strong> A request's origin is the browser-verified sender (content-script <code>sender</code>), never data the page supplies. Every per-origin grant, budget, and storage path keys on it. A page cannot claim to be another origin.</li>
+      <li><strong>The daemon is the only enforcement point — never the model.</strong> Allowlists, read/write classification, budgets, and per-action consent are checked out-of-band in the daemon. No prompt in model context can widen scope. The model receives a hard <code>--allowed-tools</code> capability set.</li>
+      <li><strong>Two consent tiers.</strong> Reads are pre-approvable within a scope. Writes / irreversible / money actions raise a per-action consent the user must click <em>every time</em> — non-bypassable. Classification comes from a daemon-side policy table that is <strong>default-deny</strong>: an unknown tool is treated as dangerous.</li>
+      <li><strong>The gate lives inside the agentic loop.</strong> The daemon runs the Agent SDK's <code>query()</code> in-process and wires its <code>canUseTool</code> callback straight into the gate. It fires out-of-band for every proposed tool (MCP tools and builtins), is async (can block on a human click), and enforces deny. <code>bypassPermissions</code> is never used; tools are never pre-allowed around the gate.</li>
+      <li><strong>Secrets never cross the boundary.</strong> The API key and connector credentials stay with the daemon and the MCP processes. The page receives results only — never keys. (Credential-injected HTTP, when it lands, sets the auth header daemon-side; the page still never sees the token.)</li>
+      <li><strong>Audit + control.</strong> Every act appends to an append-only, per-origin audit log (<code>~/.relay/audit.log</code>), exportable. Per-origin revoke; a global kill switch; delete the pairing token to lock out every paired browser.</li>
+      <li><strong>Exact-match, fail-closed grants.</strong> A model or tool not literally in the grant is denied — full stop (<code>SCOPE_EXCEEDED</code>). Grants narrow (the user may approve a subset); they never implicitly widen. Consent times out closed.</li>
+    </ol>
+  </div>
+
+  <p><strong>Structural isolation, not runtime checks.</strong> State is partitioned by the authoritative origin at the path/handle level — storage derives its folder from the origin (<code>folderFor(origin)</code>), so one origin's data can never resolve into another's. Cross-origin sharing exists only through the explicit, consented context vault.</p>
+
+  <div class="card warn">
+    <p class="ct">The honest boundary (repeated across all the code)</p>
+    <p style="margin:0"><strong>Switchboard drafts and decides; a human gates every irreversible action; connectors — never the engine — act.</strong> The vision's “makes the moves / runs your life” language runs ahead of the merged code. What is actually load-bearing, and what is the moat, is the gate, the audit log, and the per-origin grant. Keep the copy inside that boundary.</p>
+  </div>
+</section>
+
+
+<!-- ============ 6 ============ -->
+<section id="s6" data-acc="indigo">
+  <div class="shead">
+    <p class="kicker"><span class="num">06</span> — Architecture</p>
+    <h2>A thin broker, a versioned bus, pluggable backends</h2>
+  </div>
+
+  <div class="flow">  <b>wrapp</b> (untrusted page)
+    │  window.claude.request({method, params})   ← EIP-1193-style bus, feature-detected like window.ethereum
+    ▼
+  <b>extension</b> (MV3) — the origin oracle; stamps the browser-verified origin + tabId
+    │  loopback WebSocket + pairing token   (the page never touches the daemon directly)
+    ▼
+  <b>daemon</b> (sidekick) ── verify origin → look up grant → classify (read/write) → <span class="g">gate</span> → audit
+    │
+    ├─ backends:  Claude Code (reference)  ·  local-openai (Ollama/LM Studio)  ·  OpenRouter (hosted, opt-in)
+    ├─ MCP registry:  ~/.claude.json servers  +  claude.ai connectors (inherited by the SDK, no bridge)
+    ├─ primitives:  storage · context · session · put_blob
+    └─ Run layer:  routines registry (the clock) → routineDraft / routineInvoke / routineDispatch</div>
+
+  <h3>The provider (<code>window.claude</code>)</h3>
+  <p>A single typed, versioned method bus injected into allowlisted pages — deliberately shaped like <code>window.ethereum</code> so apps feature-detect one recognizable global. It carries far more than Claude: inference, storage, context, sessions, local TTS, identity. The wire protocol is <strong>BYOP 1.0.0</strong>; developers code against <code>@relay/sdk</code>, never the raw global (a neutral <code>window.switchboard</code> alias is on the roadmap). Injected as a web-accessible MAIN-world script — the reliable wallet pattern.</p>
+
+  <h3>The broker / daemon</h3>
+  <p>Runs as a macOS LaunchAgent (<code>com.relay.sidekick</code>, RunAtLoad + KeepAlive). Ships as a single ~2.2 MB esbuild bundle carrying the whole daemon + the Agent SDK, alongside a copied Node runtime and Anthropic's own signed CLI, inside a signed + notarized DMG. The trusted core is a small router + consent enforcer; capabilities are meant to be pluggable modules behind a registry so adding one never touches the core.</p>
+
+  <h3>Backends (the model layer)</h3>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Backend</th><th>Role</th><th>Notes</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Claude Code</strong></td><td>Reference backend</td><td>Runs the Agent SDK as the signed-in user, so it inherits their claude.ai connectors automatically. Agentic tool loop gated via <code>canUseTool</code>.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>local-openai</strong></td><td>Ollama / LM Studio</td><td>OpenAI-compatible completions behind the same provider surface. Local models can't drive the tool loop or vision — routing respects that.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td><strong>OpenRouter</strong></td><td>Hosted inference (opt-in)</td><td>Registered only when a user-supplied key exists in <code>~/.relay/cloud.json</code>. <code>hosted:true</code> flag drives the honest panel badge. Agentic tool loop not yet wired — fails closed.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td><strong>Codex</strong></td><td>BYO-Codex</td><td>A <code>CodexBackend</code> sibling shelling the <code>codex</code> CLI. Model-only tier is small; agentic Codex waits on wiring the gate into its loop.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="meta">Routing rule that protects the promise: an omitted or unknown model id resolves to the user's own default, <strong>never</strong> silently to a hosted backend. Hosted models are reachable only by exact id, so nothing goes off-machine without an opt-in.</p>
+
+  <h3>MCP registry &amp; connectors</h3>
+  <p>Two connector classes. <strong>(1)</strong> Local stdio/http MCP servers auto-imported from <code>~/.claude.json</code> — reachable by both the direct <code>callTool</code> path and the agentic path. <strong>(2)</strong> claude.ai connectors (Higgsfield, Shopify, …) — <em>inherited automatically</em> by the daemon's SDK from the user's sign-in, no bridge, reachable via the agentic path. A whole connector is granted with a wildcard tool grant (<code>mcp__claude_ai_X__*</code>); each concrete call is still classified (<code>generate_*</code> = write → consent; <code>*_status</code>/<code>display</code> = read → auto).</p>
+
+  <h3>The Run layer (routines)</h3>
+  <p>The daemon's scheduler — the piece that makes “runs while every tab is closed” real. A <code>RoutineRegistry</code> runs a 15s master heartbeat; each routine fires on its own interval, writes status to <code>~/.relay/routines.json</code>, and reads <code>~/.relay/routines-control.json</code> each sweep so a pause takes effect within one heartbeat. <strong>Ships dormant</strong> (<code>{off:true}</code>) — nothing runs in the background until the user flips the master switch. Two tiers: the <strong>daemon tier</strong> (built — gated, audited first-party drafts) and the <strong>Claude-Code tier</strong> (next — a full agent that could edit code / open a draft PR). A routine never sends: the send line holds regardless of tier.</p>
+  <p class="meta">Reference: <code>packages/sidekick/src/routines/{registry.ts,autopilot.ts}</code>; broker seams <code>routineDraft</code> / <code>routineInvoke</code> / <code>routineDispatch</code> in <code>server.ts</code>. Slice proven live: master switch on → autopilot ticked → drafted 3 real moves (~22k real tokens) → switch off → froze.</p>
+
+  <h3>The switchboard connector (God's Hands reuse)</h3>
+  <p>Rather than re-implement each wrapp headlessly, a wrapp declares its God-callable actions once (<code>exposeToGod</code> → WebMCP <code>registerTool</code> + <code>window.__god</code>), and God hosts the wrapp in a surface it controls and drives its <em>real</em> UI. The <strong>switchboard MCP connector</strong> re-exposes those curated, DRAFT-class wrapp actions as <code>mcp__…__wrapp__*</code> tools — the reverse-flow seam by which a routine (or God) runs a real wrapp on the user's own Claude, audited as <code>routine@autopilot</code>. The seam is hardened: <code>routineInvoke</code> hard-checks the <code>__wrapp__</code> prefix, so a routine can only reach the curated reversible surface — never a non-wrapp or an outward tool. The connector (<code>packages/switchboard-mcp</code>) advertises one tool per wrapp action and currently ships 6 wrapp manifests (adpulse, batch, redline, autopilot, ideabrain, reachout); discovery is opt-in — the list itself is the gate.</p>
+
+  <h3>Storage — per-origin, files-as-records</h3>
+  <p>A per-origin key/value store gated like everything else. Each origin gets a private sandbox (<code>~/.relay/storage/&lt;origin&gt;/</code>) with no prompt; <code>bind</code> points an origin at a real user folder behind a one-time path-consent. <strong>Keys are filenames</strong> — a key maps 1:1 to <code>&lt;key&gt;.json</code>, so an existing project folder's files appear as records with zero migration, and a bound folder doubles as a real Obsidian vault or project source. (A colon in a key is illegal and silently fails — a real bug class that took out a batch of wrapps' persistence tier.)</p>
+</section>
+
+
+<!-- ============ 7 ============ -->
+<section id="s7" data-acc="lime">
+  <div class="shead">
+    <p class="kicker"><span class="num">07</span> — Key capabilities &amp; requirements</p>
+    <h2>The capability surface, as requirements</h2>
+  </div>
+
+  <p>Every row below is a product requirement with an honest status. Everything marked Shipped is live at wire protocol <strong>BYOP 1.0.0</strong> and reachable from <code>@relay/sdk</code>.</p>
+
+  <h4>Provider surface (the consumer contract)</h4>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Capability</th><th>Requirement</th><th>Consent</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td>Feature-detect</td><td><code>capabilities()</code> returns version, models, backends, agentic support, local engines. Always allowed.</td><td>none</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>One-shot completion</td><td><code>complete(params)</code> with <code>system</code>, <code>model</code>, <code>maxTokens</code>, multi-turn <code>messages</code>, <code>attachments</code>.</td><td>within grant</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Streaming</td><td><code>stream(params)</code> async iterator of <code>text</code>/<code>sources</code>/<code>done</code> deltas.</td><td>within grant</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Agentic completion</td><td><code>complete({agentic:true})</code> — model calls tools from the granted set mid-reasoning; reads auto, writes prompt.</td><td>reads auto / writes gated</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Direct tools</td><td><code>listTools()</code> · <code>callTool(name,args)</code>.</td><td>reads auto / writes gated</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Warm sessions</td><td><code>sessionId</code> reuses a warm thread; one long-lived process per (origin, session), recycled, idle-swept, read-only by construction.</td><td>gated per turn</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Private storage</td><td><code>storage.get/set/list/delete</code>; per-origin sandbox; keys = filenames.</td><td>free in sandbox</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Bind a real folder</td><td><code>storage.bind(path)</code> — adopt an existing folder as records, zero migration.</td><td>always prompts (path)</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Shared context</td><td><code>context.publish/active/pick</code>; an app reads only the context the user <em>lent</em> it; enumeration is consented metadata, never free.</td><td>user picks in panel</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Source-backed context</td><td>A context can carry a published Google Sheet / CSV URL; daemon fetches (SSRF-guarded) + parses to rows, 5-min TTL. A spreadsheet becomes live shared context.</td><td>as context</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Local TTS</td><td><code>speak(text)</code> — on-device voice, no cloud, no credits; returns a playable data URL or null.</td><td>within grant</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Identity</td><td><code>identity()</code> — public display name only.</td><td>public name</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Reference-image upload</td><td><code>relay__put_blob</code> primitive — page attaches bytes, model runs any connector's own upload flow (proven image-to-image).</td><td>daemon-native, auto</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Structured output</td><td><code>jsonSchema</code> param on completions (SDK supports <code>--json-schema</code>). Today apps <code>extractJson</code> on text.</td><td>within grant</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+      <tr><td>Backend capabilities</td><td><code>sb_db</code> / <code>sb_http</code> (credential-injected) / <code>sb_secrets</code> / <code>sb_exec</code> — a real backend, provisioned by nobody, via a <code>switchboard.json</code> manifest. Designed in CAPABILITIES.md.</td><td>per-capability grant</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>Enforcement &amp; control</h4>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Requirement</th><th>Detail</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td>Per-origin grants</td><td>Scope = models + tools + budgets + contextKinds + reason. Narrowable at connect, persisted, revocable per origin.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Budgets / token accounting</td><td>Per-origin tokens/day (rolling 24h) + calls/min ceilings; over → <code>BUDGET_EXCEEDED</code>. Counts cached input tokens (were ~77× undercounted). Ledger is in-memory — resets on daemon restart.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Per-site trust modes</td><td>Ask / Trust / Read-only, set in the side panel.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Inline consent</td><td>Consent renders in the side panel — no separate window; select-all, only the requested scope shown.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Audit log + kill switch</td><td>Append-only per-origin log; global kill switch; delete pairing token to lock out all browsers.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Verified-origin badge</td><td><code>isVerifiedOrigin()</code> — first-party origins (thelastprompt.ai / sameep.ai / the GitHub Pages host, https only) get a “✓ Verified” pill; rejects http + suffix-spoof.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Airgapped runner</td><td>Untrusted app in a sandboxed iframe + strict CSP (<code>connect-src 'none'</code>) + postMessage bridge; all exfiltration attempts blocked. The safety basis for an open dev store.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Readiness ladder</td><td>One ordered <code>stage</code> (no-extension → no-app → asleep → unpaired → signed-out → disconnected → unmet → ready); each surface renders the first unmet rung, never re-derives.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td>Needs resolver</td><td>Connector-class declaration + substitution offer (“you have Leonardo — use that instead of Higgsfield?”) + <code>listConnectors</code>. Consent still drops unavailable models / shows phantom tools today.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+      <tr><td>Model selection</td><td>User-managed deny-list (<code>~/.relay/models.json</code>): disabling a model removes it from God, every wrapp, and the advertised set, with graceful substitution.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+      <tr><td>Economy mode</td><td>Per-app “cheaper model to save tokens” toggle as a post-gate downgrade. Today influences God only.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>Native &amp; presence surfaces</h4>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Requirement</th><th>Detail</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td>Native gateway (second listener)</td><td>A separate loopback socket (:8788, on by default) rejects any request carrying an Origin header; a per-app token → <code>native@appId</code> principal (daemon derives it, ignores app-claimed id). Narrow verb allowlist, same grant/gate/budget/audit. Flow proven end-to-end.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Vision-in</td><td>Screenshots sent as real image content blocks (were connector-upload-only); pixel-accurate; model auto-treats screen text as untrusted.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Presence cards (Guru)</td><td>ask / guide / notify; placement notch (clickable) · dock · cursor; provenance header (thread · project); durable history.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Guided cursor / testing</td><td>Ring points at a target; per-step verdicts; the human does the thing only they can (grant a permission, eyeball a result).</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Claude Code → notch hook</td><td>Hook the CLI's Notification / Elicitation events → raise a notch card so any thread asks through the notch. The headline demo.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+      <tr><td>God's hands (act)</td><td>open / type / click / key + <code>[RUN]</code> a wrapp, gated + audited. Agentic observe→act→observe loop + AX-tree targeting still ahead.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+
+<!-- ============ 8 ============ -->
+<section id="s8" data-acc="indigo">
+  <div class="shead">
+    <p class="kicker"><span class="num">08</span> — The wrapp ecosystem</p>
+    <h2>76 wrapps, four layers, one wire</h2>
+  </div>
+
+  <p class="lede">A wrapp is a web (or native) app that borrows the user's own AI, storage, and data through Switchboard instead of provisioning a backend itself. Because it's a skin over the user's Claude, its value isn't the code — it's the interface, the prompts, the workflow. The wire is what's durable.</p>
+
+  <div class="card">
+    <p class="ct">The four-layer model</p>
+    <div class="grid2" style="margin:0">
+      <div class="mini"><span class="tag">Layer 1</span><h5>Capabilities</h5><p>The factored primitives a wrapp strings together — complete, stream, storage, context, tools, TTS.</p></div>
+      <div class="mini"><span class="tag">Layer 2</span><h5>Workflow</h5><p>The orchestration — the <code>run(input, sb)</code> pipeline: single input → options + ⭐ recommended.</p></div>
+      <div class="mini"><span class="tag">Layer 3</span><h5>UI shell</h5><p>The house template — plumbing, stream contract, timeouts, context sync, the standard connect chip.</p></div>
+      <div class="mini"><span class="tag">Layer 4</span><h5>Skin</h5><p>The presentation — a live-switchable renderer + design tokens over one catalog.</p></div>
+    </div>
+  </div>
+
+  <h4>What ships in the catalog</h4>
+  <p>The catalog carries <strong>76 listings</strong> (<code>examples/apps/wrapps/catalog.json</code>), each with <code>id · name · tagline · category · components · surfaces · requires · tools</code>. Wrapp doctrine: context-first (via Switchboard), a single input, options with a recommended pick, and the brandbrain design system. On-device wrapps that need no AI (convert / resize / QR) carry <code>egressTier: none</code> — they never slow the device.</p>
+
+  <div class="grid3">
+    <div class="mini"><span class="tag">Flagships</span><h5>Flow · Cartridge · brandbrain</h5><p>Native dictation; form→playable HTML5 game on your Claude; the brand studio (full port in progress).</p></div>
+    <div class="mini"><span class="tag">Verbs</span><h5>ideabrain · autopilot · redline</h5><p>Should-this-exist; runs-it; audits-a-page. Each a distinct verb, not a mode of another.</p></div>
+    <div class="mini"><span class="tag">On-device</span><h5>convert · resize · QR</h5><p>Genuinely no-AI, no-egress utilities — the device-lightness rule made visible.</p></div>
+  </div>
+
+  <h4>Distribution &amp; symmetry</h4>
+  <ul>
+    <li><strong>Subdomain deploy.</strong> Each wrapp is its own Pages repo (<code>&lt;wrapp&gt;.thelastprompt.ai</code>), which isolates both grants <em>and</em> reputation — a Safe-Browsing flag is host-level, so per-wrapp subdomains stop one bad wrapp nuking the rest. The extension origin allowlist must include a wrapp's origin (in both manifest lists) before <code>window.claude</code> injects.</li>
+    <li><strong>WebMCP symmetry.</strong> One <code>actions</code> declaration renders three ways: the DOM UI, the daemon's headless <code>wrapp__*</code> MCP tools, and WebMCP tools in-browser (Gemini-in-Chrome can already drive them). The consuming half — user-owned agent drives any page's tools under the user's gate — is the open first-mover slot. <span class="pill p-asp">Aspirational</span></li>
+  </ul>
+</section>
+
+
+<!-- ============ 9 ============ -->
+<section id="s9" data-acc="amber">
+  <div class="shead">
+    <p class="kicker"><span class="num">09</span> — Autopilot / autonomous company</p>
+    <h2>Run a company on the autonomy gradient</h2>
+  </div>
+
+  <p class="lede">A company is a small set of <strong>decisions you own</strong>, feeding a daily <strong>loop</strong> that produces <strong>moves</strong> — and every move is sorted by one question: <em>can this be undone?</em> That question <em>is</em> the safety model.</p>
+
+  <div class="flow">  ◀── more autonomous ─────────────────────────────── more your call ──▶
+  ┌─ <b>AUTOPILOT</b> ──────┐   ┌─ <b>GATE</b> ───────────────┐   ┌─ <b>FOUNDER</b> ────────────┐
+  │ reversible          │   │ irreversible / costs $  │   │ judgment / relationship │
+  │ God's hands do it   │   │ waits for <b>1 tap</b>         │   │ a decision, not a task  │
+  │ → a draft / artifact│   │ from you                │   │ only you can make it    │
+  └─────────────────────┘   └─────────────────────────┘   └─────────────────────────┘
+     drafts while you          approve to act               God never touches these
+     sleep</div>
+
+  <p><strong>The send line never moves.</strong> No amount of autonomy promotes a GATE move to AUTOPILOT. Reversibility is a property of the move, decided once in the catalog — not a setting. A GATE move stages the <em>exact content that would go out</em> as a reversible preview, so the founder reviews the real thing before anything sends.</p>
+
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Piece</th><th>What it does</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td>Run layer / routines clock</td><td>Routine #1 (daemon tier) reads the active company, drafts the day's 3 highest-leverage moves each tick. Dormant by default.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Move classifier</td><td>Sorts every move into autopilot / gate / founder by reversibility.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Reversible moves → real wrapps</td><td><code>routineInvoke</code> runs a curated DRAFT-class wrapp action (ideabrain brief, autopilot slate) on your own Claude, audited; generic-draft fallback so a tick never fails.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Portfolio</td><td>Many companies advance at once; each tick nudges every on-company one step; portfolio → command-center drill-down.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>GATE dispatch path</td><td><code>routineDispatch</code> resolves a sender for the move's channel → assisted (one tap = the write-consent card) or full-auto (standing grant) → send through a real connector + audit.</td><td class="col-st"><span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td>Cockpit (real data)</td><td>Editorial morning-brief UI reads the real portfolio from origin storage; “Approve &amp; send” calls the daemon and reflects the honest outcome.</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td>A real green send</td><td>Every channel is <strong>no-sender</strong> today — no publisher/email connector is connected, so no send tool is even reachable. Nothing has ever left the machine unattended.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+      <tr><td>Claude-Code tier routine</td><td>“Builds while you sleep” — a routine that edits your repo and opens a draft PR. A human still merges.</td><td class="col-st"><span class="pill p-asp">Aspirational</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="meta">Honest state: the loop (schedule → draft → classify → execute reversible → stage the rest) is proven live via the dev-daemon. Full-auto is wired but every channel is no-sender, so a green outward send still needs a connected sender + a founder safe-target test. The autonomy gradient and the send line are enforced, not aspirational.</p>
+</section>
+
+
+<!-- ============ 10 ============ -->
+<section id="s10" data-acc="lime">
+  <div class="shead">
+    <p class="kicker"><span class="num">10</span> — Business model</p>
+    <h2>Charge for infrastructure, never for AI</h2>
+  </div>
+
+  <div class="card moat">
+    <p class="ct">The rule that keeps it coherent</p>
+    <p style="margin:0"><strong>Your infra is free. Our cloud is Pro. We charge for infrastructure we run — never for AI access.</strong> AI stays bring-your-own forever. If a price ever attaches to the model itself, the pitch is dead.</p>
+  </div>
+
+  <h3>Privacy-led positioning — the five noes</h3>
+  <p>Solo Switchboard is free forever: BYO Claude, local models, the whole wrapp catalog. The front door is free + 100% private; paying is a small side door. The honest phrasing: with cloud backup on, “nothing leaves your machine” becomes “nothing <em>readable</em> leaves your machine” — a stronger posture than every collaboration product that reads everything.</p>
+
+  <h3>The three independently-priced things</h3>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Line</th><th>What it is</th><th>Price</th><th class="col-st">Status</th></tr></thead>
+    <tbody>
+      <tr><td>Seats (Team Mode)</td><td>N people on one shared folder. LAN / self-hosted relay = free; our hosted relay = free sync today, Pro when trials turn on.</td><td>Free / Pro</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td>Storage (Cloud backup)</td><td>Always-on zero-knowledge encrypted backup + new-device restore. The relay stores ciphertext it cannot open.</td><td>Pro</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+      <tr><td>Tokens (Hosted models)</td><td>Inference without a Claude subscription, via the user's own OpenRouter key. Real variable cost, so priced as used.</td><td>As used</td><td class="col-st"><span class="pill p-part">Partial</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="meta">Three separate lines, never one bundle. Sync and storage are near-zero fixed cost; inference is real variable cost, so it must never ride inside a cheap flat tier. The entitlement carries capabilities, not a plan name. Billing (Stripe / Paddle MoR → mint an entitlement token) is the one piece not built; the HMAC gate that enforces it already refuses correctly.</p>
+
+  <h3>The creator economy — Spotify, not app-store IAP</h3>
+  <p><span class="pill p-asp">Aspirational · direction only</span> Users pay one Switchboard <strong>Pro</strong> tier. Publishers don't earn per-use — they aren't hosting; it's a true library, run on the user's own compute. Instead, like streams: Switchboard pools Pro revenue, keeps a small ~25% cut, and distributes <strong>~75% to devs by their metered usage share</strong>. This is only honest because the broker is the meter — it already sees real per-wrapp token spend, un-fakeably. That same metering shows real build-cost + run-cost receipts on store cards (the visible buy-vs-build math), with a hard honesty law: only meter-measured numbers get the badge; off-platform builds show “unmeasured,” never an estimate dressed as data.</p>
+  <p class="meta">Enterprise is the cash line: governance (audit / scopes / budgets / kill switch) + custom wrapps + implementation as paid services on the same broker.</p>
+</section>
+
+
+<!-- ============ 11 ============ -->
+<section id="s11" data-acc="indigo">
+  <div class="shead">
+    <p class="kicker"><span class="num">11</span> — Roadmap / what's next</p>
+    <h2>Ordered by what unblocks the most</h2>
+  </div>
+
+  <h4>Near-term — close the honest gaps</h4>
+  <ul>
+    <li><strong>Land a real green send.</strong> Connect one real sender (email/publisher connector) + a founder safe-target test, to prove the GATE dispatch path end-to-end. Add <code>sameep.ai</code> to the manifest allowlist (or serve the cockpit under <code>*.thelastprompt.ai</code>) so the cockpit is in-extension, not tested with a mock provider. Persist the auto-mode toggle.</li>
+    <li><strong>Typed failures + <code>listConnectors</code>.</strong> Make “you don't have X” honest <em>before</em> invoke, not after. Stop consent silently dropping unavailable models / showing phantom connector tools (the <code>SCOPE_EXCEEDED</code> / <code>unknown_tool</code> class of bug).</li>
+    <li><strong>Arch detection on the landing.</strong> The DMG is arm64-only + macOS 13+; an Intel or Windows visitor is offered the same dead link. Give an honest “not yet,” decide universal2 vs refusal. (Spans the separate landing repo.)</li>
+    <li><strong>Unify the readiness ladder.</strong> Add the <code>stage</code> ordinal to <code>HealthStatus</code>; collapse the three surface shapes onto one; ship the one copy table; retire stale “Relay” / dev-instruction strings.</li>
+    <li><strong>brandbrain full port.</strong> Turn the real studio into the store's brandbrain (today's card is a one-route demo) — a port, not a rewrite.</li>
+  </ul>
+
+  <h4>Mid-term — the platform rungs</h4>
+  <ul>
+    <li><strong>Backend capabilities.</strong> <code>sb_db</code> → <code>sb_secrets</code> → <code>sb_http</code> (credential-injected) behind the <code>switchboard.json</code> manifest — a real backend nobody provisions. <code>sb_exec</code> (sandboxed compute) last.</li>
+    <li><strong>Claude Code → notch hook.</strong> Any CLI thread asks through the notch — the Presence headline demo. Plus the <code>window.claude.ask</code> connector verb.</li>
+    <li><strong>Model selection + economy across wrapps.</strong> The user-owned allow/deny list; extend economy past God.</li>
+    <li><strong>WebMCP consume.</strong> The <code>tabcall</code> transport + per-tab MCP server + “act on this tab” (activeTab) — a user-owned agent that drives any page's tools under the user's gate.</li>
+    <li><strong>Local-model + Codex backends</strong> reach parity behind the same surface; the “any local model” half of the vision.</li>
+    <li><strong>Store: +Create door</strong> (paste an OSS GitHub link → port-readiness assess → add as a wrapp) + the metered monetisation flow.</li>
+  </ul>
+
+  <h4>Frontier — the north star</h4>
+  <ul>
+    <li><strong>Wire routines to God</strong> so “runs your life” self-runs instead of per-hotkey; the agentic observe→act→observe loop with AX-tree targeting.</li>
+    <li><strong>Files as a Claude</strong> — the daemon gives apps a live <em>image of a folder</em> (a view of the real files, never a copy) rendered by the daemon; edit there and you edited the real file. Works offline with a local model.</li>
+    <li><strong>Billing (Stripe / Paddle MoR)</strong> → entitlement minting; the gate is already ready for it. The creator rev-share ledger + payout, denominated in inference credit.</li>
+    <li><strong>Cross-platform</strong> — universal2 DMG; a per-OS tray app for Windows/Linux (the daemon is already portable Node).</li>
+  </ul>
+</section>
+
+
+<!-- ============ 12 ============ -->
+<section id="s12" data-acc="danger">
+  <div class="shead">
+    <p class="kicker"><span class="num">12</span> — Success metrics &amp; risks</p>
+    <h2>What proves it, and what could sink it</h2>
+  </div>
+
+  <h4>Success metrics</h4>
+  <div class="grid2">
+    <div class="mini"><span class="tag">Activation</span><h5>Install → first successful action</h5><p>Fraction of installs that clear the whole ladder (extension + DMG + pair + Claude signed-in + connect) and land one real completion. The install journey is the sharpest known drop-off — the signed-out cliff especially.</p></div>
+    <div class="mini"><span class="tag">Trust</span><h5>Consent-grant rate &amp; retention</h5><p>Do users approve the connect scope, keep grants over time, and use the per-action gate without disabling wrapps? Grants revoked ≈ trust lost.</p></div>
+    <div class="mini"><span class="tag">Depth</span><h5>Metered usage per user &amp; per wrapp</h5><p>Real broker-measured tokens/tool-calls — the un-fakeable substrate for both product health and the future payout. Background (routine) spend is metered and visible, never hidden.</p></div>
+    <div class="mini"><span class="tag">Ecosystem</span><h5>Wrapps published &amp; dialed</h5><p>Catalog growth, plus how many wrapps a user actually connects — the “numbers you can dial” getting dialed. Developer publishes → first earning is a zero AI bill.</p></div>
+  </div>
+
+  <h4>Risks (honest)</h4>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Risk</th><th>Why it bites</th><th>Mitigation / status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Install friction</strong></td><td>Two halves + a sign-in + a pairing before anything happens; each is a place to lose a stranger. arm64/macOS-13-only shuts out many visitors.</td><td>Signed/notarized DMG (first launch just works); readiness ladder; arch detection + universal2 still to do.</td></tr>
+      <tr><td><strong>Cloneable skins</strong></td><td>If the app is the product, a skin is copied in an afternoon.</td><td>The moat is the broker, not the catalog — the consent gate, audit, and per-origin grant are the durable asset.</td></tr>
+      <tr><td><strong>Shared-origin reputation</strong></td><td>Safe-Browsing flags are host-level; one bad wrapp on a shared origin nukes every wrapp's URL (this happened).</td><td>Per-wrapp subdomains isolate grants and reputation; CWS listing is the durable side-load fix. <span class="pill p-ship">Shipped</span></td></tr>
+      <tr><td><strong>Vision overruns the code</strong></td><td>“Makes the moves / runs your life” language promises more autonomy than merged code delivers; a demo that oversells breaks trust.</td><td>Hold the honest boundary: drafts + decides, human gates every irreversible act, connectors act. Mark simulated numbers as simulated.</td></tr>
+      <tr><td><strong>Anthropic terms / dependency</strong></td><td>The product runs on the user's own Claude subscription via the Agent SDK; the reselling line must not be crossed.</td><td>Per-user-local, no resold key — the currently-supported path. Multi-backend (local, Codex, OpenRouter) reduces single-provider dependency.</td></tr>
+      <tr><td><strong>Platform / API churn</strong></td><td>WebMCP is a pre-standard origin trial; the Agent SDK's gate mechanism (<code>canUseTool</code>) could change; connector enumeration is genuinely hard.</td><td>Pin the observed API behind one adapter; BYOP is versioned as a protocol (additive MINORs); degrade to <code>inherited:"unknown"</code> honestly.</td></tr>
+      <tr><td><strong>Billing unbuilt</strong></td><td>Every paid lane (seats, storage, tokens) has an enforced gate but no way to actually charge; the creator economy is prose, not code.</td><td>Stripe/Paddle → entitlement minting is the one missing piece; the HMAC gate already refuses correctly. Ship the free+private front door first.</td></tr>
+      <tr><td><strong>Device lightness</strong></td><td>A store item that idles Python/models/CPU would slow the user's own machine — fatal for a “your computer is the backend” pitch.</td><td>Hard rule: a store item must never slow the device; in-tab light libs by default, heavy engines opt-in + sized; <code>egressTier:none</code> utilities.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  Switchboard PRD · code-first, cross-checked vs docs/ + the founder memory ledger · status marked shipped / partial / aspirational per requirement · self-contained, renders offline.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

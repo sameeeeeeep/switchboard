@@ -29,6 +29,7 @@ import type {
   GuideResult,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
+import { CONNECTOR_META, connectorIdOf, connectorsInClass, type ConnectorClass } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
@@ -45,6 +46,7 @@ import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError, expandTilde } from "./storage/store.js";
+import { resolveFind, findInFolder, type FindHit } from "./storage/find.js";
 import { pickFolderNative } from "./native-picker.js";
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
@@ -108,6 +110,11 @@ const BUILTIN_TOOLS: Array<{ name: string; server: string; description: string }
 
 /** App-level keepalive frame (Chrome resets the MV3 idle timer on received WS messages). */
 const PING_MSG = JSON.stringify({ type: "ping" });
+
+/** GATE-dispatch shapes (docs/COMPANY-OS.md §2b) — shared by the routine (full-auto) and the page
+ *  (the cockpit's assisted "Approve & send" tap). */
+export interface DispatchParams { channel: string; content: string; company?: string; move?: string; auto?: boolean }
+export interface DispatchResult { ok: boolean; status: "sent" | "no-sender" | "declined" | "error"; channel: string; class: ConnectorClass | null; connector?: string; suggested?: string[]; note: string }
 
 export class Broker implements ConsentPrompter, NativeHandler {
   private wss: WebSocketServer | null = null;
@@ -245,10 +252,16 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   /** Send a prompt to the currently-connected extension (if any); harmless if none — it's re-pushed
    *  from `promptQueue` the moment an extension (re)connects. */
-  /** Which surface a consent belongs to: a NATIVE app's "Allow this app?" goes to the menu bar (a
-   *  native surface); everything web goes to the browser extension. */
+  /** Which surface a consent belongs to. Native-app connect AND folder consents (bind / pick) go to
+   *  the MENU BAR — a native notch card the menubar app renders (StorageBindDrop). This unifies
+   *  consent at the notch and, crucially, means a NATIVE wrapp window (GodWebWindow, no browser) can
+   *  actually answer a folder-bind: routed to the extension it landed on the browser and, for a
+   *  localhost native origin, timed out → auto-deny ("opening the project…" hang). The fallback in
+   *  pushPrompt still delivers to the extension if the menu bar isn't connected. Everything else
+   *  (write consent, tabsidekick, context-pick) stays on the extension. */
   private surfaceFor(kind: string): "menubar" | "extension" {
-    return kind === "consent:native-connect" ? "menubar" : "extension";
+    const menubarKinds = ["consent:native-connect", "consent:connect", "consent:storage-bind", "consent:storage-pick"];
+    return menubarKinds.includes(kind) ? "menubar" : "extension";
   }
   private pushPrompt(id: string, kind: string, body: unknown) {
     // Prefer the kind's own surface; fall back to the other so a prompt is never undeliverable
@@ -275,6 +288,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   private async dispatch(env: RequestEnvelope, ws: WebSocket): Promise<unknown> {
     const { origin, method } = env;
+    // vault.find — the LOCAL, deterministic lookup path (docs/FIND.md). A READ over the origin's own
+    // vault, gated exactly like storage.get (standing grant, no consent prompt); it calls NO model and
+    // touches NO network. Intercepted here so it needs no new BYOPMethod in @relay/protocol.
+    if ((method as string) === "vault.find") return this.vaultFind(origin, env.params as { query?: string; project?: string });
     switch (method as BYOPMethod) {
       case "claude_capabilities":
         return this.capabilities();
@@ -296,8 +313,14 @@ export class Broker implements ConsentPrompter, NativeHandler {
         return this.permissions(origin, env.params as any);
       case "claude_listTools":
         return { tools: this.listTools(origin) };
-      case "claude_callTool":
-        return this.deps.gate.gateToolCall(origin, env.params as ToolCallRequest);
+      case "claude_callTool": {
+        const call = env.params as ToolCallRequest;
+        // First-party GATE dispatch (the autopilot cockpit's "Approve & send") — reuse the callTool
+        // channel so no new RPC verb/extension change is needed. pageDispatch applies its own grant
+        // check + write-consent gate + audit; a real send needs a connected sender (else no-sender).
+        if (call?.name === "relay__autopilot_dispatch") return this.pageDispatch(origin, (call.arguments ?? {}) as Record<string, unknown>);
+        return this.deps.gate.gateToolCall(origin, call);
+      }
       case "claude_complete":
         return this.complete(origin, env.params as CompletionParams);
       case "claude_stream":
@@ -424,9 +447,14 @@ export class Broker implements ConsentPrompter, NativeHandler {
         id: (typeof s.id === "string" && s.id.trim()) ? s.id.trim() : `step-${i + 1}`,
         text: s.text.trim(),
         ...(typeof s.hint === "string" && s.hint.trim() ? { hint: s.hint.trim() } : {}),
+        // Clipboard payloads (non-secret) — carried through so a REMOTE guide can pre-load the clipboard,
+        // not just a local guide-run.json writer. The native runtime writes/restores the real pasteboard.
+        ...(typeof s.copy === "string" && s.copy.trim() ? { copy: s.copy } : {}),
+        ...(typeof s.value === "string" && s.value.trim() ? { value: s.value } : {}),
       }));
     if (steps.length === 0) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "guide_run needs at least one step with text");
     const mode: "test" | "tour" = params?.mode === "test" ? "test" : "tour";
+    const autoClipboard = params?.autoClipboard === true;
     const title = (typeof params?.title === "string" && params.title.trim()) ? params.title.trim() : "Guided walkthrough";
 
     // One cursor, one guide. Refuse a second rather than fight over the pointer.
@@ -445,7 +473,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
         this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "denied", note: `consent declined · ${title}` });
         throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "the guide was declined");
       }
-      const result = await runGuide({ title, mode, steps });
+      const result = await runGuide({ title, mode, steps, ...(autoClipboard ? { autoClipboard: true } : {}) });
       this.deps.audit.record({ origin, kind: "tool_call", toolName: "guide_run", outcome: "ok", note: `${mode} · ${title} · ${result.outcome} (${result.passed}/${result.total})` });
       return result;
     } catch (e) {
@@ -588,6 +616,22 @@ export class Broker implements ConsentPrompter, NativeHandler {
         };
       case "audit":
         return { entries: this.deps.audit.read(args?.origin, args?.limit ?? 300) };
+      case "vault.find": {
+        // Dictation Fn→FIND (docs/FIND.md) over the TRUSTED menu-bar control channel — the user
+        // themselves, so no per-origin grant. SCOPE = the ACTIVE project's vault (founder's call):
+        // resolve its folder and read it directly. Pure local lookup; NEVER a model call, NEVER the
+        // network. Audit the EVENT only (hit/miss + confidence) — never the query text or the value,
+        // which is the whole privacy point.
+        const query = typeof args?.query === "string" ? args.query : "";
+        if (!query.trim()) return null;
+        const activeId = this.deps.contexts.activeProject();
+        const folder = folderOf(this.deps.contexts.get(activeId ?? "")?.data);
+        if (!folder) return null; // no active project with a bound folder → nothing to search
+        const project = typeof args?.project === "string" && args.project.trim() ? args.project.trim() : undefined;
+        const hit = findInFolder(folder, query, project);
+        this.deps.audit.record({ origin: "*", kind: "tool_call", toolName: "vault_find", outcome: "ok", note: hit ? `hit · ${hit.confidence}` : "miss" });
+        return hit;
+      }
       case "signedIn":
         // Rung 4 (STATES.md §4): the extension folds this into the ladder once paired, so the panel
         // stops reading green while the daemon can't actually run a call. Lean by design — no models
@@ -940,6 +984,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
         case "set": {
           if (grant.mode === "readonly") { log("set", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
           store.set(origin, requireKey(req.key), req.value ?? "");
+          // 2b — attribute the artifact to the project this origin is currently lent (best-effort sidecar),
+          // so the OS can scope "recent work" to the active project.
+          try { const pid = this.deps.contexts.active(origin)?.id; if (pid) store.attribute(origin, requireKey(req.key), pid); } catch { /* best-effort */ }
           log("set", "ok");
           return { ok: true };
         }
@@ -985,6 +1032,26 @@ export class Broker implements ConsentPrompter, NativeHandler {
       this.deps.audit.record({ origin, kind: "tool_call", toolName: `claude_storage__${req.op}`, outcome: "denied", note: String((err as Error)?.message || err).slice(0, 160) });
       throw new ProviderError(BYOPErrorCode.BACKEND_ERROR, `storage ${req.op} failed: ${String((err as Error)?.message || err).slice(0, 160)}`);
     }
+  }
+
+  /**
+   * vault.find — the privacy-preserving LOCAL lookup (docs/FIND.md). Turns a natural-ish query like
+   * "GST number of nailinit" into the matched value, pulled STRAIGHT from the origin's local `.md`
+   * vault. This is the whole moat: NO model call, NO network, NO shelling out — the returned value
+   * never enters an LLM prompt and never leaves the machine. We do NOT audit the query or the value
+   * (that would be telemetry of exactly the private thing we promised to keep local); only that a
+   * lookup happened, hit-or-miss. Gated like `storage.get`: a standing grant, no per-action consent.
+   */
+  private vaultFind(origin: string, params: { query?: string; project?: string }): FindHit | null {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using find");
+    const query = typeof params?.query === "string" ? params.query : "";
+    if (!query.trim()) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "vault.find requires a query");
+    const project = typeof params?.project === "string" && params.project.trim() ? params.project.trim() : undefined;
+    // resolveFind NEVER throws (a malformed note degrades to null), so a lookup can't wedge anything.
+    const hit = resolveFind(this.deps.storage, origin, query, project);
+    // Audit the EVENT, never the content — no query text, no value; that's the privacy guarantee.
+    this.deps.audit.record({ origin, kind: "tool_call", toolName: "vault_find", outcome: "ok", note: hit ? `hit · ${hit.confidence}` : "miss" });
+    return hit;
   }
 
   /**
@@ -1202,6 +1269,166 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(text);
     this.deps.gate.recordCompletion(origin, tokens);
     return { text, model: params.model ?? backend.id, usage: out.usage, stopReason: "end" as const };
+  }
+
+  /** FIRST-PARTY draft for a background routine (the Run layer, docs/ROUTINES.md). Runs a non-agentic
+   *  completion on the default backend — no tools, no streaming, no page — attributed to the synthetic
+   *  principal `routine@<id>` and AUDITED, so background model spend is visible in the same trail every
+   *  other act lands in. This is daemon-own code (like speak/transcribe), so it doesn't pass an
+   *  untrusted-origin gate; it draws no page consent and can never act — its only power is to produce
+   *  text a human later approves. Returns the real usage tokens for the background-spend meter. */
+  async routineDraft(routineId: string, prompt: string): Promise<{ text: string; tokens: number }> {
+    const origin = `routine@${routineId}`;
+    const model = this.deps.backends.allowedModels()[0];
+    const backend = this.deps.backends.backendFor(model);
+    if (!backend) { this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: "no backend online" }); return { text: "", tokens: 0 }; }
+    const controller = new AbortController();
+    const ctx = {
+      origin,
+      allowedTools: [] as string[],
+      authorizeToolCall: async () => ({ allow: false, message: "routines draft only — no tools" }),
+      gateToolCall: async () => { throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "routines draft only — no tools"); },
+      emit: (_d: StreamDelta) => { /* one-shot: no page */ },
+      signal: controller.signal,
+    };
+    try {
+      const out = await backend.run({ model, prompt, maxTokens: 700 } as CompletionParams, ctx);
+      const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(out.text);
+      this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "ok", note: `draft ${tokens} tok` });
+      return { text: out.text ?? "", tokens };
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: String((e as Error)?.message).slice(0, 80) });
+      return { text: "", tokens: 0 };
+    }
+  }
+
+  /** FIRST-PARTY call of a Switchboard-connector *wrapp* action for a background routine — the
+   *  God's-Hands-reuse path (docs/GOD-HANDS.md), pointed at a routine instead of a hotkey. A
+   *  reversible move ("draft the operating slate", "write the brand brief") names a wrapp action;
+   *  we run that wrapp's real pipeline on the user's own Claude via the switchboard connector and
+   *  return its structured result to file as the company's artifact — the same quality as if the
+   *  founder had opened that wrapp themselves.
+   *
+   *  SAFETY (why a routine may call this without a page gate): this ONLY reaches `mcp__…__wrapp__*`
+   *  tools — the connector's curated *reversible* surface (drafts/analyses that run on your Claude
+   *  and produce text; outward wrapp actions like publish/send are never exposed as connector
+   *  tools, they stay per-click). We hard-check that prefix here so a routine can never reach a
+   *  non-wrapp or outward tool, resolve by SUFFIX (robust to the connector's serverId prefix), and
+   *  AUDIT every call as principal `routine@<id>`. The move-classifier still gates the SEND line
+   *  separately; this is strictly the reversible lane. Not connected / unknown wrapp ⇒ a clean
+   *  `{ ok:false }` so the routine falls back to a generic draft rather than failing the tick. */
+  async routineInvoke(routineId: string, toolSuffix: string, args: Record<string, unknown>): Promise<{ ok: boolean; json: unknown | null; text: string; error?: string }> {
+    const origin = `routine@${routineId}`;
+    const descr = this.deps.mcp.all().find(
+      (t) => t.name.startsWith("mcp__") && t.name.includes("__wrapp__") && t.name.endsWith(toolSuffix),
+    );
+    if (!descr) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: toolSuffix, outcome: "denied", note: "wrapp not connected" });
+      return { ok: false, json: null, text: "", error: "wrapp not connected" };
+    }
+    try {
+      const res = await this.deps.mcp.invoke({ name: descr.name, arguments: args });
+      const text = (res.content ?? [])
+        .filter((c) => c.type === "text" && typeof (c as Record<string, unknown>).text === "string")
+        .map((c) => String((c as Record<string, unknown>).text))
+        .join("\n")
+        .trim();
+      let json: unknown | null = null;
+      try { json = JSON.parse(text); } catch { /* not JSON — keep raw text */ }
+      const jsonOk = !(json && typeof json === "object" && (json as { ok?: unknown }).ok === false);
+      const ok = res.ok && jsonOk;
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: descr.name, outcome: ok ? "ok" : "error", note: ok ? `wrapp draft ${text.length}ch` : "wrapp returned an error" });
+      return { ok, json, text, error: ok ? undefined : (res.error?.message ?? "wrapp error") };
+    } catch (e) {
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: descr.name, outcome: "error", note: String((e as Error)?.message).slice(0, 80) });
+      return { ok: false, json: null, text: "", error: String((e as Error)?.message).slice(0, 120) };
+    }
+  }
+
+  /** The connector CLASS that could SEND a given channel. Social publishing (Instagram/TikTok/X/…)
+   *  has no class in the taxonomy yet, so it resolves to null → an honest no-sender. */
+  private static channelClass(channel: string): ConnectorClass | null {
+    const c = channel.toLowerCase();
+    if (/\b(e-?mail|newsletter|waitlist|inbox)\b/.test(c)) return "email";
+    if (/\b(dm|dms|message|slack|whatsapp|telegram|discord)\b/.test(c)) return "chat";
+    return null; // instagram/tiktok/x/twitter/linkedin/facebook — no send class today
+  }
+
+  /** Resolve a CONNECTED sender for a class: a tool whose connector serves that class AND whose name
+   *  is a write/send action (per the out-of-band classifier + a send-verb name check). Returns the
+   *  first match, or null. Read-only — draws no consent, invokes nothing. */
+  private findSender(cls: ConnectorClass): { connector: string; tool: string } | null {
+    const SEND = /(send|post|publish|create[_-]?(draft|message|comment)|dm|message|deploy|charge|invoice)/i;
+    for (const t of this.deps.mcp.all()) {
+      const id = connectorIdOf(t.name);
+      if (!id || !(CONNECTOR_META[id]?.classes.includes(cls))) continue;
+      const short = t.name.split("__").pop() ?? t.name;
+      if (classifyTool(t.name) === "write" && SEND.test(short)) return { connector: id, tool: t.name };
+    }
+    return null;
+  }
+
+  /** DISPATCH an approved GATE move to a real sender (docs/COMPANY-OS.md §2b — the God's-Hands pattern
+   *  in reverse). This is the ONLY path that fires an OUTWARD action for the autonomous company, and it
+   *  is deliberately narrow:
+   *    • It resolves a CONNECTED sender for the move's channel. None connected ⇒ `no-sender`, nothing
+   *      leaves the machine — the honest "connect a sender first". (Every channel is no-sender today.)
+   *    • With a sender, ASSISTED mode (default) raises the standard write-consent card — the founder's
+   *      "one tap" at the notch — and only sends on approval. FULL-AUTO (`auto`, a standing per-company
+   *      grant) skips the card but is still audited + stoppable (the routines master switch, the trail).
+   *    • Every outcome is AUDITED as principal `routine@<id>`. We NEVER invoke an outward tool without
+   *      either that tap or the standing grant — the send line never moves.
+   *  NB: the per-connector argument shaping (recipient/subject/body) is filled in when a real sender is
+   *  actually connected and founder-tested; until then no send tool exists to reach, by design. */
+  async routineDispatch(routineId: string, p: DispatchParams): Promise<DispatchResult> {
+    return this.dispatchSend(`routine@${routineId}`, p);
+  }
+
+  /** Page-initiated dispatch — the cockpit's "Approve & send" tap (via claude_callTool →
+   *  relay__autopilot_dispatch). The principal is the calling wrapp origin, ALWAYS assisted (the
+   *  write-consent card IS the tap), never auto; requires a connected grant so only a wrapp the user
+   *  has Connected can reach it. Same gate + audit + honest no-sender as the routine path. */
+  async pageDispatch(origin: string, args: { channel?: unknown; content?: unknown; company?: unknown; move?: unknown }): Promise<DispatchResult> {
+    if (!this.deps.grants.get(origin)) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect Switchboard first");
+    return this.dispatchSend(origin, {
+      channel: String(args?.channel ?? ""),
+      content: String(args?.content ?? ""),
+      company: args?.company != null ? String(args.company) : undefined,
+      move: args?.move != null ? String(args.move) : undefined,
+      auto: false,
+    });
+  }
+
+  private async dispatchSend(origin: string, p: DispatchParams): Promise<DispatchResult> {
+    const channel = String(p.channel ?? "").trim();
+    const cls = Broker.channelClass(channel);
+    const sender = cls ? this.findSender(cls) : null;
+    if (!sender) {
+      const suggested = cls ? connectorsInClass(cls) : [];
+      const note = cls
+        ? `No ${cls} sender connected — connect one to send.`
+        : `"${channel || "this channel"}" has no sender wired yet — social publishing waits on a connector.`;
+      this.deps.audit.record({ origin, kind: "tool_call", toolName: `dispatch:${channel || "?"}`, outcome: "denied", note: `no sender (${cls ?? "no class"})` });
+      return { ok: false, status: "no-sender", channel, class: cls, suggested, note };
+    }
+    // A real sender exists — gate it. Assisted: the write-consent card IS the founder's tap. Full-auto:
+    // a standing grant pre-authorized this company's sends (the card is skipped, the audit is not).
+    if (!p.auto) {
+      const approved = await this.requestWriteConsent({
+        id: randomUUID(), origin,
+        tool: { name: sender.tool, arguments: { channel, company: p.company, move: p.move, preview: p.content.slice(0, 240) } },
+        reason: "write-action",
+      });
+      if (!approved) {
+        this.deps.audit.record({ origin, kind: "tool_call", toolName: sender.tool, outcome: "denied", note: `send declined · ${channel}` });
+        return { ok: false, status: "declined", channel, class: cls, connector: sender.connector, note: `You declined the ${channel} send.` };
+      }
+    }
+    const res = await this.deps.mcp.invoke({ name: sender.tool, arguments: { text: p.content } });
+    this.deps.audit.record({ origin, kind: "tool_call", toolName: sender.tool, outcome: res.ok ? "ok" : "error", note: `${p.auto ? "auto-" : ""}send · ${channel}${res.ok ? "" : " · failed"}` });
+    return res.ok
+      ? { ok: true, status: "sent", channel, class: cls, connector: sender.connector, note: `Sent via ${sender.connector}.` }
+      : { ok: false, status: "error", channel, class: cls, connector: sender.connector, note: `The ${sender.connector} send failed.` };
   }
 
   /** Per-request context for relay__git_commit_push: the origin's EXPLICIT binding (never the

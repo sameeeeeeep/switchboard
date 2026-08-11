@@ -34,6 +34,7 @@ enum GuideMode: String { case tour, test, teach }
 struct GuideMedia {
     let src: String
     var caption: String? = nil
+    var tall: Bool = false   // true → render as a full board/diagram (fit, taller) instead of the 96px thumbnail
 }
 
 // A shortcut to TEACH, rendered as keycap buttons + a name (e.g. [⌃][⌃] Ask). Prominent in the card body
@@ -63,7 +64,8 @@ struct GuideStep {
     // ── teach-mode additions (all optional; absent → behaves exactly like a tour/test step) ──
     var say: String? = nil          // line to speak (falls back to `text`)
     var point: CGPoint? = nil       // overlay top-left coords (already mapped from shot pixels in begin())
-    var copy: String? = nil         // TEXT clipboard payload to pre-load when the step shows (opt-in via autoClipboard)
+    var copy: String? = nil         // TEXT clipboard payload to pre-load when the step shows (explicit → always loads)
+    var value: String? = nil        // a value the step asks the user to TYPE — pre-copied so they paste (priority over copy)
     var copyImage: String? = nil    // IMAGE (file path / http url) to pre-load onto the clipboard — the user just pastes it
     var hold: Double? = nil         // ms to dwell before auto-advancing (teach only)
     var doneWhen: Predicate? = nil  // locally-sensed completion condition → auto-advance
@@ -198,14 +200,30 @@ final class GuideOverlayModel: ObservableObject {
     @Published var selectedOption = 0             // ⌥1/2/3 highlight; ⌥→ approves this one
     @Published var dockTop = false                // dock the card at the TOP when the target is in the bottom band
     @Published var placement: GuidePlacement = .dock   // notch / dock / cursor (⌥/ toggles notch↔dock)
+    var placementPinned = false                        // user MOVED the card (⌥/ or ⌥;) → keep that placement across steps; don't re-derive per step
     @Published var source: String? = nil          // provenance: who's asking (thread/agent/wrapp), e.g. "Claude Code · migrate-db"
     @Published var sourceId: String? = nil        // stable THREAD identity → a deterministic colour (tell threads apart)
     @Published var project: String? = nil         // provenance: the project this run is grounded in
     @Published var clipboardHint: String? = nil   // "⌘V — pasted for you" cursor hint when a step preloads the clipboard
     @Published var applyingOption: Int? = nil     // an option is being applied live (shows the working dot-matrix)
     @Published var optionError = false            // last apply failed (danger line; never blocks)
+    // The card's rendered frame in the overlay (SwiftUI top-left coords). The hosting view hit-tests ONLY
+    // inside this rect so the card + its buttons are clickable while every other pixel passes clicks THROUGH.
+    @Published var cardFrame: CGRect = .zero
+    // Where the card sits in .cursor placement — a SNAPSHOT of the pointer (overlay top-left pts) taken
+    // when ⌥; cycles into cursor mode, so the card appears where you're working and stays put (clickable).
+    @Published var cursorAnchor: CGPoint = .zero
     // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
     @Published var muted: Bool = UserDefaults.standard.bool(forKey: "relay.guide.muted")
+}
+
+// Reports the guide card's rendered frame (SwiftUI top-left coords) up to the overlay, so the hosting
+// view can hit-test clicks against exactly the card's rect and pass every other pixel through.
+struct GuideCardFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let n = nextValue(); if n != .zero { value = n }
+    }
 }
 
 // MARK: - The caption chip (rides the cursor)
@@ -215,7 +233,13 @@ final class GuideOverlayModel: ObservableObject {
 struct GuideCaptionView: View {
     @ObservedObject var m: GuideOverlayModel
     @State private var ringPulse = false
-    private let cardW: CGFloat = 320
+    // Wide enough for 3 option cards + fully-wrapped label/detail to breathe, but always clamped under the
+    // screen width (24pt margin each side) so it never runs off-screen or past the notch.
+    private var cardW: CGFloat {
+        let target: CGFloat = 600
+        guard m.screenSize.width > 0 else { return target }
+        return min(target, m.screenSize.width - 48)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -247,15 +271,18 @@ struct GuideCaptionView: View {
             // a low target); cursor = rides the pointer (opt-in). Only the NOTCH card is hit-testable — the
             // rest of the overlay stays click-through so the app underneath is never blocked.
             if m.visible {
+                // The card IS hit-testable (its buttons + option cards must click). The overlay only ever
+                // captures clicks WITHIN the reported card frame — the hosting view passes everything else
+                // through — so the app underneath stays fully interactive.
                 placedCard
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)   // overlay never captures clicks — the app underneath stays interactive
                     .animation(.easeOut(duration: 0.16), value: m.collapsed)
                     .animation(.easeOut(duration: 0.18), value: m.placement)
             }
         }
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onPreferenceChange(GuideCardFrameKey.self) { m.cardFrame = $0 }
         .onAppear { ringPulse = true }
     }
 
@@ -264,7 +291,11 @@ struct GuideCaptionView: View {
         case .notch:
             VStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }   // flush at top — the drop merges into the notch
         case .cursor:
-            VStack(spacing: 0) { Spacer(minLength: 0); cardOrPill }.padding(.bottom, 54)   // (rides-cursor is a later refinement; docks bottom for now)
+            // Anchored at the pointer snapshot (⌥; into cursor mode), offset down-right so it doesn't sit
+            // under the cursor, clamped so the whole card stays on-screen. Publishes its frame like the
+            // others → the click-tracking follows it here too.
+            VStack(spacing: 0) { HStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }; Spacer(minLength: 0) }
+                .offset(cursorOffset)
         case .dock:
             VStack(spacing: 0) {
                 if m.dockTop { cardOrPill; Spacer(minLength: 0) } else { Spacer(minLength: 0); cardOrPill }
@@ -272,8 +303,23 @@ struct GuideCaptionView: View {
         }
     }
 
+    // The card's top-left offset in .cursor placement: near the pointer snapshot (+14,+14 so it clears
+    // the cursor), clamped so the whole card stays on-screen.
+    private var cursorOffset: CGSize {
+        let cw = cardW
+        let ax = min(max(m.cursorAnchor.x + 14, 8), max(8, m.screenSize.width - cw - 8))
+        let ay = min(max(m.cursorAnchor.y + 14, 8), max(8, m.screenSize.height - 380))
+        return CGSize(width: ax, height: ay)
+    }
+
     @ViewBuilder private var cardOrPill: some View {
-        if m.collapsed { collapsedPill } else { card.frame(width: cardW, alignment: .leading) }
+        Group {
+            if m.collapsed { collapsedPill } else { card.frame(width: cardW, alignment: .leading) }
+        }
+        // Publish the card's actual on-screen rect so the hosting view knows exactly where clicks land.
+        .background(GeometryReader { geo in
+            Color.clear.preference(key: GuideCardFrameKey.self, value: geo.frame(in: .global))
+        })
     }
 
     // Collapsed: a small docked pill — a live pulse, the step count, and how to bring the card back.
@@ -303,9 +349,7 @@ struct GuideCaptionView: View {
     // underneath the guide. (Manual advance is also a click on the chip; auto-advance is the primary path.)
     private var primaryActions: [(combo: String, label: String, primary: Bool)] {
         var a: [(String, String, Bool)] = []
-        if !m.options.isEmpty {                                   // options step → try variants, then approve
-            let combo = (1...m.options.count).map { "⌥\($0)" }.joined(separator: "·")
-            a.append((combo, "try", false))
+        if !m.options.isEmpty {                                   // options step → click/⌥1·2·3 to pick, then approve
             a.append(("⌥→", "Approve", true))
         } else if m.mode == .test {
             a.append(("⌥→", "Pass", true))
@@ -363,9 +407,9 @@ struct GuideCaptionView: View {
     private var optionsRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Text("PICK ONE — UPDATES LIVE").font(.splMono(8.5)).tracking(0.6).foregroundColor(.indigo)
+                Text("PICK ONE — UPDATES LIVE").font(.splMono(9.5)).tracking(0.6).foregroundColor(.indigo)
                 if m.options.contains(where: { $0.recommended }) {
-                    Text("★ recommended").font(.splMono(8)).foregroundColor(.lime.opacity(0.9))
+                    Text("★ recommended").font(.splMono(9)).foregroundColor(.lime.opacity(0.9))
                 }
             }
             HStack(alignment: .top, spacing: 7) {
@@ -376,25 +420,27 @@ struct GuideCaptionView: View {
     private func optionCard(_ i: Int, _ opt: GuideOption) -> some View {
         let sel = i == m.selectedOption
         let letter = i < 3 ? ["A", "B", "C"][i] : "\(i + 1)"
-        return VStack(alignment: .leading, spacing: 5) {
-            ZStack(alignment: .topTrailing) {
-                if let md = opt.media {
-                    GuideMediaView(media: md, reduceMotion: m.reduceMotion, compact: true)
-                } else {
-                    RoundedRectangle(cornerRadius: 5).fill(accentColor(opt.accent)).frame(maxWidth: .infinity).frame(height: 40)
-                }
-                if opt.recommended {
-                    Text("★").font(.system(size: 9)).foregroundColor(.lime)
-                        .padding(3).background(Circle().fill(Color.page.opacity(0.75))).padding(4)
-                }
+        return VStack(alignment: .leading, spacing: 6) {
+            // Media zone ONLY when the option actually carries media (show diagrams/images when needed). An
+            // explicit accent gets a THIN bar — never a big filled block. Neither → a clean text-only card.
+            if let md = opt.media {
+                GuideMediaView(media: md, reduceMotion: m.reduceMotion, compact: true)
+            } else if let ac = opt.accent, !ac.isEmpty {
+                RoundedRectangle(cornerRadius: 2).fill(accentColor(ac))
+                    .frame(maxWidth: .infinity).frame(height: 3)
             }
-            HStack(spacing: 4) {
-                Text(sel ? "\(letter)✓" : letter).font(.splMono(9)).foregroundColor(sel ? .lime : .inkFaint)
-                Text(opt.label).font(.hanken(11, .semibold)).foregroundColor(sel ? .ink : .inkDim).lineLimit(1)
+            // labels + details WRAP FULLY (cards grow vertically) — a cut "Build voi…" is an unreadable option
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(sel ? "\(letter)✓" : letter).font(.splMono(10.5)).foregroundColor(sel ? .lime : .inkFaint)
+                Text(opt.label).font(.hanken(13.5, .semibold)).foregroundColor(sel ? .ink : .inkSec)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let d = opt.detail, !d.isEmpty {
-                Text(d).font(.hanken(9.5)).foregroundColor(.inkFaint)
-                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                Text(d).font(.hanken(11.5)).foregroundColor(.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(7)
@@ -402,8 +448,14 @@ struct GuideCaptionView: View {
         .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.panel))
         .overlay(RoundedRectangle(cornerRadius: SBr.xs)
             .stroke(sel ? Color.lime : (opt.recommended ? Color.lime.opacity(0.4) : Color.edge), lineWidth: sel ? 1.5 : 1))
+        .overlay(alignment: .topTrailing) {
+            if opt.recommended {
+                Text("★").font(.system(size: 9)).foregroundColor(.lime)
+                    .padding(3).background(Circle().fill(Color.page.opacity(0.85))).padding(4)
+            }
+        }
         .contentShape(Rectangle())
-        .onTapGesture { CursorGuide.shared.tapOption(i) }   // clickable at the notch (no-op elsewhere: not hit-testable)
+        .onTapGesture { CursorGuide.shared.tapOption(i) }   // click = pick; click the already-picked one = approve
     }
     private func accentColor(_ name: String?) -> Color {
         switch (name ?? "").lowercased() {
@@ -433,13 +485,19 @@ struct GuideCaptionView: View {
             // ── permission strip: keys need Accessibility. Shown only when not trusted; the guide still
             //    renders + esc works, but keyboard signals won't fire until granted (spec §6). ──
             if !AXIsProcessTrusted() {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
-                    Text("Keys need Accessibility — grant it in Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                Button(action: { CursorGuide.shared.openAccessibilitySettings() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                        Text("Keys need Accessibility — tap to open Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.danger.opacity(0.85))
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+                .buttonStyle(.plain)
             }
             // ── header rail: segment progress · title · AUTO pill · voice ──
             HStack(spacing: 8) {
@@ -641,28 +699,31 @@ struct KeyChip: View {
     }
 }
 
+// A tappable action button: the LABEL on top, its keyboard shortcut as a small mono caption UNDERNEATH.
+// Flat editorial look — hairline border, lime fill for the primary (Approve/Next/Pass), no gradients/emoji.
 struct GuideActionChip: View {
-    let combo: String   // e.g. "⌥→", "esc", "⌥1·⌥2·⌥3"
-    let label: String   // e.g. "Pass", "Close"
+    let combo: String   // the shortcut caption, e.g. "⌥→", "esc"
+    let label: String   // e.g. "Approve", "Close"
     let primary: Bool
-    // Break a combo into individual caps so each key is its own button. A composite (·) or word (esc)
-    // stays whole.
-    private var caps: [String] {
-        if combo.isEmpty || combo.contains("·") { return [combo] }
-        if combo.count == 1 { return [combo] }
-        if combo.allSatisfy({ $0.isLetter }) { return [combo] }   // "esc"
-        return combo.map { String($0) }
-    }
     var body: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 2) {
-                ForEach(Array(caps.enumerated()), id: \.offset) { _, c in KeyCap(glyph: c, filled: primary) }
-            }
+        VStack(spacing: 3) {
             Text(label)
-                .font(.hanken(10, .medium))
-                .foregroundColor(primary ? .lime : .inkDim)
-                .lineLimit(1).fixedSize()   // never break a keycap label mid-word
+                .font(.hanken(11, .semibold))
+                .foregroundColor(primary ? .page : .ink)
+                .lineLimit(1).fixedSize()
+            Text(combo)
+                .font(.splMono(8.5))
+                .foregroundColor(primary ? .page.opacity(0.85) : .inkFaint)
+                .lineLimit(1).fixedSize()
         }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: SBr.xs)
+                .fill(primary ? Color.lime : Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: SBr.xs)
+                    .stroke(primary ? Color.clear : Color.edge, lineWidth: 1))
+        )
     }
 }
 
@@ -672,27 +733,37 @@ struct GuideMediaView: View {
     let media: GuideMedia
     var reduceMotion = false
     var compact = false
-    private var h: CGFloat { compact ? 40 : 96 }
+    // compact = the tiny A/B/C option thumbnail (a fixed tile, crop-to-fill is fine). A STEP diagram (zone 4,
+    // non-compact) must never be cropped: fit to the card width, let height follow the image's aspect ratio,
+    // capped so a very tall board can't run off-screen. This is what makes the media zone height DYNAMIC —
+    // a 96px fixed box was chopping wide diagrams.
+    private let stepCapH: CGFloat = 460
+    private var fillMode: ContentMode { compact ? .fill : .fit }   // step media always FITS (no crop)
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity)
-            .frame(height: h)
-            .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
-            .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
+        Group {
+            if compact {
+                content.frame(maxWidth: .infinity).frame(height: media.tall ? 420 : 40)
+            } else {
+                // dynamic: image sizes to width by aspect (fit), height capped so tall boards don't overflow
+                content.frame(maxWidth: .infinity).frame(maxHeight: stepCapH)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
+        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
     }
 
     @ViewBuilder private var content: some View {
         if media.src.hasPrefix("http"), let url = URL(string: media.src) {
             AsyncImage(url: url) { phase in
                 switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                case .success(let img): img.resizable().aspectRatio(contentMode: fillMode)
                 case .failure: unavailable
                 default: loading
                 }
             }
         } else if let img = NSImage(contentsOfFile: media.src) {
-            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+            Image(nsImage: img).resizable().aspectRatio(contentMode: fillMode)
         } else {
             unavailable
         }
@@ -708,6 +779,29 @@ struct GuideMediaView: View {
             Text(compact ? "—" : "preview unavailable").font(.hanken(compact ? 9 : 10)).foregroundColor(.inkFaint)
         }
         .foregroundColor(.inkFaint).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.raised)
+    }
+}
+
+// The overlay's hosting view. The overlay is full-screen, but only the CARD should catch clicks — every
+// other pixel must pass through to the app underneath. So we hit-test against the card's reported frame
+// (model.cardFrame, in SwiftUI `.global`/top-left coords): a point inside it resolves to the SwiftUI
+// control there (button / option card); a point outside returns nil, which lets AppKit deliver the click
+// to the window below. When the card is hidden or collapsed we return nil everywhere → the overlay is
+// fully click-through (a pure ring/hint step). (Subclasses NSHostingView directly — NoInsetHostingView is
+// `final` — and drops the safe-area inset the same way.)
+final class GuideHostingView: NSHostingView<GuideCaptionView> {
+    weak var model: GuideOverlayModel?
+    override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }   // first click lands even when not key
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        MainActor.assumeIsolated {
+            guard let m = model, m.visible, !m.collapsed, m.cardFrame.width > 1 else { return nil }
+            let local = convert(point, from: superview)   // this view's own coords
+            // cardFrame is SwiftUI top-left; make the point top-left too regardless of the view's flip.
+            let tl = isFlipped ? local : CGPoint(x: local.x, y: bounds.height - local.y)
+            guard m.cardFrame.contains(tl) else { return nil }
+            return super.hitTest(point)
+        }
     }
 }
 
@@ -810,7 +904,7 @@ final class CursorGuide {
 
     private let model = GuideOverlayModel()
     private var overlay: NSPanel?
-    private var hosting: NSHostingView<GuideCaptionView>?
+    private var hosting: GuideHostingView?
 
     private var watchTimer: Timer?
     private var cursorTimer: Timer?
@@ -822,6 +916,16 @@ final class CursorGuide {
     private var flagsMonitorL: Any?
     private var keyMonitorG: Any?
     private var keyMonitorL: Any?
+    private var mouseMonitorG: Any?
+    private var mouseMonitorL: Any?
+    // The key-consuming TAP — layered on top of the passive monitors while a guide is active. A passive
+    // monitor can only OBSERVE, so an Option-chord (⌥;=…, ⌥/=÷, ⌥.=≥, ⌥M=µ, ⌥1/2/3=¡™£) also leaks its
+    // character into the focused field. A session tap sits in front of the app and returns nil to DELETE
+    // the event, so the chord does its action and NO character lands. It swallows ONLY the guide's own
+    // Option-chords; typing, esc, ⌘V and everything else pass straight through. If the tap can't be created
+    // (accessibility not yet granted) we simply don't install it → behaviour is exactly as before.
+    private var keyTap: CFMachPort?
+    private var keyTapSource: CFRunLoopSource?
 
     // ── run state
     private var mode: GuideMode = .tour
@@ -835,6 +939,7 @@ final class CursorGuide {
     // ── teach run state
     private var autoClipboard = false
     private var savedClipboard: String?      // the user's clipboard before the run — restored on end/abort
+    private var clipboardSaved = false       // did any step overwrite the clipboard? (drives capture-once + restore, independent of autoClipboard)
     private var doneStreak = 0               // consecutive satisfied ticks (debounce: advance on 2)
     private var ocrInFlight = false          // one Vision pass at a time
     private var ocrMatched = false           // last OCR verdict for the current step
@@ -853,6 +958,18 @@ final class CursorGuide {
     // ── chord edge-detect (⌃⌥ down → release = one signal; +⇧ while held = fail)
     private var chordDown = false
     private var chordHadShift = false
+
+    // ── speech dedupe: which step index we've already spoken. onSpeak interrupts any in-flight speech, so
+    // speaking the SAME step twice (any accidental re-entry) would cut the first utterance short. Guard it.
+    private var spokenStepIdx = -1
+
+    // Enqueue the full spoken line for the current step exactly once — `muted` and re-entry are respected
+    // here so the utterance is never truncated by a redundant call or a mid-utterance state refresh.
+    private func speakStep(_ text: String) {
+        guard !model.muted, !text.isEmpty, spokenStepIdx != idx else { return }
+        spokenStepIdx = idx
+        onSpeak?(text)
+    }
 
     private var relayDir: String { RELAY_DIR }
     private func rel(_ f: String) -> String { (relayDir as NSString).appendingPathComponent(f) }
@@ -916,6 +1033,7 @@ final class CursorGuide {
             // ── teach fields (all optional) ──
             step.say = s["say"] as? String
             step.copy = s["copy"] as? String
+            step.value = s["value"] as? String
             step.copyImage = s["copyImage"] as? String
             if let h = (s["hold"] as? NSNumber)?.doubleValue { step.hold = h }
             if let t = (s["timeoutMs"] as? NSNumber)?.doubleValue { step.timeoutMs = t }
@@ -952,6 +1070,7 @@ final class CursorGuide {
         self.mode = m
         self.title = title
         self.steps = parsed
+        model.placementPinned = false              // a fresh guide re-derives per-step smart placement again (until the user moves the card)
         self.rawRun = obj                          // keep the raw run so we can re-save it (with startIndex) to resume
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
@@ -963,12 +1082,23 @@ final class CursorGuide {
         for i in 0..<idx where i < results.count { results[i].verdict = "done" }   // steps before the resume point are done
         self.startedAt = Date()
         self.isActive = true
+        self.spokenStepIdx = -1                     // fresh run → speak from the first step shown
         self.autoClipboard = autoClip
-        // Preserve the user's clipboard for the whole run when we're going to overwrite it per step.
-        if autoClip { savedClipboard = NSPasteboard.general.string(forType: .string) }
+        // Preserve the user's clipboard for the whole run — captured lazily the first time a step actually
+        // overwrites it (so explicit copy/value work even when autoClipboard is off, and we still restore).
+        clipboardSaved = false; savedClipboard = nil
 
         ensureOverlay()
         installMonitors()
+        // Keys need Accessibility — BOTH the CGEvent tap AND the global keyDown monitor are gated on it, so
+        // without the grant every ⌥-chord is silently dead in whatever app the user is being guided through.
+        // Don't just show the strip: proactively OPEN the grant pane (once per launch). An ad-hoc-signed
+        // rebuild churns the TCC grant, which is the usual reason a previously-working guide goes key-dead.
+        if !AXIsProcessTrusted() {
+            NSLog("[cursor-guide] Accessibility NOT granted — ⌥-chords will not fire; opening Settings")
+            if !didOpenAxSettings { didOpenAxSettings = true; openAccessibilitySettings() }
+            if !model.muted { onSpeak?("The guide keys need Accessibility permission. I've opened Settings — switch Switchboard on, then relaunch.") }
+        }
         model.mode = m
         model.done = nil
         model.target = nil
@@ -977,6 +1107,16 @@ final class CursorGuide {
         showOverlay()
         startCursorTimer()
         NSLog("[cursor-guide] START mode=\(m.rawValue) title=\"\(title)\" steps=\(parsed.count) autoClipboard=\(autoClip)")
+    }
+
+    // Whether we've already popped the Accessibility grant pane this launch (don't re-open it on every guide).
+    private var didOpenAxSettings = false
+
+    /// Open System Settings → Privacy & Security → Accessibility. Called at guide start when the process
+    /// isn't trusted (keys can't fire) and from the tappable permission strip on the card.
+    func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     // Build a pixel→overlay-point mapper from the run's `shot`. The overlay fills the main screen in
@@ -1005,7 +1145,7 @@ final class CursorGuide {
         guard let d = raw as? [String: Any] else { return nil }
         let src = (d["src"] as? String) ?? (d["url"] as? String) ?? (d["path"] as? String)
         guard let src, !src.isEmpty else { return nil }
-        return GuideMedia(src: src, caption: d["caption"] as? String)
+        return GuideMedia(src: src, caption: d["caption"] as? String, tall: (d["tall"] as? Bool) ?? false)
     }
 
     // Load an image for the clipboard-preload (file path or http url). Small helper images only.
@@ -1016,6 +1156,22 @@ final class CursorGuide {
 
     private func logMalformed() {
         NSLog("[cursor-guide] trigger malformed — ignored (need {title, steps:[{text|instruction}]})")
+    }
+
+    /// Save the user's real clipboard the FIRST time a step overwrites it, so end/abort can restore it —
+    /// independent of the `autoClipboard` flag (explicit copy/value load regardless, and must still restore).
+    private func captureClipboardOnce() {
+        if clipboardSaved { return }
+        savedClipboard = NSPasteboard.general.string(forType: .string)
+        clipboardSaved = true
+    }
+
+    /// The first http(s) URL mentioned in a step's caption, so "go to <site>" becomes one paste.
+    private func firstURL(in text: String) -> String? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let m = detector.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text))
+        guard let url = m?.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url.absoluteString
     }
 
     private func showStep() {
@@ -1047,23 +1203,46 @@ final class CursorGuide {
         // to the clickable NOTCH, everything else docks. ⌥/ can move it live afterwards.
         // Smart default: presence lives at the NOTCH. Only a step that POINTS at a target docks (bottom),
         // so the card never covers the ring's target. Everything else — asks, questions, reading — → notch.
-        if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
-        else { model.placement = (s.point != nil) ? .dock : .notch }
+        // Honor a manual placement (⌥/ or ⌥;) across steps: only re-derive when the user hasn't moved the card.
+        if !model.placementPinned {
+            if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
+            else { model.placement = (s.point != nil) ? .dock : .notch }
+        }
         applyMousePolicy()   // notch → the card becomes clickable; else pure click-through
         model.target = s.point        // teach: point the ring + anchor the chip; nil → chip rides the cursor
         // The concierge reads the step aloud in tour AND teach (say overrides text); test stays silent.
-        if (mode == .tour || mode == .teach) && !model.muted { onSpeak?(s.say ?? s.text) }
+        // Speak the FULL line — an explicit `say`, else the whole instruction (+ hint) — once per step, so a
+        // state refresh mid-utterance can't cancel/re-truncate it (see speakStep).
+        if mode == .tour || mode == .teach {
+            let spoken = s.say ?? [s.text, s.hint]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: ". ")
+            speakStep(spoken)
+        }
         // Pre-load the clipboard with this step's paste payload (opt-in; user's clipboard is restored on end).
         // An IMAGE wins if present (copyImage); else text (copy). The cursor hint tells the user it's ready.
         model.clipboardHint = nil
-        if autoClipboard, let imgSrc = s.copyImage, let img = loadImage(imgSrc) {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.writeObjects([img])
+        // Clipboard leverage: pre-load so the user just pastes. EXPLICIT payloads (image/value/copy) load
+        // whether or not autoClipboard is set — the author put them there on purpose. autoClipboard only
+        // governs the URL auto-detect heuristic (so legacy tours aren't surprised). Priority:
+        // image → value (type this) → copy (paste this) → a URL found in the step's own caption.
+        if let imgSrc = s.copyImage, let img = loadImage(imgSrc) {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([img])
             model.clipboardHint = "⌘V — image ready"
-        } else if autoClipboard, let c = s.copy {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(c, forType: .string)
+        } else if let v = s.value, !v.isEmpty {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(v, forType: .string)
+            model.clipboardHint = "⌘V — type ready"
+        } else if let c = s.copy, !c.isEmpty {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(c, forType: .string)
             model.clipboardHint = "⌘V — pasted for you"
+        } else if autoClipboard, let link = firstURL(in: s.text) {
+            captureClipboardOnce()
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(link, forType: .string)
+            model.clipboardHint = "⌘V — link ready"
         }
         armStepWatchers()
     }
@@ -1295,14 +1474,18 @@ final class CursorGuide {
         onOptionPreview?(steps[idx].id, model.options[i].id)
     }
 
-    // ── mouse policy: the overlay is ALWAYS click-through (ignoresMouseEvents=true) so it NEVER blocks the
-    //    app underneath — the user must be able to click form fields / real UI while a guide is up. Cards
-    //    are keyboard-driven (⌥→ etc.). (Making the notch card itself clickable safely needs its OWN small
-    //    bounded panel, not flipping the full-screen overlay — that blocked clicks to the app. Follow-up.) ──
-    private func applyMousePolicy() { overlay?.ignoresMouseEvents = true }
+    // ── mouse policy: the overlay is click-through by DEFAULT and becomes clickable ONLY while the
+    //    pointer is over the card (updateMousePassthrough, driven by the mouse-move monitors). A
+    //    full-screen `ignoresMouseEvents=false` window eats every click regardless of hitTest — that
+    //    locked the screen — so we never do that; cursor-tracking is the lock-proof approach. ──
+    private func applyMousePolicy() { updateMousePassthrough() }
     func tapPrimary()      { handleAdvance(fail: false) }
     func tapFail()         { if mode == .test { handleAdvance(fail: true) } }
-    func tapOption(_ i: Int) { selectOption(i) }
+    // Click an option: pick it; clicking the already-selected/recommended card approves (same as ⌥→).
+    func tapOption(_ i: Int) {
+        guard isActive, i < model.options.count else { return }
+        if i == model.selectedOption { handleAdvance(fail: false) } else { selectOption(i) }
+    }
     func tapBack()         { goBack() }
     func tapFeedback()     { beginFeedback() }
     func tapMute()         { toggleMute() }
@@ -1493,17 +1676,19 @@ final class CursorGuide {
 
     private func teardown() {
         isActive = false
+        spokenStepIdx = -1      // next run must speak its first step afresh
         onStopSpeak?()          // silence the concierge voice when the guide ends
         // Teach timers off, and restore the clipboard we borrowed (opt-in runs only).
         holdTimer?.invalidate(); holdTimer = nil
         doneTimer?.invalidate(); doneTimer = nil
         timeoutTimer?.invalidate(); timeoutTimer = nil
-        if autoClipboard {
+        if clipboardSaved {
             NSPasteboard.general.clearContents()
             if let s = savedClipboard { NSPasteboard.general.setString(s, forType: .string) }
             savedClipboard = nil
-            autoClipboard = false
+            clipboardSaved = false
         }
+        autoClipboard = false
         model.visible = false
         model.done = nil
         model.flash = nil
@@ -1520,13 +1705,17 @@ final class CursorGuide {
             if let scr = NSScreen.main { overlay?.setFrame(scr.frame, display: false); model.screenSize = scr.frame.size }
             return
         }
-        let host = NoInsetHostingView(rootView: GuideCaptionView(m: model))
+        let host = GuideHostingView(rootView: GuideCaptionView(m: model))
+        host.model = model                   // so hitTest knows where the card is (clickable card, pass-through elsewhere)
         let panel = NotchPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .screenSaver
-        panel.ignoresMouseEvents = true      // pure guide — the human clicks THROUGH it onto the real UI
+        panel.hidesOnDeactivate = false      // NSPanel defaults this TRUE → the card vanished the moment you switched
+                                             // to another app/Space and only returned when Switchboard was frontmost.
+                                             // The presence card must persist across apps/Spaces (you act on it while away).
+        panel.ignoresMouseEvents = true      // DEFAULT click-through; the cursor-tracking monitor flips it clickable ONLY while the pointer is over the card (lock-proof)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.contentView = host
         panel.setFrame(screen.frame, display: false)
@@ -1570,19 +1759,122 @@ final class CursorGuide {
         flagsMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] ev in
             MainActor.assumeIsolated { self?.onFlags(ev.modifierFlags) }; return ev
         }
+        // MUTUAL EXCLUSION with the CGEvent tap: when the tap is live it already handles+swallows the
+        // Option-chords, so the monitors must NOT fire onKey for those too — a second call cancels every
+        // TOGGLE/CYCLE chord (⌥/ ⌥. ⌥M ⌥;) back to a no-op and over-advances ⌥→. The monitors STILL own
+        // Esc (53) and ⌘V (9), which the tap never touches. When the tap is dead (no accessibility grant),
+        // keyTap == nil → the monitors handle everything (chords work, char just leaks) — the old fallback.
         keyMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
-            MainActor.assumeIsolated { _ = self?.onKey(ev.keyCode, ev.modifierFlags) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.keyTap != nil && self.isGuideOptionChord(ev.keyCode, ev.modifierFlags) { return }  // tap owns it
+                _ = self.onKey(ev.keyCode, ev.modifierFlags)
+            }
         }
         keyMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
             var swallow = false
-            MainActor.assumeIsolated { swallow = self?.onKey(ev.keyCode, ev.modifierFlags) ?? false }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.keyTap != nil && self.isGuideOptionChord(ev.keyCode, ev.modifierFlags) { return }  // tap owns it
+                swallow = self.onKey(ev.keyCode, ev.modifierFlags)
+            }
             return swallow ? nil : ev
         }
+        // Cursor tracking → the overlay only ACCEPTS clicks while the pointer is over the card, and is
+        // otherwise fully click-through. This is the lock-proof way to make a full-screen overlay
+        // selectively clickable: a full-screen `ignoresMouseEvents=false` window eats EVERY click
+        // (hitTest returning nil does NOT forward to the app below) — that locked the screen. Here the
+        // DEFAULT is pass-through and we flip to clickable only when the pointer is provably inside a
+        // sane-sized card rect, so any mis-computation fails safe to pass-through, never a lock.
+        mouseMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMousePassthrough() }
+        }
+        mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] ev in
+            MainActor.assumeIsolated { self?.updateMousePassthrough() }; return ev
+        }
+        _ = installKeyTap()   // additive: swallow the Option-chords so their character never leaks (best-effort)
+    }
+
+    /// Set the overlay click-through UNLESS the pointer is over the card. Default-safe: only captures
+    /// when the cursor is inside a validly-sized card rect (never near full-screen), so a coord bug
+    /// degrades to "card not clickable", not a locked screen. esc/⌥-keys work regardless.
+    @MainActor private func updateMousePassthrough() {
+        guard let ov = overlay else { return }
+        // In .cursor placement the card FOLLOWS the pointer live (offset in cursorOffset so it trails
+        // the cursor rather than sitting under it) — driven by these same mouse-move events.
+        if model.placement == .cursor, model.visible {
+            let ml = NSEvent.mouseLocation
+            model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
+        }
+        guard model.visible, !model.collapsed else { ov.ignoresMouseEvents = true; return }
+        let cf = model.cardFrame, win = ov.frame
+        guard cf.width > 1, cf.height > 1,
+              cf.width < win.width * 0.9, cf.height < win.height * 0.9 else { ov.ignoresMouseEvents = true; return }
+        // cardFrame is SwiftUI .global (window space, top-left origin); the overlay fills the screen.
+        // Convert to screen coords (bottom-left origin) to test against NSEvent.mouseLocation.
+        let cardScreen = CGRect(x: win.minX + cf.minX, y: win.maxY - cf.maxY, width: cf.width, height: cf.height).insetBy(dx: -4, dy: -4)
+        ov.ignoresMouseEvents = !cardScreen.contains(NSEvent.mouseLocation)
     }
 
     private func removeMonitors() {
-        for mon in [flagsMonitorG, flagsMonitorL, keyMonitorG, keyMonitorL] { if let m = mon { NSEvent.removeMonitor(m) } }
-        flagsMonitorG = nil; flagsMonitorL = nil; keyMonitorG = nil; keyMonitorL = nil
+        for mon in [flagsMonitorG, flagsMonitorL, keyMonitorG, keyMonitorL, mouseMonitorG, mouseMonitorL] { if let m = mon { NSEvent.removeMonitor(m) } }
+        flagsMonitorG = nil; flagsMonitorL = nil; keyMonitorG = nil; keyMonitorL = nil; mouseMonitorG = nil; mouseMonitorL = nil
+        removeKeyTap()
+    }
+
+    // The guide's Option-chords (keyCodes bound in onKey under the OPTION modifier). Kept in sync with
+    // onKey's switch: ⌥→123/124, ⌥↑↓125/126, ⌥M46, ⌥.47, ⌥/44, ⌥;41, ⌥1/2/3 18/19/20. These are the ones
+    // whose bare Option press would ALSO emit a character, so the tap swallows exactly this set.
+    private static let optionChordCodes: Set<UInt16> = [124, 123, 126, 125, 46, 47, 44, 41, 18, 19, 20]
+
+    /// Side-effect-free test: would onKey act on this key AND is it an Option-chord that leaks a character?
+    /// (Mirrors onKey's own guards: active, not capturing feedback, Option held, no Control/Command.)
+    @MainActor private func isGuideOptionChord(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags) -> Bool {
+        isActive && !capturingFeedback
+            && flags.contains(.option) && !flags.contains(.control) && !flags.contains(.command)
+            && CursorGuide.optionChordCodes.contains(keyCode)
+    }
+
+    /// Install the consuming tap (best-effort). Returns false if the OS won't give us a tap (e.g.
+    /// accessibility not yet granted) — the passive monitors still run, so the chords still WORK, they
+    /// just also leak a character until the grant lands. Tap only runs while a guide is active.
+    private func installKeyTap() -> Bool {
+        removeKeyTap()
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        let callback: CGEventTapCallBack = { _, type, event, refcon in
+            guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+            let me = Unmanaged<CursorGuide>.fromOpaque(refcon).takeUnretainedValue()
+            // The system disables a tap if a callback is too slow or on user input — re-enable and pass.
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                MainActor.assumeIsolated { if let t = me.keyTap { CGEvent.tapEnable(tap: t, enable: true) } }
+                return Unmanaged.passUnretained(event)
+            }
+            guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+            let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+            let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+            var swallow = false
+            // We attach the source to the MAIN run loop, so the callback runs on the main thread.
+            MainActor.assumeIsolated {
+                if me.isGuideOptionChord(keyCode, flags) { _ = me.onKey(keyCode, flags); swallow = true }
+            }
+            return swallow ? nil : Unmanaged.passUnretained(event)
+        }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                          options: .defaultTap, eventsOfInterest: mask,
+                                          callback: callback, userInfo: refcon) else { return false }
+        keyTap = tap
+        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        keyTapSource = src
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    private func removeKeyTap() {
+        if let tap = keyTap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let src = keyTapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
+        keyTap = nil; keyTapSource = nil
     }
 
     // No-op: guide signals moved to fn+arrow keys (onKey) so they never collide with ⌃⌥ dictation, which
@@ -1617,7 +1909,14 @@ final class CursorGuide {
         case 125: beginFeedback(); return true                                         // ⌥↓ — screenshot + note
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
         case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
-        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
+        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); model.placementPinned = true; applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
+        case 41:                                                                       // ⌥; — cycle notch → below → cursor
+            let nextPl: GuidePlacement = model.placement == .notch ? .dock : (model.placement == .dock ? .cursor : .notch)
+            if nextPl == .cursor, let ov = overlay {
+                let ml = NSEvent.mouseLocation                                          // screen bottom-left → overlay top-left
+                model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
+            }
+            model.placement = nextPl; model.placementPinned = true; applyMousePolicy(); return true
         case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
         case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
         case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C

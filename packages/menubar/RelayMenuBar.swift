@@ -87,12 +87,18 @@ func writeDaemonPlist(to path: String = PLIST) throws {
     // FAST STT: if whisper.cpp + a ggml model are installed, prefer them — localSTT checks WHISPER_BIN
     // before the STT_CMD fallback, and whisper.cpp is ~0.5s warm vs OpenAI whisper's ~4s. Detected at
     // plist-write time; the launcher's plistEnvOutdated refresh re-runs this after an install.
-    let wcpp = ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+    // Prefer the whisper.cpp we SHIP (Resources/stt) so Flow's dictation works with ZERO user setup on a
+    // fresh install; fall back to a user-installed whisper.cpp (Homebrew + a model in ~/.relay/models).
+    let bundledSTT = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/whisper-cli")
+    let bundledModel = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/ggml-tiny.en.bin")
+    let wcpp = [bundledSTT, "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
     let mdir = (home as NSString).appendingPathComponent(".relay/models")
-    let model = (try? FileManager.default.contentsOfDirectory(atPath: mdir))?.first { $0.hasSuffix(".bin") && ($0.contains("base.en") || $0.contains("ggml")) }
-    if let wcpp = wcpp, let model = model {
+    let userModel = (try? FileManager.default.contentsOfDirectory(atPath: mdir))?.first { $0.hasSuffix(".bin") && ($0.contains("base.en") || $0.contains("ggml")) }
+    let modelPath: String? = FileManager.default.fileExists(atPath: bundledModel) ? bundledModel
+        : userModel.map { (mdir as NSString).appendingPathComponent($0) }
+    if let wcpp = wcpp, let modelPath = modelPath {
         envVars["RELAY_WHISPER_BIN"] = wcpp
-        envVars["RELAY_WHISPER_MODEL"] = (mdir as NSString).appendingPathComponent(model)
+        envVars["RELAY_WHISPER_MODEL"] = modelPath
     }
     let spec: [String: Any] = [
         "Label": LABEL,
@@ -643,6 +649,78 @@ func readSignedIn() -> Bool {
 func hostOf(_ origin: String) -> String {
     origin.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
 }
+
+// ---- Claude Code connector setup (onboarding "Connect Claude Code") ------------------------------
+// The Switchboard MCP connector lets a Claude Code session read this project's board (pick up tasks the
+// user moved to Todo) and run its wrapps. We give the user the exact `claude mcp add …` command; these
+// helpers resolve the connector's path (the app's bundled single-file build, else the repo source in
+// dev) and detect whether it's already registered in ~/.claude.json so the card can say "connected".
+func switchboardConnectorPath() -> String {
+    if let res = Bundle.main.resourcePath {
+        let bundled = res + "/connector/switchboard.mjs"
+        if FileManager.default.fileExists(atPath: bundled) { return bundled }
+    }
+    // dev: the app runs from <repo>/packages/menubar/Switchboard.app → the connector is a sibling package
+    let dev = (Bundle.main.bundlePath as NSString).appendingPathComponent("../../switchboard-mcp/switchboard-mcp.mjs")
+    return (dev as NSString).standardizingPath
+}
+func switchboardConnectorNode() -> String {
+    if let res = Bundle.main.resourcePath { let n = res + "/node"; if FileManager.default.fileExists(atPath: n) { return n } }
+    return "node"
+}
+func claudeMcpAddCommand() -> String {
+    "claude mcp add switchboard -s user -- \"\(switchboardConnectorNode())\" \"\(switchboardConnectorPath())\" mcp"
+}
+// Run `claude mcp add …` in the user's LOGIN shell (so it finds `claude` on their PATH — a GUI app's
+// own PATH is minimal). User-initiated only: fired by a Run button / notch action, which IS the consent
+// for this one config change. Returns (ok, message) on the main thread; "already exists" counts as ok.
+func runClaudeMcpAdd(_ completion: @escaping (Bool, String) -> Void) {
+    let cmd = claudeMcpAddCommand()
+    DispatchQueue.global(qos: .userInitiated).async {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-lc", cmd]
+        let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+        var ok = false, msg = ""
+        do {
+            try p.run(); p.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            msg = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let already = msg.range(of: "already", options: .caseInsensitive) != nil
+            ok = p.terminationStatus == 0 || already
+            if !ok && msg.isEmpty { msg = (p.terminationStatus == 127 ? "Claude Code (`claude`) isn't on your PATH — install it, or run `claude` once to sign in." : "exit \(p.terminationStatus)") }
+        } catch { ok = false; msg = "Couldn't launch a shell: \(error.localizedDescription)" }
+        DispatchQueue.main.async { connectorInstalledCache = nil; completion(ok, msg) }
+    }
+}
+// True if a server referencing the switchboard connector is registered anywhere in ~/.claude.json
+// (top-level user scope, or under any projects.<path>.mcpServers). Cached 20s.
+private var connectorInstalledCache: (at: Date, val: Bool)? = nil
+func claudeCodeConnectorInstalled() -> Bool {
+    if let c = connectorInstalledCache, Date().timeIntervalSince(c.at) < 20 { return c.val }
+    var val = false
+    let path = (NSHomeDirectory() as NSString).appendingPathComponent(".claude.json")
+    if let obj = readJSON(path) as? [String: Any] {
+        func scan(_ v: Any?) -> Bool {
+            guard let m = v as? [String: Any] else { return false }
+            for (name, cfg) in m {
+                if name.lowercased().contains("switchboard") { return true }
+                if let c = cfg as? [String: Any] {
+                    let cmd = (c["command"] as? String) ?? ""
+                    let args = ((c["args"] as? [String]) ?? []).joined(separator: " ")
+                    if (cmd + " " + args).lowercased().contains("switchboard") { return true }
+                }
+            }
+            return false
+        }
+        if scan(obj["mcpServers"]) { val = true }
+        else if let projects = obj["projects"] as? [String: Any] {
+            for (_, pv) in projects { if let pd = pv as? [String: Any], scan(pd["mcpServers"]) { val = true; break } }
+        }
+    }
+    connectorInstalledCache = (Date(), val)
+    return val
+}
 func agoText(_ ts: Double) -> String {
     let s = max(0, Date().timeIntervalSince1970 - ts / 1000)
     if s < 60 { return "\(Int(s))s" }
@@ -758,9 +836,17 @@ func readModelPrefs() -> Set<String> {
 // `.flagsChanged` monitor (installHotKey), which only sees MODIFIERS, so the whole grammar is: summon =
 // double-tap ONE modifier; talk = hold a TWO-modifier chord. A real key+modifier hotkey would need Input
 // Monitoring / a CGEventTap; we intentionally don't go there. Rebinding therefore = pick from these presets.
-struct ShortcutCfg { var summon = "control"; var talk = "control+option" }   // defaults = the original ⌃⌃ / ⌃⌥
+// dictationMode picks HOW the talk chord drives dictation:
+//   "latch" (default, the new grammar) — TAP the talk chord to BEGIN dictating; recording LATCHES and
+//            keeps going after the keys are released. A tap of the SUMMON modifier (⌃) COMMITs (stop +
+//            transcribe + act). Holding Fn at commit routes the transcript through the vault FIND lookup
+//            instead of pasting it raw. Esc aborts from any state.
+//   "hold"  (legacy fallback) — HOLD the talk chord to record; release to transcribe + paste. Kept fully
+//            working so a bad edit / a machine where the latch grammar misbehaves always has dictation.
+struct ShortcutCfg { var summon = "control"; var talk = "control+option"; var dictationMode = "latch" }   // defaults = ⌃⌃ / ⌃⌥, latched dictation
 let SUMMON_OPTIONS = ["control", "option", "command", "shift"]
 let TALK_OPTIONS = ["control+option", "control+command", "option+command", "control+shift", "option+shift", "command+shift"]
+let DICTATION_MODES = ["latch", "hold"]
 func modFlag(_ s: String) -> NSEvent.ModifierFlags {
     switch s { case "control": return .control; case "option": return .option; case "command": return .command; case "shift": return .shift; default: return [] }
 }
@@ -779,6 +865,9 @@ func readShortcutCfg() -> ShortcutCfg {
     if let obj = readJSON(f) as? [String: Any] {
         if let s = obj["summon"] as? String, SUMMON_OPTIONS.contains(s) { c.summon = s }
         if let t = obj["talk"] as? String, TALK_OPTIONS.contains(t) { c.talk = t }
+        // Out-of-vocabulary (or absent) → the "latch" default. So a stale/hand-edited file can never
+        // strand the user with an unrecognised dictation mode.
+        if let d = obj["dictationMode"] as? String, DICTATION_MODES.contains(d) { c.dictationMode = d }
     }
     return c
 }
@@ -876,6 +965,89 @@ struct FlowLayout: Layout {
     }
 }
 
+// "Connect Claude Code" — the onboarding + Settings card that guides the user to add the Switchboard
+// MCP connector to their Claude Code, so Guru and the OS board get real hands: a Claude session can then
+// read this project's board (pick up tasks moved to Todo) and run its wrapps. Shows the exact command
+// with a copy button, and flips to a green "connected" state once it's registered in ~/.claude.json.
+struct ConnectClaudeCodeCard: View {
+    var compact = false
+    @State private var installed = false
+    @State private var copied = false
+    @State private var running = false
+    @State private var errMsg: String? = nil
+    private var command: String { claudeMcpAddCommand() }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "terminal.fill").font(.system(size: 12)).foregroundColor(installed ? .ok : .lime)
+                Text("Connect Claude Code").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Spacer(minLength: 0)
+                if installed {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundColor(.ok)
+                        Text("connected").font(.splMono(9.5)).foregroundColor(.ok)
+                    }
+                }
+            }
+            Text("Let Guru and your OS board reach a Claude Code session — it can read this project's board, pick up tasks you move to Todo, and run your wrapps.")
+                .font(.hanken(11.5)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+
+            if installed {
+                Text("Try it in a Claude Code session here: “what's on my Switchboard board?” or “pick up the next task.”")
+                    .font(.hanken(11)).foregroundColor(.inkSec).fixedSize(horizontal: false, vertical: true)
+            } else {
+                // Primary: Run it (the app runs `claude mcp add` for you). Secondary: copy to run yourself.
+                HStack(spacing: 8) {
+                    if running {
+                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Adding…").font(.hanken(11)).foregroundColor(.inkDim) }
+                    } else {
+                        Button(action: run) {
+                            Text("Run it").font(.hanken(12, .semibold)).foregroundColor(Color(red: 0x0b/255, green: 0x0c/255, blue: 0x10/255))
+                                .padding(.horizontal, 13).padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                        }.buttonStyle(.plain).help("Run `claude mcp add` for you")
+                    }
+                    Button(action: copy) {
+                        Text(copied ? "copied" : "copy command").font(.hanken(11, .semibold))
+                            .foregroundColor(copied ? .ok : .inkSec)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke((copied ? Color.ok : Color.edge), lineWidth: 1))
+                    }.buttonStyle(.plain)
+                    Spacer(minLength: 0)
+                }
+                if let e = errMsg {
+                    Text(e).font(.splMono(9)).foregroundColor(.danger).fixedSize(horizontal: false, vertical: true)
+                    Text(command).font(.splMono(9)).foregroundColor(.inkFaint).textSelection(.enabled)
+                        .lineLimit(2).truncationMode(.middle)
+                } else {
+                    Text("“Run it” adds it on your Claude Code. Needs `claude` installed — or copy and run it in a project folder yourself.")
+                        .font(.splMono(9)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(compact ? 12 : 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke((installed ? Color.ok : Color.lime).opacity(installed ? 0.35 : 0.25), lineWidth: 1))
+        .onAppear { installed = claudeCodeConnectorInstalled() }
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
+    }
+    private func run() {
+        running = true; errMsg = nil
+        runClaudeMcpAdd { ok, msg in
+            running = false
+            if ok { installed = true } else { errMsg = msg }
+        }
+    }
+}
+
 struct Panel: View {
     @ObservedObject var model: Model
     @ObservedObject var ollama: OllamaMonitor
@@ -905,6 +1077,7 @@ struct Panel: View {
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     let onStore: () -> Void              // open the wrapp store modal (drops from the notch)
     let onTour: () -> Void               // launch the floating-cursor onboarding concierge (CursorGuide .tour)
+    var onConnectClaudeNotch: () -> Void = {}   // raise the "Connect Claude Code" notch card (onboarding finish)
     @State private var breathe = false
     @State private var pickerOpen = false
     @State private var dropTargeted = false
@@ -1542,6 +1715,9 @@ struct Panel: View {
     // (claude.ai connectors themselves are inherited by the SDK and managed in Claude, not here.)
     private var connectionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Wire a Claude Code session to this project's board (task pickup + wrapps) — persistent home
+            // for the same card onboarding shows, so it's findable and shows "connected" once set up.
+            ConnectClaudeCodeCard(compact: true)
             if model.appList.isEmpty {
                 Text("Nothing connected yet — open a wrapp and it'll ask.").font(.hanken(11)).foregroundColor(.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1717,9 +1893,14 @@ struct Panel: View {
             }
             Text("Press ⌃⌃ anytime to summon me. Everything else lives in this panel — replay the tour from Settings whenever.")
                 .font(.hanken(12)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+            // One power-up worth doing now: a Claude Code session that reads your board (task pickup) +
+            // runs wrapps. We raise it as a Run-it card in the NOTCH on finish; it also lives in Settings.
+            Text("I've popped a “Connect Claude Code” card into your notch — one click wires a Claude Code session to your board so Guru and this OS can pick up tasks. It's also in Settings → Connections.")
+                .font(.hanken(11.5)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
             GhostButton(icon: "checkmark", label: "done", action: { onboard.finish() })
             Spacer(minLength: 0)
         }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { onConnectClaudeNotch() }
     }
 
     // apps — the real-icon row across the top
@@ -2052,14 +2233,12 @@ struct OrbView: View {
                     .scaleEffect(breathe ? 1.0 : 0.96)
                     .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
             } else {
-                // Idle: a row of three dots — the dot-matrix language at its smallest (a switchboard's
-                // resting lamps), health-tinted. Lime = running+signed-in, red = running not-signed-in,
-                // faint = daemon down.
+                // Idle: the DOT-MATRIX mark at its smallest (the switchboard's resting lamps), health-tinted.
+                // Lime = running+signed-in, red = running not-signed-in, faint = daemon down. A calm
+                // "thinking" sweep when alive; a still frame when the daemon is down.
                 let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-                HStack(spacing: 3) {
-                    ForEach(0..<3, id: \.self) { _ in Circle().fill(tint).frame(width: 5, height: 5) }
-                }
-                .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.35) : .clear, radius: 3)
+                DotMatrix(pattern: .thinking, accent: tint, cols: 6, rows: 3, dot: 1.7, gap: 1.6, animated: model.running)
+                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.30) : .clear, radius: 3)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
@@ -2430,6 +2609,186 @@ struct ConsentDrop: View {
     }
 }
 
+/// A native wrapp asks to open a FOLDER (consent:storage-bind) or raise the folder picker
+/// (consent:storage-pick). The A1 consent (founder pick 2026-08-12): the ask + the exact path, with
+/// Not now / Allow inline on the right — the same notch drop the connect card uses. Reply is a plain
+/// bool → the daemon's ask<boolean> (server.ts requestStorageBindConsent).
+struct StorageBindDrop: View {
+    let app: String
+    let path: String
+    let isPick: Bool
+    var onAllow: () -> Void
+    var onDeny: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.amber.opacity(0.16))
+                    .overlay(Image(systemName: "folder").font(.system(size: 15)).foregroundColor(.amber))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Open a folder for \u{201C}\(app)\u{201D}?").font(.hanken(14, .semibold)).foregroundColor(.ink)
+                    Text(isPick ? "You\u{2019}ll choose the folder next"
+                                : "read \u{0026} stage \u{00B7} nothing leaves your Mac")
+                        .font(.hanken(10.5)).foregroundColor(.inkFaint)
+                }
+                Spacer(minLength: 0)
+            }
+            if !path.isEmpty && !isPick {
+                Text(path).font(.splMono(10)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.middle)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.edge, lineWidth: 1))
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button(action: onDeny) {
+                    Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button(action: onAllow) {
+                    Text(isPick ? "Choose\u{2026}" : "Allow").font(.hanken(11.5, .semibold)).foregroundColor(.page)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)   // room for the tab ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
+/// The native CONNECT-GRANT scope card (founder direction 2026-08-12: move ALL consent to the notch).
+/// Mirrors the extension consent-view: origin + reason, model checkboxes (requested pre-selected), tool
+/// checkboxes with a read/write badge. Approve returns the grant OBJECT
+/// {models, tools:[{name,access}], budgets, contextKinds}; Deny returns nil. Wired via ConsentClient.replyResult.
+struct ConnectGrantDrop: View {
+    let origin: String
+    let reason: String
+    let availableModels: [String]
+    let tools: [(name: String, access: String, label: String)]
+    let budgets: [String: Any]
+    let contextKinds: [String]
+    var onApprove: ([String: Any]) -> Void
+    var onDeny: () -> Void
+
+    @State private var selModels: Set<String>
+    @State private var selTools: Set<String>
+
+    init(origin: String, reason: String, availableModels: [String], requestedModels: [String],
+         tools: [(name: String, access: String, label: String)], budgets: [String: Any], contextKinds: [String],
+         onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
+        self.origin = origin; self.reason = reason; self.availableModels = availableModels; self.tools = tools
+        self.budgets = budgets; self.contextKinds = contextKinds; self.onApprove = onApprove; self.onDeny = onDeny
+        _selModels = State(initialValue: Set(requestedModels.isEmpty ? Array(availableModels.prefix(1)) : requestedModels))
+        _selTools = State(initialValue: Set(tools.map { $0.name }))
+    }
+
+    private func host(_ s: String) -> String { URL(string: s)?.host ?? s }
+    private func box(_ on: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 5)
+            .fill(on ? Color.lime : Color.clear)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(on ? Color.lime : Color.edge, lineWidth: 1.5))
+            .overlay(Group { if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundColor(.page) } })
+            .frame(width: 16, height: 16)
+    }
+    private var writeCount: Int { tools.filter { $0.access == "write" }.count }
+    private func chunked(_ a: [String], _ n: Int) -> [[String]] {
+        stride(from: 0, to: a.count, by: n).map { Array(a[$0..<min($0 + n, a.count)]) }
+    }
+    private func pill(_ m: String, _ on: Bool) -> some View {
+        Text(m).font(.hanken(12, on ? .semibold : .regular)).foregroundColor(on ? .page : .inkDim).lineLimit(1)
+            .padding(.horizontal, 11).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.lime : Color.raised.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.clear : Color.edge, lineWidth: 1))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
+                    .overlay(Image(systemName: "link").font(.system(size: 14)).foregroundColor(.lime))
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    (Text("Connect to ").foregroundColor(.ink) + Text(host(origin)).foregroundColor(.lime)).font(.hanken(14, .semibold))
+                    if !reason.isEmpty { Text("\u{201C}\(reason)\u{201D}").font(.hanken(10.5)).italic().foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+                }
+                Spacer(minLength: 0)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 13) {
+                    if !availableModels.isEmpty {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                            ForEach(chunked(availableModels, 2), id: \.self) { row in
+                                HStack(spacing: 7) {
+                                    ForEach(row, id: \.self) { m in
+                                        Button { if selModels.contains(m) { selModels.remove(m) } else { selModels.insert(m) } } label: { pill(m, selModels.contains(m)) }.buttonStyle(.plain)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                    }
+                    if !tools.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("TOOLS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                                Spacer(minLength: 0)
+                                Text("\(tools.count) tool\(tools.count == 1 ? "" : "s")\(writeCount > 0 ? " \u{00B7} \(writeCount) write" : "")").font(.splMono(9)).foregroundColor(.inkFaint)
+                            }
+                            ForEach(Array(tools.enumerated()), id: \.offset) { _, t in
+                                Button { if selTools.contains(t.name) { selTools.remove(t.name) } else { selTools.insert(t.name) } } label: {
+                                    HStack(spacing: 9) {
+                                        box(selTools.contains(t.name))
+                                        Text(t.label.isEmpty ? t.name : t.label).font(.hanken(12)).foregroundColor(.ink).lineLimit(1)
+                                        Spacer(minLength: 0)
+                                        Text(t.access.uppercased()).font(.splMono(8)).tracking(0.6).foregroundColor(t.access == "write" ? Color(red: 1, green: 0.42, blue: 0.37) : .inkFaint)
+                                    }
+                                    .padding(.horizontal, 10).padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised.opacity(0.5)))
+                                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }.frame(maxHeight: 230)
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Button {
+                    let grant: [String: Any] = [
+                        "models": Array(selModels),
+                        "tools": tools.filter { selTools.contains($0.name) }.map { ["name": $0.name, "access": $0.access] },
+                        "budgets": budgets,
+                        "contextKinds": contextKinds,
+                    ]
+                    onApprove(grant)
+                } label: {
+                    Text("Approve \u{00B7} \(selTools.count) tool\(selTools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold)).foregroundColor(.page)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 2)
+        }
+        .padding(18)
+        .frame(width: 360, alignment: .leading)
+        .padding(.horizontal, 14)
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+    }
+}
+
 /// The native Accessibility onboarding — a notch DROP (notch-native), not a terminal walk. It states
 /// the need, opens the exact pane, AND offers the real trick: a draggable app chip you drag straight
 /// into the Accessibility list (`.onDrag` yields the .app bundle URL), instead of hunting via the + button.
@@ -2733,9 +3092,15 @@ final class ConsentClient: NSObject {
     private let session = URLSession(configuration: .default)
     private let port: UInt16
     private let tokenProvider: () -> String?
-    private let onPrompt: (String, [String: Any]) -> Void   // (id, body) for consent:native-connect
+    private let onPrompt: (String, String, [String: Any]) -> Void   // (id, kind, body) for consent prompts
+    // Correlated request/response over the SAME authed socket: id → completion. The daemon answers a
+    // `{type:"control", id, action, args}` with `{type:"control_result", id, result}`. Used for
+    // vault.find (dictation FIND mode). Guarded by a lock so the receive callback (URLSession's queue)
+    // and the caller (main) can't race the map. Fires nil on timeout / socket loss — never wedges.
+    private var pending: [String: (Any?) -> Void] = [:]
+    private let pendingLock = NSLock()
 
-    init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, [String: Any]) -> Void) {
+    init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, String, [String: Any]) -> Void) {
         self.port = port; self.tokenProvider = tokenProvider; self.onPrompt = onPrompt
         super.init(); connect()
     }
@@ -2745,7 +3110,7 @@ final class ConsentClient: NSObject {
         task?.resume(); receive()
         send(["type": "auth", "token": token, "surface": "menubar"])
     }
-    private func retry() { DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in self?.connect() } }
+    private func retry() { failAllPending(); DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in self?.connect() } }
     private func receive() {
         task?.receive { [weak self] result in
             guard let self else { return }
@@ -2753,16 +3118,52 @@ final class ConsentClient: NSObject {
             case .failure: self.retry()
             case .success(let msg):
                 if case let .string(s) = msg, let d = s.data(using: .utf8),
-                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                   o["type"] as? String == "prompt", (o["kind"] as? String) == "consent:native-connect",
-                   let id = o["id"] as? String {
-                    self.onPrompt(id, (o["body"] as? [String: Any]) ?? [:])
+                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                    let type = o["type"] as? String
+                    if type == "prompt", let kind = o["kind"] as? String,
+                       ["consent:native-connect", "consent:connect", "consent:storage-bind", "consent:storage-pick"].contains(kind),
+                       let id = o["id"] as? String {
+                        // native-connect → "Allow this app?"; storage-bind/pick → "Open a folder?" (A1).
+                        // The daemon routes these to the menubar surface (fallback) when no extension is
+                        // connected — exactly the native-wrapp case that used to time out and auto-deny.
+                        self.onPrompt(id, kind, (o["body"] as? [String: Any]) ?? [:])
+                    } else if type == "control_result", let id = o["id"] as? String {
+                        // `result` may legitimately be null (e.g. vault.find no-match) — deliver as nil.
+                        self.fulfil(id, o.keys.contains("result") ? o["result"] : nil)
+                    }
                 }
                 self.receive()
             }
         }
     }
+    // Resolve/clear one pending request. NSNull → nil so callers see a clean "no result".
+    private func fulfil(_ id: String, _ result: Any?) {
+        pendingLock.lock(); let cb = pending.removeValue(forKey: id); pendingLock.unlock()
+        let v = (result is NSNull) ? nil : result
+        cb?(v)
+    }
+    private func failAllPending() {
+        pendingLock.lock(); let cbs = Array(pending.values); pending.removeAll(); pendingLock.unlock()
+        for cb in cbs { cb(nil) }
+    }
+    /// Fire a request over the authed socket and await the daemon's matching `control_result`. Calls
+    /// `completion(nil)` on timeout or socket loss — a find that can't reach the daemon degrades to a
+    /// no-match, never a hang. `completion` is invoked exactly once.
+    func request(action: String, args: [String: Any], timeout: TimeInterval = 6.0, completion: @escaping (Any?) -> Void) {
+        let id = UUID().uuidString
+        var fired = false
+        let once: (Any?) -> Void = { v in
+            self.pendingLock.lock(); let already = fired; fired = true; self.pending.removeValue(forKey: id); self.pendingLock.unlock()
+            if !already { completion(v) }
+        }
+        pendingLock.lock(); pending[id] = once; pendingLock.unlock()
+        send(["type": "control", "id": id, "action": action, "args": args])
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once(nil) }
+    }
     func reply(_ id: String, _ result: Bool) { send(["type": "reply", "id": id, "result": result]) }
+    /// Reply with an OBJECT result (or null) — for consent:connect, whose grant is
+    /// {models, tools, budgets, contextKinds}, not a bool. null = denied.
+    func replyResult(_ id: String, _ result: [String: Any]?) { send(["type": "reply", "id": id, "result": result ?? NSNull()]) }
     /** Fire a daemon control action over the same authed socket (e.g. disconnectNativeApp). The panel
      *  re-reads its files right after, so we don't need the reply. */
     func control(_ action: String, _ args: [String: Any]) { send(["type": "control", "id": UUID().uuidString, "action": action, "args": args]) }
@@ -3094,9 +3495,19 @@ struct ActionConsentDrop: View {
     private var godListening = false              // mic is recording your request
     private var recorder: AVAudioRecorder?        // in-process mic capture — makes THIS app the TCC mic client
     private var recWav: String?                   // where the clip lands
-    private var dictating = false                 // ⌃⌥ hold-to-dictate in progress (raw STT → paste, no God)
+    private var dictating = false                 // ⌃⌥ dictation in progress (raw STT → paste/find, no God). True in BOTH modes.
     private var dictateRecorder: AVAudioRecorder? // separate recorder for the dictation gesture
     private var dictateWav: String?
+    // ── Latched-dictation state machine (dictationMode == "latch") ────────────────────────────────
+    // idle → (talk-chord tap) dictating → (⌃ tap) committing → idle · Esc aborts from any state.
+    // `dictating` above is the single "recording is live" flag both modes share; these drive the LATCH
+    // grammar only. A poll timer (free reads, no extra TCC) owns commit/cancel/find while latched, so it
+    // never fights the flagsChanged summon/launcher edge logic in onFlags.
+    private var dictateLatched = false            // true only in latch mode while recording is latched on
+    private var dictateWatchTimer: Timer?         // ~60fps poll: ⌃-tap commit · Esc cancel · Fn→find indicator
+    private var dictatePrevCtrlDown = false        // edge-detect the commit modifier across ticks
+    private var dictateFindArmed = false           // Fn is currently held → commit routes to vault.find, not paste
+    private var dictateCommitting = false          // guard: a commit/transcribe is already in flight (ignore repeats)
     private var godConsentPending = false         // a RUN action is awaiting the notch "Allow?" (one drop at a time)
     private var godStatusPanel: NSPanel!          // the notch-drop phase indicator (Listening/Thinking/Speaking)
     private var godStatusLabel: String?           // current phase label — guards against rebuilding (waveform reset) each poll
@@ -3105,6 +3516,8 @@ struct ActionConsentDrop: View {
     private var lastGodAudio: String?             // the last voice turn's clip — so switching the project can RE-RUN it grounded anew
     private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
+    private var pointMarkPinned = false           // explicit, time-limited latch to keep a model-chosen ring briefly AFTER a run ends — the sanctioned replacement for the old buggy `target != nil` gate
+    private var pointMarkPinTimer: Timer?         // auto-expiry that forces a pinned mark back to idle so the ring can never be orphaned
     // ── Ambient mode (strictly-local awareness → contextual helper canvas) ────────────────────────
     private let ambientSensor = AmbientSensor()   // NSWorkspace + AX detection; no network/screenshot/model
     private var ambientPanel: NotchPanel?         // the helper canvas, a notch drop like God's pills
@@ -3140,6 +3553,81 @@ struct ActionConsentDrop: View {
         }
         let view = ConsentDrop(name: name, appId: appId, reason: reason, canDo: canDo,
                                onAllow: { reply(true) }, onDeny: { reply(false) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(consentPanel)
+    }
+
+    // A native wrapp asks to open a folder (consent:storage-bind) or raise the picker
+    // (consent:storage-pick). The A1 consent drop — folder + exact path, Not now / Allow. Reply is a
+    // plain bool the daemon's ask<boolean> awaits; used to time out → auto-deny for native wrapps.
+    private func showStorageBindConsent(_ id: String, _ kind: String, _ body: [String: Any]) {
+        let origin = body["origin"] as? String ?? ""
+        let path = body["path"] as? String ?? ""
+        let app: String = {
+            guard let host = URL(string: origin)?.host else { return "a wrapp" }
+            if host.hasSuffix(".thelastprompt.ai") {
+                let s = String(host.dropLast(".thelastprompt.ai".count))
+                return s.isEmpty ? "a wrapp" : s.prefix(1).uppercased() + s.dropFirst()
+            }
+            if host.contains("localhost") || host.hasPrefix("127.") { return "this wrapp" }
+            return host
+        }()
+        let reply: (Bool) -> Void = { [weak self] allow in
+            self?.consent?.reply(id, allow)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = StorageBindDrop(app: app, path: path, isPick: kind == "consent:storage-pick",
+                                   onAllow: { reply(true) }, onDeny: { reply(false) })
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false
+            consentPanel.backgroundColor = .clear
+            consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu
+            consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(consentPanel)
+    }
+
+    // consent:connect — the models+tools SCOPE grant, at the notch (was extension-only). Approve returns
+    // the grant object {models, tools:[{name,access}], budgets, contextKinds}; Deny returns null.
+    private func showConnectGrant(_ id: String, _ body: [String: Any]) {
+        let origin = body["origin"] as? String ?? ""
+        let reason = body["reason"] as? String ?? ""
+        let modelsDict = body["models"] as? [String: Any] ?? [:]
+        let available = (modelsDict["available"] as? [String]) ?? []
+        let requested = (modelsDict["requested"] as? [String]) ?? []
+        let tools: [(name: String, access: String, label: String)] = ((body["tools"] as? [[String: Any]]) ?? []).map {
+            (name: $0["name"] as? String ?? "", access: $0["access"] as? String ?? "read", label: $0["label"] as? String ?? "")
+        }.filter { !$0.name.isEmpty }
+        let budgets = body["budgets"] as? [String: Any] ?? [:]
+        let contextKinds = (body["contextKinds"] as? [String]) ?? []
+        let finish: ([String: Any]?) -> Void = { [weak self] grant in
+            self?.consent?.replyResult(id, grant)
+            self?.consentPanel?.orderOut(nil)
+        }
+        let view = ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
+                                    tools: tools, budgets: budgets, contextKinds: contextKinds,
+                                    onApprove: { finish($0) }, onDeny: { finish(nil) })
         if consentPanel == nil {
             consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             consentPanel.isOpaque = false
@@ -3375,6 +3863,8 @@ struct ActionConsentDrop: View {
                 .prefix(6).map { OmniApp(id: $0.id, name: $0.name, sub: $0.tagline) }
         }
         OSAsk.handler = { [weak self] q in Task { @MainActor in if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } } }
+        // The OS Store surface is a door, not a rebuild — it opens the real native store front.
+        OSStoreDoor.handler = { [weak self] in Task { @MainActor in self?.showStore() } }
         // Become the daemon's native consent surface — native apps' "Allow?" prompts show HERE.
         consent = ConsentClient(port: PORT,
             tokenProvider: {
@@ -3382,7 +3872,13 @@ struct ActionConsentDrop: View {
                 let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 return t.isEmpty ? nil : t
             },
-            onPrompt: { [weak self] id, body in Task { @MainActor in self?.showNativeConsent(id, body) } })
+            onPrompt: { [weak self] id, kind, body in Task { @MainActor in
+                switch kind {
+                case "consent:native-connect": self?.showNativeConsent(id, body)
+                case "consent:connect": self?.showConnectGrant(id, body)
+                default: self?.showStorageBindConsent(id, kind, body)   // storage-bind / storage-pick
+                }
+            } })
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
@@ -3417,7 +3913,8 @@ struct ActionConsentDrop: View {
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
             onStore: { [weak self] in self?.showStore() },
-            onTour: { [weak self] in self?.startWelcomeTour() }
+            onTour: { [weak self] in self?.startWelcomeTour() },
+            onConnectClaudeNotch: { [weak self] in self?.promptConnectClaudeCodeNotch() }
         ))
         // A borderless, non-activating panel pinned under the icon — NSPopover kept anchoring into
         // mid-air, and the arrow is noise anyway. The SwiftUI view brings its own rounded corners.
@@ -3449,6 +3946,7 @@ struct ActionConsentDrop: View {
         installHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
+        installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
@@ -3731,8 +4229,11 @@ struct ActionConsentDrop: View {
     private func checkOpenOSTrigger() {
         let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-os")
         if FileManager.default.fileExists(atPath: p) {
+            // Optional file body = the surface to land on (e.g. `echo tasks > ~/.relay/open-os`); empty = Home.
+            let want = (try? String(contentsOfFile: p, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             try? FileManager.default.removeItem(atPath: p)
-            OSShellWindowController.shared.show()
+            if !want.isEmpty, let s = Surface(rawValue: want) { OSShellWindowController.shared.show(s) }
+            else { OSShellWindowController.shared.show() }
         }
         // `touch ~/.relay/fill-form` → guided form-fill from the clipboard (scriptable + self-test hook).
         let f = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/fill-form")
@@ -3746,6 +4247,20 @@ struct ActionConsentDrop: View {
         if FileManager.default.fileExists(atPath: t) {
             try? FileManager.default.removeItem(atPath: t)
             startWelcomeTour()
+        }
+        // `touch ~/.relay/open-panel` → front the menu-bar panel (the OS window's Needs-attention items
+        // use this so "fix it in the panel" is a real one-click action, not a dead hint).
+        let pp = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-panel")
+        if FileManager.default.fileExists(atPath: pp) {
+            try? FileManager.default.removeItem(atPath: pp)
+            openedByHover = false; showPanel()
+        }
+        // `touch ~/.relay/connect-claude` → raise the "Connect Claude Code" notch card (the onboarding
+        // step, also scriptable / self-test). Its "Run it" adds the connector on the user's Claude Code.
+        let cc = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/connect-claude")
+        if FileManager.default.fileExists(atPath: cc) {
+            try? FileManager.default.removeItem(atPath: cc)
+            promptConnectClaudeCodeNotch()
         }
     }
     @objc private func previewWidgetItem(_ sender: NSMenuItem) {
@@ -4018,6 +4533,35 @@ struct ActionConsentDrop: View {
         if let p = notchWidgetPanel { dismissToNotch(p) }
     }
 
+    // Onboarding "Connect Claude Code", in the NOTCH: an actionable card the user can Run right there,
+    // so a Claude Code session can read their board (pick up tasks) + run wrapps. "Run it" (the openLabel)
+    // fires runClaudeMcpAdd; the copy button (built into a .text widget) is the manual fallback.
+    @MainActor func promptConnectClaudeCodeNotch() {
+        if claudeCodeConnectorInstalled() {
+            showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: "Already connected", openLabel: "Done",
+                result: .text("A Claude Code session can read your board and pick up tasks. Try: “what's on my Switchboard board?” or “pick up the next task.”")),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        let body = "Let Guru and your OS board reach a Claude Code session — it can read this project's board, pick up tasks you move to Todo, and run your wrapps.\n\n\(claudeMcpAddCommand())"
+        showNotchWidget(WidgetSpec(kicker: "ONE MORE THING", title: "Connect Claude Code", openLabel: "Run it",
+            result: .text(body)),
+            onOpen: { [weak self] in self?.runConnectFromNotch() })
+    }
+    @MainActor private func runConnectFromNotch() {
+        showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: "Connecting…", openLabel: "",
+            result: .working("Adding the Switchboard connector to Claude Code")))
+        runClaudeMcpAdd { [weak self] ok, msg in
+            guard let self else { return }
+            let body = ok
+                ? "Connected ✓  A Claude Code session can now read your board. Try: “pick up the next task.”"
+                : "Couldn't add it automatically — \(msg.isEmpty ? "is Claude Code installed?" : msg)\n\nRun this yourself in a project folder:\n\(claudeMcpAddCommand())"
+            self.showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: ok ? "Connected" : "Copy & run", openLabel: "Done",
+                result: .text(body)),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+        }
+    }
+
     // ── NATIVE NOTCH WEB WIDGET — a wrapp's WIDGET-surface URL rendered LIVE in the notch ──────────────
     // Loads the page in a WKWebView with window.claude bridged to the daemon (NotchWidgetWebHost), clipped
     // to the notch silhouette. The new `ideabrain` / `resize` web widgets render here for real. Behind a
@@ -4100,6 +4644,51 @@ struct ActionConsentDrop: View {
     //   shows it (pill flashes done); user elsewhere/window closed → the result DROPS from the notch
     //   like a notification. "Show the wrapp" flips notch→window; closing the window flips back.
     private var godWeb: GodWebWindow?
+    // App windows opened from the launcher/store ("window" surface): user-opened wrapps hosted in the
+    // same bridged webview as drive — kept separate so closing an app never disturbs a drive session.
+    private var appWindows: [GodWebWindow] = []
+    @MainActor func openWrappWindow(url: URL, name: String) {
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
+                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        // A real content window ⇒ stop being a menu-bar-only ACCESSORY (whose windows float as overlays:
+        // no Cmd-Tab, no Mission Control, always-on-top) and behave like a NORMAL app while it's open.
+        // Switch BEFORE creating the window so it's born a normal-level window, not an accessory one.
+        // Revert to .accessory (menu-bar-only, no Dock icon) once the last window closes.
+        if appWindows.isEmpty { NSApp.setActivationPolicy(.regular) }
+        let web = GodWebWindow(url: url, token: token, title: name)
+        appWindows.append(web)
+        web.onUserClosed = { [weak self, weak web] in
+            self?.appWindows.removeAll { $0 === web }
+            if self?.appWindows.isEmpty == true { NSApp.setActivationPolicy(.accessory) }
+        }
+        web.open()
+        NSLog("[open-wrapp] native window opened: %@ → %@", name, url.absoluteString)
+    }
+    // Control-plane trigger: write {"id":"redline"} (or {"url":"…","name":"…"}) to ~/.relay/open-wrapp.json
+    // and the app opens that wrapp in the native bridged window — the same file-handshake pattern as
+    // guide-run.json, so any Claude thread can hand a surface to the human. Poll is fine at 2s.
+    private var openWrappTimer: Timer?
+    private func installOpenWrappTrigger() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/open-wrapp.json")
+        openWrappTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self, FileManager.default.fileExists(atPath: path) else { return }
+            defer { try? FileManager.default.removeItem(atPath: path) }
+            guard let data = FileManager.default.contents(atPath: path),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+            DispatchQueue.main.async {
+                if let id = obj["id"] as? String, let l = readCatalog().first(where: { $0.id == id }) {
+                    NSLog("[open-wrapp] trigger: launching %@ via window surface", id)
+                    self.launchWrapp(l, "window")
+                } else if let s = obj["url"] as? String, let u = URL(string: s) {
+                    NSLog("[open-wrapp] trigger: opening url %@", s)
+                    self.openWrappWindow(url: u, name: (obj["name"] as? String) ?? "Wrapp")
+                }
+            }
+        }
+    }
     private var driveRunning = false
     private var driveName = "Roast"          // display name of the wrapp being driven
     private var lastDrive: (url: URL, tool: String, input: String?, name: String)?   // for Regenerate
@@ -4239,6 +4828,7 @@ struct ActionConsentDrop: View {
             listings: listings,
             projects: readContexts(),
             recent: osRecentWork(),
+            tasks: osLaunchTasks(),
             vaultFolders: osVaultFolders(),
             homeProjects: osProjects(),
             activeProjectId: readDefaultId(),
@@ -4270,9 +4860,20 @@ struct ActionConsentDrop: View {
             guard let self, let p = self.launcherPanel, p.isVisible else { return }
             if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideLauncher() } }
         }
-        launcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
-            if ev.keyCode == 53 { Task { @MainActor in self?.hideLauncher() }; return nil }   // Esc
-            return ev
+        launcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] ev in
+            guard let self else { return ev }
+            return MainActor.assumeIsolated {   // event monitors fire on the main thread
+                // Same key-window blind spot as the feedback field: while the launcher panel is KEY the
+                // global flagsMonitor never sees ⌃⌥, so dictation can't start. Forward flagsChanged to the
+                // talk-chord-ONLY handler (NOT full onFlags — its ⌃⌃-summon detector would misread the ⌃ in
+                // ⌃⌥ and spawn God). finishDictation then pastes the transcript into the focused Ask field.
+                if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // While a take is latched, its watch timer owns esc (cancel the dictation) — don't let esc
+                // ALSO close the launcher out from under it.
+                if self.dictating { return ev.keyCode == 53 ? nil : ev }
+                if ev.keyCode == 53 { self.hideLauncher(); return nil }   // Esc
+                return ev
+            }
         }
     }
     @MainActor func hideLauncher() {
@@ -4283,7 +4884,7 @@ struct ActionConsentDrop: View {
 
     // ── Guide FEEDBACK note surface — the notch becomes an anchored input during a guide (docs/FEEDBACK-CAPTURE.md).
     // Raised from CursorGuide.onFeedbackBegin: shows a focused note field + arms the fn-drag screenshot grab.
-    // ⌃⌥ dictation stays live during a guide, and stopDictationAndPaste routes its transcript here (not the app).
+    // ⌃⌥ dictation stays live during a guide, and finishDictation routes its transcript here (not the app).
     @MainActor private func showFeedbackNote() {
         feedbackNote = ""; feedbackShotThumb = nil
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
@@ -4291,11 +4892,22 @@ struct ActionConsentDrop: View {
         // The panel is key → it owns ↵ / esc → CursorGuide commits/cancels. CursorGuide.onKey no-ops while
         // capturingFeedback, so there's no double-fire.
         if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m) }
-        feedbackKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+        feedbackKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] ev in
             guard let self else { return ev }
-            if ev.keyCode == 53 { Task { @MainActor in self.commitFeedbackFromField(cancel: true) }; return nil }   // esc → discard
-            if ev.keyCode == 36 && !ev.modifierFlags.contains(.shift) { Task { @MainActor in self.commitFeedbackFromField(cancel: false) }; return nil }  // ↵ → save
-            return ev
+            return MainActor.assumeIsolated {   // event monitors fire on the main thread
+                // The feedback panel is KEY, so the global flagsMonitor that normally drives ⌃⌥ dictation is
+                // DEAD here — its flagsChanged events are delivered to our own key window instead of "another
+                // app," so the global monitor never sees them. Forward them to the talk-chord-ONLY handler
+                // (NOT full onFlags, whose ⌃⌃/⌥⌥ double-tap logic would misfire here) so the talk chord still
+                // STARTS a dictation; finishDictation already routes the transcript into this note.
+                if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // While a dictation is latched, its watch timer owns ⌃ (commit) and esc (cancel the take) via
+                // key-state polling — don't let esc/↵ ALSO discard or save the whole note out from under it.
+                if self.dictating { return (ev.keyCode == 53 || ev.keyCode == 36) ? nil : ev }
+                if ev.keyCode == 53 { self.commitFeedbackFromField(cancel: true); return nil }   // esc → discard
+                if ev.keyCode == 36 && !ev.modifierFlags.contains(.shift) { self.commitFeedbackFromField(cancel: false); return nil }  // ↵ → save
+                return ev
+            }
         }
         armFeedbackRegionCapture { [weak self] path in
             Task { @MainActor in
@@ -4413,6 +5025,9 @@ struct ActionConsentDrop: View {
         "deck", "dub",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
+        // A wrapp whose PRIMARY surface is "window" is a full app, not a glance widget — the launcher's
+        // Enter honors the catalog and opens it in the native bridged window instead.
+        if l.surfaces.first == "window" { launchWrapp(l, "window"); return }
         // Skills all share ONE generic widget (paste → run the skill → glance result), selected by
         // ?skill=<id>. skill-widget.html reads the id from the query string AND window.__widgetInput.skill.
         if l.category == "skill", let wurl = URL(string: "http://localhost:5188/skill-widget.html?skill=\(l.id)") {
@@ -4820,10 +5435,14 @@ struct ActionConsentDrop: View {
             try? FileManager.default.removeItem(atPath: wav)
             let body = "{\"text\":\"\(line)\",\"voice\":\"\(name)\"}"
             let curl = Process(); curl.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-            curl.arguments = ["-s", "-m", "25", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
+            // 60s (not 25s): the clone-TTS model cold-loads slowly; a 25s timeout left a PARTIAL wav
+            // that afplay then played truncated — the "TTS was brief / didn't finish" bug. Also require
+            // curl to have SUCCEEDED (exit 0), so a timeout/failure falls back to the full macOS voice
+            // instead of speaking a half-rendered clip.
+            curl.arguments = ["-s", "-m", "60", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
             try? curl.run(); curl.waitUntilExit()
             let sz = (try? FileManager.default.attributesOfItem(atPath: wav)[.size] as? Int) ?? 0
-            if sz > 1000 {
+            if curl.terminationStatus == 0, sz > 1000 {
                 let play = Process(); play.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); play.arguments = [wav]
                 Task { @MainActor in self?.guideVoiceProc = play }; try? play.run()
             } else { sayIt() }   // clone server down → macOS voice
@@ -4928,10 +5547,14 @@ struct ActionConsentDrop: View {
         let summonMod = modFlag(cfg.summon)
         let m = flags.intersection([.control, .option, .command, .shift])
         let talkHeld = !talk.isEmpty && m == talk
-        // The talk chord takes priority: while it's held we record; the moment either key lifts we
-        // transcribe + paste. (Ignore summon handling entirely while dictating.)
+        let latch = cfg.dictationMode == "latch"
+        // While a dictation is in progress the talk chord / summon logic is OWNED by the active mode:
+        //   • latch — recording is latched ON; ignore ALL modifier changes here (release must NOT stop it,
+        //     and a second talk-chord tap is a deliberate NO-OP so it can't clobber the in-progress take).
+        //     The dictateWatchTimer owns commit (⌃ tap), cancel (Esc), and the Fn→find indicator.
+        //   • hold  — legacy: the moment either chord key lifts we transcribe + paste.
         if dictating {
-            if !talkHeld { stopDictationAndPaste() }
+            if !latch && !talkHeld { finishDictation(find: false) }
             return
         }
         if talkHeld { onboard.lastDictate = Date(); startDictation(); return }
@@ -4956,12 +5579,30 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // Talk-chord detection ONLY — no summon (⌃⌃) / launcher (⌥⌥) double-tap logic. Our own key panels
+    // (⌥⌥ launcher, guide feedback field) forward flagsChanged HERE, not to the full onFlags: while such a
+    // panel is key the app is often inactive, so routing the ⌃ inside ⌃⌥ through onFlags's summon detector
+    // misreads it as a ⌃⌃ tap and spawns God instead of dictating. This starts a dictation on the exact talk
+    // chord and does nothing else; if the global onFlags also fires the same chord, its top-of-func
+    // `if dictating` guard short-circuits, so there's no double-start.
+    @MainActor private func startDictationOnTalkChord(_ flags: NSEvent.ModifierFlags) {
+        guard !dictating else { return }
+        let talk = chordFlags(model.shortcuts.talk)
+        let m = flags.intersection([.control, .option, .command, .shift])
+        if !talk.isEmpty && m == talk { onboard.lastDictate = Date(); startDictation() }
+    }
+
     // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —
     //    a pure Wispr-Flow-style dictation gesture folded in as God's sibling. ─────────────────────────
     private func whisperCliPath() -> String? {
-        ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
+        // The whisper.cpp we ship (Resources/stt) wins so ⌃⌥ dictation works with zero user setup; then Homebrew.
+        let bundled = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/whisper-cli")
+        return [bundled, "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli", "/opt/homebrew/bin/whisper-cpp", "/usr/local/bin/whisper-cpp"].first { FileManager.default.fileExists(atPath: $0) }
     }
     private func whisperModelPath() -> String? {
+        // The bundled tiny model wins; else a user-installed model in ~/.relay/models.
+        let bundled = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("stt/ggml-tiny.en.bin")
+        if FileManager.default.fileExists(atPath: bundled) { return bundled }
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/models")
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return nil }
         // Prefer an English base model, else any ggml .bin.
@@ -4980,9 +5621,20 @@ struct ActionConsentDrop: View {
         // show the pill now, then defer the blocking recorder setup to the next runloop tick so the pill
         // actually paints in between.
         dictating = true
+        dictateCommitting = false
         NSSound(named: "Tink")?.play()
         showGodStatus("Dictating", accent: .lime, pattern: .listening)
         onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
+        // LATCH mode: the recording now stays on after the keys lift. Hand the commit/cancel/find lifecycle
+        // to a poll timer (⌃ tap commits, Esc cancels, Fn arms find). Seed the ctrl edge-detector to the
+        // CURRENT state — ctrl is DOWN right now because the talk chord holds it, and we must not read that
+        // held-through ctrl as an instant commit; only a fresh ⌃ press AFTER release counts.
+        if model.shortcuts.dictationMode == "latch" {
+            dictateLatched = true
+            dictateFindArmed = NSEvent.modifierFlags.contains(.function)
+            dictatePrevCtrlDown = NSEvent.modifierFlags.contains(.control)
+            startDictateWatch()
+        }
         let wav = NSTemporaryDirectory() + "god-dictate.wav"
         try? FileManager.default.removeItem(atPath: wav)
         let settings: [String: Any] = [
@@ -4991,24 +5643,76 @@ struct ActionConsentDrop: View {
         ]
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // The user may have released ⌃⌥ before this tick ran — stopDictationAndPaste() already flipped
-            // `dictating` false (and hid the pill). Don't spin up a recorder we'd immediately abandon.
+            // The user may have released ⌃⌥ (hold mode) or aborted before this tick ran — finish/cancel
+            // already flipped `dictating` false (and hid the pill). Don't spin up a recorder we'd abandon.
             guard self.dictating else { return }
             do {
                 let rec = try AVAudioRecorder(url: URL(fileURLWithPath: wav), settings: settings)
-                guard rec.record() else { self.dictating = false; self.hideGodStatus(); godLog("dictation record() returned false"); return }
+                guard rec.record() else { self.dictating = false; self.dictateLatched = false; self.stopDictateWatch(); self.hideGodStatus(); godLog("dictation record() returned false"); return }
                 self.dictateRecorder = rec; self.dictateWav = wav
-            } catch { self.dictating = false; self.hideGodStatus(); godLog("dictation record failed: \(error.localizedDescription)") }
+            } catch { self.dictating = false; self.dictateLatched = false; self.stopDictateWatch(); self.hideGodStatus(); godLog("dictation record failed: \(error.localizedDescription)") }
         }
     }
 
-    @MainActor private func stopDictationAndPaste() {
-        dictating = false
+    // ── Latched-dictation watch: a ~60fps poll (all FREE reads — no Input-Monitoring TCC) that owns the
+    //    commit / cancel / find lifecycle once recording is latched on. Mirrors God's captureFnTimer Esc
+    //    failsafe so a latched take can NEVER wedge the global shortcut: Esc always aborts. ──────────────
+    @MainActor private func startDictateWatch() {
+        stopDictateWatch()
+        dictateWatchTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.dictateLatched, !self.dictateCommitting else { return }
+                // Esc → abort cleanly (key 53). The manual failsafe always wins, from any state.
+                if CGEventSource.keyState(.combinedSessionState, key: 53) { self.cancelDictation(); return }
+                // Fn arms FIND for this take — reflect it live in the pill so the user sees the mode change.
+                let fn = NSEvent.modifierFlags.contains(.function)
+                if fn != self.dictateFindArmed {
+                    self.dictateFindArmed = fn
+                    self.showGodStatus(fn ? "Dictating · Find" : "Dictating", accent: .lime, pattern: .listening)
+                }
+                // ⌃ rising edge → COMMIT (stop + transcribe + act). The summon modifier IS the commit key,
+                // per the founder's "transcribe when ctrl is pressed"; while latched it commits instead of
+                // summoning God (onFlags is short-circuited by the `dictating` guard).
+                let ctrlDown = NSEvent.modifierFlags.contains(.control)
+                if ctrlDown && !self.dictatePrevCtrlDown {
+                    self.dictatePrevCtrlDown = ctrlDown
+                    self.finishDictation(find: self.dictateFindArmed)
+                    return
+                }
+                self.dictatePrevCtrlDown = ctrlDown
+            }
+        }
+    }
+    @MainActor private func stopDictateWatch() { dictateWatchTimer?.invalidate(); dictateWatchTimer = nil }
+
+    // Abort: stop recording, discard the clip, paint nothing. Reachable from any state (Esc / failsafe).
+    @MainActor private func cancelDictation() {
+        guard dictating || dictateLatched else { return }
+        stopDictateWatch()
+        dictating = false; dictateLatched = false; dictateCommitting = false
+        dictateRecorder?.stop(); dictateRecorder = nil
+        if let wav = dictateWav { try? FileManager.default.removeItem(atPath: wav) }
+        dictateWav = nil
+        NSSound(named: "Bottle")?.play()
+        hideGodStatus()
+    }
+
+    // Commit: stop recording, transcribe (whisper.cpp, off-main), then ROUTE the transcript:
+    //   • guide capturing feedback → attach as the step note (unchanged legacy behavior)
+    //   • find == true            → daemon vault.find lookup, paste the returned VALUE (no LLM, ever)
+    //   • otherwise               → paste the raw transcript at the cursor (today's behavior)
+    // Used by BOTH modes: hold mode calls finishDictation(find:false) on key release; latch mode calls it
+    // from the watch timer on a ⌃ commit (find = whether Fn was held).
+    @MainActor private func finishDictation(find: Bool) {
+        guard dictating, !dictateCommitting else { return }
+        dictateCommitting = true
+        stopDictateWatch()
+        dictating = false; dictateLatched = false
         dictateRecorder?.stop(); dictateRecorder = nil
         NSSound(named: "Pop")?.play()
-        showGodStatus("Transcribing", accent: .lime, pattern: .thinking)
-        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); return }
-        // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then paste on the main actor.
+        showGodStatus(find ? "Finding" : "Transcribing", accent: .lime, pattern: .thinking)
+        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); dictateCommitting = false; return }
+        // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then act on the main actor.
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
             p.arguments = ["-m", model, "-f", wav, "-nt", "-np"]
@@ -5017,23 +5721,64 @@ struct ActionConsentDrop: View {
             let data = out.fileHandleForReading.readDataToEndOfFile()
             let text = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             Task { @MainActor in
-                self.hideGodStatus()
                 if CursorGuide.shared.capturingFeedback {
-                    // A guide is capturing feedback → the transcript is the step's NOTE, not a paste into the app.
+                    // A guide is capturing feedback → the transcript is the step's NOTE, not a paste/find.
+                    self.hideGodStatus()
                     CursorGuide.shared.attachFeedbackNote(text, append: true)
                     self.feedbackNote = (self.feedbackNote.isEmpty ? text : self.feedbackNote + " " + text)
                     if let scr = self.statusItem?.button?.window?.screen ?? NSScreen.main { self.rebuildFeedbackPanel(scr) }  // reflect it in the field
+                    self.dictateCommitting = false
+                } else if find {
+                    self.vaultFindAndPaste(text)   // hides status + clears dictateCommitting when it returns
                 } else {
+                    self.hideGodStatus()
                     self.pasteText(text)
+                    self.dictateCommitting = false
                 }
             }
         }
     }
 
-    // Put the raw transcript on the clipboard and paste it at the current focus (⌘V). Raw text — no
-    // model cleanup, which is the point of the dictation gesture.
+    // FIND mode: hand the transcript to the daemon's LOCAL vault lookup (vault.find) — never a model /
+    // Claude call — and paste the returned VALUE at the cursor. `null` → a brief "no match", paste nothing.
+    // Reuses the app's EXISTING daemon channel (the paired ConsentClient websocket on PORT); no new socket,
+    // no network. Contract: request `{action:"vault.find", args:{query, project?}}` →
+    // result `{value, field, entity, source, confidence} | null`.
+    @MainActor private func vaultFindAndPaste(_ query: String) {
+        guard !query.isEmpty else { hideGodStatus(); dictateCommitting = false; return }
+        guard let consent else { toast("Dictation find needs the daemon — is Switchboard paired?"); hideGodStatus(); dictateCommitting = false; return }
+        var args: [String: Any] = ["query": query]
+        if let proj = readDefaultId(), !proj.isEmpty { args["project"] = proj }   // the panel's active project (SELECTION_FILE)
+        consent.request(action: "vault.find", args: args, timeout: 6.0) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.hideGodStatus()
+                self.dictateCommitting = false
+                // null (or a shape we can't read) → no match. Paste nothing; a brief, honest toast.
+                guard let obj = result as? [String: Any], let value = obj["value"] as? String, !value.isEmpty else {
+                    NSSound(named: "Bottle")?.play(); self.toast("No match for “\(query)”"); return
+                }
+                self.pasteText(value)
+            }
+        }
+    }
+
+    // Put text on the clipboard and paste it at the current focus (⌘V). Raw text — no model cleanup,
+    // which is the point of the dictation gesture (and, in find mode, the exact stored value).
     @MainActor private func pasteText(_ text: String) {
         guard !text.isEmpty else { return }
+        // Our own non-activating key panels (the ⌥⌥ launcher's Ask field, notch web widgets) can be TYPED
+        // into — key events route to the key window's field editor — but they do NOT accept a synthetic ⌘V:
+        // the app isn't active, so paste:/the Edit menu never reach that field (manual copy/paste is dead
+        // there too). So DON'T paste — insert straight into the focused field editor, the same path typing
+        // uses, which updates the SwiftUI binding. Guide feedback never reaches here (finishDictation writes
+        // it directly into feedbackNote).
+        if let w = NSApp.keyWindow as? LauncherPanel, let tv = w.firstResponder as? NSTextView {
+            tv.insertText(text, replacementRange: tv.selectedRange())
+            return
+        }
+        // Otherwise God is dictating at the cursor of ANOTHER app (we're not active) — the clipboard + a
+        // System-Events ⌘V is the right delivery there.
         let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string)
         let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
@@ -5333,6 +6078,7 @@ struct ActionConsentDrop: View {
     // The proven pipeline: hand god.mjs the staged references (GOD_IMAGES screenshots + GOD_FILES) → vision+
     // persona → speak; poll god-state for the notch phase; gate every write. Screens+files come from godRefs.
     @MainActor private func spawnGod(point: CGPoint?, audio: String?, instruction: String?, node: String, god: String, skill: String? = nil, sessionOverride: String? = nil, forceFullScreen: Bool = false) {
+        pointMarkPinned = false; pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil   // a new run supersedes any pinned afterglow from the last one
         setGlow(.thinking)
         godStateTimer?.invalidate()
         godStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -5409,8 +6155,10 @@ struct ActionConsentDrop: View {
             // re-triggered). If so, THIS stale process's exit must NOT reset the live run — otherwise it
             // shuts the notch out from under it. Only the current process's termination cleans up.
             guard let self, self.godProc === p else { return }
-            self.godProc = nil; self.godStateTimer?.invalidate(); self.godRunning = false; self.glowModel.target = nil
+            self.godProc = nil; self.godStateTimer?.invalidate(); self.godRunning = false
             self.clearGodRefs()   // the turn consumed them — don't let a screenshot/file leak into the next ⌃⌥ dictation
+            // Don't nil the target here: a just-read model point would be wiped before it's drawn. setGlow(.idle)
+            // is authoritative — it keeps a PINNED mark up briefly, otherwise tears the ring down.
             self.setGlow(.idle); self.checkPendingAction()
         } }
         godProc = proc
@@ -5646,7 +6394,17 @@ struct ActionConsentDrop: View {
     @MainActor private func readGodState() {
         readGodPoint()   // model-chosen [POINT] → the shared pulsing ring (God + guide use one ring)
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-state")
-        let s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var s = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Staleness guard: God rewrites its phase every few seconds during a live run and writes "idle" when
+        // it finishes. If a non-idle phase (other than user-gated "consent") has sat UNCHANGED for a long
+        // time, God died/hung WITHOUT writing idle — so a stale "speaking"/"thinking" would otherwise keep
+        // the glow (and its ring) alive forever. Treat an old non-idle state as idle. 45s is well beyond a
+        // normal think+speak turn but bounds any orphan.
+        if !s.isEmpty, s != "consent",
+           let m = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+           Date().timeIntervalSince(m) > 45 {
+            s = ""
+        }
         switch s {
         case "listening": setGlow(.listening); onboard.note(.glance)   // tour step 0: ⌃⌃ fired
         case "thinking": setGlow(.thinking); onboard.note(.glance)
@@ -5657,28 +6415,55 @@ struct ActionConsentDrop: View {
             // drop the local hands use, once, and write the decision back for god.mjs to execute.
             setGlow(.thinking)
             if !godConsentPending { godConsentPending = true; showRunConsent() }
-        default: break   // idle handled on termination
+        default:
+            // idle / empty / absent god-state → God isn't in an active phase. Make the POLLER authoritative
+            // about teardown: the process terminationHandler never fires for a God run this app didn't spawn
+            // (or one that was killed), so relying on it alone orphaned the ring. Return to idle (a PINNED
+            // model mark still gets its brief afterglow inside setGlow). Guarded so it's a no-op when nothing
+            // is showing — never a per-tick thrash.
+            if glowModel.state != .idle || glowModel.target != nil { setGlow(.idle) }
         }
         // setGlow() drives the cursor glow AND the notch phase drop; nothing more to do per tick.
     }
 
-    // God's model-chosen [POINT] → the SAME pulsing ring the guide uses. Today glowModel.target is only
-    // ever set from the user's ⌃⌥ click (triggerGod ~L4981); companion.point() is a console stub, so a
-    // point the MODEL chose never reaches the ring. This reads ~/.relay/god-point.json (x,y in GLOBAL
-    // bottom-left screen points, matching the ⌃⌥-click convention) and marks the ring from it — so God
-    // and the teach-guide share one ring visual.
-    //
-    // TODO(god.mjs, out of this file's scope): god.mjs must WRITE ~/.relay/god-point.json when it parses
-    // a [POINT:x,y] from the model (and delete/emit {} to clear). This is the READ side only; until the
-    // write side ships this is simply inert (the file never appears). god.mjs is owned by another agent.
+    // God's model-chosen [POINT] → the SAME pulsing ring the guide uses. companion.point() is a console
+    // stub, so a point the MODEL chose reaches the ring only through this file. god.mjs writes
+    // ~/.relay/god-point.json in SCREENSHOT-PIXEL coordinates (the frame the model actually reasoned over):
+    //   { "x": <int px>, "y": <int px>, "w": <int screenshot width px>, "h": <int screenshot height px>,
+    //     "label": "...", "ts": <epoch ms> }
+    // We map px → the main screen by fraction (resolution-independent), then into the overlay's top-left
+    // coordinate space — the SAME space the manual ⌃⌥ point and GodGlowView's ring use.
     @MainActor private func readGodPoint() {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/god-point.json")
-        guard FileManager.default.fileExists(atPath: path) else { return }   // absent → keep any ⌃⌥-set mark
-        guard let obj = readJSON(path) as? [String: Any] else { return }
-        // An explicit clear ({} or {"clear":true} / no numeric x,y) drops the mark.
-        guard let x = (obj["x"] as? NSNumber)?.doubleValue, let y = (obj["y"] as? NSNumber)?.doubleValue,
-              let screen = NSScreen.main else { glowModel.target = nil; return }
-        glowModel.target = CGPoint(x: x - screen.frame.minX, y: screen.frame.maxY - y)   // → overlay top-left (same as L4981)
+        guard FileManager.default.fileExists(atPath: path) else { return }   // absent → keep any current mark
+        let obj = readJSON(path) as? [String: Any]
+        // CONSUME-ONCE: delete on read (whatever it contained) so a stale file from a prior run can never
+        // re-mark an old location on the next poll.
+        try? FileManager.default.removeItem(atPath: path)
+        // An explicit clear ({} / malformed / no numeric x,y) drops the mark and any pinned afterglow.
+        guard let obj = obj,
+              let xN = obj["x"] as? NSNumber, let yN = obj["y"] as? NSNumber,
+              let wN = obj["w"] as? NSNumber, let hN = obj["h"] as? NSNumber,
+              let screen = NSScreen.main else {
+            glowModel.target = nil; pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
+            return
+        }
+        let w = wN.doubleValue, h = hN.doubleValue
+        guard w > 0, h > 0 else {   // guard div-by-zero → treat a degenerate frame as a clear
+            glowModel.target = nil; pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
+            return
+        }
+        // Screenshot-pixel → screen fraction (top-left origin) → overlay top-left points. This matches the
+        // manual point at triggerGod (`x - minX`, `maxY - y`): for the main screen origin, x-from-left and
+        // y-from-top are exactly `width*fracX` and `height*fracY`.
+        let fracX = xN.doubleValue / w
+        let fracY = yN.doubleValue / h
+        let overlayX = screen.frame.width * fracX
+        let overlayY = screen.frame.height * fracY
+        glowModel.target = CGPoint(x: overlayX, y: overlayY)
+        pointMarkPinned = true   // a fresh model-chosen mark survives briefly after the run ends (see setGlow/terminationHandler)
     }
 
     // Find a node to run the God client: bundled first, then Homebrew/local, then nvm (any version).
@@ -5734,10 +6519,34 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor private func setGlow(_ s: GlowState) {
-        if s == .idle && glowModel.target != nil { return }   // keep a pointing mark up even after ⌃⌥ releases
         if s != .idle, ambientPanel?.isVisible == true { ambientPanel?.orderOut(nil); ambientContextKey = "" }   // God takes the notch
+        // A model-chosen mark that was explicitly PINNED (readGodPoint) survives briefly after the run
+        // ends — but only as a single, time-limited latch, NEVER the old `target != nil` gate that left the
+        // ring pulsing forever. Sparkles stop (phase is idle) while the ring lingers; a timer then forces
+        // authoritative idle, guaranteeing the ring can't be orphaned.
+        if s == .idle && pointMarkPinned && glowModel.target != nil {
+            glowModel.state = .idle
+            stopGlowTracking()
+            updateGodStatusDrop(.idle)
+            if pointMarkPinTimer == nil {
+                pointMarkPinTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.pointMarkPinned = false
+                        self.pointMarkPinTimer = nil
+                        self.setGlow(.idle)   // expiry → real teardown (pin now clear)
+                    }
+                }
+            }
+            return
+        }
         glowModel.state = s
         if s == .idle {
+            // idle is authoritative: clear the mark and tear the overlay down. The ring's lifetime follows
+            // one source of truth — state → idle always removes it.
+            glowModel.target = nil
+            pointMarkPinned = false
+            pointMarkPinTimer?.invalidate(); pointMarkPinTimer = nil
             glow.orderOut(nil); stopGlowTracking()
         } else {
             if let scr = NSScreen.main { glow.setFrame(scr.frame, display: false) }  // re-anchor (resolution/monitor may have changed)
@@ -6265,7 +7074,15 @@ struct ActionConsentDrop: View {
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
-        case "browser", "window", "notch":
+        case "window":
+            // NATIVE launch — the wrapp runs in the bridged webview (window.claude tunneled to the
+            // daemon by this process), so no browser and no extension are in the loop. Same daemon,
+            // same grants, same consent drops as every other surface.
+            if let s = l.components.ui?.url, let u = URL(string: s) {
+                openWrappWindow(url: u, name: l.name)
+                concierge(l)
+            }
+        case "browser", "notch":
             if let s = l.components.ui?.url, let u = URL(string: s) {
                 NSWorkspace.shared.open(u)
                 concierge(l)   // the notch acknowledges the launch — never a silent open

@@ -2,7 +2,7 @@
   "name": "relay",
   "private": true,
   "version": "0.0.0",
-  "description": "BYO-Claude broker — MetaMask, but for AI. A local sidekick brokers your model + MCP tools to any website through window.claude, under per-origin, out-of-band consent.",
+  "description": "Your private AI workspace. A local sidekick brokers your own model + MCP tools to any website through window.claude, under per-origin, out-of-band consent — your data stays yours.",
   "workspaces": [
     "packages/*",
     "examples/*"

@@ -17,7 +17,7 @@ import { z } from "zod";
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { homedir } from "node:os";
-import { addTask, completeTask, parseTasks } from "./tasks.mjs";
+import { addTask, parseTasks } from "./tasks.mjs";   // task-board TOOLS moved to switchboard-mcp; Bank still uses these for project extraction
 import { buildProject, projectToMarkdown, slugify, isProjectDir } from "./project.mjs";
 import { buildBrand, brandToMarkdown, brandToContext } from "./brand.mjs";
 // Server-side site fetching + SSRF/byte-budget guards. Extracted to site.mjs so the daemon's
@@ -115,64 +115,11 @@ function findProjects(root, maxDepth = 1, limit = 60) {
 
 const server = new McpServer({ name: "bank", version: "0.1.0" });
 
-server.registerTool(
-  "bank_add_task",
-  {
-    title: "Add a task to the Bank",
-    description:
-      "Add a to-do to the user's Bank. Use this whenever the user wants to remember, capture, or track something — 'add to my bank', 'put this on my list', 'remind me to…', or when you finish work and there are clear follow-ups worth saving. `list` groups related tasks (a project, an area, a channel — e.g. 'Relay', 'Errands'); it shows up as the task's source in the Bank. Keep `text` a short imperative action.",
-    inputSchema: {
-      text: z.string().describe("the task, as a short imperative action, e.g. 'Reply to Acme about the renewal'"),
-      list: z.string().optional().describe("which list/project to file it under (becomes a heading). Default 'Inbox'."),
-      due: z.string().optional().describe("optional short due hint, e.g. 'Fri' or '2026-07-20'"),
-    },
-  },
-  async ({ text, list, due }) => {
-    const { doc, added, reason, list: filed } = addTask(text, { list, due }, readDoc(TASKS_FILE));
-    if (added) writeDoc(TASKS_FILE, doc);
-    return ok({ ok: added, added, list: filed, reason, file: TASKS_FILE });
-  },
-);
-
-server.registerTool(
-  "bank_list_tasks",
-  {
-    title: "List Bank tasks",
-    description:
-      "Read the user's Bank to-dos across every note in their vault. Use it before adding (to avoid duplicates), to answer 'what's on my list / plate / for <project>', or to review progress. Returns tasks with their list and whether they're done.",
-    inputSchema: {
-      status: z.enum(["open", "done", "all"]).optional().describe("filter by status; default 'open'"),
-      list: z.string().optional().describe("only tasks in this list/project (case-insensitive)"),
-    },
-  },
-  async ({ status = "open", list }) => {
-    const all = mdFiles().flatMap((f) => parseTasks(readDoc(f), f));
-    const wantList = list ? String(list).toLowerCase() : null;
-    const tasks = all
-      .filter((t) => (status === "all" ? true : status === "done" ? t.done : !t.done))
-      .filter((t) => (wantList ? t.list.toLowerCase() === wantList : true))
-      .map((t) => ({ text: t.text, done: t.done, list: t.list, file: t.file }))
-      .slice(0, 200);
-    return ok({ ok: true, count: tasks.length, tasks });
-  },
-);
-
-server.registerTool(
-  "bank_complete_task",
-  {
-    title: "Complete a Bank task",
-    description:
-      "Mark a Bank to-do done by matching its text (case-insensitive substring). Use when the user says something is finished/handled. Flips `- [ ]` to `- [x]` in place so it stays checked off and won't resurface.",
-    inputSchema: { match: z.string().describe("text (or a distinctive fragment) of the task to complete") },
-  },
-  async ({ match }) => {
-    for (const f of mdFiles()) {
-      const { doc, completed } = completeTask(match, readDoc(f));
-      if (completed) { writeDoc(f, doc); return ok({ ok: true, completed, file: f }); }
-    }
-    return ok({ ok: false, reason: "no open task matches that text" });
-  },
-);
+// ── Task tools moved to the Switchboard connector ─────────────────────────────────────────────────
+// Managing the project board (add / list / move / complete / next) now lives in packages/switchboard-mcp
+// (tools: switchboard_add_task, _list_tasks, _move_task, _complete_task, _next_task), reusing the same
+// pure transforms in ./tasks.mjs. Bank stays the INGESTION connector — it seeds the vault from repos &
+// websites (below). One board, one dialect; the two connectors never disagree because tasks.mjs is shared.
 
 server.registerTool(
   "bank_extract_project",

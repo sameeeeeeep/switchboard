@@ -11,10 +11,13 @@ import { loadMcpConfig } from "./mcp/config.js";
 import { BackendRegistry } from "./backends/registry.js";
 import { StorageStore } from "./storage/store.js";
 import { ContextLibrary } from "./context/library.js";
+import { seedExampleIfEmpty } from "./seed/example.js";
 import { SessionManager } from "./session/manager.js";
 import { TeamEngine } from "./team/engine.js";
 import { Broker } from "./server.js";
 import { NativeListener } from "./native/listener.js";
+import { RoutineRegistry } from "./routines/registry.js";
+import { makeAutopilotRoutine } from "./routines/autopilot.js";
 
 // Safety net: a long-lived daemon must NEVER die on a stray socket error or an unhandled
 // rejection (e.g. a dropped extension connection resetting mid-request). Log and keep running —
@@ -36,6 +39,7 @@ async function main() {
   const backends = await BackendRegistry.boot();
   const storage = new StorageStore(config.stateDir);
   const contexts = new ContextLibrary(config.stateDir);
+  seedExampleIfEmpty(config.stateDir, contexts, storage, (m) => console.error("[relay/seed]", m)); // fresh machine ⇒ one example project so nothing's empty
   const sessions = new SessionManager();
 
   // The Gate needs a ConsentPrompter, and the Broker IS the prompter. Break the cycle with a
@@ -58,6 +62,19 @@ async function main() {
   broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions, team });
   broker.start();
   team.resume(); // no-op unless the user already enabled Team Mode and has a team
+
+  // The Run layer (docs/ROUTINES.md) — the daemon's background scheduler. Autopilot is routine #1:
+  // while the menubar master switch is on it DRAFTS the active company's next moves (never acts —
+  // every irreversible move stays gated in the cockpit). Dormant when routines-control.json is
+  // { off: true } (the shipped default), so nothing runs in the background until the user opts in.
+  const routines = new RoutineRegistry((m) => console.error("[relay/routines]", m));
+  routines.register(makeAutopilotRoutine({
+    draft: (prompt) => broker.routineDraft("autopilot", prompt),
+    invoke: (toolSuffix, args) => broker.routineInvoke("autopilot", toolSuffix, args),
+    dispatch: (p) => broker.routineDispatch("autopilot", p),
+    log: (m) => console.error("[relay/routines]", m),
+  }));
+  routines.start();
 
   // The native (direct-principal) listener — a SECOND loopback socket for local apps that talk to
   // the daemon without a browser. INERT by default: it only starts if a native app has been
