@@ -130,7 +130,8 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         let cfg = WKWebViewConfiguration(); cfg.userContentController = ucc
         web = WKWebView(frame: NSRect(x: 0, y: 0, width: 1040, height: 860), configuration: cfg)
         window = NSWindow(contentRect: NSRect(x: 140, y: 120, width: 1040, height: 860),
-                          styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.isMovableByWindowBackground = true   // draggable; the title bar is a real strip now (no fullSizeContentView)
         super.init()
         ucc.add(self, name: "relay")
         bridge.onEvent = { [weak self] ev, payload in
@@ -152,6 +153,7 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     func open(visible: Bool = true, ready: (() -> Void)? = nil) {
         onReady = ready
         window.delegate = self
+        window.level = .normal   // a real window, coverable by others — not a floating accessory overlay
         if visible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
         web.load(URLRequest(url: pageURL))
     }
