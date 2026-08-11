@@ -184,11 +184,20 @@ def openai_speech(s: OpenAISpeech):
 
 
 def _warm():
-    # Preload the model (and the first voice) on the _gpu thread so the first /speak is instant.
+    # Preload the model AND compile the generation kernels on the _gpu thread, so the first real
+    # /speak is instant instead of eating the ~22s Metal cold-compile. Loading the model + cloning
+    # the voice is NOT enough: `generate_audio` compiles its OWN kernels on first call, so we run one
+    # throwaway synth here to pay that cost at boot. Then _touch() so the keep-warm loop starts
+    # protecting the kernels immediately — it keys off _last_used, which starts at 0 (i.e. keep-warm
+    # otherwise does nothing until the first user call, leaving that first call cold).
     try:
         names = _voice_names()
-        _on_gpu(_voice_state, names[0]) if names else _on_gpu(_model_get)
-        print("[god-tts] warm", flush=True)
+        if names:
+            _on_gpu(_synth, names[0], "Warming up the voice engine.")
+        else:
+            _on_gpu(_model_get)
+        _touch()
+        print("[god-tts] warm (generation kernels compiled)", flush=True)
     except Exception as e:
         print(f"[god-tts] warmup failed: {e}", flush=True)
 
@@ -209,7 +218,7 @@ def _keep_warm():
         time.sleep(45)
         if _last_used and (time.time() - _last_used) < KEEP_WARM_SECONDS:
             try:
-                _on_gpu(_synth, _default_voice(), "warm")
+                _on_gpu(_synth, _default_voice(), "Keeping the voice engine warm.")
             except Exception as e:
                 print(f"[god-tts] keep-warm skipped: {e}", flush=True)
 

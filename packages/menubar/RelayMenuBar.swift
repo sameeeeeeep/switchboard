@@ -5609,6 +5609,22 @@ struct ActionConsentDrop: View {
         let pick = files.first { $0.hasSuffix(".bin") && $0.contains("base.en") } ?? files.first { $0.hasSuffix(".bin") && $0.contains("ggml") }
         return pick.map { (dir as NSString).appendingPathComponent($0) }
     }
+    // The dictation DICTIONARY: the user's vocabulary (names/jargon/product terms), fed to whisper.cpp
+    // as its --prompt so it stops mangling them. Same file the daemon seeds + reads (~/.relay/dictionary.txt);
+    // here we only READ it. Strip '#' comments, join terms, cap to ~800 chars (whisper's ~224-token budget).
+    private func dictationPrompt() -> String? {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/dictionary.txt")
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        let terms = raw.split(separator: "\n", omittingEmptySubsequences: true)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+            .joined(separator: ",")
+            .split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var s = terms.joined(separator: ", ")
+        if s.count > 800 { s = String(s.prefix(800)) }
+        return s.isEmpty ? nil : s
+    }
 
     @MainActor private func startDictation() {
         guard !godRunning, !godListening else { return }   // don't collide with a God summon
@@ -5715,7 +5731,9 @@ struct ActionConsentDrop: View {
         // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then act on the main actor.
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
-            p.arguments = ["-m", model, "-f", wav, "-nt", "-np"]
+            var whisperArgs = ["-m", model, "-f", wav, "-nt", "-np"]
+            if let dict = self.dictationPrompt() { whisperArgs += ["--prompt", dict, "--carry-initial-prompt"] }
+            p.arguments = whisperArgs
             let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
             try? p.run(); p.waitUntilExit()
             let data = out.fileHandleForReading.readDataToEndOfFile()
