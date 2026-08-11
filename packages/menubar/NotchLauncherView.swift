@@ -455,7 +455,7 @@ struct NotchLauncherView: View {
     // Opt-in — the clipboard rides along ONLY if the user taps Add. Adding writes it to a temp clipboard.txt
     // and stages it exactly like a dropped file, so it flows through the SAME onLaunch(listing, url) path.
     private func clipboardOfferRow(_ s: String) -> some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             Spacer(minLength: 0)
             Button(action: { withAnimation(.easeOut(duration: 0.16)) { addClipboard(s) } }) {
                 HStack(spacing: 6) {
@@ -472,7 +472,25 @@ struct NotchLauncherView: View {
                 .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
             }.buttonStyle(.plain).frame(maxWidth: 240)
              .help("Add your clipboard as context for the app you launch")
+            // "Fill form" — the clipboard IS a form: hand it to the guided form-fill (docs/FORM-FILL.md).
+            // Writes the same ~/.relay/fill-form trigger the menu item / scripts use; the app's 1 s poll
+            // picks it up, matches identity.json against the copied form, and raises the teach fill-guide.
+            Button(action: { triggerFormFill() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.and.pencil").font(.system(size: 8, weight: .bold))
+                    Text("Fill form").font(.hanken(9.5, .semibold))
+                }.foregroundColor(.lime).padding(.horizontal, 8).padding(.vertical, 4)
+                 .background(Capsule().fill(Color.white.opacity(0.05)))
+                 .overlay(Capsule().stroke(Color.lime.opacity(0.45), lineWidth: 1))
+            }.buttonStyle(.plain)
+             .help("Guide me through filling this form (values from your saved details)")
         }
+    }
+    // Fire the guided form-fill on the copied form and close the launcher (the guide takes the stage).
+    private func triggerFormFill() {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/fill-form")
+        FileManager.default.createFile(atPath: p, contents: Data())
+        onClose()
     }
     private func clipPeek(_ s: String) -> String {
         let flat = s.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
