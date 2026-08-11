@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readDictionaryPrompt } from "./dictionary.js";
 
 /**
  * Local speech-to-text — the mirror of media/speech.ts. The daemon as ORCHESTRATOR of local
@@ -86,6 +87,8 @@ async function viaServer(buf: Buffer, mime: string, language?: string): Promise<
   const form = new FormData();
   form.append("model", SERVER_MODEL);
   if (language) form.append("language", language);
+  const prompt = readDictionaryPrompt();   // same dictionary; OpenAI transcription shape takes `prompt`
+  if (prompt) form.append("prompt", prompt);
   form.append("file", new Blob([buf], { type: mime }), `audio.${EXT_OF[mime] || "wav"}`);
   const res = await fetch(url, { method: "POST", body: form });
   if (!res.ok) throw new Error(`local stt server ${res.status}`);
@@ -106,6 +109,10 @@ function viaWhisperCli(buf: Buffer, mime: string, language?: string): Promise<Tr
     const args: string[] = ["-f", inPath, "-np", "-nt"];
     if (WHISPER_MODEL) args.push("-m", WHISPER_MODEL);
     if (language) args.push("-l", language);
+    // The DICTIONARY: bias recognition toward the user's names/jargon. --carry-initial-prompt keeps
+    // the glossary in context on every chunk so it doesn't fade on longer audio.
+    const prompt = readDictionaryPrompt();
+    if (prompt) args.push("--prompt", prompt, "--carry-initial-prompt");
     const proc = spawn(WHISPER_BIN, args, { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     proc.stdout.on("data", (d) => { out += d.toString(); });
