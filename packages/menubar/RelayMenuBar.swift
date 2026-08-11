@@ -4576,9 +4576,20 @@ struct ActionConsentDrop: View {
             guard let self, let p = self.launcherPanel, p.isVisible else { return }
             if !p.frame.contains(NSEvent.mouseLocation) { Task { @MainActor in self.hideLauncher() } }
         }
-        launcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
-            if ev.keyCode == 53 { Task { @MainActor in self?.hideLauncher() }; return nil }   // Esc
-            return ev
+        launcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] ev in
+            guard let self else { return ev }
+            return MainActor.assumeIsolated {   // event monitors fire on the main thread
+                // Same key-window blind spot as the feedback field: while the launcher panel is KEY the
+                // global flagsMonitor never sees ⌃⌥, so dictation can't start. Forward flagsChanged to the
+                // talk-chord-ONLY handler (NOT full onFlags — its ⌃⌃-summon detector would misread the ⌃ in
+                // ⌃⌥ and spawn God). finishDictation then pastes the transcript into the focused Ask field.
+                if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // While a take is latched, its watch timer owns esc (cancel the dictation) — don't let esc
+                // ALSO close the launcher out from under it.
+                if self.dictating { return ev.keyCode == 53 ? nil : ev }
+                if ev.keyCode == 53 { self.hideLauncher(); return nil }   // Esc
+                return ev
+            }
         }
     }
     @MainActor func hideLauncher() {
@@ -4597,11 +4608,22 @@ struct ActionConsentDrop: View {
         // The panel is key → it owns ↵ / esc → CursorGuide commits/cancels. CursorGuide.onKey no-ops while
         // capturingFeedback, so there's no double-fire.
         if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m) }
-        feedbackKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+        feedbackKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] ev in
             guard let self else { return ev }
-            if ev.keyCode == 53 { Task { @MainActor in self.commitFeedbackFromField(cancel: true) }; return nil }   // esc → discard
-            if ev.keyCode == 36 && !ev.modifierFlags.contains(.shift) { Task { @MainActor in self.commitFeedbackFromField(cancel: false) }; return nil }  // ↵ → save
-            return ev
+            return MainActor.assumeIsolated {   // event monitors fire on the main thread
+                // The feedback panel is KEY, so the global flagsMonitor that normally drives ⌃⌥ dictation is
+                // DEAD here — its flagsChanged events are delivered to our own key window instead of "another
+                // app," so the global monitor never sees them. Forward them to the talk-chord-ONLY handler
+                // (NOT full onFlags, whose ⌃⌃/⌥⌥ double-tap logic would misfire here) so the talk chord still
+                // STARTS a dictation; finishDictation already routes the transcript into this note.
+                if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // While a dictation is latched, its watch timer owns ⌃ (commit) and esc (cancel the take) via
+                // key-state polling — don't let esc/↵ ALSO discard or save the whole note out from under it.
+                if self.dictating { return (ev.keyCode == 53 || ev.keyCode == 36) ? nil : ev }
+                if ev.keyCode == 53 { self.commitFeedbackFromField(cancel: true); return nil }   // esc → discard
+                if ev.keyCode == 36 && !ev.modifierFlags.contains(.shift) { self.commitFeedbackFromField(cancel: false); return nil }  // ↵ → save
+                return ev
+            }
         }
         armFeedbackRegionCapture { [weak self] path in
             Task { @MainActor in
@@ -5273,6 +5295,19 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // Talk-chord detection ONLY — no summon (⌃⌃) / launcher (⌥⌥) double-tap logic. Our own key panels
+    // (⌥⌥ launcher, guide feedback field) forward flagsChanged HERE, not to the full onFlags: while such a
+    // panel is key the app is often inactive, so routing the ⌃ inside ⌃⌥ through onFlags's summon detector
+    // misreads it as a ⌃⌃ tap and spawns God instead of dictating. This starts a dictation on the exact talk
+    // chord and does nothing else; if the global onFlags also fires the same chord, its top-of-func
+    // `if dictating` guard short-circuits, so there's no double-start.
+    @MainActor private func startDictationOnTalkChord(_ flags: NSEvent.ModifierFlags) {
+        guard !dictating else { return }
+        let talk = chordFlags(model.shortcuts.talk)
+        let m = flags.intersection([.control, .option, .command, .shift])
+        if !talk.isEmpty && m == talk { onboard.lastDictate = Date(); startDictation() }
+    }
+
     // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —
     //    a pure Wispr-Flow-style dictation gesture folded in as God's sibling. ─────────────────────────
     private func whisperCliPath() -> String? {
@@ -5448,6 +5483,18 @@ struct ActionConsentDrop: View {
     // which is the point of the dictation gesture (and, in find mode, the exact stored value).
     @MainActor private func pasteText(_ text: String) {
         guard !text.isEmpty else { return }
+        // Our own non-activating key panels (the ⌥⌥ launcher's Ask field, notch web widgets) can be TYPED
+        // into — key events route to the key window's field editor — but they do NOT accept a synthetic ⌘V:
+        // the app isn't active, so paste:/the Edit menu never reach that field (manual copy/paste is dead
+        // there too). So DON'T paste — insert straight into the focused field editor, the same path typing
+        // uses, which updates the SwiftUI binding. Guide feedback never reaches here (finishDictation writes
+        // it directly into feedbackNote).
+        if let w = NSApp.keyWindow as? LauncherPanel, let tv = w.firstResponder as? NSTextView {
+            tv.insertText(text, replacementRange: tv.selectedRange())
+            return
+        }
+        // Otherwise God is dictating at the cursor of ANOTHER app (we're not active) — the clipboard + a
+        // System-Events ⌘V is the right delivery there.
         let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string)
         let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
