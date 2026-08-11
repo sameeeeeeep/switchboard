@@ -57,6 +57,7 @@ let binding = false;
 let isDraft = false;     // the open page was DRAFTED from context, not read off disk (nothing written)
 let drafting = false;
 let stageOverride = false; // user clicked "change" while a page is open → show the stage over it
+let choosingPage = false;  // bound a folder with >1 page → show the pages as a pick-list (not auto-open one)
 let bootstrapped = false;
 let booting = false;
 let relayWired = false;
@@ -174,7 +175,7 @@ async function syncProject() {
   const folder = info && !info.autoAssigned && info.folder ? info.folder : null;
   if ((bound?.folder || null) === folder) return;
   bound = folder ? { folder } : null;
-  pages = []; pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0; stageOverride = false;
+  pages = []; pageKey = null; currentHtml = ""; decisions = []; activeId = null; lastAuditAt = 0; stageOverride = false; choosingPage = false;
   $("page-sel").textContent = "";
   await refreshProjectMetas(); // both paths need it — bind cards when unbound, bank-chip dedupe when bound
   if (bound) await loadProject();
@@ -194,6 +195,7 @@ function reflect() {
   updateAudit();
   renderStage();
   renderBankIt();
+  void updateStagedFlag();
 }
 
 // STOP THE HOARDING: Redline is the wrapp most likely to be the first place a user's folder gets
@@ -264,13 +266,13 @@ function renderStage() {
   const sub = $("stage-sub");
 
   if (!relay) {
-    sub.textContent = "Redline renders your real page; your own Claude audits it, pins findings with fixes ready to lock, and every edit you approve writes to the actual file.";
+    sub.textContent = "Redline renders your real page; your own Claude audits it and pins findings with fixes ready to lock. You approve edits here — they show live and stage; your Claude session applies them to the real file on “check now.”";
     const steps = el("div", "steps");
     const s1 = el("div"); s1.innerHTML = notInstalled
       ? "<b>1</b> · Install Switchboard (button, top-right)"
       : "<b>1</b> · Connect Switchboard (top-right) — lends this page your Claude";
     const s2 = el("div"); s2.innerHTML = "<b>2</b> · Pick your project — Redline lists them the moment you connect";
-    const s3 = el("div"); s3.innerHTML = "<b>3</b> · The audit pins findings itself — steer, lock, it's written";
+    const s3 = el("div"); s3.innerHTML = "<b>3</b> · The audit pins findings itself — steer, lock, it stages (say “check now” to apply)";
     steps.append(s1, s2, s3);
     flow.append(steps);
     return;
@@ -287,6 +289,30 @@ function renderStage() {
     const r = el("div", "researching");
     r.append(el("div", "scan"), el("span", null, "opening the project…"));
     flow.append(r);
+    return;
+  }
+
+  // BOUND to a folder with more than one page → SHOW the pages as a pick-list (the founder's call).
+  // The pages are read straight from the folder; Redline no longer silently opens one and hides the
+  // rest in the dropdown. A single-page folder never reaches here — loadProject opens it directly.
+  if (choosingPage && bound && pages.length) {
+    sub.textContent = "Pick the page to review — " + bound.folder;
+    flow.append(el("div", "kicker stage-k", pages.length + " pages in this project"));
+    const preferred = pages.find((p) => /(^|\/)index\.html?$/i.test(p)) || pages[0];
+    const list = el("div", "opts");
+    pages.forEach((p) => {
+      const o = el("div", "opt proj");
+      if (p === preferred) o.append(el("div", "rec", "recommended"));
+      o.append(el("div", "go", "open ▸"));
+      o.append(el("div", "o-label", p));
+      o.onclick = () => { choosingPage = false; $("page-sel").value = p; openPage(p); };
+      list.append(o);
+    });
+    flow.append(list);
+    flow.append(el("div", "kicker stage-k", "or a different folder"));
+    const back = el("button", "mini"); back.textContent = "▸ choose another folder";
+    back.onclick = () => { choosingPage = false; bound = null; pages = []; pageKey = null; reflect(); };
+    flow.append(back);
     return;
   }
 
@@ -390,7 +416,10 @@ async function loadProject() {
   for (const p of pages) sel.append(new Option(p, p));
   const preferred = pages.find((p) => /(^|\/)index\.html?$/i.test(p)) || pages[0];
   sel.value = preferred;
-  await openPage(preferred);
+  // One page ⇒ open it, zero clicks (the whole promise). More than one ⇒ SHOW them as a pick-list
+  // instead of silently opening index.html and burying the rest in the dropdown.
+  if (pages.length === 1) { await openPage(preferred); }
+  else { choosingPage = true; reflect(); }
 }
 
 // ---------- the first draft: a page to review when the folder has none ----------
@@ -520,7 +549,8 @@ async function openPage(key) {
   pageKey = key; currentHtml = html; isDraft = false; // read off disk — a real file from here on
   const rev = await loadReview();
   decisions = rev.comments; lastAuditAt = rev.lastAuditAt; activeId = null;
-  renderFrame(); renderSide(); reflect();
+  await replayStaged(); // pristine file + undrained staged edits = what the canvas shows (file untouched)
+  renderFrame(); renderSide(); reflect(); void updateStagedFlag();
   // PROACTIVE: a page with zero open comments and no prior audit reviews ITSELF — the sidebar fills
   // with pinned findings (each with a ready-to-lock recommended fix) with no input. ✦ Audit re-runs.
   if (!decisions.some((c) => c && !c.locked) && !lastAuditAt) void audit();
@@ -536,6 +566,38 @@ const legacyKey = () => "redline-" + slug(pageKey);
 const metaKey = () => "redlinemeta-" + slug(pageKey);
 const recIdOf = (c) => slug(pageKey) + "-" + c.id;         // this page's namespace
 const pagePrefix = () => slug(pageKey) + "-";
+
+// STAGE, DON'T WRITE (option C — founder, 2026-08-11): Redline no longer writes the real page file.
+// Each applied edit becomes one durable record in the "rle" collection (rle-<slug>-<id>.json in the
+// bound folder); a context-rich driving Claude session drains the queue ("check now") and writes the
+// real repo file with full context. The canvas shows staged edits LIVE (currentHtml is mutated in
+// memory), but the file on disk stays pristine — killing the diff-agent-slop risk and the
+// vault-copy-vs-repo-file sync gap. A DRAFT is the one exception (see lockDecision): it has no file
+// to stage against, so its first lock still writes, exactly as before.
+const staged = () => collection(relay, "rle");
+const stagedIdOf = (c) => slug(pageKey) + "-" + c.id;      // one staged record per comment
+async function stagedForPage() {
+  try { return (await staged().all()).filter((r) => r && r.id.startsWith(pagePrefix()) && r.page === pageKey); }
+  catch { return []; }
+}
+// Rebuild the preview from the PRISTINE file + every undrained staged edit, so what you see survives a
+// reload without the file ever changing. Anchored by find/replace, same single-match rule as a live lock.
+async function replayStaged() {
+  for (const it of await stagedForPage()) {
+    if (it.type === "edit" && typeof it.find === "string") {
+      const applied = applyEdit(currentHtml, it.find, it.replace ?? "");
+      if (applied.ok) currentHtml = applied.next;
+    }
+  }
+}
+// Honest signal: N edits staged · not written. Reuses the .draftflag pill styling.
+async function updateStagedFlag() {
+  const flag = $("staged-flag"); if (!flag) return;
+  if (!pageKey) { flag.hidden = true; return; }
+  const n = (await stagedForPage()).length;
+  flag.hidden = n === 0;
+  flag.textContent = n + " edit" + (n === 1 ? "" : "s") + " staged · not written — say “check now” to your Claude";
+}
 async function loadReview() {
   try {
     // One-time migration: an old single-blob review becomes per-comment records, then the blob is dropped.
@@ -1309,16 +1371,15 @@ function cutDupSel() {
 // restore through the SAME storage.set path every lock uses. Session-local, capped at 30.
 const cutUndoStack = [];
 const cutRedoStack = [];
-async function cutTimeTravel(fromStack, toStack, label) {
-  if (!fromStack.length || !relay || !pageKey) return;
+function cutTimeTravel(fromStack, toStack, label) {
+  if (!fromStack.length || !pageKey) return;
   const html = fromStack.pop();
   toStack.push(currentHtml);
-  try {
-    await relay.storage.set(pageKey, html);
-    currentHtml = html;
-    renderFrame(); renderSide();
-    toast(label + " ✓");
-  } catch (e) { fromStack.push(html); toStack.pop(); toast(label + " failed — " + msg(e), true); }
+  // PREVIEW-only under option C — a whole-page snapshot scrub, never a file write. The durable queue
+  // (the staged/locked cards) is the source of truth for what drains; unlock a card to drop its edit.
+  currentHtml = html;
+  renderFrame(); renderSide();
+  toast(label + " ✓ (preview)");
 }
 function cutKeydown(e) {
   if (!cutMode) return;
@@ -1880,7 +1941,7 @@ async function runReferences(c, query) {
 async function lockDecision(c) {
   const d = c.decision; if (!d || !relay) return;
   const opt = d.options.find((o) => o.id === d.selectedId); if (!opt) return;
-  busy.add(c.id); d.writing = true; d.status = "writing to " + pageKey + "…"; renderSide();
+  busy.add(c.id); d.writing = true; d.status = isDraft ? "writing to " + pageKey + "…" : "staging the edit…"; renderSide();
   try {
     let edit = opt.edit;
     if (!edit && opt.deferredPlacement && opt.imageUrl) {
@@ -1897,11 +1958,13 @@ async function lockDecision(c) {
     if (!edit) throw new Error("this option can't be written automatically — try Ask Redline again");
     const applied = applyEdit(currentHtml, edit.find, edit.replace);
     if (!applied.ok) throw new Error("couldn't find this text in the file anymore — click Ask Redline to regenerate against the current page");
-    cutUndoStack.push(currentHtml); if (cutUndoStack.length > 30) cutUndoStack.shift(); cutRedoStack.length = 0; // every write is one ⌘Z away from undone
-    await relay.storage.set(pageKey, applied.next);
-    currentHtml = applied.next;
-    // Locking an edit on a DRAFT is the moment it stops being a draft: the file now exists on disk.
+    cutUndoStack.push(currentHtml); if (cutUndoStack.length > 30) cutUndoStack.shift(); cutRedoStack.length = 0; // every change is one ⌘Z away from undone (preview)
+    const wroteDraft = isDraft; // isDraft flips below; the toast needs to know which path ran
     if (isDraft) {
+      // A DRAFT has no file to stage against — its first lock still WRITES, exactly as before, which is
+      // the moment it becomes a real file. From then on, edits stage (the branch below).
+      await relay.storage.set(pageKey, applied.next);
+      currentHtml = applied.next;
       isDraft = false;
       pages = [pageKey];
       const sel = $("page-sel");
@@ -1909,6 +1972,15 @@ async function lockDecision(c) {
       sel.append(new Option(pageKey, pageKey));
       sel.value = pageKey;
       toast(pageKey + " created in " + bound.folder + " — the draft is a real file now");
+    } else {
+      // STAGE, don't write: the canvas updates live, the file on disk stays pristine, and the edit
+      // joins the durable queue the driving session drains on "check now".
+      currentHtml = applied.next;
+      await staged().put(stagedIdOf(c), {
+        page: pageKey, type: "edit", find: edit.find, replace: edit.replace,
+        label: opt.label || "", snippet: c.snippet || "", selector: c.selector || "", num: c.num,
+        at: new Date().toISOString(),
+      }).catch(() => {});
     }
     // Higgsfield URLs are typically presigned and EXPIRE — persist the card's copy as a data: URL
     // (best-effort; CORS/size may say no) so a returning user's locked card still shows the mockup.
@@ -1921,8 +1993,10 @@ async function lockDecision(c) {
     c.locked = { kind: d.kind, label: opt.label, text: opt.text || "", svg: opt.svg || null, imageUrl: lockedImageUrl };
     c.decision = null;
     flashId = c.id; // scroll the landed change into view + flash it green on the re-render
-    saveReview(); renderFrame(); renderSide();
-    toast("Done ✓ written to " + pageKey + " — reopen the card to make more changes");
+    saveReview(); renderFrame(); renderSide(); void updateStagedFlag();
+    toast(wroteDraft
+      ? "Done ✓ written to " + pageKey
+      : "Staged ✓ shown live — not written yet. Say “check now” to your Claude to apply it to " + pageKey);
   } catch (e) { if (c.decision) c.decision.lockError = msg(e); toast("Couldn't lock — " + msg(e), true); }
   finally { busy.delete(c.id); if (c.decision) { c.decision.loading = false; c.decision.writing = false; } renderSide(); }
 }
@@ -1946,7 +2020,13 @@ function applyEdit(html, find, replace) {
   return { ok: false };
 }
 
-function relock(c) { c.locked = null; saveReview(); renderSide(); const doc = frameDoc(); const n = doc && findNode(doc, c); if (n) n.classList.remove("rl-locked"); }
+async function relock(c) {
+  c.locked = null;
+  await staged().remove(stagedIdOf(c)).catch(() => {}); // unlocking an edit drops it from the drain queue — this IS the per-edit undo (Gate A reversibility)
+  try { currentHtml = (await relay.storage.get(pageKey)) || currentHtml; } catch { /* keep the current preview */ }
+  await replayStaged(); // rebuild the canvas from the pristine file + the remaining staged edits
+  saveReview(); renderFrame(); renderSide(); void updateStagedFlag();
+}
 
 // ---------- image gen (Higgsfield, agentic — mirrors Prism) ----------
 const IMG_URL_RE = /(https?:\/\/[^\s"')]+\.(?:png|jpe?g|webp))|"(?:rawUrl|url|minUrl)"\s*:\s*"([^"]+)"/i;
@@ -2132,9 +2212,10 @@ function decisionFoot(c, d) {
   }
   const foot = el("div", "dec-foot");
   const opt = d.options.find((o) => o.id === d.selectedId);
-  // Nothing picked = nothing to write, and the button says why rather than sitting there dead: the
-  // drafted card above is a suggestion, and writing to the real file is the reviewer's call.
-  const lock = el("button", "lock"); lock.append(lockIcon(), el("span", null, opt ? "Lock & write" : "Pick one to write it"));
+  // Nothing picked = nothing to stage, and the button says why rather than sitting there dead: the
+  // drafted card above is a suggestion, and approving the edit is the reviewer's call. A draft still
+  // writes on first lock (it has no file yet); a real page stages for the driving session to apply.
+  const lock = el("button", "lock"); lock.append(lockIcon(), el("span", null, opt ? (isDraft ? "Lock & write" : "Lock & stage") : "Pick one to stage it"));
   lock.disabled = !opt;
   lock.onclick = () => lockDecision(c);
   const discard = el("button", "discard", "Discard"); discard.onclick = () => { c.decision = null; saveReview(); renderSide(); };
