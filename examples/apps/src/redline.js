@@ -11,6 +11,7 @@
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 import { mountBankIt, listContexts, useContext, slugId } from "./store/bankit.js";
 import { collection, mountLive } from "./kit/livestore.js";
+import { exposeToGod } from "./kit/webmcp.js";
 // Carried context: when the Switchboard OS launches Redline AT a project, open that project
 // directly (auto-bind its folder) instead of the pick-a-project stage. No-op on a normal launch.
 import { readOsContext } from "./os/os-context.js";
@@ -2320,3 +2321,55 @@ function toast(text, err) {
   t.className = "toast" + (err ? " err" : ""); t.textContent = text;
   toastT = setTimeout(() => t.remove(), 3200);
 }
+
+// ── GOD HANDS ──────────────────────────────────────────────────────────────────────────────────
+// Expose Redline's real actions so God can DRIVE it in the native GodWebWindow (listTools → drive).
+// Each execute() calls the SAME functions a click would — the audit paints, the staged edits land
+// live on the canvas — and returns a JSON-safe result God can speak/act on. Nothing new writes the
+// file: `stage` goes through lockDecision, which stages to the rle queue; "check now" still drains.
+exposeToGod([
+  {
+    name: "audit",
+    description: "Run Redline's self-audit on the current page — pins findings, each with a ready-to-stage fix. Returns the findings.",
+    execute: async () => {
+      if (!relay) throw new Error("Redline isn't connected to Switchboard yet");
+      if (!pageKey) throw new Error("No page open — bind a project folder and open a page first");
+      await audit();
+      const open = decisions.filter((c) => c && !c.locked);
+      return {
+        page: pageKey,
+        count: open.length,
+        findings: open.map((c) => ({
+          num: c.num,
+          issue: c.note || "",
+          lockable: !!(c.decision && c.decision.lockable),
+          fix: (c.decision && c.decision.options && c.decision.options[0] && c.decision.options[0].text) || null,
+        })),
+      };
+    },
+  },
+  {
+    name: "stage",
+    description: "Stage the recommended fix for a finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'.",
+    inputSchema: { type: "object", properties: { num: { type: "number", description: "the finding number to stage; omit to stage all ready findings" } } },
+    execute: async (input) => {
+      if (!relay || !pageKey) throw new Error("Nothing to stage — open a page and run audit first");
+      const want = input && typeof input.num === "number" ? input.num : null;
+      const targets = decisions.filter((c) =>
+        c && !c.locked && c.decision && c.decision.lockable && (want == null || c.num === want));
+      if (!targets.length) throw new Error(want != null
+        ? `Finding #${want} has no ready-to-stage fix`
+        : "No ready-to-stage findings — run audit first");
+      const staged = [];
+      for (const c of targets) {
+        const d = c.decision;
+        const rec = (d.options || []).find((o) => o.recommended) || (d.options || [])[0];
+        if (!rec) continue;
+        d.selectedId = rec.id;      // pick the recommended option, then lock — the stage path
+        await lockDecision(c);
+        staged.push({ num: c.num, label: rec.label || "fix", text: rec.text || "" });
+      }
+      return { staged, stagedCount: staged.length, totalStagedOnPage: (await stagedForPage()).length, page: pageKey };
+    },
+  },
+]);
