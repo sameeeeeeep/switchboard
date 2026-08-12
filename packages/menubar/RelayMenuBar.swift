@@ -2251,11 +2251,11 @@ struct OrbView: View {
     var body: some View {
         // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
         let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-        let shape = NotchDropShape(ear: 8, botR: 9)
+        let shape = NotchDropShape(ear: 9, botR: 10)
         ZStack {
             shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
             NotchField(accent: tint, working: model.working, animated: model.running)
-                .padding(.horizontal, 5).padding(.top, 1).padding(.bottom, 3)
+                .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
                 .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
             shape.stroke(tint.opacity(model.running ? 0.20 : 0.10), lineWidth: 0.75)   // a faint health-tinted rim
         }
@@ -5581,10 +5581,13 @@ struct ActionConsentDrop: View {
     // and the grant persists for the session. allowConnect:false on the retry so we never loop.
     @MainActor private func callThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String, allowConnect: Bool) {
         let bridge = GodDaemonBridge(token: token)
-        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": tool, "arguments": args]) { [weak self] result, err in
+        // The daemon namespaces MCP tools `mcp__<server>__<tool>` (registry.ts) — call it by that name,
+        // not the bare tool name (else "no such tool").
+        let qualified = "mcp__\(binding.server)__\(tool)"
+        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": qualified, "arguments": args]) { [weak self] result, err in
             Task { @MainActor in
                 bridge.close()
-                if let err, allowConnect, RelayController.isNotGranted(err) {
+                if allowConnect, RelayController.notGrantedSignal(result, err) {
                     self?.connectThirdPartyTool(l, binding, tool: tool, args: args, token: token)
                 } else {
                     self?.thirdPartyToolFinished(l, binding, tool: tool, result: result, err: err)
@@ -5596,10 +5599,13 @@ struct ActionConsentDrop: View {
     // the notch, routed to the menubar), then retry the call. Keys stay in the daemon; the grant IS the
     // user's explicit approval to run this third-party tool.
     @MainActor private func connectThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String) {
-        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Approve “\(l.name)” to run it",
-            openLabel: "", result: .working("A third-party tool — approve it once at the notch…")))
+        // Hide our own widget so it doesn't sit BEHIND the grant card — the daemon's consent:connect
+        // raises the pair-light ConnectGrantDrop as its own notch card; that's the only card to show now.
+        hideNotchWidget()
         let bridge = GodDaemonBridge(token: token)
-        let scope: [String: Any] = ["tools": (binding.tools ?? [tool]),
+        // Grant the daemon-qualified tool names (`mcp__<server>__<tool>`) so the allowlist matches the call.
+        let scopeTools = (binding.tools ?? [tool]).map { "mcp__\(binding.server)__\($0)" }
+        let scope: [String: Any] = ["tools": scopeTools,
                                      "reason": "\(l.name) — a third-party tool, running on your machine"]
         bridge.request(origin: "tool://\(l.id)", method: "claude_connect", params: scope) { [weak self] result, err in
             Task { @MainActor in
@@ -5616,12 +5622,24 @@ struct ActionConsentDrop: View {
             }
         }
     }
-    private nonisolated static func isNotGranted(_ err: [String: Any]) -> Bool {
-        let code = (err["code"] as? String) ?? ""
-        let msg = (err["message"] as? String) ?? ""
-        return code == "SCOPE_EXCEEDED"
-            || msg.localizedCaseInsensitiveContains("allowlist")
+    private nonisolated static func isNotGranted(_ e: [String: Any]) -> Bool {
+        let code = "\(e["code"] ?? "")"   // may be a number (4100) or a string
+        let msg = (e["message"] as? String) ?? ""
+        return code == "4100" || code == "SCOPE_EXCEEDED" || code == "UNAUTHORIZED"
             || msg.localizedCaseInsensitiveContains("not connected")
+            || msg.localizedCaseInsensitiveContains("allowlist")
+    }
+    // The daemon returns a gate DENIAL as a RESULT ({ok:false, error:{message, code:4100}}), not a
+    // JSON-RPC error — so a not-granted tool call arrives with err==nil and the denial buried in the
+    // result. Detect the not-granted signal in EITHER place, so the connect-then-retry always fires.
+    private nonisolated static func notGrantedSignal(_ result: Any?, _ err: [String: Any]?) -> Bool {
+        if let err, isNotGranted(err) { return true }
+        guard let d = result as? [String: Any], (d["ok"] as? Bool) == false else { return false }
+        if let e = d["error"] as? [String: Any] { return isNotGranted(e) }
+        if let s = d["error"] as? String {
+            return s.localizedCaseInsensitiveContains("not connected") || s.localizedCaseInsensitiveContains("allowlist")
+        }
+        return false
     }
     @MainActor private func thirdPartyToolFinished(_ l: SBListing, _ binding: SBMcpBinding, tool: String, result: Any?, err: [String: Any]?) {
         if let err {
@@ -5690,12 +5708,14 @@ struct ActionConsentDrop: View {
     // constant — tune per display on a real run; some Macs report a lying menuBarHeight.)
     private func positionOrb() {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
-        let w: CGFloat = 168
-        // Make the orb window span the menu bar EXACTLY (bottom = visibleFrame.maxY, height = the real
-        // menu-bar height — taller on notch Macs), so the centred dot lands between the bar's top and
-        // bottom edges — up on the notch line, not below it. Renders over the bar (popUpMenu level).
+        let w: CGFloat = 184
+        // The real notch reads as a notch by HANGING BELOW the menu bar (Dynamic-Island style), not just
+        // spanning it. Top = screen top (frame.maxY); bottom = `drop` points BELOW the bar so the rounded
+        // bottom + the dot-matrix are visible. Height = the menu-bar height + that drop. (Founder-tuned:
+        // narrower + shallower than the first cut.)
         let menuH = max(screen.frame.maxY - screen.visibleFrame.maxY, 22)
-        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY, width: w, height: menuH), display: true)
+        let drop: CGFloat = 5
+        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY - drop, width: w, height: menuH + drop), display: true)
     }
 
     // Hover/click on the orb → open the full detailed panel (reuses the existing show/position path).
