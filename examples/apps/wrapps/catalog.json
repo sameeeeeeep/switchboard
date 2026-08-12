@@ -529,6 +529,21 @@
         "A line-by-line review of any page or doc",
         "Audit and respond as two headless workflows (batch)",
         "Its own taste.md so the notes sound like you"
+      ],
+      "tools": [
+        {
+          "name": "audit",
+          "description": "Run Redline's self-audit on the current page — pins findings, each with a ready-to-stage fix. Returns the findings.",
+          "inputSchema": {}
+        },
+        {
+          "name": "stage",
+          "description": "Stage the recommended fix for a finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'.",
+          "inputSchema": {
+            "type": "number",
+            "description": "the finding number to stage; omit to stage all ready findings"
+          }
+        }
       ]
     },
     {
