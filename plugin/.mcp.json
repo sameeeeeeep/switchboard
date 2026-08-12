@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "switchboard": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/../packages/switchboard-mcp/switchboard-mcp.mjs",
+        "mcp"
+      ]
+    }
+  }
+}

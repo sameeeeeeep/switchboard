@@ -39,11 +39,16 @@ const ok = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }] })
 const fail = (message, extra) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, error: message, ...extra }) }] });
 
 // ---- the task board (file-based, not daemon) ----------------------------------------------------
-// The vault is THIS project: --vault <path> | $SWITCHBOARD_VAULT | $BANK_VAULT | the current working
-// directory (a Claude Code session runs in the project repo, so cwd is the project's board by default).
+// The vault resolves in order: --vault <path> | $SWITCHBOARD_VAULT | $BANK_VAULT | ~/SwitchboardBrain.
+// The default is the user's home vault (~/SwitchboardBrain), NOT cwd: when installed as a plugin the
+// connector is invoked with no --vault, and a Claude Code session's cwd is whatever project folder it
+// happens to sit in — running the task tools against that folder is the wrong board (this is the exact
+// bug that broke the dev connector; it had to be hand-fixed with `--vault ~/SwitchboardBrain`). An
+// explicit --vault or $*_VAULT still overrides, so "any folder will do" for install without a flag.
+const DEFAULT_VAULT = join(homedir(), "SwitchboardBrain");
 function argVal(flag) { const i = process.argv.indexOf(flag); return i >= 0 ? process.argv[i + 1] : undefined; }
 function expand(p) { return p && p.startsWith("~") ? join(homedir(), p.slice(1)) : p; }
-const VAULT = resolve(expand(argVal("--vault") || process.env.SWITCHBOARD_VAULT || process.env.BANK_VAULT || process.cwd()));
+const VAULT = resolve(expand(argVal("--vault") || process.env.SWITCHBOARD_VAULT || process.env.BANK_VAULT || DEFAULT_VAULT));
 const TASKS_FILE = "tasks.md";
 function ensureVault() { if (!existsSync(VAULT)) mkdirSync(VAULT, { recursive: true }); }
 function readDoc(name) { const p = join(VAULT, name); return existsSync(p) ? readFileSync(p, "utf8") : ""; }

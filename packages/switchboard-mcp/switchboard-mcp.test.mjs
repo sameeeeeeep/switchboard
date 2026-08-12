@@ -112,5 +112,35 @@ try {
   }
 }
 
+// 6) The no-`--vault` default is ~/SwitchboardBrain (the user's home vault), NOT cwd. This is the
+// bug fix that makes the plugin install ("any folder will do") land the task board in one stable
+// place instead of whatever project folder the session happens to sit in. We make it hermetic by
+// pointing the subprocess's HOME at a throwaway dir (Node's os.homedir() honors $HOME on POSIX), so
+// the assertion exercises the real default-resolution path without ever touching the real vault. The
+// subprocess also runs with cwd = a DIFFERENT temp dir, proving the default no longer falls to cwd.
+{
+  const fakeHome = mkdtempSync(join(tmpdir(), "switchboard-home-"));
+  const otherCwd = mkdtempSync(join(tmpdir(), "switchboard-cwd-"));
+  const expectedVault = join(fakeHome, "SwitchboardBrain");
+  const t3 = new StdioClientTransport({
+    command: process.execPath,
+    args: [SERVER, "mcp"], // no --vault: rely on the default
+    env: { ...process.env, HOME: fakeHome, SWITCHBOARD_SB: "mock", SWITCHBOARD_VAULT: "", BANK_VAULT: "" },
+    cwd: otherCwd,
+    stderr: "inherit",
+  });
+  const c3 = new Client({ name: "sb-default-vault-test", version: "0.0.0" }, { capabilities: {} });
+  try {
+    await c3.connect(t3);
+    const added = parse(await c3.callTool({ name: "switchboard_add_task", arguments: { text: "Default-vault probe", list: "Inbox" } }));
+    check("no --vault defaults the board to ~/SwitchboardBrain (not cwd)", added.file === join(expectedVault, "tasks.md"), `${added.file} (expected under ${expectedVault})`);
+    check("the default vault is NOT the process cwd", !String(added.file).startsWith(otherCwd), added.file);
+  } finally {
+    try { await c3.close(); } catch {}
+    try { rmSync(fakeHome, { recursive: true, force: true }); } catch {}
+    try { rmSync(otherCwd, { recursive: true, force: true }); } catch {}
+  }
+}
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nall checks passed");
 process.exit(failures ? 1 : 0);
