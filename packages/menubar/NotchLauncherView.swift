@@ -472,19 +472,45 @@ struct NotchLauncherView: View {
                 .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
             }.buttonStyle(.plain).frame(maxWidth: 240)
              .help("Add your clipboard as context for the app you launch")
-            // "Fill form" — the clipboard IS a form: hand it to the guided form-fill (docs/FORM-FILL.md).
-            // Writes the same ~/.relay/fill-form trigger the menu item / scripts use; the app's 1 s poll
-            // picks it up, matches identity.json against the copied form, and raises the teach fill-guide.
-            Button(action: { triggerFormFill() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.and.pencil").font(.system(size: 8, weight: .bold))
-                    Text("Fill form").font(.hanken(9.5, .semibold))
-                }.foregroundColor(.lime).padding(.horizontal, 8).padding(.vertical, 4)
-                 .background(Capsule().fill(Color.white.opacity(0.05)))
-                 .overlay(Capsule().stroke(Color.lime.opacity(0.45), lineWidth: 1))
-            }.buttonStyle(.plain)
-             .help("Guide me through filling this form (values from your saved details)")
+            // A copied VIDEO LINK gets "Extract video" instead — download + understand it, drop the
+            // result into any chat (~/.relay/extract-video trigger; the app's poll runs the pipeline).
+            // Otherwise the clipboard is treated as a FORM to fill (docs/FORM-FILL.md) via ~/.relay/fill-form.
+            if isVideoURL(s) {
+                Button(action: { triggerExtractVideo(s) }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "film").font(.system(size: 8, weight: .bold))
+                        Text("Extract video").font(.hanken(9.5, .semibold))
+                    }.foregroundColor(.lime).padding(.horizontal, 8).padding(.vertical, 4)
+                     .background(Capsule().fill(Color.white.opacity(0.05)))
+                     .overlay(Capsule().stroke(Color.lime.opacity(0.45), lineWidth: 1))
+                }.buttonStyle(.plain)
+                 .help("Download this video and understand it — drop the result into any chat")
+            } else {
+                Button(action: { triggerFormFill() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.pencil").font(.system(size: 8, weight: .bold))
+                        Text("Fill form").font(.hanken(9.5, .semibold))
+                    }.foregroundColor(.lime).padding(.horizontal, 8).padding(.vertical, 4)
+                     .background(Capsule().fill(Color.white.opacity(0.05)))
+                     .overlay(Capsule().stroke(Color.lime.opacity(0.45), lineWidth: 1))
+                }.buttonStyle(.plain)
+                 .help("Guide me through filling this form (values from your saved details)")
+            }
         }
+    }
+    // A copied YouTube/Instagram link → one-tap extraction. Mirrors video2ai-pipeline.mjs isVideoUrl so
+    // the launcher only offers it for links the pipeline can actually download.
+    private func isVideoURL(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard t.hasPrefix("http") else { return false }
+        return t.contains("youtube.com/watch") || t.contains("youtu.be/") || t.contains("youtube.com/shorts/")
+            || t.contains("instagram.com/p/") || t.contains("instagram.com/reel/")
+    }
+    // Fire the extraction on the copied URL and close the launcher (the notch widget takes the stage).
+    private func triggerExtractVideo(_ url: String) {
+        let p = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/extract-video")
+        try? url.trimmingCharacters(in: .whitespacesAndNewlines).write(toFile: p, atomically: true, encoding: .utf8)
+        onClose()
     }
     // Fire the guided form-fill on the copied form and close the launcher (the guide takes the stage).
     private func triggerFormFill() {
