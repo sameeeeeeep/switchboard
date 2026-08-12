@@ -5570,25 +5570,60 @@ struct ActionConsentDrop: View {
         // The one primary string, sprayed across the arg keys tools commonly use; each reads its own.
         let text = input ?? (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let args: [String: Any] = ["input": text, "query": text, "q": text, "text": text, "prompt": text, "url": text]
+        callThirdPartyTool(l, binding, tool: toolName, args: args, token: token, allowConnect: true)
+    }
+    // The gated call. On a not-granted reply (SCOPE_EXCEEDED / origin not connected) we GRANT once at the
+    // notch (claude_connect → the pair-light card) and retry — so "God, run X" just works after one Approve,
+    // and the grant persists for the session. allowConnect:false on the retry so we never loop.
+    @MainActor private func callThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String, allowConnect: Bool) {
         let bridge = GodDaemonBridge(token: token)
-        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": toolName, "arguments": args]) { [weak self] result, err in
+        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": tool, "arguments": args]) { [weak self] result, err in
             Task { @MainActor in
                 bridge.close()
-                self?.thirdPartyToolFinished(l, binding, tool: toolName, result: result, err: err)
+                if let err, allowConnect, RelayController.isNotGranted(err) {
+                    self?.connectThirdPartyTool(l, binding, tool: tool, args: args, token: token)
+                } else {
+                    self?.thirdPartyToolFinished(l, binding, tool: tool, result: result, err: err)
+                }
             }
         }
     }
+    // Grant this tool's origin once (claude_connect → consent:connect → the pair-light ConnectGrantDrop at
+    // the notch, routed to the menubar), then retry the call. Keys stay in the daemon; the grant IS the
+    // user's explicit approval to run this third-party tool.
+    @MainActor private func connectThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String) {
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Approve “\(l.name)” to run it",
+            openLabel: "", result: .working("A third-party tool — approve it once at the notch…")))
+        let bridge = GodDaemonBridge(token: token)
+        let scope: [String: Any] = ["tools": (binding.tools ?? [tool]),
+                                     "reason": "\(l.name) — a third-party tool, running on your machine"]
+        bridge.request(origin: "tool://\(l.id)", method: "claude_connect", params: scope) { [weak self] result, err in
+            Task { @MainActor in
+                bridge.close()
+                if err != nil || result == nil || result is NSNull {
+                    self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Not granted",
+                        openLabel: "Close", result: .text("“\(l.name)” wasn’t granted — nothing ran.")),
+                        onOpen: { [weak self] in self?.hideNotchWidget() })
+                    return
+                }
+                self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Running \(tool)…",
+                    openLabel: "", result: .working("\(l.name) — running on your machine…")))
+                self?.callThirdPartyTool(l, binding, tool: tool, args: args, token: token, allowConnect: false)
+            }
+        }
+    }
+    private nonisolated static func isNotGranted(_ err: [String: Any]) -> Bool {
+        let code = (err["code"] as? String) ?? ""
+        let msg = (err["message"] as? String) ?? ""
+        return code == "SCOPE_EXCEEDED"
+            || msg.localizedCaseInsensitiveContains("allowlist")
+            || msg.localizedCaseInsensitiveContains("not connected")
+    }
     @MainActor private func thirdPartyToolFinished(_ l: SBListing, _ binding: SBMcpBinding, tool: String, result: Any?, err: [String: Any]?) {
         if let err {
-            let code = (err["code"] as? String) ?? ""
             let msg = (err["message"] as? String) ?? "the tool call failed"
-            let notGranted = code == "SCOPE_EXCEEDED" || msg.localizedCaseInsensitiveContains("allowlist") || msg.localizedCaseInsensitiveContains("not connected")
-            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())",
-                title: notGranted ? "Grant “\(l.name)” first" : "“\(l.name)” couldn’t run",
-                openLabel: "Open panel",
-                result: .text(notGranted
-                    ? "This third-party tool (\(binding.server)) isn’t granted yet — approve it once at the notch, then try again."
-                    : msg)),
+            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "“\(l.name)” couldn’t run",
+                openLabel: "Open panel", result: .text(msg)),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
