@@ -535,6 +535,24 @@
       }
     }
   ],
+  "redline": [
+    {
+      "name": "audit",
+      "description": "Run Redline's self-audit on a page — pins findings, each with a ready-to-stage fix. Returns the findings. Pass `page` (a filename) to open+audit that page when God drives Redline cold; omit to audit the page already open.",
+      "inputSchema": {
+        "type": "string",
+        "description": "optional page filename (e.g. landing-grid.html) to open before auditing; omit to use the open/preferred page"
+      }
+    },
+    {
+      "name": "stage",
+      "description": "Stage the recommended fix for a finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'.",
+      "inputSchema": {
+        "type": "number",
+        "description": "the finding number to stage; omit to stage all ready findings"
+      }
+    }
+  ],
   "reel": [
     {
       "name": "reel_generate",

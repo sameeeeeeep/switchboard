@@ -1643,7 +1643,7 @@ $("run-scripts").addEventListener("click", () => {
 // (doctrine 5). Steer regenerates.
 // Runs AUTOMATICALLY the first time a page opens with nothing pinned (the proactive first batch);
 // the ✦ Audit button is the "generate more" re-run.
-let auditing = false;
+let auditing = false, auditPromise = null;
 // complete array elements from a PARTIAL stream: parse up to the last closing brace; a brace that
 // closes mid-element fails the parse and we simply wait for more text
 function parseJsonPrefix(text) {
@@ -1652,9 +1652,19 @@ function parseJsonPrefix(text) {
   try { return JSON.parse(text.slice(s, e + 1) + "]"); } catch { return null; }
 }
 async function audit() {
-  if (!relay || !pageKey || auditing) return;
+  if (!relay || !pageKey) return;
+  // COALESCE concurrent calls: openPage fires a proactive audit (~line 589), and God cold-driving
+  // calls audit() right after opening the page — the old `|| auditing` guard made that 2nd call
+  // early-return EMPTY, so God read 0 findings while the real pass was still streaming. Now a
+  // concurrent caller awaits the SAME in-flight pass and gets the real findings.
+  if (auditing) return auditPromise;
+  auditing = true;
+  auditPromise = auditPass();
+  try { return await auditPromise; } finally { auditing = false; auditPromise = null; updateAudit(); renderSide(); }
+}
+async function auditPass() {
   const forPage = pageKey; // if the user switches pages mid-audit, drop the results — never pin page A's findings onto page B
-  auditing = true; updateAudit(); renderSide();
+  updateAudit(); renderSide();
   let added = 0, streamedThrough = 0;
   // one finding → one pinned decision; used BOTH by the stream (as each element completes) and by
   // the final pass — the snippet-overlap dedupe makes the second call a no-op for anything pinned
@@ -1714,7 +1724,7 @@ async function audit() {
     saveReview(); renderSide(); decorateFrame();
     toast(added ? `Audit ✓ ${added} suggestion${added === 1 ? "" : "s"} pinned — open a card, the fix is ready to lock` : "Audit ✓ nothing new beyond your existing comments");
   } catch (e) { toast("Audit failed — " + msg(e), true); }
-  finally { auditing = false; updateAudit(); renderSide(); }
+  // auditing lifecycle (reset + updateAudit + renderSide) is owned by the audit() wrapper's finally.
 }
 function updateAudit() {
   const b = $("audit"); if (!b) return;
@@ -2359,12 +2369,32 @@ function toast(text, err) {
 // Each execute() calls the SAME functions a click would — the audit paints, the staged edits land
 // live on the canvas — and returns a JSON-safe result God can speak/act on. Nothing new writes the
 // file: `stage` goes through lockDecision, which stages to the rle queue; "check now" still drains.
+
+// COLD DRIVE: when God opens Redline itself ("redline my landing"), the fresh window auto-binds the
+// folder (resolveProject) but may land on the multi-page CHOOSER — so no page is open yet and audit
+// would throw. Open the best page from God's phrasing (a filename/word hint, sprayed across the drive
+// keys) or the folder's preferred page, so a cold drive just works instead of dead-ending.
+async function ensurePageOpen(hint) {
+  if (pageKey) return true;
+  if (!pages || !pages.length) return false;   // nothing bound / empty folder → caller surfaces the reason
+  const h = String(hint || "").toLowerCase().trim();
+  const base = (p) => p.toLowerCase().replace(/\.html?$/i, "");
+  const match = h && pages.find((p) => p.toLowerCase().includes(h) || (base(p) && h.includes(base(p))));
+  const pick = match || pages.find((p) => /(^|\/)index\.html?$/i.test(p)) || pages[0];
+  if (!pick) return false;
+  choosingPage = false; emptyFolder = false;
+  await openPage(pick);
+  return !!pageKey;
+}
+
 exposeToGod([
   {
     name: "audit",
-    description: "Run Redline's self-audit on the current page — pins findings, each with a ready-to-stage fix. Returns the findings.",
-    execute: async () => {
+    description: "Run Redline's self-audit on a page — pins findings, each with a ready-to-stage fix. Returns the findings. Pass `page` (a filename) to open+audit that page when God drives Redline cold; omit to audit the page already open.",
+    inputSchema: { type: "object", properties: { page: { type: "string", description: "optional page filename (e.g. landing-grid.html) to open before auditing; omit to use the open/preferred page" } } },
+    execute: async (input) => {
       if (!relay) throw new Error("Redline isn't connected to Switchboard yet");
+      if (!pageKey) await ensurePageOpen(input && (input.page || input.url || input.target || input.input || input.text));
       if (!pageKey) throw new Error("No page open — bind a project folder and open a page first");
       await audit();
       const open = decisions.filter((c) => c && !c.locked);
@@ -2385,7 +2415,9 @@ exposeToGod([
     description: "Stage the recommended fix for a finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'.",
     inputSchema: { type: "object", properties: { num: { type: "number", description: "the finding number to stage; omit to stage all ready findings" } } },
     execute: async (input) => {
-      if (!relay || !pageKey) throw new Error("Nothing to stage — open a page and run audit first");
+      if (!relay) throw new Error("Redline isn't connected to Switchboard yet");
+      if (!pageKey) await ensurePageOpen(input && (input.page || input.url || input.target));
+      if (!pageKey) throw new Error("Nothing to stage — open a page and run audit first");
       const want = input && typeof input.num === "number" ? input.num : null;
       const targets = decisions.filter((c) =>
         c && !c.locked && c.decision && c.decision.lockable && (want == null || c.num === want));

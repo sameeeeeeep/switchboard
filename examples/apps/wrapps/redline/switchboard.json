@@ -8,6 +8,23 @@
     "workflows": ["redline/audit", "redline/respond"],
     "ui": { "kind": "web", "url": "https://redline.thelastprompt.ai" }
   },
+  "tools": [
+    {
+      "name": "audit",
+      "description": "Run Redline's self-audit on a landing page — pins the worst findings (AI-slop copy, dead sections, weak headlines), each with a ready-to-stage fix. Pass `page` (a filename) to open+audit that page when driving Redline cold; omit to audit the page already open. Returns the findings.",
+      "inputSchema": {
+        "page": "string — optional page filename (e.g. landing-grid.html) to open before auditing; omit to use the open/preferred page."
+      }
+    },
+    {
+      "name": "stage",
+      "description": "Stage the recommended fix for an audit finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'. Returns what was staged.",
+      "inputSchema": {
+        "num": "number — the finding number to stage; omit to stage all ready findings.",
+        "page": "string — optional page filename to open first when driving cold."
+      }
+    }
+  ],
   "surfaces": ["browser", "batch"],
   "requires": [
     { "kind": "daemon" },
