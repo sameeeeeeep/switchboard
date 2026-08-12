@@ -1,0 +1,14 @@
+{
+  "name": "switchboard",
+  "owner": {
+    "name": "sameeeeeeep",
+    "url": "https://github.com/sameeeeeeep/switchboard"
+  },
+  "plugins": [
+    {
+      "name": "switchboard",
+      "source": "./plugin",
+      "description": "App + connector + skills as one Claude Code plugin: a self-contained task-board MCP (default vault ~/SwitchboardBrain, no --vault) plus the five operator skills (adhd-pm, spec, switchboard, wrapp, task)."
+    }
+  ]
+}

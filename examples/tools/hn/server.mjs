@@ -31,16 +31,27 @@ async function searchNews({ query, limit }) {
   if (!res.ok) throw new Error(`Hacker News API ${res.status}`);
   const data = await res.json();
   const hits = Array.isArray(data.hits) ? data.hits : [];
-  if (!hits.length) return `No Hacker News stories found${q ? ` for “${q}”` : ""}.`;
-  const lines = hits.map((h, i) => {
+  const summary = `Hacker News${q ? ` · “${q}”` : " · front page"}`;
+  if (!hits.length) return envelope(summary, `No Hacker News stories found${q ? ` for “${q}”` : ""}.`, []);
+  const items = hits.map((h) => {
     const title = h.title || h.story_title || "(untitled)";
     const pts = h.points ?? 0;
     const comments = h.num_comments ?? 0;
     const link = h.url || `https://news.ycombinator.com/item?id=${h.objectID}`;
-    const hn = `https://news.ycombinator.com/item?id=${h.objectID}`;
-    return `${i + 1}. ${title}  —  ${pts} pts · ${comments} comments\n   ${link}\n   discuss: ${hn}`;
+    const source = h.url ? hostOf(h.url) : "news.ycombinator.com";
+    return { title, url: link, source, snippet: `${pts} points · ${comments} comments on Hacker News`, meta: `${pts} pts · ${comments} 💬` };
   });
-  return `Trending on Hacker News${q ? ` · “${q}”` : ""}:\n\n` + lines.join("\n\n");
+  const text = `Trending on Hacker News${q ? ` · “${q}”` : ""}:\n\n` +
+    items.map((it, i) => `${i + 1}. ${it.title}  —  ${it.meta}\n   ${it.url}`).join("\n\n");
+  return envelope(summary, text, items);
+}
+
+function hostOf(u) { try { return new URL(u).host.replace(/^www\./, ""); } catch { return "news.ycombinator.com"; } }
+// The Switchboard results envelope — one JSON object as the tool's text content, so the notch renders
+// result CARDS (title · source · snippet · link) instead of a raw text dump. `text` is the readable
+// fallback that "Drop into chat" copies and a model reads. (See examples/tools/README-envelope.md.)
+function envelope(summary, text, items) {
+  return JSON.stringify({ _switchboard: "results", summary, text, items });
 }
 
 // ── minimal MCP stdio protocol (newline-delimited JSON-RPC 2.0) ──────────────────────────────────

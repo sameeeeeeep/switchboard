@@ -2221,7 +2221,9 @@ struct NotchField: View {
         return 0.13 + 0.87 * (s * s * s)
     }
     private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ t: Double) {
-        let gap: CGFloat = 4.0, d: CGFloat = 1.8
+        // Lamp density matches the dictation DotMatrix (founder-approved 2026-08-13, "chunky lamps"):
+        // pitch 6 / dot 3 — bolder + less dense than the old fine field (pitch 4 / dot 1.8).
+        let gap: CGFloat = 6.0, d: CGFloat = 3.0
         let cols = max(1, Int(size.width / gap)), rows = max(1, Int(size.height / gap))
         let ox = (size.width - CGFloat(cols - 1) * gap) / 2, oy = (size.height - CGFloat(rows - 1) * gap) / 2
         for c in 0..<cols {
@@ -2400,6 +2402,138 @@ struct DotMatrix: View {
     }
 }
 
+/// A compact 5×7 uppercase dot font (bit 4 = leftmost column). Enough to spell the phase words as a
+/// dot-matrix LED sign. Founder's notch vision (2026-08-13): the "talking" state becomes an LED display —
+/// the word in lit lamps on the left, the live voice waveform on the right, all one continuous lamp field.
+private let LEDFont7: [Character: [Int]] = [
+    "A": [0b01110,0b10001,0b10001,0b11111,0b10001,0b10001,0b10001],
+    "B": [0b11110,0b10001,0b10001,0b11110,0b10001,0b10001,0b11110],
+    "C": [0b01110,0b10001,0b10000,0b10000,0b10000,0b10001,0b01110],
+    "D": [0b11110,0b10001,0b10001,0b10001,0b10001,0b10001,0b11110],
+    "E": [0b11111,0b10000,0b10000,0b11110,0b10000,0b10000,0b11111],
+    "F": [0b11111,0b10000,0b10000,0b11110,0b10000,0b10000,0b10000],
+    "G": [0b01110,0b10001,0b10000,0b10111,0b10001,0b10001,0b01111],
+    "H": [0b10001,0b10001,0b10001,0b11111,0b10001,0b10001,0b10001],
+    "I": [0b01110,0b00100,0b00100,0b00100,0b00100,0b00100,0b01110],
+    "J": [0b00111,0b00010,0b00010,0b00010,0b00010,0b10010,0b01100],
+    "K": [0b10001,0b10010,0b10100,0b11000,0b10100,0b10010,0b10001],
+    "L": [0b10000,0b10000,0b10000,0b10000,0b10000,0b10000,0b11111],
+    "M": [0b10001,0b11011,0b10101,0b10101,0b10001,0b10001,0b10001],
+    "N": [0b10001,0b11001,0b10101,0b10011,0b10001,0b10001,0b10001],
+    "O": [0b01110,0b10001,0b10001,0b10001,0b10001,0b10001,0b01110],
+    "P": [0b11110,0b10001,0b10001,0b11110,0b10000,0b10000,0b10000],
+    "Q": [0b01110,0b10001,0b10001,0b10001,0b10101,0b10010,0b01101],
+    "R": [0b11110,0b10001,0b10001,0b11110,0b10100,0b10010,0b10001],
+    "S": [0b01111,0b10000,0b10000,0b01110,0b00001,0b00001,0b11110],
+    "T": [0b11111,0b00100,0b00100,0b00100,0b00100,0b00100,0b00100],
+    "U": [0b10001,0b10001,0b10001,0b10001,0b10001,0b10001,0b01110],
+    "V": [0b10001,0b10001,0b10001,0b10001,0b10001,0b01010,0b00100],
+    "W": [0b10001,0b10001,0b10001,0b10101,0b10101,0b11011,0b10001],
+    "X": [0b10001,0b10001,0b01010,0b00100,0b01010,0b10001,0b10001],
+    "Y": [0b10001,0b10001,0b01010,0b00100,0b00100,0b00100,0b00100],
+    "Z": [0b11111,0b00001,0b00010,0b00100,0b01000,0b10000,0b11111],
+    " ": [0,0,0,0,0,0,0],
+]
+/// The 5×5 companion — a COMPACT phase word (founder 2026-08-13: "much smaller"). Shorter glyphs, so the
+/// sign is a small strip while the lamps stay chunky.
+private let LEDFont5: [Character: [Int]] = [
+    "A": [0b01110,0b10001,0b11111,0b10001,0b10001], "B": [0b11110,0b10001,0b11110,0b10001,0b11110],
+    "C": [0b01110,0b10001,0b10000,0b10001,0b01110], "D": [0b11110,0b10001,0b10001,0b10001,0b11110],
+    "E": [0b11111,0b10000,0b11110,0b10000,0b11111], "F": [0b11111,0b10000,0b11110,0b10000,0b10000],
+    "G": [0b01110,0b10000,0b10011,0b10001,0b01110], "H": [0b10001,0b10001,0b11111,0b10001,0b10001],
+    "I": [0b01110,0b00100,0b00100,0b00100,0b01110], "J": [0b00111,0b00010,0b00010,0b10010,0b01100],
+    "K": [0b10010,0b10100,0b11000,0b10100,0b10010], "L": [0b10000,0b10000,0b10000,0b10000,0b11111],
+    "M": [0b10001,0b11011,0b10101,0b10001,0b10001], "N": [0b10001,0b11001,0b10101,0b10011,0b10001],
+    "O": [0b01110,0b10001,0b10001,0b10001,0b01110], "P": [0b11110,0b10001,0b11110,0b10000,0b10000],
+    "Q": [0b01110,0b10001,0b10101,0b10010,0b01101], "R": [0b11110,0b10001,0b11110,0b10100,0b10010],
+    "S": [0b01111,0b10000,0b01110,0b00001,0b11110], "T": [0b11111,0b00100,0b00100,0b00100,0b00100],
+    "U": [0b10001,0b10001,0b10001,0b10001,0b01110], "V": [0b10001,0b10001,0b10001,0b01010,0b00100],
+    "W": [0b10001,0b10001,0b10101,0b11011,0b10001], "X": [0b10001,0b01010,0b00100,0b01010,0b10001],
+    "Y": [0b10001,0b01010,0b00100,0b00100,0b00100], "Z": [0b11111,0b00010,0b00100,0b01000,0b11111],
+    " ": [0,0,0,0,0],
+]
+/// The right-region animation family for the LED sign: a voice WAVE (mic in/out) or a compute SWEEP.
+enum LEDMode { case wave, think }
+
+/// The notch LED SIGN — a dot-matrix display: the phase word (LISTENING / DICTATING) rendered in lit
+/// lamps on the LEFT, a mid-anchored voice WAVEFORM in lamps on the RIGHT, with the unlit lamps of BOTH
+/// regions faintly on so the whole thing reads as one continuous LED panel (founder-designed 2026-08-13).
+/// Pure function of (text, levels) — feed `levels` from live mic (MicLevelModel) or a synthetic wave.
+// THE NOTCH LED SIGN (founder-designed 2026-08-13, final "A"): a STATIC phase word + an animated waveform,
+// rendered in BIG bright lime lamps, TIGHT to the notch (little black), with NO greyed surround field (the
+// founder found the dim dots didn't sit right). The notch WIDENS to fit longer words; only the wave/sweep
+// animates. `dimAmt` > 0 re-enables a faint field if ever wanted; default 0 = clean.
+struct NotchFieldLED: View {
+    var text: String
+    var mode: LEDMode = .wave
+    var pitch: CGFloat = 2.7, dot: CGFloat = 2.5        // founder: narrower word, dots still chunky (near-touching)
+    var dimAmt: Double = 0.0                             // 0 = no greyed surround
+    var marginRows = 1, sideCols = 1                     // tight
+    var gapCols = 2, waveCols = 8                        // shorter wave region → narrower overall
+    var pad: CGFloat = 5                                 // small black border around the grid
+    private let gw = 5, cgap = 1, glyphRows = 5
+    private var chars: [Character] { Array(text.uppercased()) }
+    private var wordCols: Int { chars.isEmpty ? 0 : chars.count * gw + (chars.count - 1) * cgap }
+    private var cols: Int { sideCols + wordCols + gapCols + waveCols + sideCols }
+    private var rows: Int { glyphRows + 2 * marginRows }
+    var w: CGFloat { CGFloat(cols - 1) * pitch + dot + 2 * pad }
+    var h: CGFloat { CGFloat(rows - 1) * pitch + dot + 2 * pad }
+    private func waveAmp(_ i: Int, _ t: Double) -> Double {
+        let x = Double(i)
+        let carrier = 0.5 + 0.5 * sin(x * 0.7 - t * 4.0)
+        let envelope = 0.4 + 0.6 * abs(sin(x * 0.5 + t * 1.2))
+        return max(0.1, carrier * envelope)
+    }
+    private func draw(_ ctx: GraphicsContext, _ t: Double) {
+        let ox = (w - CGFloat(cols - 1) * pitch) / 2, oy = (h - CGFloat(rows - 1) * pitch) / 2
+        func lamp(_ c: Int, _ r: Int, _ color: Color) {
+            ctx.fill(Path(ellipseIn: CGRect(x: ox + CGFloat(c) * pitch - dot / 2, y: oy + CGFloat(r) * pitch - dot / 2, width: dot, height: dot)), with: .color(color))
+        }
+        if dimAmt > 0 { let dim = Color.lime.opacity(dimAmt); for c in 0..<cols { for r in 0..<rows { lamp(c, r, dim) } } }
+        let top = marginRows                                              // word band (centred vertically)
+        var c0 = sideCols
+        for (i, ch) in chars.enumerated() {                              // the STATIC word, bright
+            let g = LEDFont5[ch] ?? LEDFont5[" "]!
+            for gc in 0..<gw { for r in 0..<glyphRows where (g[r] >> (gw - 1 - gc)) & 1 == 1 { lamp(c0 + gc, top + r, .lime) } }
+            c0 += gw; if i < chars.count - 1 { c0 += cgap }
+        }
+        let ws = sideCols + wordCols + gapCols, mid = Double(glyphRows - 1) / 2.0
+        for j in 0..<waveCols {                                          // the waveform / sweep (animated), bright
+            switch mode {
+            case .wave:
+                let reach = waveAmp(j, t) * mid
+                for r in 0..<glyphRows where abs(Double(r) - mid) <= reach + 0.001 { lamp(ws + j, top + r, .lime) }
+            case .think:
+                for r in 0..<glyphRows { let sv = 0.5 + 0.5 * sin((Double(j) + Double(r)) * 0.7 - t * 3.0); if sv * sv * sv > 0.5 { lamp(ws + j, top + r, .lime) } }
+            }
+        }
+    }
+    var body: some View {
+        TimelineView(.animation) { tl in
+            Canvas { ctx, _ in draw(ctx, tl.date.timeIntervalSinceReferenceDate) }.frame(width: w, height: h)
+        }
+    }
+}
+
+/// LIVE MIC LEVEL — a rolling buffer of recent amplitudes (0…1, oldest→newest) so the notch LED can
+/// render the user's VOICE as a waveform (founder ask 2026-08-13: "a waveform of the user's voice
+/// signal"). Fed from an INDEPENDENT mic reader — NEVER the dictation recorder (founder: the dictation
+/// pipeline works well, don't touch it). Pure data; the view (DotMatrixLED) reads `levels`.
+final class MicLevelModel: ObservableObject {
+    static let cols = 26
+    @Published private(set) var levels: [Double] = Array(repeating: 0, count: MicLevelModel.cols)
+    private var buf: [Double] = Array(repeating: 0, count: MicLevelModel.cols)
+    func push(_ v: Double) { buf.removeFirst(); buf.append(max(0, min(1, v))); levels = buf }
+    func reset() { buf = Array(repeating: 0, count: MicLevelModel.cols); levels = buf }
+    /// AVAudioRecorder.averagePower is dBFS (−160…0). Map to 0…1 with a speech-friendly floor + curve so
+    /// a normal voice fills the field and near-silence reads flat (not a dead line, not a screaming one).
+    func pushDB(_ db: Float) {
+        let floor: Float = -52
+        let norm = max(0, min(1, (db - floor) / (0 - floor)))
+        push(Double(pow(norm, 0.6)))
+    }
+}
+
 /// USE A (living background) + C helpers: a big, FAINT lamp field drawn with Canvas (thousands of dots as
 /// SwiftUI Circles would be janky). Same `working`-pattern math as DotMatrix, ported per PANEL-REDESIGN.md.
 /// It's texture, never "live": capped at ~5% opacity so it's only atmosphere in the true-black gutters and
@@ -2550,14 +2684,32 @@ struct GodStatusDrop: View {
     var activeProjectId: String? = nil
     var onSelectProject: ((String?) -> Void)? = nil
     private var hasExtras: Bool { !refs.isEmpty || clipboardPeek != nil || (!projects.isEmpty && onSelectProject != nil) }
+    // FULL PHASE SPEC (all states, founder-designed 2026-08-13). Single-word PHASES render as the full-notch
+    // LED field (the word + a wave/think animation as bright lamps on a dim-green field). Multi-word STATUS
+    // messages ("Redline · running", "Copied…") that can't be spelled keep the label text + DotMatrix.
+    private static let wavePhases: Set<String> = ["DICTATING", "LISTENING", "SPEAKING"]           // voice in/out → waveform
+    private static let thinkPhases: Set<String> = ["TRANSCRIBING", "FINDING", "THINKING", "WORKING", "GENERATING"]  // compute → sweep
+    private var ledWord: String { String(label.split(separator: " ").first ?? "").uppercased() }
+    private var ledMode: LEDMode? {
+        if Self.wavePhases.contains(ledWord) { return .wave }
+        if Self.thinkPhases.contains(ledWord) { return .think }
+        return nil
+    }
     var body: some View {
-        VStack(spacing: 7) {
-            HStack(spacing: 12) {
-                Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
-                DotMatrix(pattern: pattern, accent: accent)
-            }
-            if !projects.isEmpty, let onSelect = onSelectProject {
-                ProjectChip(projects: projects, activeId: activeProjectId, onSelect: onSelect)
+        let led = ledMode
+        return VStack(spacing: 7) {
+            // ONE row: the LED FIELD (phases) or label+matrix (status), and the project chip INLINE so the
+            // "next step" (project selection during Thinking) WIDENS the strip rather than growing it taller.
+            HStack(spacing: 8) {
+                if let m = led {
+                    NotchFieldLED(text: ledWord, mode: m)
+                } else {
+                    Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink)
+                    DotMatrix(pattern: pattern, accent: accent)
+                }
+                if !projects.isEmpty, let onSelect = onSelectProject {
+                    ProjectChip(projects: projects, activeId: activeProjectId, onSelect: onSelect)
+                }
             }
             if !refs.isEmpty, let onRemove = onRemoveRef {
                 VStack(spacing: 4) {
@@ -2568,8 +2720,11 @@ struct GodStatusDrop: View {
                 ClipboardOfferChip(peek: peek, onAdd: onAdd)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, hasExtras ? 12 : 15)
-        .frame(minWidth: 130)
+        // LED phases: tight padding so the lamp field fills the notch; status: roomier for the text.
+        .padding(.horizontal, led != nil ? 10 : 18)
+        .padding(.top, led != nil ? 3 : 6)
+        .padding(.bottom, hasExtras ? 10 : (led != nil ? 3 : 7))
+        .frame(minWidth: 120)
         .padding(.horizontal, 14)   // room for the notch "ears" (the shape flares to full width at top)
         .background(Color.page)
         .clipShape(NotchDropShape())
@@ -2607,14 +2762,20 @@ struct ConsentDrop: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 Button(action: onDeny) {
-                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                    HStack(spacing: 7) {
+                        Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        KeyCap(glyph: "Esc", recessed: true)
+                    }
+                    .padding(.leading, 13).padding(.trailing, 9).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
                 }.buttonStyle(.plain)
                 Button(action: onAllow) {
-                    Text("Allow").font(.hanken(11.5, .semibold)).foregroundColor(.page)
-                        .padding(.horizontal, 16).padding(.vertical, 7)
+                    HStack(spacing: 6) {
+                        Text("Allow").font(.hanken(11.5, .semibold))
+                        KeyCap(glyph: "↵", recessed: true)
+                    }.foregroundColor(.page)
+                        .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
                 }.buttonStyle(.plain)
             }.padding(.top, 2)
@@ -2660,14 +2821,20 @@ struct StorageBindDrop: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 Button(action: onDeny) {
-                    Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                    HStack(spacing: 7) {
+                        Text("Not now").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        KeyCap(glyph: "Esc", recessed: true)
+                    }
+                    .padding(.leading, 13).padding(.trailing, 9).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
                 }.buttonStyle(.plain)
                 Button(action: onAllow) {
-                    Text(isPick ? "Choose\u{2026}" : "Allow").font(.hanken(11.5, .semibold)).foregroundColor(.page)
-                        .padding(.horizontal, 16).padding(.vertical, 7)
+                    HStack(spacing: 6) {
+                        Text(isPick ? "Choose\u{2026}" : "Allow").font(.hanken(11.5, .semibold))
+                        KeyCap(glyph: "↵", recessed: true)
+                    }.foregroundColor(.page)
+                        .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
                 }.buttonStyle(.plain)
             }.padding(.top, 2)
@@ -2786,10 +2953,13 @@ struct ConnectGrantDrop: View {
             }.frame(maxHeight: 168)
             HStack(spacing: 8) {
                 Button(action: onDeny) {
-                    Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                    HStack(spacing: 7) {
+                        Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        KeyCap(glyph: "Esc", recessed: true)
+                    }
+                    .padding(.leading, 13).padding(.trailing, 9).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
                 }.buttonStyle(.plain)
                 Spacer(minLength: 0)
                 Button {
@@ -2801,8 +2971,11 @@ struct ConnectGrantDrop: View {
                     ]
                     onApprove(grant)
                 } label: {
-                    Text("Approve \u{00B7} \(selTools.count) tool\(selTools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold)).foregroundColor(.page)
-                        .padding(.horizontal, 16).padding(.vertical, 7)
+                    HStack(spacing: 6) {
+                        Text("Approve \u{00B7} \(selTools.count) tool\(selTools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold))
+                        KeyCap(glyph: "↵", recessed: true)
+                    }.foregroundColor(.page)
+                        .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
                 }.buttonStyle(.plain)
             }.padding(.top, 1)
@@ -2891,6 +3064,139 @@ struct PairLink: View {
                 }
             }
         }
+    }
+}
+
+// ════════════════════ third-party TOOL grant card ════════════════════
+// A dedicated consent card for a third-party TOOL (origin tool://<id>) — NOT the wrapp connect card
+// (ConnectGrantDrop). A tool has no LLM in the loop, so no model pills; the card is provenance-forward:
+// it names the tool + its source server, shows exactly what it runs (read/write actions), and carries the
+// keys-local lane badge (the moat, made visible). The two-lane pick (pool · my key) is reserved as
+// `ToolCredLane` for the ~2,000-tool registry follow-on; today's no-auth seeds render `.localNoKey`.
+enum ToolCredLane { case localNoKey, pool, myKey }   // §task-10 groundwork; only .localNoKey ships today
+
+// (Key-cap chips reuse the canonical `KeyCap(glyph:big:filled:)` from CursorGuide.swift — one shortcut-cap
+// style across the guide cards AND the consent/grant buttons, per the founder's "our design style" ask.)
+struct ToolGrantAction: Identifiable { let id = UUID(); let label: String; let desc: String; let write: Bool }
+struct ToolGrantDrop: View {
+    let toolName: String        // "Hacker News"
+    let tagline: String         // one-liner from the listing
+    let server: String          // ~/.relay/mcp.json key, e.g. "hn"
+    let actions: [ToolGrantAction]
+    let grantTools: [[String: Any]]   // the EXACT {name,access} to approve (qualified mcp__server__tool)
+    let budgets: [String: Any]
+    let contextKinds: [String]
+    var lane: ToolCredLane = .localNoKey
+    var onApprove: ([String: Any]) -> Void
+    var onDeny: () -> Void
+
+    private let red = Color(red: 1, green: 0.42, blue: 0.37)
+    private var hasWrite: Bool { actions.contains { $0.write } }
+
+    // The hero — a tool tile · a dot-run · a lock tile: "this tool runs on YOUR machine; keys stay put."
+    private var hero: some View {
+        HStack(spacing: 11) {
+            RoundedRectangle(cornerRadius: 11).fill(Color.lime).frame(width: 40, height: 40)
+                .overlay(Image(systemName: "wrench.and.screwdriver.fill").font(.system(size: 17, weight: .bold)).foregroundColor(.page))
+            HStack(spacing: 5) {
+                ForEach(0..<7, id: \.self) { i in
+                    Circle().fill(Color.lime.opacity(0.28 + 0.5 * (1 - Double(abs(i - 3)) / 3))).frame(width: 4, height: 4)
+                }
+            }
+            RoundedRectangle(cornerRadius: 11).fill(Color.raised).frame(width: 40, height: 40)
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.edge, lineWidth: 1))
+                .overlay(Image(systemName: "lock.laptopcomputer").font(.system(size: 16, weight: .semibold)).foregroundColor(.lime))
+        }
+    }
+    private func actionRow(_ a: ToolGrantAction) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(a.write ? red : Color.lime).frame(width: 6, height: 6)
+            Text(a.label).font(.hanken(12, .semibold)).foregroundColor(.ink).lineLimit(1).fixedSize()
+            if !a.desc.isEmpty {
+                Text(a.desc).font(.hanken(10.5)).foregroundColor(.inkDim).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Text(a.write ? "write" : "read").font(.splMono(8)).foregroundColor(a.write ? red : .inkFaint)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1))
+    }
+    @ViewBuilder private var laneBadge: some View {
+        let (icon, head, sub, tag): (String, String, String, String) = {
+            switch lane {
+            case .localNoKey: return ("lock.fill", "Runs on your machine", "No key needed · nothing leaves your Mac", "LOCAL")
+            case .pool:       return ("bolt.fill", "Metered · via the pool", "Runs now, no signup — brokered, keys never held by us", "POOL")
+            case .myKey:      return ("key.fill", "Your key, kept local", "Stored 0600 in ~/.relay · nothing leaves your Mac", "MY KEY")
+            }
+        }()
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.14)).frame(width: 30, height: 30)
+                .overlay(Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundColor(.lime))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(head).font(.hanken(11.5, .semibold)).foregroundColor(.ink)
+                Text(sub).font(.hanken(10)).foregroundColor(.inkDim).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 6)
+            Text(tag).font(.splMono(8)).foregroundColor(.lime)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(Color.lime.opacity(0.12)))
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Color.raised.opacity(0.45)))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.lime.opacity(0.28), lineWidth: 1))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            hero.frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 3) {
+                (Text("Run ").foregroundColor(.ink) + Text(toolName).foregroundColor(.lime) + Text("?").foregroundColor(.ink)).font(.hanken(14.5, .semibold))
+                if !tagline.isEmpty { Text(tagline).font(.hanken(10.5)).foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+            }
+            Rectangle().fill(Color.edge).frame(height: 1)
+            if !actions.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text("THIS TOOL RUNS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                        Spacer(minLength: 0)
+                        Text(hasWrite ? "read + write" : "read-only").font(.splMono(9)).foregroundColor(hasWrite ? red : .inkFaint)
+                    }
+                    ForEach(actions) { actionRow($0) }
+                }
+            }
+            laneBadge
+            Text("via server “\(server)” · a tool you didn't build — running it is your call")
+                .font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    HStack(spacing: 7) {
+                        Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
+                        KeyCap(glyph: "Esc", recessed: true)
+                    }
+                    .padding(.leading, 13).padding(.trailing, 9).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Button {
+                    onApprove(["models": [String](), "tools": grantTools, "budgets": budgets, "contextKinds": contextKinds])
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
+                        Text("Approve").font(.hanken(11.5, .semibold))
+                        KeyCap(glyph: "↵", recessed: true)
+                    }.foregroundColor(.page)
+                        .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }.padding(.top, 1)
+        }
+        .padding(16)
+        .frame(width: 344, alignment: .leading)
+        .padding(.horizontal, 14)
+        .background(Color.page)
+        .clipShape(NotchDropShape())
     }
 }
 
@@ -3610,6 +3916,7 @@ struct ActionConsentDrop: View {
     // never fights the flagsChanged summon/launcher edge logic in onFlags.
     private var dictateLatched = false            // true only in latch mode while recording is latched on
     private var dictateWatchTimer: Timer?         // ~60fps poll: ⌃-tap commit · Esc cancel · Fn→find indicator
+    let micLevel = MicLevelModel()                // drives the notch voice-waveform dot-matrix (fed from an independent source — NEVER the dictation recorder)
     private var dictatePrevCtrlDown = false        // edge-detect the commit modifier across ticks
     private var dictateFindArmed = false           // Fn is currently held → commit routes to vault.find, not paste
     private var dictateCommitting = false          // guard: a commit/transcribe is already in flight (ignore repeats)
@@ -3643,6 +3950,30 @@ struct ActionConsentDrop: View {
     private let icons = IconStore()
     private let onboard = Onboard()
     private var consent: ConsentClient?
+    // Keyboard on the consent cards (founder 2026-08-13): the cards show key-caps (Esc / ↵), so the keys
+    // must actually fire — else a cap is a lie. A local keyDown monitor is armed while a consent card is up.
+    private var pendingConsentApprove: (() -> Void)?
+    private var pendingConsentDeny: (() -> Void)?
+    private var consentKeyMonitor: Any?
+    // Arm Esc→deny · ↵ / ⌥→ → approve while a consent card is up. The NotchPanel is nonactivating +
+    // canBecomeKey, so makeKey lets the LOCAL monitor receive the keystroke without stealing app focus.
+    @MainActor private func armConsentKeys(approve: @escaping () -> Void, deny: @escaping () -> Void) {
+        disarmConsentKeys()
+        pendingConsentApprove = approve; pendingConsentDeny = deny
+        consentPanel?.makeKeyAndOrderFront(nil)
+        consentKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] ev in
+            guard let self, self.consentPanel?.isVisible == true else { return ev }
+            if ev.keyCode == 53 { self.pendingConsentDeny?(); return nil }                                  // Esc → deny
+            if ev.keyCode == 36 || (ev.keyCode == 124 && ev.modifierFlags.contains(.option)) {              // ↵ or ⌥→ → approve
+                self.pendingConsentApprove?(); return nil
+            }
+            return ev
+        }
+    }
+    @MainActor private func disarmConsentKeys() {
+        if let m = consentKeyMonitor { NSEvent.removeMonitor(m); consentKeyMonitor = nil }
+        pendingConsentApprove = nil; pendingConsentDeny = nil
+    }
 
     // Native "Allow this app?" dialog — a real macOS alert, from the trusted Switchboard app itself.
     private func showNativeConsent(_ id: String, _ body: [String: Any]) {
@@ -3655,6 +3986,7 @@ struct ActionConsentDrop: View {
 
         // A notch DROP, not a centered system alert. Non-blocking: the reply fires on button tap.
         let reply: (Bool) -> Void = { [weak self] allow in
+            self?.disarmConsentKeys()
             self?.consent?.reply(id, allow)
             self?.consentPanel?.orderOut(nil)
         }
@@ -3675,6 +4007,7 @@ struct ActionConsentDrop: View {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
         }
         presentFromNotch(consentPanel)
+        armConsentKeys(approve: { reply(true) }, deny: { reply(false) })
     }
 
     // A native wrapp asks to open a folder (consent:storage-bind) or raise the picker
@@ -3693,6 +4026,7 @@ struct ActionConsentDrop: View {
             return host
         }()
         let reply: (Bool) -> Void = { [weak self] allow in
+            self?.disarmConsentKeys()
             self?.consent?.reply(id, allow)
             self?.consentPanel?.orderOut(nil)
         }
@@ -3713,6 +4047,7 @@ struct ActionConsentDrop: View {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
         }
         presentFromNotch(consentPanel)
+        armConsentKeys(approve: { reply(true) }, deny: { reply(false) })
     }
 
     // consent:connect — the models+tools SCOPE grant, at the notch (was extension-only). Approve returns
@@ -3729,12 +4064,22 @@ struct ActionConsentDrop: View {
         let budgets = body["budgets"] as? [String: Any] ?? [:]
         let contextKinds = (body["contextKinds"] as? [String]) ?? []
         let finish: ([String: Any]?) -> Void = { [weak self] grant in
+            self?.disarmConsentKeys()
             self?.consent?.replyResult(id, grant)
             self?.consentPanel?.orderOut(nil)
         }
-        let view = ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
+        // A THIRD-PARTY tool (origin tool://<id>) gets the dedicated provenance-forward card — no model
+        // pills (no LLM in the loop), keys-local lane badge, "you didn't build this" framing (§task 5).
+        let content: AnyView
+        if origin.hasPrefix("tool://") {
+            content = AnyView(makeToolGrant(origin: origin, reason: reason, requestedTools: tools,
+                                            budgets: budgets, contextKinds: contextKinds, finish: finish))
+        } else {
+            content = AnyView(ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
                                     tools: tools, budgets: budgets, contextKinds: contextKinds,
-                                    onApprove: { finish($0) }, onDeny: { finish(nil) })
+                                    onApprove: { finish($0) }, onDeny: { finish(nil) }))
+        }
+        let view = content
         if consentPanel == nil {
             consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             consentPanel.isOpaque = false
@@ -3750,6 +4095,45 @@ struct ActionConsentDrop: View {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
         }
         presentFromNotch(consentPanel)
+        // Approve with the DEFAULT scope (requested models + all requested tools) on ↵/⌥→; deny on Esc.
+        // Same object the card's Approve button builds from its default selection.
+        let defaultGrant: [String: Any] = [
+            "models": requested.isEmpty ? Array(available.prefix(1)) : requested,
+            "tools": tools.map { ["name": $0.name, "access": $0.access] },
+            "budgets": budgets, "contextKinds": contextKinds,
+        ]
+        armConsentKeys(approve: { finish(defaultGrant) }, deny: { finish(nil) })
+    }
+
+    // Build the third-party TOOL grant card from the daemon's consent:connect body. The requested tools
+    // are QUALIFIED (mcp__<server>__<tool>) so the allowlist matches on approve; we keep those verbatim as
+    // `grantTools` and derive pretty display (bare name + the listing's description) for the human.
+    @MainActor private func makeToolGrant(origin: String, reason: String,
+                                          requestedTools: [(name: String, access: String, label: String)],
+                                          budgets: [String: Any], contextKinds: [String],
+                                          finish: @escaping ([String: Any]?) -> Void) -> ToolGrantDrop {
+        let id = String(origin.dropFirst("tool://".count))
+        let listing = readCatalog().first { $0.id == id }
+        // server: prefer the listing's mcp binding; else parse it out of the first qualified tool name.
+        func splitQualified(_ q: String) -> (server: String, tool: String) {
+            var s = q
+            if s.hasPrefix("mcp__") { s = String(s.dropFirst("mcp__".count)) }
+            if let r = s.range(of: "__") { return (String(s[s.startIndex..<r.lowerBound]), String(s[r.upperBound...])) }
+            return ("", s)
+        }
+        let server = listing?.mcp?.server ?? requestedTools.first.map { splitQualified($0.name).server } ?? id
+        let name = listing?.name ?? reason.components(separatedBy: " — ").first?.trimmingCharacters(in: .whitespaces) ?? id
+        let tagline = listing?.tagline ?? (reason.isEmpty ? "A third-party tool, running on your machine." : reason)
+        let actions: [ToolGrantAction] = requestedTools.map { t in
+            let bare = splitQualified(t.name).tool
+            let desc = listing?.tools?.first { $0.name == bare }?.description ?? ""
+            let label = t.label.isEmpty ? bare.replacingOccurrences(of: "_", with: " ") : t.label
+            return ToolGrantAction(label: label, desc: desc, write: t.access == "write")
+        }
+        let grantTools: [[String: Any]] = requestedTools.map { ["name": $0.name, "access": $0.access] }
+        return ToolGrantDrop(toolName: name, tagline: tagline, server: server, actions: actions,
+                             grantTools: grantTools, budgets: budgets, contextKinds: contextKinds,
+                             lane: .localNoKey, onApprove: { finish($0) }, onDeny: { finish(nil) })
     }
 
     // Disconnect an approved native app (the "×"). Confirms first — it's reversible (the app re-asks
@@ -4656,7 +5040,8 @@ struct ActionConsentDrop: View {
     // The notch WIDGET — a wrapp's glanceable result dropped under the notch (grows from it, reusing
     // presentFromNotch). Lazily built like the store. Close/open/regenerate/steer are wired via the view.
     @MainActor func showNotchWidget(_ spec: WidgetSpec, onOpen: @escaping () -> Void = {},
-                                    onRegen: @escaping () -> Void = {}, onSteer: @escaping (String) -> Void = { _ in }) {
+                                    onRegen: @escaping () -> Void = {}, onSteer: @escaping (String) -> Void = { _ in },
+                                    onOpenLink: @escaping (String) -> Void = { s in if let u = URL(string: s) { NSWorkspace.shared.open(u) } }) {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
         // Context-first: every widget carries the PROJECT chip — the same global default the panel's
         // picker writes, switchable right where the command runs ("make me an ad" needs the right brand).
@@ -4670,7 +5055,7 @@ struct ActionConsentDrop: View {
                                // own re-run; for a non-drive widget it's a no-op, so this is safe everywhere.
                                onSelectProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles(); onRegen() },
                                onClose: { [weak self] in self?.hideNotchWidget() },
-                               onOpen: onOpen, onRegen: onRegen, onSteer: onSteer)
+                               onOpen: onOpen, onRegen: onRegen, onSteer: onSteer, onOpenLink: onOpenLink)
         let host = NoInsetHostingView(rootView: view)
         if notchWidgetPanel == nil {
             notchWidgetPanel = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
@@ -5649,15 +6034,43 @@ struct ActionConsentDrop: View {
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
-        let text = RelayController.flattenToolResult(result)
-        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: l.name,
-            openLabel: "Drop into chat", result: .text(text.isEmpty ? "\(tool) ran — no text result." : text)),
+        let flat = RelayController.flattenToolResult(result)
+        // A tool that speaks the results ENVELOPE (examples/tools/README-envelope.md) renders as result
+        // CARDS; `text` is the readable form "Drop into chat" copies. Anything else falls back to text.
+        let env = RelayController.parseResultEnvelope(flat)
+        let dropText = env?.text ?? flat
+        let widgetResult: WidgetResult = {
+            if let env, !env.items.isEmpty { return .results(summary: env.summary, items: env.items) }
+            return .text(flat.isEmpty ? "\(tool) ran — no text result." : flat)
+        }()
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: env?.summary.isEmpty == false ? env!.summary : l.name,
+            openLabel: "Drop into chat", result: widgetResult),
             onOpen: { [weak self] in
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(dropText, forType: .string)
                 self?.hideNotchWidget()
                 self?.showGodStatus("Copied — paste it into any chat", accent: .lime, pattern: .speaking)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in self?.hideGodStatus() }
             })
+    }
+    // Parse the Switchboard results envelope out of a tool's flattened text content. Returns nil unless it's
+    // a `{ _switchboard:"results", ... }` object — so plain-text tools keep their text rendering untouched.
+    struct ResultEnvelope { let summary: String; let text: String; let items: [ResultItem] }
+    private nonisolated static func parseResultEnvelope(_ s: String) -> ResultEnvelope? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.hasPrefix("{"), let data = t.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (obj["_switchboard"] as? String) == "results" else { return nil }
+        let items: [ResultItem] = ((obj["items"] as? [[String: Any]]) ?? []).compactMap { d in
+            let title = (d["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !title.isEmpty else { return nil }
+            return ResultItem(title: title,
+                              url: (d["url"] as? String) ?? "",
+                              source: (d["source"] as? String) ?? "",
+                              snippet: (d["snippet"] as? String) ?? "",
+                              meta: (d["meta"] as? String) ?? "")
+        }
+        return ResultEnvelope(summary: (obj["summary"] as? String) ?? "",
+                              text: (obj["text"] as? String) ?? s, items: items)
     }
     // MCP callTool result → text. Handles {content:[{type:"text",text}]}, plain strings, and objects.
     private nonisolated static func flattenToolResult(_ result: Any?) -> String {
@@ -5709,13 +6122,13 @@ struct ActionConsentDrop: View {
     private func positionOrb() {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
         let w: CGFloat = 184
-        // The real notch reads as a notch by HANGING BELOW the menu bar (Dynamic-Island style), not just
-        // spanning it. Top = screen top (frame.maxY); bottom = `drop` points BELOW the bar so the rounded
-        // bottom + the dot-matrix are visible. Height = the menu-bar height + that drop. (Founder-tuned:
-        // narrower + shallower than the first cut.)
+        // The resting notch is exactly the MENU-BAR HEIGHT (founder 2026-08-13: "notch the size of the
+        // menu bar") — it spans the bar, flush, rather than hanging below. Cards/God phases still DROP
+        // below from this same silhouette; only the idle orb stays bar-height. `reveal` is a hair of
+        // bottom bleed so the rounded bottom + a row of lamps read without changing the perceived height.
         let menuH = max(screen.frame.maxY - screen.visibleFrame.maxY, 22)
-        let drop: CGFloat = 5
-        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY - drop, width: w, height: menuH + drop), display: true)
+        let reveal: CGFloat = 1
+        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY - reveal, width: w, height: menuH + reveal), display: true)
     }
 
     // Hover/click on the orb → open the full detailed panel (reuses the existing show/position path).
@@ -7089,17 +7502,22 @@ struct ActionConsentDrop: View {
         if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
             godStatusPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
         }
-        orb?.orderOut(nil)   // the extended notch REPLACES the orb — don't show the 3-dot orb behind it
+        // SEAMLESS base→phase (founder 2026-08-13: "the notch shouldn't disappear and reappear"): present
+        // the phase panel FIRST — its opaque notch shape covers the orb's spot as it grows — THEN hide the
+        // orb behind it, so there's never a blank gap between the two windows.
         if !godStatusPanel.isVisible {
             presentFromNotch(godStatusPanel)
         }
+        orb?.orderOut(nil)
         if notchDropPanel != nil { syncNotchDropZone() }   // the drop outline tracks the pill's new size (a chip just grew it)
     }
 
     @MainActor private func hideGodStatus() {
         godStatusLabel = nil
+        // Reverse of the above: bring the orb up FIRST (behind the panel), then drop the panel — so the
+        // ambient notch is already there the instant the phase drop clears (no flash of nothing).
+        orb?.orderFrontRegardless()
         godStatusPanel?.orderOut(nil)
-        orb?.orderFrontRegardless()   // restore the ambient orb once the phase drop is gone
     }
 
     // ── Ambient mode ─────────────────────────────────────────────────────────────────────────────

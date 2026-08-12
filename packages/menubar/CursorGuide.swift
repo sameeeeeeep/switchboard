@@ -689,15 +689,19 @@ struct KeyCap: View {
     let glyph: String
     var big = false
     var filled = false            // lime-filled (the primary action) vs raised
+    // recessed = a blackish, slightly-transparent key that sits ON a coloured BUTTON (Deny/Approve) — a
+    // pressed-in cap, not the grey raised chip (which is for caps on the black notch). Founder 2026-08-13.
+    var recessed = false
     var body: some View {
         Text(glyph)
             .font(.splMono(big ? 12 : 9.5))
-            .foregroundColor(filled ? .page : .ink)
+            .foregroundColor(recessed ? .ink : (filled ? .page : .ink))
             .frame(minWidth: big ? 20 : 13)
             .padding(.horizontal, big ? 6 : 4).padding(.vertical, big ? 4 : 2)
             .background(
-                RoundedRectangle(cornerRadius: big ? 6 : 4).fill(filled ? Color.lime : Color.raised)
-                    .overlay(RoundedRectangle(cornerRadius: big ? 6 : 4).stroke(filled ? Color.clear : Color.edge, lineWidth: 1))
+                RoundedRectangle(cornerRadius: big ? 6 : 4)
+                    .fill(recessed ? Color.black.opacity(0.22) : (filled ? Color.lime : Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: big ? 6 : 4).stroke(recessed || filled ? Color.clear : Color.edge, lineWidth: 1))
             )
     }
 }
