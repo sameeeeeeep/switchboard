@@ -92,6 +92,39 @@ struct HtmlCapabilityError: LocalizedError {
         call.completion(.failure(HtmlCapabilityError("Timed out after \(Int(bridgeTimeout))s waiting for Claude — is the daemon running?")))
     }
 
+    // ── the reusable primitive: prompt → plain text ─────────────────────────────────────────────
+    /// A raw `claude_complete` through the daemon (same gate/grants) — used for the Explain-mode Moira
+    /// voiceover script. Same short-lived-bridge + timeout machinery as makeDiagram; returns the text.
+    private var textCalls: [UUID: DiagramCall] = [:]
+    func makeText(prompt: String, maxTokens: Int = 900, completion: @escaping (Result<String, Error>) -> Void) {
+        guard let raw = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8),
+              case let token = raw.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            completion(.failure(HtmlCapabilityError("~/.relay/pairing-token is missing — is the daemon set up?")))
+            return
+        }
+        let id = UUID()
+        let bridge = GodDaemonBridge(token: token)
+        textCalls[id] = DiagramCall(bridge: bridge, completion: completion)
+        bridge.request(origin: origin, method: "claude_complete",
+                       params: ["prompt": prompt, "maxTokens": maxTokens]) { [weak self] result, err in
+            Task { @MainActor in self?.textResponded(id, result: result, err: err) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + bridgeTimeout) { [weak self] in
+            guard let call = self?.textCalls.removeValue(forKey: id) else { return }
+            call.bridge.close()
+            call.completion(.failure(HtmlCapabilityError("Timed out after \(Int(self?.bridgeTimeout ?? 60))s waiting for Claude.")))
+        }
+    }
+    private func textResponded(_ id: UUID, result: Any?, err: [String: Any]?) {
+        guard let call = textCalls.removeValue(forKey: id) else { return }
+        call.bridge.close()
+        if let err { call.completion(.failure(HtmlCapabilityError((err["message"] as? String) ?? "daemon error"))); return }
+        guard let dict = result as? [String: Any], let text = dict["text"] as? String, !text.isEmpty else {
+            call.completion(.failure(HtmlCapabilityError("Claude returned no text."))); return
+        }
+        call.completion(.success(text))
+    }
+
     // ── the reusable primitive: any HTML → PNG path ─────────────────────────────────────────────
     /// Renders `html` in a hidden offscreen window at the exact pixel size and snapshots it to
     /// NSTemporaryDirectory()/notch-canvas/<uuid>.png. Multiple renders may be in flight at once.

@@ -207,6 +207,11 @@ final class GuideOverlayModel: ObservableObject {
     @Published var clipboardHint: String? = nil   // "⌘V — pasted for you" cursor hint when a step preloads the clipboard
     @Published var applyingOption: Int? = nil     // an option is being applied live (shows the working dot-matrix)
     @Published var optionError = false            // last apply failed (danger line; never blocks)
+    // Explain mode: the user asked to be TAUGHT the decision — a trade-off diagram becomes this step's
+    // media (zone 4) while Moira narrates it, then the options resurface. `explaining` = generating;
+    // `explained` = an explanation is showing (hide the affordance so it isn't re-triggered).
+    @Published var explaining = false
+    @Published var explained = false
     // The card's rendered frame in the overlay (SwiftUI top-left coords). The hosting view hit-tests ONLY
     // inside this rect so the card + its buttons are clickable while every other pixel passes clicks THROUGH.
     @Published var cardFrame: CGRect = .zero
@@ -410,6 +415,21 @@ struct GuideCaptionView: View {
                 Text("PICK ONE — UPDATES LIVE").font(.splMono(9.5)).tracking(0.6).foregroundColor(.indigo)
                 if m.options.contains(where: { $0.recommended }) {
                     Text("★ recommended").font(.splMono(9)).foregroundColor(.lime.opacity(0.9))
+                }
+                Spacer(minLength: 6)
+                // Explain: teach me this trade-off first — Moira narrates a generated diagram, then the
+                // options resurface. Shown only when a live explainer is wired + not already explained.
+                if CursorGuide.shared.onExplain != nil && !m.explained {
+                    Button(action: { CursorGuide.shared.requestExplain() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: m.explaining ? "waveform" : "sparkles").font(.system(size: 8, weight: .bold))
+                            Text(m.explaining ? "explaining…" : "Explain").font(.splMono(9)).tracking(0.4)
+                        }.foregroundColor(m.explaining ? .inkFaint : .lime)
+                         .padding(.horizontal, 7).padding(.vertical, 3)
+                         .background(Capsule().fill(Color.lime.opacity(0.08)))
+                         .overlay(Capsule().stroke(Color.lime.opacity(m.explaining ? 0.2 : 0.4), lineWidth: 1))
+                    }.buttonStyle(.plain).disabled(m.explaining)
+                     .help("Teach me this decision — a diagram + a spoken walk-through before I pick")
                 }
             }
             HStack(alignment: .top, spacing: 7) {
@@ -838,6 +858,12 @@ final class CursorGuide {
     var onOptionPreview: ((_ stepId: String, _ optionId: String) -> Void)?
     var onOptionApprove: ((_ stepId: String, _ optionId: String) -> Void)?
 
+    // Explain mode: the user tapped "Explain" on a decision card to be TAUGHT the trade-off before
+    // picking. RelayController generates a diagram + a short Moira voiceover grounded in the question +
+    // options, shows the diagram as this step's media (showExplanation), and speaks it (onSpeak). Absent
+    // → the Explain affordance stays hidden. See docs/NOTCH-EXPLAIN.md.
+    var onExplain: ((_ stepId: String, _ question: String, _ options: [GuideOption]) -> Void)?
+
     // Teach mode senses locally. CursorGuide owns no sensor, so RelayController injects a closure that
     // returns a fresh AmbientSignal (frontmost app / window title / url / focused-field value). The
     // doneWhen watcher samples this to decide when a step is locally "done". nil → AX predicates no-op
@@ -1191,6 +1217,8 @@ final class CursorGuide {
         // adhd-pm: pre-select the ⭐recommended option so a single ⌥→ (or click) takes the recommendation.
         model.selectedOption = (s.options ?? []).firstIndex(where: { $0.recommended }) ?? 0
         model.applyingOption = nil
+        model.explaining = false; model.explained = false   // each step earns its own Explain
+
         model.optionError = false
         // Dock-edge flip (spec §7): if the ring's target sits in the bottom band where the card lives,
         // dock the card at the TOP so it never covers the thing it's pointing at.
@@ -1486,6 +1514,25 @@ final class CursorGuide {
         guard isActive, i < model.options.count else { return }
         if i == model.selectedOption { handleAdvance(fail: false) } else { selectOption(i) }
     }
+    // ── Explain mode ──────────────────────────────────────────────────────────────────────────────
+    // The user asked to be TAUGHT this decision. Hand the question + options to RelayController (onExplain),
+    // which generates the diagram + Moira script; it calls showExplanation when the diagram lands. Guarded
+    // so it fires once per step and only when there's a real decision (options) + a wired explainer.
+    func requestExplain() {
+        guard isActive, idx < steps.count, !model.explaining, !model.explained,
+              !model.options.isEmpty, let cb = onExplain else { return }
+        model.explaining = true
+        cb(steps[idx].id, steps[idx].text, model.options)
+    }
+    // The diagram is ready → show it as this step's media (Moira narrates via onSpeak). The options stay
+    // put for the pick. explaining ends; explained hides the affordance so it isn't re-triggered.
+    func showExplanation(media: GuideMedia?) {
+        if let media { model.media = media }
+        model.explaining = false
+        model.explained = true
+    }
+    // Explain couldn't be produced (daemon down / no diagram) — clear the spinner, leave the options intact.
+    func explainFailed() { model.explaining = false }
     func tapBack()         { goBack() }
     func tapFeedback()     { beginFeedback() }
     func tapMute()         { toggleMute() }
