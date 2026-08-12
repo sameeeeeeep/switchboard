@@ -81,6 +81,7 @@ struct NotchLauncherView: View {
     let activeProjectId: String?                  // the currently-grounded project (nil → "no project")
     let onPickProject: (String?) -> Void          // chip → set the global context (nil = unconnected)
     let onLaunch: (SBListing, URL?) -> Void        // tile → launch this wrapp's widget, with the staged file if it takes one
+    let onRunTool: (SBListing, String) -> Void     // spotlight → RUN a third-party tool (no UI) with the typed query as input
     let onOpenSurface: (String) -> Void            // spotlight "go to" → open the OS window at a surface (rawValue)
     let onAsk: (String) -> Void                    // spotlight "ask" / mic → hand the query to God (empty = voice)
     let onClose: () -> Void                        // ⌥⌥ again / Esc — the host dismisses the drop
@@ -94,6 +95,7 @@ struct NotchLauncherView: View {
          activeProjectId: String?,
          onPickProject: @escaping (String?) -> Void,
          onLaunch: @escaping (SBListing, URL?) -> Void,
+         onRunTool: @escaping (SBListing, String) -> Void = { _, _ in },
          onOpenSurface: @escaping (String) -> Void = { _ in },
          onAsk: @escaping (String) -> Void = { _ in },
          onClose: @escaping () -> Void) {
@@ -106,6 +108,7 @@ struct NotchLauncherView: View {
         self.activeProjectId = activeProjectId
         self.onPickProject = onPickProject
         self.onLaunch = onLaunch
+        self.onRunTool = onRunTool
         self.onOpenSurface = onOpenSurface
         self.onAsk = onAsk
         self.onClose = onClose
@@ -149,7 +152,7 @@ struct NotchLauncherView: View {
 
     // ── SPOTLIGHT — the ⌥⌥ bar reaches ANYWHERE: projects · apps · surfaces · actions. When the query is
     //    non-empty the app grid is replaced by grouped results, each leading somewhere. (docs: command centre)
-    private enum SpotKind { case project, app, file, diskfile, surface, action }
+    private enum SpotKind { case project, app, tool, file, diskfile, surface, action }
     private struct SpotRow: Identifiable { let id: String; let kind: SpotKind; let label: String; let sub: String; let payload: String }
     private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
     private var spotProjects: [SpotRow] {
@@ -157,8 +160,28 @@ struct NotchLauncherView: View {
             SpotRow(id: "p-" + $0.id, kind: .project, label: $0.name, sub: $0.kind, payload: $0.id) }
     }
     private var spotApps: [SpotRow] {
-        (q.isEmpty ? [] : listings.filter { $0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q) }).prefix(6).map {
+        (q.isEmpty ? [] : listings.filter { !$0.isThirdParty && ($0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q)) }).prefix(6).map {
             SpotRow(id: "a-" + $0.id, kind: .app, label: $0.name, sub: $0.tagline, payload: $0.id) }
+    }
+    // THIRD-PARTY TOOLS surface by INTENT, not just name: score each tool by how many of the query's
+    // meaningful words appear in its name + tagline + what's-inside + its tools' descriptions (the
+    // capability). So "find me trending AI news" finds the Hacker News tool via its description, and
+    // picking it RUNS it (onRunTool) with the query as input — no need to know the tool's name.
+    private static let stop: Set<String> = ["find","me","a","an","the","for","to","of","on","in","get","show","what","whats","is","my","give","and","how","do","i","can","you","please","some","latest","about","with"]
+    private func toolScore(_ l: SBListing, _ toks: [String]) -> Int {
+        let blob = ([l.name, l.tagline] + (l.inside ?? []) + (l.tools?.map { ($0.description ?? "") + " " + $0.name } ?? [])).joined(separator: " ").lowercased()
+        return toks.reduce(0) { $0 + (blob.contains($1) ? 1 : 0) }
+    }
+    private var spotTools: [SpotRow] {
+        guard !q.isEmpty else { return [] }
+        let toks = q.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 1 && !Self.stop.contains($0) }
+        guard !toks.isEmpty else { return [] }
+        return listings.filter { $0.isThirdParty }
+            .map { (l: $0, s: toolScore($0, toks)) }
+            .filter { $0.s > 0 }
+            .sorted { $0.s > $1.s }
+            .prefix(5)
+            .map { SpotRow(id: "t-" + $0.l.id, kind: .tool, label: $0.l.name, sub: $0.l.tagline, payload: $0.l.id) }
     }
     private var spotRecent: [SpotRow] {
         (q.isEmpty ? [] : recent.filter { $0.title.lowercased().contains(q) || $0.app.lowercased().contains(q) }).prefix(5).enumerated().map { (i, a) in
@@ -175,7 +198,7 @@ struct NotchLauncherView: View {
     private var spotActions: [SpotRow] {
         q.isEmpty ? [] : [SpotRow(id: "act-ask", kind: .action, label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: "ask")]
     }
-    private var spotAll: [SpotRow] { spotProjects + spotApps + spotDiskFiles + spotRecent + spotSurfaces + spotActions }
+    private var spotAll: [SpotRow] { spotProjects + spotApps + spotTools + spotDiskFiles + spotRecent + spotSurfaces + spotActions }
     private func listing(forApp id: String) -> SBListing? {
         listings.first { $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name.caseInsensitiveCompare(id) == .orderedSame }
     }
@@ -184,6 +207,7 @@ struct NotchLauncherView: View {
         switch r.kind {
         case .project:  onPickProject(r.payload); onClose()
         case .app:      if let l = listings.first(where: { $0.id == r.payload }) { onLaunch(l, staged?.url) }
+        case .tool:     if let l = listings.first(where: { $0.id == r.payload }) { onRunTool(l, query.trimmingCharacters(in: .whitespaces)); onClose() }
         case .file:     if let l = listing(forApp: r.payload) { onLaunch(l, staged?.url) } else { onClose() }   // artifact → open in its wrapp
         case .diskfile: NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: r.payload)]); onClose()  // real file → reveal in Finder
         case .surface:  onOpenSurface(r.payload); onClose()
@@ -204,6 +228,9 @@ struct NotchLauncherView: View {
                 RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
                     .overlay(Image(systemName: "square.grid.2x2").font(.system(size: 11)).foregroundColor(.inkDim))
             }
+        case .tool:
+            RoundedRectangle(cornerRadius: 6).fill(Color.lime.opacity(0.12)).frame(width: 24, height: 24)
+                .overlay(Image(systemName: "wrench.and.screwdriver").font(.system(size: 11)).foregroundColor(.lime))
         case .file:
             RoundedRectangle(cornerRadius: 6).fill(Color.raised).frame(width: 24, height: 24)
                 .overlay(Image(systemName: "doc.text").font(.system(size: 11)).foregroundColor(.inkDim))

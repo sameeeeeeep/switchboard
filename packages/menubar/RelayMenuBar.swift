@@ -2251,11 +2251,11 @@ struct OrbView: View {
     var body: some View {
         // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
         let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-        let shape = NotchDropShape(ear: 8, botR: 9)
+        let shape = NotchDropShape(ear: 9, botR: 10)
         ZStack {
             shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
             NotchField(accent: tint, working: model.working, animated: model.running)
-                .padding(.horizontal, 5).padding(.top, 1).padding(.bottom, 3)
+                .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
                 .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
             shape.stroke(tint.opacity(model.running ? 0.20 : 0.10), lineWidth: 0.75)   // a faint health-tinted rim
         }
@@ -5131,6 +5131,10 @@ struct ActionConsentDrop: View {
             activeProjectId: readDefaultId(),
             onPickProject: { [weak self] id in writeGlobalContext(id); self?.model.refreshFiles() },
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
+            onRunTool: { [weak self] listing, query in
+                self?.hideLauncher()
+                if let binding = listing.mcp { self?.driveThirdPartyTool(listing, binding, command: nil, input: query.isEmpty ? nil : query) }
+            },
             onOpenSurface: { [weak self] raw in self?.hideLauncher(); OSShellWindowController.shared.show(Surface(rawValue: raw) ?? .home) },
             onAsk: { [weak self] q in self?.hideLauncher(); if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } },
             onClose: { [weak self] in self?.hideLauncher() })
@@ -5551,6 +5555,125 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // ── THIRD-PARTY MCP TOOL (epic: third-party-tools) ────────────────────────────────────────────
+    // Drive a locally-configured MCP tool HEADLESS: call it through the daemon gate (claude_callTool →
+    // allowlist + write-consent + audit), so credentials stay in the daemon and never leave. The result
+    // grows from the notch. Origin is stable per tool ("tool://<id>") so its grant is its own; a
+    // not-granted / SCOPE_EXCEEDED reply is surfaced as "grant it first", never a silent dead-end.
+    @MainActor func driveThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, command: String?, input: String?) {
+        let toolName = command.flatMap { c in (binding.tools ?? []).first { $0 == c } }
+            ?? binding.tools?.first ?? l.tools?.first?.name ?? l.id
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "No pairing token",
+                openLabel: "Open panel", result: .text("~/.relay/pairing-token is missing — is the daemon set up?")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Running \(toolName)…",
+            openLabel: "", result: .working("\(l.name) — a third-party tool, running on your machine…")))
+        // The one primary string, sprayed across the arg keys tools commonly use; each reads its own.
+        let text = input ?? (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let args: [String: Any] = ["input": text, "query": text, "q": text, "text": text, "prompt": text, "url": text]
+        callThirdPartyTool(l, binding, tool: toolName, args: args, token: token, allowConnect: true)
+    }
+    // The gated call. On a not-granted reply (SCOPE_EXCEEDED / origin not connected) we GRANT once at the
+    // notch (claude_connect → the pair-light card) and retry — so "God, run X" just works after one Approve,
+    // and the grant persists for the session. allowConnect:false on the retry so we never loop.
+    @MainActor private func callThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String, allowConnect: Bool) {
+        let bridge = GodDaemonBridge(token: token)
+        // The daemon namespaces MCP tools `mcp__<server>__<tool>` (registry.ts) — call it by that name,
+        // not the bare tool name (else "no such tool").
+        let qualified = "mcp__\(binding.server)__\(tool)"
+        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": qualified, "arguments": args]) { [weak self] result, err in
+            Task { @MainActor in
+                bridge.close()
+                if allowConnect, RelayController.notGrantedSignal(result, err) {
+                    self?.connectThirdPartyTool(l, binding, tool: tool, args: args, token: token)
+                } else {
+                    self?.thirdPartyToolFinished(l, binding, tool: tool, result: result, err: err)
+                }
+            }
+        }
+    }
+    // Grant this tool's origin once (claude_connect → consent:connect → the pair-light ConnectGrantDrop at
+    // the notch, routed to the menubar), then retry the call. Keys stay in the daemon; the grant IS the
+    // user's explicit approval to run this third-party tool.
+    @MainActor private func connectThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, tool: String, args: [String: Any], token: String) {
+        // Hide our own widget so it doesn't sit BEHIND the grant card — the daemon's consent:connect
+        // raises the pair-light ConnectGrantDrop as its own notch card; that's the only card to show now.
+        hideNotchWidget()
+        let bridge = GodDaemonBridge(token: token)
+        // Grant the daemon-qualified tool names (`mcp__<server>__<tool>`) so the allowlist matches the call.
+        let scopeTools = (binding.tools ?? [tool]).map { "mcp__\(binding.server)__\($0)" }
+        let scope: [String: Any] = ["tools": scopeTools,
+                                     "reason": "\(l.name) — a third-party tool, running on your machine"]
+        bridge.request(origin: "tool://\(l.id)", method: "claude_connect", params: scope) { [weak self] result, err in
+            Task { @MainActor in
+                bridge.close()
+                if err != nil || result == nil || result is NSNull {
+                    self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Not granted",
+                        openLabel: "Close", result: .text("“\(l.name)” wasn’t granted — nothing ran.")),
+                        onOpen: { [weak self] in self?.hideNotchWidget() })
+                    return
+                }
+                self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Running \(tool)…",
+                    openLabel: "", result: .working("\(l.name) — running on your machine…")))
+                self?.callThirdPartyTool(l, binding, tool: tool, args: args, token: token, allowConnect: false)
+            }
+        }
+    }
+    private nonisolated static func isNotGranted(_ e: [String: Any]) -> Bool {
+        let code = "\(e["code"] ?? "")"   // may be a number (4100) or a string
+        let msg = (e["message"] as? String) ?? ""
+        return code == "4100" || code == "SCOPE_EXCEEDED" || code == "UNAUTHORIZED"
+            || msg.localizedCaseInsensitiveContains("not connected")
+            || msg.localizedCaseInsensitiveContains("allowlist")
+    }
+    // The daemon returns a gate DENIAL as a RESULT ({ok:false, error:{message, code:4100}}), not a
+    // JSON-RPC error — so a not-granted tool call arrives with err==nil and the denial buried in the
+    // result. Detect the not-granted signal in EITHER place, so the connect-then-retry always fires.
+    private nonisolated static func notGrantedSignal(_ result: Any?, _ err: [String: Any]?) -> Bool {
+        if let err, isNotGranted(err) { return true }
+        guard let d = result as? [String: Any], (d["ok"] as? Bool) == false else { return false }
+        if let e = d["error"] as? [String: Any] { return isNotGranted(e) }
+        if let s = d["error"] as? String {
+            return s.localizedCaseInsensitiveContains("not connected") || s.localizedCaseInsensitiveContains("allowlist")
+        }
+        return false
+    }
+    @MainActor private func thirdPartyToolFinished(_ l: SBListing, _ binding: SBMcpBinding, tool: String, result: Any?, err: [String: Any]?) {
+        if let err {
+            let msg = (err["message"] as? String) ?? "the tool call failed"
+            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "“\(l.name)” couldn’t run",
+                openLabel: "Open panel", result: .text(msg)),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        let text = RelayController.flattenToolResult(result)
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: l.name,
+            openLabel: "Drop into chat", result: .text(text.isEmpty ? "\(tool) ran — no text result." : text)),
+            onOpen: { [weak self] in
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+                self?.hideNotchWidget()
+                self?.showGodStatus("Copied — paste it into any chat", accent: .lime, pattern: .speaking)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in self?.hideGodStatus() }
+            })
+    }
+    // MCP callTool result → text. Handles {content:[{type:"text",text}]}, plain strings, and objects.
+    private nonisolated static func flattenToolResult(_ result: Any?) -> String {
+        if let s = result as? String { return s }
+        if let d = result as? [String: Any] {
+            if let content = d["content"] as? [[String: Any]] {
+                let parts = content.compactMap { $0["text"] as? String }
+                if !parts.isEmpty { return parts.joined(separator: "\n") }
+            }
+            if let t = d["text"] as? String { return t }
+            if let data = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted]),
+               let s = String(data: data, encoding: .utf8) { return s }
+        }
+        return ""
+    }
+
     private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
@@ -5585,12 +5708,14 @@ struct ActionConsentDrop: View {
     // constant — tune per display on a real run; some Macs report a lying menuBarHeight.)
     private func positionOrb() {
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
-        let w: CGFloat = 168
-        // Make the orb window span the menu bar EXACTLY (bottom = visibleFrame.maxY, height = the real
-        // menu-bar height — taller on notch Macs), so the centred dot lands between the bar's top and
-        // bottom edges — up on the notch line, not below it. Renders over the bar (popUpMenu level).
+        let w: CGFloat = 184
+        // The real notch reads as a notch by HANGING BELOW the menu bar (Dynamic-Island style), not just
+        // spanning it. Top = screen top (frame.maxY); bottom = `drop` points BELOW the bar so the rounded
+        // bottom + the dot-matrix are visible. Height = the menu-bar height + that drop. (Founder-tuned:
+        // narrower + shallower than the first cut.)
         let menuH = max(screen.frame.maxY - screen.visibleFrame.maxY, 22)
-        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY, width: w, height: menuH), display: true)
+        let drop: CGFloat = 5
+        orb.setFrame(NSRect(x: screen.frame.midX - w / 2, y: screen.visibleFrame.maxY - drop, width: w, height: menuH + drop), display: true)
     }
 
     // Hover/click on the orb → open the full detailed panel (reuses the existing show/position path).
@@ -6257,8 +6382,11 @@ struct ActionConsentDrop: View {
             let id = (a["wrapp"] as? String ?? "").lowercased()
             let input = a["input"] as? String
             if let l = readCatalog().first(where: { $0.id == id }) {
-                // A skill runs headless → notch widget; a wrapp drives its page. Same split as the picker.
-                if resolveSkillContent(l) != nil {
+                // A THIRD-PARTY MCP tool runs headless straight through the daemon gate (no page, no skill);
+                // a skill runs its SKILL.md headless; a wrapp drives its page. Same split as the picker.
+                if let binding = l.mcp {
+                    driveThirdPartyTool(l, binding, command: a["command"] as? String, input: input)
+                } else if resolveSkillContent(l) != nil {
                     driveSkillHeadless(l, input: input)
                 } else if let s = l.components.ui?.url, let base = URL(string: s) {
                     // The command God picked (registry), else the wrapp's single registered tool, else the
@@ -7490,6 +7618,11 @@ struct SBReq: Codable {
 // (name), WHEN to use it (description), HOW to call it (inputSchema, key → "type — desc"). The native
 // drive uses this to pick the command + shape args without loading the page. Optional everywhere.
 struct SBTool: Codable { let name: String; let description: String?; let inputSchema: [String: String]? }
+// A THIRD-PARTY tool binding: the listing runs a locally-configured MCP server's tool(s), not a page or
+// a skill. `server` = the ~/.relay/mcp.json key; `tools` = the callable tool names on it. God drives it
+// headless via claude_callTool through the gate — credentials stay in the daemon, never leave. Optional
+// everywhere (only third-party `tool` listings carry it), so the strict SBListing decode is unaffected.
+struct SBMcpBinding: Codable { let server: String; let tools: [String]? }
 struct SBListing: Codable, Identifiable {
     let id: String; let name: String; let tagline: String; let icon: String?
     let category: String; let author: String?
@@ -7497,6 +7630,9 @@ struct SBListing: Codable, Identifiable {
     let tools: [SBTool]?
     let hidden: Bool?   // true → UNLISTED: kept in the catalog (still resolvable/runnable if already
                         // installed) but dropped from every store grid. Flip false / remove to re-list.
+    let provenance: String?   // "third-party" → a tool we didn't build; the store + consent card badge it.
+    let mcp: SBMcpBinding?     // present → this is a third-party MCP tool (driveThirdPartyTool), not a wrapp.
+    var isThirdParty: Bool { provenance == "third-party" || mcp != nil }
 }
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 
