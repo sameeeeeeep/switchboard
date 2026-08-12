@@ -2205,47 +2205,65 @@ struct NotchWebDrop: View {
     }
 }
 
+/// THE NOTCH FIELD — the dot-matrix rendered FULL-BLEED (Canvas, so it fills any size edge-to-edge
+/// instead of a fixed cols×rows grid that floats centred). Same brightness math as `DotMatrix`: a calm
+/// "thinking" sweep at rest, a travelling "working" wave while a model runs. Health-tinted by the caller
+/// (lime ready · red signed-out · faint offline). This is what fills the real notch silhouette.
+struct NotchField: View {
+    var accent: Color
+    var working: Bool
+    var animated: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private func bright(_ c: Int, _ r: Int, _ t: Double) -> Double {
+        let cx = Double(c), rx = Double(r)
+        if working { return 0.16 + 0.84 * (0.5 + 0.5 * sin(cx * 0.55 - t * 2.6)) }   // travelling wave
+        let s = 0.5 + 0.5 * sin((cx + rx) * 0.6 - t * 2.1)                            // diagonal sweep
+        return 0.13 + 0.87 * (s * s * s)
+    }
+    private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ t: Double) {
+        let gap: CGFloat = 4.0, d: CGFloat = 1.8
+        let cols = max(1, Int(size.width / gap)), rows = max(1, Int(size.height / gap))
+        let ox = (size.width - CGFloat(cols - 1) * gap) / 2, oy = (size.height - CGFloat(rows - 1) * gap) / 2
+        for c in 0..<cols {
+            for r in 0..<rows {
+                let x = ox + CGFloat(c) * gap - d / 2, y = oy + CGFloat(r) * gap - d / 2
+                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color(accent.opacity(bright(c, r, t))))
+            }
+        }
+    }
+    var body: some View {
+        if reduceMotion || !animated { Canvas { ctx, size in draw(ctx, size, 0.6) } }   // a still, legible mid-frame
+        else { TimelineView(.animation) { tl in Canvas { ctx, size in draw(ctx, size, tl.date.timeIntervalSinceReferenceDate) } } }
+    }
+}
+
 /// The ambient NOTCH ORB — the resting state of Switchboard, always present at the top-centre
-/// (Dynamic-Island-style progressive disclosure). Three states:
-///   • idle    → a small DOT (lime when ready, red signed-out, slate offline)
-///   • working → a notch-sized PILL that breathes while a model runs (driven by `model.working`)
-///   • hover / click → opens the full panel (the detailed view)
-/// A FIXED hit-area keeps the window one constant size; only the content morphs (no live resizing).
-/// Interaction feel (hover intent/delay, exact y, hit-through) is GUI — tune on a real run.
+/// (Dynamic-Island-style progressive disclosure). Its DEFAULT is the REAL notch (founder-approved,
+/// wireframe A "A is good"): the notch SHAPE ITSELF — flat top flush with the menu bar, rounded bottom,
+/// concave ears — filled EDGE-TO-EDGE with the dot-matrix, health-tinted. Calm sweep at rest, a
+/// travelling ripple while a model runs. Hover / click opens the full panel; cards grow FROM this same
+/// silhouette; God's live phase still drops below as GodStatusDrop. A FIXED hit-area keeps the window
+/// one constant size; only the content morphs.
 struct OrbView: View {
     @ObservedObject var model: Model
     @ObservedObject var glow: GlowModel
     var onOpen: () -> Void
-    @State private var breathe = false
     var body: some View {
+        // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
+        let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
+        let shape = NotchDropShape(ear: 8, botR: 9)
         ZStack {
-            // God's live phase (listening/thinking/speaking) is NOT drawn here — it drops from the
-            // notch as GodStatusDrop (the same silhouette as the panel/consent), so the orb stays the
-            // ambient dot ↔ "working" pill and the phase reads as one consistent notch surface.
-            if model.working {
-                Capsule().fill(Color.lime.opacity(0.92))
-                    .frame(width: 150, height: 20)
-                    .overlay(HStack(spacing: 6) {
-                        Circle().fill(Color.page).frame(width: 5, height: 5)
-                        Text("working").font(.splMono(9)).foregroundColor(.page)
-                    })
-                    .shadow(color: Color.lime.opacity(0.5), radius: 7)
-                    .scaleEffect(breathe ? 1.0 : 0.96)
-                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
-            } else {
-                // Idle: the DOT-MATRIX mark at its smallest (the switchboard's resting lamps), health-tinted.
-                // Lime = running+signed-in, red = running not-signed-in, faint = daemon down. A calm
-                // "thinking" sweep when alive; a still frame when the daemon is down.
-                let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-                DotMatrix(pattern: .thinking, accent: tint, cols: 6, rows: 3, dot: 1.7, gap: 1.6, animated: model.running)
-                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.30) : .clear, radius: 3)
-            }
+            shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
+            NotchField(accent: tint, working: model.working, animated: model.running)
+                .padding(.horizontal, 5).padding(.top, 1).padding(.bottom, 3)
+                .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
+            shape.stroke(tint.opacity(model.running ? 0.20 : 0.10), lineWidth: 0.75)   // a faint health-tinted rim
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.18) : .clear, radius: 4, y: 1)
         .contentShape(Rectangle())
         .onHover { if $0 { onOpen() } }
         .onTapGesture { onOpen() }
-        .onAppear { breathe = true }
     }
 }
 
@@ -2689,16 +2707,15 @@ struct ConnectGrantDrop: View {
     }
 
     private func host(_ s: String) -> String { URL(string: s)?.host ?? s }
-    private func box(_ on: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 5)
-            .fill(on ? Color.lime : Color.clear)
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(on ? Color.lime : Color.edge, lineWidth: 1.5))
-            .overlay(Group { if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundColor(.page) } })
-            .frame(width: 16, height: 16)
-    }
     private var writeCount: Int { tools.filter { $0.access == "write" }.count }
     private func chunked(_ a: [String], _ n: Int) -> [[String]] {
         stride(from: 0, to: a.count, by: n).map { Array(a[$0..<min($0 + n, a.count)]) }
+    }
+    // The wrapp's tile glyph — its name usually leads the reason ("Redline — …"); else the host initial.
+    private var appInitial: String {
+        let src = reason.isEmpty ? host(origin) : reason
+        for ch in src where ch.isLetter || ch.isNumber { return String(ch).uppercased() }
+        return "\u{2022}"
     }
     private func pill(_ m: String, _ on: Bool) -> some View {
         Text(m).font(.hanken(12, on ? .semibold : .regular)).foregroundColor(on ? .page : .inkDim).lineLimit(1)
@@ -2706,25 +2723,37 @@ struct ConnectGrantDrop: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.lime : Color.raised.opacity(0.55)))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.clear : Color.edge, lineWidth: 1))
     }
+    // TOOLS as inline chips (not the old full-width rows) — a dot (lime read / red write), the name, and a
+    // "write" marker; tap toggles. Keeps the whole scope compact — the card is now ~half the old height.
+    private func toolChip(_ t: (name: String, access: String, label: String), _ on: Bool) -> some View {
+        let write = t.access == "write"
+        let red = Color(red: 1, green: 0.42, blue: 0.37)
+        return HStack(spacing: 6) {
+            Circle().fill(on ? (write ? red : Color.lime) : Color.inkFaint).frame(width: 6, height: 6)
+            Text(t.label.isEmpty ? t.name : t.label).font(.hanken(11.5, on ? .medium : .regular)).foregroundColor(on ? .ink : .inkDim).lineLimit(1)
+            if write { Text("write").font(.splMono(8)).foregroundColor(on ? red : .inkFaint) }
+        }
+        .padding(.horizontal, 9).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(on ? Color.lime.opacity(0.10) : Color.raised.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.lime.opacity(0.45) : Color.edge, lineWidth: 1))
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.16))
-                    .overlay(Image(systemName: "link").font(.system(size: 14)).foregroundColor(.lime))
-                    .frame(width: 34, height: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    (Text("Connect to ").foregroundColor(.ink) + Text(host(origin)).foregroundColor(.lime)).font(.hanken(14, .semibold))
-                    if !reason.isEmpty { Text("\u{201C}\(reason)\u{201D}").font(.hanken(10.5)).italic().foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
-                }
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 11) {
+            // THE LINK — the hero. Two endpoints (the wrapp · your Claude sunburst) that glow-pulse as a
+            // signal of dots travels left→right between them: a patch cable being made, at the notch.
+            PairLink(appInitial: appInitial).frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 3) {
+                (Text("Connect to ").foregroundColor(.ink) + Text(host(origin)).foregroundColor(.lime) + Text("?").foregroundColor(.ink)).font(.hanken(14.5, .semibold))
+                if !reason.isEmpty { Text("\u{201C}\(reason)\u{201D}").font(.hanken(10.5)).italic().foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
             }
+            Rectangle().fill(Color.edge).frame(height: 1)
             ScrollView {
-                VStack(alignment: .leading, spacing: 13) {
+                VStack(alignment: .leading, spacing: 11) {
                     if !availableModels.isEmpty {
                         VStack(alignment: .leading, spacing: 7) {
                             Text("MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
-                            ForEach(chunked(availableModels, 2), id: \.self) { row in
+                            ForEach(chunked(availableModels, 3), id: \.self) { row in
                                 HStack(spacing: 7) {
                                     ForEach(row, id: \.self) { m in
                                         Button { if selModels.contains(m) { selModels.remove(m) } else { selModels.insert(m) } } label: { pill(m, selModels.contains(m)) }.buttonStyle(.plain)
@@ -2735,29 +2764,26 @@ struct ConnectGrantDrop: View {
                         }
                     }
                     if !tools.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 7) {
                             HStack {
                                 Text("TOOLS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
                                 Spacer(minLength: 0)
-                                Text("\(tools.count) tool\(tools.count == 1 ? "" : "s")\(writeCount > 0 ? " \u{00B7} \(writeCount) write" : "")").font(.splMono(9)).foregroundColor(.inkFaint)
+                                Text("\(tools.count) requested\(writeCount > 0 ? " \u{00B7} \(writeCount) write" : "")").font(.splMono(9)).foregroundColor(.inkFaint)
                             }
-                            ForEach(Array(tools.enumerated()), id: \.offset) { _, t in
-                                Button { if selTools.contains(t.name) { selTools.remove(t.name) } else { selTools.insert(t.name) } } label: {
-                                    HStack(spacing: 9) {
-                                        box(selTools.contains(t.name))
-                                        Text(t.label.isEmpty ? t.name : t.label).font(.hanken(12)).foregroundColor(.ink).lineLimit(1)
-                                        Spacer(minLength: 0)
-                                        Text(t.access.uppercased()).font(.splMono(8)).tracking(0.6).foregroundColor(t.access == "write" ? Color(red: 1, green: 0.42, blue: 0.37) : .inkFaint)
+                            ForEach(chunked(tools.map { $0.name }, 2), id: \.self) { row in
+                                HStack(spacing: 7) {
+                                    ForEach(row, id: \.self) { name in
+                                        if let t = tools.first(where: { $0.name == name }) {
+                                            Button { if selTools.contains(name) { selTools.remove(name) } else { selTools.insert(name) } } label: { toolChip(t, selTools.contains(name)) }.buttonStyle(.plain)
+                                        }
                                     }
-                                    .padding(.horizontal, 10).padding(.vertical, 8)
-                                    .background(RoundedRectangle(cornerRadius: 9).fill(Color.raised.opacity(0.5)))
-                                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.edge, lineWidth: 1))
-                                }.buttonStyle(.plain)
+                                    Spacer(minLength: 0)
+                                }
                             }
                         }
                     }
                 }
-            }.frame(maxHeight: 230)
+            }.frame(maxHeight: 168)
             HStack(spacing: 8) {
                 Button(action: onDeny) {
                     Text("Deny").font(.hanken(11.5, .medium)).foregroundColor(.ink)
@@ -2779,13 +2805,92 @@ struct ConnectGrantDrop: View {
                         .padding(.horizontal, 16).padding(.vertical, 7)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
                 }.buttonStyle(.plain)
-            }.padding(.top, 2)
+            }.padding(.top, 1)
         }
-        .padding(18)
-        .frame(width: 360, alignment: .leading)
+        .padding(16)
+        .frame(width: 344, alignment: .leading)
         .padding(.horizontal, 14)
         .background(Color.page)
         .clipShape(NotchDropShape())
+    }
+}
+
+// The Claude "sunburst" — spokes radiating from a centre, stroked in lime; reads as the AI endpoint.
+struct Sunburst: Shape {
+    var spokes: Int = 8
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let r = min(rect.width, rect.height) / 2
+        let inner = r * 0.16
+        for i in 0..<spokes {
+            let a = Double(i) / Double(spokes) * 2 * .pi
+            let ca = CGFloat(cos(a)), sa = CGFloat(sin(a))
+            p.move(to: CGPoint(x: c.x + ca * inner, y: c.y + sa * inner))
+            p.addLine(to: CGPoint(x: c.x + ca * r, y: c.y + sa * r))
+        }
+        return p
+    }
+}
+
+// The "patch cable being made": wrapp tile ─ a row of dots that light up left→right ─ your Claude
+// (sunburst). Both endpoints glow-pulse; the arriving signal brightens whichever end it reaches.
+// Respects Reduce Motion — then it's a static "linked" state (all dots lit, both ends steady).
+struct PairLink: View {
+    let appInitial: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private func endpoint(app: Bool, glow: Double) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(app ? Color.lime : Color.raised)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app ? Color.clear : Color.edge, lineWidth: 1))
+                .frame(width: 36, height: 36)
+                .shadow(color: Color.lime.opacity(glow * 0.7), radius: 9 * glow)
+            if app {
+                Text(appInitial).font(.hanken(15, .bold)).foregroundColor(.page)
+            } else {
+                Sunburst(spokes: 8).stroke(Color.lime, style: StrokeStyle(lineWidth: 1.7, lineCap: .round)).frame(width: 19, height: 19)
+            }
+        }
+    }
+
+    private func dots(_ ctx: GraphicsContext, _ size: CGSize, phase: Double, still: Bool) {
+        let n = 9
+        let baseR: CGFloat = 2.1
+        for i in 0..<n {
+            let p = Double(i) / Double(n - 1)
+            let x = baseR + (size.width - 2 * baseR) * CGFloat(p)
+            let y = size.height / 2
+            var a = 0.16, rad = baseR
+            if still { a = 0.5 }
+            else { let d = abs(p - phase); let lit = max(0, 1 - d * 6); a = 0.16 + 0.82 * lit; rad = baseR + CGFloat(lit) * 1.5 }
+            ctx.fill(Path(ellipseIn: CGRect(x: x - rad, y: y - rad, width: rad * 2, height: rad * 2)), with: .color(Color.lime.opacity(a)))
+        }
+    }
+
+    var body: some View {
+        if reduceMotion {
+            HStack(spacing: 10) {
+                endpoint(app: true, glow: 0.55)
+                Canvas { ctx, size in dots(ctx, size, phase: 0, still: true) }.frame(height: 16)
+                endpoint(app: false, glow: 0.55)
+            }
+        } else {
+            TimelineView(.animation) { tl in
+                let t = tl.date.timeIntervalSinceReferenceDate
+                let travel = 1.4, pause = 1.0, cyc = travel + pause
+                let u = t.truncatingRemainder(dividingBy: cyc)
+                let phase = min(1.0, u / travel)                                   // 0→1 then hold
+                let appG = 0.22 + 0.55 * max(0, 1 - phase * 5)                      // bright as it departs
+                let claudeG = 0.22 + 0.6 * max(0, 1 - abs(phase - 1) * 5)           // bright as it arrives
+                HStack(spacing: 10) {
+                    endpoint(app: true, glow: appG)
+                    Canvas { ctx, size in dots(ctx, size, phase: phase, still: false) }.frame(height: 16)
+                    endpoint(app: false, glow: claudeG)
+                }
+            }
+        }
     }
 }
 
