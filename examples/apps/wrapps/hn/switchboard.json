@@ -1,0 +1,26 @@
+{
+  "id": "hn",
+  "name": "Hacker News",
+  "tagline": "What's trending in tech & AI — the HN front page, on demand.",
+  "category": "tool",
+  "author": "third-party · Hacker News (public Algolia API)",
+  "provenance": "third-party",
+  "mcp": {
+    "server": "hn",
+    "tools": ["search_news"]
+  },
+  "components": {},
+  "surfaces": ["tool"],
+  "requires": [
+    { "kind": "daemon" }
+  ],
+  "tools": [
+    { "name": "search_news", "description": "Find trending or recent stories on Hacker News by topic — the front-page pulse for tech and AI news. Great for 'what's trending in AI', 'latest on <topic>', 'top HN stories'. Returns titles, points, comments and links.", "inputSchema": { "query": "string — the topic to search, e.g. AI (optional; omit for the front page)", "limit": "number — how many stories (optional)" } }
+  ],
+  "inside": [
+    "Trending & recent Hacker News stories by topic",
+    "Titles, points, comments, links",
+    "Great for 'find me trending AI news'",
+    "No account, no key — the public Hacker News API"
+  ]
+}
