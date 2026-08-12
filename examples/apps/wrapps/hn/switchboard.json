@@ -1,0 +1,29 @@
+{
+  "id": "hn",
+  "name": "Hacker News",
+  "tagline": "Top stories, threads & search — on demand.",
+  "category": "tool",
+  "author": "third-party · mcp-hn",
+  "provenance": "third-party",
+  "mcp": {
+    "server": "hn",
+    "tools": ["get_stories", "get_story_info", "search_stories", "get_user_info"]
+  },
+  "components": {},
+  "surfaces": ["tool"],
+  "requires": [
+    { "kind": "daemon" }
+  ],
+  "tools": [
+    { "name": "get_stories", "description": "Fetch Hacker News stories — top, new, ask_hn, or show_hn.", "inputSchema": { "story_type": "string — top | new | ask_hn | show_hn (optional, default top)", "num_stories": "number — how many (optional)" } },
+    { "name": "get_story_info", "description": "Fetch a story and its comment thread by id.", "inputSchema": { "story_id": "number — the HN item id. Required." } },
+    { "name": "search_stories", "description": "Search Hacker News stories by query.", "inputSchema": { "query": "string — what to search for. Required.", "num_results": "number — how many (optional)" } },
+    { "name": "get_user_info", "description": "Fetch a Hacker News user's profile.", "inputSchema": { "user_name": "string — the HN username. Required." } }
+  ],
+  "inside": [
+    "Top / new / ask / show stories",
+    "A story's full comment thread",
+    "Search by query · look up a user",
+    "No account, no key — runs local via uvx mcp-hn"
+  ]
+}

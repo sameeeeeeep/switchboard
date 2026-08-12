@@ -39,7 +39,7 @@ export interface DownloadRef {
  *    • browser — UI mounted in a browser tab (deep-link out).
  *    • window  — the same web UI framed in an in-app webview.
  *    • notch   — a small UI mounted as an ambient notch widget (the flagship surface). */
-export type Surface = "god" | "batch" | "browser" | "window" | "notch";
+export type Surface = "god" | "batch" | "browser" | "window" | "notch" | "tool";
 
 /** Axis A — the bill of materials. Any subset; absent `ui` = headless. */
 export interface WrappComponents {
@@ -89,6 +89,13 @@ export interface WrappListing {
    *  a short list of what's inside, and who made it. Never fabricated relevance — no installs/ratings. */
   inside?: string[]; // "the YC dialect + live RFS hooks", "draft every answer at once"
   author?: string;
+
+  /** THIRD-PARTY tool provenance + binding (docs/THIRD-PARTY-TOOLS.md). A `tool`-category listing with
+   *  surface `"tool"` runs a locally-configured MCP server's tool(s) HEADLESS through the gate — no UI,
+   *  no skill body — so its "material" is `mcp`, not `components`. Credentials live in ~/.relay/mcp.json
+   *  and never leave the daemon; `provenance: "third-party"` badges it in the store + on the consent card. */
+  provenance?: "first-party" | "third-party";
+  mcp?: { server: string; tools?: string[] }; // server = the ~/.relay/mcp.json key; tools = callable names
 }
 
 // ─────────────────────────── validation (the §2 consistency rule) ───────────────────────────
@@ -108,6 +115,8 @@ export function validateListing(l: WrappListing): string[] {
     if (s === "batch" && !has("workflows")) errs.push("surface 'batch' requires components.workflows");
     if ((s === "browser" || s === "window" || s === "notch") && !has("ui"))
       errs.push(`surface '${s}' requires components.ui`);
+    // A headless third-party tool's material is its MCP binding, not a UI/skill/workflow.
+    if (s === "tool" && !l.mcp?.server) errs.push("surface 'tool' requires an mcp binding { server }");
   }
   return errs;
 }
