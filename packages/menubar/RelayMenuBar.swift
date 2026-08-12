@@ -5551,6 +5551,72 @@ struct ActionConsentDrop: View {
         }
     }
 
+    // ── THIRD-PARTY MCP TOOL (epic: third-party-tools) ────────────────────────────────────────────
+    // Drive a locally-configured MCP tool HEADLESS: call it through the daemon gate (claude_callTool →
+    // allowlist + write-consent + audit), so credentials stay in the daemon and never leave. The result
+    // grows from the notch. Origin is stable per tool ("tool://<id>") so its grant is its own; a
+    // not-granted / SCOPE_EXCEEDED reply is surfaced as "grant it first", never a silent dead-end.
+    @MainActor func driveThirdPartyTool(_ l: SBListing, _ binding: SBMcpBinding, command: String?, input: String?) {
+        let toolName = command.flatMap { c in (binding.tools ?? []).first { $0 == c } }
+            ?? binding.tools?.first ?? l.tools?.first?.name ?? l.id
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "No pairing token",
+                openLabel: "Open panel", result: .text("~/.relay/pairing-token is missing — is the daemon set up?")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Running \(toolName)…",
+            openLabel: "", result: .working("\(l.name) — a third-party tool, running on your machine…")))
+        // The one primary string, sprayed across the arg keys tools commonly use; each reads its own.
+        let text = input ?? (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let args: [String: Any] = ["input": text, "query": text, "q": text, "text": text, "prompt": text, "url": text]
+        let bridge = GodDaemonBridge(token: token)
+        bridge.request(origin: "tool://\(l.id)", method: "claude_callTool", params: ["name": toolName, "arguments": args]) { [weak self] result, err in
+            Task { @MainActor in
+                bridge.close()
+                self?.thirdPartyToolFinished(l, binding, tool: toolName, result: result, err: err)
+            }
+        }
+    }
+    @MainActor private func thirdPartyToolFinished(_ l: SBListing, _ binding: SBMcpBinding, tool: String, result: Any?, err: [String: Any]?) {
+        if let err {
+            let code = (err["code"] as? String) ?? ""
+            let msg = (err["message"] as? String) ?? "the tool call failed"
+            let notGranted = code == "SCOPE_EXCEEDED" || msg.localizedCaseInsensitiveContains("allowlist") || msg.localizedCaseInsensitiveContains("not connected")
+            showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())",
+                title: notGranted ? "Grant “\(l.name)” first" : "“\(l.name)” couldn’t run",
+                openLabel: "Open panel",
+                result: .text(notGranted
+                    ? "This third-party tool (\(binding.server)) isn’t granted yet — approve it once at the notch, then try again."
+                    : msg)),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        let text = RelayController.flattenToolResult(result)
+        showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: l.name,
+            openLabel: "Drop into chat", result: .text(text.isEmpty ? "\(tool) ran — no text result." : text)),
+            onOpen: { [weak self] in
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+                self?.hideNotchWidget()
+                self?.showGodStatus("Copied — paste it into any chat", accent: .lime, pattern: .speaking)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in self?.hideGodStatus() }
+            })
+    }
+    // MCP callTool result → text. Handles {content:[{type:"text",text}]}, plain strings, and objects.
+    private nonisolated static func flattenToolResult(_ result: Any?) -> String {
+        if let s = result as? String { return s }
+        if let d = result as? [String: Any] {
+            if let content = d["content"] as? [[String: Any]] {
+                let parts = content.compactMap { $0["text"] as? String }
+                if !parts.isEmpty { return parts.joined(separator: "\n") }
+            }
+            if let t = d["text"] as? String { return t }
+            if let data = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted]),
+               let s = String(data: data, encoding: .utf8) { return s }
+        }
+        return ""
+    }
+
     private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
         model.refreshFiles()
@@ -6257,8 +6323,11 @@ struct ActionConsentDrop: View {
             let id = (a["wrapp"] as? String ?? "").lowercased()
             let input = a["input"] as? String
             if let l = readCatalog().first(where: { $0.id == id }) {
-                // A skill runs headless → notch widget; a wrapp drives its page. Same split as the picker.
-                if resolveSkillContent(l) != nil {
+                // A THIRD-PARTY MCP tool runs headless straight through the daemon gate (no page, no skill);
+                // a skill runs its SKILL.md headless; a wrapp drives its page. Same split as the picker.
+                if let binding = l.mcp {
+                    driveThirdPartyTool(l, binding, command: a["command"] as? String, input: input)
+                } else if resolveSkillContent(l) != nil {
                     driveSkillHeadless(l, input: input)
                 } else if let s = l.components.ui?.url, let base = URL(string: s) {
                     // The command God picked (registry), else the wrapp's single registered tool, else the
@@ -7490,6 +7559,11 @@ struct SBReq: Codable {
 // (name), WHEN to use it (description), HOW to call it (inputSchema, key → "type — desc"). The native
 // drive uses this to pick the command + shape args without loading the page. Optional everywhere.
 struct SBTool: Codable { let name: String; let description: String?; let inputSchema: [String: String]? }
+// A THIRD-PARTY tool binding: the listing runs a locally-configured MCP server's tool(s), not a page or
+// a skill. `server` = the ~/.relay/mcp.json key; `tools` = the callable tool names on it. God drives it
+// headless via claude_callTool through the gate — credentials stay in the daemon, never leave. Optional
+// everywhere (only third-party `tool` listings carry it), so the strict SBListing decode is unaffected.
+struct SBMcpBinding: Codable { let server: String; let tools: [String]? }
 struct SBListing: Codable, Identifiable {
     let id: String; let name: String; let tagline: String; let icon: String?
     let category: String; let author: String?
@@ -7497,6 +7571,9 @@ struct SBListing: Codable, Identifiable {
     let tools: [SBTool]?
     let hidden: Bool?   // true → UNLISTED: kept in the catalog (still resolvable/runnable if already
                         // installed) but dropped from every store grid. Flip false / remove to re-list.
+    let provenance: String?   // "third-party" → a tool we didn't build; the store + consent card badge it.
+    let mcp: SBMcpBinding?     // present → this is a third-party MCP tool (driveThirdPartyTool), not a wrapp.
+    var isThirdParty: Bool { provenance == "third-party" || mcp != nil }
 }
 struct SBCatalog: Codable { let version: Int; let count: Int; let listings: [SBListing] }
 
