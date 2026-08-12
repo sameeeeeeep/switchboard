@@ -2205,47 +2205,65 @@ struct NotchWebDrop: View {
     }
 }
 
+/// THE NOTCH FIELD — the dot-matrix rendered FULL-BLEED (Canvas, so it fills any size edge-to-edge
+/// instead of a fixed cols×rows grid that floats centred). Same brightness math as `DotMatrix`: a calm
+/// "thinking" sweep at rest, a travelling "working" wave while a model runs. Health-tinted by the caller
+/// (lime ready · red signed-out · faint offline). This is what fills the real notch silhouette.
+struct NotchField: View {
+    var accent: Color
+    var working: Bool
+    var animated: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private func bright(_ c: Int, _ r: Int, _ t: Double) -> Double {
+        let cx = Double(c), rx = Double(r)
+        if working { return 0.16 + 0.84 * (0.5 + 0.5 * sin(cx * 0.55 - t * 2.6)) }   // travelling wave
+        let s = 0.5 + 0.5 * sin((cx + rx) * 0.6 - t * 2.1)                            // diagonal sweep
+        return 0.13 + 0.87 * (s * s * s)
+    }
+    private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ t: Double) {
+        let gap: CGFloat = 4.0, d: CGFloat = 1.8
+        let cols = max(1, Int(size.width / gap)), rows = max(1, Int(size.height / gap))
+        let ox = (size.width - CGFloat(cols - 1) * gap) / 2, oy = (size.height - CGFloat(rows - 1) * gap) / 2
+        for c in 0..<cols {
+            for r in 0..<rows {
+                let x = ox + CGFloat(c) * gap - d / 2, y = oy + CGFloat(r) * gap - d / 2
+                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color(accent.opacity(bright(c, r, t))))
+            }
+        }
+    }
+    var body: some View {
+        if reduceMotion || !animated { Canvas { ctx, size in draw(ctx, size, 0.6) } }   // a still, legible mid-frame
+        else { TimelineView(.animation) { tl in Canvas { ctx, size in draw(ctx, size, tl.date.timeIntervalSinceReferenceDate) } } }
+    }
+}
+
 /// The ambient NOTCH ORB — the resting state of Switchboard, always present at the top-centre
-/// (Dynamic-Island-style progressive disclosure). Three states:
-///   • idle    → a small DOT (lime when ready, red signed-out, slate offline)
-///   • working → a notch-sized PILL that breathes while a model runs (driven by `model.working`)
-///   • hover / click → opens the full panel (the detailed view)
-/// A FIXED hit-area keeps the window one constant size; only the content morphs (no live resizing).
-/// Interaction feel (hover intent/delay, exact y, hit-through) is GUI — tune on a real run.
+/// (Dynamic-Island-style progressive disclosure). Its DEFAULT is the REAL notch (founder-approved,
+/// wireframe A "A is good"): the notch SHAPE ITSELF — flat top flush with the menu bar, rounded bottom,
+/// concave ears — filled EDGE-TO-EDGE with the dot-matrix, health-tinted. Calm sweep at rest, a
+/// travelling ripple while a model runs. Hover / click opens the full panel; cards grow FROM this same
+/// silhouette; God's live phase still drops below as GodStatusDrop. A FIXED hit-area keeps the window
+/// one constant size; only the content morphs.
 struct OrbView: View {
     @ObservedObject var model: Model
     @ObservedObject var glow: GlowModel
     var onOpen: () -> Void
-    @State private var breathe = false
     var body: some View {
+        // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
+        let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
+        let shape = NotchDropShape(ear: 8, botR: 9)
         ZStack {
-            // God's live phase (listening/thinking/speaking) is NOT drawn here — it drops from the
-            // notch as GodStatusDrop (the same silhouette as the panel/consent), so the orb stays the
-            // ambient dot ↔ "working" pill and the phase reads as one consistent notch surface.
-            if model.working {
-                Capsule().fill(Color.lime.opacity(0.92))
-                    .frame(width: 150, height: 20)
-                    .overlay(HStack(spacing: 6) {
-                        Circle().fill(Color.page).frame(width: 5, height: 5)
-                        Text("working").font(.splMono(9)).foregroundColor(.page)
-                    })
-                    .shadow(color: Color.lime.opacity(0.5), radius: 7)
-                    .scaleEffect(breathe ? 1.0 : 0.96)
-                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: breathe)
-            } else {
-                // Idle: the DOT-MATRIX mark at its smallest (the switchboard's resting lamps), health-tinted.
-                // Lime = running+signed-in, red = running not-signed-in, faint = daemon down. A calm
-                // "thinking" sweep when alive; a still frame when the daemon is down.
-                let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
-                DotMatrix(pattern: .thinking, accent: tint, cols: 6, rows: 3, dot: 1.7, gap: 1.6, animated: model.running)
-                    .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.30) : .clear, radius: 3)
-            }
+            shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
+            NotchField(accent: tint, working: model.working, animated: model.running)
+                .padding(.horizontal, 5).padding(.top, 1).padding(.bottom, 3)
+                .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
+            shape.stroke(tint.opacity(model.running ? 0.20 : 0.10), lineWidth: 0.75)   // a faint health-tinted rim
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)   // fill the menu-bar-tall window; dot sits centered IN the menu bar
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.18) : .clear, radius: 4, y: 1)
         .contentShape(Rectangle())
         .onHover { if $0 { onOpen() } }
         .onTapGesture { onOpen() }
-        .onAppear { breathe = true }
     }
 }
 
