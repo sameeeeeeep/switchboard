@@ -1,0 +1,28 @@
+{
+  "id": "everything",
+  "name": "MCP Sandbox",
+  "tagline": "The reference MCP server — echo, sum, a canned research query.",
+  "category": "tool",
+  "author": "third-party · @modelcontextprotocol/server-everything",
+  "provenance": "third-party",
+  "mcp": {
+    "server": "everything",
+    "tools": ["echo", "get-sum", "simulate-research-query"]
+  },
+  "components": {},
+  "surfaces": ["tool"],
+  "requires": [
+    { "kind": "daemon" }
+  ],
+  "tools": [
+    { "name": "echo", "description": "Echo back the input text — the simplest proof a tool ran.", "inputSchema": { "message": "string — the text to echo. Required." } },
+    { "name": "get-sum", "description": "Add two numbers and return the sum.", "inputSchema": { "a": "number — first addend", "b": "number — second addend" } },
+    { "name": "simulate-research-query", "description": "Return a canned multi-part 'research' answer for a query — a stand-in for a real search tool.", "inputSchema": { "query": "string — what to research. Required." } }
+  ],
+  "inside": [
+    "The official reference MCP server (Node, no auth)",
+    "echo · get-sum · a canned research query",
+    "Proves the whole path: install → discover → drive → gate → notch",
+    "Runs local via npx @modelcontextprotocol/server-everything"
+  ]
+}
