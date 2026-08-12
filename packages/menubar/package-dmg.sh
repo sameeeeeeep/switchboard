@@ -106,6 +106,9 @@ mkdir -p "$RES/god"
 cp "$ROOT/examples/god/god.mjs" "$RES/god/god.mjs"
 cp -R "$ROOT/examples/god/lib" "$RES/god/lib"
 cp -R "$ROOT/examples/god/personas" "$RES/god/personas"
+# The video2ai extraction pipeline — the ⌥⌥ launcher's "Extract video" shells out to this (Node builtins
+# only; it calls yt-dlp + the capabilities.video2ai CLI on PATH at runtime). Bundled so it runs installed.
+cp "$ROOT/examples/god/video2ai-pipeline.mjs" "$RES/god/video2ai-pipeline.mjs"
 # Flow's whisper STT adapter — the menubar daemon's RELAY_STT_CMD points here so God can hear you
 # (OpenAI `whisper --model tiny`, on-device, Homebrew PATH prepended inside the adapter).
 cp "$ROOT/examples/flow/whisper-stt.mjs" "$RES/god/whisper-stt.mjs"

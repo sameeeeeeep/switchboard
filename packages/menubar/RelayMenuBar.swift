@@ -3621,6 +3621,8 @@ struct ActionConsentDrop: View {
     private var lastGodAudio: String?             // the last voice turn's clip — so switching the project can RE-RUN it grounded anew
     private var glowCursorTimer: Timer?           // polls the mouse ~30fps so the glow follows the cursor (no AX grant needed)
     private var godProc: Process?                 // the running god.mjs (so a single Ctrl can cancel it)
+    private var videoExtracting = false           // a video2ai extraction is in flight (one at a time)
+    private var videoProc: Process?               // the running video2ai-pipeline.mjs
     private var pointMarkPinned = false           // explicit, time-limited latch to keep a model-chosen ring briefly AFTER a run ends — the sanctioned replacement for the old buggy `target != nil` gate
     private var pointMarkPinTimer: Timer?         // auto-expiry that forces a pinned mark back to idle so the ring can never be orphaned
     // ── Ambient mode (strictly-local awareness → contextual helper canvas) ────────────────────────
@@ -4346,6 +4348,15 @@ struct ActionConsentDrop: View {
             try? FileManager.default.removeItem(atPath: f)
             fillFormFromClipboard()
         }
+        // `~/.relay/extract-video` (body = a YouTube/Instagram URL) → the ⌥⌥ launcher's "Extract video"
+        // action. Run the reuse pipeline (video2ai-pipeline.mjs), stream progress into a notch widget,
+        // land the result with a one-tap "drop into chat". Scriptable, so it self-tests too.
+        let ev = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/extract-video")
+        if FileManager.default.fileExists(atPath: ev) {
+            let vurl = (try? String(contentsOfFile: ev, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            try? FileManager.default.removeItem(atPath: ev)
+            if !vurl.isEmpty { runVideoExtraction(url: vurl) }
+        }
         // `touch ~/.relay/replay-tour` → run the real (adaptive) welcome tour. Same as the menu item;
         // scriptable so it can be fired for a walkthrough or self-test without clicking the dot.
         let t = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/replay-tour")
@@ -4901,6 +4912,140 @@ struct ActionConsentDrop: View {
         hideNotchWidget()
         godWeb?.front()
         if driveRunning { showGodStatus("\(driveName) · running", accent: .lime, pattern: .working) }
+    }
+
+    // ══ VIDEO2AI EXTRACTION ═══════════════════════════════════════════════════════════════════════
+    // The ⌥⌥ launcher's "Extract video" (a copied YouTube/Instagram link) writes ~/.relay/extract-video.
+    // This runs the REUSE pipeline (examples/god/video2ai-pipeline.mjs → yt-dlp download → capabilities.
+    // video2ai → structured JSON), streams its progress into a notch widget, and lands the result with a
+    // one-tap "drop into chat" — the whole extraction copied to the clipboard for the next chat. Nothing
+    // runs idle: the download + analyze happen on demand only ([[relay-device-lightness]]).
+    @MainActor private func runVideoExtraction(url: String) {
+        if videoExtracting { return }   // one at a time — a second copy just waits
+        guard let node = nodePath(), let script = videoPipelinePath() else {
+            showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Can't run the extractor",
+                openLabel: "Open panel", result: .text("No Node runtime or the video2ai pipeline script was found.")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        videoExtracting = true
+        let short = url.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "www.", with: "")
+        showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Extracting video…",
+            openLabel: "", result: .working("Reading \(short.prefix(44))…")))
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: node)
+        proc.arguments = [script, url]
+        proc.currentDirectoryURL = URL(fileURLWithPath: (script as NSString).deletingLastPathComponent)
+        let outPipe = Pipe(), errPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+        videoProc = proc
+
+        // The child streams `[phase] pct% note` on STDERR while it works, and prints the final structured
+        // JSON on STDOUT at the end. Drain BOTH continuously (a long transcript can exceed the 64 KB pipe
+        // buffer — reading stdout only at exit would deadlock the child). `out` is guarded by `lock`.
+        let lock = NSLock()
+        var out = Data()
+        outPipe.fileHandleForReading.readabilityHandler = { h in
+            let d = h.availableData; if d.isEmpty { return }
+            lock.lock(); out.append(d); lock.unlock()
+        }
+        errPipe.fileHandleForReading.readabilityHandler = { [weak self] h in
+            let s = String(data: h.availableData, encoding: .utf8) ?? ""
+            for line in s.split(separator: "\n") {
+                let (phase, note) = RelayController.parseProgress(String(line))
+                guard let phase = phase else { continue }
+                Task { @MainActor in
+                    guard let self, self.videoExtracting else { return }
+                    self.showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: self.videoPhaseTitle(phase),
+                        openLabel: "", result: .working(note.isEmpty ? "working…" : note)))
+                }
+            }
+        }
+        proc.terminationHandler = { [weak self] p in
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            let tail = outPipe.fileHandleForReading.readDataToEndOfFile()
+            lock.lock(); if !tail.isEmpty { out.append(tail) }; let final = out; lock.unlock()
+            let json = String(data: final, encoding: .utf8) ?? ""
+            Task { @MainActor in self?.videoExtractionFinished(url: url, exit: p.terminationStatus, json: json) }
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do { try proc.run() } catch {
+                Task { @MainActor in self?.videoExtractionFinished(url: url, exit: -1, json: "") }
+            }
+        }
+    }
+
+    @MainActor private func videoExtractionFinished(url: String, exit code: Int32, json: String) {
+        videoExtracting = false
+        videoProc = nil
+        guard let data = json.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Extraction failed",
+                openLabel: "Open panel", result: .text(code == 0 ? "No result came back from the extractor." : "The extractor exited with an error (code \(code)).")),
+                onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            return
+        }
+        if (obj["ok"] as? Bool) != true {
+            let err = (obj["error"] as? String) ?? "unknown error"
+            showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Couldn't extract that video",
+                openLabel: "Close", result: .text(err)),
+                onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        let dropText = RelayController.formatExtraction(url: url, obj: obj)
+        let summary = (obj["summary"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? "Frames + transcript captured. Drop it into a chat to hand Claude the full reference."
+        let beats = (obj["keyBeats"] as? [[String: Any]])?.count ?? 0
+        let title = beats > 0 ? "Video understood · \(beats) beat\(beats == 1 ? "" : "s")" : "Video understood"
+        showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: title,
+            openLabel: "Drop into chat", result: .text(summary)),
+            onOpen: { [weak self] in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(dropText, forType: .string)
+                self?.hideNotchWidget()
+                self?.showGodStatus("Copied — paste it into any chat", accent: .lime, pattern: .speaking)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { [weak self] in self?.hideGodStatus() }
+            })
+    }
+
+    // stderr line `[phase] 40% note` → (phase, note). nonisolated + static: a pure function the background
+    // readability handler can call without hopping to the main actor.
+    private nonisolated static func parseProgress(_ line: String) -> (String?, String) {
+        guard let lb = line.firstIndex(of: "["), let rb = line.firstIndex(of: "]"), lb < rb else { return (nil, "") }
+        let phase = String(line[line.index(after: lb)..<rb]).trimmingCharacters(in: .whitespaces)
+        let rest = String(line[line.index(after: rb)...]).trimmingCharacters(in: .whitespaces)
+        return (phase.isEmpty ? nil : phase, rest)
+    }
+    private func videoPhaseTitle(_ phase: String) -> String {
+        switch phase {
+        case "detect": return "Checking the link…"
+        case "download": return "Downloading the video…"
+        case "analyze": return "Understanding the video…"
+        case "done": return "Almost there…"
+        default: return "Extracting video…"
+        }
+    }
+    // Build the clipboard drop — a self-contained block the next chat reads as a video reference.
+    private static func formatExtraction(url: String, obj: [String: Any]) -> String {
+        var out = "Video reference — \(url)\n"
+        if let s = obj["summary"] as? String, !s.isEmpty { out += "\nSummary:\n\(s)\n" }
+        if let beats = obj["keyBeats"] as? [[String: Any]], !beats.isEmpty {
+            out += "\nKey beats:\n"
+            for b in beats {
+                let t = (b["title"] as? String) ?? "beat"
+                let start = b["start"].map { "\($0)" } ?? ""
+                out += "- \(t)\(start.isEmpty ? "" : " (at \(start))")\n"
+                if let pts = b["points"] as? [String] { for p in pts { out += "  · \(p)\n" } }
+            }
+        }
+        if let ost = obj["onScreenText"] as? [String], !ost.isEmpty {
+            out += "\nOn-screen text:\n" + ost.prefix(20).map { "- \($0)" }.joined(separator: "\n") + "\n"
+        }
+        if let tr = obj["transcript"] as? String, !tr.isEmpty { out += "\nTranscript:\n\(tr)\n" }
+        return out
     }
 
     // ══ ⌥⌥ LAUNCHER — app-first (sibling to ⌃⌃ voice): double-tap Option → app grid + project + file intake.
@@ -6614,6 +6759,19 @@ struct ActionConsentDrop: View {
             .appendingPathComponent("examples/god/god.mjs").path
         if fm.fileExists(atPath: dev) { return dev }
         if let override = ProcessInfo.processInfo.environment["GOD_CLIENT"], fm.fileExists(atPath: override) { return override }
+        return nil
+    }
+
+    // Locate the video2ai pipeline (bundled in the .app first, then dev in-tree) — mirrors godClientPath.
+    private func videoPipelinePath() -> String? {
+        let fm = FileManager.default
+        if let res = Bundle.main.resourcePath {
+            let bundled = (res as NSString).appendingPathComponent("god/video2ai-pipeline.mjs")
+            if fm.fileExists(atPath: bundled) { return bundled }
+        }
+        let dev = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("examples/god/video2ai-pipeline.mjs").path
+        if fm.fileExists(atPath: dev) { return dev }
         return nil
     }
 
