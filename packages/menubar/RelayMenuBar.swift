@@ -4070,6 +4070,12 @@ struct ActionConsentDrop: View {
                 }
             }
         }
+        // Explain mode: teach the decision before the pick (docs/NOTCH-EXPLAIN.md). Generate a trade-off
+        // diagram + a short Moira voiceover on the user's own Claude, show the diagram as the card's media,
+        // and speak it — then the options resurface.
+        CursorGuide.shared.onExplain = { [weak self] _, question, options in
+            Task { @MainActor in self?.explainDecision(question: question, options: options) }
+        }
         // Teach mode senses locally: hand CursorGuide a fresh AmbientSignal on demand so its doneWhen
         // watcher can decide when a step is done. Reuses the same LOCAL sensor ambient mode uses (no
         // network/screenshot beyond the opt-in Vision OCR); wired unconditionally so teach works even
@@ -4559,6 +4565,47 @@ struct ActionConsentDrop: View {
                 self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Diagram failed", openLabel: "Open panel",
                     result: .text(e.localizedDescription)),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+            }
+        }
+    }
+
+    // ── EXPLAIN MODE (docs/NOTCH-EXPLAIN.md) ──────────────────────────────────────────────────────
+    // Teach a decision card before the pick. Generate — on the user's OWN Claude — a trade-off DIAGRAM
+    // (shown as the card's media) and a short MOIRA voiceover (spoken), both grounded in the question +
+    // options; the options then resurface. Fire-and-forget: the diagram and the script race, each lands
+    // when ready; a failure just clears the spinner so the options never block.
+    @MainActor private func explainDecision(question: String, options: [GuideOption]) {
+        let opts = options.enumerated().map { (i, o) -> String in
+            let letter = i < 3 ? ["A", "B", "C"][i] : "\(i + 1)"
+            let rec = o.recommended ? " (recommended)" : ""
+            let detail = (o.detail?.isEmpty == false) ? " — \(o.detail!)" : ""
+            return "\(letter). \(o.label)\(rec)\(detail)"
+        }.joined(separator: "\n")
+        let brief = "Decision: \(question)\n\nOptions:\n\(opts)"
+
+        // DIAGRAM — a clean trade-off graphic in the notch palette (makeDiagram enforces the dark/lime look).
+        let diagramPrompt = "A decision the user is weighing. Draw a clear, minimal TRADE-OFF diagram that "
+            + "helps them SEE the choice at a glance — compare the options on the axes that matter (effort, "
+            + "risk, reward, reversibility — pick what fits), and mark the recommended one. No prose.\n\n\(brief)"
+        HtmlCapability.shared.makeDiagram(from: diagramPrompt) { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let path): CursorGuide.shared.showExplanation(media: GuideMedia(src: path))
+                case .failure:           CursorGuide.shared.explainFailed()
+                }
+            }
+        }
+        // SCRIPT — a short spoken walk-through in Moira's tech-explainer voice (speakGuideLine → god voice).
+        let scriptPrompt = "You are Moira, narrating a ~15-second voiceover that TEACHES this decision like a "
+            + "sharp tech-explainer reel — warm, plain, concrete. Walk through the real trade-off between the "
+            + "options and end by naming the one you'd lean toward and why, in one line. Speak directly to the "
+            + "user (\"you\"). Return ONLY the spoken words — no stage directions, no markdown, 2–4 sentences.\n\n\(brief)"
+        HtmlCapability.shared.makeText(prompt: scriptPrompt) { [weak self] result in
+            Task { @MainActor in
+                if case .success(let script) = result {
+                    let line = script.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !line.isEmpty { self?.speakGuideLine(line) }
+                }
             }
         }
     }
