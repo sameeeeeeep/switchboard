@@ -46,23 +46,23 @@ export function normalizeBrief(ctx) {
 export const FORMATS = {
   "x-thread": {
     label: "X thread",
-    guide: "An X (Twitter) thread of 4–7 tweets. Tweet 1 is a scroll-stopping hook — a claim, a number, or a tension — that works alone. Number tweets 1/ 2/ …; each ≤270 chars, one idea per tweet. End on a soft follow CTA or an open question. Body: the whole thread, tweets separated by a blank line.",
+    guide: "An X (Twitter) thread, 4–7 tweets. Number them 1/ 2/ …; each ≤270 chars, one thought per tweet, tweets separated by a blank line. Tweet 1 opens on something concrete and specific — a moment, a detail, a plain admission — never a pitch or a product intro. Let it end when the thought is finished: no follow-me CTA, no question tacked on the end.",
   },
   "x-single": {
     label: "X post",
-    guide: "A single X (Twitter) post, ≤270 chars. One sharp idea, strongest line first. No hashtags unless exactly one genuinely earns it. Body: the post text.",
+    guide: "A single X (Twitter) post, ≤270 chars. One real thing, said plainly, the truest line first. No hashtags. Don't end on a question.",
   },
   "linkedin": {
     label: "LinkedIn post",
-    guide: "A LinkedIn post, 120–200 words, operator register — the reasoning behind a decision, not a demo reel. Open with a one-line hook, then short one-line paragraphs, close with a question to the reader. No hashtag soup; at most 2–3 at the very end.",
+    guide: "A LinkedIn post, 120–200 words. Short paragraphs, one line each. Open on a real first line, not a hook. Talk through the actual thing — a decision, what happened, what you think — like you're telling one person. End when you're done: no question to the reader, no 'building in public' sign-off, at most one hashtag if any.",
   },
   "ig-caption": {
     label: "Instagram caption",
-    guide: "An Instagram caption, 40–120 words, warm and visual. The first line is the hook (it shows before 'more'). A few line breaks for air. End with 3–5 relevant hashtags. Body: caption then hashtags.",
+    guide: "An Instagram caption, 40–120 words. The first line is a real opening line (it shows before 'more'), not a hook. A few line breaks for air. A couple of hashtags only if they'd actually help someone find it.",
   },
   "ig-carousel": {
     label: "Instagram carousel",
-    guide: "An Instagram carousel of 5–7 slides. Slide 1 hooks, the last slide carries the CTA. Body: one slide per line as 'Slide N — HEADLINE (≤8 words): sub-line (≤20 words)'.",
+    guide: "An Instagram carousel, 5–7 slides. Body: one slide per line as 'Slide N — HEADLINE (≤8 words): sub-line (≤20 words)'. Slide 1 opens on something concrete; the last slide can point somewhere, but don't make it a hard CTA.",
   },
 };
 
@@ -83,9 +83,25 @@ export function formatGuide(format) {
 
 // ─────────────────────────── the prompts ───────────────────────────
 
-/** The anti-slop clause, mirrored from reachout.HONESTY. */
+/** The factual honesty clause (facts only — voice lives in VOICE below). */
 export const HONESTY =
-  "Keep it human — no buzzwords, no fake urgency, no flattery, no emoji unless it truly fits. Sound like a specific person, not a brand account. Never fabricate a fact, a metric, a quote, or a shared connection; if a number isn't given, write around it rather than inventing one.";
+  "Never fabricate a fact, a metric, a quote, or a shared connection. If a specific number isn't in the brief or topic, write around it — don't invent one.";
+
+/** THE VOICE RULE — matters more than the format. The single failure mode this exists to kill is
+ *  writing that sounds like an ANNOUNCEMENT / an ad / a keynote instead of one person talking. Every
+ *  ban here is a real tell that reads as AI-marketing copy. */
+export const VOICE = [
+  "VOICE (this matters more than the format): write like one specific person typing to another person. Not a brand, not a landing page, not a keynote. The worst possible failure is sounding like an ANNOUNCEMENT.",
+  "ONE idea per piece — this is the top rule. Pick the single thing this post is about and cut everything that isn't it. Do NOT cram the product, the story, and the thesis into one post. If a second point wants in, it's a different post, not another line. A thread stays on its one story start to finish.",
+  "NEVER announce or introduce the product. No 'I'm building…', no 'introducing', no 'I call them X' or revealing a coined name like it's a moment — if a coined term matters, drop it in passing as if the reader already knows it; never present it.",
+  "NO feature-bullet cadence — no strings of clipped fragments like 'No subscription. No middleman.' That is ad copy, not speech.",
+  "NO tidy quotable one-liners or aphorisms built to be screenshotted. Do not reach for a memorable line. If a good line happens on its own, fine.",
+  "NO rhetorical question at the end. No 'is it just me?', no 'what would you do?'. Just stop when the thought is done.",
+  "NO sign-off clichés — no 'building in public', 'still unfinished', 'more soon', 'let's go', 'excited to share'.",
+  "NO 'it's not X, it's Y' seesaw constructions. Go easy on em-dashes and balanced clauses.",
+  "KEEP the person's own plain words from the brief and topic — verbatim wherever you can. Do NOT upgrade their phrasing into cleverer words; plain and true beats polished. If they wrote 'getting anxious for no reason', keep that exact register — do not turn it into a metaphor.",
+  "Let it be a little unpolished. A sentence that runs on or trails off like real speech beats a balanced, written-sounding one. Understate; don't sell.",
+].join("\n");
 
 /** Ground block from a brief — shared by draft + revise so a re-drafted piece stays on-voice. Pure. */
 function briefBlock(brief) {
@@ -105,13 +121,14 @@ function briefBlock(brief) {
 export function buildDraftPrompt({ brief, format, topic, n, steers }) {
   const count = Math.max(1, Number(n) || 1);
   return [
-    `You are Draft, writing content on the user's own Claude — ${count} ${FORMATS[format]?.label || "post"}${count === 1 ? "" : "s"}, each a DISTINCT piece (different hook and angle; never N rewrites of one idea).`,
+    `You are drafting ${count} ${FORMATS[format]?.label || "post"}${count === 1 ? "" : "s"} on the user's own Claude. Make each genuinely different — a different way in, a different thing to say; never ${count} rewrites of one idea.`,
+    VOICE,
     briefBlock(brief),
     `FORMAT: ${formatGuide(format)}`,
-    topic ? `TOPIC / THEME for this batch: ${topic}` : "TOPIC: draw from the brief — pick the ${count} strongest, most postable angles the strategy implies.",
+    topic ? `WHAT THIS IS ABOUT: ${topic}` : `WHAT THIS IS ABOUT: nothing given — take the ${count} most specific, real angles straight from the brief.`,
     steers && steers.length ? `Steering (apply the latest, it wins): ${steers.map((s) => `"${s}"`).join(" → ")}` : "",
     HONESTY,
-    `Return ONLY a JSON object — no prose, no markdown fences — exactly: {"pieces":[{"hook":"…","body":"…"}]} with exactly ${count} entr${count === 1 ? "y" : "ies"}. "hook" is a ≤12-word label for the piece; "body" is the full post as plain text with real line breaks.`,
+    `Return ONLY a JSON object — no prose, no markdown fences — exactly: {"pieces":[{"hook":"…","body":"…"}]} with exactly ${count} entr${count === 1 ? "y" : "ies"}. "hook" is a ≤12-word internal label (never shown to a reader — do not write the body to match it); "body" is the full post as plain text with real line breaks.`,
   ].filter(Boolean).join("\n\n");
 }
 
@@ -119,11 +136,12 @@ export function buildDraftPrompt({ brief, format, topic, n, steers }) {
  *  select-and-say primitive — the steer is the user's typed words against the selected block. */
 export function buildRevisePrompt({ brief, format, body, steers }) {
   return [
-    `You are Draft, revising ONE ${FORMATS[format]?.label || "post"} on the user's own Claude. Rewrite it applying the steer — keep what works, change what the steer asks for, keep the same format and roughly the same length unless the steer says otherwise.`,
+    `You are revising ONE ${FORMATS[format]?.label || "post"} on the user's own Claude. Rewrite it applying the steer: keep what works, change what the steer asks for, keep the same format and roughly the same length unless the steer says otherwise.`,
+    VOICE,
     briefBlock(brief),
     `FORMAT: ${formatGuide(format)}`,
     `CURRENT PIECE:\n${String(body || "").trim()}`,
-    steers && steers.length ? `STEER (what to change — this is the instruction): ${steers.map((s) => `"${s}"`).join(" → ")}` : "STEER: tighten it — cut anything soft, keep the sharpest version.",
+    steers && steers.length ? `STEER (what to change — this is the instruction): ${steers.map((s) => `"${s}"`).join(" → ")}` : "STEER: tighten it — cut anything that sounds written or salesy, keep the plainest true version.",
     HONESTY,
     `Return ONLY a JSON object — no prose, no markdown fences — exactly: {"hook":"…","body":"…"}. "body" is the full revised post as plain text.`,
   ].filter(Boolean).join("\n\n");

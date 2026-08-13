@@ -96,6 +96,8 @@ const WRAPPS = [
   { id: "coldemail", html: "coldemail.html", cat: "skill" },
   // ideabrain "I have an idea" widget (2026-08) — idea-first, no cold-open; the runner types the idea line.
   { id: "ideabrain", html: "ideabrain.html", cat: "studio" },
+  // draft — the general content drafter + select-and-say revise (2026-08); cold-opens from the lent brief.
+  { id: "draft", html: "draft.html", cat: "founder-stack" },
 ];
 
 const HARNESS_JSON = JSON.stringify(PROJECTS);
