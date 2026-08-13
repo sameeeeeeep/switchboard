@@ -276,32 +276,41 @@ struct NotchLauncherView: View {
     //    real thing (task → the Tasks board; project → the full Home grounded on it; artifact → its wrapp).
     private var homeContent: some View {
         let active = homeProjects.first { $0.id == activeProjectId } ?? homeProjects.first
-        let others = homeProjects.filter { $0.id != active?.id }.prefix(3)
+        let ordered = [active].compactMap { $0 } + homeProjects.filter { $0.id != active?.id }
         let work = recent.prefix(3)
-        let openTasks = Array(tasks.prefix(4))
-        let empty = openTasks.isEmpty && active == nil && others.isEmpty && work.isEmpty
-        return VStack(alignment: .leading, spacing: SB.s2) {
+        let openTasks = Array(tasks.prefix(6))
+        let apps = Array(listings.filter { !$0.isThirdParty }.prefix(10))
+        let empty = openTasks.isEmpty && ordered.isEmpty && work.isEmpty && apps.isEmpty
+        return VStack(alignment: .leading, spacing: SB.s3) {
             if empty {
                 homeEmptyState
             } else {
+                // Each section is a horizontal CARD RAIL (was a vertical stack of thin rows). Tasks lead — the
+                // launcher is a "what next" surface — then the visual app tiles, then projects, then recent work.
                 if !openTasks.isEmpty {
                     homeKicker("TASKS", count: tasks.count, trailing: "board ↗") { onOpenSurface("tasks") }
-                    ForEach(openTasks) { t in taskRow(t) }
-                    homeDivider
+                    rail { ForEach(openTasks) { t in taskCard(t) } }
                 }
-                if let a = active {
-                    homeKicker("JUMP BACK IN", count: nil, trailing: "open home ↗") { onOpenSurface("home") }
-                    notchProjectRow(a, isActive: true)
+                if !apps.isEmpty {
+                    homeKicker("APPS", count: apps.count, trailing: "all ↗") { onOpenSurface("apps") }
+                    rail { ForEach(apps) { l in homeAppTile(l) } }
                 }
-                if !others.isEmpty {
-                    homeKicker("RECENT PROJECTS", count: homeProjects.count, trailing: nil, action: nil)
-                    ForEach(Array(others)) { p in notchProjectRow(p, isActive: false) }
+                if !ordered.isEmpty {
+                    homeKicker("PROJECTS", count: homeProjects.count, trailing: "open home ↗") { onOpenSurface("home") }
+                    rail { ForEach(ordered) { p in projectCard(p, isActive: p.id == active?.id) } }
                 }
                 if !work.isEmpty {
                     homeKicker("RECENT WORK", count: nil, trailing: nil, action: nil)
-                    ForEach(Array(work)) { w in notchWorkRow(w) }
+                    VStack(alignment: .leading, spacing: 2) { ForEach(Array(work)) { w in notchWorkRow(w) } }
                 }
             }
+        }
+    }
+
+    // A horizontal card rail — cards wider than the drop scroll; the clipped peek signals "there's more →".
+    @ViewBuilder private func rail<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: SB.s3) { content() }.padding(.vertical, 1)
         }
     }
 
@@ -338,32 +347,38 @@ struct NotchLauncherView: View {
         }.padding(.top, 3)
     }
 
-    // ── a live board task, product row grammar: status glyph · title · one-line meta · priority dot.
+    // ── a live board task as a RAIL CARD: status glyph + pill up top, title (2 lines), meta pinned to base.
     //    Tapping opens the Tasks board (the launcher stays a jump-off, the board is where you work it).
-    private func taskRow(_ t: LaunchTask) -> some View {
-        Button(action: { onOpenSurface("tasks") }) {
-            HStack(spacing: 10) {
-                Text(taskGlyph(t))
-                    .font(.splMono(12)).foregroundColor(taskTint(t))
-                    .frame(width: 26)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(t.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
-                    if !t.meta.isEmpty {
-                        Text(t.meta).font(.hanken(10.5)).foregroundColor(t.over ? .amber : .inkFaint).lineLimit(1)
+    private func taskCard(_ t: LaunchTask) -> some View {
+        let hovering = hoveredId == "tk-" + t.id.uuidString
+        return Button(action: { onOpenSurface("tasks") }) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 0) {
+                    Text(taskGlyph(t)).font(.splMono(13)).foregroundColor(taskTint(t))
+                    Spacer(minLength: 0)
+                    if t.col == "doing" {
+                        Text("DOING").font(.splMono(7)).tracking(0.8).foregroundColor(.lime)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                    } else if t.col == "blocked" {
+                        Text("BLOCKED").font(.splMono(7)).tracking(0.8).foregroundColor(.amber)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.amber.opacity(0.35), lineWidth: 1))
+                    } else if let p = t.prio, p == "high" {
+                        Circle().fill(Color.amber).frame(width: 5, height: 5)
                     }
                 }
-                Spacer(minLength: 6)
-                if t.col == "doing" {
-                    Text("DOING").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
-                } else if let p = t.prio, p == "high" {
-                    Circle().fill(Color.amber).frame(width: 5, height: 5)
+                Text(t.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink)
+                    .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if !t.meta.isEmpty {
+                    Text(t.meta).font(.hanken(9.5)).foregroundColor(t.over ? .amber : .inkFaint).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == "tk-" + t.id.uuidString ? Color.raised : Color.white.opacity(0.02)))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.col == "doing" ? Color.lime.opacity(0.3) : Color.edgeSoft, lineWidth: 1))
+            .padding(11)
+            .frame(width: 178, height: 112, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: SBr.sm).fill(hovering ? Color.raised : Color.white.opacity(0.02)))
+            .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(t.col == "doing" ? Color.lime.opacity(0.35) : Color.edgeSoft, lineWidth: 1))
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
          .onHover { hoveredId = $0 ? "tk-" + t.id.uuidString : (hoveredId == "tk-" + t.id.uuidString ? nil : hoveredId) }
@@ -375,27 +390,66 @@ struct NotchLauncherView: View {
         if t.over { return .amber }
         switch t.col { case "doing", "review": return .lime; case "blocked": return .amber; default: return .inkDim }
     }
-    private func notchProjectRow(_ p: SBProject, isActive: Bool) -> some View {
-        Button(action: {
+
+    // ── an APP as a big visual tile in the home rail — real icon, staged-file ring/dim, one-tap launch. ──
+    private func homeAppTile(_ l: SBListing) -> some View {
+        let takes = canTakeFile(l)
+        let hasFile = staged != nil
+        let dimmed = hasFile && !takes
+        let ringed = hasFile && takes
+        let hovering = hoveredId == "ha-" + l.id
+        return Button(action: { onLaunch(l, takes ? staged?.url : nil) }) {
+            VStack(spacing: 7) {
+                tileArt(l, size: 54)
+                    .overlay(alignment: .topTrailing) {
+                        if ringed {
+                            Image(systemName: "arrow.down.circle.fill").font(.system(size: 13))
+                                .foregroundColor(.lime).background(Circle().fill(Color.page)).offset(x: 4, y: -4)
+                        }
+                    }
+                    .overlay(RoundedRectangle(cornerRadius: 54 * 0.24)
+                        .stroke(ringed ? Color.lime.opacity(0.7) : Color.clear, lineWidth: 1.5))
+                Text(l.name).font(.hanken(10)).foregroundColor(.inkDim).lineLimit(1)
+            }
+            .frame(width: 68)
+            .opacity(dimmed ? 0.4 : 1)
+            .offset(y: hovering && !dimmed ? -2 : 0)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+         .animation(.spring(response: 0.22, dampingFraction: 0.8), value: hovering)
+         .onHover { hoveredId = $0 ? "ha-" + l.id : (hoveredId == "ha-" + l.id ? nil : hoveredId) }
+         .help(takes && hasFile ? "Run \(l.name) on \(staged?.url.lastPathComponent ?? "the file")" : "Open \(l.name)")
+    }
+
+    // ── a PROJECT as a rail card — big monogram tile, essence, updated time; active gets the indigo edge. ──
+    private func projectCard(_ p: SBProject, isActive: Bool) -> some View {
+        let hovering = hoveredId == "hp-" + p.id
+        return Button(action: {
             if !isActive { onPickProject(p.id) }
             onOpenSurface("home")                       // acting on a project opens the full Home, grounded
         }) {
-            HStack(spacing: 10) {
-                Monogram(name: p.name, hue: hueForId(p.id), size: 26)
-                Text(p.name).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
-                if isActive {
-                    Text("ACTIVE").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 0) {
+                    Monogram(name: p.name, hue: hueForId(p.id), size: 38)
+                    Spacer(minLength: 0)
+                    if isActive {
+                        Text("ACTIVE").font(.splMono(7)).tracking(0.7).foregroundColor(.lime)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                    } else if p.pending > 0 {
+                        Text("\(p.pending)").font(.splMono(9)).foregroundColor(.amber)
+                    }
                 }
-                Text(p.essence).font(.hanken(11)).foregroundColor(.inkFaint).lineLimit(1)
-                Spacer(minLength: 6)
-                if p.pending > 0 { Text("\(p.pending)").font(.splMono(9)).foregroundColor(.amber) }
+                Text(p.name).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
+                Text(p.essence.isEmpty ? p.kind : p.essence).font(.hanken(10.5)).foregroundColor(.inkFaint)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
                 Text(p.updated.isEmpty ? p.kind : p.updated).font(.splMono(9)).foregroundColor(.inkFaint)
             }
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(hoveredId == "hp-" + p.id ? Color.raised : Color.white.opacity(0.02)))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? Color.indigo.opacity(0.35) : Color.edgeSoft, lineWidth: 1))
+            .padding(11)
+            .frame(width: 160, height: 140, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: SBr.sm).fill(hovering ? Color.raised : Color.white.opacity(0.02)))
+            .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(isActive ? Color.indigo.opacity(0.5) : Color.edgeSoft, lineWidth: 1))
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
          .onHover { hoveredId = $0 ? "hp-" + p.id : (hoveredId == "hp-" + p.id ? nil : hoveredId) }
@@ -437,6 +491,7 @@ struct NotchLauncherView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SB.s3) {
             header
+            askHero
             intakeBar
             if q.isEmpty {
                 // HOME mode (founder: "the home should show up in the notch; a window only when you act") —
@@ -559,7 +614,7 @@ struct NotchLauncherView: View {
         clipOffer = nil
     }
 
-    // ── header: ⌥⌥ · LAUNCH kicker · project chip · search ──────────────────────────────
+    // ── header: ⌥⌥ · HOME kicker · project chip ─────────────────────────────────────────
     private var header: some View {
         HStack(spacing: SB.s2) {
             (Text("⌥⌥").foregroundColor(.lime) + Text(" · HOME").foregroundColor(.inkFaint))
@@ -569,27 +624,30 @@ struct NotchLauncherView: View {
                 ProjectChip(projects: projects.map { (id: $0.id, name: $0.name) },
                             activeId: activeProjectId, onSelect: onPickProject)
             }
-            searchField
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
+    // ── the FULL-WIDTH ask hero — the highlight of the drop (was a thin 250pt field in the header) ──
+    private var askHero: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(.inkDim)
             TextField("Search projects, apps, files — or ask", text: $query)
                 .textFieldStyle(.plain)
-                .font(.hanken(11))
+                .font(.hanken(13.5))
                 .foregroundColor(.ink)
                 .focused($searchFocused)
                 .onSubmit { let rows = spotAll; if rows.indices.contains(spotSel) { choose(rows[spotSel]) } else if let f = rows.first { choose(f) } }
             Button(action: { onAsk(query.trimmingCharacters(in: .whitespaces)); onClose() }) {
-                Image(systemName: "mic.fill").font(.system(size: 10, weight: .medium)).foregroundColor(.inkDim)
+                ZStack {
+                    Circle().fill(Color.lime.opacity(0.14)).frame(width: 30, height: 30)
+                    Image(systemName: "mic.fill").font(.system(size: 12, weight: .medium)).foregroundColor(.lime)
+                }
             }.buttonStyle(.plain).help("Ask by voice (⌃⌃)")
         }
-        .padding(.horizontal, 11).padding(.vertical, 7)
-        .frame(width: 250, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(searchFocused ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(searchFocused ? Color.lime.opacity(0.6) : Color.edge, lineWidth: 1.5))
     }
 
     // ── category tabs: All + one per catalog category, so fewer apps show at a glance ────
@@ -737,8 +795,7 @@ struct NotchLauncherView: View {
     // The app icon: the real "Instruments on the board" render (Resources/icons/<id>.png), else the
     // category glyph tile. A local twin of StoreView.glyphTile (that copy is private) so the launcher
     // draws icons identically without reaching across the type.
-    @ViewBuilder private func tileArt(_ l: SBListing) -> some View {
-        let size: CGFloat = 40
+    @ViewBuilder private func tileArt(_ l: SBListing, size: CGFloat = 40) -> some View {
         if let img = storeIcon(l.id) {
             Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
                 .frame(width: size, height: size)

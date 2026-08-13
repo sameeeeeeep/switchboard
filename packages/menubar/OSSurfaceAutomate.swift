@@ -13,6 +13,7 @@
 
 import Foundation
 import SwiftUI
+import Combine
 
 // ---- local, non-token constants (amber + a light indigo + the "on-lime" dark ink) ----
 private let sbAmber      = Color(red: 0.96, green: 0.62, blue: 0.04)   // failure-adjacent (no amber token)
@@ -319,6 +320,7 @@ struct DashboardSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
         .onChange(of: range) { _ in load() }
     }
 }
@@ -733,6 +735,7 @@ struct NeedsSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { bands = needsLiveBands() }
+            .onReceive(OSPulse.shared.$tick) { _ in bands = needsLiveBands() }
     }
 
     private func cycleFilter() {
@@ -1075,6 +1078,7 @@ struct RoutinesSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
     }
 }
 
@@ -1369,6 +1373,7 @@ struct WorkflowsSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { workflows = workflowsLive() }
+            .onReceive(OSPulse.shared.$tick) { _ in workflows = workflowsLive() }
     }
 }
 

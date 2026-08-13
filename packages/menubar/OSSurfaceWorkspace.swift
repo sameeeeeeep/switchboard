@@ -12,6 +12,7 @@
 // hueForId/colorForId, SectionHead/ProgressBar, the Surface enum and Sample data.
 
 import SwiftUI
+import Combine
 
 // =====================================================================================================
 // MARK: - Small shared local helpers (private to this file)
@@ -191,6 +192,7 @@ private struct TaskItem: Identifiable {
     var epic: String? = nil
     var prio: String? = nil
     var detail: [TaskDetail] = []
+    var kanban: String = ""                                    // the TRUE status column (todo/doing/…), independent of the grouping
 
     var dueWeight: Int { over ? 0 : (due != nil ? 1 : 2) }
     var groupKey: String { tag ?? proj ?? "~" }
@@ -444,6 +446,7 @@ struct TasksSurface: View {
     @State private var dump = ""
     @State private var specRunning = false
     @State private var specErr: String? = nil
+    @State private var detailTask: TaskItem? = nil            // the task whose DETAIL panel is open (tap a card)
 
     private var activeCtx: BankCtx? { bankContexts().first { $0.id == readDefaultId() } }
     private func load() { let r = osTasksAll(); all = r.tasks; broken = r.broken }
@@ -474,7 +477,7 @@ struct TasksSurface: View {
                  wait: t.blockedTitles.isEmpty ? nil : "waiting: " + t.blockedTitles.joined(separator: ", "),
                  due: t.due, over: t.over, statusId: statusId, statusName: statusName, colIndex: col,
                  checkedNow: t.done, refIdx: all.firstIndex { $0.id == t.id } ?? -1,
-                 epic: t.epic, prio: t.prio, detail: t.detail)
+                 epic: t.epic, prio: t.prio, detail: t.detail, kanban: t.col)
     }
 
     private var columns: [TaskColumn] {
@@ -546,6 +549,19 @@ struct TasksSurface: View {
               KANBAN.contains(where: { $0.id == colId }) else { return }
         if osSetStatus(all[refIdx], to: colId) { load() }
     }
+    // ── task DETAIL actions (from the detail panel; each closes the panel after mutating + reloading) ──
+    private func detailSetStatus(_ it: TaskItem, to colId: String) {
+        guard it.refIdx >= 0, it.refIdx < all.count else { detailTask = nil; return }
+        if osSetStatus(all[it.refIdx], to: colId) { load() }
+        detailTask = nil
+    }
+    private func detailToggleDone(_ it: TaskItem) { toggleTask(it); detailTask = nil }
+    // The DELIBERATE launch — only from the detail panel's "Open in <wrapp>" button, never a bare tap.
+    private func detailLaunch(_ it: TaskItem) {
+        OSLaunch.launch(it.appName, .init(artifact: it.title, kind: "task", project: it.proj))
+        detailTask = nil
+    }
+
     private func submitAdd(status: String = "todo") {
         guard let f = addFolder, !adding.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         // A typed task defaults to Todo (committed); adding under Backlog parks it with status:backlog.
@@ -613,24 +629,37 @@ struct TasksSurface: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                if showSpec { specPanel }
-                ForEach(broken, id: \.self) { path in TasksBrokenBanner(path: path).padding(.top, 14) }
-                if scoped.isEmpty {
-                    emptyState.padding(.top, 20)
-                } else if view == .board {
-                    board.padding(.top, 20)
-                } else {
-                    list.padding(.top, 20)
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    if showSpec { specPanel }
+                    ForEach(broken, id: \.self) { path in TasksBrokenBanner(path: path).padding(.top, 14) }
+                    if scoped.isEmpty {
+                        emptyState.padding(.top, 20)
+                    } else if view == .board {
+                        board.padding(.top, 20)
+                    } else {
+                        list.padding(.top, 20)
+                    }
+                    SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · drag moves it (rewrites status:) · ✦ specs a dump into cards, bundles & blockers · still plain text, still yours")
                 }
-                SurfaceFoot(text: "tasks is the one lens on tasks.md · a card is a line in a file · drag moves it (rewrites status:) · ✦ specs a dump into cards, bundles & blockers · still plain text, still yours")
+                .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 48)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Tap a card → its detail panel floats over the board (backdrop tap / ✕ / esc closes).
+            if let t = detailTask {
+                TaskDetailView(task: t,
+                               onClose: { detailTask = nil },
+                               onToggleDone: { detailToggleDone(t) },
+                               onSetStatus: { detailSetStatus(t, to: $0) },
+                               onOpenWrapp: { detailLaunch(t) })
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.14), value: detailTask?.id)
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
     }
 
     private var header: some View {
@@ -730,7 +759,7 @@ struct TasksSurface: View {
                         onToggle: toggleTask,
                         onSubmitAdd: { submitAdd(status: col.id) },
                         onDropTask: { refIdx in moveTask(refIdx: refIdx, to: col.id) },
-                        onNavigate: onNavigate)
+                        onOpen: { detailTask = $0 })
                     .frame(width: 216, alignment: .top)
                 }
                 DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
@@ -752,11 +781,149 @@ struct TasksSurface: View {
                 TaskListRow(item: it, dot: it.checkedNow ? .lime : .inkDim,
                             checked: it.checkedNow,
                             onToggle: { toggleTask(it) },
-                            onNavigate: onNavigate)
+                            onOpen: { detailTask = $0 })
             }
             if addFolder != nil {
                 TaskAddInline(text: $adding, placeholder: "Add a task — appends to tasks.md", onSubmit: { submitAdd() })
                     .padding(.top, 10)
+            }
+        }
+    }
+}
+
+// ── the TASK DETAIL panel — what a card opens on tap (a PM board opens the task, it doesn't launch an app).
+//    Title · status · project/epic/due/priority · blocked-by · the full detail + subtasks · and the ACTIONS
+//    that used to be a bare tap: move status, mark done, and (only if @tagged) the deliberate "Open in <wrapp>".
+private struct TaskDetailView: View {
+    let task: TaskItem
+    let onClose: () -> Void
+    let onToggleDone: () -> Void
+    let onSetStatus: (String) -> Void
+    let onOpenWrapp: () -> Void
+
+    private var status: (id: String, name: String, dot: Color)? { KANBAN.first { $0.id == task.kanban } }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea().contentShape(Rectangle()).onTapGesture(perform: onClose)
+            panel
+        }
+        .onExitCommand(perform: onClose)                                     // esc closes
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                if let s = status {
+                    Circle().fill(s.dot).frame(width: 8, height: 8)
+                    Text(s.name.uppercased()).font(.splMono(10)).tracking(1.2).foregroundColor(.inkDim)
+                } else {
+                    Text(task.checkedNow ? "DONE" : "TASK").font(.splMono(10)).tracking(1.2).foregroundColor(.inkDim)
+                }
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundColor(.inkDim)
+                        .frame(width: 26, height: 26).background(Circle().fill(Color.raised))
+                        .overlay(Circle().stroke(Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
+            }
+            Text(task.title).font(.brico(19, .bold)).foregroundColor(task.checkedNow ? .inkDim : .ink)
+                .strikethrough(task.checkedNow, color: .inkFaint)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 12)
+            metaChips.padding(.top, 12)
+            if let w = task.wait {
+                HStack(alignment: .top, spacing: 7) {
+                    Text("⊘").font(.splMono(11)).foregroundColor(.danger)
+                    Text(w).font(.hanken(12)).foregroundColor(sbAmber).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.danger.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.danger.opacity(0.3), lineWidth: 1))
+                .padding(.top, 12)
+            }
+            detailBody.padding(.top, 14)
+            Rectangle().fill(Color.edge).frame(height: 1).padding(.vertical, 14)
+            Text("MOVE TO").font(.splMono(9)).tracking(1.2).foregroundColor(.inkFaint)
+            statusRow.padding(.top, 8)
+            HStack(spacing: 10) {
+                Button(action: onToggleDone) {
+                    HStack(spacing: 6) {
+                        Image(systemName: task.checkedNow ? "arrow.uturn.left" : "checkmark").font(.system(size: 11, weight: .bold))
+                        Text(task.checkedNow ? "Mark not done" : "Mark done").font(.hanken(12.5, .semibold))
+                    }.foregroundColor(task.checkedNow ? .inkDim : .page)
+                     .padding(.horizontal, 12).padding(.vertical, 8)
+                     .background(Capsule().fill(task.checkedNow ? Color.raised : Color.lime))
+                     .overlay(Capsule().stroke(task.checkedNow ? Color.edge : Color.clear, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                if task.opensApp {
+                    Button(action: onOpenWrapp) {
+                        HStack(spacing: 6) {
+                            Text("Open in \(task.appName)").font(.hanken(12.5, .semibold))
+                            Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .bold))
+                        }.foregroundColor(.lime).padding(.horizontal, 12).padding(.vertical, 8)
+                         .background(Capsule().fill(Color.lime.opacity(0.12)))
+                         .overlay(Capsule().stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                    }.buttonStyle(.plain).help("Launch the \(task.appName) wrapp on this task")
+                }
+            }.padding(.top, 16)
+        }
+        .padding(22)
+        .frame(width: 460)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 14)
+    }
+
+    private var metaChips: some View {
+        FlowLayout(spacing: 7) {
+            if let p = task.proj { chip(p, .inkDim, .edge) }
+            if let e = task.epic { chip("◇ " + e, .indigo, Color.indigo.opacity(0.4)) }
+            if let d = task.due { chip((task.over ? "overdue · " : "due ") + d, task.over ? sbAmber : .inkDim, task.over ? sbAmber.opacity(0.5) : .edge) }
+            if let pr = task.prio, pr != "low" { chip((pr == "high" ? "● " : "○ ") + pr, pr == "high" ? .danger : sbAmber, .edge) }
+        }
+    }
+    private func chip(_ t: String, _ fg: Color, _ stroke: Color) -> some View {
+        Text(t).font(.splMono(10)).foregroundColor(fg)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .overlay(Capsule().stroke(stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder private var detailBody: some View {
+        if task.detail.isEmpty {
+            Text("No details on this task yet.").font(.hanken(12.5)).foregroundColor(.inkFaint)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(task.detail) { d in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(d.sub ? (d.done ? "☑" : "☐") : "·").font(.splMono(11))
+                                .foregroundColor(d.sub && d.done ? .lime : .inkFaint)
+                            Text(d.text).font(.hanken(12.5)).foregroundColor(.inkSec)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }.frame(maxHeight: 220)
+        }
+    }
+
+    private var statusRow: some View {
+        HStack(spacing: 6) {
+            ForEach(KANBAN, id: \.id) { s in
+                let on = s.id == task.kanban
+                Button(action: { if !on { onSetStatus(s.id) } }) {
+                    HStack(spacing: 5) {
+                        Circle().fill(s.dot).frame(width: 6, height: 6)
+                        Text(s.name).font(.hanken(11, on ? .semibold : .medium)).foregroundColor(on ? .ink : .inkDim)
+                    }
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(Capsule().fill(on ? Color.raised : Color.clear))
+                    .overlay(Capsule().stroke(on ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
+                }.buttonStyle(.plain)
             }
         }
     }
@@ -814,7 +981,7 @@ private struct TaskColumnView: View {
     let onToggle: (TaskItem) -> Void
     let onSubmitAdd: () -> Void
     let onDropTask: (Int) -> Void
-    let onNavigate: (Surface) -> Void
+    let onOpen: (TaskItem) -> Void
     @State private var headHover = false
     @State private var dropTarget = false
 
@@ -839,7 +1006,7 @@ private struct TaskColumnView: View {
 
             ForEach(column.tasks) { t in
                 TaskCardView(task: t, checked: t.checkedNow,
-                             onToggle: { onToggle(t) }, onNavigate: onNavigate)
+                             onToggle: { onToggle(t) }, onOpen: onOpen)
                     .draggable(String(t.refIdx))
             }
 
@@ -889,7 +1056,7 @@ private struct TaskCardView: View {
     let task: TaskItem
     let checked: Bool
     let onToggle: () -> Void
-    let onNavigate: (Surface) -> Void
+    let onOpen: (TaskItem) -> Void          // tap the card → open the task DETAIL panel (never launch a wrapp)
     @State private var hover = false
 
     @State private var expanded = false
@@ -945,16 +1112,7 @@ private struct TaskCardView: View {
         }
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture { open() }                                            // opens wrapp, or Bank
-    }
-
-    private func open() {
-        // @tagged task → open that wrapp AT this task; untagged → the vault. Falls back to in-OS
-        // navigation under the snapshot harness (no live launcher).
-        OSLaunch.launchOr(task.opensApp ? task.appName : nil,
-                          .init(artifact: task.title, kind: "task", project: task.proj)) {
-            onNavigate(task.opensApp ? .apps : .bank)
-        }
+        .onTapGesture { onOpen(task) }                                       // → task detail panel (launch is an explicit button there)
     }
 }
 
@@ -1043,7 +1201,7 @@ private struct TaskListRow: View {
     let dot: Color
     let checked: Bool
     let onToggle: () -> Void
-    let onNavigate: (Surface) -> Void
+    let onOpen: (TaskItem) -> Void
     @State private var hover = false
 
     var body: some View {
@@ -1062,12 +1220,7 @@ private struct TaskListRow: View {
         .overlay(Rectangle().fill(Color.edgeSoft).frame(height: 1), alignment: .bottom)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture {
-            OSLaunch.launchOr(item.opensApp ? item.appName : nil,
-                              .init(artifact: item.title, kind: "task", project: item.proj)) {
-                onNavigate(item.opensApp ? .apps : .bank)
-            }
-        }
+        .onTapGesture { onOpen(item) }                                       // → task detail panel
     }
 }
 
@@ -1180,6 +1333,7 @@ struct CalendarSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
     }
 
     private var header: some View {
@@ -1662,6 +1816,7 @@ struct BankSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
         .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $renameText)
             Button("Rename") {

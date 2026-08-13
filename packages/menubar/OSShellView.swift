@@ -15,6 +15,7 @@
 
 import AppKit
 import SwiftUI
+import Combine
 import CoreServices   // FSEvents — the no-AI liveness watcher (see OSPulse)
 
 // ---- tokens this surface adds (the rest come from RelayMenuBar.swift's Color/Font extensions) ----
@@ -613,7 +614,10 @@ struct OSShellView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .id(pulse.tick)   // #4 liveness — a watched file changed → re-init the open surface (re-reads)
+                // #4 liveness: each surface re-reads on the pulse via `.onReceive(OSPulse.shared.$tick)`
+                // (see each Surface). We do NOT `.id(pulse.tick)` here — that re-IDENTIFIED the whole
+                // surface on every watched-file change, tearing down the ScrollView (scroll jumped to top)
+                // and any open panel/state. Data refreshes; view identity — and scroll position — persist.
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.page)
@@ -936,6 +940,7 @@ struct HomeDetail: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
+        .onReceive(OSPulse.shared.$tick) { _ in load() }
     }
 }
 
@@ -1346,7 +1351,16 @@ final class OSShellWindowController: NSObject, NSWindowDelegate {
             // already open → swap to the requested surface (spotlight "go to")
             window?.contentView = NSHostingView(rootView: OSShellView(initial: initial))
         }
+        // The app is LSUIElement (menu-bar accessory), so a bare NSWindow has no Dock presence and won't
+        // hold focus — it reads as a floating OVERLAY. Promote to .regular while the OS window is open so it
+        // behaves like a real app window (Dock icon, ⌘-Tab, stays put); we revert to .accessory on close.
+        NSApp.setActivationPolicy(.regular)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // OS window closed → back to menu-bar-only (accessory), so we don't leave a stray Dock icon behind.
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 }
