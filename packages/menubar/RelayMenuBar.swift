@@ -3318,6 +3318,9 @@ struct SBButton: View {
     var icon: String? = nil
     var label: String? = nil
     var style: SBButtonStyle = .ghost
+    var kbd: String? = nil          // optional shortcut caption (e.g. "⌥→") shown as a dim trailing chip
+    var disabled: Bool = false
+    var fullWidth: Bool = false     // expand to fill its row (action rows) instead of hugging its label
     let action: () -> Void
     @State private var hover = false
     private var fill: Color { switch style {
@@ -3337,14 +3340,18 @@ struct SBButton: View {
             HStack(spacing: 5) {
                 if let i = icon { Image(systemName: i).font(.system(size: 10, weight: .semibold)) }
                 if let l = label { Text(l).font(.label).lineLimit(1).fixedSize() }
+                if let k = kbd { Text(k).font(.splMono(8.5)).foregroundColor(ink.opacity(0.7)).lineLimit(1).fixedSize() }
             }
-            .fixedSize() // never let a row compress a control into wrapped/truncated text
+            .fixedSize(horizontal: !fullWidth, vertical: true) // hug the label — unless it's a full-width row control
             .foregroundColor(ink)
+            .frame(maxWidth: fullWidth ? .infinity : nil)
             .padding(.horizontal, label == nil ? 7 : 10).padding(.vertical, 6).frame(minHeight: 28)
             .background(RoundedRectangle(cornerRadius: SBr.xs).fill(fill))
             .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(stroke, lineWidth: 1))
+            .opacity(disabled ? 0.55 : 1)
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
         .focusable(false) // click-driven popover — the OS focus ring is noise here
         .onHover { hover = $0 }
     }
@@ -3602,6 +3609,9 @@ let feedbackNotchDrop: CGFloat = 54
 // but with a live TextField (needs a key window — hosted in a LauncherPanel, not a NotchPanel).
 struct FeedbackNoteDrop: View {
     @Binding var note: String
+    var title: String = "In your own words"   // neutral by default — ⌥↓ is a general note, not always an error
+    var icon: String = "text.bubble.fill"
+    var danger: Bool = false                   // true only when the current step actually failed
     var shotThumb: NSImage?          // the fn-drag grab's chip, nil until grabbed
     var onCommit: () -> Void         // ↵ / Save
     var onCancel: () -> Void         // esc / Discard
@@ -3609,8 +3619,8 @@ struct FeedbackNoteDrop: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.bubble.fill").font(.system(size: 13)).foregroundColor(.danger)
-                Text("What went wrong?").font(.hanken(13, .semibold)).foregroundColor(.ink)
+                Image(systemName: icon).font(.system(size: 13)).foregroundColor(danger ? .danger : .lime)
+                Text(title).font(.hanken(13, .semibold)).foregroundColor(.ink)
                 Spacer(minLength: 0)
                 if let t = shotThumb {
                     Image(nsImage: t).resizable().aspectRatio(contentMode: .fit)
@@ -5662,9 +5672,11 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor private func rebuildFeedbackPanel(_ screen: NSScreen) {
+        let fp = CursorGuide.shared.feedbackPrompt
         let view = FeedbackNoteDrop(
             note: Binding(get: { [weak self] in self?.feedbackNote ?? "" },
                           set: { [weak self] in self?.feedbackNote = $0 }),
+            title: fp.title, icon: fp.icon, danger: fp.danger,
             shotThumb: feedbackShotThumb,
             onCommit: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: false) } },
             onCancel: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: true) } })

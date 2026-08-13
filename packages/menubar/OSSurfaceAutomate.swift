@@ -24,53 +24,17 @@ private let sbInkOnLime  = Color(red: 0.043, green: 0.047, blue: 0.063) // #0b0c
 // MARK: - Shared little controls (reused across the AUTOMATE surfaces)
 // =====================================================================================================
 
+// This surface's semantic button kinds. The STYLE lives in the ONE canonical SBButton (RelayMenuBar.swift)
+// — SBActButton is just a thin, source-compatible adapter that maps kind → SBButtonStyle, so these
+// buttons can never drift from the rest of the app. Change the look in SBButton and every surface follows.
 private enum SBBtnKind { case pri, warn, plain }
-
-/// The standard row-action button (Run / Pause / Edit / Revoke …) — lime "pri", danger "warn", or outline.
 private struct SBActButton: View {
     let label: String
     var kind: SBBtnKind = .plain
     var disabled: Bool = false
     var onTap: () -> Void
-    @State private var hover = false
-
-    private var fill: Color {
-        switch kind {
-        case .pri:   return Color.lime.opacity(0.12)
-        case .warn:  return Color.danger.opacity(0.12)
-        case .plain: return Color.raised
-        }
-    }
-    private var stroke: Color {
-        switch kind {
-        case .pri:   return Color.lime.opacity(hover ? 0.6 : 0.4)
-        case .warn:  return Color.danger.opacity(hover ? 0.6 : 0.4)
-        case .plain: return hover ? Color.inkFaint : Color.edge
-        }
-    }
-    private var fg: Color {
-        switch kind {
-        case .pri:   return .lime
-        case .warn:  return .danger
-        case .plain: return hover ? .ink : .inkSec
-        }
-    }
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(label)
-                .font(.hanken(12, kind == .plain ? .regular : .medium))
-                .foregroundColor(fg)
-                .padding(.horizontal, 12).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8).fill(fill))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(stroke, lineWidth: 1))
-                .opacity(disabled ? 0.6 : (hover ? 0.92 : 1))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .onHover { hover = $0 }
-    }
+    private var style: SBButtonStyle { switch kind { case .pri: return .primary; case .warn: return .danger; case .plain: return .ghost } }
+    var body: some View { SBButton(label: label, style: style, disabled: disabled, action: onTap) }
 }
 
 /// A per-surface segmented control (Today/7d/30d, filter tabs) — one live @State selection upstream.
