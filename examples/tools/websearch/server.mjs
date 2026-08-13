@@ -77,7 +77,23 @@ async function wikipedia(q, n) {
 }
 
 function hostOf(u) { try { return new URL(u).host.replace(/^www\./, ""); } catch { return ""; } }
-function stripTags(s) { return String(s || "").replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim(); }
+// Decode the HTML entities Wikipedia/DDG snippets carry (&#039; &quot; &amp; &lt; &gt; &nbsp; + numeric).
+function decodeEntities(s) {
+  return String(s || "")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+function stripTags(s) { return decodeEntities(String(s || "").replace(/<[^>]+>/g, "")).trim(); }
+// Strip the imperative "search" command words the launcher passes through, so the real query is what's
+// searched (e.g. "search the web for apple vision pro" → "apple vision pro"). Keep questions like "what is X".
+function cleanQuery(q) {
+  return String(q || "").trim()
+    .replace(/^(please\s+)?(search (the |your )?(web|internet|online|net)( for)?|search for|look ?up|google|find( me)?|get( me)?|show me)\s+/i, "")
+    .replace(/^for\s+/i, "")
+    .trim();
+}
 function firstSentence(s) { const t = String(s || "").trim(); const i = t.indexOf(" - "); return i > 0 ? t.slice(0, i) : (t.length > 80 ? t.slice(0, 80) + "…" : t); }
 function dedupe(items) {
   const seen = new Set(), out = [];
@@ -86,7 +102,7 @@ function dedupe(items) {
 }
 
 async function webSearch({ query, limit }) {
-  const q = String(query || "").trim();
+  const q = cleanQuery(query);   // drop "search the web for …" so the real terms are searched
   const n = Math.min(Math.max(Number(limit) || 8, 1), 20);
   if (!q) return envelope("Search the web", "Type what you want to find.", []);
   // Run both in parallel; DDG's instant answer floats to the top, Wikipedia fills the breadth.
