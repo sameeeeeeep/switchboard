@@ -77,8 +77,8 @@ struct GuideStep {
 }
 
 // Where the presence/guide card sits. notch = fixed top-center + CLICKABLE; dock = fixed bottom (keyboard);
-// cursor = rides the pointer (opt-in). See docs/PRESENCE.md §2.
-enum GuidePlacement: String { case notch, dock, cursor }
+// cursor = rides the pointer (opt-in); free = dropped ANYWHERE by dragging the card (remembered). See docs/PRESENCE.md §2.
+enum GuidePlacement: String { case notch, dock, cursor, free }
 
 // A locally-decidable completion condition. Either a boolean combinator (any/all) or a leaf that the
 // CursorGuide watcher evaluates against a fresh AmbientSignal (+ bounded AX / local Vision OCR). A
@@ -218,8 +218,47 @@ final class GuideOverlayModel: ObservableObject {
     // Where the card sits in .cursor placement — a SNAPSHOT of the pointer (overlay top-left pts) taken
     // when ⌥; cycles into cursor mode, so the card appears where you're working and stays put (clickable).
     @Published var cursorAnchor: CGPoint = .zero
+    // Free placement: the card's top-left in overlay top-left pts, set by DRAGGING the card ANYWHERE.
+    // Persisted (relay.guide.free.*) so a dragged position is REMEMBERED across steps AND across runs —
+    // it stays where you dropped it until you move it back (⌥/ ⌥; forget the saved spot).
+    @Published var freeAnchor: CGPoint = CGPoint(
+        x: UserDefaults.standard.double(forKey: "relay.guide.free.x"),
+        y: UserDefaults.standard.double(forKey: "relay.guide.free.y"))
+    var freeRemembered = UserDefaults.standard.bool(forKey: "relay.guide.free.set")  // a saved free spot exists
+    var isDraggingCard = false        // a drag is in flight → force the overlay clickable so the gesture never drops
+    // User-chosen card WIDTH (drag the resize grip). 0 = default. Persisted + clamped [minCardW, screen−48]
+    // so text always has room to wrap and never clips. Height stays content-driven with a min floor.
+    @Published var userCardW: CGFloat = CGFloat(UserDefaults.standard.double(forKey: "relay.guide.cardW"))
+    var isResizingCard = false        // a width-resize is in flight → keep the overlay clickable
     // Spoken voiceover on/off — persisted so it's a durable preference; toggled live with fn m.
     @Published var muted: Bool = UserDefaults.standard.bool(forKey: "relay.guide.muted")
+
+    // Grab the card → switch to free placement and pin it (don't re-derive per step). The view sets
+    // freeAnchor from the drag translation; passthrough stays clickable via isDraggingCard.
+    func beginCardDrag() { placement = .free; placementPinned = true; isDraggingCard = true }
+    // Release → persist the dropped spot so it's remembered next run.
+    func endCardDrag() {
+        isDraggingCard = false; freeRemembered = true
+        let d = UserDefaults.standard
+        d.set(Double(freeAnchor.x), forKey: "relay.guide.free.x")
+        d.set(Double(freeAnchor.y), forKey: "relay.guide.free.y")
+        d.set(true, forKey: "relay.guide.free.set")
+    }
+    // Moving the card via the keyboard (⌥/ ⌥;) forgets the saved free spot so it won't snap back.
+    func forgetFree() { freeRemembered = false; UserDefaults.standard.set(false, forKey: "relay.guide.free.set") }
+    // Dropped in the notch zone → re-dock to the notch (don't persist a free spot). The affordance:
+    // drag the card home and it snaps back where it belongs.
+    func snapToNotch() { isDraggingCard = false; placement = .notch; forgetFree() }
+
+    static let minCardW: CGFloat = 320   // never let the card get narrow enough to break text
+    static let defCardW: CGFloat = 600
+    // Set the width live while dragging the resize grip (clamped to sane bounds; screen clamp is in the view).
+    func setCardWidth(_ w: CGFloat) { isResizingCard = true; userCardW = max(GuideOverlayModel.minCardW, w) }
+    // Release the grip → persist the chosen width so it's remembered next run.
+    func endCardResize() {
+        isResizingCard = false
+        UserDefaults.standard.set(Double(userCardW), forKey: "relay.guide.cardW")
+    }
 }
 
 // Reports the guide card's rendered frame (SwiftUI top-left coords) up to the overlay, so the hosting
@@ -238,12 +277,14 @@ struct GuideCardFrameKey: PreferenceKey {
 struct GuideCaptionView: View {
     @ObservedObject var m: GuideOverlayModel
     @State private var ringPulse = false
-    // Wide enough for 3 option cards + fully-wrapped label/detail to breathe, but always clamped under the
-    // screen width (24pt margin each side) so it never runs off-screen or past the notch.
+    @State private var dragOrigin: CGPoint? = nil   // card's top-left captured at drag-start (nil = not dragging)
+    // Responsive width: the user's chosen width (resize grip) or the 600 default, clamped to a MIN (so text
+    // never crushes/breaks) and to the screen width (24pt margin each side, never past the notch).
     private var cardW: CGFloat {
-        let target: CGFloat = 600
-        guard m.screenSize.width > 0 else { return target }
-        return min(target, m.screenSize.width - 48)
+        let target = m.userCardW > 0 ? m.userCardW : GuideOverlayModel.defCardW
+        guard m.screenSize.width > 0 else { return max(target, GuideOverlayModel.minCardW) }
+        let maxW = max(GuideOverlayModel.minCardW, m.screenSize.width - 48)
+        return min(max(target, GuideOverlayModel.minCardW), maxW)
     }
 
     var body: some View {
@@ -301,6 +342,10 @@ struct GuideCaptionView: View {
             // others → the click-tracking follows it here too.
             VStack(spacing: 0) { HStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }; Spacer(minLength: 0) }
                 .offset(cursorOffset)
+        case .free:
+            // Dropped anywhere by dragging the card — sits at its remembered anchor, stays put + clickable.
+            VStack(spacing: 0) { HStack(spacing: 0) { cardOrPill; Spacer(minLength: 0) }; Spacer(minLength: 0) }
+                .offset(freeOffset)
         case .dock:
             VStack(spacing: 0) {
                 if m.dockTop { cardOrPill; Spacer(minLength: 0) } else { Spacer(minLength: 0); cardOrPill }
@@ -317,14 +362,85 @@ struct GuideCaptionView: View {
         return CGSize(width: ax, height: ay)
     }
 
+    // The card's top-left offset in .free placement: the dragged anchor, clamped so it can't leave the
+    // screen (keeps the full width on, and at least the header band vertically reachable).
+    private var freeOffset: CGSize {
+        let cw = cardW
+        let ax = min(max(m.freeAnchor.x, 8), max(8, m.screenSize.width - cw - 8))
+        let ay = min(max(m.freeAnchor.y, 8), max(8, m.screenSize.height - 120))
+        return CGSize(width: ax, height: ay)
+    }
+
     @ViewBuilder private var cardOrPill: some View {
         Group {
-            if m.collapsed { collapsedPill } else { card.frame(width: cardW, alignment: .leading) }
+            if m.collapsed {
+                collapsedPill
+            } else {
+                card.frame(width: cardW, alignment: .leading)
+                    .frame(minHeight: 60, alignment: .topLeading)   // never a sliver — text always has room
+                    // Native-style EDGE resize: invisible strips on BOTH side edges (cursor → ↔), drag either
+                    // to resize — like a real window (the opposite edge stays put). Only when detached from the
+                    // notch (the notch shape clips edges). Height auto-fits content, so no top/bottom handles.
+                    .overlay(alignment: .trailing) { if m.placement != .notch { edgeResize(leading: false) } }
+                    .overlay(alignment: .leading)  { if m.placement != .notch { edgeResize(leading: true) } }
+            }
         }
         // Publish the card's actual on-screen rect so the hosting view knows exactly where clicks land.
         .background(GeometryReader { geo in
             Color.clear.preference(key: GuideCardFrameKey.self, value: geo.frame(in: .global))
         })
+        .gesture(cardDrag)
+    }
+
+    // Native-style edge resize: an invisible ~8pt strip down the card's right edge. Hovering it shows the
+    // ↔ resize cursor; dragging it left/right resizes the card width — exactly like dragging a window edge.
+    // Bounded by the responsive clamp (min so text never breaks, max = screen) and remembered next run.
+    // highPriority so the edge-drag wins over the card-move drag when you grab the edge.
+    @State private var resizeStartW: CGFloat? = nil
+    @State private var resizeStartAnchorX: CGFloat? = nil
+    private func edgeResize(leading: Bool) -> some View {
+        Color.clear
+            .frame(width: 8)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { v in
+                        if resizeStartW == nil { resizeStartW = cardW; resizeStartAnchorX = m.freeAnchor.x }
+                        let startW = resizeStartW ?? cardW
+                        // Right edge grows with a rightward drag; left edge grows with a leftward drag.
+                        m.setCardWidth(leading ? startW - v.translation.width : startW + v.translation.width)
+                        // Left-edge resize keeps the RIGHT edge fixed: shift the free anchor by the actual width change.
+                        if leading, m.placement == .free {
+                            m.freeAnchor.x = (resizeStartAnchorX ?? m.freeAnchor.x) + (startW - cardW)
+                        }
+                    }
+                    .onEnded { _ in resizeStartW = nil; resizeStartAnchorX = nil; m.endCardResize() }
+            )
+    }
+
+    // Pick the card up and drop it ANYWHERE — a real free-drag. Grabbing it switches to .free placement
+    // and moves the card by the drag translation from wherever it currently sits (no jump: the base is the
+    // card's live top-left). On release the spot is pinned + persisted so it's remembered next run.
+    // minimumDistance keeps taps on the card's buttons/option cards working — a click is not a drag.
+    private var cardDrag: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { v in
+                if dragOrigin == nil { dragOrigin = m.cardFrame.origin; m.beginCardDrag() }
+                let base = dragOrigin ?? .zero
+                m.freeAnchor = CGPoint(x: base.x + v.translation.width, y: base.y + v.translation.height)
+            }
+            .onEnded { _ in
+                dragOrigin = nil
+                // Dragged home → snap back into the notch. If the card is dropped in the notch zone
+                // (top band, roughly centred), re-dock to .notch instead of leaving it floating there.
+                let cx = m.freeAnchor.x + cardW / 2
+                let inNotchZone = m.freeAnchor.y < 72 && abs(cx - m.screenSize.width / 2) < 220
+                if inNotchZone { m.snapToNotch() } else { m.endCardDrag() }
+            }
     }
 
     // Collapsed: a small docked pill — a live pulse, the step count, and how to bring the card back.
@@ -366,7 +482,7 @@ struct GuideCaptionView: View {
         return a.map { (combo: $0.0, label: $0.1, primary: $0.2) }
     }
     private var metaActions: [(combo: String, label: String, primary: Bool)] {
-        [("⌥↓", "Feedback", false),                         // screenshot + note, any mode
+        [("⌥↓", "Note", false),                             // say it in your own words (or a screenshot) — any mode
          ("⌥M", m.muted ? "Unmute" : "Mute", false),
          ("esc", "Close", false)]
         .map { (combo: $0.0, label: $0.1, primary: $0.2) }
@@ -389,7 +505,7 @@ struct GuideCaptionView: View {
         case "Next", "Pass", "Approve": CursorGuide.shared.tapPrimary()
         case "Fail":                     CursorGuide.shared.tapFail()
         case "Back":                     CursorGuide.shared.tapBack()
-        case "Feedback":                 CursorGuide.shared.tapFeedback()
+        case "Note":                     CursorGuide.shared.tapFeedback()
         case "Mute", "Unmute":           CursorGuide.shared.tapMute()
         case "Close":                    CursorGuide.shared.tapClose()
         default: break   // "try" (⌥1·2·3) has no single action — the option cards handle taps
@@ -575,6 +691,7 @@ struct GuideCaptionView: View {
             // ── zone 4: media (image / gif) ──
             if let media = m.media {
                 GuideMediaView(media: media, reduceMotion: m.reduceMotion, compact: false)
+                    .allowsHitTesting(false)   // display-only — never let the image swallow the card's drag/clicks
             }
             // ── zone 5: options — A/B/C variants to compare + approve ──
             if !m.options.isEmpty { optionsRow }
@@ -600,14 +717,14 @@ struct GuideCaptionView: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
                     ForEach(Array(primaryActions.enumerated()), id: \.offset) { _, act in
-                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary)
-                            .contentShape(Rectangle()).onTapGesture { chipTap(act.label) }
+                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary,
+                                        onTap: { chipTap(act.label) })
                     }
                 }
                 HStack(spacing: 5) {
                     ForEach(Array(metaActions.enumerated()), id: \.offset) { _, act in
-                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary)
-                            .contentShape(Rectangle()).onTapGesture { chipTap(act.label) }
+                        GuideActionChip(combo: act.combo, label: act.label, primary: act.primary,
+                                        onTap: { chipTap(act.label) })
                     }
                 }
             }
@@ -725,29 +842,19 @@ struct KeyChip: View {
 
 // A tappable action button: the LABEL on top, its keyboard shortcut as a small mono caption UNDERNEATH.
 // Flat editorial look — hairline border, lime fill for the primary (Approve/Next/Pass), no gradients/emoji.
+// The guide card's action buttons now render through the ONE canonical SBButton (RelayMenuBar.swift) —
+// primary = solid lime CTA, Fail = danger, the rest = ghost, matching every other surface. The tap is a
+// no-op here: the card routes clicks through chipTap + the keyboard handler (a parent .onTapGesture on
+// the row), so this only needs the button's LOOK. Keeps this adapter's combo/label/primary API so the
+// call sites are untouched; the STYLE is now shared + single-source.
 struct GuideActionChip: View {
     let combo: String   // the shortcut caption, e.g. "⌥→", "esc"
     let label: String   // e.g. "Approve", "Close"
     let primary: Bool
+    var onTap: () -> Void = {}
+    private var style: SBButtonStyle { primary ? .primary : (label == "Fail" ? .danger : .ghost) }
     var body: some View {
-        VStack(spacing: 3) {
-            Text(label)
-                .font(.hanken(11, .semibold))
-                .foregroundColor(primary ? .page : .ink)
-                .lineLimit(1).fixedSize()
-            Text(combo)
-                .font(.splMono(8.5))
-                .foregroundColor(primary ? .page.opacity(0.85) : .inkFaint)
-                .lineLimit(1).fixedSize()
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: SBr.xs)
-                .fill(primary ? Color.lime : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: SBr.xs)
-                    .stroke(primary ? Color.clear : Color.edge, lineWidth: 1))
-        )
+        SBButton(label: label, style: style, kbd: combo, fullWidth: true, action: onTap)
     }
 }
 
@@ -873,6 +980,17 @@ final class CursorGuide {
     // doneWhen watcher samples this to decide when a step is locally "done". nil → AX predicates no-op
     // (manual-only), which is a safe degrade, never a wedge.
     var sampleSignal: (() -> AmbientSignal?)?
+
+    // The header for the ⌥↓ note field. ⌥↓ is a GENERAL "say it in your own words" input — a note or a
+    // freeform answer — NOT always a problem report. Only frame it as an error when the current step was
+    // actually marked failed; every other case is neutral (a positive "pass, but…" note read as an error
+    // was the tell). Read by the note-field UI in RelayMenuBar.
+    var feedbackPrompt: (title: String, icon: String, danger: Bool) {
+        if mode == .test, idx >= 0, idx < results.count, results[idx].verdict == "fail" {
+            return ("What went wrong?", "exclamationmark.bubble.fill", true)
+        }
+        return ("In your own words", "text.bubble.fill", false)
+    }
 
     // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
     // never changes it — it just opens capture.
@@ -1238,6 +1356,7 @@ final class CursorGuide {
         // Honor a manual placement (⌥/ or ⌥;) across steps: only re-derive when the user hasn't moved the card.
         if !model.placementPinned {
             if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
+            else if model.freeRemembered { model.placement = .free }   // a dragged spot is remembered across runs
             else { model.placement = (s.point != nil) ? .dock : .notch }
         }
         applyMousePolicy()   // notch → the card becomes clickable; else pure click-through
@@ -1851,6 +1970,9 @@ final class CursorGuide {
     /// degrades to "card not clickable", not a locked screen. esc/⌥-keys work regardless.
     @MainActor private func updateMousePassthrough() {
         guard let ov = overlay else { return }
+        // While a free-drag OR a width-resize is in flight, force the overlay clickable so the gesture can
+        // never be dropped by the frame lagging the pointer. Ends when the drag/resize clears its flag.
+        if model.isDraggingCard || model.isResizingCard { ov.ignoresMouseEvents = false; return }
         // In .cursor placement the card FOLLOWS the pointer live (offset in cursorOffset so it trails
         // the cursor rather than sitting under it) — driven by these same mouse-move events.
         if model.placement == .cursor, model.visible {
@@ -1960,14 +2082,14 @@ final class CursorGuide {
         case 125: beginFeedback(); return true                                         // ⌥↓ — screenshot + note
         case 46:  toggleMute(); return true                                            // ⌥M — voiceover on/off
         case 47:  model.collapsed.toggle(); return true                               // ⌥. — collapse ↔ expand the card
-        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); model.placementPinned = true; applyMousePolicy(); return true  // ⌥/ — notch ↔ dock
-        case 41:                                                                       // ⌥; — cycle notch → below → cursor
+        case 44:  model.placement = (model.placement == .notch ? .dock : .notch); model.forgetFree(); model.placementPinned = true; applyMousePolicy(); return true  // ⌥/ — notch ↔ dock (also exits free)
+        case 41:                                                                       // ⌥; — cycle notch → below → cursor (from free → notch)
             let nextPl: GuidePlacement = model.placement == .notch ? .dock : (model.placement == .dock ? .cursor : .notch)
             if nextPl == .cursor, let ov = overlay {
                 let ml = NSEvent.mouseLocation                                          // screen bottom-left → overlay top-left
                 model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
             }
-            model.placement = nextPl; model.placementPinned = true; applyMousePolicy(); return true
+            model.placement = nextPl; model.forgetFree(); model.placementPinned = true; applyMousePolicy(); return true
         case 18:  selectOption(0); return true                                        // ⌥1 — preview variant A
         case 19:  selectOption(1); return true                                        // ⌥2 — preview variant B
         case 20:  selectOption(2); return true                                        // ⌥3 — preview variant C
