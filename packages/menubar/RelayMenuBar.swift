@@ -3650,6 +3650,56 @@ final class LauncherPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
+// A notch CREDENTIAL card — a keyed third-party tool needs a secret it doesn't have yet (task 3). Mirrors
+// FeedbackNoteDrop: a SecureField hosted in a key-capable LauncherPanel so it can accept typing. The value
+// is sent straight to the daemon (claude_setToolSecret → stored 0600, injected into the tool's spawn env)
+// and NEVER logged, echoed, or written to disk here — the field is secure and the daemon is the only sink.
+struct ToolCredentialDrop: View {
+    let toolName: String
+    let label: String
+    let hint: String
+    @Binding var value: String
+    var onSave: () -> Void
+    var onCancel: () -> Void
+    @FocusState private var focused: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.lime.opacity(0.14)).frame(width: 30, height: 30)
+                    Image(systemName: "key.fill").font(.system(size: 13)).foregroundColor(.lime)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
+                    Text("\(toolName) · kept local, never leaves your Mac").font(.hanken(10)).foregroundColor(.inkFaint).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            SecureField(hint.isEmpty ? "paste your key" : hint, text: $value)
+                .textFieldStyle(.plain).font(.hanken(12)).foregroundColor(.ink)
+                .focused($focused).onSubmit { onSave() }
+                .padding(.horizontal, 9).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(focused ? Color.lime.opacity(0.5) : Color.edge, lineWidth: 1))
+            HStack(spacing: 10) {
+                Image(systemName: "lock.fill").font(.system(size: 8)).foregroundColor(.inkFaint)
+                Text("stored 0600 in the daemon").font(.splMono(9)).foregroundColor(.inkFaint)
+                Spacer(minLength: 0)
+                Text("esc cancel").font(.splMono(9)).foregroundColor(.inkDim)
+                Text("↵ save").font(.splMono(9)).foregroundColor(.lime)
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)
+        .frame(width: 320)
+        .padding(.horizontal, 14)   // notch ears
+        .background(Color.page)
+        .clipShape(NotchDropShape())
+        .ignoresSafeArea()
+        .onExitCommand(perform: onCancel)
+        .onAppear { focused = true }
+    }
+}
+
 // ── ⌃⌃ region select: draw WHILE you talk ────────────────────────────────────────────────────────
 // When "What God sees → Drag to select" is on, a click-through overlay rides on top DURING listening:
 // DRAG a box → that region · CLICK (no drag) → the whole screen · ESC → cancel. It's click-through
@@ -3873,6 +3923,12 @@ struct ActionConsentDrop: View {
     private var feedbackPrevBtnDown = false
     private var onFeedbackShot: ((String) -> Void)?   // completion for a committed grab
     private var feedbackPanel: LauncherPanel?
+    // Third-party tool CREDENTIAL card (task 3): the key-capable panel + the pending retry context.
+    private var credentialPanel: LauncherPanel?
+    private var credentialValue: String = ""
+    private var pendingCredential: PendingCredential?
+    private var lastToolInput: [String: String] = [:]     // the query per tool id, to re-run after a key is set
+    private struct PendingCredential { let l: SBListing; let binding: SBMcpBinding; let tool: String; let input: String?; let env: String; let label: String; let hint: String }
     private var feedbackNote = ""
     private var feedbackShotThumb: NSImage?
     private var feedbackKeyMonitor: Any?
@@ -5958,6 +6014,7 @@ struct ActionConsentDrop: View {
             openLabel: "", result: .working("\(l.name) — a third-party tool, running on your machine…")))
         // The one primary string, sprayed across the arg keys tools commonly use; each reads its own.
         let text = input ?? (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        lastToolInput[l.id] = text                      // remembered so a credential-set retry re-runs the same query
         let args: [String: Any] = ["input": text, "query": text, "q": text, "text": text, "prompt": text, "url": text]
         callThirdPartyTool(l, binding, tool: toolName, args: args, token: token, allowConnect: true)
     }
@@ -6035,6 +6092,12 @@ struct ActionConsentDrop: View {
             return
         }
         let flat = RelayController.flattenToolResult(result)
+        // A keyed tool with no key yet signals `needs_credential` (task 3) — raise the credential card
+        // (secure field) instead of rendering a result; on save we store the key + retry this same call.
+        if let need = RelayController.parseNeedsCredential(flat) {
+            showToolCredential(l, binding, tool: tool, input: lastToolInput[l.id], env: need.env, label: need.label, hint: need.hint)
+            return
+        }
         // A tool that speaks the results ENVELOPE (examples/tools/README-envelope.md) renders as result
         // CARDS; `text` is the readable form "Drop into chat" copies. Anything else falls back to text.
         let env = RelayController.parseResultEnvelope(flat)
@@ -6052,6 +6115,79 @@ struct ActionConsentDrop: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in self?.hideGodStatus() }
             })
     }
+    // Parse a `{ _switchboard:"needs_credential", secret:{env,label,hint} }` envelope — a keyed tool
+    // signalling it has no key yet — and return the secret descriptor so the runner raises the card (task 3).
+    private nonisolated static func parseNeedsCredential(_ s: String) -> (env: String, label: String, hint: String)? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.hasPrefix("{"), let data = t.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (obj["_switchboard"] as? String) == "needs_credential",
+              let sec = obj["secret"] as? [String: Any],
+              let env = (sec["env"] as? String), !env.isEmpty else { return nil }
+        return (env, (sec["label"] as? String) ?? env, (sec["hint"] as? String) ?? "")
+    }
+
+    // ── the credential card: raise it, store the key via the daemon, retry the call ──────────────────
+    @MainActor private func showToolCredential(_ l: SBListing, _ binding: SBMcpBinding, tool: String, input: String?, env: String, label: String, hint: String) {
+        hideNotchWidget()
+        guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
+        pendingCredential = PendingCredential(l: l, binding: binding, tool: tool, input: input, env: env, label: label, hint: hint)
+        credentialValue = ""
+        let view = ToolCredentialDrop(
+            toolName: l.name, label: label, hint: hint,
+            value: Binding(get: { [weak self] in self?.credentialValue ?? "" },
+                           set: { [weak self] in self?.credentialValue = $0 }),
+            onSave: { [weak self] in Task { @MainActor in self?.saveToolCredential() } },
+            onCancel: { [weak self] in Task { @MainActor in self?.hideToolCredential() } })
+        let host = NoInsetHostingView(rootView: view)
+        if credentialPanel == nil {
+            let p = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 150),
+                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false; p.level = .popUpMenu
+            p.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+            credentialPanel = p
+        }
+        credentialPanel!.contentView = host
+        let size = host.fittingSize
+        credentialPanel!.setContentSize(size)
+        credentialPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - 8))
+        credentialPanel!.makeKeyAndOrderFront(nil)
+        orb?.orderOut(nil)
+        presentFromNotch(credentialPanel!)
+    }
+
+    @MainActor private func saveToolCredential() {
+        guard let pc = pendingCredential else { return }
+        let value = credentialValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else { hideToolCredential(); return }
+        let bridge = GodDaemonBridge(token: token)
+        // The value goes STRAIGHT to the daemon (stored 0600, injected into the tool's spawn env) — never
+        // logged or kept here. On ok the daemon has already reconnected the server WITH the key, so the
+        // retry authenticates.
+        bridge.request(origin: "tool://\(pc.l.id)", method: "claude_setToolSecret",
+                       params: ["server": pc.binding.server, "env": pc.env, "value": value]) { [weak self] _, err in
+            Task { @MainActor in
+                bridge.close()
+                self?.credentialValue = ""
+                self?.hideToolCredential()
+                if err == nil {
+                    self?.driveThirdPartyTool(pc.l, pc.binding, command: pc.tool, input: pc.input)
+                } else {
+                    self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(pc.l.name.uppercased())", title: "Couldn’t save the key",
+                        openLabel: "Close", result: .text("The credential wasn’t saved — nothing ran.")),
+                        onOpen: { [weak self] in self?.hideNotchWidget() })
+                }
+            }
+        }
+    }
+
+    @MainActor private func hideToolCredential() {
+        credentialValue = ""
+        pendingCredential = nil
+        if let p = credentialPanel { dismissToNotch(p) }
+    }
+
     // Parse the Switchboard results envelope out of a tool's flattened text content. Returns nil unless it's
     // a `{ _switchboard:"results", ... }` object — so plain-text tools keep their text rendering untouched.
     struct ResultEnvelope { let summary: String; let text: String; let items: [ResultItem] }
