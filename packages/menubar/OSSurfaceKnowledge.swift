@@ -14,6 +14,7 @@
 // and every "open / reopen / scope / used-in" affordance routes through `onNavigate(Surface)`.
 
 import SwiftUI
+import Combine
 
 // The one warm accent these surfaces need that isn't a shared token (per the theme brief).
 private let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
@@ -294,6 +295,7 @@ struct HistorySurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { days = histReceipts() }
+            .onReceive(OSPulse.shared.$tick) { _ in days = histReceipts() }
     }
 
     private var header: some View {
@@ -632,6 +634,7 @@ struct GraphSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { model = graphLive(); if model.byId[selectedId] == nil { selectedId = model.nodes.first?.id ?? "hub" } }
+            .onReceive(OSPulse.shared.$tick) { _ in model = graphLive(); if model.byId[selectedId] == nil { selectedId = model.nodes.first?.id ?? "hub" } }
     }
 
     private var header: some View {
@@ -1022,6 +1025,7 @@ struct DictionarySurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { terms = dictTerms() }
+            .onReceive(OSPulse.shared.$tick) { _ in terms = dictTerms() }
     }
 
     private var header: some View {

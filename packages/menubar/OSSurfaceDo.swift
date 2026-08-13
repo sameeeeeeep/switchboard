@@ -15,6 +15,7 @@
 // redefines any of those — it only ADDS the two surface views and their private models.
 
 import SwiftUI
+import Combine
 
 // =====================================================================================================
 // MARK: - Apps surface — private model + sample catalog (mirrors apps.js SAMPLE)
@@ -155,6 +156,7 @@ struct AppsSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { apps = doApps() }
+            .onReceive(OSPulse.shared.$tick) { _ in apps = doApps() }
     }
 }
 
@@ -445,6 +447,7 @@ struct StoreSurface: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { apps = doApps() }
+            .onReceive(OSPulse.shared.$tick) { _ in apps = doApps() }
     }
 }
 

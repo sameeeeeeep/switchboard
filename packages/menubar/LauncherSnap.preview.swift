@@ -1,7 +1,7 @@
 // NOTE: standalone ImageRenderer snapshot for the ⌥⌥ LAUNCHER's redesigned HOME — NOT in build.sh (own main).
 // Same pattern as SnapshotSuite.preview.swift: a faithful twin of NotchLauncherView's HOME column (tasks-first,
 // notch-panel section grammar) with the tokens copied verbatim, so the agent can eyeball every state without a
-// live app. When the real homeContent/taskRow/homeKicker change, re-sync the copies here. Run:
+// live app. When the real homeContent/taskCard/homeKicker change, re-sync the copies here. Run:
 //
 //   cd packages/menubar
 //   swiftc -parse-as-library LauncherSnap.preview.swift -o /tmp/launchersnap && /tmp/launchersnap
@@ -57,17 +57,21 @@ struct LaunchTask: Identifiable {
 }
 struct MiniProject: Identifiable { let id = UUID(); let name: String; let essence: String; let updated: String; let active: Bool; let hue: Double }
 struct MiniWork: Identifiable { let id = UUID(); let title: String; let app: String; let time: String }
+struct MiniApp: Identifiable { let id = UUID(); let name: String; let glyph: String; let hue: Double }
 
-// ── the HOME drop — a faithful port of NotchLauncherView.body (HOME mode) ──
+// ── the HOME drop — a faithful port of NotchLauncherView.body (HOME mode), REDESIGNED:
+//    full-width ask hero + horizontal card RAILS (tasks · apps · projects) with big visual tiles,
+//    replacing the vertical stack of thin rows. Matches the notch-panel menu's card/rail grammar.
 struct LauncherHomeTwin: View {
     let tasks: [LaunchTask]
     let projects: [MiniProject]
     let work: [MiniWork]
-    @State private var hoveredId: String? = nil
+    let apps: [MiniApp]
 
     var body: some View {
         VStack(alignment: .leading, spacing: SB.s3) {
             header
+            askHero
             intakeBar
             homeContent
             hintLine
@@ -79,6 +83,7 @@ struct LauncherHomeTwin: View {
         .clipShape(NotchDropShape())
     }
 
+    // kicker row: ⌥⌥ · HOME  ················  project chip
     private var header: some View {
         HStack(spacing: SB.s2) {
             (Text("⌥⌥").foregroundColor(.lime) + Text(" · HOME").foregroundColor(.inkFaint))
@@ -90,67 +95,77 @@ struct LauncherHomeTwin: View {
                 Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)).foregroundColor(.inkFaint)
             }.padding(.horizontal, 9).padding(.vertical, 5)
              .background(Capsule().fill(Color.panel)).overlay(Capsule().stroke(Color.edge, lineWidth: 1))
-            searchField
         }
     }
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.system(size: 10, weight: .semibold)).foregroundColor(.inkFaint)
-            Text("Search projects, apps, files — or ask").font(.hanken(11)).foregroundColor(.inkFaint)
+
+    // FULL-WIDTH ask hero — the highlight of the surface (was a thin 250pt field).
+    private var askHero: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(.inkDim)
+            Text("Search projects, apps, files — or ask").font(.hanken(13.5)).foregroundColor(.inkFaint)
             Spacer(minLength: 0)
-            Image(systemName: "mic.fill").font(.system(size: 10, weight: .medium)).foregroundColor(.inkDim)
+            ZStack {
+                Circle().fill(Color.lime.opacity(0.14)).frame(width: 30, height: 30)
+                Image(systemName: "mic.fill").font(.system(size: 12, weight: .medium)).foregroundColor(.lime)
+            }
         }
-        .padding(.horizontal, 11).padding(.vertical, 7)
-        .frame(width: 250, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.panel))
-        .overlay(RoundedRectangle(cornerRadius: SBr.xs).stroke(Color.edge, lineWidth: 1))
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.panel))
+        .overlay(RoundedRectangle(cornerRadius: SBr.sm).stroke(Color.lime.opacity(0.5), lineWidth: 1.5))
     }
+
     private var intakeBar: some View {
         HStack(spacing: SB.s3) {
-            RoundedRectangle(cornerRadius: 8).fill(Color.raised).frame(width: 30, height: 30)
-                .overlay(Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundColor(.inkDim))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Drop a file to start file-first").font(.hanken(12, .semibold)).foregroundColor(.ink)
-                Text("…or just pick an app. A dropped file is handed to whatever app you click.")
-                    .font(.hanken(10.5)).foregroundColor(.inkFaint).lineLimit(1)
-            }
+            RoundedRectangle(cornerRadius: 8).fill(Color.raised).frame(width: 28, height: 28)
+                .overlay(Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundColor(.inkDim))
+            Text("Drop a file to run it through any app").font(.hanken(11.5, .medium)).foregroundColor(.inkDim)
             Spacer(minLength: SB.s2)
         }
-        .padding(.horizontal, SB.s3).padding(.vertical, 10)
+        .padding(.horizontal, SB.s3).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.white.opacity(0.012)))
         .overlay(RoundedRectangle(cornerRadius: SBr.sm)
             .strokeBorder(Color.edge, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
     }
 
+    // ── the rails: TASKS · APPS · PROJECTS · RECENT WORK ──
     private var homeContent: some View {
         let active = projects.first { $0.active } ?? projects.first
-        let others = projects.filter { !($0.active) }.prefix(3)
-        let openTasks = Array(tasks.prefix(4))
-        let empty = openTasks.isEmpty && active == nil && others.isEmpty && work.isEmpty
-        return VStack(alignment: .leading, spacing: SB.s2) {
+        let ordered = [active].compactMap { $0 } + projects.filter { $0.id != active?.id }
+        let openTasks = Array(tasks.prefix(6))
+        let empty = openTasks.isEmpty && ordered.isEmpty && work.isEmpty && apps.isEmpty
+        return VStack(alignment: .leading, spacing: SB.s3) {
             if empty {
                 homeEmptyState
             } else {
                 if !openTasks.isEmpty {
                     homeKicker("TASKS", count: tasks.count, trailing: "board ↗")
-                    ForEach(openTasks) { taskRow($0) }
-                    homeDivider
+                    rail { ForEach(openTasks) { taskCard($0) } }
                 }
-                if let a = active {
-                    homeKicker("JUMP BACK IN", count: nil, trailing: "open home ↗")
-                    projectRow(a)
+                if !apps.isEmpty {
+                    homeKicker("APPS", count: apps.count, trailing: "all ↗")
+                    rail { ForEach(apps) { appTile($0) } }
                 }
-                if !others.isEmpty {
-                    homeKicker("RECENT PROJECTS", count: projects.count, trailing: nil)
-                    ForEach(Array(others)) { projectRow($0) }
+                if !ordered.isEmpty {
+                    homeKicker("PROJECTS", count: projects.count, trailing: "open home ↗")
+                    rail { ForEach(ordered) { projectCard($0) } }
                 }
                 if !work.isEmpty {
                     homeKicker("RECENT WORK", count: nil, trailing: nil)
-                    ForEach(work) { workRow($0) }
+                    VStack(alignment: .leading, spacing: 2) { ForEach(work) { workRow($0) } }
                 }
             }
         }
+    }
+
+    // A horizontal card rail. Cards wider than the drop scroll; the clipped peek signals "there's more →".
+    // NOTE: the LIVE view wraps this HStack in ScrollView(.horizontal) for real scrolling — but ScrollView
+    // content does not render in ImageRenderer, so this snapshot proxy uses a clipped HStack (identical look).
+    @ViewBuilder private func rail<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .top, spacing: SB.s3) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
     }
 
     private var homeEmptyState: some View {
@@ -164,7 +179,6 @@ struct LauncherHomeTwin: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.02)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edgeSoft, lineWidth: 1))
     }
-    private var homeDivider: some View { Rectangle().fill(Color.edge).frame(height: 1).padding(.vertical, 2) }
 
     private func homeKicker(_ t: String, count: Int?, trailing: String?) -> some View {
         HStack(spacing: 6) {
@@ -175,30 +189,39 @@ struct LauncherHomeTwin: View {
             }
             Spacer(minLength: 0)
             if let tr = trailing { Text(tr).font(.hanken(10.5, .medium)).foregroundColor(.lime) }
-        }.padding(.top, 3)
+        }.padding(.top, 1)
     }
 
-    private func taskRow(_ t: LaunchTask) -> some View {
-        HStack(spacing: 10) {
-            Text(taskGlyph(t)).font(.splMono(12)).foregroundColor(taskTint(t)).frame(width: 26)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(t.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
-                if !t.meta.isEmpty {
-                    Text(t.meta).font(.hanken(10.5)).foregroundColor(t.over ? .amber : .inkFaint).lineLimit(1)
+    // ── TASK card — status glyph + pill up top, title (2 lines), meta pinned to the base ──
+    private func taskCard(_ t: LaunchTask) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 0) {
+                Text(taskGlyph(t)).font(.splMono(13)).foregroundColor(taskTint(t))
+                Spacer(minLength: 0)
+                if t.col == "doing" {
+                    Text("DOING").font(.splMono(7)).tracking(0.8).foregroundColor(.lime)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                } else if t.col == "blocked" {
+                    Text("BLOCKED").font(.splMono(7)).tracking(0.8).foregroundColor(.amber)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.amber.opacity(0.35), lineWidth: 1))
+                } else if let p = t.prio, p == "high" {
+                    Circle().fill(Color.amber).frame(width: 5, height: 5)
                 }
             }
-            Spacer(minLength: 6)
-            if t.col == "doing" {
-                Text("DOING").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
-            } else if let p = t.prio, p == "high" {
-                Circle().fill(Color.amber).frame(width: 5, height: 5)
+            Text(t.title).font(.hanken(12.5, .semibold)).foregroundColor(.ink)
+                .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if !t.meta.isEmpty {
+                Text(t.meta).font(.hanken(9.5)).foregroundColor(t.over ? .amber : .inkFaint).lineLimit(1)
             }
         }
-        .padding(.horizontal, 9).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.02)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.col == "doing" ? Color.lime.opacity(0.3) : Color.edgeSoft, lineWidth: 1))
+        .padding(11)
+        .frame(width: 178, height: 112, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.white.opacity(0.02)))
+        .overlay(RoundedRectangle(cornerRadius: SBr.sm)
+            .stroke(t.col == "doing" ? Color.lime.opacity(0.35) : Color.edgeSoft, lineWidth: 1))
     }
     private func taskGlyph(_ t: LaunchTask) -> String {
         switch t.col { case "doing": return "◐"; case "review": return "◑"; case "blocked": return "⊘"; default: return "○" }
@@ -208,28 +231,47 @@ struct LauncherHomeTwin: View {
         switch t.col { case "doing", "review": return .lime; case "blocked": return .amber; default: return .inkDim }
     }
 
-    private func projectRow(_ p: MiniProject) -> some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 7).fill(Color(hue: p.hue, saturation: 0.5, brightness: 0.6))
-                .frame(width: 26, height: 26)
-                .overlay(Text(String(p.name.prefix(1))).font(.hanken(12, .bold)).foregroundColor(.white))
-            Text(p.name).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
-            if p.active {
-                Text("ACTIVE").font(.splMono(7.5)).tracking(0.8).foregroundColor(.lime)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.35), lineWidth: 1))
+    // ── APP tile — the big, visual icon the founder asked for ──
+    private func appTile(_ a: MiniApp) -> some View {
+        VStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 13).fill(Color(hue: a.hue, saturation: 0.55, brightness: 0.78))
+                .frame(width: 54, height: 54)
+                .overlay(Text(a.glyph).font(.hanken(23, .bold)).foregroundColor(.white))
+            Text(a.name).font(.hanken(10)).foregroundColor(.inkDim).lineLimit(1)
+        }
+        .frame(width: 68)
+    }
+
+    // ── PROJECT card — big monogram tile, essence, updated time ──
+    private func projectCard(_ p: MiniProject) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 10).fill(Color(hue: p.hue, saturation: 0.5, brightness: 0.62))
+                    .frame(width: 38, height: 38)
+                    .overlay(Text(String(p.name.prefix(1))).font(.hanken(17, .bold)).foregroundColor(.white))
+                Spacer(minLength: 0)
+                if p.active {
+                    Text("ACTIVE").font(.splMono(7)).tracking(0.7).foregroundColor(.lime)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.4), lineWidth: 1))
+                }
             }
-            Text(p.essence).font(.hanken(11)).foregroundColor(.inkFaint).lineLimit(1)
-            Spacer(minLength: 6)
+            Text(p.name).font(.hanken(13, .semibold)).foregroundColor(.ink).lineLimit(1)
+            Text(p.essence).font(.hanken(10.5)).foregroundColor(.inkFaint)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
             Text(p.updated).font(.splMono(9)).foregroundColor(.inkFaint)
         }
-        .padding(.horizontal, 9).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.02)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(p.active ? Color.indigo.opacity(0.35) : Color.edgeSoft, lineWidth: 1))
+        .padding(11)
+        .frame(width: 160, height: 140, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.white.opacity(0.02)))
+        .overlay(RoundedRectangle(cornerRadius: SBr.sm)
+            .stroke(p.active ? Color.indigo.opacity(0.5) : Color.edgeSoft, lineWidth: 1))
     }
+
     private func workRow(_ w: MiniWork) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "doc.text").font(.system(size: 10)).foregroundColor(.inkDim).frame(width: 26)
+            Image(systemName: "doc.text").font(.system(size: 10)).foregroundColor(.inkDim).frame(width: 22)
             Text(w.title).font(.hanken(12)).foregroundColor(.inkSec).lineLimit(1)
             Spacer(minLength: 6)
             Text("\(w.app) · \(w.time)").font(.splMono(9)).foregroundColor(.inkFaint)
@@ -270,23 +312,34 @@ struct LauncherSnap {
         app.setActivationPolicy(.accessory)
         DispatchQueue.main.async {
             let tasks = [
-                LaunchTask(title: "Legal OK on pricing copy", meta: "overdue · Aug 8  ·  ◆ launch", col: "todo", over: true, prio: "high"),
-                LaunchTask(title: "Ship the pricing page", meta: "due Aug 15  ·  ◆ launch  ·  @crest", col: "doing", over: false, prio: "high"),
-                LaunchTask(title: "Wire Paddle checkout", meta: "◆ launch  ·  @crest", col: "todo", over: false, prio: "high"),
-                LaunchTask(title: "Draft the launch email", meta: "waiting on Ship the pricing page", col: "blocked", over: false, prio: nil),
+                LaunchTask(title: "Ship the pricing page", meta: "due Aug 15 · ◆ launch", col: "doing", over: false, prio: "high"),
+                LaunchTask(title: "Legal OK on pricing copy", meta: "overdue · Aug 8", col: "todo", over: true, prio: "high"),
+                LaunchTask(title: "Wire Paddle checkout", meta: "◆ launch · @crest", col: "todo", over: false, prio: "high"),
+                LaunchTask(title: "Draft the launch email", meta: "waiting on pricing page", col: "blocked", over: false, prio: nil),
+                LaunchTask(title: "Notch LED display pass", meta: "◆ third-party-tools", col: "doing", over: false, prio: "med"),
+            ]
+            let apps = [
+                MiniApp(name: "God", glyph: "✦", hue: 0.22),
+                MiniApp(name: "PDF Tools", glyph: "⎙", hue: 0.02),
+                MiniApp(name: "Convert", glyph: "⇄", hue: 0.55),
+                MiniApp(name: "Palette", glyph: "◐", hue: 0.74),
+                MiniApp(name: "Prism", glyph: "P", hue: 0.09),
+                MiniApp(name: "Redline", glyph: "R", hue: 0.98),
+                MiniApp(name: "Bank", glyph: "B", hue: 0.62),
             ]
             let projects = [
                 MiniProject(name: "Switchboard", essence: "BYO-AI wrapp store", updated: "12m", active: true, hue: 0.62),
-                MiniProject(name: "IndEur Club", essence: "Indo-European supper club", updated: "3h", active: false, hue: 0.05),
-                MiniProject(name: "Often Travel", essence: "hotel booking agent", updated: "1d", active: false, hue: 0.33),
+                MiniProject(name: "Haazma", essence: "The post-meal trilogy", updated: "3d", active: false, hue: 0.02),
+                MiniProject(name: "Aamras", essence: "One scent, three intensities", updated: "3d", active: false, hue: 0.05),
+                MiniProject(name: "Piqual", essence: "Three oils, one job each", updated: "3d", active: false, hue: 0.33),
             ]
             let work = [
                 MiniWork(title: "Q4 palette exploration", app: "brandbrain", time: "20m"),
                 MiniWork(title: "Landing hero draft", app: "redline", time: "1h"),
             ]
-            snap("launcher-home-tasks", LauncherHomeTwin(tasks: tasks, projects: projects, work: work))
-            snap("launcher-home-notasks", LauncherHomeTwin(tasks: [], projects: projects, work: work))
-            snap("launcher-home-empty", LauncherHomeTwin(tasks: [], projects: [], work: []))
+            snap("launcher-home-tasks", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps))
+            snap("launcher-home-notasks", LauncherHomeTwin(tasks: [], projects: projects, work: work, apps: apps))
+            snap("launcher-home-empty", LauncherHomeTwin(tasks: [], projects: [], work: [], apps: []))
             exit(0)
         }
         app.run()
