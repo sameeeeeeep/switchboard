@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 77,
+  "count": 79,
   "listings": [
     {
       "id": "bank",
@@ -512,6 +512,24 @@
           "url": "https://redline.thelastprompt.ai"
         }
       },
+      "tools": [
+        {
+          "name": "audit",
+          "description": "Run Redline's self-audit on a page — pins findings, each with a ready-to-stage fix. Returns the findings. Pass `page` (a filename) to open+audit that page when God drives Redline cold; omit to audit the page already open.",
+          "inputSchema": {
+            "type": "string",
+            "description": "optional page filename (e.g. landing-grid.html) to open before auditing; omit to use the open/preferred page"
+          }
+        },
+        {
+          "name": "stage",
+          "description": "Stage the recommended fix for a finding by its number — or every ready finding if no number is given. Shows live on the canvas but writes nothing until the human says 'check now'.",
+          "inputSchema": {
+            "type": "number",
+            "description": "the finding number to stage; omit to stage all ready findings"
+          }
+        }
+      ],
       "surfaces": [
         "browser",
         "batch"
@@ -2489,6 +2507,84 @@
           "description": "",
           "inputSchema": {}
         }
+      ]
+    },
+    {
+      "id": "hn",
+      "name": "Hacker News",
+      "tagline": "What's trending in tech & AI — the HN front page, on demand.",
+      "category": "tool",
+      "author": "third-party · Hacker News (public Algolia API)",
+      "provenance": "third-party",
+      "mcp": {
+        "server": "hn",
+        "tools": [
+          "search_news"
+        ]
+      },
+      "components": {},
+      "surfaces": [
+        "tool"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "search_news",
+          "description": "Find trending or recent stories on Hacker News by topic — the front-page pulse for tech and AI news. Great for 'what's trending in AI', 'latest on <topic>', 'top HN stories'. Returns titles, points, comments and links.",
+          "inputSchema": {
+            "query": "string — the topic to search, e.g. AI (optional; omit for the front page)",
+            "limit": "number — how many stories (optional)"
+          }
+        }
+      ],
+      "inside": [
+        "Trending & recent Hacker News stories by topic",
+        "Titles, points, comments, links",
+        "Great for 'find me trending AI news'",
+        "No account, no key — the public Hacker News API"
+      ]
+    },
+    {
+      "id": "websearch",
+      "name": "Web Search",
+      "tagline": "Search the open web — titles, sources, snippets. No key, runs on your machine.",
+      "category": "tool",
+      "author": "third-party · Wikipedia + DuckDuckGo (public APIs)",
+      "provenance": "third-party",
+      "mcp": {
+        "server": "websearch",
+        "tools": [
+          "web_search"
+        ]
+      },
+      "components": {},
+      "surfaces": [
+        "tool"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "web_search",
+          "description": "Search the open web for a topic and get titles, sources, and snippets — the public web's answers, no key. Great for 'what is <x>', 'latest on <topic>', 'find <thing>', 'search the web for …'. Merges Wikipedia + DuckDuckGo instant answers. Returns ranked results with links.",
+          "inputSchema": {
+            "query": "string — what to search for, e.g. apple vision pro",
+            "limit": "number — how many results (optional, default 8)"
+          }
+        }
+      ],
+      "inside": [
+        "Live web results by topic — titles, sources, snippets",
+        "Wikipedia + DuckDuckGo instant answers, merged",
+        "Great for 'search the web for …' and 'what is …'",
+        "No account, no key — public web APIs, runs locally"
       ]
     }
   ]

@@ -1,7 +1,7 @@
 {
   "name": "switchboard",
-  "version": "0.1.0",
-  "description": "The Switchboard operator loop for Claude Code: the task-board MCP connector plus the adhd-pm, spec, switchboard, and wrapp skills — one install so any project folder gets the whole workflow.",
+  "version": "0.1.1",
+  "description": "The Switchboard operator loop for Claude Code: a self-contained task-board MCP connector plus the adhd-pm, spec, switchboard, wrapp, and task skills — one install so any project folder gets the whole workflow.",
   "author": {
     "name": "sameeeeeeep",
     "email": "sameep@stayoften.com",

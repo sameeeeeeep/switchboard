@@ -8,7 +8,7 @@
     {
       "name": "switchboard",
       "source": ".",
-      "description": "App + connector + skills as one Claude Code plugin: the task-board MCP (default vault ~/SwitchboardBrain, no --vault needed) and the four operator skills."
+      "description": "App + connector + skills as one Claude Code plugin: a self-contained task-board MCP (default vault ~/SwitchboardBrain, no --vault needed) and the five operator skills (adhd-pm, spec, switchboard, wrapp, task)."
     }
   ]
 }

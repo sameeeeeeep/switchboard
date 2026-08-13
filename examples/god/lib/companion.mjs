@@ -14,6 +14,12 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 // the text through the local voice service and play it. On-device, no cloud. Returns false on ANY
 // hiccup (no selection, service down, error) so the caller falls back to `say` — a God never goes mute.
 const TTS_PORT = process.env.GOD_TTS_PORT || "7897";
+// A light BREATH between spoken sentences. The pipeline already awaits each afplay's close before the
+// next, so segments never truly overlap — but with ~zero gap the next sentence's audio starts the
+// instant the previous process exits, so they butt together and read as "almost overlapping." This
+// inserts a small pause BETWEEN played segments only — never before the first, never after the last.
+// Tunable via GOD_TTS_SEGMENT_GAP_MS; ~180ms is a natural breath, low enough to keep the low-latency feel.
+const SEGMENT_GAP_MS = Math.max(0, Number(process.env.GOD_TTS_SEGMENT_GAP_MS) || 180);
 function selectedVoice() {
   try {
     const f = join(homedir(), ".relay", "voices", "selected");
@@ -70,6 +76,7 @@ async function speakCloned(text, onPlay) {
         continue;                     // a later chunk failed → we're already committed to the clone; skip the gap
       }
       if (!started) { onPlay?.(); started = true; }   // first real audio is about to sound → flip the notch
+      else if (SEGMENT_GAP_MS) await new Promise((r) => setTimeout(r, SEGMENT_GAP_MS)); // breath between segments only
       await new Promise((r) => { const p = spawn("afplay", [wav]); p.on("close", r); p.on("error", r); });
     }
     return started;

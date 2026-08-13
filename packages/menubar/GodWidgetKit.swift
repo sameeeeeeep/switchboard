@@ -295,12 +295,87 @@ struct WorkingCanvas: View {
     }
 }
 
+// ---------- result LIST = the search-result surface (title · source · snippet · link) ----------
+// A third-party tool that speaks the results envelope (examples/tools/README-envelope.md) lands here
+// instead of a raw text dump: each hit is a real CARD you can click to open, with its source + a meta tag.
+struct ResultItem: Identifiable {
+    let id = UUID()
+    let title: String; let url: String; let source: String; let snippet: String; let meta: String
+}
+struct ResultCard: View {
+    let item: ResultItem; var index: Int; var onOpen: (String) -> Void
+    @State private var hover = false
+    private var openable: Bool { !item.url.isEmpty }
+    var body: some View {
+        Button(action: { if openable { onOpen(item.url) } }) {
+            HStack(alignment: .top, spacing: WK.s3) {
+                // rank chip — grounds the list order and gives the card a visual anchor (no favicons to fetch)
+                Text("\(index)").font(.splMono(11)).foregroundColor(hover ? .page : .inkFaint)
+                    .frame(width: 24, height: 24)
+                    .background(RoundedRectangle(cornerRadius: WK.rSm).fill(hover ? Color.lime : Color.raised))
+                    .overlay(RoundedRectangle(cornerRadius: WK.rSm).stroke(Color.edge, lineWidth: hover ? 0 : WK.hair))
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: WK.s2) {
+                        if !item.source.isEmpty {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color.lime).frame(width: 4, height: 4)
+                                Text(item.source).font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1)
+                            }
+                        }
+                        Spacer(minLength: WK.s2)
+                        if !item.meta.isEmpty {
+                            Text(item.meta).font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.raised))
+                        }
+                        if openable {
+                            Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+                                .foregroundColor(hover ? .lime : .inkFaint)
+                        }
+                    }
+                    Text(item.title).font(.hanken(13, .semibold)).foregroundColor(.ink)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !item.snippet.isEmpty {
+                        Text(item.snippet).font(.hanken(11.5)).foregroundColor(.inkDim).lineSpacing(2)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(WK.s3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: WK.rMd).fill(hover ? Color.raised.opacity(0.7) : Color.panel))
+            .overlay(RoundedRectangle(cornerRadius: WK.rMd).stroke(hover ? Color.lime.opacity(0.5) : Color.edge, lineWidth: WK.hair))
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 && openable }
+        .help(openable ? item.url : item.title)
+    }
+}
+struct ResultList: View {
+    let items: [ResultItem]; var onOpen: (String) -> Void = { _ in }
+    var body: some View {
+        // Long result sets scroll INSIDE the widget (same containment rule as ResultText / the panel list).
+        let list = VStack(spacing: WK.s2) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, it in
+                ResultCard(item: it, index: i + 1, onOpen: onOpen)
+            }
+        }
+        Group {
+            if items.count > 5 { ScrollView(showsIndicators: false) { list }.frame(maxHeight: 420) }
+            else { list }
+        }
+    }
+}
+
 // ---------- the widget: shared chrome × a result renderer chosen by output shape ----------
 enum WidgetResult {
     case working(String)
     case image(caption: String, steer: [String], file: String?)
     case gallery(caption: String, items: [String])
     case cards(caption: String, items: [CardItem])
+    case results(summary: String, items: [ResultItem])
     case text(String)
 }
 struct WidgetSpec {
@@ -318,6 +393,7 @@ struct NotchWidget: View {
     var onOpen: () -> Void = {}
     var onRegen: () -> Void = {}
     var onSteer: (String) -> Void = { _ in }
+    var onOpenLink: (String) -> Void = { _ in }   // a result card was clicked → open its URL
     var accent: Color { .lime }   // one accent — working vs done reads from the renderer, not a hue swap
     var body: some View {
         VStack(alignment: .leading, spacing: WK.s4) {
@@ -354,6 +430,13 @@ struct NotchWidget: View {
                 ActionRow(openLabel: spec.openLabel, draggable: false,
                           copyText: items.map { "\($0.label) — \($0.text)" }.joined(separator: "\n\n"),
                           onOpen: onOpen, onRegen: onRegen)
+            }
+        case .results(let summary, let items):
+            VStack(alignment: .leading, spacing: WK.s4) {
+                if !summary.isEmpty { CaptionLine(text: "\(items.count) result\(items.count == 1 ? "" : "s") · \(summary)", icon: "magnifyingglass") }
+                ResultList(items: items, onOpen: onOpenLink)
+                ActionRow(openLabel: spec.openLabel, draggable: false, canRegen: true,
+                          copyText: nil, onOpen: onOpen, onRegen: onRegen)
             }
         case .text(let body):
             VStack(alignment: .leading, spacing: WK.s4) {

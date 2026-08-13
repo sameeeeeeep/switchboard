@@ -1,0 +1,26 @@
+{
+  "id": "websearch",
+  "name": "Web Search",
+  "tagline": "Search the open web — titles, sources, snippets. No key, runs on your machine.",
+  "category": "tool",
+  "author": "third-party · Wikipedia + DuckDuckGo (public APIs)",
+  "provenance": "third-party",
+  "mcp": {
+    "server": "websearch",
+    "tools": ["web_search"]
+  },
+  "components": {},
+  "surfaces": ["tool"],
+  "requires": [
+    { "kind": "daemon" }
+  ],
+  "tools": [
+    { "name": "web_search", "description": "Search the open web for a topic and get titles, sources, and snippets — the public web's answers, no key. Great for 'what is <x>', 'latest on <topic>', 'find <thing>', 'search the web for …'. Merges Wikipedia + DuckDuckGo instant answers. Returns ranked results with links.", "inputSchema": { "query": "string — what to search for, e.g. apple vision pro", "limit": "number — how many results (optional, default 8)" } }
+  ],
+  "inside": [
+    "Live web results by topic — titles, sources, snippets",
+    "Wikipedia + DuckDuckGo instant answers, merged",
+    "Great for 'search the web for …' and 'what is …'",
+    "No account, no key — public web APIs, runs locally"
+  ]
+}
