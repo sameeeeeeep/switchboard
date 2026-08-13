@@ -1,0 +1,46 @@
+{
+  "id": "draft",
+  "name": "Draft",
+  "tagline": "A topic into a few distinct posts on your Claude — then steer any one in place.",
+  "category": "agent",
+  "author": "Switchboard",
+  "components": {
+    "workflows": [
+      "draft/draft",
+      "draft/revise"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5174/draft.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
+  ],
+  "inside": [
+    "N genuinely different posts for one format (X, LinkedIn, Instagram), grounded in your brief",
+    "Select any piece and say what to change — only that piece re-runs, swapped in place (select-and-say)",
+    "Pure model call on your own Claude — no connector, nothing published or sent"
+  ],
+  "tools": [
+    {
+      "name": "draft_pieces",
+      "description": "Draft N distinct social posts of one format (x-thread, x-single, linkedin, ig-caption, ig-carousel) from a topic, grounded in the lent brief. Renders the cards live and returns the pieces as markdown. Pure model call — nothing is published.",
+      "inputSchema": {
+        "topic": "string? — what the posts are about. Omit to draw the strongest angles from the brief.",
+        "format": "string? — one of: x-thread, x-single, linkedin, ig-caption, ig-carousel. Default x-thread.",
+        "n": "number? — how many distinct pieces. Default 3."
+      }
+    }
+  ]
+}

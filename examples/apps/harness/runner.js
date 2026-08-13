@@ -20,6 +20,7 @@ const CFG = {
   take:      { name: "Take",      cat: "founder-stack", count: (d) => /the script/i.test(txt(d)) ? d.querySelectorAll("#view .opt").length || 1 : 0 },
   identity:  { name: "Identity",  cat: "founder-stack", count: (d) => d.querySelectorAll("#view .q-card .opt, #view .opt").length },
   batch:     { name: "Batch",     cat: "founder-stack", count: (d) => d.querySelectorAll("#view .q-card").length },
+  draft:     { name: "Draft",     cat: "founder-stack", count: (d) => d.querySelectorAll("#view .q-card.piece").length },
   bank:      { name: "Bank",      cat: "founder-stack", count: (d) => d.querySelectorAll("#brief-out .briefline").length || (d.getElementById("brief-sec") && !d.getElementById("brief-sec").hidden ? 1 : 0) },
   redline:   { name: "Redline",   cat: "founder-stack", count: (d) => d.querySelectorAll("#side-body .dec").length },
   // no crutch: AdPulse diagnoses its own representative month on connect (live pull first when a

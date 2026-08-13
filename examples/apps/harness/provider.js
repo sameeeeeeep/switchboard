@@ -422,6 +422,11 @@
     // readout never renders. The pull route is also tightened to the pull prompt's own language.
     [function (lc, p) { return /you are adpulse|blunt, numbers-first|pre-computed aggregates|monthlyburn/i.test(p); }, function () { return adpulseDiagnosis(); }],
     [function (lc, p) { return /reply with only a csv|campaign-level performance for the last 30 days/i.test(p); }, function () { return "text:Campaign name,Amount spent (INR),Impressions,Clicks,CTR,CPC,Purchases,Purchase value,ROAS\nProspecting — Broad,42000,900000,4200,0.47,10,30,33600,0.8\nRetargeting — 7d,18000,210000,3800,1.81,4.7,180,75600,4.2\nLookalike 1%,26000,540000,3100,0.57,8.4,90,54600,2.1"; }],
+    // draft — the general content drafter. batch → {pieces:[{hook,body}]}, revise → {hook,body}. The
+    // revise route MUST be matched (it also says "return only a json object"); both sit before the
+    // generic json fallback so the select-and-say swap gets a real re-drafted body, not the fallback.
+    [function (lc, p) { return /you are revising one|current piece:/i.test(p); }, function (lc, p) { return { hook: "revised", body: "Revised for " + bname + " — " + optionCard(0).body }; }],
+    [function (lc, p) { return /you are drafting \d+ |"pieces"\s*:\s*\[/i.test(p); }, function (lc, p) { var m = p.match(/drafting (\d+)/i); var n = m ? Math.max(1, Number(m[1])) : 3; var out = []; for (var i = 0; i < n; i++) out.push({ hook: "angle " + (i + 1), body: optionCard(i).body }); return { pieces: out }; }],
     // batch (YC answers / video scripts)
     [function (lc, p) { return /y combinator application|founder video|prepping the videos|complete answer options/i.test(p); }, function () { return labelTextArray(3); }],
     // identity (5 sequential label/text stages)
