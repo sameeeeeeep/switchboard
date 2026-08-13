@@ -28,6 +28,42 @@ export function isHttp(s: RelayMcpServer): s is RelayHttpServer {
   return "url" in s;
 }
 
+// ── third-party tool CREDENTIALS (task 3) ─────────────────────────────────────────────────────────
+// A keyed third-party tool (echo-auth, and future auth tools) needs a secret the user pastes ONCE. It
+// lives 0600 in ~/.relay/tool-secrets.json ({ server: { ENV_VAR: value } }) beside the pairing token and
+// NEVER leaves the daemon — we only inject it into that server's spawn env (stdio) / headers (http).
+import { chmodSync, writeFileSync } from "node:fs";
+
+const TOOL_SECRETS_FILE = "tool-secrets.json";
+
+export function loadToolSecrets(stateDir: string): Record<string, Record<string, string>> {
+  const file = join(stateDir, TOOL_SECRETS_FILE);
+  if (!existsSync(file)) return {};
+  try {
+    return (JSON.parse(readFileSync(file, "utf8")) as Record<string, Record<string, string>>) ?? {};
+  } catch (err) {
+    console.error("[mcp] failed to parse tool-secrets.json:", err);
+    return {};
+  }
+}
+
+/** Persist one secret (0600, chmod-enforced so a pre-existing world-readable file is locked down). */
+export function setToolSecret(stateDir: string, server: string, env: string, value: string): void {
+  const store = loadToolSecrets(stateDir);
+  store[server] = { ...(store[server] ?? {}), [env]: value };
+  const path = join(stateDir, TOOL_SECRETS_FILE);
+  writeFileSync(path, JSON.stringify(store, null, 2), { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+/** Overlay a server's stored secrets onto its spec (stdio env / http headers). */
+export function applySecrets(server: RelayMcpServer, secrets?: Record<string, string>): RelayMcpServer {
+  if (!secrets || Object.keys(secrets).length === 0) return server;
+  return isHttp(server)
+    ? { ...server, headers: { ...(server.headers ?? {}), ...secrets } }
+    : { ...server, env: { ...(server.env ?? {}), ...secrets } };
+}
+
 /** Normalize a Claude Code / MCP server entry into relay's shape (or null if unsupported). */
 function normalizeServer(spec: any): RelayMcpServer | null {
   if (!spec || typeof spec !== "object") return null;
@@ -81,5 +117,10 @@ export function loadMcpConfig(stateDir: string): RelayMcpConfig {
       console.error("[mcp] failed to parse mcp.json:", err);
     }
   }
-  return { servers: { ...imported, ...own } };
+  const merged = { ...imported, ...own };
+  // Inject stored credentials (task 3) so a keyed server spawns WITH its key — kept local, never logged.
+  const secrets = loadToolSecrets(stateDir);
+  const withSecrets: Record<string, RelayMcpServer> = {};
+  for (const [id, spec] of Object.entries(merged)) withSecrets[id] = applySecrets(spec, secrets[id]);
+  return { servers: withSecrets };
 }

@@ -70,6 +70,18 @@ export class McpRegistry {
     }
   }
 
+  /** Live-swap one server's connection (task 3 — after a credential is set) WITHOUT a daemon restart:
+   *  drop its old client + tools/routes, then connect fresh with the given spec (which now carries the
+   *  secret in env/headers). The next callTool spawns it with the key. */
+  async reconnect(serverId: string, spec: RelayMcpServer): Promise<void> {
+    const old = this.clients.get(serverId);
+    if (old) { await old.close().catch(() => {}); this.clients.delete(serverId); }
+    for (const [name, d] of this.tools) if (d.server === serverId) this.tools.delete(name);
+    for (const [name, r] of this.routes) if (r.serverId === serverId) this.routes.delete(name);
+    this.configs[serverId] = spec;
+    await this.connect(serverId, spec);
+  }
+
   /** All discovered tools (unfiltered by origin). The server filters + classifies per origin. */
   all(): ToolDescriptor[] {
     return [...this.tools.values()];
