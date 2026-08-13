@@ -42,6 +42,7 @@ import type { BudgetLedger } from "./security/budgets.js";
 import type { AuditLog } from "./security/audit-log.js";
 import type { ConsentPrompter, PerActionConsentRequest } from "./security/consent.js";
 import type { McpRegistry } from "./mcp/registry.js";
+import { loadMcpConfig, setToolSecret } from "./mcp/config.js";
 import type { BackendRegistry } from "./backends/registry.js";
 import { relayNativeServer, type GitPublishContext } from "./backends/relay-native.js";
 import { classifyTool } from "./security/classifier.js";
@@ -292,6 +293,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
     // vault, gated exactly like storage.get (standing grant, no consent prompt); it calls NO model and
     // touches NO network. Intercepted here so it needs no new BYOPMethod in @relay/protocol.
     if ((method as string) === "vault.find") return this.vaultFind(origin, env.params as { query?: string; project?: string });
+    // claude_setToolSecret — store a third-party tool's credential (0600, local) + live-reconnect its MCP
+    // server so the retry spawns with the key (task 3). Intercepted here like vault.find so it needs no
+    // new BYOPMethod in @relay/protocol.
+    if ((method as string) === "claude_setToolSecret") return this.setToolSecret(origin, env.params as { server?: string; env?: string; value?: string });
     switch (method as BYOPMethod) {
       case "claude_capabilities":
         return this.capabilities();
@@ -339,6 +344,21 @@ export class Broker implements ConsentPrompter, NativeHandler {
       default:
         throw new ProviderError(BYOPErrorCode.UNSUPPORTED_METHOD, `unknown method ${method}`);
     }
+  }
+
+  /** Store a third-party tool's credential (0600, ~/.relay/tool-secrets.json — never leaves the daemon)
+   *  and live-reconnect that MCP server so the next callTool spawns it WITH the key. The value is never
+   *  logged or echoed. Task 3 — the local-key credential lane. */
+  private async setToolSecret(_origin: string, p: { server?: string; env?: string; value?: string }): Promise<{ ok: boolean }> {
+    const server = (p?.server ?? "").trim();
+    const env = (p?.env ?? "").trim();
+    const value = p?.value ?? "";
+    if (!server || !env || !value) return { ok: false };
+    const stateDir = this.deps.config.stateDir;
+    setToolSecret(stateDir, server, env, value);
+    const fresh = loadMcpConfig(stateDir).servers[server]; // now carries the secret in env/headers
+    if (fresh) await this.deps.mcp.reconnect(server, fresh);
+    return { ok: true };
   }
 
   private async capabilities(): Promise<Capabilities> {

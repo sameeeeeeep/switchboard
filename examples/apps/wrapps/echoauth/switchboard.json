@@ -1,0 +1,29 @@
+{
+  "id": "echoauth",
+  "name": "Echo-Auth",
+  "tagline": "Demo of a keyed third-party tool — proves the credential flow (key stays local).",
+  "category": "tool",
+  "author": "third-party · Echo-Auth (demo)",
+  "provenance": "third-party",
+  "mcp": {
+    "server": "echoauth",
+    "tools": ["whoami"]
+  },
+  "secrets": [
+    { "env": "ECHOAUTH_KEY", "label": "Echo-Auth API key", "hint": "any non-empty string for the demo" }
+  ],
+  "components": {},
+  "surfaces": ["tool"],
+  "requires": [
+    { "kind": "daemon" }
+  ],
+  "tools": [
+    { "name": "whoami", "description": "Echo who you are according to your API key — a demo of a keyed third-party tool. Needs an ECHOAUTH_KEY credential. Use to test the credential flow.", "inputSchema": { "note": "string — an optional note to echo back (optional)" } }
+  ],
+  "inside": [
+    "A keyed third-party tool (needs an API key)",
+    "Your key is pasted once and kept local (0600, never leaves the machine)",
+    "Proves the credential card + secure store + retry",
+    "whoami echoes your key identity"
+  ]
+}

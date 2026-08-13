@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 79,
+  "count": 80,
   "listings": [
     {
       "id": "bank",
@@ -868,6 +868,51 @@
       ]
     },
     {
+      "id": "echoauth",
+      "name": "Echo-Auth",
+      "tagline": "Demo of a keyed third-party tool — proves the credential flow (key stays local).",
+      "category": "tool",
+      "author": "third-party · Echo-Auth (demo)",
+      "provenance": "third-party",
+      "mcp": {
+        "server": "echoauth",
+        "tools": [
+          "whoami"
+        ]
+      },
+      "secrets": [
+        {
+          "env": "ECHOAUTH_KEY",
+          "label": "Echo-Auth API key",
+          "hint": "any non-empty string for the demo"
+        }
+      ],
+      "components": {},
+      "surfaces": [
+        "tool"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "whoami",
+          "description": "Echo who you are according to your API key — a demo of a keyed third-party tool. Needs an ECHOAUTH_KEY credential. Use to test the credential flow.",
+          "inputSchema": {
+            "note": "string — an optional note to echo back (optional)"
+          }
+        }
+      ],
+      "inside": [
+        "A keyed third-party tool (needs an API key)",
+        "Your key is pasted once and kept local (0600, never leaves the machine)",
+        "Proves the credential card + secure store + retry",
+        "whoami echoes your key identity"
+      ]
+    },
+    {
       "id": "emboss",
       "name": "Emboss",
       "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
@@ -967,6 +1012,45 @@
         "Hold the talk chord, speak, release — text pastes where your cursor is",
         "Whisper runs on-device; the audio never leaves your machine",
         "Cleanup on your own Claude or a local model — no key, no middleman"
+      ]
+    },
+    {
+      "id": "hn",
+      "name": "Hacker News",
+      "tagline": "What's trending in tech & AI — the HN front page, on demand.",
+      "category": "tool",
+      "author": "third-party · Hacker News (public Algolia API)",
+      "provenance": "third-party",
+      "mcp": {
+        "server": "hn",
+        "tools": [
+          "search_news"
+        ]
+      },
+      "components": {},
+      "surfaces": [
+        "tool"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "search_news",
+          "description": "Find trending or recent stories on Hacker News by topic — the front-page pulse for tech and AI news. Great for 'what's trending in AI', 'latest on <topic>', 'top HN stories'. Returns titles, points, comments and links.",
+          "inputSchema": {
+            "query": "string — the topic to search, e.g. AI (optional; omit for the front page)",
+            "limit": "number — how many stories (optional)"
+          }
+        }
+      ],
+      "inside": [
+        "Trending & recent Hacker News stories by topic",
+        "Titles, points, comments, links",
+        "Great for 'find me trending AI news'",
+        "No account, no key — the public Hacker News API"
       ]
     },
     {
@@ -1491,6 +1575,45 @@
             "about": "string — what you're recording (e.g. 'a 40-second walkthrough of the pricing page'). Required."
           }
         }
+      ]
+    },
+    {
+      "id": "websearch",
+      "name": "Web Search",
+      "tagline": "Search the open web — titles, sources, snippets. No key, runs on your machine.",
+      "category": "tool",
+      "author": "third-party · Wikipedia + DuckDuckGo (public APIs)",
+      "provenance": "third-party",
+      "mcp": {
+        "server": "websearch",
+        "tools": [
+          "web_search"
+        ]
+      },
+      "components": {},
+      "surfaces": [
+        "tool"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "tools": [
+        {
+          "name": "web_search",
+          "description": "Search the open web for a topic and get titles, sources, and snippets — the public web's answers, no key. Great for 'what is <x>', 'latest on <topic>', 'find <thing>', 'search the web for …'. Merges Wikipedia + DuckDuckGo instant answers. Returns ranked results with links.",
+          "inputSchema": {
+            "query": "string — what to search for, e.g. apple vision pro",
+            "limit": "number — how many results (optional, default 8)"
+          }
+        }
+      ],
+      "inside": [
+        "Live web results by topic — titles, sources, snippets",
+        "Wikipedia + DuckDuckGo instant answers, merged",
+        "Great for 'search the web for …' and 'what is …'",
+        "No account, no key — public web APIs, runs locally"
       ]
     },
     {
@@ -2507,84 +2630,6 @@
           "description": "",
           "inputSchema": {}
         }
-      ]
-    },
-    {
-      "id": "hn",
-      "name": "Hacker News",
-      "tagline": "What's trending in tech & AI — the HN front page, on demand.",
-      "category": "tool",
-      "author": "third-party · Hacker News (public Algolia API)",
-      "provenance": "third-party",
-      "mcp": {
-        "server": "hn",
-        "tools": [
-          "search_news"
-        ]
-      },
-      "components": {},
-      "surfaces": [
-        "tool"
-      ],
-      "requires": [
-        {
-          "kind": "daemon"
-        }
-      ],
-      "tools": [
-        {
-          "name": "search_news",
-          "description": "Find trending or recent stories on Hacker News by topic — the front-page pulse for tech and AI news. Great for 'what's trending in AI', 'latest on <topic>', 'top HN stories'. Returns titles, points, comments and links.",
-          "inputSchema": {
-            "query": "string — the topic to search, e.g. AI (optional; omit for the front page)",
-            "limit": "number — how many stories (optional)"
-          }
-        }
-      ],
-      "inside": [
-        "Trending & recent Hacker News stories by topic",
-        "Titles, points, comments, links",
-        "Great for 'find me trending AI news'",
-        "No account, no key — the public Hacker News API"
-      ]
-    },
-    {
-      "id": "websearch",
-      "name": "Web Search",
-      "tagline": "Search the open web — titles, sources, snippets. No key, runs on your machine.",
-      "category": "tool",
-      "author": "third-party · Wikipedia + DuckDuckGo (public APIs)",
-      "provenance": "third-party",
-      "mcp": {
-        "server": "websearch",
-        "tools": [
-          "web_search"
-        ]
-      },
-      "components": {},
-      "surfaces": [
-        "tool"
-      ],
-      "requires": [
-        {
-          "kind": "daemon"
-        }
-      ],
-      "tools": [
-        {
-          "name": "web_search",
-          "description": "Search the open web for a topic and get titles, sources, and snippets — the public web's answers, no key. Great for 'what is <x>', 'latest on <topic>', 'find <thing>', 'search the web for …'. Merges Wikipedia + DuckDuckGo instant answers. Returns ranked results with links.",
-          "inputSchema": {
-            "query": "string — what to search for, e.g. apple vision pro",
-            "limit": "number — how many results (optional, default 8)"
-          }
-        }
-      ],
-      "inside": [
-        "Live web results by topic — titles, sources, snippets",
-        "Wikipedia + DuckDuckGo instant answers, merged",
-        "Great for 'search the web for …' and 'what is …'",
-        "No account, no key — public web APIs, runs locally"
       ]
     }
   ]
