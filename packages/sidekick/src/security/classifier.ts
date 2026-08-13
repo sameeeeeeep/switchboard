@@ -38,6 +38,11 @@ const CURATED: Record<string, ToolAccess> = {
   // Built-ins
   "WebSearch": "read",
   "WebFetch": "read",
+  // echo-auth demo seed (third-party credential lane) — a read-only "whoami" echo. Its name has no read
+  // verb so the default-deny heuristic would force a write-consent card; it reads nothing external, so
+  // curate it read. (General gap: read-only third-party tools that don't start with a read verb hit the
+  // same premature write-consent — a per-tool access declaration in the catalog is the real fix.)
+  "mcp__echoauth__whoami": "read",
   // claude.ai connector: Higgsfield (image/video/audio gen). Generation SPENDS credits → write;
   // the status/poll tools an async generation needs are reads (so the model can poll without a
   // consent prompt on every check).
