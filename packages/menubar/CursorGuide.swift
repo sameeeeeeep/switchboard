@@ -158,9 +158,10 @@ indirect enum Predicate {
 // A screenshot and/or a note the human left on a step during a guide run. Both optional and
 // independent — a step may have a shot, a note, both, or (the common case) neither.
 struct StepFeedback {
-    var screenshot: String?   // absolute path to an fn-drag jpg (in NSTemporaryDirectory)
-    var note: String?         // raw typed + dictated text, no cleanup
-    var isEmpty: Bool { (screenshot?.isEmpty ?? true) && (note?.isEmpty ?? true) }
+    var screenshot: String?          // FIRST fn-drag jpg (back-compat; = screenshots.first)
+    var screenshots: [String] = []   // ALL grabs on this step — multiple fn-drags accumulate here
+    var note: String?                // raw typed + dictated text, no cleanup
+    var isEmpty: Bool { screenshots.isEmpty && (screenshot?.isEmpty ?? true) && (note?.isEmpty ?? true) }
 }
 
 struct GuideResult {
@@ -999,19 +1000,22 @@ final class CursorGuide {
         capturingFeedback = true
         feedbackIdx = idx
         if results[idx].feedback == nil { results[idx].feedback = StepFeedback() }
-        // Collapse the card to its pill so it vacates the notch — the feedback note drops BELOW it instead of
-        // being hidden behind it. Restored on endFeedback.
+        // Hide the guide card/pill ENTIRELY while capturing, so the feedback note panel owns the top of the
+        // screen (no collapsed pill sitting above it). Restored on endFeedback.
         wasCollapsedBeforeFeedback = model.collapsed
-        model.collapsed = true
+        wasVisibleBeforeFeedback = model.visible
+        model.visible = false
         onFeedbackBegin?(results[idx].id)
     }
     private var wasCollapsedBeforeFeedback = false
+    private var wasVisibleBeforeFeedback = true
 
     // RelayController pushes the fn-drag jpg here as soon as a region is grabbed.
     func attachFeedbackScreenshot(_ path: String) {
         guard capturingFeedback, let i = feedbackIdx, i < results.count else { return }
         var fb = results[i].feedback ?? StepFeedback()
-        fb.screenshot = path
+        fb.screenshots.append(path)                       // ACCUMULATE — multiple grabs per step
+        if fb.screenshot == nil { fb.screenshot = path }  // legacy single = the first grab
         results[i].feedback = fb
     }
 
@@ -1047,6 +1051,7 @@ final class CursorGuide {
         capturingFeedback = false
         feedbackIdx = nil
         model.collapsed = wasCollapsedBeforeFeedback   // re-expand the card (unless it was already collapsed)
+        model.visible = wasVisibleBeforeFeedback       // re-show the guide card (hidden during capture)
         onFeedbackEnd?()
     }
 
@@ -1747,7 +1752,8 @@ final class CursorGuide {
             ]
             if let fb = r.feedback, !fb.isEmpty {
                 var fbo: [String: Any] = [:]
-                if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }
+                if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }   // first (back-compat)
+                if !fb.screenshots.isEmpty { fbo["screenshots"] = fb.screenshots }  // ALL grabs
                 if let n = fb.note, !n.isEmpty { fbo["note"] = n }
                 d["feedback"] = fbo
             }
