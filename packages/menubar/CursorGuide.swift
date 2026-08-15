@@ -27,7 +27,7 @@ import ApplicationServices   // AXIsProcessTrusted — the permission strip chec
 
 // MARK: - Model
 
-enum GuideMode: String { case tour, test, teach }
+enum GuideMode: String { case tour, test, teach, grab }
 
 // A picture or looping GIF shown in a step's media zone (show-don't-tell). `src` is an absolute file
 // path or an http(s) URL; loaded lazily when the step appears (docs/GUIDE-CARD-SPEC §6 media states).
@@ -993,6 +993,28 @@ final class CursorGuide {
         return ("In your own words", "text.bubble.fill", false)
     }
 
+    // Direct grab (mode:"grab") — the /screen + /reference path. No guide card, no pill, no ⌥↓ to arm:
+    // set up ONE synthetic result and drop straight into the feedback grab + note panel (fn+drag captures,
+    // multiple accumulate, note field owns the top of the screen). ↵ saves → the run finishes and writes
+    // guide-result.json with feedback.screenshots + note, exactly like the normal feedback path.
+    private func beginGrab(title: String, source: String?, project: String?) {
+        self.steps = [GuideStep(id: "grab", text: title, hint: nil)]
+        self.idx = 0
+        self.results = [GuideResult(id: "grab", text: title, verdict: "done", notedAt: nil)]
+        self.startedAt = Date()
+        self.isActive = true
+        self.autoClipboard = false
+        clipboardSaved = false; savedClipboard = nil
+        model.source = source
+        model.project = project
+        model.mode = .grab
+        model.done = nil; model.target = nil
+        model.visible = false               // never render a card — the note panel is the only surface
+        ensureOverlay()                     // the overlay panel exists (invisible) so keys/monitors work
+        installMonitors()
+        beginFeedback()                     // straight into the grab + note
+    }
+
     // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
     // never changes it — it just opens capture.
     private func beginFeedback() {
@@ -1165,6 +1187,12 @@ final class CursorGuide {
         guard let obj = raw as? [String: Any] else { logMalformed(); return }
         let m = GuideMode(rawValue: (obj["mode"] as? String) ?? "") ?? defaultMode
         let title = (obj["title"] as? String) ?? "Untitled"
+        // Direct-grab mode (/screen + /reference): NO guide card at all — go straight to the fn+drag grab +
+        // note panel. Needs no `steps`, so branch out before the steps guard below.
+        if m == .grab {
+            beginGrab(title: title, source: obj["source"] as? String, project: obj["project"] as? String)
+            return
+        }
         guard let rawSteps = obj["steps"] as? [[String: Any]], !rawSteps.isEmpty else { logMalformed(); return }
 
         // Run-level: shot describes the pixel space the step `point`s live in; autoClipboard opts into
