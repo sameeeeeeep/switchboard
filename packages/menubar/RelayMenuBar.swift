@@ -3621,19 +3621,28 @@ struct FeedbackNoteDrop: View {
             HStack(spacing: 10) {
                 Image(systemName: icon).font(.system(size: 13)).foregroundColor(danger ? .danger : .lime)
                 Text(title).font(.hanken(13, .semibold)).foregroundColor(.ink)
-                if !shotThumbs.isEmpty {
-                    Text("\(shotThumbs.count)").font(.splMono(10)).foregroundColor(.lime)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.lime.opacity(0.14)))
-                }
                 Spacer(minLength: 0)
-                // A row of grab chips — the LAST few, newest on the right, so multiple grabs are visibly kept.
-                HStack(spacing: 4) {
-                    ForEach(Array(shotThumbs.suffix(4).enumerated()), id: \.offset) { _, t in
-                        Image(nsImage: t).resizable().aspectRatio(contentMode: .fill)
-                            .frame(width: 34, height: 22).clipped().cornerRadius(4)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                // Grab chips as a compact STACK (+ count) rather than a wide row — a FIXED footprint so the
+                // title never gets crowded/wrapped no matter how many you grab.
+                if !shotThumbs.isEmpty {
+                    ZStack(alignment: .topTrailing) {
+                        ZStack {
+                            ForEach(Array(shotThumbs.suffix(3).enumerated()), id: \.offset) { i, t in
+                                Image(nsImage: t).resizable().aspectRatio(contentMode: .fill)
+                                    .frame(width: 34, height: 24).clipped().cornerRadius(4)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                                    .rotationEffect(.degrees(Double(i - 1) * 3))
+                                    .offset(x: CGFloat(i) * 5)
+                            }
+                        }
+                        if shotThumbs.count > 1 {
+                            Text("\(shotThumbs.count)").font(.splMono(9.5)).foregroundColor(.page)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.lime))
+                                .offset(x: 9, y: -6)
+                        }
                     }
+                    .frame(width: 52, height: 28)
                 }
             }
             TextField("type a note — or hold ⌃⌥ to dictate", text: $note, axis: .vertical)
