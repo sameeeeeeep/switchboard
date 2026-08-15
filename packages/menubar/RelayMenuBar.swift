@@ -3612,7 +3612,7 @@ struct FeedbackNoteDrop: View {
     var title: String = "In your own words"   // neutral by default — ⌥↓ is a general note, not always an error
     var icon: String = "text.bubble.fill"
     var danger: Bool = false                   // true only when the current step actually failed
-    var shotThumb: NSImage?          // the fn-drag grab's chip, nil until grabbed
+    var shotThumbs: [NSImage] = []   // the fn-drag grabs, in order — each new grab ACCUMULATES (a row of chips)
     var onCommit: () -> Void         // ↵ / Save
     var onCancel: () -> Void         // esc / Discard
     @FocusState private var focused: Bool
@@ -3622,10 +3622,27 @@ struct FeedbackNoteDrop: View {
                 Image(systemName: icon).font(.system(size: 13)).foregroundColor(danger ? .danger : .lime)
                 Text(title).font(.hanken(13, .semibold)).foregroundColor(.ink)
                 Spacer(minLength: 0)
-                if let t = shotThumb {
-                    Image(nsImage: t).resizable().aspectRatio(contentMode: .fit)
-                        .frame(width: 40, height: 26).cornerRadius(4)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                // Grab chips as a compact STACK (+ count) rather than a wide row — a FIXED footprint so the
+                // title never gets crowded/wrapped no matter how many you grab.
+                if !shotThumbs.isEmpty {
+                    ZStack(alignment: .topTrailing) {
+                        ZStack {
+                            ForEach(Array(shotThumbs.suffix(3).enumerated()), id: \.offset) { i, t in
+                                Image(nsImage: t).resizable().aspectRatio(contentMode: .fill)
+                                    .frame(width: 34, height: 24).clipped().cornerRadius(4)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.lime.opacity(0.5), lineWidth: 1))
+                                    .rotationEffect(.degrees(Double(i - 1) * 3))
+                                    .offset(x: CGFloat(i) * 5)
+                            }
+                        }
+                        if shotThumbs.count > 1 {
+                            Text("\(shotThumbs.count)").font(.splMono(9.5)).foregroundColor(.page)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.lime))
+                                .offset(x: 9, y: -6)
+                        }
+                    }
+                    .frame(width: 52, height: 28)
                 }
             }
             TextField("type a note — or hold ⌃⌥ to dictate", text: $note, axis: .vertical)
@@ -3642,7 +3659,7 @@ struct FeedbackNoteDrop: View {
                 Text("esc discard").font(.splMono(9)).foregroundColor(.inkDim)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)   // sits below the notch now (dropped panel)
+        .padding(.horizontal, 20).padding(.top, 40).padding(.bottom, 12)   // top-pad clears the menu bar/notch (panel drops from the very top edge)
         .frame(width: 300)
         .padding(.horizontal, 14)   // notch ears
         .background(Color.page)
@@ -3940,7 +3957,7 @@ struct ActionConsentDrop: View {
     private var lastToolInput: [String: String] = [:]     // the query per tool id, to re-run after a key is set
     private struct PendingCredential { let l: SBListing; let binding: SBMcpBinding; let tool: String; let input: String?; let env: String; let label: String; let hint: String }
     private var feedbackNote = ""
-    private var feedbackShotThumb: NSImage?
+    private var feedbackShotThumbs: [NSImage] = []
     private var feedbackKeyMonitor: Any?
     private var fnCaptureActive = false               // an fn+click/fn+drag capture gesture is in progress
     private var lastGodCaptureIntentional = false     // the last ⌃⌃ did an explicit fn capture → usable as an image reference
@@ -5638,7 +5655,7 @@ struct ActionConsentDrop: View {
     // Raised from CursorGuide.onFeedbackBegin: shows a focused note field + arms the fn-drag screenshot grab.
     // ⌃⌥ dictation stays live during a guide, and finishDictation routes its transcript here (not the app).
     @MainActor private func showFeedbackNote() {
-        feedbackNote = ""; feedbackShotThumb = nil
+        feedbackNote = ""; feedbackShotThumbs = []
         guard let screen = statusItem?.button?.window?.screen ?? NSScreen.main else { return }
         rebuildFeedbackPanel(screen)
         // The panel is key → it owns ↵ / esc → CursorGuide commits/cancels. CursorGuide.onKey no-ops while
@@ -5665,7 +5682,7 @@ struct ActionConsentDrop: View {
             Task { @MainActor in
                 guard let self else { return }
                 CursorGuide.shared.attachFeedbackScreenshot(path)
-                self.feedbackShotThumb = NSImage(contentsOfFile: path)
+                if let img = NSImage(contentsOfFile: path) { self.feedbackShotThumbs.append(img) }
                 if let scr = self.statusItem?.button?.window?.screen ?? NSScreen.main { self.rebuildFeedbackPanel(scr) }  // show the chip
             }
         }
@@ -5677,7 +5694,7 @@ struct ActionConsentDrop: View {
             note: Binding(get: { [weak self] in self?.feedbackNote ?? "" },
                           set: { [weak self] in self?.feedbackNote = $0 }),
             title: fp.title, icon: fp.icon, danger: fp.danger,
-            shotThumb: feedbackShotThumb,
+            shotThumbs: feedbackShotThumbs,
             onCommit: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: false) } },
             onCancel: { [weak self] in Task { @MainActor in self?.commitFeedbackFromField(cancel: true) } })
         let host = NoInsetHostingView(rootView: view)
@@ -5694,7 +5711,11 @@ struct ActionConsentDrop: View {
         feedbackPanel!.setContentSize(size)
         // Drop the note BELOW the notch (not pinned to the very top) so it never hides behind the guide card
         // or any notch content — the guide card collapses to its pill while capturing, and this sits under it.
-        feedbackPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - feedbackNotchDrop))
+        // Anchor right below the menu bar (top of the usable area) — as high as possible while the text field
+        // stays CLICKABLE. Pinning at screen.frame.maxY tucked it under the menu bar/notch and made the field
+        // untypeable; visibleFrame.maxY is the menu-bar bottom, so it's "at the top" but reachable.
+        feedbackPanel!.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))   // notch-top aligned to the top edge of the menu bar (drops from the very top); content is top-padded to clear it
+        feedbackPanel!.makeKeyAndOrderFront(nil)   // regain key focus so typing works after a rebuild/grab
         feedbackPanel!.makeKeyAndOrderFront(nil)
         orb?.orderOut(nil)
         presentFromNotch(feedbackPanel!)
@@ -5716,7 +5737,7 @@ struct ActionConsentDrop: View {
         disarmFeedbackRegionCapture()
         if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m); feedbackKeyMonitor = nil }
         if let p = feedbackPanel { dismissToNotch(p) }
-        feedbackNote = ""; feedbackShotThumb = nil
+        feedbackNote = ""; feedbackShotThumbs = []
     }
 
     // ── BUNDLED WEB SERVER — a packaged app ships examples/apps in Resources/webapps + the node binary, and
@@ -7237,9 +7258,21 @@ struct ActionConsentDrop: View {
                 let btnDown = (NSEvent.pressedMouseButtons & 0x1) != 0
                 let fn = NSEvent.modifierFlags.contains(.function)
                 let p = toView(NSEvent.mouseLocation)
+                // The overlay must be present + OWNING the mouse the instant fn is held — BEFORE the mouse-down —
+                // or that first down leaks to the app and starts a text selection. So arm on fn-hold, not on
+                // mouse-down. While fn is held the overlay is opaque to the mouse (swallows the whole drag); when
+                // fn is released and no drag is in flight it's click-through so normal clicking still works. This
+                // is the fix for the "fn+drag selects text / blank grab" bug.
+                if fn {
+                    self.ensureRegionOverlay(screen)
+                    self.regionOverlay?.ignoresMouseEvents = false
+                } else if self.feedbackRegionStart == nil {
+                    // fn released and not mid-drag → REMOVE the overlay entirely (don't just make it click-through)
+                    // so it can never sit above the note panel and block clicks/typing into the field.
+                    if self.regionOverlay != nil { self.regionOverlay?.orderOut(nil); self.regionOverlay = nil; self.regionView = nil }
+                }
                 if btnDown && !self.feedbackPrevBtnDown {                       // ── DOWN edge
-                    if fn { self.feedbackRegionStart = p; self.feedbackRegionMoved = false
-                            self.ensureRegionOverlay(screen); self.regionView?.setSel(.zero) }
+                    if fn { self.feedbackRegionStart = p; self.feedbackRegionMoved = false; self.regionView?.setSel(.zero) }
                 } else if btnDown, self.feedbackRegionStart != nil, let s = self.feedbackRegionStart {  // ── dragging
                     if hypot(p.x - s.x, p.y - s.y) > 6 { self.feedbackRegionMoved = true }
                     self.regionView?.setSel(NSRect(x: min(s.x, p.x), y: min(s.y, p.y), width: abs(p.x - s.x), height: abs(p.y - s.y)))
@@ -7253,10 +7286,12 @@ struct ActionConsentDrop: View {
                     self.regionOverlay?.orderOut(nil); self.regionOverlay = nil; self.regionView = nil
                     let shot = NSTemporaryDirectory() + "guide-feedback-\(UUID().uuidString).jpg"
                     self.captureShot(pick, to: shot)
-                    self.disarmFeedbackRegionCapture()
+                    // STAY ARMED for the next grab (multiple screenshots per note, like God's chip-accumulating
+                    // grab) — reset the per-grab state instead of disarming. The note panel accumulates thumbs.
+                    self.feedbackRegionStart = nil; self.feedbackRegionMoved = false
                     if FileManager.default.fileExists(atPath: shot) {
                         NSSound(named: "Morse")?.play()
-                        self.onFeedbackShot?(shot)        // → CursorGuide.attachFeedbackScreenshot
+                        self.onFeedbackShot?(shot)        // → CursorGuide.attachFeedbackScreenshot (appends)
                     }
                     // if the file is missing (Screen-Recording ungranted) we simply don't attach a shot.
                 }

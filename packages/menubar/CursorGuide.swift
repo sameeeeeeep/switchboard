@@ -27,7 +27,7 @@ import ApplicationServices   // AXIsProcessTrusted — the permission strip chec
 
 // MARK: - Model
 
-enum GuideMode: String { case tour, test, teach }
+enum GuideMode: String { case tour, test, teach, grab }
 
 // A picture or looping GIF shown in a step's media zone (show-don't-tell). `src` is an absolute file
 // path or an http(s) URL; loaded lazily when the step appears (docs/GUIDE-CARD-SPEC §6 media states).
@@ -158,9 +158,10 @@ indirect enum Predicate {
 // A screenshot and/or a note the human left on a step during a guide run. Both optional and
 // independent — a step may have a shot, a note, both, or (the common case) neither.
 struct StepFeedback {
-    var screenshot: String?   // absolute path to an fn-drag jpg (in NSTemporaryDirectory)
-    var note: String?         // raw typed + dictated text, no cleanup
-    var isEmpty: Bool { (screenshot?.isEmpty ?? true) && (note?.isEmpty ?? true) }
+    var screenshot: String?          // FIRST fn-drag jpg (back-compat; = screenshots.first)
+    var screenshots: [String] = []   // ALL grabs on this step — multiple fn-drags accumulate here
+    var note: String?                // raw typed + dictated text, no cleanup
+    var isEmpty: Bool { screenshots.isEmpty && (screenshot?.isEmpty ?? true) && (note?.isEmpty ?? true) }
 }
 
 struct GuideResult {
@@ -992,6 +993,28 @@ final class CursorGuide {
         return ("In your own words", "text.bubble.fill", false)
     }
 
+    // Direct grab (mode:"grab") — the /screen + /reference path. No guide card, no pill, no ⌥↓ to arm:
+    // set up ONE synthetic result and drop straight into the feedback grab + note panel (fn+drag captures,
+    // multiple accumulate, note field owns the top of the screen). ↵ saves → the run finishes and writes
+    // guide-result.json with feedback.screenshots + note, exactly like the normal feedback path.
+    private func beginGrab(title: String, source: String?, project: String?) {
+        self.steps = [GuideStep(id: "grab", text: title, hint: nil)]
+        self.idx = 0
+        self.results = [GuideResult(id: "grab", text: title, verdict: "done", notedAt: nil)]
+        self.startedAt = Date()
+        self.isActive = true
+        self.autoClipboard = false
+        clipboardSaved = false; savedClipboard = nil
+        model.source = source
+        model.project = project
+        model.mode = .grab
+        model.done = nil; model.target = nil
+        model.visible = false               // never render a card — the note panel is the only surface
+        ensureOverlay()                     // the overlay panel exists (invisible) so keys/monitors work
+        installMonitors()
+        beginFeedback()                     // straight into the grab + note
+    }
+
     // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
     // never changes it — it just opens capture.
     private func beginFeedback() {
@@ -999,19 +1022,22 @@ final class CursorGuide {
         capturingFeedback = true
         feedbackIdx = idx
         if results[idx].feedback == nil { results[idx].feedback = StepFeedback() }
-        // Collapse the card to its pill so it vacates the notch — the feedback note drops BELOW it instead of
-        // being hidden behind it. Restored on endFeedback.
+        // Hide the guide card/pill ENTIRELY while capturing, so the feedback note panel owns the top of the
+        // screen (no collapsed pill sitting above it). Restored on endFeedback.
         wasCollapsedBeforeFeedback = model.collapsed
-        model.collapsed = true
+        wasVisibleBeforeFeedback = model.visible
+        model.visible = false
         onFeedbackBegin?(results[idx].id)
     }
     private var wasCollapsedBeforeFeedback = false
+    private var wasVisibleBeforeFeedback = true
 
     // RelayController pushes the fn-drag jpg here as soon as a region is grabbed.
     func attachFeedbackScreenshot(_ path: String) {
         guard capturingFeedback, let i = feedbackIdx, i < results.count else { return }
         var fb = results[i].feedback ?? StepFeedback()
-        fb.screenshot = path
+        fb.screenshots.append(path)                       // ACCUMULATE — multiple grabs per step
+        if fb.screenshot == nil { fb.screenshot = path }  // legacy single = the first grab
         results[i].feedback = fb
     }
 
@@ -1047,6 +1073,7 @@ final class CursorGuide {
         capturingFeedback = false
         feedbackIdx = nil
         model.collapsed = wasCollapsedBeforeFeedback   // re-expand the card (unless it was already collapsed)
+        model.visible = wasVisibleBeforeFeedback       // re-show the guide card (hidden during capture)
         onFeedbackEnd?()
     }
 
@@ -1160,6 +1187,12 @@ final class CursorGuide {
         guard let obj = raw as? [String: Any] else { logMalformed(); return }
         let m = GuideMode(rawValue: (obj["mode"] as? String) ?? "") ?? defaultMode
         let title = (obj["title"] as? String) ?? "Untitled"
+        // Direct-grab mode (/screen + /reference): NO guide card at all — go straight to the fn+drag grab +
+        // note panel. Needs no `steps`, so branch out before the steps guard below.
+        if m == .grab {
+            beginGrab(title: title, source: obj["source"] as? String, project: obj["project"] as? String)
+            return
+        }
         guard let rawSteps = obj["steps"] as? [[String: Any]], !rawSteps.isEmpty else { logMalformed(); return }
 
         // Run-level: shot describes the pixel space the step `point`s live in; autoClipboard opts into
@@ -1747,7 +1780,8 @@ final class CursorGuide {
             ]
             if let fb = r.feedback, !fb.isEmpty {
                 var fbo: [String: Any] = [:]
-                if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }
+                if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }   // first (back-compat)
+                if !fb.screenshots.isEmpty { fbo["screenshots"] = fb.screenshots }  // ALL grabs
                 if let n = fb.note, !n.isEmpty { fbo["note"] = n }
                 d["feedback"] = fbo
             }
