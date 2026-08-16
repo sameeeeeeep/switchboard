@@ -1,0 +1,12 @@
+{
+  "id": "color",
+  "name": "Color Converter",
+  "tagline": "HEX, RGB, HSL, HSV & OKLCH — convert any colour on your device, no AI",
+  "category": "tool",
+  "keywords": ["color converter","colour converter","hex to rgb","rgb to hex","hsl","oklch","hsv","convert colour","color code","what is this colour"],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/color.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": ["every notation at once — HEX · RGB · HSL · HSV · OKLCH","paste any format or pick from the swatch","runs fully in the tab — no model, no upload, no account"],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

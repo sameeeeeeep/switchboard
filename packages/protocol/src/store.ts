@@ -90,6 +90,16 @@ export interface WrappListing {
   inside?: string[]; // "the YC dialect + live RFS hooks", "draft every answer at once"
   author?: string;
 
+  /** ── LAUNCHER ROUTING (docs/LAUNCHER-ROUTING.md) — how a listing is FOUND, not what it is. ──
+   *  `keywords`: the synonyms the name and tagline can't carry, so a typed sentence reaches the tool
+   *  without naming it ("make this image smaller" → Resize via "smaller"/"shrink"). Weighted just under
+   *  the name itself by the launcher's scorer, so this is the highest-leverage field for discovery.
+   *  `accepts`: which DROPPED files this listing can take — a bare kind ("image", "pdf", "data", "text",
+   *  "audio", "video", "archive", "font", "code"), a glob ("image/*"), an extension (".pdf"), or "*" for
+   *  anything. Absent → the launcher's built-in default table decides; present → it REPLACES that table. */
+  keywords?: string[];
+  accepts?: string[];
+
   /** THIRD-PARTY tool provenance + binding (docs/THIRD-PARTY-TOOLS.md). A `tool`-category listing with
    *  surface `"tool"` runs a locally-configured MCP server's tool(s) HEADLESS through the gate — no UI,
    *  no skill body — so its "material" is `mcp`, not `components`. Credentials live in ~/.relay/mcp.json

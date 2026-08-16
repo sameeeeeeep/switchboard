@@ -1,0 +1,27 @@
+{
+  "id": "unit",
+  "name": "Unit Converter",
+  "tagline": "Convert length, mass, data, temperature & more — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "unit converter",
+    "convert units",
+    "metric to imperial",
+    "km to miles",
+    "kg to lbs",
+    "celsius to fahrenheit",
+    "mb to gb",
+    "inches to cm",
+    "mph to kmh",
+    "how many"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/unit.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "length · mass · data · temperature · time · speed · volume",
+    "type it in plain words — “5 miles to km”",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

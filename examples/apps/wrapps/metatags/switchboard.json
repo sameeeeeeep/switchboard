@@ -1,0 +1,44 @@
+{
+  "id": "metatags",
+  "name": "Meta Tags",
+  "tagline": "SEO, Open Graph & Twitter Card meta tags — generated on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "meta tags",
+    "og tags",
+    "open graph",
+    "twitter card",
+    "seo tags",
+    "social preview",
+    "head tags",
+    "link preview",
+    "share image tags"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/metatags.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "SEO + Open Graph + Twitter Card in one block",
+    "a live social-card preview",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

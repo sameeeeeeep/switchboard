@@ -1,0 +1,45 @@
+{
+  "id": "contrast",
+  "name": "Contrast",
+  "tagline": "Check WCAG colour contrast — with a one-tap fix, on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "contrast",
+    "wcag",
+    "accessible colour",
+    "accessibility",
+    "a11y",
+    "readable text",
+    "aa aaa",
+    "colour contrast ratio",
+    "is this readable",
+    "text on background"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/contrast.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "the WCAG AA/AAA ratio for any text-and-background pair",
+    "a one-tap suggestion when it fails",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

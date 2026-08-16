@@ -1,8 +1,27 @@
 {
   "id": "qr",
   "name": "QR",
-  "tagline": "Make a QR code from text or a URL — on your device, no AI",
+  "tagline": "QR codes for a link, Wi-Fi, a contact card, email or SMS — on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "qr code",
+    "scan",
+    "link to code",
+    "wifi qr",
+    "wifi password code",
+    "share wifi",
+    "vcard",
+    "contact card",
+    "business card",
+    "email qr",
+    "sms qr",
+    "phone qr",
+    "location qr"
+  ],
+  "accepts": [
+    "text",
+    "data"
+  ],
   "components": {
     "ui": {
       "kind": "web",

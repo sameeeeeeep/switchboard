@@ -3,6 +3,17 @@
   "name": "Prism",
   "tagline": "Generate on-brand images from a prompt.",
   "category": "tool",
+  "keywords": [
+    "generate image",
+    "illustration",
+    "artwork",
+    "picture",
+    "render",
+    "make an image"
+  ],
+  "accepts": [
+    "image"
+  ],
   "components": {
     "ui": {
       "kind": "web",
