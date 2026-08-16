@@ -1,0 +1,45 @@
+{
+  "id": "typeunits",
+  "name": "Type Units",
+  "tagline": "px ↔ rem, typographic units & line-height — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "px to rem",
+    "rem to px",
+    "em",
+    "line height",
+    "point to pixel",
+    "pt to px",
+    "typographic units",
+    "pica",
+    "cicero",
+    "font size units"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/typeunits.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "px ↔ rem/em at any root size",
+    "pt · pc · mm · cm · in · didot · cicero",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

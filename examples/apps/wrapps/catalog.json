@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 86,
+  "count": 89,
   "listings": [
     {
       "id": "bank",
@@ -792,6 +792,60 @@
       ]
     },
     {
+      "id": "color",
+      "name": "Color Converter",
+      "tagline": "HEX, RGB, HSL, HSV & OKLCH — convert any colour on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "color converter",
+        "colour converter",
+        "hex to rgb",
+        "rgb to hex",
+        "hsl",
+        "oklch",
+        "hsv",
+        "convert colour",
+        "color code",
+        "what is this colour"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/color.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "every notation at once — HEX · RGB · HSL · HSV · OKLCH",
+        "paste any format or pick from the swatch",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "convert_color",
+          "description": "Convert a colour into every notation on-device (no AI). Accepts hex, rgb()/rgba(), ",
+          "inputSchema": {
+            "color": "string — the colour in any notation. Required."
+          }
+        }
+      ]
+    },
+    {
       "id": "capp",
       "name": "Consumer App Planner",
       "tagline": "Plan a consumer app end to end.",
@@ -1332,6 +1386,67 @@
           "description": "Turn a meeting transcript or rough notes into clean structured notes (TL;DR, decisions, action items with owners/dues, open questions). Writes it live on the page and returns it.",
           "inputSchema": {
             "transcript": "string — the meeting transcript or rough notes to structure. Required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "metatags",
+      "name": "Meta Tags",
+      "tagline": "SEO, Open Graph & Twitter Card meta tags — generated on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "meta tags",
+        "og tags",
+        "open graph",
+        "twitter card",
+        "seo tags",
+        "social preview",
+        "head tags",
+        "link preview",
+        "share image tags"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/metatags.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "SEO + Open Graph + Twitter Card in one block",
+        "a live social-card preview",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "make_meta_tags",
+          "description": "Generate SEO + Open Graph + Twitter Card <head> meta tags on-device (no AI) from a few ",
+          "inputSchema": {
+            "title": "string — the page title.",
+            "description": "string — the meta description (~155 chars).",
+            "url": "string — the canonical URL.",
+            "image": "string — the social preview image URL.",
+            "siteName": "string — the site name.",
+            "type": "string — the og:type (default 'website').",
+            "twitterCard": "string — 'summary_large_image' or 'summary'.",
+            "twitterSite": "string — the @handle.",
+            "themeColor": "string — the theme-color hex."
           }
         }
       ]
@@ -1902,6 +2017,65 @@
             "value": "number — for 'duration': the amount.",
             "from": "string — for 'duration': the unit to convert from.",
             "to": "string — for 'duration': the unit to convert to."
+          }
+        }
+      ]
+    },
+    {
+      "id": "typeunits",
+      "name": "Type Units",
+      "tagline": "px ↔ rem, typographic units & line-height — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "px to rem",
+        "rem to px",
+        "em",
+        "line height",
+        "point to pixel",
+        "pt to px",
+        "typographic units",
+        "pica",
+        "cicero",
+        "font size units"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/typeunits.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "px ↔ rem/em at any root size",
+        "pt · pc · mm · cm · in · didot · cicero",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "type_units",
+          "description": "Type measurement conversions on-device (no AI). mode 'pxrem' (px↔rem/em at a base size), ",
+          "inputSchema": {
+            "mode": "string — pxrem | typo | lineheight.",
+            "value": "number — the value to convert.",
+            "from": "string — pxrem: 'px'|'rem'|'em'. typo: pt|pc|px|in|mm|cm|didot|cicero.",
+            "to": "string — the target unit (pxrem/typo).",
+            "base": "number — pxrem: root font-size in px (default 16).",
+            "ratio": "number — lineheight: the unitless ratio."
           }
         }
       ]

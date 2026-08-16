@@ -155,6 +155,15 @@
       }
     }
   ],
+  "color": [
+    {
+      "name": "convert_color",
+      "description": "Convert a colour into every notation on-device (no AI). Accepts hex, rgb()/rgba(), ",
+      "inputSchema": {
+        "color": "string — the colour in any notation. Required."
+      }
+    }
+  ],
   "commit": [
     {
       "name": "commit_run",
@@ -446,6 +455,23 @@
       "description": "Write meme concepts for a topic (or brand angle) and draw the recommended one on the page. Returns the concepts (format + captions).",
       "inputSchema": {
         "topic": "string — the topic or angle to meme. Required."
+      }
+    }
+  ],
+  "metatags": [
+    {
+      "name": "make_meta_tags",
+      "description": "Generate SEO + Open Graph + Twitter Card <head> meta tags on-device (no AI) from a few ",
+      "inputSchema": {
+        "title": "string — the page title.",
+        "description": "string — the meta description (~155 chars).",
+        "url": "string — the canonical URL.",
+        "image": "string — the social preview image URL.",
+        "siteName": "string — the site name.",
+        "type": "string — the og:type (default 'website').",
+        "twitterCard": "string — 'summary_large_image' or 'summary'.",
+        "twitterSite": "string — the @handle.",
+        "themeColor": "string — the theme-color hex."
       }
     }
   ],
@@ -819,6 +845,20 @@
       "inputSchema": {
         "text": "string — the text to translate. Required.",
         "language": "string — target language (default: Spanish)."
+      }
+    }
+  ],
+  "typeunits": [
+    {
+      "name": "type_units",
+      "description": "Type measurement conversions on-device (no AI). mode 'pxrem' (px↔rem/em at a base size), ",
+      "inputSchema": {
+        "mode": "string — pxrem | typo | lineheight.",
+        "value": "number — the value to convert.",
+        "from": "string — pxrem: 'px'|'rem'|'em'. typo: pt|pc|px|in|mm|cm|didot|cicero.",
+        "to": "string — the target unit (pxrem/typo).",
+        "base": "number — pxrem: root font-size in px (default 16).",
+        "ratio": "number — lineheight: the unitless ratio."
       }
     }
   ],
