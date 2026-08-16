@@ -1,0 +1,27 @@
+{
+  "id": "base",
+  "name": "Base Converter",
+  "tagline": "Convert a number between decimal, hex, binary & octal — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "base converter",
+    "hex to decimal",
+    "decimal to hex",
+    "binary",
+    "octal",
+    "radix",
+    "number base",
+    "0x",
+    "0b",
+    "convert number"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/base.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "every common base at once — dec · hex · bin · oct",
+    "exact BigInt maths (64-bit values don't round off)",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

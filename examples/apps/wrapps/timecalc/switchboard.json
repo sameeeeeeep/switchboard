@@ -1,0 +1,27 @@
+{
+  "id": "timecalc",
+  "name": "Time Calculator",
+  "tagline": "Unix timestamps, date math & durations — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "unix timestamp",
+    "epoch",
+    "timestamp to date",
+    "date to timestamp",
+    "date math",
+    "days between",
+    "add days",
+    "duration",
+    "how long until",
+    "time difference"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/timecalc.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "unix timestamp ↔ human date (seconds or ms)",
+    "date arithmetic + the gap between two dates",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

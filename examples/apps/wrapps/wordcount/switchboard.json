@@ -1,0 +1,26 @@
+{
+  "id": "wordcount",
+  "name": "Word Counter",
+  "tagline": "Words, characters, reading time & word frequency — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "word count",
+    "character count",
+    "how many words",
+    "reading time",
+    "speaking time",
+    "count characters",
+    "text stats",
+    "word frequency",
+    "essay length"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/wordcount.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "words · characters · sentences · paragraphs",
+    "reading + speaking time and top words",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

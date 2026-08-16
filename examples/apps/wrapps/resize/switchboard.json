@@ -3,6 +3,22 @@
   "name": "Resize",
   "tagline": "Resize, convert & compress images — on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "smaller",
+    "shrink",
+    "compress",
+    "downsize",
+    "scale down",
+    "image size",
+    "reduce file size",
+    "webp",
+    "jpeg",
+    "png",
+    "optimise image"
+  ],
+  "accepts": [
+    "image"
+  ],
   "components": {
     "ui": {
       "kind": "web",

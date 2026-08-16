@@ -3,6 +3,19 @@
   "name": "Palette",
   "tagline": "Pull a color palette from any image — on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "colour",
+    "color",
+    "colours",
+    "colors",
+    "swatches",
+    "hex codes",
+    "dominant colour",
+    "brand colours"
+  ],
+  "accepts": [
+    "image"
+  ],
   "components": {
     "ui": {
       "kind": "web",

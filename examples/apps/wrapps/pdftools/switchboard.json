@@ -3,6 +3,19 @@
   "name": "PDF Tools",
   "tagline": "Merge, split & compress PDFs — on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "merge",
+    "combine",
+    "split",
+    "rotate",
+    "pages",
+    "extract pages",
+    "shrink pdf",
+    "compress pdf"
+  ],
+  "accepts": [
+    "pdf"
+  ],
   "components": {
     "ui": {
       "kind": "web",

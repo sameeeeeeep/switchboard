@@ -3,6 +3,20 @@
   "name": "Convert",
   "tagline": "CSV, JSON & YAML — converted on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "csv",
+    "json",
+    "yaml",
+    "tsv",
+    "spreadsheet",
+    "table",
+    "reshape",
+    "data format"
+  ],
+  "accepts": [
+    "data",
+    "text"
+  ],
   "components": {
     "ui": {
       "kind": "web",

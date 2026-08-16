@@ -5601,7 +5601,13 @@ struct ActionConsentDrop: View {
             onLaunch: { [weak self] listing, fileURL in self?.hideLauncher(); self?.showWrappWidget(listing, input: fileURL) },
             onRunTool: { [weak self] listing, query in
                 self?.hideLauncher()
+                // Two kinds of third-party listing land in the spotlight's Tools group, and they run
+                // differently: an MCP binding is driven HEADLESS through the gate, while a borrowed WEB
+                // tool (provenance third-party + components.ui — e.g. the delphitools shelf) just opens
+                // its page. Without this fallback the ui-only ones were a DEAD CLICK: selectable in the
+                // spotlight, then nothing but a closing launcher.
                 if let binding = listing.mcp { self?.driveThirdPartyTool(listing, binding, command: nil, input: query.isEmpty ? nil : query) }
+                else { self?.showWrappWidget(listing, input: nil) }
             },
             onOpenSurface: { [weak self] raw in self?.hideLauncher(); OSShellWindowController.shared.show(Surface(rawValue: raw) ?? .home) },
             onAsk: { [weak self] q in self?.hideLauncher(); if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } },
@@ -8229,6 +8235,11 @@ struct SBListing: Codable, Identifiable {
     let category: String; let author: String?
     let components: SBComponents; let surfaces: [String]; let requires: [SBReq]; let inside: [String]?
     let tools: [SBTool]?
+    // ── launcher routing (docs: LAUNCHER-ROUTING) — both optional, so every existing catalog still decodes.
+    let keywords: [String]?   // the synonyms a name can't carry ("smaller", "shrink") — how a TYPED
+                              // sentence finds this listing without naming it. See SBRoute.score.
+    let accepts: [String]?    // which dropped files this listing can take: "image" / "image/*" / ".pdf"
+                              // / "*". Absent → SBRoute.defaultAccepts decides. See SBRoute.accepts.
     let hidden: Bool?   // true → UNLISTED: kept in the catalog (still resolvable/runnable if already
                         // installed) but dropped from every store grid. Flip false / remove to re-list.
     let provenance: String?   // "third-party" → a tool we didn't build; the store + consent card badge it.

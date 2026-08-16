@@ -129,20 +129,43 @@ struct NotchLauncherView: View {
     // A dropped file + its human-readable size, resolved once at drop time.
     private struct StagedFile { let url: URL; let sizeText: String; let isImage: Bool }
 
-    // The one place the "which wrapps accept a dropped file" rule lives. An explicit id allowlist (the
-    // founder's stated set) — the file-shaped, non-conversational tools plus God (which takes a screenshot
-    // /file as its turn reference). A live alternative the host can switch to is `surfaces.contains("notch")`,
-    // which today covers convert/pdftools/qr/palette (+flow); the allowlist is used because it also includes
-    // prism/resize (browser-only, but genuinely file-first) and excludes flow (dictation, not a file sink).
-    private static let fileTakerIds: Set<String> =
-        ["god", "pdftools", "convert", "palette", "prism", "resize", "qr"]
-    private func canTakeFile(_ l: SBListing) -> Bool { Self.fileTakerIds.contains(l.id) }
+    // The one place the "which wrapps accept a dropped file" rule lives — now TYPE-AWARE (SBRoute).
+    // It used to be a bare id allowlist, so a dropped .pdf lit up the image tools exactly as brightly as
+    // the PDF one. A listing's manifest `accepts` is authoritative; SBRoute.defaultAccepts carries the
+    // founder's original allowlist with the missing half (the file kind) finally attached.
+    private var stagedKind: SBRoute.Kind? { staged.map { SBRoute.kind(forPath: $0.url.path) } }
+    /// True when this listing can take the file that's staged RIGHT NOW (or, with nothing staged, when it
+    /// takes files at all — that's the resting affordance).
+    private func canTakeFile(_ l: SBListing) -> Bool {
+        guard let k = stagedKind else { return SBRoute.takesAnyFile(id: l.id, declared: l.accepts) }
+        return SBRoute.accepts(id: l.id, declared: l.accepts, kind: k)
+    }
+
+    // The searchable material of a listing, in the shape the router reads.
+    private func routeFields(_ l: SBListing) -> SBRoute.Fields {
+        SBRoute.Fields(id: l.id, name: l.name, keywords: l.keywords ?? [], tagline: l.tagline,
+                       inside: l.inside ?? [],
+                       commands: l.tools?.map { $0.name + " " + ($0.description ?? "") } ?? [])
+    }
+    /// Rank listings against the typed query. One scorer for first-party apps AND third-party tools —
+    /// they used to have two (substring vs token-count), which is why "make this image smaller" found
+    /// the Hacker News tool but not Resize.
+    private func ranked(_ pool: [SBListing], _ q: String, limit: Int) -> [SBListing] {
+        guard !q.isEmpty else { return [] }
+        var scored: [(l: SBListing, s: Int)] = []
+        for l in pool {
+            let s = SBRoute.score(q, routeFields(l))
+            if s > 0 { scored.append((l, s)) }
+        }
+        scored.sort { a, b in a.s == b.s ? a.l.name < b.l.name : a.s > b.s }
+        return scored.prefix(limit).map { $0.l }
+    }
 
     private var filtered: [SBListing] {
         var l = listings
         if let c = cat { l = l.filter { $0.category == c } }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        if !q.isEmpty { l = l.filter { $0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q) } }
+        if !q.isEmpty { l = ranked(l, q, limit: l.count) }
         return l
     }
     private var categories: [String] { Array(Set(listings.map { $0.category })).sorted() }
@@ -159,29 +182,32 @@ struct NotchLauncherView: View {
         projects.filter { q.isEmpty || $0.name.lowercased().contains(q) }.prefix(6).map {
             SpotRow(id: "p-" + $0.id, kind: .project, label: $0.name, sub: $0.kind, payload: $0.id) }
     }
+    // APPS surface by INTENT, not by containing the letters you typed. "make this image smaller" has to
+    // reach Resize even though no listing anywhere contains the word "smaller" — that's what a manifest's
+    // `keywords` is for, and SBRoute.score is what reads it. (Was: a raw substring test on name+tagline.)
     private var spotApps: [SpotRow] {
-        (q.isEmpty ? [] : listings.filter { !$0.isThirdParty && ($0.name.lowercased().contains(q) || $0.tagline.lowercased().contains(q)) }).prefix(6).map {
+        ranked(listings.filter { !$0.isThirdParty }, q, limit: 6).map {
             SpotRow(id: "a-" + $0.id, kind: .app, label: $0.name, sub: $0.tagline, payload: $0.id) }
     }
-    // THIRD-PARTY TOOLS surface by INTENT, not just name: score each tool by how many of the query's
-    // meaningful words appear in its name + tagline + what's-inside + its tools' descriptions (the
-    // capability). So "find me trending AI news" finds the Hacker News tool via its description, and
-    // picking it RUNS it (onRunTool) with the query as input — no need to know the tool's name.
-    private static let stop: Set<String> = ["find","me","a","an","the","for","to","of","on","in","get","show","what","whats","is","my","give","and","how","do","i","can","you","please","some","latest","about","with"]
-    private func toolScore(_ l: SBListing, _ toks: [String]) -> Int {
-        let blob = ([l.name, l.tagline] + (l.inside ?? []) + (l.tools?.map { ($0.description ?? "") + " " + $0.name } ?? [])).joined(separator: " ").lowercased()
-        return toks.reduce(0) { $0 + (blob.contains($1) ? 1 : 0) }
-    }
+    // THIRD-PARTY TOOLS ride the SAME scorer — name + tagline + what's-inside + their commands' descriptions
+    // (the capability). So "find me trending AI news" still finds the Hacker News tool via its description,
+    // and picking it RUNS it (onRunTool) with the query as input — no need to know the tool's name.
     private var spotTools: [SpotRow] {
-        guard !q.isEmpty else { return [] }
-        let toks = q.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 1 && !Self.stop.contains($0) }
-        guard !toks.isEmpty else { return [] }
-        return listings.filter { $0.isThirdParty }
-            .map { (l: $0, s: toolScore($0, toks)) }
-            .filter { $0.s > 0 }
-            .sorted { $0.s > $1.s }
-            .prefix(5)
-            .map { SpotRow(id: "t-" + $0.l.id, kind: .tool, label: $0.l.name, sub: $0.l.tagline, payload: $0.l.id) }
+        ranked(listings.filter { $0.isThirdParty }, q, limit: 5).map {
+            SpotRow(id: "t-" + $0.id, kind: .tool, label: $0.name, sub: $0.tagline, payload: $0.id) }
+    }
+    // ── DROP A FILE, GET THE RIGHT TOOLS ── with a file staged and nothing typed, the launcher answers
+    // "what can I do with this?" itself: every listing that accepts THIS KIND of file, named by kind so
+    // the offer is legible ("PDF · 3 tools"). Before, a staged file only ringed a fixed id allowlist in
+    // the app rail — a dropped .pdf lit the image tools too, and you still had to know which to click.
+    private var spotForFile: [SpotRow] {
+        guard let f = staged, let k = stagedKind else { return [] }
+        let pool = listings.filter { SBRoute.accepts(id: $0.id, declared: $0.accepts, kind: k) }
+        // With a query typed, rank by intent within the accepting set; with nothing typed, offer them all.
+        let hits = q.isEmpty ? pool : ranked(pool, q, limit: pool.count)
+        return hits.prefix(6).map {
+            SpotRow(id: "f-" + $0.id, kind: .app, label: $0.name,
+                    sub: "run on \(f.url.lastPathComponent)", payload: $0.id) }
     }
     private var spotRecent: [SpotRow] {
         (q.isEmpty ? [] : recent.filter { $0.title.lowercased().contains(q) || $0.app.lowercased().contains(q) }).prefix(5).enumerated().map { (i, a) in
@@ -198,7 +224,15 @@ struct NotchLauncherView: View {
     private var spotActions: [SpotRow] {
         q.isEmpty ? [] : [SpotRow(id: "act-ask", kind: .action, label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: "ask")]
     }
-    private var spotAll: [SpotRow] { spotProjects + spotApps + spotTools + spotDiskFiles + spotRecent + spotSurfaces + spotActions }
+    // ONE ordered list of groups — both the rendering and the ↑↓ selection index derive from it. They used
+    // to be written out separately and had drifted: `spotAll` counted spotTools but `spotlightList` never
+    // rendered a Tools group, so arrowing down could select a row that wasn't on screen.
+    private var spotGroups: [(String, [SpotRow])] {
+        [("For this file", spotForFile), ("Projects", spotProjects), ("Apps", spotApps), ("Tools", spotTools),
+         ("Files", spotDiskFiles), ("Recent", spotRecent), ("Go to", spotSurfaces), ("Actions", spotActions)]
+            .filter { !$0.1.isEmpty }
+    }
+    private var spotAll: [SpotRow] { spotGroups.flatMap { $0.1 } }
     private func listing(forApp id: String) -> SBListing? {
         listings.first { $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name.caseInsensitiveCompare(id) == .orderedSame }
     }
@@ -281,7 +315,25 @@ struct NotchLauncherView: View {
         let openTasks = Array(tasks.prefix(6))
         let apps = Array(listings.filter { !$0.isThirdParty }.prefix(10))
         let empty = openTasks.isEmpty && ordered.isEmpty && work.isEmpty && apps.isEmpty
+        // Drop a file and the launcher answers "what can I do with this?" before you type anything —
+        // every app that accepts THIS KIND of file, named by kind, leading the drop.
+        let forFile = stagedKind.map { k in listings.filter { SBRoute.accepts(id: $0.id, declared: $0.accepts, kind: k) } } ?? []
         return VStack(alignment: .leading, spacing: SB.s3) {
+            if let k = stagedKind {
+                homeKicker("FOR THIS \(k.label.uppercased())", count: forFile.isEmpty ? nil : forFile.count,
+                           trailing: nil, action: nil)
+                if forFile.isEmpty {
+                    // Honest empty state: say nothing takes it AND name the one thing that always can.
+                    Text("No app here takes a \(k.label). Ask below and God will work on it directly.")
+                        .font(.hanken(11)).foregroundColor(.inkFaint)
+                        .padding(.horizontal, 9).padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.02)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edgeSoft, lineWidth: 1))
+                } else {
+                    rail { ForEach(forFile) { l in homeAppTile(l) } }
+                }
+            }
             if empty {
                 homeEmptyState
             } else {
@@ -470,7 +522,7 @@ struct NotchLauncherView: View {
     }
 
     private var spotlightList: some View {
-        let groups: [(String, [SpotRow])] = [("Projects", spotProjects), ("Apps", spotApps), ("Files", spotDiskFiles), ("Recent", spotRecent), ("Go to", spotSurfaces), ("Actions", spotActions)].filter { !$0.1.isEmpty }
+        let groups = spotGroups
         return ScrollView {
             VStack(alignment: .leading, spacing: 1) {
                 if groups.isEmpty {

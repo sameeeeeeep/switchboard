@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 79,
+  "count": 86,
   "listings": [
     {
       "id": "bank",
@@ -649,6 +649,63 @@
       ]
     },
     {
+      "id": "base",
+      "name": "Base Converter",
+      "tagline": "Convert a number between decimal, hex, binary & octal — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "base converter",
+        "hex to decimal",
+        "decimal to hex",
+        "binary",
+        "octal",
+        "radix",
+        "number base",
+        "0x",
+        "0b",
+        "convert number"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/base.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "every common base at once — dec · hex · bin · oct",
+        "exact BigInt maths (64-bit values don't round off)",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "convert_base",
+          "description": "Convert an integer from one number base to another (or to all four common bases) ",
+          "inputSchema": {
+            "value": "string — the integer to convert, in `from` base. Required. e.g. 'ff', '0xff', '1010', '-42'.",
+            "from": "number — the base the value is written in, 2–36. Default 10.",
+            "to": "number — optional single target base 2–36; its result is returned as `toResult`. Omit to just get all four common bases.",
+            "text": "string — optional convenience: 'ff base 16' or 'ff 16' as one string, used to fill value+from if those are absent."
+          }
+        }
+      ]
+    },
+    {
       "id": "canvas",
       "name": "Canvas",
       "tagline": "Describe it — get an editable diagram or board.",
@@ -759,10 +816,80 @@
       ]
     },
     {
+      "id": "contrast",
+      "name": "Contrast",
+      "tagline": "Check WCAG colour contrast — with a one-tap fix, on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "contrast",
+        "wcag",
+        "accessible colour",
+        "accessibility",
+        "a11y",
+        "readable text",
+        "aa aaa",
+        "colour contrast ratio",
+        "is this readable",
+        "text on background"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/contrast.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "the WCAG AA/AAA ratio for any text-and-background pair",
+        "a one-tap suggestion when it fails",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "check_contrast",
+          "description": "Check the WCAG colour-contrast ratio between a text colour and a background entirely ",
+          "inputSchema": {
+            "fg": "string — the text / foreground colour. Required. e.g. '#777', 'rgb(120,120,120)', 'slategray'.",
+            "bg": "string — the background colour. Required.",
+            "text": "string — optional convenience: 'FG on BG' or 'FG,BG' as one string, used if fg/bg are absent."
+          }
+        }
+      ]
+    },
+    {
       "id": "convert",
       "name": "Convert",
       "tagline": "CSV, JSON & YAML — converted on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "csv",
+        "json",
+        "yaml",
+        "tsv",
+        "spreadsheet",
+        "table",
+        "reshape",
+        "data format"
+      ],
+      "accepts": [
+        "data",
+        "text"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -909,6 +1036,64 @@
           "name": "lh.png",
           "description": "",
           "inputSchema": {}
+        }
+      ]
+    },
+    {
+      "id": "encoder",
+      "name": "Encoding Tools",
+      "tagline": "Base64, URL, HTML entities & hashes — encode/decode on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "base64",
+        "base64 decode",
+        "url encode",
+        "percent encode",
+        "html entities",
+        "escape html",
+        "sha256",
+        "sha1",
+        "hash",
+        "encode decode"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/encoder.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "Base64 (UTF-8 safe + URL-safe) · URL · HTML entities",
+        "SHA-1/256/384/512 via the browser's own crypto",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "encode_text",
+          "description": "Encode or decode text on-device (no AI). mode 'base64' (with optional urlSafe), 'url', ",
+          "inputSchema": {
+            "text": "string — the text to transform. Required.",
+            "mode": "string — base64 | url | html | hash.",
+            "decode": "boolean — reverse the transform (base64/url/html only).",
+            "urlSafe": "boolean — base64 only: url-safe alphabet, no padding.",
+            "algo": "string — hash only: SHA-1 | SHA-256 | SHA-384 | SHA-512 (default SHA-256)."
+          }
         }
       ]
     },
@@ -1156,6 +1341,19 @@
       "name": "Palette",
       "tagline": "Pull a color palette from any image — on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "colour",
+        "color",
+        "colours",
+        "colors",
+        "swatches",
+        "hex codes",
+        "dominant colour",
+        "brand colours"
+      ],
+      "accepts": [
+        "image"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1199,6 +1397,19 @@
       "name": "PDF Tools",
       "tagline": "Merge, split & compress PDFs — on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "merge",
+        "combine",
+        "split",
+        "rotate",
+        "pages",
+        "extract pages",
+        "shrink pdf",
+        "compress pdf"
+      ],
+      "accepts": [
+        "pdf"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1238,6 +1449,17 @@
       "name": "Prism",
       "tagline": "Generate on-brand images from a prompt.",
       "category": "tool",
+      "keywords": [
+        "generate image",
+        "illustration",
+        "artwork",
+        "picture",
+        "render",
+        "make an image"
+      ],
+      "accepts": [
+        "image"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1270,8 +1492,27 @@
     {
       "id": "qr",
       "name": "QR",
-      "tagline": "Make a QR code from text or a URL — on your device, no AI",
+      "tagline": "QR codes for a link, Wi-Fi, a contact card, email or SMS — on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "qr code",
+        "scan",
+        "link to code",
+        "wifi qr",
+        "wifi password code",
+        "share wifi",
+        "vcard",
+        "contact card",
+        "business card",
+        "email qr",
+        "sms qr",
+        "phone qr",
+        "location qr"
+      ],
+      "accepts": [
+        "text",
+        "data"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1297,11 +1538,10 @@
       "tools": [
         {
           "name": "qr_make",
-          "description": "Generate a QR code from text or a URL entirely on-device (no AI). Returns the QR as an SVG string and a PNG data: URL.",
+          "description": "Generate a QR code entirely on-device (no AI). Encodes plain text or a URL, or a ",
           "inputSchema": {
-            "text": "string — the text or URL to encode. Required.",
-            "level": "string — error correction 'L'|'M'|'Q'|'H'. Default 'M'.",
-            "size": "number — pixel size of the output. Default 320."
+            "text": "string — the text or URL to encode. Use this for kind 'text' (the default).",
+            "kind": "string — 'text' | 'wifi' | 'contact' | 'email' | 'sms' | 'phone' | 'geo'. Default 'text'."
           }
         },
         {
@@ -1349,6 +1589,22 @@
       "name": "Resize",
       "tagline": "Resize, convert & compress images — on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "smaller",
+        "shrink",
+        "compress",
+        "downsize",
+        "scale down",
+        "image size",
+        "reduce file size",
+        "webp",
+        "jpeg",
+        "png",
+        "optimise image"
+      ],
+      "accepts": [
+        "image"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1533,6 +1789,182 @@
       ]
     },
     {
+      "id": "textdiff",
+      "name": "Text Diff",
+      "tagline": "Compare two texts and see exactly what changed — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "text diff",
+        "compare text",
+        "what changed",
+        "difference between",
+        "diff checker",
+        "compare two versions",
+        "added removed",
+        "line diff",
+        "word diff"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/textdiff.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "line-level and word-level diff",
+        "additions and removals highlighted, with a +/− count",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "diff_text",
+          "description": "Compare two texts on-device (no AI) and return the differences. mode 'lines' (default) ",
+          "inputSchema": {
+            "a": "string — the original text. Required.",
+            "b": "string — the changed text. Required.",
+            "mode": "string — 'lines' or 'words'."
+          }
+        }
+      ]
+    },
+    {
+      "id": "timecalc",
+      "name": "Time Calculator",
+      "tagline": "Unix timestamps, date math & durations — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "unix timestamp",
+        "epoch",
+        "timestamp to date",
+        "date to timestamp",
+        "date math",
+        "days between",
+        "add days",
+        "duration",
+        "how long until",
+        "time difference"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/timecalc.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "unix timestamp ↔ human date (seconds or ms)",
+        "date arithmetic + the gap between two dates",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "time_calc",
+          "description": "Timestamp / date maths on-device (no AI). mode 'unix' (timestamp↔date), 'add' (date + N units), ",
+          "inputSchema": {
+            "mode": "string — unix | add | between | duration.",
+            "timestamp": "number/string — for 'unix': a unix timestamp (s or ms, auto-detected).",
+            "date": "string — for 'unix' reverse, or the start date for 'add'.",
+            "amount": "number — for 'add': how many units (negative subtracts).",
+            "unit": "string — for 'add'/'duration': ms|second|minute|hour|day|week|month|year.",
+            "a": "string — for 'between': the first date.",
+            "b": "string — for 'between': the second date.",
+            "value": "number — for 'duration': the amount.",
+            "from": "string — for 'duration': the unit to convert from.",
+            "to": "string — for 'duration': the unit to convert to."
+          }
+        }
+      ]
+    },
+    {
+      "id": "unit",
+      "name": "Unit Converter",
+      "tagline": "Convert length, mass, data, temperature & more — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "unit converter",
+        "convert units",
+        "metric to imperial",
+        "km to miles",
+        "kg to lbs",
+        "celsius to fahrenheit",
+        "mb to gb",
+        "inches to cm",
+        "mph to kmh",
+        "how many"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/unit.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "length · mass · data · temperature · time · speed · volume",
+        "type it in plain words — “5 miles to km”",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "convert_units",
+          "description": "Convert a value between units on-device (no AI). Categories: length, mass, data, ",
+          "inputSchema": {
+            "value": "number — the amount to convert.",
+            "category": "string — length|mass|data|temperature|time|speed|volume.",
+            "from": "string — the unit id/symbol to convert from.",
+            "to": "string — the unit id/symbol to convert to.",
+            "text": "string — optional plain phrase, e.g. '100 c to f' or '5 miles to km' (used if the fields are absent)."
+          }
+        }
+      ]
+    },
+    {
       "id": "websearch",
       "name": "Web Search",
       "tagline": "Search the open web — titles, sources, snippets. No key, runs on your machine.",
@@ -1569,6 +2001,60 @@
         "Wikipedia + DuckDuckGo instant answers, merged",
         "Great for 'search the web for …' and 'what is …'",
         "No account, no key — public web APIs, runs locally"
+      ]
+    },
+    {
+      "id": "wordcount",
+      "name": "Word Counter",
+      "tagline": "Words, characters, reading time & word frequency — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "word count",
+        "character count",
+        "how many words",
+        "reading time",
+        "speaking time",
+        "count characters",
+        "text stats",
+        "word frequency",
+        "essay length"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/wordcount.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "words · characters · sentences · paragraphs",
+        "reading + speaking time and top words",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "count_words",
+          "description": "Analyse a block of text entirely on-device (no AI). Returns the word count, character ",
+          "inputSchema": {
+            "text": "string — the text to analyse. Required.",
+            "topN": "number — how many most-used words to return. Optional, default 5."
+          }
+        }
       ]
     },
     {

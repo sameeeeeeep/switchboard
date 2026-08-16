@@ -1,0 +1,27 @@
+{
+  "id": "encoder",
+  "name": "Encoding Tools",
+  "tagline": "Base64, URL, HTML entities & hashes — encode/decode on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "base64",
+    "base64 decode",
+    "url encode",
+    "percent encode",
+    "html entities",
+    "escape html",
+    "sha256",
+    "sha1",
+    "hash",
+    "encode decode"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/encoder.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "Base64 (UTF-8 safe + URL-safe) · URL · HTML entities",
+    "SHA-1/256/384/512 via the browser's own crypto",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

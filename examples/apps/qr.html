@@ -53,6 +53,21 @@
       .qr-in { width: 100%; background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; color: var(--ink); font: 400 14px/1.4 var(--mono); padding: 13px 14px; outline: none; }
       .qr-in:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
 
+      /* KIND tabs — what the code should BE (link · Wi-Fi · contact · …). Same pill grammar as .seg,
+         but wrapping, because there are seven of them and the panel is narrow. */
+      .kindrow { display: flex; flex-wrap: wrap; gap: 4px; background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; padding: 4px; }
+      .kindbtn { font: 500 12px/1 var(--sans); background: none; border: 0; color: var(--ink-sec); border-radius: 8px; padding: 9px 14px; cursor: pointer; transition: background .15s, color .15s; }
+      .kindbtn:hover { color: var(--ink); }
+      .kindbtn.on { background: var(--accent); color: var(--page); font-weight: 600; }
+      /* the active kind's form. One field = full width (the original single-input flow); a longer
+         form goes two-up so a contact card doesn't become a scroll. */
+      .qform { display: grid; grid-template-columns: 1fr; gap: 14px; }
+      .qform.two { grid-template-columns: 1fr 1fr; }
+      .qform .field.wide { grid-column: 1 / -1; }
+      @media (max-width: 560px) { .qform.two { grid-template-columns: 1fr; } }
+      select.qr-in { appearance: none; cursor: pointer; }
+      .toggle { align-self: flex-start; font: 500 13px/1 var(--sans); background: var(--inset); border: 1px solid var(--edge); border-radius: 12px; color: var(--ink-sec); padding: 13px 22px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+      .toggle.on { background: var(--accent); border-color: var(--accent); color: var(--page); font-weight: 600; }
       .ctlrow { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
       .ctlrow .field { flex: 1; min-width: 180px; }
       .seg { display: inline-flex; background: var(--inset); border: 1px solid var(--edge); border-radius: 10px; padding: 3px; gap: 3px; align-self: flex-start; }

@@ -80,6 +80,18 @@
       }
     }
   ],
+  "base": [
+    {
+      "name": "convert_base",
+      "description": "Convert an integer from one number base to another (or to all four common bases) ",
+      "inputSchema": {
+        "value": "string — the integer to convert, in `from` base. Required. e.g. 'ff', '0xff', '1010', '-42'.",
+        "from": "number — the base the value is written in, 2–36. Default 10.",
+        "to": "number — optional single target base 2–36; its result is returned as `toResult`. Omit to just get all four common bases.",
+        "text": "string — optional convenience: 'ff base 16' or 'ff 16' as one string, used to fill value+from if those are absent."
+      }
+    }
+  ],
   "batch": [
     {
       "name": "batch_draft",
@@ -158,6 +170,17 @@
       "description": "Compare options side by side (pros/cons per option) with one recommendation. Writes the comparison live on the page and returns it.",
       "inputSchema": {
         "items": "string — the options to compare (e.g. 'A vs B vs C for X'). Required."
+      }
+    }
+  ],
+  "contrast": [
+    {
+      "name": "check_contrast",
+      "description": "Check the WCAG colour-contrast ratio between a text colour and a background entirely ",
+      "inputSchema": {
+        "fg": "string — the text / foreground colour. Required. e.g. '#777', 'rgb(120,120,120)', 'slategray'.",
+        "bg": "string — the background colour. Required.",
+        "text": "string — optional convenience: 'FG on BG' or 'FG,BG' as one string, used if fg/bg are absent."
       }
     }
   ],
@@ -282,6 +305,19 @@
       "description": "Turn a one-line character description into a die-cut sticker pack, drawn on the page via your Higgsfield. Returns the sticker image URLs.",
       "inputSchema": {
         "character": "string — one line describing the character or mascot. Required."
+      }
+    }
+  ],
+  "encoder": [
+    {
+      "name": "encode_text",
+      "description": "Encode or decode text on-device (no AI). mode 'base64' (with optional urlSafe), 'url', ",
+      "inputSchema": {
+        "text": "string — the text to transform. Required.",
+        "mode": "string — base64 | url | html | hash.",
+        "decode": "boolean — reverse the transform (base64/url/html only).",
+        "urlSafe": "boolean — base64 only: url-safe alphabet, no padding.",
+        "algo": "string — hash only: SHA-1 | SHA-256 | SHA-384 | SHA-512 (default SHA-256)."
       }
     }
   ],
@@ -504,11 +540,10 @@
   "qr": [
     {
       "name": "qr_make",
-      "description": "Generate a QR code from text or a URL entirely on-device (no AI). Returns the QR as an SVG string and a PNG data: URL.",
+      "description": "Generate a QR code entirely on-device (no AI). Encodes plain text or a URL, or a ",
       "inputSchema": {
-        "text": "string — the text or URL to encode. Required.",
-        "level": "string — error correction 'L'|'M'|'Q'|'H'. Default 'M'.",
-        "size": "number — pixel size of the output. Default 320."
+        "text": "string — the text or URL to encode. Use this for kind 'text' (the default).",
+        "kind": "string — 'text' | 'wifi' | 'contact' | 'email' | 'sms' | 'phone' | 'geo'. Default 'text'."
       }
     },
     {
@@ -721,12 +756,41 @@
       }
     }
   ],
+  "textdiff": [
+    {
+      "name": "diff_text",
+      "description": "Compare two texts on-device (no AI) and return the differences. mode 'lines' (default) ",
+      "inputSchema": {
+        "a": "string — the original text. Required.",
+        "b": "string — the changed text. Required.",
+        "mode": "string — 'lines' or 'words'."
+      }
+    }
+  ],
   "thumbs": [
     {
       "name": "thumbs_run",
       "description": "Draft three click-worthy YouTube thumbnail concepts from a video title (composition + big text overlay + emotion), rendered on the page. Returns the concepts; render each on your Higgsfield from the page.",
       "inputSchema": {
         "title": "string — the video title (e.g. \"I tried the world's spiciest ramen\"). Required."
+      }
+    }
+  ],
+  "timecalc": [
+    {
+      "name": "time_calc",
+      "description": "Timestamp / date maths on-device (no AI). mode 'unix' (timestamp↔date), 'add' (date + N units), ",
+      "inputSchema": {
+        "mode": "string — unix | add | between | duration.",
+        "timestamp": "number/string — for 'unix': a unix timestamp (s or ms, auto-detected).",
+        "date": "string — for 'unix' reverse, or the start date for 'add'.",
+        "amount": "number — for 'add': how many units (negative subtracts).",
+        "unit": "string — for 'add'/'duration': ms|second|minute|hour|day|week|month|year.",
+        "a": "string — for 'between': the first date.",
+        "b": "string — for 'between': the second date.",
+        "value": "number — for 'duration': the amount.",
+        "from": "string — for 'duration': the unit to convert from.",
+        "to": "string — for 'duration': the unit to convert to."
       }
     }
   ],
@@ -758,12 +822,35 @@
       }
     }
   ],
+  "unit": [
+    {
+      "name": "convert_units",
+      "description": "Convert a value between units on-device (no AI). Categories: length, mass, data, ",
+      "inputSchema": {
+        "value": "number — the amount to convert.",
+        "category": "string — length|mass|data|temperature|time|speed|volume.",
+        "from": "string — the unit id/symbol to convert from.",
+        "to": "string — the unit id/symbol to convert to.",
+        "text": "string — optional plain phrase, e.g. '100 c to f' or '5 miles to km' (used if the fields are absent)."
+      }
+    }
+  ],
   "unjargon": [
     {
       "name": "unjargon_run",
       "description": "Decode dense text (acronyms, legalese, jargon) into plain English. Writes it live on the page and returns it.",
       "inputSchema": {
         "text": "string — the dense text to decode. Required."
+      }
+    }
+  ],
+  "wordcount": [
+    {
+      "name": "count_words",
+      "description": "Analyse a block of text entirely on-device (no AI). Returns the word count, character ",
+      "inputSchema": {
+        "text": "string — the text to analyse. Required.",
+        "topN": "number — how many most-used words to return. Optional, default 5."
       }
     }
   ],

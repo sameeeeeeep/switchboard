@@ -1,0 +1,26 @@
+{
+  "id": "textdiff",
+  "name": "Text Diff",
+  "tagline": "Compare two texts and see exactly what changed — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "text diff",
+    "compare text",
+    "what changed",
+    "difference between",
+    "diff checker",
+    "compare two versions",
+    "added removed",
+    "line diff",
+    "word diff"
+  ],
+  "components": { "ui": { "kind": "web", "url": "http://localhost:5188/textdiff.html" } },
+  "surfaces": ["browser", "notch"],
+  "requires": [{ "kind": "daemon" }],
+  "inside": [
+    "line-level and word-level diff",
+    "additions and removals highlighted, with a +/− count",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": { "egressTier": "none", "engineTier": "L0", "downloadBytes": 0, "background": false, "needsModel": false }
+}

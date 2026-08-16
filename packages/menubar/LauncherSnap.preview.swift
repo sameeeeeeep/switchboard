@@ -57,7 +57,15 @@ struct LaunchTask: Identifiable {
 }
 struct MiniProject: Identifiable { let id = UUID(); let name: String; let essence: String; let updated: String; let active: Bool; let hue: Double }
 struct MiniWork: Identifiable { let id = UUID(); let title: String; let app: String; let time: String }
-struct MiniApp: Identifiable { let id = UUID(); let name: String; let glyph: String; let hue: Double }
+// An app tile, carrying the two ROUTING fields a real listing now carries (`keywords`, `accepts`) so the
+// snapshot's "for this file" / spotlight states are produced by the REAL SBRoute scorer — compiled in
+// alongside this file — rather than by hand-written result strings that could flatter the design.
+struct MiniApp: Identifiable {
+    let id = UUID(); let wid: String; let name: String; let glyph: String; let hue: Double
+    var tagline: String = ""; var keywords: [String] = []; var accepts: [String]? = nil
+    var fields: SBRoute.Fields { .init(id: wid, name: name, keywords: keywords, tagline: tagline) }
+    func takes(_ k: SBRoute.Kind) -> Bool { SBRoute.accepts(id: wid, declared: accepts, kind: k) }
+}
 
 // ── the HOME drop — a faithful port of NotchLauncherView.body (HOME mode), REDESIGNED:
 //    full-width ask hero + horizontal card RAILS (tasks · apps · projects) with big visual tiles,
@@ -67,13 +75,19 @@ struct LauncherHomeTwin: View {
     let projects: [MiniProject]
     let work: [MiniWork]
     let apps: [MiniApp]
+    /// A file dragged onto the intake bar. Present → the drop leads with "FOR THIS <KIND>".
+    var staged: (name: String, size: String)? = nil
+    /// A typed query. Non-empty → spotlight mode replaces HOME, ranked by SBRoute.score.
+    var query: String = ""
+
+    private var stagedKind: SBRoute.Kind? { staged.map { SBRoute.kind(forPath: $0.name) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SB.s3) {
             header
             askHero
             intakeBar
-            homeContent
+            if query.isEmpty { homeContent } else { spotlightList }
             hintLine
         }
         .padding(.horizontal, 22).padding(.top, SB.s5).padding(.bottom, 22)
@@ -102,7 +116,8 @@ struct LauncherHomeTwin: View {
     private var askHero: some View {
         HStack(spacing: 11) {
             Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(.inkDim)
-            Text("Search projects, apps, files — or ask").font(.hanken(13.5)).foregroundColor(.inkFaint)
+            Text(query.isEmpty ? "Search projects, apps, files — or ask" : query)
+                .font(.hanken(13.5)).foregroundColor(query.isEmpty ? .inkFaint : .ink)
             Spacer(minLength: 0)
             ZStack {
                 Circle().fill(Color.lime.opacity(0.14)).frame(width: 30, height: 30)
@@ -117,16 +132,29 @@ struct LauncherHomeTwin: View {
 
     private var intakeBar: some View {
         HStack(spacing: SB.s3) {
-            RoundedRectangle(cornerRadius: 8).fill(Color.raised).frame(width: 28, height: 28)
-                .overlay(Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundColor(.inkDim))
-            Text("Drop a file to run it through any app").font(.hanken(11.5, .medium)).foregroundColor(.inkDim)
+            RoundedRectangle(cornerRadius: 8).fill(staged == nil ? Color.raised : Color.lime.opacity(0.14))
+                .frame(width: 28, height: 28)
+                .overlay(Image(systemName: staged == nil ? "plus" : "doc.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(staged == nil ? .inkDim : .lime))
+            if let f = staged {
+                Text(f.name).font(.hanken(11.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+                Text(f.size).font(.splMono(9.5)).foregroundColor(.inkFaint)
+            } else {
+                Text("Drop a file to run it through any app").font(.hanken(11.5, .medium)).foregroundColor(.inkDim)
+            }
             Spacer(minLength: SB.s2)
+            if staged != nil {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.inkFaint)
+            }
         }
         .padding(.horizontal, SB.s3).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: SBr.sm).fill(Color.white.opacity(0.012)))
+        .background(RoundedRectangle(cornerRadius: SBr.sm)
+            .fill(staged == nil ? Color.white.opacity(0.012) : Color.lime.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: SBr.sm)
-            .strokeBorder(Color.edge, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .strokeBorder(staged == nil ? Color.edge : Color.lime.opacity(0.45),
+                          style: StrokeStyle(lineWidth: 1, dash: staged == nil ? [4, 3] : [])))
     }
 
     // ── the rails: TASKS · APPS · PROJECTS · RECENT WORK ──
@@ -135,7 +163,21 @@ struct LauncherHomeTwin: View {
         let ordered = [active].compactMap { $0 } + projects.filter { $0.id != active?.id }
         let openTasks = Array(tasks.prefix(6))
         let empty = openTasks.isEmpty && ordered.isEmpty && work.isEmpty && apps.isEmpty
+        let forFile = stagedKind.map { k in apps.filter { $0.takes(k) } } ?? []
         return VStack(alignment: .leading, spacing: SB.s3) {
+            if let k = stagedKind {
+                homeKicker("FOR THIS \(k.label.uppercased())", count: forFile.isEmpty ? nil : forFile.count, trailing: nil)
+                if forFile.isEmpty {
+                    Text("No app here takes a \(k.label). Ask below and God will work on it directly.")
+                        .font(.hanken(11)).foregroundColor(.inkFaint)
+                        .padding(.horizontal, 9).padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.02)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.edgeSoft, lineWidth: 1))
+                } else {
+                    rail { ForEach(forFile) { appTile($0) } }
+                }
+            }
             if empty {
                 homeEmptyState
             } else {
@@ -231,15 +273,71 @@ struct LauncherHomeTwin: View {
         switch t.col { case "doing", "review": return .lime; case "blocked": return .amber; default: return .inkDim }
     }
 
-    // ── APP tile — the big, visual icon the founder asked for ──
+    // ── APP tile — the big, visual icon the founder asked for. With a file staged it is TYPE-aware:
+    //    a tile that accepts THIS kind gets the lime ring + ↓ badge; one that can't is dimmed back.
     private func appTile(_ a: MiniApp) -> some View {
-        VStack(spacing: 7) {
+        let ringed = stagedKind.map { a.takes($0) } ?? false
+        let dimmed = stagedKind != nil && !ringed
+        return VStack(spacing: 7) {
             RoundedRectangle(cornerRadius: 13).fill(Color(hue: a.hue, saturation: 0.55, brightness: 0.78))
                 .frame(width: 54, height: 54)
                 .overlay(Text(a.glyph).font(.hanken(23, .bold)).foregroundColor(.white))
+                .overlay(alignment: .topTrailing) {
+                    if ringed {
+                        Image(systemName: "arrow.down.circle.fill").font(.system(size: 13))
+                            .foregroundColor(.lime).background(Circle().fill(Color.page)).offset(x: 4, y: -4)
+                    }
+                }
+                .overlay(RoundedRectangle(cornerRadius: 13)
+                    .stroke(ringed ? Color.lime.opacity(0.7) : Color.clear, lineWidth: 1.5))
             Text(a.name).font(.hanken(10)).foregroundColor(.inkDim).lineLimit(1)
         }
         .frame(width: 68)
+        .opacity(dimmed ? 0.4 : 1)
+    }
+
+    // ── SPOTLIGHT — what the ⌥⌥ bar shows once you type. Rows come from SBRoute.score over the same
+    //    app fixtures, so this picture is the router's real answer to the sentence in the hero.
+    private var spotlightList: some View {
+        var scored: [(a: MiniApp, s: Int)] = []
+        for a in apps {
+            let s = SBRoute.score(query, a.fields)
+            if s > 0 { scored.append((a, s)) }
+        }
+        scored.sort { x, y in x.s == y.s ? x.a.name < y.a.name : x.s > y.s }
+        return VStack(alignment: .leading, spacing: 1) {
+            if scored.isEmpty {
+                Text("Nothing matches “\(query)” — try a project, an app, or ask.")
+                    .font(.hanken(11.5)).foregroundColor(.inkDim).padding(10)
+            } else {
+                Text("APPS").font(.splMono(9)).tracking(1.2).foregroundColor(.inkFaint)
+                    .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 3)
+                ForEach(Array(scored.enumerated()), id: \.offset) { i, hit in
+                    spotRow(hit.a, lit: i == 0)
+                }
+            }
+            Text("ACTIONS").font(.splMono(9)).tracking(1.2).foregroundColor(.inkFaint)
+                .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 3)
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").font(.system(size: 11)).foregroundColor(.lime).frame(width: 22)
+                Text("“\(query)”").font(.hanken(12)).foregroundColor(.inkSec).lineLimit(1)
+                Spacer(minLength: 6)
+                Text("ask across your work").font(.splMono(9)).foregroundColor(.inkFaint)
+            }.padding(.horizontal, 8).padding(.vertical, 7)
+        }
+    }
+    private func spotRow(_ a: MiniApp, lit: Bool) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 6).fill(Color(hue: a.hue, saturation: 0.55, brightness: 0.78))
+                .frame(width: 22, height: 22)
+                .overlay(Text(a.glyph).font(.hanken(11, .bold)).foregroundColor(.white))
+            Text(a.name).font(.hanken(12.5, .semibold)).foregroundColor(.ink).lineLimit(1)
+            Text(a.tagline).font(.hanken(10.5)).foregroundColor(.inkFaint).lineLimit(1)
+            Spacer(minLength: 6)
+            if lit { Text("↵").font(.splMono(9)).foregroundColor(.lime) }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(lit ? Color.raised : Color.clear))
     }
 
     // ── PROJECT card — big monogram tile, essence, updated time ──
@@ -318,14 +416,33 @@ struct LauncherSnap {
                 LaunchTask(title: "Draft the launch email", meta: "waiting on pricing page", col: "blocked", over: false, prio: nil),
                 LaunchTask(title: "Notch LED display pass", meta: "◆ third-party-tools", col: "doing", over: false, prio: "med"),
             ]
+            // The keywords/accepts below are copied VERBATIM from the seeded switchboard.json manifests,
+            // so what these pictures show is what the shipped catalog will actually route.
             let apps = [
-                MiniApp(name: "God", glyph: "✦", hue: 0.22),
-                MiniApp(name: "PDF Tools", glyph: "⎙", hue: 0.02),
-                MiniApp(name: "Convert", glyph: "⇄", hue: 0.55),
-                MiniApp(name: "Palette", glyph: "◐", hue: 0.74),
-                MiniApp(name: "Prism", glyph: "P", hue: 0.09),
-                MiniApp(name: "Redline", glyph: "R", hue: 0.98),
-                MiniApp(name: "Bank", glyph: "B", hue: 0.62),
+                MiniApp(wid: "god", name: "God", glyph: "✦", hue: 0.22,
+                        tagline: "Ask anything, on anything on screen"),
+                MiniApp(wid: "pdftools", name: "PDF Tools", glyph: "⎙", hue: 0.02,
+                        tagline: "Merge, split & compress PDFs",
+                        keywords: ["merge", "combine", "split", "rotate", "pages", "extract pages", "shrink pdf", "compress pdf"],
+                        accepts: ["pdf"]),
+                MiniApp(wid: "convert", name: "Convert", glyph: "⇄", hue: 0.55,
+                        tagline: "CSV, JSON & YAML — on your device",
+                        keywords: ["csv", "json", "yaml", "tsv", "spreadsheet", "table", "reshape", "data format"],
+                        accepts: ["data", "text"]),
+                MiniApp(wid: "palette", name: "Palette", glyph: "◐", hue: 0.74,
+                        tagline: "Pull a colour palette from any image",
+                        keywords: ["colour", "color", "colours", "colors", "swatches", "hex codes", "dominant colour", "brand colours"],
+                        accepts: ["image"]),
+                MiniApp(wid: "resize", name: "Resize", glyph: "⤡", hue: 0.45,
+                        tagline: "Resize, convert & compress images",
+                        keywords: ["smaller", "shrink", "compress", "downsize", "scale down", "image size", "reduce file size", "webp", "jpeg", "png", "optimise image"],
+                        accepts: ["image"]),
+                MiniApp(wid: "prism", name: "Prism", glyph: "P", hue: 0.09,
+                        tagline: "Generate on-brand images from a prompt",
+                        keywords: ["generate image", "illustration", "artwork", "picture", "render", "make an image"],
+                        accepts: ["image"]),
+                MiniApp(wid: "redline", name: "Redline", glyph: "R", hue: 0.98, tagline: "Review and mark up work"),
+                MiniApp(wid: "bank", name: "Bank", glyph: "B", hue: 0.62, tagline: "Your context vault"),
             ]
             let projects = [
                 MiniProject(name: "Switchboard", essence: "BYO-AI wrapp store", updated: "12m", active: true, hue: 0.62),
@@ -340,6 +457,26 @@ struct LauncherSnap {
             snap("launcher-home-tasks", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps))
             snap("launcher-home-notasks", LauncherHomeTwin(tasks: [], projects: projects, work: work, apps: apps))
             snap("launcher-home-empty", LauncherHomeTwin(tasks: [], projects: [], work: [], apps: []))
+
+            // ── ROUTING states (docs/LAUNCHER-ROUTING.md) — every one of these is the router's real output. ──
+            // drop a file → the drop leads with the tools that take THAT kind; the rest dim back.
+            snap("launcher-file-image", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps,
+                                                         staged: ("hero-shot.png", "2.4 MB")))
+            snap("launcher-file-pdf", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps,
+                                                       staged: ("contract-v3.pdf", "812 KB")))
+            snap("launcher-file-csv", LauncherHomeTwin(tasks: [], projects: projects, work: work, apps: apps,
+                                                       staged: ("orders-q3.csv", "44 KB")))
+            // the honest empty state: a kind nothing here claims.
+            snap("launcher-file-unknown", LauncherHomeTwin(tasks: [], projects: projects, work: work,
+                                                           apps: apps.filter { $0.wid != "god" },
+                                                           staged: ("take-04.mov", "310 MB")))
+            // type a sentence that names no tool → the tool still comes up.
+            snap("launcher-ask-smaller", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps,
+                                                          query: "make this image smaller"))
+            snap("launcher-ask-merge", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps,
+                                                        query: "merge two pdfs"))
+            snap("launcher-ask-miss", LauncherHomeTwin(tasks: tasks, projects: projects, work: work, apps: apps,
+                                                       query: "zzzqqq"))
             exit(0)
         }
         app.run()
