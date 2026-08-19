@@ -224,7 +224,11 @@ function render() {
     const row = el("div", "dlrow");
     const cp = el("button", "act", "copy all HEX"); cp.onclick = () => copyAll("hex");
     const cpc = el("button", "act", "copy CSS vars"); cpc.onclick = () => copyAll("css");
-    row.append(cp, cpc);
+    // Export formats a designer actually pastes into — the delphi palette-extractor idea, folded in
+    // (not a second tool). Same swatches, four dialects; still zero model, zero network.
+    const cpt = el("button", "act", "copy Tailwind"); cpt.onclick = () => copyAll("tw");
+    const cpj = el("button", "act", "copy JSON"); cpj.onclick = () => copyAll("json");
+    row.append(cp, cpc, cpt, cpj);
     out.append(row);
   }
   wrap.append(out);
@@ -236,12 +240,22 @@ async function copyOne(hex) {
   try { await navigator.clipboard.writeText(hex); toast(hex + " copied ✓"); }
   catch { toast("Couldn't copy.", true); }
 }
+// Serialise the current swatches into the export dialect the designer asked for. Pure string work —
+// the four formats cover the common paste targets (raw hex, CSS custom props, a Tailwind color scale,
+// and machine-readable JSON with rgb). Factored out so the God tool / harness can reuse it too.
+function exportSwatches(sw, kind) {
+  if (kind === "css") return sw.map((s, i) => `--color-${i + 1}: ${s.hex};`).join("\n");
+  if (kind === "tw") {
+    const body = sw.map((s, i) => `      '${(i + 1) * 100}': '${s.hex}',`).join("\n");
+    return `// tailwind.config — extend.colors\nbrand: {\n${body}\n},`;
+  }
+  if (kind === "json") return JSON.stringify(sw.map((s) => ({ hex: s.hex, rgb: s.rgb })), null, 2);
+  return sw.map((s) => s.hex).join("\n");   // "hex"
+}
+const EXPORT_LABEL = { css: "CSS vars", tw: "Tailwind scale", json: "JSON", hex: "HEX list" };
 async function copyAll(kind) {
   if (!swatches.length) return;
-  const out = kind === "css"
-    ? swatches.map((s, i) => `--color-${i + 1}: ${s.hex};`).join("\n")
-    : swatches.map((s) => s.hex).join("\n");
-  try { await navigator.clipboard.writeText(out); toast((kind === "css" ? "CSS vars" : "HEX list") + " copied ✓"); }
+  try { await navigator.clipboard.writeText(exportSwatches(swatches, kind)); toast((EXPORT_LABEL[kind] || "HEX list") + " copied ✓"); }
   catch { toast("Couldn't copy.", true); }
 }
 
@@ -336,4 +350,4 @@ async function harnessRun() {
   await loadFile(new File([blob], "bands.png", { type: "image/png" }));
   return swatches.length;
 }
-try { (typeof window !== "undefined" ? window : globalThis).__paletteTest = { extractPalette, medianCut, samplePixels, toHex, COUNTS, harnessRun }; } catch { /* ignore */ }
+try { (typeof window !== "undefined" ? window : globalThis).__paletteTest = { extractPalette, medianCut, samplePixels, toHex, COUNTS, harnessRun, exportSwatches }; } catch { /* ignore */ }

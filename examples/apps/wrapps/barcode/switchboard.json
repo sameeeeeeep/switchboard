@@ -1,0 +1,48 @@
+{
+  "id": "barcode",
+  "name": "Barcode",
+  "tagline": "Code 128 and EAN-13 barcodes from any text or product number — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "barcode",
+    "code 128",
+    "ean-13",
+    "product barcode",
+    "generate barcode",
+    "barcode from number",
+    "retail barcode",
+    "upc ean"
+  ],
+  "accepts": [
+    "text",
+    "data"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/barcode.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "Code 128 with automatic A/B/C code sets and Code-C digit-pair packing",
+    "EAN-13 with the check digit computed for you (or validated if you paste all 13)",
+    "Bit-exact encoding, verified against known values in a headless test",
+    "Runs entirely in the tab — no model, no network, no upload, no cost"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}
