@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Switchboard — see it before you install</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --page:#0A0C10; --inset:#070809; --panel:#12151C; --raised:#1A1F29;
+    --edge:#262C38; --edge-soft:#1C212B;
+    --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+    --lime:#C8F250; --ok:#3DD68C; --danger:#FF2D6E;
+    --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+    --mono:"Spline Sans Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;min-height:100%;}
+  body{background:radial-gradient(1100px 560px at 80% -10%,rgba(200,242,80,.05),transparent 60%),var(--page);
+    color:var(--ink);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:38px 22px 90px;}
+  .kick{font:600 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim);}
+  h1{font:800 clamp(1.9rem,4.4vw,3rem)/1.02 var(--display);letter-spacing:-.03em;margin:12px 0 10px;text-wrap:balance;}
+  h1 em{font-style:normal;color:var(--lime);}
+  .sub{color:var(--ink-sec);font-size:16px;max-width:56ch;margin:0 0 8px;}
+  .ctxline{font:500 12.5px/1.5 var(--mono);color:var(--ink-faint);margin:16px 0 22px;}
+  .ctxline b{color:var(--ink-sec);} .chip{display:inline-flex;align-items:center;gap:6px;background:var(--inset);border:1px solid var(--edge);border-radius:999px;padding:5px 10px;color:var(--ink-sec);}
+  .chip .d{width:6px;height:6px;border-radius:50%;background:var(--lime);}
+
+  .task{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:16px;}
+  .task .lbl{font:600 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+  .task .q{flex:1;min-width:220px;font:500 15px/1.4 var(--sans);color:var(--ink);}
+  .run{display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:11px;border:0;cursor:pointer;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--lime) 92%,#fff),var(--lime));color:var(--page);
+    font:700 14px/1 var(--display);letter-spacing:-.01em;box-shadow:0 0 26px -8px rgba(200,242,80,.6);transition:filter .15s,transform .05s;}
+  .run:hover{filter:brightness(1.06);} .run:active{transform:translateY(1px);}
+  .run:disabled{opacity:.6;cursor:default;box-shadow:none;}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:720px){.cols{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;min-height:280px;}
+  .card.win{border-color:color-mix(in srgb,var(--lime) 45%,var(--edge));}
+  .card .top{display:flex;align-items:center;gap:9px;padding:13px 15px;border-bottom:1px solid var(--edge-soft);}
+  .card .top .ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font:700 12px/1 var(--display);}
+  .card.plain .ic{background:var(--raised);color:var(--ink-dim);}
+  .card.win .ic{background:color-mix(in srgb,var(--lime) 16%,var(--inset));color:var(--lime);border:1px solid color-mix(in srgb,var(--lime) 35%,var(--edge));}
+  .card .top b{font:700 14px/1 var(--display);}
+  .card .top .tag{margin-left:auto;font:600 9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);}
+  .card.win .top .tag{color:var(--lime);}
+  .body{padding:15px;flex:1;display:flex;flex-direction:column;gap:11px;}
+  .msg{font:400 13.5px/1.55 var(--sans);}
+  .msg.you{color:var(--ink-dim);} .msg.you::before{content:"you · ";font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+  .out{background:var(--inset);border:1px solid var(--edge-soft);border-radius:11px;padding:12px 13px;font:400 13.5px/1.6 var(--sans);color:var(--ink-sec);white-space:pre-wrap;min-height:70px;}
+  .card.win .out{border-color:color-mix(in srgb,var(--lime) 25%,var(--edge));}
+  .cursor::after{content:"▋";color:var(--lime);animation:blink 1s steps(2) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .foot{display:flex;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);color:var(--ink-faint);padding:11px 15px;border-top:1px solid var(--edge-soft);}
+  .foot.priv{color:var(--ok);} .foot .lock{font-size:12px;}
+  .note{font:400 11.5px/1.5 var(--sans);color:var(--ink-faint);margin:9px 2px 0;}
+
+  .cta{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:30px;padding-top:22px;border-top:1px solid var(--edge-soft);}
+  .cta .dl{display:inline-flex;align-items:center;gap:9px;padding:14px 22px;border-radius:12px;background:var(--ink);color:var(--page);font:700 15px/1 var(--display);letter-spacing:-.01em;text-decoration:none;}
+  .cta .browse{color:var(--lime);font:600 13px/1 var(--sans);text-decoration:none;border-bottom:1px solid transparent;}
+  .cta .browse:hover{border-color:var(--lime);}
+  .cta .free{font:500 12px/1.5 var(--mono);color:var(--ink-faint);}
+  .demoflag{font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);border:1px solid var(--edge);border-radius:999px;padding:5px 9px;}
+  @media (prefers-reduced-motion:reduce){.cursor::after{animation:none;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="kick">the same job, two ways · <span class="demoflag" style="border:none;padding:0;color:var(--ink-faint)">scripted demo</span></span>
+  <h1>See it work <em>before</em> you install.</h1>
+  <p class="sub">Every AI app wants your API key, your signup, and your data. A Switchboard wrapp runs on the Claude you already pay for — and already knows your stuff, because your stuff never left your machine.</p>
+  <div class="ctxline">Pretend this is <b>your</b> Switchboard. Your context, already loaded:
+    <span class="chip"><span class="d"></span>Brand — Kelp · sea-mineral skincare · calm, clean, coastal</span>
+  </div>
+
+  <div class="task">
+    <span class="lbl">the task</span>
+    <span class="q">"Write a launch tweet for my new product."</span>
+    <button class="run" id="run">▶ Run it both ways</button>
+  </div>
+
+  <div class="cols">
+    <div class="card plain">
+      <div class="top"><span class="ic">AI</span><b>A normal chatbot</b><span class="tag">generic</span></div>
+      <div class="body">
+        <div class="msg you">Write a launch tweet for my new product.</div>
+        <div class="out" id="outA">—</div>
+      </div>
+      <div class="foot">↑ it doesn't know your brand · you paste context every time · your data sits on their servers</div>
+    </div>
+
+    <div class="card win">
+      <div class="top"><span class="ic">◨</span><b>A Switchboard wrapp</b><span class="tag">knows you</span></div>
+      <div class="body">
+        <div class="msg you">Write a launch tweet for my new product.</div>
+        <div class="out" id="outB">—</div>
+      </div>
+      <div class="foot priv"><span class="lock">🔒</span> ran on your own Claude · used your Kelp brand · nothing left your machine</div>
+    </div>
+  </div>
+  <p class="note">Scripted demo — the wrapp version is what a real one produces once it has your context. No signup, no API key, no data leaves your device.</p>
+
+  <div class="cta">
+    <a class="dl" href="#" onclick="return false">↓ Download for Mac</a>
+    <a class="browse" href="#" onclick="return false">Browse the 76 wrapps →</a>
+    <span class="free">every wrapp · your AI · $0 · no signup · nothing leaves</span>
+  </div>
+</div>
+
+<script>
+  const A = "Sure! Here's a launch tweet:\n\n\"🚀 Big news — we just launched our new product! Check it out and let us know what you think. #startup #launch\"\n\n(Tell me your product name, audience, and tone and I can tailor it.)";
+  const B = "Kelp — Sea Serum is live. 🌊\n\nCold-pressed kelp minerals for skin that's been through it. No 40-ingredient labels, no promises we can't keep — just the coast, bottled.\n\nFirst drop is small. When it's gone, it's gone.";
+  // Time-based reveal (throttle-resistant): each tick computes chars from REAL elapsed time, so a
+  // slowed/backgrounded tab jumps to the correct position and still completes in real time. Driven by
+  // setTimeout (keeps firing when hidden, unlike rAF which pauses) → smooth when focused, correct when not.
+  function type(el, text, speed, done){
+    el.textContent=""; el.classList.add("cursor");
+    const start=performance.now();
+    (function tick(){
+      const n=Math.min(text.length, Math.floor((performance.now()-start)/speed));
+      el.textContent=text.slice(0,n);
+      if(n<text.length){ setTimeout(tick, 16); }
+      else { el.classList.remove("cursor"); done&&done(); }
+    })();
+  }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('run').addEventListener('click', function(){
+    this.disabled=true; this.textContent="running…";
+    const a=document.getElementById('outA'), b=document.getElementById('outB');
+    if(reduced){ a.textContent=A; b.textContent=B; this.textContent="▶ Run it both ways"; this.disabled=false; return; }
+    type(a, A, 14, ()=>{
+      type(b, B, 16, ()=>{ const btn=document.getElementById('run'); btn.textContent="▶ Run again"; btn.disabled=false; });
+    });
+  });
+</script>
+</body>
+</html>

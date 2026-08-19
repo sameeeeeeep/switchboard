@@ -45,6 +45,7 @@ struct GuideResult {
     let text: String
     var verdict: String   // "pass" | "fail" | "skipped" | "unrun" | "done" (tour)
     var notedAt: Date?
+    var screenshot: String? = nil       // auto full-screen capture of this step (path in tmp) — set on advance
     var feedback: StepFeedback? = nil   // set by the feedback-capture flow (fn-drag shot + typed/dictated note)
 }
 
@@ -260,6 +261,7 @@ final class CursorGuide {
     // fallback). In .tour mode each step is read aloud as it appears, so the guide talks you through it.
     var onSpeak: ((String) -> Void)?     // speak a line (interrupts any in-flight speech)
     var onStopSpeak: (() -> Void)?       // silence on teardown/abort
+    var onCaptureStep: (() -> String?)?  // full-screen shot of the current step; returns a jpg path (or nil)
 
     // Enter capture for the CURRENT step. The verdict is already set by the time this runs, so it
     // never changes it — it just opens capture.
@@ -433,6 +435,9 @@ final class CursorGuide {
 
     private func handleAdvance(fail: Bool) {
         guard isActive, idx < steps.count, !capturingFeedback else { return }
+        // Auto-capture a full-screen shot of the step the human just acted on (chip left in frame),
+        // so the run's reviewer sees every step, not only the ones a human chose to fn-drag.
+        if let cap = onCaptureStep, let path = cap(), !path.isEmpty { results[idx].screenshot = path }
         if mode == .test {
             record(verdict: fail ? "fail" : "pass")
             flash(fail ? .fail : .pass)
@@ -517,6 +522,7 @@ final class CursorGuide {
                 "verdict": r.verdict,
                 "notedAt": r.notedAt.map { iso.string(from: $0) } ?? NSNull(),
             ]
+            if let s = r.screenshot, !s.isEmpty { d["screenshot"] = s }   // auto per-step shot
             if let fb = r.feedback, !fb.isEmpty {
                 var fbo: [String: Any] = [:]
                 if let s = fb.screenshot, !s.isEmpty { fbo["screenshot"] = s }

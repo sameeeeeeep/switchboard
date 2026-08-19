@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>COS — the autonomous company</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --page:#0A0C10; --inset:#070809; --panel:#12151C; --raised:#1A1F29;
+    --edge:#262C38; --edge-soft:#1C212B;
+    --ink:#E8EDF4; --ink-sec:#B4BECE; --ink-dim:#99A3B7; --ink-faint:#6E7C90;
+    --lime:#C8F250; --blue:#7DE0FF; --coral:#FF8A5B; --amber:#F5C451;
+    --ok:#3DD68C; --warn:#F59E0B; --danger:#FF2D6E;
+    --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+    --mono:"Spline Sans Mono",ui-monospace,monospace;
+    --accent:var(--lime);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;}
+  body{background:
+      radial-gradient(1200px 620px at 82% -8%, rgba(200,242,80,.05), transparent 60%),
+      radial-gradient(900px 520px at 5% 110%, rgba(125,224,255,.045), transparent 55%),
+      var(--page);
+    color:var(--ink);font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;}
+  ::selection{background:rgba(200,242,80,.3);}
+  button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .kick{font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);}
+
+  /* ---------- top bar ---------- */
+  header{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;
+    padding:12px 26px;border-bottom:1px solid var(--edge-soft);
+    background:color-mix(in srgb,var(--page) 82%,transparent);backdrop-filter:blur(14px);}
+  .word{font:800 20px/1 var(--display);letter-spacing:-.02em;display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .word .mk{width:22px;height:22px;border-radius:6px;background:var(--lime);box-shadow:0 0 16px rgba(200,242,80,.45);position:relative;}
+  .word .mk::after{content:"";position:absolute;inset:6px;border-radius:2px;background:var(--page);}
+  .word .of{font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);align-self:center;margin-left:2px;}
+  .topspace{margin-left:auto;}
+  .topbar-r{display:flex;align-items:center;gap:10px;}
+  .meter{display:flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--edge);border-radius:999px;background:var(--inset);}
+  .meter .bar{width:56px;height:5px;border-radius:3px;background:var(--raised);overflow:hidden;}
+  .meter .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),#a8d63b);}
+  .meter b{font:600 11px/1 var(--mono);color:var(--ink-sec);}
+  .lanes{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--edge);border-radius:999px;background:var(--inset);font:600 11px/1 var(--mono);color:var(--ink-sec);}
+  .lanes .bolt{color:var(--lime);}
+  .av{width:30px;height:30px;border-radius:50%;background:conic-gradient(from 210deg,var(--coral),var(--amber),var(--lime),var(--blue),var(--coral));}
+
+  main{max-width:1220px;margin:0 auto;padding:26px 26px 90px;}
+
+  /* ---------- portfolio: masthead ---------- */
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:6px 0 20px;flex-wrap:wrap;}
+  .mast h1{font:700 clamp(1.5rem,3vw,2.1rem)/1.02 var(--display);letter-spacing:-.025em;margin:0;text-wrap:balance;}
+  .mast h1 em{font-style:normal;color:var(--ink-faint);}
+  .mast p{margin:8px 0 0;color:var(--ink-dim);font-size:13.5px;max-width:52ch;}
+  .newv{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:11px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--lime) 92%,#fff),var(--lime));color:var(--page);
+    font:700 13.5px/1 var(--display);letter-spacing:-.01em;box-shadow:0 0 26px -8px rgba(200,242,80,.6);transition:filter .15s,transform .05s;}
+  .newv:hover{filter:brightness(1.06);} .newv:active{transform:translateY(1px);}
+
+  /* ---------- aggregate strip ---------- */
+  .agg{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--edge-soft);
+    border:1px solid var(--edge-soft);border-radius:14px;overflow:hidden;margin-bottom:18px;}
+  .agg .cell{background:var(--panel);padding:15px 18px;}
+  .agg .n{font:600 26px/1 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .agg .l{margin-top:6px;}
+  .agg .sub{font:500 10.5px/1.3 var(--mono);color:var(--ink-faint);margin-top:5px;}
+  .agg .n.real{color:var(--ok);} .agg .n.dim{color:var(--ink-faint);}
+
+  /* ---------- needs-you rail ---------- */
+  .needs{border:1px solid color-mix(in srgb,var(--warn) 34%,var(--edge));border-radius:14px;
+    background:color-mix(in srgb,var(--warn) 7%,var(--panel));padding:14px 16px;margin-bottom:22px;}
+  .needs-h{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .needs-h .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 10px var(--warn);}
+  .needs-h b{font:700 13px/1 var(--display);}
+  .needs-h .c{font:600 10px/1 var(--mono);color:var(--page);background:var(--warn);border-radius:999px;padding:3px 7px;}
+  .needs-h .why{margin-left:auto;font:500 11px/1.4 var(--mono);color:var(--ink-dim);}
+  .qrow{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid var(--edge-soft);}
+  .qrow:first-of-type{border-top:none;}
+  .qtag{font:600 10px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:4px 8px;border-radius:6px;border:1px solid var(--edge);color:var(--ink-sec);min-width:82px;text-align:center;}
+  .qtag.lime{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 40%,var(--edge));}
+  .qtag.blue{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 40%,var(--edge));}
+  .qtag.coral{color:var(--coral);border-color:color-mix(in srgb,var(--coral) 40%,var(--edge));}
+  .qtxt{flex:1;min-width:0;}
+  .qtxt .t{font:500 13px/1.35 var(--sans);color:var(--ink);}
+  .qtxt .m{font:500 11px/1.3 var(--mono);color:var(--ink-faint);margin-top:2px;}
+  .qtxt .m .lane{color:var(--ink-dim);}
+  .qbtns{display:flex;gap:7px;}
+  .btn{font:600 11.5px/1 var(--sans);border-radius:9px;padding:9px 13px;border:1px solid var(--edge);color:var(--ink-sec);transition:border-color .15s,color .15s,background .15s;}
+  .btn:hover{border-color:var(--ink-faint);color:var(--ink);}
+  .btn.go{background:var(--ink);color:var(--page);border-color:var(--ink);}
+  .btn.go:hover{filter:brightness(1.08);}
+
+  /* ---------- venture cards ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .vcard{position:relative;text-align:left;background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:16px 16px 14px;overflow:hidden;transition:border-color .18s,transform .08s,box-shadow .18s;}
+  .vcard:hover{border-color:color-mix(in srgb,var(--ac) 55%,var(--edge));transform:translateY(-2px);box-shadow:0 18px 40px -26px rgba(0,0,0,.9);}
+  .vcard::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,var(--ac),transparent 70%);opacity:.9;}
+  .vtop{display:flex;align-items:flex-start;gap:11px;}
+  .glyph{width:34px;height:34px;border-radius:9px;flex:none;display:grid;place-items:center;
+    background:color-mix(in srgb,var(--ac) 12%,var(--inset));border:1px solid color-mix(in srgb,var(--ac) 30%,var(--edge));}
+  .glyph svg{width:18px;height:18px;stroke:var(--ac);fill:none;stroke-width:1.6;}
+  .vhead{flex:1;min-width:0;}
+  .vname{font:700 16px/1.1 var(--display);letter-spacing:-.01em;display:flex;align-items:center;gap:7px;}
+  .vkind{font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin-top:5px;}
+  .vthesis{font:400 12px/1.45 var(--sans);color:var(--ink-dim);margin:10px 0 13px;min-height:34px;}
+
+  .apill{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font:600 10px/1 var(--mono);letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;}
+  .apill .p{width:6px;height:6px;border-radius:50%;}
+  .apill.drafting{background:color-mix(in srgb,var(--ac) 12%,var(--inset));color:var(--ac);}
+  .apill.drafting .p{background:var(--ac);box-shadow:0 0 8px var(--ac);animation:pulse 2s ease-in-out infinite;}
+  .apill.live{background:color-mix(in srgb,var(--ok) 14%,var(--inset));color:var(--ok);}
+  .apill.live .p{background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 1.4s ease-in-out infinite;}
+  .apill.off{background:var(--inset);color:var(--ink-faint);}
+  .apill.off .p{background:var(--ink-faint);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+  .metric{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:4px;}
+  .metric .big{font:600 30px/1 var(--mono);letter-spacing:-.03em;font-variant-numeric:tabular-nums;}
+  .metric .cap{font:600 25px/1 var(--mono);color:var(--ink-faint);}
+  .metric .ml{font:500 10.5px/1.3 var(--mono);color:var(--ink-faint);margin-top:6px;}
+  .metric svg.spark{width:96px;height:34px;overflow:visible;}
+  .money{font:500 11px/1 var(--mono);margin-top:8px;}
+  .money.real{color:var(--ok);} .money.nc{color:var(--ink-faint);} .money.proj{color:var(--blue);}
+
+  .vfoot{display:flex;align-items:center;gap:10px;margin-top:13px;padding-top:12px;border-top:1px solid var(--edge-soft);}
+  .llog{flex:1;min-width:0;font:500 10.5px/1.4 var(--mono);color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .llog .tick{color:var(--ac);}
+  .vlanes{font:600 10px/1 var(--mono);color:var(--ink-faint);white-space:nowrap;}
+  .vlanes b{color:var(--ac);}
+
+  .ghostv{border-style:dashed;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-faint);min-height:220px;}
+  .ghostv:hover{border-color:var(--ink-faint);color:var(--ink-sec);}
+  .ghostv .plus{font:300 30px/1 var(--display);}
+  .ghostv .gt{font:600 12px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+  .ghostv .gs{font:400 11px/1.4 var(--sans);max-width:20ch;text-align:center;}
+
+  .vbadge{font:700 8px/1 var(--mono);letter-spacing:.1em;padding:3px 6px;border-radius:5px;border:1px solid var(--edge);color:var(--ink-faint);}
+  .vbadge.real{color:var(--page);background:var(--lime);border-color:var(--lime);}
+
+  /* ---------- cockpit view ---------- */
+  #cockpit{display:none;}
+  body.cock #portfolio{display:none;}
+  body.cock #cockpit{display:block;}
+  .crumb{display:flex;align-items:center;gap:10px;margin:2px 0 16px;font:500 12px/1 var(--mono);color:var(--ink-dim);}
+  .crumb a{color:var(--ink-dim);cursor:pointer;}
+  .crumb a:hover{color:var(--ink);} .crumb .sep{color:var(--ink-faint);}
+  .crumb .cur{color:var(--ac);}
+
+  .chead{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;}
+  .chead .glyph{width:40px;height:40px;} .chead .glyph svg{width:21px;height:21px;}
+  .chead h2{font:700 22px/1 var(--display);letter-spacing:-.02em;margin:0;}
+  .chead .ct{font:400 12.5px/1.4 var(--sans);color:var(--ink-dim);margin-top:3px;}
+  .chead .cright{margin-left:auto;display:flex;align-items:center;gap:9px;}
+  .toggle{display:flex;align-items:center;gap:9px;padding:8px 13px;border:1px solid color-mix(in srgb,var(--ac) 40%,var(--edge));border-radius:999px;background:color-mix(in srgb,var(--ac) 8%,var(--inset));}
+  .toggle .tl{font:600 11px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--ac);}
+  .sw{width:38px;height:21px;border-radius:999px;background:color-mix(in srgb,var(--ac) 30%,var(--raised));position:relative;transition:background .2s;}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--ac);transition:left .2s;box-shadow:0 0 10px var(--ac);}
+  .sw.on{background:color-mix(in srgb,var(--ac) 55%,var(--raised));} .sw.on::after{left:19px;}
+
+  .cols{display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr;gap:13px;align-items:start;}
+  .col{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:0;overflow:hidden;}
+  .col-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--edge-soft);}
+  .col-h .ci{width:16px;height:16px;stroke:var(--ink-dim);fill:none;stroke-width:1.6;}
+  .col-h b{font:700 12px/1 var(--display);letter-spacing:.01em;}
+  .col-h .badge{margin-left:auto;font:600 9.5px/1 var(--mono);color:var(--ink-faint);}
+  .col-body{padding:12px 14px;}
+
+  /* live log */
+  .log{display:flex;flex-direction:column;gap:0;}
+  .lg{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--edge-soft);}
+  .lg:last-child{border-bottom:none;}
+  .lg .tm{font:500 10px/1.5 var(--mono);color:var(--ink-faint);white-space:nowrap;padding-top:1px;}
+  .lg .lt{font:400 12px/1.4 var(--sans);color:var(--ink-sec);}
+  .lg .lt .who{font:600 10px/1 var(--mono);color:var(--ac);}
+  .lg .lt .staged{color:var(--warn);} .lg .lt .sent{color:var(--ok);}
+  .lg.fresh{animation:landin .5s ease;}
+  @keyframes landin{from{opacity:0;transform:translateY(-4px);background:color-mix(in srgb,var(--ac) 10%,transparent);}to{opacity:1;}}
+  .shimmer{height:2px;background:linear-gradient(90deg,transparent,var(--ac),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:sh 2.4s linear infinite;opacity:.7;}
+  @keyframes sh{from{background-position:-40% 0;}to{background-position:140% 0;}}
+
+  /* CEO chat dock */
+  .ceo{margin-top:12px;border-top:1px solid var(--edge-soft);padding-top:11px;}
+  .ceo .cl{font:600 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px;}
+  .ceo .msg{font:400 12px/1.5 var(--sans);color:var(--ink-sec);background:var(--inset);border:1px solid var(--edge-soft);border-radius:10px;padding:9px 11px;margin-bottom:8px;}
+  .ceo .msg .cmd{color:var(--ac);font-family:var(--mono);font-size:11px;}
+  .ceo-in{display:flex;gap:7px;}
+  .ceo-in input{flex:1;background:var(--inset);border:1px solid var(--edge);border-radius:9px;color:var(--ink);font:400 12px/1.4 var(--sans);padding:9px 11px;outline:none;}
+  .ceo-in input:focus{border-color:color-mix(in srgb,var(--ac) 55%,var(--edge));}
+  .verbs{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;}
+  .verb{font:600 10px/1 var(--mono);color:var(--ink-dim);border:1px solid var(--edge);border-radius:7px;padding:5px 8px;}
+  .verb:hover{border-color:var(--ac);color:var(--ac);}
+
+  /* task rows */
+  .task{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--edge-soft);}
+  .task:last-child{border-bottom:none;}
+  .st{width:8px;height:8px;border-radius:50%;flex:none;}
+  .st.done{background:var(--ok);} .st.staged{background:var(--warn);box-shadow:0 0 8px var(--warn);}
+  .st.drafting{background:var(--ac);animation:pulse 1.6s infinite;} .st.blocked{background:var(--danger);}
+  .st.prepared{background:var(--ink-faint);}
+  .tk{flex:1;min-width:0;}
+  .tk .tt{font:500 12px/1.35 var(--sans);color:var(--ink);}
+  .tk .ts{font:500 10px/1.3 var(--mono);color:var(--ink-faint);margin-top:2px;}
+  .tk .ts .lk{color:var(--ac);cursor:pointer;}
+  .tmode{font:600 9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:5px;border:1px solid var(--edge);color:var(--ink-faint);}
+  .tmode.auto{color:var(--ac);border-color:color-mix(in srgb,var(--ac) 35%,var(--edge));}
+  .tmode.appr{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,var(--edge));}
+
+  .tabs{display:flex;gap:4px;margin-bottom:11px;}
+  .tab{font:600 10px/1 var(--mono);letter-spacing:.03em;text-transform:uppercase;color:var(--ink-faint);padding:6px 9px;border-radius:7px;border:1px solid transparent;}
+  .tab.on{color:var(--ac);border-color:color-mix(in srgb,var(--ac) 30%,var(--edge));background:color-mix(in srgb,var(--ac) 8%,transparent);}
+
+  /* deployable preview */
+  .deploy{border:1px solid var(--edge-soft);border-radius:10px;overflow:hidden;margin-bottom:12px;background:var(--inset);}
+  .deploy .bar{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--edge-soft);}
+  .deploy .bar .u{font:500 10px/1 var(--mono);color:var(--ink-faint);}
+  .deploy .bar .dots{display:flex;gap:4px;} .deploy .bar .dots i{width:7px;height:7px;border-radius:50%;background:var(--raised);}
+  .deploy .shot{height:96px;background:
+      radial-gradient(120px 80px at 78% 20%,color-mix(in srgb,var(--ac) 30%,transparent),transparent),
+      linear-gradient(160deg,var(--raised),var(--inset));display:flex;flex-direction:column;justify-content:center;padding:0 14px;gap:6px;}
+  .deploy .shot .h{font:700 15px/1 var(--display);color:var(--ink);}
+  .deploy .shot .s{font:400 10px/1.3 var(--sans);color:var(--ink-dim);max-width:80%;}
+  .deploy .shot .pill{align-self:flex-start;font:600 8px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:4px 7px;border-radius:5px;background:var(--ac);color:var(--page);}
+
+  /* growth chips + strategy */
+  .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--edge-soft);}
+  .row:last-child{border-bottom:none;}
+  .row .ri{width:15px;height:15px;stroke:var(--ink-dim);fill:none;stroke-width:1.6;flex:none;}
+  .row .rt{flex:1;font:500 12px/1.3 var(--sans);color:var(--ink-sec);}
+  .row .rv{font:600 10.5px/1 var(--mono);color:var(--ink-faint);}
+  .row .rv.on{color:var(--ok);} .row .rv.stg{color:var(--warn);}
+  .mini{display:flex;align-items:center;gap:7px;margin-top:4px;}
+  .autopost{display:flex;align-items:center;justify-content:space-between;background:var(--inset);border:1px solid var(--edge-soft);border-radius:9px;padding:9px 11px;margin:10px 0;}
+  .autopost .apl{font:500 11px/1.3 var(--sans);color:var(--ink-sec);}
+  .swsm{width:32px;height:18px;border-radius:999px;background:var(--raised);position:relative;}
+  .swsm.on{background:color-mix(in srgb,var(--ac) 50%,var(--raised));}
+  .swsm::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ink-faint);transition:left .2s,background .2s;}
+  .swsm.on::after{left:16px;background:var(--ac);}
+
+  .econ{background:var(--inset);border:1px solid var(--edge-soft);border-radius:10px;padding:12px;margin-bottom:11px;}
+  .econ .er{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;}
+  .econ .er .k{font:500 11px/1.3 var(--sans);color:var(--ink-dim);}
+  .econ .er .v{font:600 13px/1 var(--mono);}
+  .econ .er .v.real{color:var(--ok);} .econ .er .v.nc{color:var(--ink-faint);} .econ .er .v.proj{color:var(--blue);}
+  .thesis{font:400 12px/1.55 var(--sans);color:var(--ink-sec);background:var(--inset);border:1px solid var(--edge-soft);border-radius:10px;padding:11px 12px;margin-bottom:11px;}
+  .bet{display:flex;gap:8px;align-items:flex-start;padding:7px 0;}
+  .bet .bd{width:6px;height:6px;border-radius:50%;background:var(--ac);margin-top:6px;flex:none;}
+  .bet .bt{font:400 11.5px/1.4 var(--sans);color:var(--ink-sec);}
+
+  .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--edge-soft);font:500 11px/1.6 var(--mono);color:var(--ink-faint);display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .foot .b{color:var(--ink-dim);}
+
+  @media (max-width:1000px){.cols{grid-template-columns:1fr 1fr;} .grid{grid-template-columns:1fr 1fr;} .agg{grid-template-columns:1fr 1fr;}}
+  @media (max-width:640px){.cols,.grid,.agg{grid-template-columns:1fr;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="word" onclick="showPortfolio()"><span class="mk"></span>COS<span class="of">company of record</span></div>
+  <div class="topspace"></div>
+  <div class="topbar-r">
+    <div class="meter" title="Compute runway this month"><span class="kick" style="color:var(--ink-faint)">runway</span><span class="bar"><i style="width:62%"></i></span><b>6.2M</b></div>
+    <div class="lanes"><span class="bolt">⚡</span>7 lanes live</div>
+    <div class="av"></div>
+  </div>
+</header>
+
+<main>
+  <!-- ============ PORTFOLIO ============ -->
+  <section id="portfolio">
+    <div class="mast">
+      <div>
+        <h1>Your ventures <em>— running.</em></h1>
+        <p>Three bets, one engine. Each one drafts its own work through the night; nothing leaves the building without a connected lane and your go.</p>
+      </div>
+      <button class="newv">＋ New venture</button>
+    </div>
+
+    <div class="agg">
+      <div class="cell"><div class="n">1<span style="color:var(--ink-faint);font-size:16px">+3</span></div><div class="l kick">ventures</div><div class="sub">1 REAL (Switchboard) · 3 samples</div></div>
+      <div class="cell"><div class="n">76</div><div class="l kick">wrapps shipped · real</div><div class="sub">v0.3.1 · 12 releases · catalog.json</div></div>
+      <div class="cell"><div class="n mono">16</div><div class="l kick">operating cycles logged</div><div class="sub">docs/operating/LOG.md · all staged, nothing sent</div></div>
+      <div class="cell"><div class="n dim">—</div><div class="l kick">revenue</div><div class="sub">not connected — no meter, no invented number</div></div>
+    </div>
+
+    <div class="needs">
+      <div class="needs-h">
+        <span class="dot"></span><b>Needs you</b><span class="c">3</span>
+        <span class="why">the REAL queue · from the operating record, 2026-08-05</span>
+      </div>
+      <div class="qrow">
+        <span class="qtag lime">Switchboard</span>
+        <div class="qtxt"><div class="t">Push the landing fix — "20+ wrapps" → 76</div><div class="m">1-line commit ready on launch/76-and-demo · <span class="lane">merge deploys via Pages →</span></div></div>
+        <div class="qbtns"><button class="btn">Review diff</button><button class="btn go">Push</button></div>
+      </div>
+      <div class="qrow">
+        <span class="qtag lime">Switchboard</span>
+        <div class="qtxt"><div class="t">Fire the first outreach — MCP Discord ⭐</div><div class="m">4 venue drafts ready (OUTREACH.md) · <span class="lane">sends from your account →</span></div></div>
+        <div class="qbtns"><button class="btn">Review</button><button class="btn go">Send</button></div>
+      </div>
+      <div class="qrow">
+        <span class="qtag lime">Switchboard</span>
+        <div class="qtxt"><div class="t">Cold-install test on a clean Mac</div><div class="m">blocks the Show HN launch · <span class="lane">guided-cursor script ready →</span></div></div>
+        <div class="qbtns"><button class="btn">Later</button><button class="btn go">Run it</button></div>
+      </div>
+    </div>
+
+    <div class="grid" id="vgrid"></div>
+  </section>
+
+  <!-- ============ COCKPIT ============ -->
+  <section id="cockpit">
+    <div class="crumb"><a onclick="showPortfolio()">Portfolio</a><span class="sep">/</span><span class="cur" id="cb-name">Kelp</span></div>
+
+    <div class="chead">
+      <div class="glyph" id="c-glyph"></div>
+      <div>
+        <h2 id="c-name">Kelp</h2>
+        <div class="ct" id="c-thesis">Everyday sea-mineral skincare, made to sell out and restock itself.</div>
+      </div>
+      <div class="cright">
+        <div class="lanes"><span class="bolt" style="color:var(--ac)">⚡</span><span id="c-lanes">2/5 lanes</span></div>
+        <div class="toggle"><span class="tl">Autopilot</span><div class="sw on" id="c-sw" onclick="this.classList.toggle('on')"></div></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="col">
+        <div class="col-h"><svg class="ci" viewBox="0 0 24 24"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21v-6h6v6"/></svg><b>Company</b><span class="badge">live log</span></div>
+        <div class="shimmer" id="c-shimmer"></div>
+        <div class="col-body" id="cb-company"></div>
+      </div>
+      <div class="col">
+        <div class="col-h"><svg class="ci" viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg><b id="cb-ops-t">Operations</b><span class="badge" id="cb-ops-badge">supply + tasks</span></div>
+        <div class="col-body" id="cb-ops"></div>
+      </div>
+      <div class="col">
+        <div class="col-h"><svg class="ci" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7h-5m5 0v5"/></svg><b id="cb-growth-t">Growth</b><span class="badge" id="cb-growth-badge">draft-first</span></div>
+        <div class="col-body" id="cb-growth"></div>
+      </div>
+      <div class="col">
+        <div class="col-h"><svg class="ci" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg><b>Strategy</b><span class="badge">the bet</span></div>
+        <div class="col-body" id="cb-strat"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="b">Honest boundary:</span> autopilot drafts everything · sends nothing without a connected lane and your go · every number is real or reads “not connected.”
+    </div>
+  </section>
+</main>
+
+<script>
+  const spark = (pts, ac) => {
+    const w=96,h=34,max=Math.max(...pts),min=Math.min(...pts),rng=(max-min)||1;
+    const X=i=>i*(w/(pts.length-1)), Y=v=>h-((v-min)/rng)*(h-6)-3;
+    const d=pts.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const area=`${d} L${w},${h} L0,${h} Z`, ex=X(pts.length-1), ey=Y(pts[pts.length-1]);
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="g${ac.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ac}" stop-opacity=".28"/><stop offset="1" stop-color="${ac}" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#g${ac.slice(1)})"/><path d="${d}" fill="none" stroke="${ac}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.4" fill="${ac}"/></svg>`;
+  };
+  const G = {
+    soft:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10l3 3 5-5"/></svg>',
+    agency:'<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 8h5a2 2 0 0 1 2 2v3M8 11v3a2 2 0 0 0 2 2h3"/></svg>',
+    brand:'<svg viewBox="0 0 24 24"><path d="M6 2h12l1 5-7 15L5 7z"/><path d="M6 7h12"/></svg>'
+  };
+  const RI = {
+    page:'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
+    mail:'<path d="M4 4h16v12H4z"/><path d="m4 4 8 6 8-6"/>',
+    ads:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8m-4-4h8"/>',
+    chat:'<path d="M7 8h10M7 12h6M5 20l-2 2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8z"/>',
+    list:'<path d="M8 6h12M8 12h12M8 18h12M3 6h.01M3 12h.01M3 18h.01"/>',
+    doc:'<path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/>'
+  };
+  const ventures = [
+    { id:'switchboard', name:'Switchboard', kind:'software business', ac:'var(--lime)', acHex:'#C8F250', glyph:G.soft, real:true,
+      thesis:'MetaMask, but for AI — the consent broker is the product; 76 wrapps prove it.',
+      auto:'drafting', metric:'≥80', ml:'wrapp-runs this week (W32, this Mac) · floored, real', spark:[40,80,10,170,80],
+      money:{cls:'nc',txt:'revenue not connected · GitHub: 1 star, 2 visitors/14d — real'}, lanes:'2/5', log:'staged the landing fix (20+→76) · <span class="staged">awaiting push</span>',
+      ck:{
+        opsT:'Operations', opsBadge:'ship + tasks',
+        deploy:{url:'thelastprompt.ai/switchboard', pill:'live', h:'76 wrapps · v0.3.1', s:'Open-source consent broker + wrapp store. 12 releases, 99 commits/7d — real.'},
+        tabs:[['Staged',3],['Done',6],['Open',2]],
+        tasks:[
+          {st:'staged',t:'Push landing fix — "20+" → 76',s:'1-line diff on launch/76-and-demo · merge = deploy',mode:'approve'},
+          {st:'staged',t:'Fire first outreach — MCP Discord ⭐',s:'4 venue drafts ready · sends from your account',mode:'approve'},
+          {st:'prepared',t:'Cold-install D1 on a clean Mac',s:'blocks Show HN · guided-cursor script ready',mode:'approve'},
+          {st:'done',t:'Fix Huddle + budget under-enforcement',s:'harness green ×2 · tsc clean · verified',mode:'auto'},
+        ],
+        growthT:'draft-first',
+        growth:[
+          {ic:'page',t:'Landing truth — 76 count',rv:'staged',cls:'stg'},
+          {autopost:'Auto-post the launch thread',on:false},
+          {ic:'mail',t:'Show HN + PH + 5 X posts',rv:'drafted',cls:'stg'},
+          {ic:'chat',t:'First-10-users playbook — 4 venues',rv:'staged',cls:'stg'},
+        ],
+        econ:[
+          {k:'Revenue',v:'not connected',cls:'nc'},
+          {k:'GitHub stars · real',v:'1',cls:'real'},
+          {k:'Unique visitors · 14d',v:'2',cls:'real'},
+          {k:'Wrapp-runs · W32',v:'≥80 (this Mac)',cls:'real'},
+        ],
+        thesis:'Product is proven (new-user test 6/6); traction is honestly ~zero. The bottleneck is demand — small rooms first, big launch only after the cold-install holds.',
+        bets:['10 design partners before any one-shot launch','HN only after the cold-install test passes','Never ship a number that isn’t real'],
+        verbs:['/plan','/ship','/outreach','/launch','/report'],
+        ceo:'Everything reversible is done — the landing fix and the first outreach are staged in the queue above. Two words from you and things ship: <span class="cmd">push</span>, and a venue.',
+        log:[
+          ['08-05','staged the landing fix in the real deploy repo — <span class="staged">1-line diff, awaiting push</span>'],
+          ['08-05','fixed the budget under-enforcement (stale 200k → protocol 8M) · <span class="sent">tsc clean</span>'],
+          ['08-05','drafted the first-10-users playbook — 4 venues · <span class="staged">staged</span>'],
+          ['08-04','new-user test via guided cursor — <span class="sent">6/6 pass</span>'],
+          ['08-04','north-star meter live on real audit data — W31 ≥170, W32 ≥80'],
+          ['08-04','fixed Huddle false-fail · catalog verified green'],
+        ],
+        drafts:[],  // REAL venture: the ticker invents nothing — new log lines only when real work lands
+      }},
+    { id:'lumen', name:'Lumen', kind:'software business', ac:'var(--lime)', acHex:'#C8F250', glyph:G.soft, sample:true,
+      thesis:'Meeting notes that write, file, and follow themselves up.',
+      auto:'drafting', metric:'128', ml:'activated users · +19 this week', spark:[40,52,49,63,71,88,104,128],
+      money:{cls:'nc',txt:'usage meter — not connected'}, lanes:'3/5', log:'drafted onboarding email to 40 signups · <span class="staged">staged</span>',
+      ck:{
+        opsT:'Operations', opsBadge:'ship + tasks',
+        deploy:{url:'lumen.wrapp.sh', pill:'live', h:'Notes that file themselves', s:'Drop a recording — get notes, actions, and the follow-ups drafted.'},
+        tabs:[['Open',5],['Staged',3],['Done',22]],
+        tasks:[
+          {st:'staged',t:'Send onboarding email to 40 signups',s:'drafted · needs Gmail',lk:false,mode:'approve'},
+          {st:'drafting',t:'Instrument first-note activation event',s:'autopilot · wiring now',mode:'auto'},
+          {st:'done',t:'Deploy v0.3 → lumen.wrapp.sh',s:'shipped 2h ago · you approved it',mode:'approve'},
+          {st:'prepared',t:'Draft pricing page — usage vs Pro',s:'3 options · locked, tap to compare',lk:true,mode:'approve'},
+        ],
+        growthT:'draft-first',
+        growth:[
+          {ic:'page',t:'Landing page',rv:'published',cls:'on'},
+          {autopost:'Auto-post launch thread to X',on:false},
+          {ic:'ads',t:'Product Hunt copy — 3 variants',rv:'staged',cls:'stg'},
+          {ic:'chat',t:'Reply to 6 signup replies',rv:'drafted',cls:'stg'},
+        ],
+        econ:[
+          {k:'Activated users',v:'128',cls:'real'},
+          {k:'Revenue · usage',v:'not connected',cls:'nc'},
+          {k:'Pro-pool share',v:'not connected',cls:'nc'},
+          {k:'Token level',v:'Lv 4 · 6.2M',cls:'proj'},
+        ],
+        thesis:'Notes tools live or die on time-to-first-value. Win the first recording, earn the reorder of attention.',
+        bets:['Get to first-note in under 60s','Ship to the subdomain — let real usage pick the wedge','Turn on Pro pricing only after activation is real'],
+        verbs:['/plan','/ship','/post','/outreach','/report'],
+        ceo:'128 activated this week, but 40 signups never onboarded. I drafted an onboarding email and wired the first-note event. Send it — <span class="cmd">/outreach</span> — and I’ll watch activation climb.',
+        log:[
+          ['now','<span class="who">AUTOPILOT</span> drafted onboarding email to 40 signups — <span class="staged">staged</span>'],
+          ['10:20','<span class="who">AUTOPILOT</span> shipped v0.3 to lumen.wrapp.sh — <span class="sent">deployed, with your go</span>'],
+          ['09:30','12 new signups overnight · activation holding at 41%'],
+          ['08:10','<span class="who">CEO</span> weekly plan: first-note under 60s, then earn pricing'],
+        ],
+        drafts:[
+          ['now','<span class="who">AUTOPILOT</span> drafted 3 Product Hunt taglines · picking the sharpest'],
+          ['now','<span class="who">AUTOPILOT</span> refreshed the landing hero from this week’s activation copy'],
+          ['now','<span class="who">AUTOPILOT</span> drafted a changelog post for v0.3 — <span class="staged">staged</span>'],
+        ],
+      }},
+    { id:'north', name:'North Fifth', kind:'agency', ac:'var(--blue)', acHex:'#7DE0FF', glyph:G.agency, sample:true,
+      thesis:'A design studio that pitches, wins, and delivers on autopilot.',
+      auto:'drafting', metric:'4', cap:'/5', ml:'engagements in flight · at capacity soon', spark:[1,1,2,2,3,3,4,4],
+      money:{cls:'proj',txt:'$18k pipeline · projected'}, lanes:'2/5', log:'drafted proposal for Aster Health · <span class="staged">staged</span>',
+      ck:{
+        opsT:'Delivery', opsBadge:'engagements',
+        deploy:{url:'northfifth.co · proposal', pill:'draft', h:'Aster Health', s:'12-week brand system · $6k/mo retainer · drafted, ready to send.'},
+        tabs:[['Leads',8],['Proposed',2],['Delivering',4]],
+        tasks:[
+          {st:'staged',t:'Send proposal — Aster Health',s:'$6k retainer · needs Gmail',mode:'approve'},
+          {st:'drafting',t:'Draft brand deck v1 — Møss Coffee',s:'autopilot · from their CREST kit',mode:'auto'},
+          {st:'done',t:'Deliver logo pack — Vantage',s:'sent for review · client approved',mode:'approve'},
+          {st:'prepared',t:'Build outreach list — 30 seed founders',s:'capacity permitting · locked',lk:true,mode:'auto'},
+        ],
+        growthT:'bizdev',
+        growth:[
+          {ic:'list',t:'Outreach batch — 30 leads',rv:'staged',cls:'stg'},
+          {autopost:'Auto-send follow-ups',on:false},
+          {ic:'doc',t:'Case study — Vantage',rv:'drafted',cls:'stg'},
+          {ic:'chat',t:'Reply to 3 inbound',rv:'drafted',cls:'stg'},
+        ],
+        econ:[
+          {k:'Invoices paid · real',v:'connect Stripe →',cls:'nc'},
+          {k:'Pipeline · projected',v:'$18k',cls:'proj'},
+          {k:'Capacity',v:'4 / 5 — hold',cls:'proj'},
+          {k:'Retainer MRR',v:'not connected',cls:'nc'},
+        ],
+        thesis:'Agencies scale on proof, not pitches. Win one, case-study it in 48h, let referrals compound.',
+        bets:['Win Aster before taking a 5th client','Case-study every delivery within 48 hours','Never draft outreach past the capacity ceiling'],
+        verbs:['/plan','/pitch','/proposal','/deliver','/report'],
+        ceo:'Aster’s proposal is drafted and ready. We’re at 4 of 5 engagements — I won’t open new outreach until one closes. Send the Aster proposal — <span class="cmd">/proposal</span> — and I’ll prep the kickoff.',
+        log:[
+          ['now','<span class="who">AUTOPILOT</span> drafted proposal for Aster Health — <span class="staged">staged</span>'],
+          ['09:55','<span class="who">AUTOPILOT</span> drafted the Vantage case study — <span class="staged">staged</span>'],
+          ['09:10','Møss Coffee replied · moved lead → qualified'],
+          ['08:00','<span class="who">CEO</span> weekly plan: close Aster, hold capacity at 5'],
+        ],
+        drafts:[
+          ['now','<span class="who">AUTOPILOT</span> drafted a follow-up to 2 quiet leads — <span class="staged">staged</span>'],
+          ['now','<span class="who">AUTOPILOT</span> generated 3 proposal angles for Møss · picking one'],
+          ['now','<span class="who">AUTOPILOT</span> drafted the Vantage referral ask — <span class="staged">staged</span>'],
+        ],
+      }},
+    { id:'kelp', name:'Kelp', kind:'consumer brand', ac:'var(--coral)', acHex:'#FF8A5B', glyph:G.brand, sample:true,
+      thesis:'Everyday sea-mineral skincare, made to sell out and restock itself.',
+      auto:'live', metric:'47', ml:'paid orders · reorder point hit', spark:[0,3,6,9,14,22,35,47],
+      money:{cls:'real',txt:'$2,480 · real, from Shopify'}, lanes:'2/5', log:'fulfilled 6 orders · <span class="sent">sent</span>',
+      ck:{
+        opsT:'Operations', opsBadge:'supply + tasks',
+        deploy:{url:'kelp.store', pill:'live', h:'Sea Serum', s:'Cold-pressed kelp minerals. Ships in 2 days.'},
+        tabs:[['Open',4],['Staged',2],['Done',19]],
+        tasks:[
+          {st:'staged',t:'Restock Sea Serum — 200 units',s:'reorder point hit · locked, tap the plan',lk:true,mode:'approve'},
+          {st:'drafting',t:'Draft "back in 3 days" story',s:'autopilot · writing now',mode:'auto'},
+          {st:'done',t:'Fulfil 6 paid orders',s:'labels printed · handed to carrier',mode:'auto'},
+          {st:'prepared',t:'Source glass dropper — 2nd supplier',s:'margin +8% · quote requested',mode:'approve'},
+        ],
+        growthT:'draft-first',
+        growth:[
+          {ic:'page',t:'Landing page',rv:'published',cls:'on'},
+          {autopost:'Auto-post to Instagram',on:false},
+          {ic:'mail',t:'Launch email — 3 variants',rv:'staged',cls:'stg'},
+          {ic:'ads',t:'Meta ads — set A/B',rv:'needs lane',cls:''},
+          {ic:'chat',t:'Reply to 4 DMs',rv:'drafted',cls:'stg'},
+        ],
+        econ:[
+          {k:'Revenue · real',v:'$2,480',cls:'real'},
+          {k:'Orders · Shopify',v:'47',cls:'real'},
+          {k:'Margin',v:'enter COGS →',cls:'nc'},
+          {k:'Cash to restock',v:'$1,240 due',cls:'proj'},
+        ],
+        thesis:'People buy skincare on story and reorder on results. Win the first drop with scarcity, then let reorders compound.',
+        bets:['Sell out drop #1, use it as proof for drop #2','Second dropper supplier → +8% margin before scaling ads','Turn on ads only after margin is real'],
+        verbs:['/plan','/drop','/restock','/post','/report'],
+        ceo:'Two orders overnight and we’re 40 units from stock-out on Sea Serum. I drafted the restock — <span class="cmd">/restock</span> — and a "back in 3 days" story. Approve the restock and I’ll keep selling.',
+        log:[
+          ['09:42','<span class="who">AUTOPILOT</span> drafted "back in 3 days" story — <span class="staged">staged for your go</span>'],
+          ['09:41','<span class="who">AUTOPILOT</span> hit reorder point on Sea Serum · queued restock for approval'],
+          ['08:15','2 orders landed overnight · <span class="sent">$104 real</span> · fulfilment auto-started'],
+          ['07:50','<span class="who">CEO</span> weekly plan: sell out drop #1, second supplier before ads'],
+        ],
+        drafts:[
+          ['now','<span class="who">AUTOPILOT</span> drafted a reply to a wholesale DM — <span class="staged">staged</span>'],
+          ['now','<span class="who">AUTOPILOT</span> generated 3 launch-email subject lines · picking the best'],
+          ['now','<span class="who">AUTOPILOT</span> refreshed the storefront hero from drop #1 sales'],
+        ],
+      }},
+  ];
+
+  function card(v){
+    const cap = v.cap ? `<span class="cap">${v.cap}</span>` : '';
+    return `<button class="vcard" style="--ac:${v.ac}" onclick="openCockpit('${v.id}')">
+      <div class="vtop">
+        <div class="glyph">${v.glyph}</div>
+        <div class="vhead">
+          <div class="vname">${v.name}${v.real?'<span class="vbadge real">REAL</span>':v.sample?'<span class="vbadge">SAMPLE</span>':''}</div>
+          <div class="vkind">${v.kind}</div>
+        </div>
+        <span class="apill ${v.auto}"><span class="p"></span>${v.auto==='live'?'live':'drafting'}</span>
+      </div>
+      <div class="vthesis">${v.thesis}</div>
+      <div class="metric">
+        <div><span class="big">${v.metric}</span>${cap}<div class="ml">${v.ml}</div></div>
+        ${spark(v.spark, v.acHex)}
+      </div>
+      <div class="money ${v.money.cls}">${v.money.txt}</div>
+      <div class="vfoot">
+        <div class="llog"><span class="tick">▸</span> ${v.log}</div>
+        <div class="vlanes">⚡<b>${v.lanes.split('/')[0]}</b>/${v.lanes.split('/')[1]}</div>
+      </div>
+    </button>`;
+  }
+  document.getElementById('vgrid').innerHTML = ventures.map(card).join('') +
+    `<button class="vcard ghostv" style="--ac:var(--ink-faint)" onclick="document.querySelector('.newv').click()">
+      <span class="plus">＋</span><span class="gt">New venture</span>
+      <span class="gs">Software business · agency · consumer brand — same engine.</span>
+    </button>`;
+
+  // ---- cockpit: fully data-driven per venture ----
+  let CUR = null;
+  function taskRow(t){
+    let ts = t.s;
+    if(t.lk){ ts = ts.replace(/locked[^·]*/i,'').replace(/·\s*$/,'').trim();
+      ts += (ts?' · ':'') + '<span class="lk">locked · tap to see</span>'; }
+    const mode = t.mode==='auto' ? '<span class="tmode auto">auto</span>' : '<span class="tmode appr">approve</span>';
+    return `<div class="task"><span class="st ${t.st}"></span><div class="tk"><div class="tt">${t.t}</div><div class="ts">${ts}</div></div>${mode}</div>`;
+  }
+  function growthRow(g){
+    if(g.autopost!==undefined)
+      return `<div class="autopost"><span class="apl">${g.autopost}</span><div class="swsm${g.on?' on':''}" title="off — publishing is outbound"></div></div>`;
+    return `<div class="row"><svg class="ri" viewBox="0 0 24 24">${RI[g.ic]||''}</svg><span class="rt">${g.t}</span><span class="rv ${g.cls}">${g.rv}</span></div>`;
+  }
+  function renderLog(v){
+    const el=document.getElementById('c-log'); if(!el)return;
+    el.innerHTML = v._log.slice(0,6).map((row,i)=>`<div class="lg${i===0?' fresh':''}"><span class="tm">${row[0]}</span><span class="lt">${row[1]}</span></div>`).join('');
+  }
+  function renderCockpit(v){
+    const ck=v.ck;
+    document.getElementById('cb-company').innerHTML =
+      `<div class="log" id="c-log"></div>
+       <div class="ceo"><div class="cl">CEO</div>
+         <div class="msg">${ck.ceo}</div>
+         <div class="ceo-in"><input placeholder="Ask the CEO, or type a command…" aria-label="Ask the CEO" /><button class="btn go" aria-label="send">↵</button></div>
+         <div class="verbs">${ck.verbs.map(x=>`<span class="verb">${x}</span>`).join('')}</div>
+       </div>`;
+    renderLog(v);
+    document.getElementById('cb-ops-t').textContent = ck.opsT;
+    document.getElementById('cb-ops-badge').textContent = ck.opsBadge;
+    document.getElementById('cb-ops').innerHTML =
+      `<div class="deploy"><div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="u">${ck.deploy.url}</span></div>
+        <div class="shot"><span class="pill">${ck.deploy.pill}</span><span class="h">${ck.deploy.h}</span><span class="s">${ck.deploy.s}</span></div></div>
+       <div class="tabs">${ck.tabs.map((t,i)=>`<span class="tab${i===0?' on':''}">${t[0]} ${t[1]}</span>`).join('')}</div>
+       ${ck.tasks.map(taskRow).join('')}`;
+    document.getElementById('cb-growth-badge').textContent = ck.growthT;
+    document.getElementById('cb-growth').innerHTML = ck.growth.map(growthRow).join('');
+    document.getElementById('cb-strat').innerHTML =
+      `<div class="econ">${ck.econ.map(e=>`<div class="er"><span class="k">${e.k}</span><span class="v ${e.cls}">${e.v}</span></div>`).join('')}</div>
+       <div class="thesis">${ck.thesis}</div>
+       ${ck.bets.map(b=>`<div class="bet"><span class="bd"></span><span class="bt">${b}</span></div>`).join('')}`;
+  }
+  function openCockpit(id){
+    const v = ventures.find(x=>x.id===id) || ventures[0];
+    CUR = v;
+    document.body.style.setProperty('--ac', v.ac);
+    document.getElementById('cockpit').style.setProperty('--ac', v.ac);
+    document.getElementById('c-name').textContent = v.name;
+    document.getElementById('cb-name').textContent = v.name;
+    document.getElementById('c-thesis').textContent = v.thesis;
+    const gl = document.getElementById('c-glyph'); gl.innerHTML = v.glyph; gl.style.setProperty('--ac', v.ac);
+    document.getElementById('c-lanes').textContent = v.lanes + ' lanes';
+    document.getElementById('c-sw').classList.toggle('on', v.auto==='live' || v.auto==='drafting');
+    if(!v._log) v._log = v.ck.log.slice();
+    renderCockpit(v);
+    document.body.classList.add('cock');
+    window.scrollTo(0,0);
+  }
+  function showPortfolio(){ document.body.classList.remove('cock'); document.body.style.setProperty('--ac','var(--lime)'); window.scrollTo(0,0); }
+
+  // the living log — while autopilot is on, a fresh reversible move lands every few seconds
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    setInterval(()=>{
+      if(!document.body.classList.contains('cock') || !CUR) return;
+      if(!document.getElementById('c-sw').classList.contains('on')) return;
+      const d = CUR.ck.drafts; if(!d || !d.length) return;
+      CUR._di = (CUR._di||0);
+      CUR._log.unshift(d[CUR._di % d.length]); CUR._di++;
+      renderLog(CUR);
+    }, 4200);
+  }
+</script>
+</body>
+</html>

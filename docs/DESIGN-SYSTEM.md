@@ -5,7 +5,7 @@
 *numbers* on the notch surface. This doc answers the two questions the founder actually asked:
 
 > **(a) "What shows where?"** — the information architecture across *all* surfaces.
-> **(b) "How does a user learn the language once?"** — the shared primitives that make 65 wrapps feel
+> **(b) "How does a user learn the language once?"** — the shared primitives that make 76 wrapps feel
 > like ONE product, and the contract a new wrapp signs to inherit them by construction.
 
 The diagrams are the content. Prose only names what a picture can't.
@@ -210,7 +210,7 @@ distinguished by *pattern*, never by hue (kills the old cyan/orange literals). T
 ## 2.4 The result shapes = the widget size classes (the finite set)
 
 A wrapp result is **not free-form**. It is one of a closed set of shapes, and the shape *is* the widget
-size class (iOS-widget grammar). This is what lets 65 wrapps' outputs read as one system.
+size class (iOS-widget grammar). This is what lets 76 wrapps' outputs read as one system.
 
 ```mermaid
 flowchart LR

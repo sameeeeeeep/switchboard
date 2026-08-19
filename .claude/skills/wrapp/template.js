@@ -60,6 +60,7 @@ let relay = null;
 let notInstalled = false;
 let brand = null;         // the ONE lent context, when APP.usesContext === "single"
 let wired = false;
+let hydrated = false;     // onReady idempotency — onConnect AND the returning-user probe can both fire it
 let live = null;          // kit/mountLive handle — re-reads on teammate/Obsidian/git changes
 
 mountConnect($("chip-dock"), {
@@ -85,7 +86,7 @@ function wire(r) {
   // storage and re-renders; keep it idempotent.
   live = mountLive(r, reloadState);
 }
-async function onReady() { await syncContext(); await loadState(); render(); autostart(); }
+async function onReady() { if (hydrated) return; hydrated = true; await syncContext(); await loadState(); render(); autostart(); }
 /** Re-read everything this wrapp persists, then render. Called on every live nudge. For a wrapp
  *  that ACCUMULATES items (a library, notes, a task list), read the collection here (see `items`
  *  below) — never a single growing blob, or two teammates' edits clobber each other. */

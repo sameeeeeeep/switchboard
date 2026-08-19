@@ -27,7 +27,7 @@ import type {
   GuideRunParams,
   GuideResult,
 } from "@relay/protocol";
-import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
+import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal, DEFAULT_BUDGETS } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
 import { saveProfile, saveCloudConfig } from "./config.js";
 import type { Gate } from "./security/gate.js";
@@ -838,7 +838,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
       reason: requested.reason,
       models: { available: await this.deps.backends.models(), requested: requested.models ?? [] },
       tools: requestedTools,
-      budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
+      // Fall back to the single source of truth (protocol DEFAULT_BUDGETS = 8M/day) — the old hard-coded
+      // 200k was stale: it predated the cached-token counting fix, so it silently under-enforced ~77x
+      // tighter than the resolved 8M policy when a request omitted budgets.
+      budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? DEFAULT_BUDGETS.maxTokensPerDay, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? DEFAULT_BUDGETS.maxCallsPerMin },
       // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
       contextKinds: (requested.contextKinds ?? []).map((k) => String(k).trim()).filter(Boolean),
       // Rung 6 (STATES.md §5): the app's CLASS-level needs + what's actually available, so the consent

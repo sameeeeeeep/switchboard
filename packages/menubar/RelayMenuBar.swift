@@ -3367,6 +3367,15 @@ struct ActionConsentDrop: View {
         // Spoken concierge: the welcome tour reads each step aloud in God's voice.
         CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
+        // Auto per-step screenshot: silent full-screen jpg, so a guide run comes back with a picture of
+        // every step (not just human-dragged ones). Uses the same screencapture path as God/feedback.
+        CursorGuide.shared.onCaptureStep = {
+            let path = NSTemporaryDirectory() + "guide-step-\(UUID().uuidString).jpg"
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-t", "jpg", path]   // -x: silent · full screen
+            do { try p.run(); p.waitUntilExit() } catch { return nil }
+            return (p.terminationStatus == 0 && FileManager.default.fileExists(atPath: path)) ? path : nil
+        }
         startBundledWebServer()        // packaged app: serve the bundled wrapps/widgets locally so ⌥⌥ works offline
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)

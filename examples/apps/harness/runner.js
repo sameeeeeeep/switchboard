@@ -25,7 +25,7 @@ const CFG = {
   // no crutch: AdPulse diagnoses its own representative month on connect (live pull first when a
   // Meta connector exists), so the readout must appear with ZERO driving.
   adpulse:   { name: "AdPulse",   cat: "founder-stack", count: (d) => (d.getElementById("report") && !d.getElementById("report").hidden) ? 1 : (d.querySelectorAll("#stats .stat").length ? 0.5 : 0) },
-  huddle:    { name: "Huddle",    cat: "chat", count: (d) => d.querySelectorAll(".turn.assistant .bubble").length },
+  huddle:    { name: "Huddle",    cat: "chat", count: (d) => d.querySelectorAll(".tldr, .notes-title").length },
   chat:      { name: "betterchat",cat: "chat", count: (d) => { const chips = d.querySelectorAll("#chips .chip").length; const rec = d.querySelector("#chips .chip.rec, #chips .rec"); const note = (d.getElementById("suggest-note") || {}).textContent || ""; const more = [...d.querySelectorAll("#chips *, button")].some((b) => /more like these/i.test(b.textContent || "")); return chips && (rec || more || /from |generic/i.test(note)) ? chips : 0; } },
   cartridge: { name: "Cartridge", cat: "play-make", count: (d) => d.querySelectorAll("#pitch-grid .pitch").length },
   arcana:    { name: "Arcana",    cat: "after-hours", count: (d) => (d.getElementById("reading") && !d.getElementById("reading").hidden) ? d.querySelectorAll("#reading .take").length || 1 : 0 },
@@ -189,8 +189,11 @@ function loadFrame(url) {
   });
 }
 
-// (The type-into-the-box crutch for Take and Huddle lived here. Removed 2026-07: both now generate
-// their options from the lent context on connect, and Huddle auto-answers the ★ opener.)
+// (The type-into-the-box crutch for Take and Huddle lived here. Take now cold-opens from the lent
+// context; HUDDLE genuinely can't — a meeting-notes tool needs a meeting — so it stays input-bound
+// and we feed it a sample transcript below (2026-08: restored after it was wrongly assumed to
+// auto-answer the ★ opener, which left it firing no model call and failing the sweep).)
+const HUDDLE_SAMPLE = "[00:01] Sam: Quick sync on the launch — targeting Friday. [00:03] Priya: Landing copy's done, needs the new pricing. [00:05] Sam: I'll own pricing by Wednesday. Priya, draft the launch email? [00:06] Priya: Yes — for review Thursday. [00:08] Sam: Decision — we ship Friday if the email's approved. Action items: Sam pricing by Wed; Priya email by Thu.";
 function fillForm(doc, win) {
   const set = (id, v) => { const el = doc.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new win.Event("input", { bubbles: true })); el.dispatchEvent(new win.Event("change", { bubbles: true })); } };
   // NATAL's intended path is a preset PERSON chip: a sample soul is complete by construction, so
@@ -242,18 +245,23 @@ async function runOne(id, project) {
   try {
     if (cfg.form) { fillForm(doc, win); }
   } catch (e) { /* driving is best-effort */ }
-  // poll the success count for up to ~7s (pipeline has staged setTimeouts)
+  // poll the success count for up to ~13s (pipeline has staged setTimeouts). Widened from 8s: in a
+  // FULL 145-run sweep, tail wrapps' setTimeout pipelines get throttled under accumulated load and
+  // miss an 8s window they clear easily in isolation — a flaky false-fail (verified: compare/pdftools/
+  // caption fail intermittently in the full sweep yet pass every time via ?only=). More headroom, same
+  // verdict logic; a genuine no-output still fails, just after a fairer wait.
   let n = 0, t0 = Date.now(), viralTyped = false;
-  while (Date.now() - t0 < 8000) {
+  while (Date.now() - t0 < 13000) {
     try { n = cfg.count(stage.contentDocument) || 0; } catch (_) { n = 0; }
     if (n >= 1) break;
     // viral wrapps cold-open on the lent brand; skills with usesContext:null have no cold-open at all.
     // If nothing fired by 2.6s AND no call is in flight, type a line to kick it (skills get a task line).
-    if ((cfg.cat === "viral" || cfg.cat === "skill") && !viralTyped && Date.now() - t0 > 2600) {
+    if ((cfg.cat === "viral" || cfg.cat === "skill" || id === "huddle") && !viralTyped && Date.now() - t0 > 2600) {
       let callsYet = 0; try { callsYet = (stage.contentWindow.__HARNESS_CALLS__ || []).length; } catch (_) {}
       if (callsYet === 0) {
         viralTyped = true;
-        const line = cfg.cat === "skill" ? "match all http and https URLs in a block of text" : null;
+        const line = cfg.cat === "skill" ? "match all http and https URLs in a block of text"
+          : id === "huddle" ? HUDDLE_SAMPLE : null;
         try { typeViralLine(stage.contentDocument, stage.contentWindow, project, line); } catch (_) {}
       }
     }

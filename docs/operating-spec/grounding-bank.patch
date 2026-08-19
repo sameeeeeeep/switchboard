@@ -1,0 +1,35 @@
+diff --git a/packages/sidekick/src/autopilot/runner.ts b/packages/sidekick/src/autopilot/runner.ts
+--- a/packages/sidekick/src/autopilot/runner.ts
++++ b/packages/sidekick/src/autopilot/runner.ts
+@@ -1,2 +1,4 @@
+ import type { StorageStore } from "../storage/store.js";
++import { readFileSync } from "node:fs";
++import { join } from "node:path";
+
+@@ -58,3 +58,5 @@ interface Decision { id: string; label: string; options: Array<{ id: string; label: string; rec?: boolean }>; chosenId: string | null; chosenAt?: string | null; inherited?: unknown; stale?: boolean; }
+ interface Company {
+   id: string; name: string; oneLine?: string;
++  /** Path to this venture's context bank (dir with intent.md + state.md); set at seed time. */
++  bankDir?: string;
+   kind?: string;   // "wrapp" earns by usage and has no separate product offer; else it's a sales venture
+@@ -158,3 +158,19 @@
+   private grounding(co: Company): string {
+-    return "The company:\n" + co.name + (co.oneLine ? " — " + co.oneLine : "");
++    const base = "The company:\n" + co.name + (co.oneLine ? " — " + co.oneLine : "");
++    // Fold in the context bank when available (dir from the company blob or SWITCHBOARD_BANK_DIR).
++    // Fail-safe: any missing file or read error falls back to `base` — never throws in the tick loop.
++    const dir = co.bankDir || process.env.SWITCHBOARD_BANK_DIR;
++    if (!dir) return base;
++    const read = (f: string, cap: number): string => {
++      try { return readFileSync(join(dir, f), "utf8").slice(0, cap).trim(); } catch { return ""; }
++    };
++    const intent = read("intent.md", 4000); // what we're building + what "done" means
++    const state = read("state.md", 3000);   // what actually exists right now (auto-extracted)
++    if (!intent && !state) return base;
++    return [
++      base,
++      intent && "== INTENT (the goal) ==\n" + intent,
++      state && "== STATE (what exists now) ==\n" + state,
++      "Ground every draft in the gap between INTENT and STATE. Never invent a metric, customer, or result.",
++    ].filter(Boolean).join("\n\n");
+   }

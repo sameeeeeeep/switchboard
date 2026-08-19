@@ -81,7 +81,7 @@ It is defined entirely by the vocabulary that already exists — we do **not** i
         │
         ▼  rendered by
   NotchWidget → WidgetHeader (kicker·title·project chip) · WKHairline · renderer(result) · ActionRow
-        every widget wears the SAME chrome → 65 wrapps read as one product
+        every widget wears the SAME chrome → 76 wrapps read as one product
 ```
 
 The mapping "result → widget" is not aspirational — `widgetResult(from: Any)` (`RelayMenuBar.swift:3638`)
@@ -116,7 +116,7 @@ full app.
   browser with JS/timers is exactly what `relay-device-lightness` forbids for an ambient surface.
 - **Reuse of the native kit:** ✗ zero — the page re-implements header/actions/loader in HTML, so the
   design language forks again (Failure #2 returns, just smaller).
-- **Effort:** high **per wrapp** — every one of 65 wrapps must author and deploy a second page.
+- **Effort:** high **per wrapp** — every one of 76 wrapps must author and deploy a second page.
 
 ### Option B — a `widget()` export in the wrapp's kit that returns a `WidgetResult`-shaped object ⭐ RECOMMENDED
 
