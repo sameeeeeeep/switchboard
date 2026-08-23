@@ -116,6 +116,27 @@ function registerTaskTools(server) {
     },
   );
 
+  // Surface a PM EVENT on the notch — the deterministic stream layer (docs/PM-NOTCH-OPERATOR.md), callable
+  // from ANY folder (unlike scripts/pm-notch.mjs, which needs the repo cwd). A file write, no model.
+  server.registerTool(
+    "switchboard_notch",
+    {
+      title: "Surface a PM event at the notch",
+      description:
+        "Fire a brief adhd-pm event on the user's Switchboard notch — a deterministic ack (no model, no cost). Use it to STREAM what you're doing, especially in /pip or adhd-pm mode, so the user watches progress at the notch instead of reading chat: `captured` (boarded a task), `picked` (started one), `decided` (a fork resolved), `spec` (tidied the board), `thread` (started a new work thread), `info` (a heads-up). One short line each; silent no-op if Switchboard isn't running.",
+      inputSchema: {
+        kind: z.enum(["captured", "picked", "decided", "spec", "thread", "info"]).describe("event kind — drives the notch kicker + colour"),
+        text: z.string().describe("one short line: what just happened"),
+        project: z.string().optional().describe("the project this is grounded in (shown on the card)"),
+        source: z.string().optional().describe("who's acting — a thread label, e.g. 'Claude Code · brand'. Each source gets its own colour in the PIP feed."),
+      },
+    },
+    async ({ kind, text, project, source }) => {
+      const fired = notchNotify(text, { kind, project, source: source || "Claude Code · adhd-pm" });
+      return ok({ ok: true, fired, kind, text });
+    },
+  );
+
   server.registerTool(
     "switchboard_list_tasks",
     {

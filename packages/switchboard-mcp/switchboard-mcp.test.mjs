@@ -96,6 +96,7 @@ try {
     await c2.connect(t2);
     const { tools: tt } = await c2.listTools();
     check("task tools advertised on the connector", ["switchboard_add_task", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"].every((n) => tt.map((x) => x.name).includes(n)));
+    check("switchboard_notch advertised (cwd-independent PM event stream)", tt.map((x) => x.name).includes("switchboard_notch"));
     await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Ship pricing", list: "Proj", status: "todo", epic: "launch", priority: "high", detail: ["Three tiers"] } });
     await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Someday idea", list: "Proj", status: "backlog" } });
     const listed = parse(await c2.callTool({ name: "switchboard_list_tasks", arguments: { status: "open", project: "Proj" } }));
