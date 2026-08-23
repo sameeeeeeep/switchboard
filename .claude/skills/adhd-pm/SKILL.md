@@ -327,6 +327,34 @@ never disagree — the board is the mirror, persisted. A card on the board is ne
 a **routing decision** (§5) — do-it-now via a parallel subagent, or queue-and-spec so its `detail` is
 execution-ready when a later beat pulls it.
 
+### The notch STREAM — make every PM move FELT, deterministically (docs/PM-NOTCH-OPERATOR.md)
+
+The notch isn't just for decisions. adhd-pm mode should feel like an operator working *visibly* — so
+every meaningful PM move fires a cheap notch ack, not just the model-backed decision cards. Two layers,
+kept separate on purpose (the founder's "can't burn credits / affect perf" constraint):
+
+- **STREAM (deterministic, free, always-on):** on each event, run
+  `node scripts/pm-notch.mjs <kind> "<one-line>" --project <proj>` — a plain file write, **no model, no
+  cost.** Kinds: `captured` (a task hit the board) · `picked` (I started one) · `decided` (a fork
+  resolved) · `spec` (the board/spec was tidied) · `thread` (a new work thread began). Fire it as the
+  event happens so the founder can keep a tab on the threads.
+- **DECISION (model, on-demand):** the §0 notch card — raised only when a real fork needs the human.
+
+So "watch all my threads" costs nothing; "answer this fork" costs a card, only when it happens.
+
+### CURATE the board — never append a dump (docs/PM-NOTCH-OPERATOR.md)
+
+Founder standard: a task must be added *so it makes sense*, and the board kept coherent — not grown into
+a wall. **Before every `switchboard_add_task`:**
+1. `switchboard_list_tasks` first — a **near-duplicate** of an existing card → merge a note/subtask into
+   it, don't add a second. This kills the drift.
+2. **File it right** — infer the `epic` from content + the epics already in use; a genuinely new theme
+   gets its own named epic, not the Inbox junk drawer.
+3. **Write it clean** — one imperative line of intent + a tight *why* + at most a couple of spec lines.
+   Never the wall-of-detail dumps (this is the default, not an exception).
+4. Periodically **arrange** — regroup by epic, order by status/priority, drop stale-done — then fire a
+   `spec` notch ack so the tidy is felt. The board stays a readable spec, always.
+
 ### THE LEDGER IS SACROSANCT — capture everything, mark the truth, reconcile before every handoff
 
 Non-negotiable. This exists because it was violated: an approved design ("A is good") lived only in

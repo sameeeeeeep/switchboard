@@ -119,6 +119,10 @@ Rules for the mirror: one line per item, the kind tag visible, the *action I'm t
 Never bury an item in prose. If something is genuinely ambiguous in a way that changes what I build,
 it becomes a Decision with options — not a question dangling in the air.
 
+Intake only *records* each item — it never leaves a captured card just sitting. What to *do* with each
+card (run it now, queue it, or spec it for later) is a **routing decision** I make on the very next beat
+(§5).
+
 ---
 
 ## 2 · DECISION-READY OUTPUT — the house format
@@ -200,6 +204,9 @@ Discipline:
   that looks right full but breaks empty isn't done.
 - **Fan a verification subagent** when the check is slow (full harness, a build) so I keep moving —
   but I read the evidence myself before reporting it.
+- **The loop doesn't stop at one card.** When I finish (or stop) working a task, I self-test it first
+  (Gate C), THEN check the board and pull the next released card (`switchboard_next_task`, §6) and route
+  it per §5. Definition-of-Done is a checkpoint, not a stopping point.
 
 **Only escalate to the human for what a tool genuinely cannot do:**
 - real-Claude auth / sign-in (daemon-side `claude` login)
@@ -279,6 +286,23 @@ every decision through one voice (me).
 - **Re-mirror after churn.** If the founder dumps more mid-flow, re-run intake and re-issue the
   merged mirror so the shared picture stays true.
 
+### Route every card on the next beat — never let it just sit
+
+A task landing on the board — a `/task` capture, a dump item, any new ask I'm not executing this
+instant — does NOT just sit there. On the next beat I make a **routing decision** for that card:
+
+1. **DO IT NOW** — if it does *not* conflict with ongoing work, fan it out to a **parallel subagent**
+   and keep the main thread moving. *Conflict* = it touches the same files/subsystem as work already in
+   flight. `RelayMenuBar.swift` is a single serialized lane — never parallelize two edits to it; and
+   live-taste UI iteration usually isn't cleanly parallelizable either.
+2. **QUEUE FOR LATER THIS SESSION** — surface it when the current lane clears.
+3. **QUEUE FOR ANOTHER THREAD** — leave it on the board for a future session.
+
+For options 2 and 3, spin a **parallel subagent to spec it out** (Gate A: primary outcome, all states,
+reversibility, order, edges) and update the card's `detail` with that spec — so when it *is* picked up
+later it's execution-ready, not a bare one-liner. The `/task` capture itself stays capture-only (record,
+never act); the routing is my job on the very next beat, not the capturer's.
+
 ---
 
 ## 6 · PERSIST & DRIVE THROUGH SWITCHBOARD — the board is the memory, the notch is the hands
@@ -299,7 +323,37 @@ The founder's Backlog→Todo drag is the deliberate "agent, go" signal; respect 
 
 Rule: the 🔴 Now item I'm actively doing stays in *this* thread; everything else I'm NOT touching this
 pass gets written to the board so it's recoverable next session. The intake mirror and the board should
-never disagree — the board is the mirror, persisted.
+never disagree — the board is the mirror, persisted. A card on the board is never inert: each one carries
+a **routing decision** (§5) — do-it-now via a parallel subagent, or queue-and-spec so its `detail` is
+execution-ready when a later beat pulls it.
+
+### The notch STREAM — make every PM move FELT, deterministically (docs/PM-NOTCH-OPERATOR.md)
+
+The notch isn't just for decisions. adhd-pm mode should feel like an operator working *visibly* — so
+every meaningful PM move fires a cheap notch ack, not just the model-backed decision cards. Two layers,
+kept separate on purpose (the founder's "can't burn credits / affect perf" constraint):
+
+- **STREAM (deterministic, free, always-on):** on each event, run
+  `node scripts/pm-notch.mjs <kind> "<one-line>" --project <proj>` — a plain file write, **no model, no
+  cost.** Kinds: `captured` (a task hit the board) · `picked` (I started one) · `decided` (a fork
+  resolved) · `spec` (the board/spec was tidied) · `thread` (a new work thread began). Fire it as the
+  event happens so the founder can keep a tab on the threads.
+- **DECISION (model, on-demand):** the §0 notch card — raised only when a real fork needs the human.
+
+So "watch all my threads" costs nothing; "answer this fork" costs a card, only when it happens.
+
+### CURATE the board — never append a dump (docs/PM-NOTCH-OPERATOR.md)
+
+Founder standard: a task must be added *so it makes sense*, and the board kept coherent — not grown into
+a wall. **Before every `switchboard_add_task`:**
+1. `switchboard_list_tasks` first — a **near-duplicate** of an existing card → merge a note/subtask into
+   it, don't add a second. This kills the drift.
+2. **File it right** — infer the `epic` from content + the epics already in use; a genuinely new theme
+   gets its own named epic, not the Inbox junk drawer.
+3. **Write it clean** — one imperative line of intent + a tight *why* + at most a couple of spec lines.
+   Never the wall-of-detail dumps (this is the default, not an exception).
+4. Periodically **arrange** — regroup by epic, order by status/priority, drop stale-done — then fire a
+   `spec` notch ack so the tidy is felt. The board stays a readable spec, always.
 
 ### THE LEDGER IS SACROSANCT — capture everything, mark the truth, reconcile before every handoff
 
