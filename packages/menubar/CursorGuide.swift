@@ -175,6 +175,18 @@ struct GuideResult {
 
 enum GuideFlash { case pass, fail, skip, next, back }
 
+// A lightweight NOTCH ACK (docs/GUIDE-QUEUE-RESUME.md §notch feedback): a session-side action —
+// "task captured", "spec added", a "▸ Resume" offer — surfaced as a brief toast at the notch, without
+// a full guided run. `kind` picks the glyph/accent; `action` (+`actionLabel`) makes it tappable.
+struct GuideNotify {
+    let text: String
+    let kind: String            // "captured" (✓) · "info" (•) · "resume" (▸) — drives glyph + accent
+    let source: String?
+    let project: String?
+    let action: String?         // e.g. "resume" — a tap performs it; nil = passive toast
+    let actionLabel: String?
+}
+
 /// The overlay's observable payload — the caption view watches this; the controller writes it.
 @MainActor
 final class GuideOverlayModel: ObservableObject {
@@ -191,6 +203,8 @@ final class GuideOverlayModel: ObservableObject {
     @Published var autoSensing = false           // this step self-advances (doneWhen/hold) → AUTO pill + status line
     @Published var canBack = false               // idx > 0 → the Back chip appears
     @Published var flash: GuideFlash? = nil       // brief ✓/✗ confirmation that a signal landed
+    @Published var queueDepth: Int = 0            // >0 → "+N queued" — runs waiting behind this one (no-clobber queue)
+    @Published var notify: GuideNotify? = nil     // a lightweight ack toast (e.g. "task captured"), shown when idle
     @Published var done: String? = nil            // non-nil → show the completion summary card
     @Published var reduceMotion = false
     @Published var target: CGPoint? = nil         // a step's point → the ring indicates it (nil = no ring this step)
@@ -457,11 +471,46 @@ struct GuideCaptionView: View {
     }
 
     @ViewBuilder private var card: some View {
-        if let summary = m.done {
+        if let n = m.notify {
+            notifyCard(n)
+        } else if let summary = m.done {
             summaryCard(summary)
         } else {
             stepCard
         }
+    }
+
+    // A compact NOTCH ACK card — glyph + text (+ optional provenance + a tap action). Deliberately small
+    // and self-contained: it never shows the step chrome (progress bar, action chips), because a notify
+    // isn't a run — it's a "I heard you" for a session-side action like /task capturing a to-do.
+    private func notifyCard(_ n: GuideNotify) -> some View {
+        let (sym, col): (String, Color) = {
+            switch n.kind {
+            case "captured": return ("checkmark.circle.fill", .lime)
+            case "resume":   return ("play.circle.fill", .lime)
+            default:          return ("info.circle.fill", .blue)
+            }
+        }()
+        return VStack(alignment: .leading, spacing: 6) {
+            if n.source != nil || n.project != nil {
+                Text([n.source, n.project].compactMap { $0 }.joined(separator: " · "))
+                    .font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1)
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: sym).font(.system(size: 13)).foregroundColor(col)
+                Text(n.text).font(.hanken(12, .medium)).foregroundColor(.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let a = n.action, let label = n.actionLabel {
+                GuideActionChip(combo: "⌥→", label: label, primary: true, onTap: { notifyAction(a) })
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, m.placement == .notch ? 20 : SB.s3)
+        .padding(.top, m.placement == .notch ? 34 : SB.s3)
+        .padding(.bottom, m.placement == .notch ? 13 : SB.s3)
+        .modifier(CardChrome(notch: m.placement == .notch))
     }
 
     // The action chips, split into a PRIMARY row (advance / fail / back) and a META row (feedback / mute /
@@ -501,6 +550,8 @@ struct GuideCaptionView: View {
     }
 
     // Route a clicked action chip to the same handler as its key (notch-clickable).
+    private func notifyAction(_ action: String) { CursorGuide.shared.performNotifyAction(action) }
+
     private func chipTap(_ label: String) {
         switch label {
         case "Next", "Pass", "Approve": CursorGuide.shared.tapPrimary()
@@ -1084,6 +1135,8 @@ final class CursorGuide {
     private var watchTimer: Timer?
     private var cursorTimer: Timer?
     private var flashTimer: Timer?
+    private var notifyTimer: Timer?            // auto-dismiss for the notch ack toast
+    private var pendingNotifyAction: String?   // the action a tappable notify (e.g. "resume") performs
     private var doneTimer: Timer?          // ~4Hz doneWhen watcher (teach)
     private var holdTimer: Timer?          // dwell-then-auto-advance (teach `hold`)
     private var timeoutTimer: Timer?       // per-step doneWhen timeout → drop to manual-only
@@ -1108,6 +1161,10 @@ final class CursorGuide {
     private var steps: [GuideStep] = []
     private var idx = 0
     private var results: [GuideResult] = []
+    // NO-CLOBBER QUEUE (docs/GUIDE-QUEUE-RESUME.md): runs that arrive while one is active wait here
+    // (FIFO) instead of superseding the live card — so two sessions can't knock each other off the notch.
+    // Each entry already has its resolved `mode` injected, so a queued test-run resumes as a test.
+    private var pendingRuns: [[String: Any]] = []
     private var rawRun: [String: Any]? = nil   // the original run JSON — re-saved (with startIndex) on abort so a guide can be RESUMED from the menu
     private var startedAt = Date()
 
@@ -1163,6 +1220,12 @@ final class CursorGuide {
             MainActor.assumeIsolated { self?.pollTrigger() }
         }
         NSLog("[cursor-guide] watcher armed — write ~/.relay/guide-run.json (or test-run.json) to start")
+        // Recovery: if a run was left suspended (a previous session, a crash, or an esc the user wants to
+        // return to), surface a "▸ Resume" toast at the notch shortly after launch (docs §3). Delayed so
+        // the screen/overlay are ready; a no-op when there's nothing suspended.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            MainActor.assumeIsolated { self?.offerResumeIfSuspended() }
+        }
     }
 
     private func pollTrigger() {
@@ -1178,6 +1241,27 @@ final class CursorGuide {
             let obj = readJSON(testPath)
             try? fm.removeItem(atPath: testPath)
             begin(obj, defaultMode: .test)
+        }
+        // Multi-run QUEUE dir (docs/GUIDE-QUEUE-RESUME.md §2): any session can drop
+        // ~/.relay/guide-queue/<id>.json without clobbering the single-slot guide-run.json. Consume
+        // oldest-first; begin() enqueues (not supersedes) if one is already active. Runs every tick.
+        let qdir = rel("guide-queue")
+        if let items = try? fm.contentsOfDirectory(atPath: qdir), !items.isEmpty {
+            for path in items.filter({ $0.hasSuffix(".json") })
+                .map({ (qdir as NSString).appendingPathComponent($0) })
+                .sorted(by: { mtime($0) < mtime($1) }) {
+                let obj = readJSON(path)
+                try? fm.removeItem(atPath: path)
+                begin(obj, defaultMode: .tour)
+            }
+        }
+        // Session-action NOTIFY (docs §"notch feedback"): a lightweight ack — e.g. "task captured" — that
+        // a Claude session (or the connector) drops without a full guided run. Shown as a brief notch toast.
+        let notifyPath = rel("guide-notify.json")
+        if fm.fileExists(atPath: notifyPath) {
+            let obj = readJSON(notifyPath)
+            try? fm.removeItem(atPath: notifyPath)
+            showNotify(obj)
         }
     }
 
@@ -1246,7 +1330,19 @@ final class CursorGuide {
         }
         guard !parsed.isEmpty else { logMalformed(); return }
 
-        if isActive { abort(reason: "superseded") }   // last-writer-wins re-entry
+        // NO-CLOBBER QUEUE: a run arriving mid-run is ENQUEUED, not superseded (was: abort "superseded",
+        // which is exactly how two live sessions knocked each other's cards off the notch). It runs when
+        // the current one ends (teardown → drainQueue). Inject the resolved mode so a queued test-run
+        // stays a test even though it waited behind a tour. Archive it first so it's resumable if dropped.
+        if isActive {
+            var q = obj; q["mode"] = m.rawValue
+            pendingRuns.append(q)
+            model.queueDepth = pendingRuns.count
+            archiveRun(obj, title: title)
+            NSLog("[cursor-guide] QUEUED \"\(title)\" (depth \(pendingRuns.count)) — will run when the active guide ends")
+            return
+        }
+        archiveRun(obj, title: title)   // full-fidelity archive for resume (docs §1)
 
         self.mode = m
         self.title = title
@@ -1869,6 +1965,116 @@ final class CursorGuide {
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)   // .atomic = temp-write + rename
     }
 
+    private func mtime(_ path: String) -> TimeInterval {
+        ((try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+    }
+
+    // Full-fidelity archive of an ingested run, keyed by runId (docs/GUIDE-QUEUE-RESUME.md §1) — lets a
+    // RESUME restore each step's hint/point/doneWhen, not just the text the history log preserves.
+    // Best-effort; never fatal. Returns the runId it filed under.
+    @discardableResult
+    private func archiveRun(_ obj: [String: Any], title: String) -> String {
+        let runId = (obj["runId"] as? String) ?? String(Int(Date().timeIntervalSince1970))
+        let dir = rel("guide-runs")
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        var o = obj; o["runId"] = runId; o["archivedTitle"] = title
+        writeAtomic(o, to: (dir as NSString).appendingPathComponent("\(runId).json"))
+        return runId
+    }
+
+    // Run the next QUEUED run (no-clobber queue). A short delay lets this overlay fully tear down first,
+    // so the next card animates in cleanly rather than reusing a half-dismantled overlay.
+    private func drainQueue() {
+        guard !pendingRuns.isEmpty else { model.queueDepth = 0; return }
+        let next = pendingRuns.removeFirst()
+        model.queueDepth = pendingRuns.count
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            MainActor.assumeIsolated { self?.begin(next, defaultMode: .tour) }
+        }
+    }
+
+    // MARK: notch ack toast (session-side feedback — "task captured", "▸ Resume", …)
+
+    private func showNotify(_ raw: Any?) {
+        guard let obj = raw as? [String: Any], let text = obj["text"] as? String, !text.isEmpty else { return }
+        // Never hijack a live guided run — the notch belongs to the run; just log the ack. (A resume offer
+        // arriving mid-run is moot anyway; it re-surfaces from guide-suspended.json when the run ends.)
+        if isActive { NSLog("[cursor-guide] notify suppressed (run active): \(text)"); return }
+        let n = GuideNotify(text: text,
+                            kind: (obj["kind"] as? String) ?? "info",
+                            source: obj["source"] as? String,
+                            project: obj["project"] as? String,
+                            action: obj["action"] as? String,
+                            actionLabel: obj["actionLabel"] as? String)
+        pendingNotifyAction = n.action
+        model.notify = n
+        model.placement = .notch
+        model.source = n.source
+        model.project = n.project
+        ensureOverlay()
+        showOverlay()
+        installNotifyKeyMonitor()                       // ⌥→ performs the action, esc dismisses
+        // Auto-dismiss (default 2.6s; a tappable resume offer lingers longer so it's actually catchable).
+        let ttl = (obj["ttl"] as? NSNumber)?.doubleValue ?? (n.action != nil ? 8.0 : 2.6)
+        notifyTimer?.invalidate()
+        notifyTimer = Timer.scheduledTimer(withTimeInterval: ttl, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismissNotify() }
+        }
+        NSLog("[cursor-guide] notify: \(text)")
+    }
+
+    private func dismissNotify() {
+        notifyTimer?.invalidate(); notifyTimer = nil
+        removeNotifyKeyMonitor()
+        pendingNotifyAction = nil
+        model.notify = nil
+        if !isActive { model.visible = false; overlay?.orderOut(nil) }
+    }
+
+    /// Perform a tappable notify's action (⌥→ or click). Today: "resume" → re-enter the suspended run.
+    func performNotifyAction(_ action: String) {
+        dismissNotify()
+        switch action {
+        case "resume": resumeSuspended()
+        default: break
+        }
+    }
+
+    /// Re-enter the guide-suspended.json run (written on abandon) at the step it stopped on. This is the
+    /// notch-side of resume — no Claude session needed (docs/GUIDE-QUEUE-RESUME.md §3).
+    func resumeSuspended() {
+        guard let obj = readJSON(rel("guide-suspended.json")) as? [String: Any] else { return }
+        try? FileManager.default.removeItem(atPath: rel("guide-suspended.json"))
+        begin(obj, defaultMode: GuideMode(rawValue: (obj["mode"] as? String) ?? "") ?? .tour)
+    }
+
+    /// Offer to resume an abandoned run AT THE NOTCH — call after a run ends (or at launch) when a
+    /// guide-suspended.json exists. Surfaces the persistent "▸ Resume (N left)" toast the founder asked for.
+    func offerResumeIfSuspended() {
+        guard !isActive, model.notify == nil,
+              let s = readJSON(rel("guide-suspended.json")) as? [String: Any] else { return }
+        let title = (s["suspendedTitle"] as? String) ?? (s["title"] as? String) ?? "your walkthrough"
+        showNotify(["text": "Resume \(title)?", "kind": "resume", "action": "resume", "actionLabel": "Resume",
+                    "source": s["source"] as Any, "project": s["project"] as Any, "ttl": 10.0])
+    }
+
+    // A tiny key monitor active only while a notify toast is up: ⌥→ performs the action, esc dismisses.
+    // Separate from the run monitors so it works when no guide is active.
+    private var notifyKeyMonitor: Any?
+    private func installNotifyKeyMonitor() {
+        removeNotifyKeyMonitor()
+        notifyKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] ev in
+            guard let self = self, self.model.notify != nil else { return ev }
+            if ev.keyCode == 53 { self.dismissNotify(); return nil }                 // esc
+            if ev.modifierFlags.contains(.option) && ev.keyCode == 124,             // ⌥→
+               let a = self.pendingNotifyAction { self.performNotifyAction(a); return nil }
+            return ev
+        }
+    }
+    private func removeNotifyKeyMonitor() {
+        if let m = notifyKeyMonitor { NSEvent.removeMonitor(m); notifyKeyMonitor = nil }
+    }
+
     private func showCompletion(_ line: String) {
         model.done = line
         // Hold the summary card by the cursor briefly, then tear down.
@@ -1900,6 +2106,7 @@ final class CursorGuide {
         overlay?.orderOut(nil)
         stopCursorTimer()
         removeMonitors()
+        drainQueue()            // no-clobber queue: start the next run that was waiting behind this one
     }
 
     // MARK: overlay window (borderless, non-activating, click-through — the glow recipe)

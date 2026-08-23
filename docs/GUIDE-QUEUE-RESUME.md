@@ -1,6 +1,9 @@
 # Guided runs — resume-from-abandoned + a no-clobber queue
 
-Status: primitive built + tested (2026-08-19); native notch surface = spec below, not yet built.
+Status: primitive built + tested (2026-08-19); **native queue + notify + notch-resume BUILT
+(2026-08-23)** — compile-clean, live-verified plumbing; visual needs an eyeball pass. Founder also
+asked for **notch feedback on session actions** ("trigger a task → see 'task captured' at the notch") —
+built as the notify path below.
 Founder ask: *"relaunch from abandoned step — and a way to do this via the notch, since a guide could
 disappear or there could be multiple in the queue. Helps prevent collision too."*
 
@@ -51,7 +54,36 @@ Because it reads the **durable log**, a run is resumable **even after its live r
 another session, and even from a different (or fresh) Claude session** — which is the collision
 mitigation at the file level.
 
-## What's missing — the NOTCH-NATIVE surface (spec)
+## What's BUILT — the notch-native surface (CursorGuide.swift, 2026-08-23)
+
+All three pieces below plus the session-action notify, compile-clean:
+
+- **Archive-on-ingest** (`archiveRun`) — every ingested run is copied to `~/.relay/guide-runs/<runId>.json`
+  before it's consumed, so a resume restores full step fidelity.
+- **No-clobber queue** — `begin()` now ENQUEUES a run that arrives mid-run (`pendingRuns`) instead of
+  `abort("superseded")`; `teardown()` drains the next via `drainQueue()`. A watched directory
+  `~/.relay/guide-queue/<id>.json` lets any session drop a run without touching the single-slot
+  `guide-run.json`. `model.queueDepth` exposes "+N queued".
+- **Notch-native resume** — a run left in `guide-suspended.json` surfaces a tappable **"▸ Resume …"**
+  toast at the notch (`offerResumeIfSuspended`), shown ~2.5s after launch (recovers a dropped/previous-
+  session run — no Claude session needed). `⌥→` or a click re-enters at the stopped step
+  (`resumeSuspended`).
+- **Session-action notify** — the app watches `~/.relay/guide-notify.json`
+  (`{text, kind, source, project, action?, actionLabel?, ttl?}`) and shows a brief notch toast
+  (`showNotify` → `notifyCard`). `kind`: `captured` ✓ · `info` • · `resume` ▸. Suppressed during an
+  active run (the notch belongs to the run); auto-dismisses. **The switchboard connector's
+  `switchboard_add_task` now fires one** → capturing a task (via `/task` or any thread) shows
+  "Task captured: …" at the notch.
+
+### Verify (eyeball pass — the plumbing is confirmed; the pixels need a human)
+- `/task something` (or any `switchboard_add_task`) → a "Task captured" toast appears at the notch and
+  auto-dismisses. (Plumbing confirmed: the app consumes `guide-notify.json` and logs the notify.)
+- Fire two runs within a second → both appear in turn (queue depth 2), neither knocked off.
+- Abort a run midway, relaunch → the "▸ Resume" toast appears; `⌥→` re-enters at the right step.
+
+## Original spec (for reference)
+
+### The notch-native surface (as originally specced)
 
 The founder's requirement is that resume works **from the notch, with no session needed** (a session can
 die or be superseded). That means the logic must live where the app can invoke it. Three additive native
