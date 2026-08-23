@@ -480,35 +480,51 @@ struct GuideCaptionView: View {
         }
     }
 
-    // A compact NOTCH ACK card — glyph + text (+ optional provenance + a tap action). Deliberately small
-    // and self-contained: it never shows the step chrome (progress bar, action chips), because a notify
-    // isn't a run — it's a "I heard you" for a session-side action like /task capturing a to-do.
+    // NOTCH ACK card — built from the SAME notch grammar as the guide card (provenance dot + ⌘source +
+    // ◆project · splMono kicker · Hanken body · NotchDropShape chrome), NOT a bespoke look. A notify is a
+    // "I heard you" for a session-side action (/task), so it shows the kicker + the thing, no step chrome.
     private func notifyCard(_ n: GuideNotify) -> some View {
-        let (sym, col): (String, Color) = {
+        let (kicker, accent): (String, Color) = {
             switch n.kind {
-            case "captured": return ("checkmark.circle.fill", .lime)
-            case "resume":   return ("play.circle.fill", .lime)
-            default:          return ("info.circle.fill", .blue)
+            case "captured": return ("CAPTURED → BOARD", .lime)
+            case "resume":   return ("RESUME", .lime)
+            default:          return ("HEADS UP", .blue)
             }
         }()
-        return VStack(alignment: .leading, spacing: 6) {
-            if n.source != nil || n.project != nil {
-                Text([n.source, n.project].compactMap { $0 }.joined(separator: " · "))
-                    .font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1)
+        // The caller may pass "Task captured: <thing>"; the kicker already says CAPTURED, so show just the thing.
+        let body = n.text
+            .replacingOccurrences(of: "Task captured: ", with: "")
+            .replacingOccurrences(of: "Task captured:", with: "")
+        return VStack(alignment: .leading, spacing: 8) {
+            // provenance — the guide card's exact grammar: per-thread colour dot + ⌘source + ◆project
+            if (n.source?.isEmpty == false) || (n.project?.isEmpty == false) {
+                HStack(spacing: 7) {
+                    if let s = n.source, !s.isEmpty {
+                        Circle().fill(colorForId(s)).frame(width: 7, height: 7)
+                            .shadow(color: colorForId(s).opacity(0.6), radius: 2)
+                        Text("⌘ \(s)").font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1)
+                    }
+                    if let p = n.project, !p.isEmpty {
+                        Text("◆ \(p)").font(.splMono(9)).foregroundColor(.indigo).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: sym).font(.system(size: 13)).foregroundColor(col)
-                Text(n.text).font(.hanken(12, .medium)).foregroundColor(.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            // kicker (what happened) — no dot: the provenance row already carries the identity dot, a
+            // second lime dot here just reads as redundant.
+            Text(kicker).font(.splMono(9)).tracking(1.2).foregroundColor(accent).lineLimit(1)
+            // body (the thing)
+            Text(body).font(.hanken(13, .medium)).foregroundColor(.ink)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let a = n.action, let label = n.actionLabel {
                 GuideActionChip(combo: "⌥→", label: label, primary: true, onTap: { notifyAction(a) })
                     .padding(.top, 2)
             }
         }
         .padding(.horizontal, m.placement == .notch ? 20 : SB.s3)
-        .padding(.top, m.placement == .notch ? 34 : SB.s3)
+        // Just enough to clear the physical notch — the guide card's 34 is too airy for a compact ack.
+        .padding(.top, m.placement == .notch ? 24 : SB.s3)
         .padding(.bottom, m.placement == .notch ? 13 : SB.s3)
         .modifier(CardChrome(notch: m.placement == .notch))
     }
