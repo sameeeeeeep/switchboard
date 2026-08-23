@@ -38,6 +38,18 @@ const GUIDE_ORIGIN = "switchboard-connector";
 const ok = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }] });
 const fail = (message, extra) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, error: message, ...extra }) }] });
 
+// Best-effort NOTCH ACK (docs/GUIDE-QUEUE-RESUME.md §notch feedback): drop a ~/.relay/guide-notify.json
+// the Switchboard app shows as a brief toast at the notch — so an action taken in a Claude thread
+// ("task captured", "spec added") is FELT on-screen, not silently buried in chat. Never throws: no
+// ~/.relay dir (not a Switchboard user) → silent no-op; the app also suppresses it during an active run.
+function notchNotify(text, { kind = "captured", source = "Claude Code", project } = {}) {
+  try {
+    const dir = join(homedir(), ".relay");
+    if (!existsSync(dir)) return;
+    writeFileSync(join(dir, "guide-notify.json"), JSON.stringify({ text, kind, source, project, ttl: 2.6 }));
+  } catch { /* non-fatal — a toast is never worth failing the tool over */ }
+}
+
 // ---- the task board (file-based, not daemon) ----------------------------------------------------
 // The vault resolves in order: --vault <path> | $SWITCHBOARD_VAULT | $BANK_VAULT | ~/SwitchboardBrain.
 // The default is the user's home vault (~/SwitchboardBrain), NOT cwd: when installed as a plugin the
@@ -94,7 +106,12 @@ function registerTaskTools(server) {
     },
     async ({ text, list, due, status, epic, priority, detail }) => {
       const { doc, added, reason, list: filed } = addTask(text, { list, due, status, epic, prio: priority, detail }, readDoc(TASKS_FILE));
-      if (added) writeDoc(TASKS_FILE, doc);
+      if (added) {
+        writeDoc(TASKS_FILE, doc);
+        // Acknowledge at the notch so a captured task is FELT, not silently filed (founder ask).
+        const short = text.length > 60 ? text.slice(0, 57) + "…" : text;
+        notchNotify(`Task captured: ${short}`, { kind: "captured", project: filed });
+      }
       return ok({ ok: added, added, list: filed, reason, file: join(VAULT, TASKS_FILE) });
     },
   );
