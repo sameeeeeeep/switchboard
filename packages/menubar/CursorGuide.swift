@@ -187,6 +187,26 @@ struct GuideNotify {
     let actionLabel: String?
 }
 
+// One line in the PIP stream (docs/PM-NOTCH-OPERATOR.md): a PM event, kept in a rolling buffer and
+// rendered as a persistent multi-thread feed at the notch when /pip mode is on. Deterministic — filled
+// from the same free event writes, no model.
+struct PipRow: Identifiable {
+    let id = UUID(); let kicker: String; let text: String; let accent: Color; let source: String; let at: Date
+}
+
+/// Kicker label + accent for an adhd-pm event kind — one source of truth for the toast AND the PIP feed.
+func pmKindStyle(_ kind: String) -> (kicker: String, accent: Color) {
+    switch kind {
+    case "captured": return ("CAPTURED", .lime)
+    case "picked":   return ("WORKING", .lime)
+    case "decided":  return ("DECIDED", .lime)
+    case "spec":     return ("BOARD", .blue)
+    case "thread":   return ("THREAD", .indigo)
+    case "resume":   return ("RESUME", .lime)
+    default:          return ("NOTE", .blue)
+    }
+}
+
 /// The overlay's observable payload — the caption view watches this; the controller writes it.
 @MainActor
 final class GuideOverlayModel: ObservableObject {
@@ -205,6 +225,9 @@ final class GuideOverlayModel: ObservableObject {
     @Published var flash: GuideFlash? = nil       // brief ✓/✗ confirmation that a signal landed
     @Published var queueDepth: Int = 0            // >0 → "+N queued" — runs waiting behind this one (no-clobber queue)
     @Published var notify: GuideNotify? = nil     // a lightweight ack toast (e.g. "task captured"), shown when idle
+    @Published var pipActive = false              // /pip mode: a persistent multi-thread event feed lives at the notch
+    @Published var pipRows: [PipRow] = []         // the rolling stream, newest first (capped)
+    @Published var inRun = false                  // a guided run is on screen → its card overrides the PIP feed
     @Published var done: String? = nil            // non-nil → show the completion summary card
     @Published var reduceMotion = false
     @Published var target: CGPoint? = nil         // a step's point → the ring indicates it (nil = no ring this step)
@@ -475,9 +498,62 @@ struct GuideCaptionView: View {
             notifyCard(n)
         } else if let summary = m.done {
             summaryCard(summary)
+        } else if m.pipActive && !m.inRun {
+            pipFeedCard            // /pip resting state: the persistent multi-thread stream
         } else {
             stepCard
         }
+    }
+
+    // PIP FEED — ONE event at a time, in Switchboard's dot-matrix language (Doto face + an animated
+    // DotMatrix beacon), not a stacked list (founder 2026-08-24). The latest event is the display; a "+N"
+    // counts the ones behind it. Deterministic — every event came from a free write, no model. Draggable
+    // off the notch (the shared cardDrag gesture) to sit anywhere.
+    private var pipFeedCard: some View {
+        let r = m.pipRows.first
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.7), radius: 3)
+                Text("PIP").font(.splMono(9)).tracking(1.6).foregroundColor(.lime)
+                Spacer(minLength: 0)
+                if m.pipRows.count > 1 {
+                    Text("+\(m.pipRows.count - 1)").font(.splMono(8.5)).foregroundColor(.inkFaint)
+                }
+            }
+            if let r {
+                HStack(alignment: .center, spacing: 13) {
+                    DotMatrix(pattern: .working, accent: r.accent, cols: 6, rows: 6, dot: 2, gap: 2.4,
+                              animated: !m.reduceMotion)
+                        .frame(width: 42, height: 42)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(r.kicker).font(.splMono(8.5)).tracking(0.9).foregroundColor(r.accent)
+                            Spacer(minLength: 0)
+                            Text(pipAgo(r.at)).font(.splMono(8.5)).foregroundColor(.inkFaint)
+                        }
+                        Text(r.text).font(.doto(15, .bold)).foregroundColor(.ink)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 5) {
+                            Circle().fill(colorForId(r.source)).frame(width: 5, height: 5)
+                            Text(r.source).font(.splMono(8)).foregroundColor(.inkFaint).lineLimit(1)
+                        }
+                    }
+                }
+            } else {
+                Text("WATCHING YOUR THREADS").font(.doto(12, .bold)).tracking(1).foregroundColor(.inkFaint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, m.placement == .notch ? 20 : SB.s3)
+        .padding(.top, m.placement == .notch ? 24 : SB.s3)
+        .padding(.bottom, m.placement == .notch ? 13 : SB.s3)
+        .modifier(CardChrome(notch: m.placement == .notch))
+    }
+    private func pipAgo(_ d: Date) -> String {
+        let s = Int(max(0, Date().timeIntervalSince(d)))
+        if s < 5 { return "now" }; if s < 60 { return "\(s)s" }
+        let m = s / 60; if m < 60 { return "\(m)m" }; return "\(m/60)h"
     }
 
     // NOTCH ACK card — built from the SAME notch grammar as the guide card (provenance dot + ⌘source +
@@ -1296,6 +1372,10 @@ final class CursorGuide {
             try? fm.removeItem(atPath: notifyPath)
             showNotify(obj)
         }
+        // /pip MODE toggle (docs/PM-NOTCH-OPERATOR.md): ~/.relay/pip.json {"active":true} → the persistent
+        // stream feed lives at the notch; absent/false → off. Polled each tick; deterministic, no model.
+        let pipOn = (readJSON(rel("pip.json")) as? [String: Any])?["active"] as? Bool ?? false
+        if pipOn != model.pipActive { setPip(pipOn) }
     }
 
     // MARK: parse + start
@@ -1392,6 +1472,7 @@ final class CursorGuide {
         for i in 0..<idx where i < results.count { results[i].verdict = "done" }   // steps before the resume point are done
         self.startedAt = Date()
         self.isActive = true
+        model.inRun = true                          // a run is on screen → it overrides the PIP feed
         self.spokenStepIdx = -1                     // fresh run → speak from the first step shown
         self.autoClipboard = autoClip
         // Preserve the user's clipboard for the whole run — captured lazily the first time a step actually
@@ -2040,6 +2121,8 @@ final class CursorGuide {
                             project: obj["project"] as? String,
                             action: obj["action"] as? String,
                             actionLabel: obj["actionLabel"] as? String)
+        // /pip mode: events join the PERSISTENT stream, not a one-shot toast.
+        if model.pipActive { appendPipRow(n); showPipFeed(); return }
         pendingNotifyAction = n.action
         model.notify = n
         // Force a CLEAN notch render — a prior run can leave placement at .free/.cursor with a stale
@@ -2117,6 +2200,42 @@ final class CursorGuide {
         if let m = notifyKeyMonitor { NSEvent.removeMonitor(m); notifyKeyMonitor = nil }
     }
 
+    // MARK: PIP mode — the persistent, deterministic multi-thread stream (docs/PM-NOTCH-OPERATOR.md)
+
+    /// Toggle /pip mode. On → a standing feed lives at the notch; off → clear + hide (if nothing else is up).
+    private func setPip(_ active: Bool) {
+        guard active != model.pipActive else { return }
+        model.pipActive = active
+        if active {
+            NSLog("[cursor-guide] PIP mode ON")
+            if !isActive && model.notify == nil { showPipFeed() }
+        } else {
+            NSLog("[cursor-guide] PIP mode OFF")
+            model.pipRows = []
+            if !isActive && model.notify == nil { model.visible = false; overlay?.orderOut(nil) }
+        }
+    }
+
+    /// Show the persistent feed (no dismiss timer — it stays until a run/notify takes over or /pip ends).
+    /// Respects a dragged-off position: once the user pulls it anywhere (placement .free / remembered),
+    /// new events update it in place instead of snapping it back to the notch.
+    private func showPipFeed() {
+        model.notify = nil
+        model.collapsed = false
+        if model.placement != .free && !model.freeRemembered {
+            model.placement = .notch; model.placementPinned = true; model.target = nil
+        }
+        ensureOverlay(); showOverlay()
+    }
+
+    /// Add an event to the rolling stream (newest first, capped). Deterministic — no model.
+    private func appendPipRow(_ n: GuideNotify) {
+        let style = pmKindStyle(n.kind)
+        model.pipRows.insert(PipRow(kicker: style.kicker, text: n.text, accent: style.accent,
+                                    source: n.source ?? "•", at: Date()), at: 0)
+        if model.pipRows.count > 8 { model.pipRows.removeLast(model.pipRows.count - 8) }
+    }
+
     private func showCompletion(_ line: String) {
         model.done = line
         // Hold the summary card by the cursor briefly, then tear down.
@@ -2151,9 +2270,17 @@ final class CursorGuide {
         // Human-action feedback (docs/PM-NOTCH-OPERATOR.md): the founder just picked something and the
         // card closed — confirm it at the notch so acting on the notch is FELT, not silent. Deterministic
         // (no model). A queued run takes precedence over the ack (it needs the notch).
+        model.inRun = false
         let ack = pendingHumanAck; pendingHumanAck = nil
         if !pendingRuns.isEmpty {
             drainQueue()                 // next queued run takes the notch
+        } else if model.pipActive {
+            // /pip: the choice joins the persistent stream (as a 'decided' row); the feed stays up.
+            if let ack, !ack.isEmpty {
+                appendPipRow(GuideNotify(text: ack, kind: "decided", source: model.source, project: model.project, action: nil, actionLabel: nil))
+            }
+            model.queueDepth = 0
+            showPipFeed()
         } else if let ack, !ack.isEmpty {
             model.queueDepth = 0
             showNotify(["text": ack, "kind": "decided", "ttl": 2.2])
