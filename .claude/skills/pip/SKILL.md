@@ -27,9 +27,11 @@ docs/PM-NOTCH-OPERATOR.md):
    persistent `PIP · LIVE STREAM` card. Fire one opening event so it isn't empty:
    `node scripts/pm-notch.mjs thread "<what this session is>" --source "Claude Code · <thread>"`.
 3. **Adopt PIP behaviour for the rest of the session** (this is the mode — hold it until `/pip off`):
-   - **Stream every move.** On each PM event, fire `node scripts/pm-notch.mjs <kind> "<one line>"`
-     — `thread` when you start on something, `picked` when you pull a card, `captured` when you board
-     one, `spec` when you tidy the board, `decided` when a fork resolves. Deterministic, so do it liberally.
+   - **Stream every move.** On each PM event, fire one — **prefer the `switchboard_notch` connector tool**
+     (`{ kind, text, source, project }` — works from ANY folder), falling back to
+     `node scripts/pm-notch.mjs <kind> "<one line>"` when the connector isn't wired. Kinds: `thread` when
+     you start on something, `picked` when you pull a card, `captured` when you board one, `spec` when you
+     tidy the board, `decided` when a fork resolves. Deterministic, so do it liberally.
    - **Always route decisions through the notch** (the [[guru]] guarantee, permanent): ANY fork,
      approval, or "which of these?" is raised as a notch `ask`/`teach` card via the [[switchboard]] skill
      — options + a spoken `say` + one ⭐recommended — and you read the pick back from
