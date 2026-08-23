@@ -41,6 +41,26 @@ docs/PM-NOTCH-OPERATOR.md):
      line. The user is watching the stream, not reading walls.
    - The chat reply becomes a terse log line; the notch carries the interaction.
 
+## Handback — the turn NEVER ends silently (this is the point of PIP)
+
+PIP is worthless if, when you finish, the user has to open the app to see you're done and to reply. So
+in PIP mode the **handback closes at the notch**, always:
+
+1. **Never end a turn with just a chat message.** Before handing back, raise an **"over to you"** notch
+   card via the [[switchboard]] skill — a one-line status of what you just did + what's next, with quick
+   options (e.g. `keep going · that's it · [something else]`) AND the `⌥↓` freeform so the user can just
+   *type their next instruction at the notch*. Speak it (`say`) so they hear it land.
+2. **Poll for the response** (`~/.relay/guide-result.json`) — read BOTH `chosenOption` and the typed
+   `feedback.note`. A typed note IS the next instruction: **continue the work from it in this same turn.**
+   The conversation continues *through the notch* — the user never opens the app.
+3. **Loop.** Do the thing, stream the events, then raise the next "over to you" card. Keep the loop going
+   until the user picks `that's it` / says stop, or stops responding.
+4. **If the poll times out** (the user stepped away), the card + the durable log (`guide-history.jsonl`)
+   hold the state — recover their answer next time with [[fetch]]. Don't declare done; you're waiting.
+
+This is the difference between PIP being a read-only ticker and being a real hands-free loop: progress
+streams out, and every "your move" comes back in — all at the notch.
+
 ## On `/pip off` (turn it OFF)
 
 `echo '{ "active": false }' > ~/.relay/pip.json` (or `rm -f ~/.relay/pip.json`). The feed clears and the
