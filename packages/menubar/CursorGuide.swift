@@ -2212,7 +2212,12 @@ final class CursorGuide {
         } else {
             NSLog("[cursor-guide] PIP mode OFF")
             model.pipRows = []
-            if !isActive && model.notify == nil { model.visible = false; overlay?.orderOut(nil) }
+            if !isActive && model.notify == nil {
+                model.visible = false
+                removeMonitors(); stopCursorTimer()   // release the passthrough monitors + restore clicks
+                overlay?.ignoresMouseEvents = true
+                overlay?.orderOut(nil)
+            }
         }
     }
 
@@ -2226,6 +2231,26 @@ final class CursorGuide {
             model.placement = .notch; model.placementPinned = true; model.target = nil
         }
         ensureOverlay(); showOverlay()
+        installPipMouse()      // CRITICAL: without the passthrough monitors the full-screen overlay eats
+        startCursorTimer()     // every click and locks the screen. This makes it click-through except the card.
+    }
+
+    // Just the mouse-passthrough monitors for PIP — NOT the run's key monitors/tap (PIP has no run to
+    // drive, and swallowing the ⌥-chords would break the user's own Option shortcuts). The overlay stays
+    // click-through EXCEPT when the pointer is over the (draggable) feed card — the lock-proof default.
+    private func installPipMouse() {
+        overlay?.ignoresMouseEvents = true
+        if mouseMonitorG == nil {
+            mouseMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateMousePassthrough() }
+            }
+        }
+        if mouseMonitorL == nil {
+            mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] ev in
+                MainActor.assumeIsolated { self?.updateMousePassthrough() }; return ev
+            }
+        }
+        updateMousePassthrough()
     }
 
     /// Add an event to the rolling stream (newest first, capped). Deterministic — no model.
