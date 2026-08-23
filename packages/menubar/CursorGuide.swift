@@ -484,9 +484,15 @@ struct GuideCaptionView: View {
     // ◆project · splMono kicker · Hanken body · NotchDropShape chrome), NOT a bespoke look. A notify is a
     // "I heard you" for a session-side action (/task), so it shows the kicker + the thing, no step chrome.
     private func notifyCard(_ n: GuideNotify) -> some View {
+        // The adhd-pm event vocabulary (docs/PM-NOTCH-OPERATOR.md) — each kind a distinct kicker + accent
+        // so the stream reads at a glance: what just happened, in which thread's colour.
         let (kicker, accent): (String, Color) = {
             switch n.kind {
             case "captured": return ("CAPTURED → BOARD", .lime)
+            case "picked":   return ("▸ WORKING", .lime)
+            case "decided":  return ("✓ DECIDED", .lime)
+            case "spec":     return ("BOARD UPDATED", .blue)
+            case "thread":   return ("NEW THREAD", .indigo)
             case "resume":   return ("RESUME", .lime)
             default:          return ("HEADS UP", .blue)
             }
@@ -1163,6 +1169,7 @@ final class CursorGuide {
     private var flashTimer: Timer?
     private var notifyTimer: Timer?            // auto-dismiss for the notch ack toast
     private var pendingNotifyAction: String?   // the action a tappable notify (e.g. "resume") performs
+    private var pendingHumanAck: String?       // the choice the human just approved → confirm at the notch on close
     private var doneTimer: Timer?          // ~4Hz doneWhen watcher (teach)
     private var holdTimer: Timer?          // dwell-then-auto-advance (teach `hold`)
     private var timeoutTimer: Timer?       // per-step doneWhen timeout → drop to manual-only
@@ -1759,6 +1766,7 @@ final class CursorGuide {
         if !fail, let opts = steps[idx].options, !opts.isEmpty {
             let i = min(max(model.selectedOption, 0), opts.count - 1)
             results[idx].chosenOption = opts[i].id
+            pendingHumanAck = opts[i].label     // confirm THIS choice at the notch when the card closes
             onOptionApprove?(steps[idx].id, opts[i].id)
         }
         if mode == .test {
@@ -2140,7 +2148,16 @@ final class CursorGuide {
         overlay?.orderOut(nil)
         stopCursorTimer()
         removeMonitors()
-        drainQueue()            // no-clobber queue: start the next run that was waiting behind this one
+        // Human-action feedback (docs/PM-NOTCH-OPERATOR.md): the founder just picked something and the
+        // card closed — confirm it at the notch so acting on the notch is FELT, not silent. Deterministic
+        // (no model). A queued run takes precedence over the ack (it needs the notch).
+        let ack = pendingHumanAck; pendingHumanAck = nil
+        if !pendingRuns.isEmpty {
+            drainQueue()                 // next queued run takes the notch
+        } else if let ack, !ack.isEmpty {
+            model.queueDepth = 0
+            showNotify(["text": ack, "kind": "decided", "ttl": 2.2])
+        }
     }
 
     // MARK: overlay window (borderless, non-activating, click-through — the glow recipe)
