@@ -3,6 +3,13 @@
   "name": "Batch",
   "tagline": "Run one prompt across a whole list.",
   "category": "agent",
+  "keywords": [
+    "run a prompt on a list",
+    "bulk prompt",
+    "batch process",
+    "run across rows",
+    "spreadsheet of prompts"
+  ],
   "components": {
     "ui": {
       "kind": "web",

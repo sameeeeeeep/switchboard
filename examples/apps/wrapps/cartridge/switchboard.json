@@ -3,6 +3,12 @@
   "name": "Cartridge",
   "tagline": "Build a little browser game.",
   "category": "tool",
+  "keywords": [
+    "browser game",
+    "make a game",
+    "little game",
+    "html game"
+  ],
   "components": {
     "ui": {
       "kind": "web",

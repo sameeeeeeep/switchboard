@@ -3,6 +3,13 @@
   "name": "Name It",
   "tagline": "Six strong name options, each with a rationale.",
   "category": "skill",
+  "keywords": [
+    "name ideas",
+    "naming",
+    "product name",
+    "brand name",
+    "name options"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,12 @@
   "name": "Arcana",
   "tagline": "A tarot pull with a real read.",
   "category": "fun",
+  "keywords": [
+    "tarot",
+    "tarot reading",
+    "tarot pull",
+    "card reading"
+  ],
   "components": {
     "ui": {
       "kind": "web",

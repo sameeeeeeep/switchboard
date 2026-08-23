@@ -3,6 +3,12 @@
   "name": "Studio",
   "tagline": "Product photography on your own models.",
   "category": "tool",
+  "keywords": [
+    "product photography",
+    "product photos",
+    "photo shoot",
+    "on-model photos"
+  ],
   "components": {
     "ui": {
       "kind": "web",

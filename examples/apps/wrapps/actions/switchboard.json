@@ -3,6 +3,12 @@
   "name": "Action Items",
   "tagline": "Notes or a transcript into a clean checklist.",
   "category": "skill",
+  "keywords": [
+    "action items",
+    "todo from notes",
+    "checklist from transcript",
+    "extract tasks"
+  ],
   "components": {
     "ui": {
       "kind": "web",

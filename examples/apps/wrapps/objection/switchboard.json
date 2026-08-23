@@ -3,6 +3,12 @@
   "name": "Objection",
   "tagline": "A sales or investor objection into a calm, honest response",
   "category": "skill",
+  "keywords": [
+    "handle an objection",
+    "sales objection",
+    "investor objection",
+    "objection response"
+  ],
   "components": {
     "ui": {
       "kind": "web",

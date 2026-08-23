@@ -3,6 +3,12 @@
   "name": "Caption",
   "tagline": "Social captions with hashtags — five options, one pick",
   "category": "skill",
+  "keywords": [
+    "social captions",
+    "instagram captions",
+    "hashtags",
+    "caption options"
+  ],
   "components": {
     "ui": {
       "kind": "web",

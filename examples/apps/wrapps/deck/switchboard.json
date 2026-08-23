@@ -3,6 +3,14 @@
   "name": "Deck",
   "tagline": "Notes in, a real slide deck out — export to PowerPoint",
   "category": "studio",
+  "keywords": [
+    "slides",
+    "presentation",
+    "powerpoint",
+    "pptx",
+    "slide deck",
+    "pitch deck"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,13 @@
   "name": "Cut",
   "tagline": "Paste a transcript — get captions + a cut list.",
   "category": "tool",
+  "keywords": [
+    "captions",
+    "cut list",
+    "video captions",
+    "subtitles",
+    "transcript to captions"
+  ],
   "components": {
     "ui": {
       "kind": "web",

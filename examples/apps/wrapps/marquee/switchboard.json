@@ -3,6 +3,12 @@
   "name": "Marquee",
   "tagline": "A landing page that ships to a domain.",
   "category": "tool",
+  "keywords": [
+    "landing page",
+    "ship a landing page",
+    "website page",
+    "landing page to a domain"
+  ],
   "components": {
     "ui": {
       "kind": "web",

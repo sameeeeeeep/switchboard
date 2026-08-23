@@ -3,6 +3,12 @@
   "name": "Take",
   "tagline": "One take, many cuts.",
   "category": "tool",
+  "keywords": [
+    "video cuts",
+    "recut video",
+    "one take many cuts",
+    "cut a take"
+  ],
   "components": {
     "ui": {
       "kind": "web",

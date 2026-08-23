@@ -3,14 +3,32 @@
   "name": "Autopilot",
   "tagline": "It plans your week and makes the moves.",
   "category": "agent",
+  "keywords": [
+    "plan my week",
+    "weekly plan",
+    "auto plan",
+    "make the moves",
+    "task automation"
+  ],
   "author": "Switchboard",
   "components": {
-    "workflows": ["autopilot/plan", "autopilot/moves", "autopilot/slate"]
+    "workflows": [
+      "autopilot/plan",
+      "autopilot/moves",
+      "autopilot/slate"
+    ]
   },
-  "surfaces": ["batch"],
+  "surfaces": [
+    "batch"
+  ],
   "requires": [
-    { "kind": "daemon" },
-    { "kind": "model", "class": "cloud" }
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
   ],
   "inside": [
     "A finite move-engine — no runaway loops",

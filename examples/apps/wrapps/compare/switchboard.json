@@ -3,6 +3,12 @@
   "name": "Compare",
   "tagline": "Options side by side, pros/cons, one pick",
   "category": "skill",
+  "keywords": [
+    "compare options",
+    "pros and cons",
+    "side by side",
+    "help me decide"
+  ],
   "components": {
     "ui": {
       "kind": "web",

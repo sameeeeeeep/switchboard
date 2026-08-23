@@ -3,12 +3,30 @@
   "name": "Crest",
   "tagline": "A brief in, a logo out — foundation, directions, four marks.",
   "category": "studio",
+  "keywords": [
+    "logo",
+    "logo design",
+    "make a logo",
+    "brand marks",
+    "logo directions",
+    "wordmark"
+  ],
   "components": {
-    "ui": { "kind": "web", "url": "http://localhost:5188/crest.html" }
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/crest.html"
+    }
   },
-  "surfaces": ["browser"],
+  "surfaces": [
+    "browser"
+  ],
   "requires": [
-    { "kind": "daemon" },
-    { "kind": "model", "class": "cloud" }
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
   ]
 }

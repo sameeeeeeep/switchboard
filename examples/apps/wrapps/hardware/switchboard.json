@@ -3,6 +3,12 @@
   "name": "Hardware Reality Check",
   "tagline": "The hard questions before you tool up.",
   "category": "tool",
+  "keywords": [
+    "hardware questions",
+    "hardware reality check",
+    "manufacturing",
+    "before you tool up"
+  ],
   "components": {
     "ui": {
       "kind": "web",

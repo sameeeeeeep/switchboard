@@ -3,6 +3,12 @@
   "name": "SaaS Thesis",
   "tagline": "Turn a SaaS hunch into a thesis.",
   "category": "tool",
+  "keywords": [
+    "saas thesis",
+    "saas idea",
+    "software idea",
+    "saas hunch"
+  ],
   "components": {
     "ui": {
       "kind": "web",

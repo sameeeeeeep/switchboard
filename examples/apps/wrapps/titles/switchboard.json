@@ -3,6 +3,12 @@
   "name": "Titles",
   "tagline": "Headline and title options you can A/B",
   "category": "skill",
+  "keywords": [
+    "titles",
+    "headlines",
+    "title options",
+    "a/b headlines"
+  ],
   "components": {
     "ui": {
       "kind": "web",

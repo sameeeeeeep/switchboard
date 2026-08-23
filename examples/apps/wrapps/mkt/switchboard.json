@@ -3,6 +3,12 @@
   "name": "Marketplace Validator",
   "tagline": "Is this marketplace worth building? Find out.",
   "category": "tool",
+  "keywords": [
+    "marketplace validation",
+    "marketplace idea",
+    "two sided marketplace",
+    "should i build a marketplace"
+  ],
   "components": {
     "ui": {
       "kind": "web",

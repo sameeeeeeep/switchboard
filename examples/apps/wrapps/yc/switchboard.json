@@ -3,6 +3,12 @@
   "name": "YC Application",
   "tagline": "Write YC answers in the house dialect.",
   "category": "skill",
+  "keywords": [
+    "yc application",
+    "y combinator",
+    "yc answers",
+    "apply to yc"
+  ],
   "author": "Switchboard",
   "components": {
     "skills": [

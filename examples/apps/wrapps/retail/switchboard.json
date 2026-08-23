@@ -3,6 +3,12 @@
   "name": "Retail Concept",
   "tagline": "Reality-check a retail concept.",
   "category": "tool",
+  "keywords": [
+    "retail concept",
+    "store concept",
+    "retail idea",
+    "reality check retail"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,17 @@
   "name": "Emboss",
   "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
   "category": "tool",
+  "keywords": [
+    "stamp brand",
+    "brand a document",
+    "watermark pdf",
+    "brand a pdf",
+    "letterhead"
+  ],
+  "accepts": [
+    "pdf",
+    "text"
+  ],
   "components": {
     "ui": {
       "kind": "web",

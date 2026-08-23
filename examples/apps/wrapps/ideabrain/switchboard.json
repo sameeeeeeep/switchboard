@@ -3,15 +3,35 @@
   "name": "ideabrain",
   "tagline": "Pressure-test an idea before you build it.",
   "category": "studio",
+  "keywords": [
+    "validate idea",
+    "pressure test idea",
+    "business thesis",
+    "should i build",
+    "idea research"
+  ],
   "author": "Switchboard",
   "components": {
-    "workflows": ["ideabrain/brief"],
-    "ui": { "kind": "web", "url": "https://brandbrain.thelastprompt.ai/build?studio=idea" }
+    "workflows": [
+      "ideabrain/brief"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "https://brandbrain.thelastprompt.ai/build?studio=idea"
+    }
   },
-  "surfaces": ["browser", "batch"],
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
   "requires": [
-    { "kind": "daemon" },
-    { "kind": "model", "class": "cloud" }
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
   ],
   "inside": [
     "Research → thesis → plan, grounded in your notes",

@@ -3,6 +3,13 @@
   "name": "Errslate",
   "tagline": "Decode any error or stack trace: meaning, cause, fix",
   "category": "skill",
+  "keywords": [
+    "explain an error",
+    "stack trace",
+    "decode error",
+    "what does this error mean",
+    "debug"
+  ],
   "components": {
     "ui": {
       "kind": "web",

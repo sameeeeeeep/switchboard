@@ -3,10 +3,24 @@
   "name": "Redline",
   "tagline": "Mark up a landing page like a doc.",
   "category": "agent",
+  "keywords": [
+    "review a page",
+    "mark up",
+    "landing page review",
+    "copy review",
+    "critique",
+    "line by line"
+  ],
   "author": "Switchboard",
   "components": {
-    "workflows": ["redline/audit", "redline/respond"],
-    "ui": { "kind": "web", "url": "https://redline.thelastprompt.ai" }
+    "workflows": [
+      "redline/audit",
+      "redline/respond"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "https://redline.thelastprompt.ai"
+    }
   },
   "tools": [
     {
@@ -25,10 +39,18 @@
       }
     }
   ],
-  "surfaces": ["browser", "batch"],
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
   "requires": [
-    { "kind": "daemon" },
-    { "kind": "model", "class": "cloud" }
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    }
   ],
   "inside": [
     "A line-by-line review of any page or doc",

@@ -3,6 +3,13 @@
   "name": "Polish",
   "tagline": "Proofread and clarify — your voice intact.",
   "category": "skill",
+  "keywords": [
+    "proofread",
+    "clarify",
+    "clean up writing",
+    "fix grammar",
+    "tighten"
+  ],
   "components": {
     "ui": {
       "kind": "web",

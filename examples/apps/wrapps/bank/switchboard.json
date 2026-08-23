@@ -3,6 +3,14 @@
   "name": "Bank",
   "tagline": "A second brain your wrapps can borrow from.",
   "category": "studio",
+  "keywords": [
+    "second brain",
+    "notes vault",
+    "save context",
+    "knowledge base",
+    "reference notes",
+    "remember this"
+  ],
   "components": {
     "ui": {
       "kind": "web",

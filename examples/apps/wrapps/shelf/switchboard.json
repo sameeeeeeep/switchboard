@@ -3,6 +3,12 @@
   "name": "Shelf",
   "tagline": "Keep inventory honest.",
   "category": "tool",
+  "keywords": [
+    "inventory",
+    "stock levels",
+    "inventory tracking",
+    "keep stock honest"
+  ],
   "components": {
     "ui": {
       "kind": "web",

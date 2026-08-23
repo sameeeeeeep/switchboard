@@ -3,6 +3,13 @@
   "name": "Flow",
   "tagline": "Hold a key, talk — clean text lands at your cursor.",
   "category": "tool",
+  "keywords": [
+    "dictation",
+    "voice to text",
+    "talk to type",
+    "speech to text",
+    "dictate"
+  ],
   "author": "Switchboard",
   "components": {
     "ui": {

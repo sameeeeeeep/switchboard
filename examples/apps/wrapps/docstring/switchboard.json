@@ -3,6 +3,12 @@
   "name": "Docstring",
   "tagline": "A function into a clear docstring/JSDoc with an example",
   "category": "skill",
+  "keywords": [
+    "docstring",
+    "jsdoc",
+    "document a function",
+    "code comment"
+  ],
   "components": {
     "ui": {
       "kind": "web",
