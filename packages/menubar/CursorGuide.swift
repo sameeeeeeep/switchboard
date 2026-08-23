@@ -687,7 +687,7 @@ struct GuideCaptionView: View {
                 }
                 .buttonStyle(.plain)
             }
-            // ── header rail: segment progress · title · AUTO pill · voice ──
+            // ── header rail: segment progress · title · +N queued · AUTO pill · voice ──
             HStack(spacing: 8) {
                 segmentBar.frame(width: 92)
                 if let t = m.title, !t.isEmpty {
@@ -697,6 +697,16 @@ struct GuideCaptionView: View {
                         .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
+                // No-clobber queue: how many runs are waiting behind this one (docs/GUIDE-QUEUE-RESUME.md).
+                if m.queueDepth > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.stack.3d.up.fill").font(.system(size: 8)).foregroundColor(.inkDim)
+                        Text("+\(m.queueDepth)").font(.splMono(9)).foregroundColor(.inkDim)
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                    .help("\(m.queueDepth) more queued — they run when this one ends")
+                }
                 if m.autoSensing {
                     HStack(spacing: 4) {
                         DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 3, dot: 2, gap: 2, animated: !m.reduceMotion)
