@@ -2018,7 +2018,15 @@ final class CursorGuide {
                             actionLabel: obj["actionLabel"] as? String)
         pendingNotifyAction = n.action
         model.notify = n
+        // Force a CLEAN notch render — a prior run can leave placement at .free/.cursor with a stale
+        // anchor, which is why the toast was landing mid-screen instead of under the notch. Pin it so
+        // nothing re-derives, and clear any remembered free position.
         model.placement = .notch
+        model.placementPinned = true
+        model.collapsed = false
+        model.dockTop = false
+        model.target = nil
+        model.forgetFree()
         model.source = n.source
         model.project = n.project
         ensureOverlay()
