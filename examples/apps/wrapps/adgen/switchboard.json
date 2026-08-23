@@ -3,6 +3,12 @@
   "name": "Adwall",
   "tagline": "A wall of ad variations at once.",
   "category": "tool",
+  "keywords": [
+    "ad variations",
+    "many ads at once",
+    "ad wall",
+    "bulk ad variations"
+  ],
   "components": {
     "ui": {
       "kind": "web",

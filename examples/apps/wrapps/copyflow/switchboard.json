@@ -3,6 +3,13 @@
   "name": "CopyFlow",
   "tagline": "Show a workflow once — it runs itself.",
   "category": "studio",
+  "keywords": [
+    "record a workflow",
+    "automate steps",
+    "workflow automation",
+    "repeat a process",
+    "show once run itself"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,14 @@
   "name": "Echo",
   "tagline": "Type text, hear it spoken — on-device voices",
   "category": "tool",
+  "keywords": [
+    "text to speech",
+    "read aloud",
+    "tts",
+    "hear text",
+    "speak text",
+    "on-device voice"
+  ],
   "components": {
     "ui": {
       "kind": "web",

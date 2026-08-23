@@ -3,6 +3,12 @@
   "name": "Reel",
   "tagline": "Short-form video from a brand kit.",
   "category": "tool",
+  "keywords": [
+    "short video",
+    "reel",
+    "short form video",
+    "video from brand kit"
+  ],
   "components": {
     "ui": {
       "kind": "web",

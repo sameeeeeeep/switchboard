@@ -3,6 +3,12 @@
   "name": "Snap Answer",
   "tagline": "One question, one direct answer — no chat thread.",
   "category": "skill",
+  "keywords": [
+    "quick answer",
+    "direct answer",
+    "one question",
+    "just the answer"
+  ],
   "components": {
     "ui": {
       "kind": "web",

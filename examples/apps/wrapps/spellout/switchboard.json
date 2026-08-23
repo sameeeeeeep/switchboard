@@ -3,6 +3,12 @@
   "name": "Spellout",
   "tagline": "A rough phrase into a clear line",
   "category": "skill",
+  "keywords": [
+    "reword",
+    "clarify a phrase",
+    "make it clear",
+    "tidy a line"
+  ],
   "components": {
     "ui": {
       "kind": "web",

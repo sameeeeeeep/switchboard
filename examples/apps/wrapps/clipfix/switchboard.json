@@ -3,6 +3,13 @@
   "name": "Clip Doctor",
   "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
   "category": "skill",
+  "keywords": [
+    "clean text",
+    "fix pasted text",
+    "remove line breaks",
+    "fix smart quotes",
+    "clean formatting"
+  ],
   "components": {
     "ui": {
       "kind": "web",

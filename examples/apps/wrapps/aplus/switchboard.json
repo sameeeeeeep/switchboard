@@ -3,6 +3,12 @@
   "name": "A-Plus",
   "tagline": "Amazon A+ content, in bulk.",
   "category": "tool",
+  "keywords": [
+    "amazon a+",
+    "a+ content",
+    "amazon listing",
+    "product content in bulk"
+  ],
   "components": {
     "ui": {
       "kind": "web",

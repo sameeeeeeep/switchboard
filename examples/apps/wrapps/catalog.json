@@ -7,6 +7,14 @@
       "name": "Bank",
       "tagline": "A second brain your wrapps can borrow from.",
       "category": "studio",
+      "keywords": [
+        "second brain",
+        "notes vault",
+        "save context",
+        "knowledge base",
+        "reference notes",
+        "remember this"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -45,6 +53,14 @@
       "name": "brandbrain",
       "tagline": "Your whole brand, one place.",
       "category": "studio",
+      "keywords": [
+        "brand system",
+        "brand voice",
+        "brand guidelines",
+        "tone of voice",
+        "positioning",
+        "brand palette"
+      ],
       "author": "Switchboard",
       "components": {
         "ui": {
@@ -80,6 +96,13 @@
       "name": "CopyFlow",
       "tagline": "Show a workflow once — it runs itself.",
       "category": "studio",
+      "keywords": [
+        "record a workflow",
+        "automate steps",
+        "workflow automation",
+        "repeat a process",
+        "show once run itself"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -115,6 +138,14 @@
       "name": "Crest",
       "tagline": "A brief in, a logo out — foundation, directions, four marks.",
       "category": "studio",
+      "keywords": [
+        "logo",
+        "logo design",
+        "make a logo",
+        "brand marks",
+        "logo directions",
+        "wordmark"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -149,6 +180,14 @@
       "name": "Deck",
       "tagline": "Notes in, a real slide deck out — export to PowerPoint",
       "category": "studio",
+      "keywords": [
+        "slides",
+        "presentation",
+        "powerpoint",
+        "pptx",
+        "slide deck",
+        "pitch deck"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -186,6 +225,17 @@
       "name": "Dub",
       "tagline": "Audio in — revoice each speaker with the TTS voice you pick.",
       "category": "studio",
+      "keywords": [
+        "revoice",
+        "dub audio",
+        "change voice",
+        "voiceover",
+        "redub",
+        "replace voice"
+      ],
+      "accepts": [
+        "audio"
+      ],
       "author": "Switchboard",
       "components": {
         "ui": {
@@ -229,6 +279,13 @@
       "name": "Huddle",
       "tagline": "Any meeting → clean notes, decisions and action items.",
       "category": "studio",
+      "keywords": [
+        "meeting notes",
+        "action items",
+        "meeting summary",
+        "decisions",
+        "notes from meeting"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -260,6 +317,13 @@
       "name": "ideabrain",
       "tagline": "Pressure-test an idea before you build it.",
       "category": "studio",
+      "keywords": [
+        "validate idea",
+        "pressure test idea",
+        "business thesis",
+        "should i build",
+        "idea research"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -303,6 +367,14 @@
       "name": "ideafetch",
       "tagline": "Point at what you already built — it becomes your project.",
       "category": "studio",
+      "keywords": [
+        "import project",
+        "from a url",
+        "from a repo",
+        "read a website",
+        "turn into a project",
+        "ingest"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -342,6 +414,14 @@
       "name": "AdPulse",
       "tagline": "Find the ad spend that's being wasted.",
       "category": "agent",
+      "keywords": [
+        "ad spend",
+        "wasted ad budget",
+        "ad audit",
+        "ad performance",
+        "marketing waste",
+        "where budget leaked"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -385,6 +465,13 @@
       "name": "Autopilot",
       "tagline": "It plans your week and makes the moves.",
       "category": "agent",
+      "keywords": [
+        "plan my week",
+        "weekly plan",
+        "auto plan",
+        "make the moves",
+        "task automation"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -416,6 +503,13 @@
       "name": "Batch",
       "tagline": "Run one prompt across a whole list.",
       "category": "agent",
+      "keywords": [
+        "run a prompt on a list",
+        "bulk prompt",
+        "batch process",
+        "run across rows",
+        "spreadsheet of prompts"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -453,6 +547,13 @@
       "name": "Reachout",
       "tagline": "A lead list into personalized outreach, drafted on your Claude — never auto-sent.",
       "category": "agent",
+      "keywords": [
+        "cold outreach",
+        "outreach sequence",
+        "personalized emails",
+        "lead outreach",
+        "sales sequence"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -501,6 +602,14 @@
       "name": "Redline",
       "tagline": "Mark up a landing page like a doc.",
       "category": "agent",
+      "keywords": [
+        "review a page",
+        "mark up",
+        "landing page review",
+        "copy review",
+        "critique",
+        "line by line"
+      ],
       "author": "Switchboard",
       "components": {
         "workflows": [
@@ -554,6 +663,12 @@
       "name": "A-Plus",
       "tagline": "Amazon A+ content, in bulk.",
       "category": "tool",
+      "keywords": [
+        "amazon a+",
+        "a+ content",
+        "amazon listing",
+        "product content in bulk"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -587,6 +702,12 @@
       "name": "AdForge",
       "tagline": "Draft this week's ads from your brand.",
       "category": "tool",
+      "keywords": [
+        "draft ads",
+        "weekly ads",
+        "ad copy",
+        "ads from my brand"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -620,6 +741,12 @@
       "name": "Adwall",
       "tagline": "A wall of ad variations at once.",
       "category": "tool",
+      "keywords": [
+        "ad variations",
+        "many ads at once",
+        "ad wall",
+        "bulk ad variations"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -773,6 +900,14 @@
       "name": "Canvas",
       "tagline": "Describe it — get an editable diagram or board.",
       "category": "tool",
+      "keywords": [
+        "diagram",
+        "flowchart",
+        "whiteboard",
+        "editable diagram",
+        "make a board",
+        "mind map"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -802,6 +937,12 @@
       "name": "Cartridge",
       "tagline": "Build a little browser game.",
       "category": "tool",
+      "keywords": [
+        "browser game",
+        "make a game",
+        "little game",
+        "html game"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -835,6 +976,13 @@
       "name": "Cast",
       "tagline": "A cast of personas you can direct.",
       "category": "tool",
+      "keywords": [
+        "personas",
+        "persona",
+        "character voices",
+        "cast of characters",
+        "roleplay"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -913,6 +1061,12 @@
       "name": "Consumer App Planner",
       "tagline": "Plan a consumer app end to end.",
       "category": "tool",
+      "keywords": [
+        "consumer app plan",
+        "plan an app",
+        "app plan",
+        "product plan"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1046,6 +1200,13 @@
       "name": "Cut",
       "tagline": "Paste a transcript — get captions + a cut list.",
       "category": "tool",
+      "keywords": [
+        "captions",
+        "cut list",
+        "video captions",
+        "subtitles",
+        "transcript to captions"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1075,6 +1236,14 @@
       "name": "Echo",
       "tagline": "Type text, hear it spoken — on-device voices",
       "category": "tool",
+      "keywords": [
+        "text to speech",
+        "read aloud",
+        "tts",
+        "hear text",
+        "speak text",
+        "on-device voice"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1116,6 +1285,17 @@
       "name": "Emboss",
       "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
       "category": "tool",
+      "keywords": [
+        "stamp brand",
+        "brand a document",
+        "watermark pdf",
+        "brand a pdf",
+        "letterhead"
+      ],
+      "accepts": [
+        "pdf",
+        "text"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1285,6 +1465,12 @@
       "name": "Feature Case",
       "tagline": "Make the case for one feature.",
       "category": "tool",
+      "keywords": [
+        "feature case",
+        "make the case",
+        "feature proposal",
+        "justify a feature"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1309,6 +1495,13 @@
       "name": "Flow",
       "tagline": "Hold a key, talk — clean text lands at your cursor.",
       "category": "tool",
+      "keywords": [
+        "dictation",
+        "voice to text",
+        "talk to type",
+        "speech to text",
+        "dictate"
+      ],
       "author": "Switchboard",
       "components": {
         "ui": {
@@ -1381,6 +1574,12 @@
       "name": "Hardware Reality Check",
       "tagline": "The hard questions before you tool up.",
       "category": "tool",
+      "keywords": [
+        "hardware questions",
+        "hardware reality check",
+        "manufacturing",
+        "before you tool up"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1405,6 +1604,12 @@
       "name": "Identity",
       "tagline": "A visual identity from a few words.",
       "category": "tool",
+      "keywords": [
+        "visual identity",
+        "brand identity",
+        "identity from words",
+        "brand look"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1438,6 +1643,12 @@
       "name": "Marketplace Validator",
       "tagline": "Is this marketplace worth building? Find out.",
       "category": "tool",
+      "keywords": [
+        "marketplace validation",
+        "marketplace idea",
+        "two sided marketplace",
+        "should i build a marketplace"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1462,6 +1673,12 @@
       "name": "Marquee",
       "tagline": "A landing page that ships to a domain.",
       "category": "tool",
+      "keywords": [
+        "landing page",
+        "ship a landing page",
+        "website page",
+        "landing page to a domain"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1495,6 +1712,12 @@
       "name": "Meeting Notes",
       "tagline": "Paste a transcript — get notes + action items.",
       "category": "tool",
+      "keywords": [
+        "meeting notes",
+        "transcript to notes",
+        "action items",
+        "meeting summary"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1855,6 +2078,12 @@
       "name": "Reel",
       "tagline": "Short-form video from a brand kit.",
       "category": "tool",
+      "keywords": [
+        "short video",
+        "reel",
+        "short form video",
+        "video from brand kit"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1945,6 +2174,12 @@
       "name": "Retail Concept",
       "tagline": "Reality-check a retail concept.",
       "category": "tool",
+      "keywords": [
+        "retail concept",
+        "store concept",
+        "retail idea",
+        "reality check retail"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1969,6 +2204,12 @@
       "name": "SaaS Thesis",
       "tagline": "Turn a SaaS hunch into a thesis.",
       "category": "tool",
+      "keywords": [
+        "saas thesis",
+        "saas idea",
+        "software idea",
+        "saas hunch"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -1993,6 +2234,12 @@
       "name": "Shelf",
       "tagline": "Keep inventory honest.",
       "category": "tool",
+      "keywords": [
+        "inventory",
+        "stock levels",
+        "inventory tracking",
+        "keep stock honest"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2026,6 +2273,12 @@
       "name": "Studio",
       "tagline": "Product photography on your own models.",
       "category": "tool",
+      "keywords": [
+        "product photography",
+        "product photos",
+        "photo shoot",
+        "on-model photos"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2116,6 +2369,12 @@
       "name": "Take",
       "tagline": "One take, many cuts.",
       "category": "tool",
+      "keywords": [
+        "video cuts",
+        "recut video",
+        "one take many cuts",
+        "cut a take"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2477,6 +2736,12 @@
       "name": "Action Items",
       "tagline": "Notes or a transcript into a clean checklist.",
       "category": "skill",
+      "keywords": [
+        "action items",
+        "todo from notes",
+        "checklist from transcript",
+        "extract tasks"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2506,6 +2771,12 @@
       "name": "Caption",
       "tagline": "Social captions with hashtags — five options, one pick",
       "category": "skill",
+      "keywords": [
+        "social captions",
+        "instagram captions",
+        "hashtags",
+        "caption options"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2535,6 +2806,13 @@
       "name": "Clip Doctor",
       "tagline": "Clean up pasted text — quotes, breaks, tracking junk",
       "category": "skill",
+      "keywords": [
+        "clean text",
+        "fix pasted text",
+        "remove line breaks",
+        "fix smart quotes",
+        "clean formatting"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2564,6 +2842,12 @@
       "name": "Cold Email",
       "tagline": "A target and an ask into a short, non-cringe cold email",
       "category": "skill",
+      "keywords": [
+        "cold email",
+        "outreach email",
+        "sales email",
+        "cold outreach"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2593,6 +2877,12 @@
       "name": "Commit",
       "tagline": "A diff into a Conventional Commits message",
       "category": "skill",
+      "keywords": [
+        "commit message",
+        "git commit",
+        "conventional commits",
+        "diff to commit"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2622,6 +2912,12 @@
       "name": "Compare",
       "tagline": "Options side by side, pros/cons, one pick",
       "category": "skill",
+      "keywords": [
+        "compare options",
+        "pros and cons",
+        "side by side",
+        "help me decide"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2651,6 +2947,12 @@
       "name": "Cron",
       "tagline": "A schedule into a cron expression, and back to English",
       "category": "skill",
+      "keywords": [
+        "cron expression",
+        "cron schedule",
+        "crontab",
+        "schedule syntax"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2680,6 +2982,12 @@
       "name": "Docstring",
       "tagline": "A function into a clear docstring/JSDoc with an example",
       "category": "skill",
+      "keywords": [
+        "docstring",
+        "jsdoc",
+        "document a function",
+        "code comment"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2709,6 +3017,13 @@
       "name": "Errslate",
       "tagline": "Decode any error or stack trace: meaning, cause, fix",
       "category": "skill",
+      "keywords": [
+        "explain an error",
+        "stack trace",
+        "decode error",
+        "what does this error mean",
+        "debug"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2738,6 +3053,13 @@
       "name": "Explain This",
       "tagline": "Turn confusing text into plain English.",
       "category": "skill",
+      "keywords": [
+        "explain",
+        "plain english",
+        "simplify",
+        "what does this mean",
+        "eli5"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2767,6 +3089,13 @@
       "name": "Extract",
       "tagline": "Pull key fields into a clean labeled list.",
       "category": "skill",
+      "keywords": [
+        "extract fields",
+        "pull data",
+        "structured data",
+        "key fields",
+        "parse text"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2796,6 +3125,12 @@
       "name": "Formula",
       "tagline": "Plain English into the exact spreadsheet formula",
       "category": "skill",
+      "keywords": [
+        "spreadsheet formula",
+        "excel formula",
+        "google sheets formula",
+        "formula from english"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2825,6 +3160,13 @@
       "name": "Gist",
       "tagline": "Paste anything, get a tight TL;DR.",
       "category": "skill",
+      "keywords": [
+        "tldr",
+        "summarize",
+        "summary",
+        "gist",
+        "too long didn't read"
+      ],
       "components": {
         "skills": [
           "gist/summarize"
@@ -2858,6 +3200,13 @@
       "name": "Hooks",
       "tagline": "Scroll-stopping opening lines for posts, videos, and emails",
       "category": "skill",
+      "keywords": [
+        "hooks",
+        "opening lines",
+        "scroll stoppers",
+        "video hooks",
+        "first line"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2887,6 +3236,13 @@
       "name": "Name It",
       "tagline": "Six strong name options, each with a rationale.",
       "category": "skill",
+      "keywords": [
+        "name ideas",
+        "naming",
+        "product name",
+        "brand name",
+        "name options"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2916,6 +3272,12 @@
       "name": "Objection",
       "tagline": "A sales or investor objection into a calm, honest response",
       "category": "skill",
+      "keywords": [
+        "handle an objection",
+        "sales objection",
+        "investor objection",
+        "objection response"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2945,6 +3307,12 @@
       "name": "Outline",
       "tagline": "A clean structure for a post, talk, or doc",
       "category": "skill",
+      "keywords": [
+        "outline",
+        "structure a post",
+        "article outline",
+        "talk outline"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -2974,6 +3342,13 @@
       "name": "Polish",
       "tagline": "Proofread and clarify — your voice intact.",
       "category": "skill",
+      "keywords": [
+        "proofread",
+        "clarify",
+        "clean up writing",
+        "fix grammar",
+        "tighten"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3003,6 +3378,13 @@
       "name": "Recap",
       "tagline": "Long doc into TL;DR, key points, decisions, next steps.",
       "category": "skill",
+      "keywords": [
+        "recap",
+        "summarize a doc",
+        "tldr",
+        "key points",
+        "next steps"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3032,6 +3414,12 @@
       "name": "Regex",
       "tagline": "A matching need into a regular expression, with test cases",
       "category": "skill",
+      "keywords": [
+        "regex",
+        "regular expression",
+        "pattern match",
+        "regex from a description"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3061,6 +3449,13 @@
       "name": "Rephrase",
       "tagline": "Rewrite text in any tone — meaning kept.",
       "category": "skill",
+      "keywords": [
+        "rephrase",
+        "reword",
+        "change tone",
+        "rewrite",
+        "say it differently"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3091,6 +3486,12 @@
       "name": "Reply",
       "tagline": "Three replies to any message — concise, warm, firm.",
       "category": "skill",
+      "keywords": [
+        "reply",
+        "message reply",
+        "how to respond",
+        "reply options"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3120,6 +3521,12 @@
       "name": "Repurpose",
       "tagline": "One piece of content, tuned for every channel",
       "category": "skill",
+      "keywords": [
+        "repurpose content",
+        "adapt content",
+        "cross post",
+        "content for every channel"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3149,6 +3556,12 @@
       "name": "Shell",
       "tagline": "A task into the exact shell command, every flag explained",
       "category": "skill",
+      "keywords": [
+        "shell command",
+        "terminal command",
+        "bash command",
+        "command line"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3178,6 +3591,12 @@
       "name": "Snap Answer",
       "tagline": "One question, one direct answer — no chat thread.",
       "category": "skill",
+      "keywords": [
+        "quick answer",
+        "direct answer",
+        "one question",
+        "just the answer"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3207,6 +3626,12 @@
       "name": "Spellout",
       "tagline": "A rough phrase into a clear line",
       "category": "skill",
+      "keywords": [
+        "reword",
+        "clarify a phrase",
+        "make it clear",
+        "tidy a line"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3236,6 +3661,12 @@
       "name": "Standup",
       "tagline": "Notes or commits into a crisp standup update",
       "category": "skill",
+      "keywords": [
+        "standup update",
+        "daily standup",
+        "status update",
+        "standup from notes"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3265,6 +3696,13 @@
       "name": "Steps",
       "tagline": "Name a goal, get a few step-by-step plans",
       "category": "skill",
+      "keywords": [
+        "step by step plan",
+        "break down a goal",
+        "plan the steps",
+        "how do i",
+        "roadmap"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3294,6 +3732,12 @@
       "name": "Titles",
       "tagline": "Headline and title options you can A/B",
       "category": "skill",
+      "keywords": [
+        "titles",
+        "headlines",
+        "title options",
+        "a/b headlines"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3323,6 +3767,12 @@
       "name": "Translate",
       "tagline": "Translate any text, tone preserved.",
       "category": "skill",
+      "keywords": [
+        "translate",
+        "translation",
+        "another language",
+        "translate text"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3353,6 +3803,13 @@
       "name": "Unjargon",
       "tagline": "Acronyms, legalese, and jargon into plain English.",
       "category": "skill",
+      "keywords": [
+        "unjargon",
+        "plain english",
+        "decode jargon",
+        "legalese",
+        "acronyms"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3382,6 +3839,12 @@
       "name": "YC Application",
       "tagline": "Write YC answers in the house dialect.",
       "category": "skill",
+      "keywords": [
+        "yc application",
+        "y combinator",
+        "yc answers",
+        "apply to yc"
+      ],
       "author": "Switchboard",
       "components": {
         "skills": [
@@ -3419,6 +3882,12 @@
       "name": "Arcana",
       "tagline": "A tarot pull with a real read.",
       "category": "fun",
+      "keywords": [
+        "tarot",
+        "tarot reading",
+        "tarot pull",
+        "card reading"
+      ],
       "components": {
         "ui": {
           "kind": "web",
@@ -3452,6 +3921,12 @@
       "name": "NATAL",
       "tagline": "Your chart, read plainly.",
       "category": "fun",
+      "keywords": [
+        "natal chart",
+        "astrology",
+        "birth chart",
+        "horoscope"
+      ],
       "components": {
         "ui": {
           "kind": "web",

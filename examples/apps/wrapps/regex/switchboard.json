@@ -3,6 +3,12 @@
   "name": "Regex",
   "tagline": "A matching need into a regular expression, with test cases",
   "category": "skill",
+  "keywords": [
+    "regex",
+    "regular expression",
+    "pattern match",
+    "regex from a description"
+  ],
   "components": {
     "ui": {
       "kind": "web",

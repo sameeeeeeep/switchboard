@@ -3,16 +3,41 @@
   "name": "ideafetch",
   "tagline": "Point at what you already built — it becomes your project.",
   "category": "studio",
+  "keywords": [
+    "import project",
+    "from a url",
+    "from a repo",
+    "read a website",
+    "turn into a project",
+    "ingest"
+  ],
   "author": "Switchboard",
   "components": {
-    "workflows": ["ideafetch/define"],
-    "ui": { "kind": "web", "url": "https://ideafetch.thelastprompt.ai" }
+    "workflows": [
+      "ideafetch/define"
+    ],
+    "ui": {
+      "kind": "web",
+      "url": "https://ideafetch.thelastprompt.ai"
+    }
   },
-  "surfaces": ["browser", "batch"],
+  "surfaces": [
+    "browser",
+    "batch"
+  ],
   "requires": [
-    { "kind": "daemon" },
-    { "kind": "model", "class": "cloud" },
-    { "kind": "capability", "name": "sb_brand", "lazy": true }
+    {
+      "kind": "daemon"
+    },
+    {
+      "kind": "model",
+      "class": "cloud"
+    },
+    {
+      "kind": "capability",
+      "name": "sb_brand",
+      "lazy": true
+    }
   ],
   "inside": [
     "Read a website, repo, folder, URL or paste — real bytes, never a guess",

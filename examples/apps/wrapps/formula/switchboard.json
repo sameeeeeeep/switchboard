@@ -3,6 +3,12 @@
   "name": "Formula",
   "tagline": "Plain English into the exact spreadsheet formula",
   "category": "skill",
+  "keywords": [
+    "spreadsheet formula",
+    "excel formula",
+    "google sheets formula",
+    "formula from english"
+  ],
   "components": {
     "ui": {
       "kind": "web",

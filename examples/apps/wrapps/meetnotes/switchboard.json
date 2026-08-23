@@ -3,6 +3,12 @@
   "name": "Meeting Notes",
   "tagline": "Paste a transcript — get notes + action items.",
   "category": "tool",
+  "keywords": [
+    "meeting notes",
+    "transcript to notes",
+    "action items",
+    "meeting summary"
+  ],
   "components": {
     "ui": {
       "kind": "web",

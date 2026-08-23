@@ -3,6 +3,13 @@
   "name": "Unjargon",
   "tagline": "Acronyms, legalese, and jargon into plain English.",
   "category": "skill",
+  "keywords": [
+    "unjargon",
+    "plain english",
+    "decode jargon",
+    "legalese",
+    "acronyms"
+  ],
   "components": {
     "ui": {
       "kind": "web",

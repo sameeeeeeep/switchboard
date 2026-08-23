@@ -3,6 +3,13 @@
   "name": "Huddle",
   "tagline": "Any meeting → clean notes, decisions and action items.",
   "category": "studio",
+  "keywords": [
+    "meeting notes",
+    "action items",
+    "meeting summary",
+    "decisions",
+    "notes from meeting"
+  ],
   "components": {
     "ui": {
       "kind": "web",

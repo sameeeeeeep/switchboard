@@ -3,6 +3,12 @@
   "name": "Commit",
   "tagline": "A diff into a Conventional Commits message",
   "category": "skill",
+  "keywords": [
+    "commit message",
+    "git commit",
+    "conventional commits",
+    "diff to commit"
+  ],
   "components": {
     "ui": {
       "kind": "web",

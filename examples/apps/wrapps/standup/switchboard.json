@@ -3,6 +3,12 @@
   "name": "Standup",
   "tagline": "Notes or commits into a crisp standup update",
   "category": "skill",
+  "keywords": [
+    "standup update",
+    "daily standup",
+    "status update",
+    "standup from notes"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,13 @@
   "name": "Cast",
   "tagline": "A cast of personas you can direct.",
   "category": "tool",
+  "keywords": [
+    "personas",
+    "persona",
+    "character voices",
+    "cast of characters",
+    "roleplay"
+  ],
   "components": {
     "ui": {
       "kind": "web",

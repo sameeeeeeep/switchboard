@@ -3,6 +3,13 @@
   "name": "Rephrase",
   "tagline": "Rewrite text in any tone — meaning kept.",
   "category": "skill",
+  "keywords": [
+    "rephrase",
+    "reword",
+    "change tone",
+    "rewrite",
+    "say it differently"
+  ],
   "components": {
     "ui": {
       "kind": "web",

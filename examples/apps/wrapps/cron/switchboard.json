@@ -3,6 +3,12 @@
   "name": "Cron",
   "tagline": "A schedule into a cron expression, and back to English",
   "category": "skill",
+  "keywords": [
+    "cron expression",
+    "cron schedule",
+    "crontab",
+    "schedule syntax"
+  ],
   "components": {
     "ui": {
       "kind": "web",

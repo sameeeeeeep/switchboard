@@ -3,6 +3,12 @@
   "name": "Feature Case",
   "tagline": "Make the case for one feature.",
   "category": "tool",
+  "keywords": [
+    "feature case",
+    "make the case",
+    "feature proposal",
+    "justify a feature"
+  ],
   "components": {
     "ui": {
       "kind": "web",

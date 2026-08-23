@@ -3,6 +3,12 @@
   "name": "Reply",
   "tagline": "Three replies to any message — concise, warm, firm.",
   "category": "skill",
+  "keywords": [
+    "reply",
+    "message reply",
+    "how to respond",
+    "reply options"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,17 @@
   "name": "Dub",
   "tagline": "Audio in — revoice each speaker with the TTS voice you pick.",
   "category": "studio",
+  "keywords": [
+    "revoice",
+    "dub audio",
+    "change voice",
+    "voiceover",
+    "redub",
+    "replace voice"
+  ],
+  "accepts": [
+    "audio"
+  ],
   "author": "Switchboard",
   "components": {
     "ui": {

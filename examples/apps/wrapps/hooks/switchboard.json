@@ -3,6 +3,13 @@
   "name": "Hooks",
   "tagline": "Scroll-stopping opening lines for posts, videos, and emails",
   "category": "skill",
+  "keywords": [
+    "hooks",
+    "opening lines",
+    "scroll stoppers",
+    "video hooks",
+    "first line"
+  ],
   "components": {
     "ui": {
       "kind": "web",

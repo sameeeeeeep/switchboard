@@ -3,6 +3,12 @@
   "name": "Translate",
   "tagline": "Translate any text, tone preserved.",
   "category": "skill",
+  "keywords": [
+    "translate",
+    "translation",
+    "another language",
+    "translate text"
+  ],
   "components": {
     "ui": {
       "kind": "web",

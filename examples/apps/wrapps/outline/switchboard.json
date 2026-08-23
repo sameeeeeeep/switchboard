@@ -3,6 +3,12 @@
   "name": "Outline",
   "tagline": "A clean structure for a post, talk, or doc",
   "category": "skill",
+  "keywords": [
+    "outline",
+    "structure a post",
+    "article outline",
+    "talk outline"
+  ],
   "components": {
     "ui": {
       "kind": "web",

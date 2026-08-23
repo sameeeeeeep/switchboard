@@ -3,6 +3,12 @@
   "name": "Repurpose",
   "tagline": "One piece of content, tuned for every channel",
   "category": "skill",
+  "keywords": [
+    "repurpose content",
+    "adapt content",
+    "cross post",
+    "content for every channel"
+  ],
   "components": {
     "ui": {
       "kind": "web",

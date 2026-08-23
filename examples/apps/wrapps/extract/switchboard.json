@@ -3,6 +3,13 @@
   "name": "Extract",
   "tagline": "Pull key fields into a clean labeled list.",
   "category": "skill",
+  "keywords": [
+    "extract fields",
+    "pull data",
+    "structured data",
+    "key fields",
+    "parse text"
+  ],
   "components": {
     "ui": {
       "kind": "web",

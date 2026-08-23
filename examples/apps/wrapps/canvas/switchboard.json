@@ -3,6 +3,14 @@
   "name": "Canvas",
   "tagline": "Describe it — get an editable diagram or board.",
   "category": "tool",
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "whiteboard",
+    "editable diagram",
+    "make a board",
+    "mind map"
+  ],
   "components": {
     "ui": {
       "kind": "web",

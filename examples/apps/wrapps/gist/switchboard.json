@@ -3,6 +3,13 @@
   "name": "Gist",
   "tagline": "Paste anything, get a tight TL;DR.",
   "category": "skill",
+  "keywords": [
+    "tldr",
+    "summarize",
+    "summary",
+    "gist",
+    "too long didn't read"
+  ],
   "components": {
     "skills": [
       "gist/summarize"

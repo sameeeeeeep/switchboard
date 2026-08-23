@@ -3,6 +3,12 @@
   "name": "AdForge",
   "tagline": "Draft this week's ads from your brand.",
   "category": "tool",
+  "keywords": [
+    "draft ads",
+    "weekly ads",
+    "ad copy",
+    "ads from my brand"
+  ],
   "components": {
     "ui": {
       "kind": "web",

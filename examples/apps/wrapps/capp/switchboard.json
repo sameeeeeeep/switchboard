@@ -3,6 +3,12 @@
   "name": "Consumer App Planner",
   "tagline": "Plan a consumer app end to end.",
   "category": "tool",
+  "keywords": [
+    "consumer app plan",
+    "plan an app",
+    "app plan",
+    "product plan"
+  ],
   "components": {
     "ui": {
       "kind": "web",

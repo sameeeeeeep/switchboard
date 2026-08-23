@@ -3,6 +3,12 @@
   "name": "Identity",
   "tagline": "A visual identity from a few words.",
   "category": "tool",
+  "keywords": [
+    "visual identity",
+    "brand identity",
+    "identity from words",
+    "brand look"
+  ],
   "components": {
     "ui": {
       "kind": "web",

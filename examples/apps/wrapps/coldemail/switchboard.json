@@ -3,6 +3,12 @@
   "name": "Cold Email",
   "tagline": "A target and an ask into a short, non-cringe cold email",
   "category": "skill",
+  "keywords": [
+    "cold email",
+    "outreach email",
+    "sales email",
+    "cold outreach"
+  ],
   "components": {
     "ui": {
       "kind": "web",

@@ -3,6 +3,13 @@
   "name": "Recap",
   "tagline": "Long doc into TL;DR, key points, decisions, next steps.",
   "category": "skill",
+  "keywords": [
+    "recap",
+    "summarize a doc",
+    "tldr",
+    "key points",
+    "next steps"
+  ],
   "components": {
     "ui": {
       "kind": "web",

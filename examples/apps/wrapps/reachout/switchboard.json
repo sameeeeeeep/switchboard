@@ -3,6 +3,13 @@
   "name": "Reachout",
   "tagline": "A lead list into personalized outreach, drafted on your Claude — never auto-sent.",
   "category": "agent",
+  "keywords": [
+    "cold outreach",
+    "outreach sequence",
+    "personalized emails",
+    "lead outreach",
+    "sales sequence"
+  ],
   "author": "Switchboard",
   "components": {
     "workflows": [

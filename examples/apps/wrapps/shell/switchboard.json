@@ -3,6 +3,12 @@
   "name": "Shell",
   "tagline": "A task into the exact shell command, every flag explained",
   "category": "skill",
+  "keywords": [
+    "shell command",
+    "terminal command",
+    "bash command",
+    "command line"
+  ],
   "components": {
     "ui": {
       "kind": "web",

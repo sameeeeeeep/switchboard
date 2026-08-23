@@ -3,6 +3,13 @@
   "name": "Explain This",
   "tagline": "Turn confusing text into plain English.",
   "category": "skill",
+  "keywords": [
+    "explain",
+    "plain english",
+    "simplify",
+    "what does this mean",
+    "eli5"
+  ],
   "components": {
     "ui": {
       "kind": "web",

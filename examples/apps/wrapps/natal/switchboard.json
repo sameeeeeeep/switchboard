@@ -3,6 +3,12 @@
   "name": "NATAL",
   "tagline": "Your chart, read plainly.",
   "category": "fun",
+  "keywords": [
+    "natal chart",
+    "astrology",
+    "birth chart",
+    "horoscope"
+  ],
   "components": {
     "ui": {
       "kind": "web",
