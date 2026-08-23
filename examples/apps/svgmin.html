@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SVG Optimiser — minify SVGs on your device, no AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* HOUSE "Atlas cockpit" system (brandbrain tokens). Add app CSS at the END. */
+      :root {
+        --page: #0A0C10; --inset: #070809; --panel: #12151C; --raised: #1A1F29;
+        --edge: #262C38; --edge-soft: #1C212B;
+        --ink: #E8EDF4; --ink-sec: #B4BECE; --ink-dim: #99A3B7; --ink-faint: #6E7C90;
+        --accent: #C8F250; --accent-soft: #232B0D;
+        --ok: #3DD68C; --warn: #F59E0B; --danger: #FF2D6E; --blue: #7DE0FF;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Spline Sans Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; min-height: 100%; }
+      body { background: var(--page); color: var(--ink); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+      ::selection { background: rgba(200, 242, 80, 0.3); }
+      button { font-family: inherit; }
+      .kicker { font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
+
+      header { display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-bottom: 1px solid var(--edge-soft); }
+      .word { font: 700 20px/1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
+      .word em { font-style: normal; color: var(--accent); }
+      .word .mk { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); box-shadow: 0 0 14px rgba(200,242,80,.4); }
+      #chip-dock { margin-left: auto; }
+
+      main { max-width: 720px; margin: 0 auto; padding: 40px 20px 90px; }
+      .hero h1 { font: 700 clamp(1.7rem, 4vw, 2.5rem)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
+      .hero h1 em { font-style: normal; color: var(--accent); }
+      .hero p { color: var(--ink-sec); margin: 0 0 26px; font-size: 14.5px; max-width: 540px; }
+
+      .act { font: 500 11.5px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-sec); padding: 7px 11px; cursor: pointer; transition: border-color .15s, color .15s; text-decoration: none; display: inline-block; }
+      .act:hover { border-color: var(--accent); color: var(--ink); }
+
+      .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--edge); color: var(--ink); font: 500 12.5px/1.4 var(--sans); padding: 11px 16px; border-radius: 10px; box-shadow: 0 14px 40px -14px rgba(0,0,0,.7); z-index: 200; max-width: 80vw; }
+      .toast.err { border-color: var(--danger); color: #ffd6e2; }
+
+      /* ==== app-specific CSS below this line ==== */
+      .work { display: flex; flex-direction: column; gap: 16px; margin-top: 6px; }
+      .field { display: flex; flex-direction: column; gap: 8px; }
+      .flabel { font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
+      .labelrow { display: flex; align-items: center; gap: 12px; }
+      .labelrow .flabel { flex: 1; }
+      .labelacts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+      /* input: a drop zone that IS the textarea's frame */
+      .drop { border: 1px solid var(--edge); border-radius: 12px; background: var(--inset); transition: border-color .15s, background .15s; }
+      .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+      .ta { width: 100%; min-height: 150px; resize: vertical; background: none; border: 0; color: var(--ink); font: 400 12.5px/1.55 var(--mono); padding: 12px 14px; outline: none; display: block; }
+      .ta::placeholder { color: var(--ink-faint); }
+
+      .ctlrow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      @media (max-width: 520px) { .ctlrow { grid-template-columns: 1fr; } }
+      .ctlrow input[type=range] { width: 100%; accent-color: var(--accent); }
+      .toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+      .toggle { font: 500 11.5px/1 var(--mono); background: var(--inset); border: 1px solid var(--edge); color: var(--ink-sec); border-radius: 999px; padding: 8px 12px; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+      .toggle:hover { border-color: var(--accent); color: var(--ink); }
+      .toggle.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); color: var(--accent); background: var(--accent-soft); }
+
+      /* output card */
+      .outcard { border: 1px solid var(--edge); border-radius: 16px; background: var(--panel); overflow: hidden; }
+      .placeholder { padding: 26px 22px; color: var(--ink-dim); font: 400 13px/1.6 var(--sans); }
+      .err { color: var(--danger); font: 400 12.5px/1.6 var(--mono); padding: 22px; text-align: center; }
+
+      .stats { display: flex; align-items: stretch; gap: 1px; background: var(--edge); border-bottom: 1px solid var(--edge); }
+      .stat { background: var(--panel); padding: 16px 18px; flex: 1; display: flex; flex-direction: column; gap: 5px; justify-content: center; }
+      .stat .sk { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); }
+      .stat .sv { font: 700 20px/1 var(--display); letter-spacing: -0.01em; }
+      .stat.saved .sv { color: var(--accent); }
+      .arrow { background: var(--panel); display: flex; align-items: center; padding: 0 6px; color: var(--ink-faint); font: 400 18px/1 var(--display); }
+
+      .removed { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 18px; border-bottom: 1px solid var(--edge); }
+      .rchip { font: 500 11px/1 var(--mono); color: var(--ink-sec); background: var(--inset); border: 1px solid var(--edge-soft); border-radius: 999px; padding: 6px 10px; }
+      .rchip.none { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--edge)); }
+
+      .preview { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; border-bottom: 1px solid var(--edge); background:
+        repeating-conic-gradient(var(--inset) 0% 25%, var(--panel) 0% 50%) 50% / 18px 18px; }
+      .pimg { max-width: 220px; max-height: 220px; width: auto; height: auto; border-radius: 8px; background: #fff; padding: 8px; box-shadow: 0 8px 24px -12px rgba(0,0,0,.7); }
+      .pnote { font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+      .preview.broken { background: var(--panel); }
+
+      .codearea { width: 100%; min-height: 120px; resize: vertical; background: var(--inset); border: 0; border-bottom: 1px solid var(--edge); color: var(--ink-sec); font: 400 12px/1.55 var(--mono); padding: 14px; outline: none; display: block; }
+      .dlrow { display: flex; gap: 10px; padding: 14px 18px; }
+
+      .nobadge { display: inline-flex; align-items: center; gap: 8px; font: 500 11.5px/1 var(--mono); color: var(--ink-dim); background: var(--panel); border: 1px solid var(--edge-soft); border-radius: 999px; padding: 8px 13px; align-self: flex-start; }
+      .nobadge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="word"><span class="mk"></span><em>SVG Optimiser</em></span>
+      <div id="chip-dock"></div>
+    </header>
+    <main>
+      <section class="hero" id="hero">
+        <h1>A messy SVG in. <em>A smaller one out.</em></h1>
+        <p>Strip editor cruft, comments and metadata, collapse formatting whitespace and round coordinates — only the transforms that can't change how it renders. Entirely in this tab. No AI, no upload, no cost.</p>
+      </section>
+      <div id="view"></div>
+    </main>
+    <script type="module" src="./dist/svgmin.js"></script>
+  </body>
+</html>

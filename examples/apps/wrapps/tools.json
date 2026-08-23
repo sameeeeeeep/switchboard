@@ -80,6 +80,21 @@
       }
     }
   ],
+  "barcode": [
+    {
+      "name": "make_barcode",
+      "description": "Generate a 1D barcode entirely on-device (no AI). type 'code128' encodes any ASCII text ",
+      "inputSchema": {
+        "type": "string — 'code128' (any text/number) or 'ean13' (12/13 digit product code). Default 'code128'.",
+        "data": "string — the text or number to encode."
+      }
+    },
+    {
+      "name": "barcode.png",
+      "description": "",
+      "inputSchema": {}
+    }
+  ],
   "base": [
     {
       "name": "convert_base",
@@ -357,6 +372,25 @@
       }
     }
   ],
+  "favicon": [
+    {
+      "name": "make_favicons",
+      "description": "Turn one image into a full set of site/app icons (16·32·48·64·180·192·512 PNGs) plus a ",
+      "inputSchema": {
+        "dataUrl": "string — the source image as a data: URL (or bare base64). Required. A square image works best."
+      }
+    },
+    {
+      "name": "icon",
+      "description": "",
+      "inputSchema": {}
+    },
+    {
+      "name": "favicon-32x32.png",
+      "description": "",
+      "inputSchema": {}
+    }
+  ],
   "formula": [
     {
       "name": "formula_run",
@@ -551,6 +585,16 @@
       "description": "Dream up regal portrait concepts of a pet from one line and paint the recommended one on the user's Higgsfield. Renders live on the page and returns the portrait URL.",
       "inputSchema": {
         "pet": "string — one line about the pet (e.g. 'a grumpy orange tabby named Biscuit'). Required."
+      }
+    }
+  ],
+  "placeholder": [
+    {
+      "name": "make_placeholder",
+      "description": "Generate a placeholder / filler image entirely on-device (no AI). Give a size spec — ",
+      "inputSchema": {
+        "spec": "string — the size: \"800x600\" | \"640\" | \"16:9@400\" | preset 'hd'|'fhd'|'square'|'og'|'avatar'. Default \"800x600\".",
+        "bg": "string — optional background colour (hex like '#1a2b3c' or a name like 'navy'). Default light grey."
       }
     }
   ],
@@ -770,6 +814,18 @@
       "description": "Shoot one product photo on your Higgsfield from a product description. Develops it into the contact sheet and returns the image URL.",
       "inputSchema": {
         "product": "string — the product to shoot (one line). Required."
+      }
+    }
+  ],
+  "svgmin": [
+    {
+      "name": "svg_optimize",
+      "description": "Minify / optimise an SVG entirely on-device (no AI). Applies only SAFE transforms that ",
+      "inputSchema": {
+        "svg": "string — the SVG source to optimise. Required.",
+        "precision": "number — decimal places to round coordinates to. Default 2.",
+        "removeTitleDesc": "boolean — also strip <title>/<desc> (default false — they carry accessibility text).",
+        "removeDeclarations": "boolean — strip the <?xml?> prolog and <!DOCTYPE> (default true)."
       }
     }
   ],

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 89,
+  "count": 93,
   "listings": [
     {
       "id": "bank",
@@ -649,6 +649,69 @@
       ]
     },
     {
+      "id": "barcode",
+      "name": "Barcode",
+      "tagline": "Code 128 and EAN-13 barcodes from any text or product number — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "barcode",
+        "code 128",
+        "ean-13",
+        "product barcode",
+        "generate barcode",
+        "barcode from number",
+        "retail barcode",
+        "upc ean"
+      ],
+      "accepts": [
+        "text",
+        "data"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/barcode.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "Code 128 with automatic A/B/C code sets and Code-C digit-pair packing",
+        "EAN-13 with the check digit computed for you (or validated if you paste all 13)",
+        "Bit-exact encoding, verified against known values in a headless test",
+        "Runs entirely in the tab — no model, no network, no upload, no cost"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "make_barcode",
+          "description": "Generate a 1D barcode entirely on-device (no AI). type 'code128' encodes any ASCII text ",
+          "inputSchema": {
+            "type": "string — 'code128' (any text/number) or 'ean13' (12/13 digit product code). Default 'code128'.",
+            "data": "string — the text or number to encode."
+          }
+        },
+        {
+          "name": "barcode.png",
+          "description": "",
+          "inputSchema": {}
+        }
+      ]
+    },
+    {
       "id": "base",
       "name": "Base Converter",
       "tagline": "Convert a number between decimal, hex, binary & octal — on your device, no AI",
@@ -1152,6 +1215,72 @@
       ]
     },
     {
+      "id": "favicon",
+      "name": "Favicon",
+      "tagline": "Turn any image into site & app icons + a .ico — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "favicon",
+        "make favicon",
+        "favicon generator",
+        "site icon",
+        "app icon",
+        "ico file",
+        "favicon from image",
+        "16x16 icon"
+      ],
+      "accepts": [
+        "image"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/favicon.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "Drop or choose an image — a square source works best",
+        "Renders 16 · 32 · 48 · 64 · 180 · 192 · 512 px PNGs on-device via <canvas>",
+        "Packs 16 + 32 + 48 into one multi-size favicon.ico",
+        "Download each PNG, or the single .ico — nothing ever leaves your browser"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "make_favicons",
+          "description": "Turn one image into a full set of site/app icons (16·32·48·64·180·192·512 PNGs) plus a ",
+          "inputSchema": {
+            "dataUrl": "string — the source image as a data: URL (or bare base64). Required. A square image works best."
+          }
+        },
+        {
+          "name": "icon",
+          "description": "",
+          "inputSchema": {}
+        },
+        {
+          "name": "favicon-32x32.png",
+          "description": "",
+          "inputSchema": {}
+        }
+      ]
+    },
+    {
       "id": "feature",
       "name": "Feature Case",
       "tagline": "Make the case for one feature.",
@@ -1560,6 +1689,61 @@
       ]
     },
     {
+      "id": "placeholder",
+      "name": "Placeholder",
+      "tagline": "Filler images at any size, with the dimensions on them — on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "placeholder image",
+        "dummy image",
+        "mockup image",
+        "filler image",
+        "800x600 placeholder",
+        "image placeholder",
+        "stand-in graphic"
+      ],
+      "accepts": [
+        "text"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/placeholder.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "a placeholder image at any size — '800x600', a preset like 'hd', or an aspect ratio",
+        "a centred dimension label with an auto-picked legible text colour",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "make_placeholder",
+          "description": "Generate a placeholder / filler image entirely on-device (no AI). Give a size spec — ",
+          "inputSchema": {
+            "spec": "string — the size: \"800x600\" | \"640\" | \"16:9@400\" | preset 'hd'|'fhd'|'square'|'og'|'avatar'. Default \"800x600\".",
+            "bg": "string — optional background colour (hex like '#1a2b3c' or a name like 'navy'). Default light grey."
+          }
+        }
+      ]
+    },
+    {
       "id": "prism",
       "name": "Prism",
       "tagline": "Generate on-brand images from a prompt.",
@@ -1866,6 +2050,63 @@
           "description": "Shoot one product photo on your Higgsfield from a product description. Develops it into the contact sheet and returns the image URL.",
           "inputSchema": {
             "product": "string — the product to shoot (one line). Required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "svgmin",
+      "name": "SVG Optimiser",
+      "tagline": "Shrink an SVG — strip editor cruft, round coordinates, on your device, no AI",
+      "category": "tool",
+      "keywords": [
+        "minify svg",
+        "optimise svg",
+        "shrink svg",
+        "clean svg",
+        "svg smaller",
+        "compress svg",
+        "remove svg cruft"
+      ],
+      "accepts": [
+        "text"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/svgmin.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        }
+      ],
+      "inside": [
+        "safe-only minifying — nothing that changes how the SVG renders",
+        "strips comments, metadata, editor (Inkscape/Illustrator) cruft and rounds coordinates",
+        "runs fully in the tab — no model, no upload, no account"
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "svg_optimize",
+          "description": "Minify / optimise an SVG entirely on-device (no AI). Applies only SAFE transforms that ",
+          "inputSchema": {
+            "svg": "string — the SVG source to optimise. Required.",
+            "precision": "number — decimal places to round coordinates to. Default 2.",
+            "removeTitleDesc": "boolean — also strip <title>/<desc> (default false — they carry accessibility text).",
+            "removeDeclarations": "boolean — strip the <?xml?> prolog and <!DOCTYPE> (default true)."
           }
         }
       ]

@@ -1,0 +1,45 @@
+{
+  "id": "svgmin",
+  "name": "SVG Optimiser",
+  "tagline": "Shrink an SVG — strip editor cruft, round coordinates, on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "minify svg",
+    "optimise svg",
+    "shrink svg",
+    "clean svg",
+    "svg smaller",
+    "compress svg",
+    "remove svg cruft"
+  ],
+  "accepts": [
+    "text"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/svgmin.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "safe-only minifying — nothing that changes how the SVG renders",
+    "strips comments, metadata, editor (Inkscape/Illustrator) cruft and rounds coordinates",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

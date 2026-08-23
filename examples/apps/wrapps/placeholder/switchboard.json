@@ -1,0 +1,45 @@
+{
+  "id": "placeholder",
+  "name": "Placeholder",
+  "tagline": "Filler images at any size, with the dimensions on them — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "placeholder image",
+    "dummy image",
+    "mockup image",
+    "filler image",
+    "800x600 placeholder",
+    "image placeholder",
+    "stand-in graphic"
+  ],
+  "accepts": [
+    "text"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/placeholder.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "a placeholder image at any size — '800x600', a preset like 'hd', or an aspect ratio",
+    "a centred dimension label with an auto-picked legible text colour",
+    "runs fully in the tab — no model, no upload, no account"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}

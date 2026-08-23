@@ -1,0 +1,47 @@
+{
+  "id": "favicon",
+  "name": "Favicon",
+  "tagline": "Turn any image into site & app icons + a .ico — on your device, no AI",
+  "category": "tool",
+  "keywords": [
+    "favicon",
+    "make favicon",
+    "favicon generator",
+    "site icon",
+    "app icon",
+    "ico file",
+    "favicon from image",
+    "16x16 icon"
+  ],
+  "accepts": [
+    "image"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/favicon.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "inside": [
+    "Drop or choose an image — a square source works best",
+    "Renders 16 · 32 · 48 · 64 · 180 · 192 · 512 px PNGs on-device via <canvas>",
+    "Packs 16 + 32 + 48 into one multi-size favicon.ico",
+    "Download each PNG, or the single .ico — nothing ever leaves your browser"
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}
