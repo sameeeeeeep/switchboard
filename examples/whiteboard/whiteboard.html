@@ -25,6 +25,7 @@
   <button class="tool on" data-t="select">▹ select<span class="k">V</span></button>
   <button class="tool" data-t="pen">✎ pen<span class="k">P</span></button>
   <button class="tool" data-t="box">▭ box<span class="k">R</span></button>
+  <button class="tool" data-t="ellipse">◯ circle<span class="k">C</span></button>
   <button class="tool" data-t="line">╱ line<span class="k">L</span></button>
   <button class="tool" data-t="arrow">→ arrow<span class="k">A</span></button>
   <button class="tool" data-t="text">T text<span class="k">T</span></button>
@@ -73,7 +74,7 @@
 
   // ── geometry (world coords) ──
   function bbox(o){
-    if(o.t==='box') return {x:Math.min(o.x,o.x+o.w),y:Math.min(o.y,o.y+o.h),w:Math.abs(o.w),h:Math.abs(o.h)};
+    if(o.t==='box'||o.t==='ellipse') return {x:Math.min(o.x,o.x+o.w),y:Math.min(o.y,o.y+o.h),w:Math.abs(o.w),h:Math.abs(o.h)};
     if(o.t==='img') return {x:o.x,y:o.y,w:o.w,h:o.h};
     if(o.t==='text') return {x:o.x,y:o.y,w:(o.txt.length*(o.size*0.6))+8,h:o.size*1.2};
     if(o.t==='line'||o.t==='arrow') return {x:Math.min(o.x,o.x2),y:Math.min(o.y,o.y2),w:Math.abs(o.x2-o.x)||1,h:Math.abs(o.y2-o.y)||1};
@@ -89,7 +90,7 @@
     if(o.t==='pen'){ for(var i=0;i<o.pts.length;i++){ if((p.x-o.pts[i].x)**2+(p.y-o.pts[i].y)**2<120/cam.s/cam.s) return true; } return false; }
     var b=bbox(o),m=5/cam.s; return p.x>=b.x-m&&p.x<=b.x+b.w+m&&p.y>=b.y-m&&p.y<=b.y+b.h+m;
   }
-  function handleAt(o,p){ var b=bbox(o),m=11/cam.s; if(o.t==='box'||o.t==='img'||o.t==='text'){ if(Math.abs(p.x-(b.x+b.w))<m&&Math.abs(p.y-(b.y+b.h))<m) return 'se'; } return null; }
+  function handleAt(o,p){ var b=bbox(o),m=11/cam.s; if(o.t==='box'||o.t==='ellipse'||o.t==='img'||o.t==='text'){ if(Math.abs(p.x-(b.x+b.w))<m&&Math.abs(p.y-(b.y+b.h))<m) return 'se'; } return null; }
   function topHit(p){ for(var i=objs.length-1;i>=0;i--) if(hit(objs[i],p)) return objs[i]; return null; }
 
   // ── draw ──
@@ -97,6 +98,7 @@
     x.strokeStyle=o.color;x.fillStyle=o.color;x.lineWidth=2.2/cam.s;x.lineCap='round';x.lineJoin='round';
     if(o.t==='pen'){ x.beginPath(); o.pts.forEach(function(p,i){ i?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y); }); x.stroke(); }
     else if(o.t==='box'){ x.strokeRect(o.x,o.y,o.w,o.h); }
+    else if(o.t==='ellipse'){ var b=bbox(o); x.beginPath(); x.ellipse(b.x+b.w/2,b.y+b.h/2,Math.max(b.w/2,.5),Math.max(b.h/2,.5),0,0,Math.PI*2); x.stroke(); }
     else if(o.t==='line'||o.t==='arrow'){ x.beginPath();x.moveTo(o.x,o.y);x.lineTo(o.x2,o.y2);x.stroke();
       if(o.t==='arrow'){ var a=Math.atan2(o.y2-o.y,o.x2-o.x),L=12; x.beginPath();
         x.moveTo(o.x2,o.y2);x.lineTo(o.x2-L*Math.cos(a-.4),o.y2-L*Math.sin(a-.4));
@@ -106,7 +108,7 @@
   }
   function drawSel(){ if(!sel) return; var b=bbox(sel); x.strokeStyle='rgba(200,242,80,.9)';x.lineWidth=1/cam.s;x.setLineDash([4/cam.s,3/cam.s]);
     var m=4/cam.s; x.strokeRect(b.x-m,b.y-m,b.w+2*m,b.h+2*m); x.setLineDash([]);
-    if(sel.t==='box'||sel.t==='img'||sel.t==='text'){ var h=4/cam.s; x.fillStyle='#C8F250'; x.fillRect(b.x+b.w-h,b.y+b.h-h,2*h,2*h); } }
+    if(sel.t==='box'||sel.t==='ellipse'||sel.t==='img'||sel.t==='text'){ var h=4/cam.s; x.fillStyle='#C8F250'; x.fillRect(b.x+b.w-h,b.y+b.h-h,2*h,2*h); } }
   function grid(){
     var tl=toWorld(0,0), br=toWorld(W,H), g=22, x0=Math.floor(tl.x/g)*g, y0=Math.floor(tl.y/g)*g;
     x.fillStyle='rgba(200,242,80,.06)'; var r=1.2/cam.s;
@@ -132,20 +134,20 @@
     if(tool==='text'){ showText(p); down=false; return; }
     snap();
     if(tool==='pen') cur={id:++uid,t:'pen',color:color,pts:[p]};
-    else if(tool==='box') cur={id:++uid,t:'box',color:color,x:p.x,y:p.y,w:0,h:0};
+    else if(tool==='box'||tool==='ellipse') cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,w:0,h:0};
     else cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,x2:p.x,y2:p.y};
   });
   c.addEventListener('pointermove',function(e){ if(!down) return; var s=sp(e), p=toWorld(s.x,s.y);
     if(mode==='pan'){ cam.x+=s.x-panLast.x; cam.y+=s.y-panLast.y; panLast=s; redraw(); return; }
     if(tool==='select'&&sel){
       if(mode==='move'){ moveObj(sel,p.x-start.x,p.y-start.y); start=p; if(!e.altKey) alignSnap(sel); redraw(); }
-      else if(mode==='resize'){ if(sel.t==='box'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y; }
+      else if(mode==='resize'){ if(sel.t==='box'||sel.t==='ellipse'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y; }
         else if(sel.t==='img'){ var nw=Math.max(20,p.x-sel.x); sel.h=sel.h*(nw/(sel.w||1)); sel.w=nw; }
         else if(sel.t==='text'){ sel.size=Math.max(9,p.y-sel.y); } redraw(); }
       return;
     }
     if(!cur) return;
-    if(tool==='pen') cur.pts.push(p); else if(tool==='box'){ cur.w=p.x-cur.x; cur.h=p.y-cur.y; } else { cur.x2=p.x; cur.y2=p.y; }
+    if(tool==='pen') cur.pts.push(p); else if(tool==='box'||tool==='ellipse'){ cur.w=p.x-cur.x; cur.h=p.y-cur.y; } else { cur.x2=p.x; cur.y2=p.y; }
     redraw(); if(cur) drawObj(cur);
   });
   window.addEventListener('pointerup',function(){ if(!down) return; down=false; if(cur){ objs.push(cur); sel=null; cur=null; } mode=null; snapGuides=[]; redraw(); });
@@ -223,7 +225,7 @@
     if(e.key==='Escape'){ sel=null; redraw(); return; }
     if(sel&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(e.key)>=0){ e.preventDefault(); var d=(e.shiftKey?10:1)/cam.s;
       snap(); moveObj(sel, e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0, e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0); redraw(); return; }
-    var keys={v:'select',p:'pen',r:'box',l:'line',a:'arrow',t:'text'}, k=keys[e.key.toLowerCase()]; if(k) setTool(k);
+    var keys={v:'select',p:'pen',r:'box',c:'ellipse',l:'line',a:'arrow',t:'text'}, k=keys[e.key.toLowerCase()]; if(k) setTool(k);
   });
   window.addEventListener('keyup',function(e){ if(e.code==='Space'){ spaceDown=false; if(tool==='select') c.style.cursor='default'; } });
 
