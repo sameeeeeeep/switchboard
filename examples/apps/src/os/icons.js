@@ -7,7 +7,7 @@
 // ---- the icon set we ship (basenames in examples/apps/icons/, lowercased) ----
 const ICON_IDS = new Set(
   ("actions adforge adgen adpulse aplus arcana autopilot bank batch brandbrain canvas capp caption "
-  + "cartridge cast clipfix coldemail commit compare convert crest cron cut deck docstring dub errslate "
+  + "cartridge cast clipfix clone coldemail commit compare convert crest cron cut deck docstring dub errslate "
   + "explainthis extract feature flow formula gist god hardware hooks huddle ideabrain identity marquee "
   + "meetnotes mkt nameit natal objection outline polish prism recap redline reel regex rephrase reply "
   + "repurpose retail saas shelf shell snap spellout standup steps studio take titles translate unjargon yc")

@@ -19,13 +19,14 @@ cache): we just re-clone from the `.wav` on demand and hold it in memory. One le
 
 Run: <venv>/bin/python god-tts-server.py [--port 7897]
 """
-import argparse, io, os, threading, time
+import argparse, base64, io, os, re, subprocess, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel
 import uvicorn
@@ -50,8 +51,49 @@ VOICES = Path(os.path.expanduser("~/.relay/voices"))
 VOICES.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI()
+# The Clone wrapp (browser at http://localhost:5188) POSTs sample audio here to save+clone a voice,
+# so the on-device engine needs to accept cross-origin calls from localhost. All routes are localhost-
+# only (uvicorn binds 127.0.0.1), so a permissive CORS policy exposes nothing beyond this machine.
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+)
 _model = None
 _states: dict = {}
+
+# yt-dlp / ffmpeg: we shell out rather than import — no extra pip deps in the TTS venv, and the binaries
+# are the ones the user already has. RESOLVE ABSOLUTE: under launchd the PATH is bare (/usr/bin:/bin),
+# so a Homebrew binary is invisible by name — find it once at import, preferring the real install.
+import shutil
+def _bin(name: str) -> str:
+    for c in (shutil.which(name), f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}"):
+        if c and Path(c).exists():
+            return c
+    return name   # last resort — let the call fail loudly if it's genuinely missing
+FFMPEG = _bin("ffmpeg")
+YTDLP = _bin("yt-dlp")
+CLONE_SR = 24000   # pocket-tts clones happiest from mono 24k 16-bit — normalize every sample to it.
+
+
+def _slug(name: str) -> str:
+    """A voice name becomes a filename (<name>.wav) AND the id every wrapp selects — keep it to the
+    safe storage-key shape (see docs): lowercase alnum + dashes, never a path separator or dot-stem."""
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return s[:48]
+
+
+def _normalize_wav(src: Path, dst: Path, start: float = 0.0, dur: float | None = None) -> float:
+    """ffmpeg any input (browser blob, yt-dlp download, any rate/codec) → mono 24k 16-bit WAV. Optional
+    [start, start+dur] window. Returns the output duration in seconds. Raises on ffmpeg failure."""
+    cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
+    if start > 0:
+        cmd += ["-ss", f"{start:.3f}"]
+    cmd += ["-i", str(src)]
+    if dur is not None:
+        cmd += ["-t", f"{dur:.3f}"]
+    cmd += ["-ac", "1", "-ar", str(CLONE_SR), "-sample_fmt", "s16", str(dst)]
+    subprocess.run(cmd, check=True, capture_output=True)
+    info, _ = sf.read(str(dst))
+    return len(info) / CLONE_SR
 
 # MLX's Metal streams are THREAD-LOCAL: arrays and mx.eval must run on the thread that owns the
 # stream. A web server dispatches each request on a different worker thread, so every MLX call has
@@ -135,6 +177,81 @@ def clone(c: Clone):
         return _voice_state(c.name)
     state = _on_gpu(_do)
     return {"ok": state is not None, "voice": c.name}
+
+
+class SaveVoice(BaseModel):
+    name: str
+    audio_b64: str           # base64 of an audio file (WAV/webm/whatever the browser recorded/dropped)
+    start: float = 0.0       # optional trim window, in seconds, into the supplied clip
+    duration: float | None = None
+
+
+@app.post("/save")
+def save_voice(v: SaveVoice):
+    """Save a dropped/recorded/fetched clip as ~/.relay/voices/<name>.wav (normalized) and clone it into
+    the warm cache. This is the write-side the Clone wrapp needs: once it lands, `claude_speak` (and the
+    Echo wrapp's dropdown) can speak in this voice immediately — no restart, no cloud, no credits."""
+    name = _slug(v.name)
+    if not name:
+        return JSONResponse({"error": "empty/invalid name"}, status_code=400)
+    try:
+        raw = base64.b64decode(v.audio_b64.split(",")[-1])   # tolerate a data: URL prefix
+    except Exception:
+        return JSONResponse({"error": "audio_b64 is not valid base64"}, status_code=400)
+    if len(raw) < 1024:
+        return JSONResponse({"error": "clip too short/empty"}, status_code=400)
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "in"
+        src.write_bytes(raw)
+        out = VOICES / f"{name}.wav"
+        try:
+            dur = _normalize_wav(src, out, start=v.start or 0.0, dur=v.duration)
+        except subprocess.CalledProcessError as e:
+            return JSONResponse({"error": "could not decode that clip", "detail": e.stderr.decode()[:200]}, status_code=400)
+    if dur < 0.4:
+        out.unlink(missing_ok=True)
+        return JSONResponse({"error": "selected segment is too short to clone"}, status_code=400)
+    state = _on_gpu(lambda: (_states.pop(name, None), _voice_state(name))[1])
+    return {"ok": state is not None, "voice": name, "seconds": round(dur, 2)}
+
+
+class FetchUrl(BaseModel):
+    url: str
+    max_seconds: int = 180   # cap what we pull so a long video doesn't become a huge payload
+
+
+@app.post("/fetch")
+def fetch_url(f: FetchUrl):
+    """Pull audio from a link (YouTube etc.) via yt-dlp → normalized mono 24k WAV, capped to max_seconds,
+    returned as base64 for the browser to load into the segment selector. Nothing is kept server-side."""
+    url = (f.url or "").strip()
+    if not re.match(r"^https?://", url):
+        return JSONResponse({"error": "give a full http(s) link"}, status_code=400)
+    cap = max(5, min(int(f.max_seconds or 180), 600))
+    with tempfile.TemporaryDirectory() as td:
+        dl = Path(td) / "dl.m4a"
+        # Only the first `cap` seconds — --download-sections keeps long videos fast and small.
+        cmd = [YTDLP, "--no-playlist", "--no-warnings", "-f", "bestaudio/best", "-x",
+               "--audio-format", "wav", "--ffmpeg-location", str(Path(FFMPEG).parent),
+               "--download-sections", f"*0-{cap}", "--force-keyframes-at-cuts",
+               "-o", str(Path(td) / "dl.%(ext)s"), url]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return JSONResponse({"error": "fetch timed out — try a shorter clip or a direct link"}, status_code=504)
+        except subprocess.CalledProcessError as e:
+            return JSONResponse({"error": "couldn't fetch that link", "detail": e.stderr.decode()[-200:]}, status_code=400)
+        got = next(iter(Path(td).glob("dl.*")), None)
+        if got is None:
+            return JSONResponse({"error": "no audio came out of that link"}, status_code=400)
+        out = Path(td) / "norm.wav"
+        try:
+            dur = _normalize_wav(got, out)
+        except subprocess.CalledProcessError:
+            return JSONResponse({"error": "couldn't decode the fetched audio"}, status_code=400)
+        b64 = base64.b64encode(out.read_bytes()).decode()
+    return {"ok": True, "audio_b64": b64, "sampleRate": CLONE_SR, "duration": round(dur, 2),
+            "capped": dur >= cap - 0.5}
 
 
 @app.post("/speak")

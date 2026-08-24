@@ -1281,6 +1281,47 @@
       ]
     },
     {
+      "id": "clone",
+      "name": "Clone",
+      "tagline": "Make a voice from a clip, then speak in it — cloned on-device",
+      "category": "tool",
+      "keywords": [
+        "voice clone",
+        "clone a voice",
+        "make a voice",
+        "youtube to voice",
+        "voice from sample",
+        "on-device tts"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/clone.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "capability",
+          "name": "sb_speak"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": []
+    },
+    {
       "id": "emboss",
       "name": "Emboss",
       "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
