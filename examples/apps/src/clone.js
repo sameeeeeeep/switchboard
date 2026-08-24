@@ -3,10 +3,13 @@
 // selected audio into ~/.relay/voices/<name>.wav in ~0.02s and speaks from it. Nothing leaves the box,
 // no key, no credits — and the moment a voice is cloned, EVERY wrapp (Echo, God) can speak in it too.
 //
-// Unlike the LLM wrapps, Clone talks straight to the local voice server (localhost:7897) for its three
+// Unlike the LLM wrapps, Clone talks straight to the local voice server (localhost:7897) for ALL three
 // verbs — fetch a link, save+clone a clip, synth text — because those are on-device media ops, not
-// brokered inference. The Switchboard chip still mounts (same house header); a grant isn't required to
-// clone, and generation prefers the broker's relay.speak when connected, else the local server directly.
+// brokered inference. The Switchboard chip still mounts (same house header); a grant isn't required.
+// We deliberately do NOT route generation through relay.speak: the daemon's localTTS silently falls
+// back to macOS `say` when the clone engine is cold/slow (its timeout is short), which comes out as the
+// DEFAULT Mac voice — the opposite of what a clone wrapp wants. Hitting :7897 directly returns THIS
+// clone or a clear error, and a generous timeout covers the ~20s first-call cold compile.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
 // God's hands: expose Clone's verbs as page-tools so the native God webview (or any WebMCP host) can
 // clone + speak hands-free — reusing the SAME functions a click runs, so the user watching sees it.
@@ -237,18 +240,20 @@ async function generate() {
   if (!savedVoice) { toast("Clone a voice first.", true); return; }
   busy.gen = true; err = ""; genUrl = null; render();
   try {
-    // Prefer the broker when connected (same path Echo uses); else hit the local engine directly.
-    if (relay) {
-      const out = await relay.speak(text, { voice: savedVoice });
-      if (!out || !out.audio) throw new Error("no audio came back");
-      genUrl = out.audio; genBackend = out.backend || "on-device";
-    } else {
-      const r = await fetch(`${GOD}/speak`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: savedVoice }), signal: AbortSignal.timeout(120000) });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "synth failed");
-      const blob = await r.blob(); genUrl = URL.createObjectURL(blob); genBackend = "on-device · mlx";
+    // ALWAYS synth on the on-device clone engine directly — it speaks THIS clone or returns a clear
+    // error. Never relay.speak (see the header note): that path degrades to the default Mac voice.
+    const r = await fetch(`${GOD}/speak`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: savedVoice }), signal: AbortSignal.timeout(120000) });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.error || `voice engine returned ${r.status}`);
     }
-  } catch (e) { err = "Generate failed: " + msg(e); }
+    const blob = await r.blob();
+    if (!blob || blob.size < 128) throw new Error("empty audio from the voice engine");
+    genUrl = URL.createObjectURL(blob); genBackend = "on-device clone";
+  } catch (e) {
+    err = "Generate failed: " + msg(e) + " — is the on-device voice engine (god-tts) running?";
+  }
   finally { busy.gen = false; render(); }
 }
 
