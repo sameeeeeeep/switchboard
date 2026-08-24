@@ -1319,7 +1319,31 @@
         "background": false,
         "needsModel": false
       },
-      "tools": []
+      "tools": [
+        {
+          "name": "clone_voice",
+          "description": "Clone a voice on-device, hands-free. Fetches an audio/YouTube link (or uses the clip already loaded on the page), takes the segment [start, start+seconds], saves + clones it, and returns the voice name to speak with.",
+          "inputSchema": {
+            "name": "string — what to name the cloned voice. Required.",
+            "url": "string — optional audio or YouTube link to clone from. If omitted, uses the clip already loaded on the page.",
+            "start": "number — optional segment start, in seconds (default 0).",
+            "seconds": "number — optional segment length, in seconds (default ~12)."
+          }
+        },
+        {
+          "name": "clone_speak",
+          "description": "Speak text on-device in a cloned voice. Uses the voice just cloned unless you pass one. Plays on the page and returns which backend spoke it.",
+          "inputSchema": {
+            "text": "string — the text to speak. Required.",
+            "voice": "string — optional cloned voice name (default: the most recently cloned voice)."
+          }
+        },
+        {
+          "name": "clone_list",
+          "description": "List the cloned / local voices available on this machine.",
+          "inputSchema": {}
+        }
+      ]
     },
     {
       "id": "emboss",

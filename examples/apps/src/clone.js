@@ -8,6 +8,9 @@
 // brokered inference. The Switchboard chip still mounts (same house header); a grant isn't required to
 // clone, and generation prefers the broker's relay.speak when connected, else the local server directly.
 import { whenRelayReady, mountConnect } from "@relay/sdk";
+// God's hands: expose Clone's verbs as page-tools so the native God webview (or any WebMCP host) can
+// clone + speak hands-free — reusing the SAME functions a click runs, so the user watching sees it.
+import { exposeToGod } from "./kit/webmcp.js";
 
 // ==== CONFIG ================================================================================
 const APP = {
@@ -355,3 +358,72 @@ function working(t) { const r = el("div", "researching"); r.append(el("div", "sc
 
 render();
 window.addEventListener("resize", () => { const cv = document.querySelector(".wave"); if (cv) drawWave(cv); });
+
+// ==== God's hands — page-tools driving the real UI ==========================================
+// The waveform select is a human step God can't perform, so clone_voice takes url + start/seconds
+// instead: it fetches (if a link is given), sets the selection window programmatically, then runs the
+// SAME cloneVoice() a click runs. clone_speak reuses generate(); clone_list reads the engine. Every
+// tool drives the on-page state so the user watching sees the fetch, the clone, and the audio happen.
+const _waitFor = async (cond, ms) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await new Promise((r) => setTimeout(r, 80)); } return true; };
+
+exposeToGod([
+  {
+    name: "clone_voice",
+    description: "Clone a voice on-device, hands-free. Fetches an audio/YouTube link (or uses the clip already loaded on the page), takes the segment [start, start+seconds], saves + clones it, and returns the voice name to speak with. Nothing leaves the machine.",
+    inputSchema: {
+      name: "string — what to name the cloned voice. Required.",
+      url: "string — optional audio or YouTube link to clone from. If omitted, uses the clip already loaded on the page.",
+      start: "number — optional segment start, in seconds (default 0).",
+      seconds: "number — optional segment length, in seconds (default ~12).",
+    },
+    execute: async ({ name, url, start, seconds } = {}) => {
+      const nm = slug(name);
+      if (!nm) throw new Error("pass { name } to name the voice");
+      if (url != null && String(url).trim()) {
+        if (!/^https?:\/\//.test(String(url).trim())) throw new Error("url must be a full http(s) link");
+        await onFetch(String(url));                         // loads audioBuf, or sets err on failure
+        if (!await _waitFor(() => !!audioBuf || !!err, 160000)) throw new Error("timed out fetching the link");
+        if (err) throw new Error(err);
+      }
+      if (!audioBuf) throw new Error("no audio to clone — pass { url } or load a clip on the page first");
+      let s = Math.max(0, Number(start) || 0);
+      const len = Math.max(1, Number(seconds) || CLONE_MAX);
+      let end = Math.min(audioBuf.duration, s + len);
+      if (end - s < 1) s = Math.max(0, end - 1);            // keep at least a second selected
+      sel = { start: s, end };
+      voiceName = nm;
+      await cloneVoice();                                   // sets savedVoice, or err
+      if (err) throw new Error(err);
+      if (!savedVoice) throw new Error("clone failed");
+      render();
+      return { voice: savedVoice, seconds: +(sel.end - sel.start).toFixed(2) };
+    },
+  },
+  {
+    name: "clone_speak",
+    description: "Speak text on-device in a cloned voice. Uses the voice just cloned unless you pass one. Plays on the page and returns which backend spoke it.",
+    inputSchema: {
+      text: "string — the text to speak. Required.",
+      voice: "string — optional cloned voice name (default: the most recently cloned voice).",
+    },
+    execute: async ({ text, voice } = {}) => {
+      const val = String(text || "").trim();
+      if (!val) throw new Error("pass { text } with what to say");
+      if (voice != null && String(voice).trim()) savedVoice = slug(voice);
+      if (!savedVoice) { await refreshVoices(); savedVoice = voices[0] || ""; }
+      if (!savedVoice) throw new Error("no cloned voice available — clone one first with clone_voice");
+      genText = val;
+      await generate();
+      if (err) throw new Error(err);
+      if (!genUrl) throw new Error("no audio produced — is the voice engine running?");
+      render();
+      return { spoken: true, voice: savedVoice, backend: genBackend || "on-device" };
+    },
+  },
+  {
+    name: "clone_list",
+    description: "List the cloned / local voices available on this machine.",
+    inputSchema: {},
+    execute: async () => { await refreshVoices(); return { voices }; },
+  },
+]);
