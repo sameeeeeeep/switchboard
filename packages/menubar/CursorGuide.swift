@@ -264,6 +264,8 @@ final class GuideOverlayModel: ObservableObject {
         y: UserDefaults.standard.double(forKey: "relay.guide.free.y"))
     var freeRemembered = UserDefaults.standard.bool(forKey: "relay.guide.free.set")  // a saved free spot exists
     var isDraggingCard = false        // a drag is in flight → force the overlay clickable so the gesture never drops
+    @Published var dragOffset: CGSize = .zero   // live drag translation, applied WITHOUT changing placement mid-drag
+                                                // (switching .notch→.free mid-gesture recreates the view + kills the drag)
     // User-chosen card WIDTH (drag the resize grip). 0 = default. Persisted + clamped [minCardW, screen−48]
     // so text always has room to wrap and never clips. Height stays content-driven with a min floor.
     @Published var userCardW: CGFloat = CGFloat(UserDefaults.standard.double(forKey: "relay.guide.cardW"))
@@ -427,6 +429,9 @@ struct GuideCaptionView: View {
         .background(GeometryReader { geo in
             Color.clear.preference(key: GuideCardFrameKey.self, value: geo.frame(in: .global))
         })
+        // Live drag follows here — applied AFTER the frame is published, and dragOrigin is captured once
+        // (while this is .zero), so the base position never double-counts the offset.
+        .offset(m.dragOffset)
         .gesture(cardDrag)
     }
 
@@ -467,17 +472,21 @@ struct GuideCaptionView: View {
     private var cardDrag: some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .global)
             .onChanged { v in
-                if dragOrigin == nil { dragOrigin = m.cardFrame.origin; m.beginCardDrag() }
-                let base = dragOrigin ?? .zero
-                m.freeAnchor = CGPoint(x: base.x + v.translation.width, y: base.y + v.translation.height)
+                // Do NOT change placement here: switching .notch→.free mid-gesture rebuilds the view tree
+                // and cancels the drag (the old "first drag detaches, second one moves it" bug). Instead
+                // the card follows a live offset; placement only commits on release, so one drag does it.
+                if dragOrigin == nil { dragOrigin = m.cardFrame.origin; m.isDraggingCard = true }
+                m.dragOffset = v.translation
             }
-            .onEnded { _ in
+            .onEnded { v in
+                let base = dragOrigin ?? m.cardFrame.origin
                 dragOrigin = nil
-                // Dragged home → snap back into the notch. If the card is dropped in the notch zone
-                // (top band, roughly centred), re-dock to .notch instead of leaving it floating there.
-                let cx = m.freeAnchor.x + cardW / 2
-                let inNotchZone = m.freeAnchor.y < 72 && abs(cx - m.screenSize.width / 2) < 220
-                if inNotchZone { m.snapToNotch() } else { m.endCardDrag() }
+                m.dragOffset = .zero
+                let finalX = base.x + v.translation.width, finalY = base.y + v.translation.height
+                // Dropped in the notch zone (top band, roughly centred) → re-dock; else float at the drop.
+                let inNotchZone = finalY < 72 && abs(finalX + cardW / 2 - m.screenSize.width / 2) < 220
+                if inNotchZone { m.snapToNotch() }
+                else { m.freeAnchor = CGPoint(x: finalX, y: finalY); m.placement = .free; m.placementPinned = true; m.endCardDrag() }
             }
     }
 
