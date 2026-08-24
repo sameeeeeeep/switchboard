@@ -59,7 +59,7 @@ final class WhiteboardController: NSObject {
                 // A new run reused the open board — rebind it (fresh runId → fresh shot filenames) without
                 // tearing the window down, and bring it forward.
                 currentRun = run
-                panel?.setRun(run)
+                panel?.setRun(run, seed: obj["seed"])
                 panel?.front()
             } else {
                 panel?.front()
@@ -75,7 +75,8 @@ final class WhiteboardController: NSObject {
         let p = WhiteboardPanel(run: run,
                                 htmlOverride: obj["html"] as? String,
                                 source: obj["source"] as? String,
-                                project: obj["project"] as? String)
+                                project: obj["project"] as? String,
+                                seed: obj["seed"])
         p.onUserClosed = { [weak self] in
             // The user hit ✕ — retract the trigger so we don't immediately reopen on the next tick, and
             // drop our reference. Reversible: the skill re-writes whiteboard-run.json to bring it back.
@@ -172,7 +173,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
     }()
 
-    init(run: String, htmlOverride: String?, source: String?, project: String?) {
+    init(run: String, htmlOverride: String?, source: String?, project: String?, seed: Any? = nil) {
         self.run = run
         self.htmlOverride = htmlOverride
 
@@ -182,6 +183,12 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         let ucc = WKUserContentController()
         let runJS = "window.__whiteboardRun = \(WhiteboardPanel.jsStr(run));"
         ucc.addUserScript(WKUserScript(source: runJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        // SEED — Claude can pre-draw a starting board via whiteboard-run.json `seed` (an array of board
+        // objects). Inject it before the page script so the board loads it as editable objects on open.
+        if let seedJS = WhiteboardPanel.seedJS(seed) {
+            ucc.addUserScript(WKUserScript(source: "window.__whiteboardSeed = \(seedJS);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
 
         let cfg = WKWebViewConfiguration()
         cfg.userContentController = ucc
@@ -316,10 +323,14 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     func front() { window.orderFrontRegardless() }
 
     /// Rebind to a new run (fresh shot filenames) without reloading — a new /whiteboard on the same board.
-    func setRun(_ newRun: String) {
+    func setRun(_ newRun: String, seed: Any? = nil) {
         run = newRun
         sendN = 0
         web.evaluateJavaScript("window.__whiteboardRun = \(WhiteboardPanel.jsStr(newRun));", completionHandler: nil)
+        // If the re-trigger carried a new seed, load it into the already-open board (adds to what's there).
+        if let seedJS = WhiteboardPanel.seedJS(seed) {
+            web.evaluateJavaScript("window.__wbLoadSeed && window.__wbLoadSeed(\(seedJS));", completionHandler: nil)
+        }
     }
 
     func close() { if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }; window.orderOut(nil) }
@@ -403,6 +414,12 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         return String(data: d, encoding: .utf8)
     }
     static func jsStr(_ s: String) -> String { jsonStr(s) ?? "\"\"" }
+    /// Serialize a `seed` (expected: an array of board-object dictionaries) to a JS array literal, or nil if
+    /// it's absent / empty / not JSON-serializable — so a run with no seed opens a blank board as before.
+    static func seedJS(_ seed: Any?) -> String? {
+        guard let arr = seed as? [Any], !arr.isEmpty else { return nil }
+        return jsonStr(arr)
+    }
 }
 
 struct WhiteboardError: Error { let msg: String; init(_ m: String) { msg = m } }

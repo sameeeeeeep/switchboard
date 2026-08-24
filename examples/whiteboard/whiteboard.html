@@ -263,6 +263,21 @@
       .catch(function(){ window.__whiteboardSent(false,'couldn’t reach Claude — use ▤ PNG'); });
   }
   window.addEventListener('resize',size); size();
+
+  // SEED — Claude can pre-draw a starting board: whiteboard-run.json carries a `seed` array of objects that
+  // native injects as window.__whiteboardSeed (or calls __wbLoadSeed at runtime). They load as fully EDITABLE
+  // items — fresh ids, arrow fromId/toId remapped to the new ids — and it's ONE undo step (⌘Z → blank). This
+  // is the bidirectional half: Claude sketches a base, you tweak it, then Send it back.
+  window.__wbLoadSeed=function(arr){ if(!Array.isArray(arr)||!arr.length) return;
+    snap(); var map={};
+    arr.forEach(function(o){ var nid=++uid; if(o&&o.id!=null) map[o.id]=nid; if(o) o.__nid=nid; });
+    arr.forEach(function(o){ if(!o) return; var n=JSON.parse(JSON.stringify(o)); n.id=o.__nid; delete n.__nid; delete o.__nid;
+      if(!n.color) n.color=color;
+      if(n.fromId!=null){ if(map[n.fromId]!=null) n.fromId=map[n.fromId]; else delete n.fromId; }
+      if(n.toId!=null){ if(map[n.toId]!=null) n.toId=map[n.toId]; else delete n.toId; }
+      objs.push(n); });
+    sel=null; setTool('select'); requestAnimationFrame(function(){ fit(); }); };
+  if(window.__whiteboardSeed){ try{ window.__wbLoadSeed(window.__whiteboardSeed); }catch(e){} }
 })();
 </script>
 </body></html>

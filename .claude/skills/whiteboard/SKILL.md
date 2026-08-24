@@ -41,6 +41,29 @@ The text after `/whiteboard` (if any) is what it's for — hold it and apply it 
    python3 -c 'import json;print(json.load(open("'$HOME'/.relay/whiteboard-result.json"))["shot"])'
    ```
 
+## Claude draws the base (seed a starting board)
+
+You can **pre-draw** a board the user then edits — the bidirectional half. On the **native** floating board,
+add a `seed` array to `~/.relay/whiteboard-run.json`: board objects that load as fully **editable** items
+(fresh ids, arrow bindings remapped), fit into view, undoable to blank (⌘Z). The user tweaks and Sends it back.
+
+```jsonc
+{ "active": true, "runId": "1699…", "source": "Claude Code · /whiteboard",
+  "seed": [
+    { "id": 1, "t": "box",   "x": -260, "y": -50, "w": 180, "h": 90 },
+    { "id": 2, "t": "box",   "x":  180, "y":  70, "w": 180, "h": 90 },
+    { "id": 3, "t": "text",  "x": -245, "y": -15, "txt": "idea",    "size": 22 },
+    { "id": 4, "t": "text",  "x":  200, "y": 105, "txt": "shipped", "size": 22 },
+    { "id": 5, "t": "arrow", "x": 0, "y": 0, "x2": 1, "y2": 1, "fromId": 1, "toId": 2 }
+  ] }
+```
+
+Object dialect (world coords; `color` optional, defaults to lime): `box`/`ellipse` = `{x,y,w,h}`;
+`text` = `{x,y,txt,size}`; `line`/`arrow` = `{x,y,x2,y2}` **or** bind endpoints to nodes with
+`fromId`/`toId` (referencing other seed `id`s — the arrow then sticks to those shapes' borders and follows
+when the user moves them); `pen` = `{pts:[{x,y},…]}`. Give nodes stable `id`s so `fromId`/`toId` resolve.
+Skip `img` (needs local pixels). Compose a diagram, write it as `seed`, then poll for the Send as usual.
+
 ## Recover a missed send
 
 Every send also appends to **`~/.relay/whiteboard-history.jsonl`** (never deleted). If `whiteboard-result.json`
