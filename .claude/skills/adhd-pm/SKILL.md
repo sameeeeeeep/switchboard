@@ -286,6 +286,13 @@ every decision through one voice (me).
 - **Re-mirror after churn.** If the founder dumps more mid-flow, re-run intake and re-issue the
   merged mirror so the shared picture stays true.
 
+### Offer `/handoff` on the notch when a thread has piled up
+
+Any handback/decision card should carry a **`🔀 Handoff this thread`** option that runs [[handoff]]
+(commit+push + reconcile the board + queue the next). When the thread has accumulated a lot —
+uncommitted changes, many merges, a natural stopping point — make it the ⭐recommended pick, so the user
+closes it clean and moves to the next thread with one tap at the notch. Check `git status` to decide.
+
 ### Route every card on the next beat — never let it just sit
 
 A task landing on the board — a `/task` capture, a dump item, any new ask I'm not executing this

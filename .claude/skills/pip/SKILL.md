@@ -50,6 +50,10 @@ in PIP mode the **handback closes at the notch**, always:
    card via the [[switchboard]] skill — a one-line status of what you just did + what's next, with quick
    options (e.g. `keep going · that's it · [something else]`) AND the `⌥↓` freeform so the user can just
    *type their next instruction at the notch*. Speak it (`say`) so they hear it land.
+   **Always include a `🔀 Handoff this thread` option** that runs [[handoff]] (commit+push + reconcile the
+   board + queue the next). When a lot has accumulated — uncommitted changes, many events streamed, a
+   natural stopping point — make **Handoff the ⭐recommended** pick, so the user closes the thread cleanly
+   and moves on with one tap. Check `git status` before the card to decide whether to recommend it.
 2. **Poll for the response** (`~/.relay/guide-result.json`) — read BOTH `chosenOption` and the typed
    `feedback.note`. A typed note IS the next instruction: **continue the work from it in this same turn.**
    The conversation continues *through the notch* — the user never opens the app.
