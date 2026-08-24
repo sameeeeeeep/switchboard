@@ -32,10 +32,16 @@ track lands, so the handoff is *visible*.
 4. **Hand off the next.** Pick the top released card (`switchboard_next_task`), state it, and fire it to
    the notch as the baton: `notch thread "next: <task>"`.
 
-## Finish — the baton at the notch
-Fire a one-line handoff summary event (what was committed/pushed + what's next). In **PIP mode**, end
-with an **"over to you"** card (the next task + quick options + ⌥↓) so the user picks up the next thread
-from the notch, never the app — [[pip]] handback. Otherwise, a plain notch ack + a terse chat log line.
+## Finish — the baton at the notch + a chip that continues
+Fire a one-line handoff summary event (what was committed/pushed + what's next). Then **drop a
+continuation CHIP** (`spawn_task`) so the work actually CONTINUES: a self-contained prompt that tells a
+fresh thread which card to pick up next, to run [[adhd-pm]] and turn on [[pip]], and includes the context
+it needs to act without this conversation. That chip is the baton — one click starts the next thread
+already streaming to the notch. Include the shipped-this-session summary + the exact next task + where
+the code/app/connector live.
+
+In **PIP mode**, also end with an **"over to you"** card (the next task + quick options + ⌥↓, carrying the
+🔀 Handoff option) so the user can steer from the notch. Otherwise, a plain notch ack + a terse chat log line.
 
 ## Rules
 - **Parallel by default** — kick off the commit/push and the board reconcile concurrently (background one),
