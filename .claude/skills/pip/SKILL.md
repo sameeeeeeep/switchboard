@@ -65,11 +65,24 @@ in PIP mode the **handback closes at the notch**, always:
 This is the difference between PIP being a read-only ticker and being a real hands-free loop: progress
 streams out, and every "your move" comes back in — all at the notch.
 
+## At the notch — dismiss + per-thread filter (two one-tap controls on the feed)
+
+The feed card carries its own controls, so the user steers it without touching the terminal:
+
+- **Dismiss (✕, top-right):** hides the whole feed. It writes `~/.relay/pip.json` `active:false` (the same
+  as `/pip off`), so it's **reversible** — `/pip` brings it back. Use this when the user says "close the
+  feed" / "hide it" but keeps working.
+- **Thread filter (the colour dots):** with two or more threads streaming, a row of per-thread colour dots
+  appears under the PIP badge (plus an "all" dot). Tapping a thread's dot filters the feed to **only that
+  source**; tapping it again — or the "all" dot — clears back to every thread. If the selected thread has
+  gone quiet (nothing left in the rolling buffer) the card shows **THREAD QUIET · waiting for <thread>**
+  and keeps the filter pinned, so its next event surfaces there. Deterministic — no model, no cost.
+
 ## On `/pip off` (turn it OFF)
 
-`echo '{ "active": false }' > ~/.relay/pip.json` (or `rm -f ~/.relay/pip.json`). The feed clears and the
-notch goes quiet. Confirm in one line. Revert to normal adhd-pm (decisions still route to the notch per
-§0, but the always-on stream stops).
+`echo '{ "active": false }' > ~/.relay/pip.json` (or `rm -f ~/.relay/pip.json`), or just tap the feed's
+**✕** at the notch — both write `active:false`. The feed clears and the notch goes quiet. Confirm in one
+line. Revert to normal adhd-pm (decisions still route to the notch per §0, but the always-on stream stops).
 
 ## Rules
 
