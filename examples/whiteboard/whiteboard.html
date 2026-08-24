@@ -54,7 +54,7 @@
   var DPR=Math.max(1,window.devicePixelRatio||1), W,H;
   var cam={x:0,y:0,s:1}; // pan (screen px) + zoom
   function size(){ W=innerWidth;H=innerHeight; c.width=W*DPR;c.height=H*DPR; c.style.width=W+'px';c.style.height=H+'px'; redraw(); }
-  var objs=[], tool='select', color='#C8F250', sel=null, uid=0, imgStore={}, undo=[], redo=[];
+  var objs=[], tool='select', color='#C8F250', sel=null, uid=0, imgStore={}, undo=[], redo=[], editing=null;
   function snap(){ undo.push(JSON.stringify(objs)); if(undo.length>60) undo.shift(); redo.length=0; }
   function restore(s){ objs=JSON.parse(s); sel=null; redraw(); }
   function doUndo(){ if(!undo.length) return; redo.push(JSON.stringify(objs)); restore(undo.pop()); }
@@ -132,7 +132,7 @@
   function redraw(){
     x.setTransform(DPR,0,0,DPR,0,0); x.fillStyle='#0B0E08'; x.fillRect(0,0,W,H);
     x.setTransform(cam.s*DPR,0,0,cam.s*DPR,cam.x*DPR,cam.y*DPR);
-    grid(); objs.forEach(drawObj); drawSel(); drawGuides();
+    grid(); objs.forEach(function(o){ if(o!==editing) drawObj(o); }); drawSel(); drawGuides();
   }
 
   // ── interaction ──
@@ -169,7 +169,7 @@
     if(cur){ if(cur.t==='line'||cur.t==='arrow'){ var en=topNode({x:cur.x2,y:cur.y2}); if(en&&en.id!==cur.fromId) cur.toId=en.id; }  // bind end to a node under it
       objs.push(cur); sel=null; cur=null; } mode=null; snapGuides=[]; redraw(); });
   function moveObj(o,dx,dy){ if(o.t==='pen') o.pts.forEach(function(p){p.x+=dx;p.y+=dy;}); else { o.x+=dx;o.y+=dy; if(o.x2!=null){o.x2+=dx;o.y2+=dy;} } }
-  c.addEventListener('dblclick',function(e){ var s=sp(e), p=toWorld(s.x,s.y), t=topHit(p); if(t&&t.t==='text'){ sel=t; showText(p,t); } });
+  c.addEventListener('dblclick',function(e){ var s=sp(e), p=toWorld(s.x,s.y), t=topHit(p); if(t&&t.t==='text'){ sel=t; showText({x:t.x,y:t.y},t); } });
 
   // wheel: pan, or zoom with ctrl/meta (Chrome maps trackpad pinch to ctrl+wheel; WebKit does NOT — see gesture* below)
   c.addEventListener('wheel',function(e){ e.preventDefault();
@@ -208,12 +208,19 @@
     snapGuides.forEach(function(g){ x.beginPath(); if(g.v){ x.moveTo(g.p,a.y); x.lineTo(g.p,z.y); } else { x.moveTo(a.x,g.p); x.lineTo(z.x,g.p); } x.stroke(); });
     x.setLineDash([]); }
 
-  function showText(p,edit){ var scr={x:p.x*cam.s+cam.x, y:p.y*cam.s+cam.y};
-    ti.style.display='block'; ti.style.left=scr.x+'px'; ti.style.top=scr.y+'px'; ti.style.color=color;
-    ti.style.transform='scale('+cam.s+')'; ti.value=edit?edit.txt:''; ti.style.fontSize=(edit?edit.size:16)+'px'; setTimeout(function(){ti.focus();},0);
-    ti.onkeydown=function(ev){ ev.stopPropagation();
-      if(ev.key==='Enter'){ if(edit){ snap(); edit.txt=ti.value; } else if(ti.value.trim()){ snap(); objs.push({id:++uid,t:'text',color:color,x:p.x,y:p.y,txt:ti.value,size:16}); } ti.style.display='none'; redraw(); }
-      if(ev.key==='Escape'){ ti.style.display='none'; } }; }
+  // Edit a text object in place. The overlay input is anchored to the text's OWN origin (not the click
+  // point), and the original is HIDDEN on the canvas while editing (editing=edit, skipped in redraw) — so
+  // there's no offset "duplicate" showing behind the input. Commits on Enter or blur; Escape cancels.
+  function showText(p,edit){ editing=edit||null; if(edit) redraw();
+    var scr={x:p.x*cam.s+cam.x, y:p.y*cam.s+cam.y};
+    ti.style.display='block'; ti.style.left=scr.x+'px'; ti.style.top=scr.y+'px'; ti.style.color=(edit?edit.color:color);
+    ti.style.transformOrigin='top left'; ti.style.transform='scale('+cam.s+')';
+    ti.value=edit?edit.txt:''; ti.style.fontSize=(edit?edit.size:16)+'px';
+    setTimeout(function(){ ti.focus(); if(edit&&ti.select) ti.select(); },0);
+    function done(commit){ if(commit){ if(edit){ snap(); edit.txt=ti.value; } else if(ti.value.trim()){ snap(); objs.push({id:++uid,t:'text',color:color,x:p.x,y:p.y,txt:ti.value,size:16}); } }
+      ti.onblur=null; ti.style.display='none'; editing=null; redraw(); }
+    ti.onkeydown=function(ev){ ev.stopPropagation(); if(ev.key==='Enter'){ ev.preventDefault(); done(true); } else if(ev.key==='Escape'){ ev.preventDefault(); done(false); } };
+    ti.onblur=function(){ if(ti.style.display!=='none') done(true); }; }
 
   function setTool(t){ tool=t; document.querySelectorAll('.tool[data-t]').forEach(function(o){o.classList.toggle('on',o.dataset.t===t);}); c.style.cursor=t==='select'?'default':(t==='text'?'text':'crosshair'); if(t!=='select'){ sel=null; redraw(); } }
   document.querySelectorAll('.tool[data-t]').forEach(function(b){ b.onclick=function(){ setTool(b.dataset.t); }; });
