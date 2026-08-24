@@ -334,10 +334,16 @@ every meaningful PM move fires a cheap notch ack, not just the model-backed deci
 kept separate on purpose (the founder's "can't burn credits / affect perf" constraint):
 
 - **STREAM (deterministic, free, always-on):** on each event, run
-  `node scripts/pm-notch.mjs <kind> "<one-line>" --project <proj>` — a plain file write, **no model, no
-  cost.** Kinds: `captured` (a task hit the board) · `picked` (I started one) · `decided` (a fork
-  resolved) · `spec` (the board/spec was tidied) · `thread` (a new work thread began). Fire it as the
-  event happens so the founder can keep a tab on the threads.
+  `node scripts/pm-notch.mjs <kind> "<one-line>" --project <proj>` (or the `switchboard_notch` connector
+  tool) — a plain file write, **no model, no cost.** Kinds: `captured` (a task hit the board) · `picked`
+  (I started one) · `decided` (a fork resolved) · `spec` (the board/spec was tidied) · `thread` (a new
+  work thread began) · `info` (a finding / progress note).
+  **Make each line SUBSTANTIVE and fire OFTEN** — the standing complaint is "streaming hardly gives any
+  info." A sparse feed is useless. Don't just say `picked: task`; say what you're doing and what you
+  found, on real beats (a step started, a finding, a file shipped, a test result, a decision, a blocker),
+  not only start/end. Good: `info "resize kit 73/73 green — wiring the widget"` · `spec "merged #124
+  one-drag fix; board 3 done"` · `decided "harvesting contrast first — we lack a11y"`. Bad: `picked
+  "task"`. Every line tells the watcher something new.
 - **DECISION (model, on-demand):** the §0 notch card — raised only when a real fork needs the human.
 
 So "watch all my threads" costs nothing; "answer this fork" costs a card, only when it happens.
