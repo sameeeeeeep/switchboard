@@ -97,6 +97,7 @@ try {
     const { tools: tt } = await c2.listTools();
     check("task tools advertised on the connector", ["switchboard_add_task", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"].every((n) => tt.map((x) => x.name).includes(n)));
     check("switchboard_notch advertised (cwd-independent PM event stream)", tt.map((x) => x.name).includes("switchboard_notch"));
+    check("switchboard_arrange_board advertised (board curation pass)", tt.map((x) => x.name).includes("switchboard_arrange_board"));
     await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Ship pricing", list: "Proj", status: "todo", epic: "launch", priority: "high", detail: ["Three tiers"] } });
     await c2.callTool({ name: "switchboard_add_task", arguments: { text: "Someday idea", list: "Proj", status: "backlog" } });
     const listed = parse(await c2.callTool({ name: "switchboard_list_tasks", arguments: { status: "open", project: "Proj" } }));
@@ -109,6 +110,50 @@ try {
     check("complete_task flips it done", done.ok === true && /Ship pricing/.test(done.completed || ""), JSON.stringify(done));
   } finally {
     try { await c2.close(); } catch {}
+    try { rmSync(vault, { recursive: true, force: true }); } catch {}
+  }
+}
+
+// 5b) switchboard_arrange_board — curate a messy board over real MCP: fold a near-duplicate card
+// (with a legible trail, never a silent delete), park a stale past-due card, and stay reversible. We
+// seed tasks.md directly so we control the mess, then drive the tool.
+{
+  const vault = mkdtempSync(join(tmpdir(), "switchboard-arrange-"));
+  const { writeFileSync } = await import("node:fs");
+  const board = [
+    "# Tasks",
+    "",
+    "## Launch",
+    "- [ ] Ship the pricing page epic:launch prio:med status:todo",
+    "  Detail: three tiers.",
+    "- [ ] Ship pricing page for launch epic:launch prio:high status:todo",
+    "  extra: annual toggle.",
+    "- [ ] Fix the stale idea epic:ideas status:todo due:2026-01-01",
+    "",
+  ].join("\n");
+  writeFileSync(join(vault, "tasks.md"), board);
+  const ta = new StdioClientTransport({ command: process.execPath, args: [SERVER, "mcp", "--vault", vault], env: { ...process.env, SWITCHBOARD_SB: "mock" }, stderr: "inherit" });
+  const ca = new Client({ name: "sb-arrange-test", version: "0.0.0" }, { capabilities: {} });
+  try {
+    await ca.connect(ta);
+    // dryRun first: reports what WOULD change without touching the file.
+    const dry = parse(await ca.callTool({ name: "switchboard_arrange_board", arguments: { dryRun: true } }));
+    check("arrange dryRun reports the near-dup merge without writing", dry.ok && dry.merged === 1, JSON.stringify(dry).slice(0, 160));
+    check("arrange dryRun left the file untouched (still 3 cards)", parse(await ca.callTool({ name: "switchboard_list_tasks", arguments: { status: "all" } })).count === 3);
+    // real pass: folds the dup + parks the stale card.
+    const r = parse(await ca.callTool({ name: "switchboard_arrange_board", arguments: {} }));
+    check("arrange folded the near-duplicate pricing card", r.merged === 1 && r.parked === 1, JSON.stringify(r).slice(0, 200));
+    const after = parse(await ca.callTool({ name: "switchboard_list_tasks", arguments: { status: "all" } }));
+    check("board now has one fewer card (dup folded, nothing else lost)", after.count === 2, String(after.count));
+    const doc = readFileSync(join(vault, "tasks.md"), "utf8");
+    check("merge left a legible ↳ trail (reversible, not a silent delete)", /↳ merged/.test(doc), doc);
+    check("the folded card's detail was preserved (non-lossy)", /annual toggle/.test(doc));
+    check("stale card was parked to backlog with a trail", /↳ parked/.test(doc) && /status:backlog/.test(doc));
+    // idempotent: a second pass changes nothing.
+    const again = parse(await ca.callTool({ name: "switchboard_arrange_board", arguments: {} }));
+    check("arrange is idempotent (second pass is a no-op)", again.changed === false, JSON.stringify(again).slice(0, 120));
+  } finally {
+    try { await ca.close(); } catch {}
     try { rmSync(vault, { recursive: true, force: true }); } catch {}
   }
 }

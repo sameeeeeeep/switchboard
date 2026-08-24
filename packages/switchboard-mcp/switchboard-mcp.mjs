@@ -28,7 +28,7 @@ import { scaffoldWrapp } from "./scaffold.mjs";
 // The task board is the one thing the connector touches by FILE, not daemon: tasks live as plain
 // `tasks.md` lines in the project's vault (the same dialect the OS board + Obsidian read). The pure
 // transforms are shared with the Bank connector so the board can never disagree with itself.
-import { addTask, completeTask, parseTasks, setStatus } from "../bank-mcp/tasks.mjs";
+import { addTask, completeTask, parseTasks, setStatus, arrangeBoard } from "../bank-mcp/tasks.mjs";
 
 // The origin the daemon attributes a connector-driven guide to (shown on the "Allow?" card). A guide
 // is gated by its per-run human consent, not a standing grant, so this is an honest audit label —
@@ -134,6 +134,46 @@ function registerTaskTools(server) {
     async ({ kind, text, project, source }) => {
       const fired = notchNotify(text, { kind, project, source: source || "Claude Code · adhd-pm" });
       return ok({ ok: true, fired, kind, text });
+    },
+  );
+
+  // Curate the board on demand — the arrange pass (docs/PM-NOTCH-OPERATOR.md slice 2). Dedupes near-
+  // duplicate cards (with a trail, never a silent delete), regroups by epic, orders by status/priority,
+  // and parks clearly-stale cards to backlog — then fires a `spec` notch ack so the tidy is FELT.
+  server.registerTool(
+    "switchboard_arrange_board",
+    {
+      title: "Tidy & curate the project board",
+      description:
+        "Run a curation pass over the board (tasks.md): fold near-duplicate cards into one, regroup cards by epic, order by status then priority (done sinks to the bottom), and park clearly-stale cards to backlog. Use in adhd-pm mode when the board has grown into a dump, or periodically to keep it a readable spec. REVERSIBLE + LEGIBLE by design — a merge leaves a `↳ merged` trail (with the folded card's detail) and a park leaves a `↳ parked` trail; nothing is silently deleted. Deterministic; the near-duplicate fold is conservative (only obvious restatements). Pass `dryRun` to preview the report without writing. Fires a `spec` notch ack summarizing what changed.",
+      inputSchema: {
+        dryRun: z.boolean().optional().describe("preview only — return the report of what WOULD change without writing the file (default false)"),
+        dedupe: z.boolean().optional().describe("fold conservative near-duplicate cards into one, with a trail (default true)"),
+        regroup: z.boolean().optional().describe("cluster same-epic cards and order by status/priority within each list (default true)"),
+        parkStaleDays: z.number().optional().describe("park a past-due todo/blocked card older than this many days to backlog (default 30; 0 disables parking)"),
+      },
+    },
+    async ({ dryRun = false, dedupe = true, regroup = true, parkStaleDays = 30 } = {}) => {
+      const before = readDoc(TASKS_FILE);
+      if (!before.trim()) return ok({ ok: true, changed: false, reason: "board is empty", file: join(VAULT, TASKS_FILE) });
+      const today = new Date().toISOString().slice(0, 10);
+      const r = arrangeBoard(before, { dedupe, regroup, parkStaleDays, today });
+      if (r.changed && !dryRun) writeDoc(TASKS_FILE, r.doc);
+      // Ack at the notch — the tidy is felt (founder ask). Only when something actually changed.
+      if (r.changed && !dryRun) {
+        const bits = [];
+        if (r.merges.length) bits.push(`${r.merges.length} merged`);
+        if (r.regrouped) bits.push(`${r.regrouped} regrouped`);
+        if (r.parked.length) bits.push(`${r.parked.length} parked`);
+        notchNotify(`Board tidied — ${bits.join(", ")}`, { kind: "spec", source: "Claude Code · adhd-pm" });
+      }
+      return ok({
+        ok: true, changed: r.changed, dryRun,
+        merged: r.merges.length, regrouped: r.regrouped, parked: r.parked.length,
+        merges: r.merges, parks: r.parked,
+        sectionsScanned: r.sectionsScanned, sectionsSkipped: r.sectionsSkipped,
+        file: join(VAULT, TASKS_FILE),
+      });
     },
   );
 
@@ -389,7 +429,7 @@ async function main() {
 
   // Startup banner (stderr — stdout is the MCP transport). Says exactly what's being served and in
   // which mode, so "why did it mock?" is answerable at a glance.
-  const taskTools = ["switchboard_add_task", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"];
+  const taskTools = ["switchboard_add_task", "switchboard_notch", "switchboard_arrange_board", "switchboard_list_tasks", "switchboard_move_task", "switchboard_complete_task", "switchboard_next_task"];
   const tools = [...table.keys(), "switchboard_scaffold_wrapp", ...taskTools];
   console.error(`[switchboard-mcp] task board vault: ${VAULT}`);
   const want = (process.env.SWITCHBOARD_SB || "auto").toLowerCase();

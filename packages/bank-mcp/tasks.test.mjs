@@ -1,6 +1,6 @@
 // Pure-logic tests for the Bank connector's task transforms. Run: node tasks.test.mjs
 import assert from "node:assert/strict";
-import { addTask, completeTask, parseTasks, parseBody, setStatus, assignIds, columnOf } from "./tasks.mjs";
+import { addTask, completeTask, parseTasks, parseBody, setStatus, assignIds, columnOf, arrangeBoard } from "./tasks.mjs";
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log("  ✓", name); };
@@ -220,6 +220,82 @@ test("spec a dump → board → pick up the top unblocked todo → claim → don
   const pr01 = after.find((t) => t.id === "pr01");
   assert.ok(pr01.detail.some((d) => d.text.includes("Paddle")));
   assert.ok(pr01.detail.some((d) => d.sub && d.text === "Wire checkout"));
+});
+
+test("arrangeBoard folds a conservative near-dup with a legible trail (never a silent delete)", () => {
+  const board = [
+    "# Tasks", "", "## Launch",
+    "- [ ] Ship the pricing page epic:launch prio:med status:todo",
+    "  Detail: three tiers.",
+    "- [ ] Ship pricing page for launch epic:launch prio:high status:todo",
+    "  extra: annual toggle.", "",
+  ].join("\n");
+  const r = arrangeBoard(board, { today: "2026-08-24" });
+  assert.equal(r.merges.length, 1, "one near-dup folded");
+  assert.equal(parseTasks(r.doc).length, 1, "two cards became one");
+  assert.match(r.doc, /↳ merged \(2026-08-24\)/, "the fold leaves an on-card trail");
+  assert.match(r.doc, /annual toggle/, "the folded card's detail is preserved (non-lossy)");
+});
+
+test("arrangeBoard never merges two DIFFERENT epics, and never a done card", () => {
+  const board = [
+    "# Tasks", "", "## L",
+    "- [ ] Ship the pricing page epic:launch status:todo",
+    "- [ ] Ship the pricing page epic:billing status:todo",   // same words, different epic
+    "- [x] Ship the pricing page epic:launch",                // done — historical, untouchable
+  ].join("\n");
+  const r = arrangeBoard(board, { today: "2026-08-24" });
+  assert.equal(r.merges.length, 0, "distinct epics + done card are left alone");
+  assert.equal(parseTasks(r.doc).length, 3);
+});
+
+test("arrangeBoard regroups by epic and orders by status, done sinking to the bottom", () => {
+  const board = [
+    "# Tasks", "", "## Work",
+    "- [ ] alpha todo epic:alpha status:todo",         // alpha appears first ⇒ its group leads
+    "- [ ] beta task epic:beta status:todo",
+    "- [ ] alpha doing epic:alpha status:doing",
+    "- [x] alpha finished epic:alpha", "",
+  ].join("\n");
+  const r = arrangeBoard(board, { regroup: true, dedupe: false });
+  const order = parseTasks(r.doc).map((t) => t.title);
+  assert.equal(order[0], "alpha doing", "same-epic cards cluster (first-seen epic leads); doing leads its group");
+  assert.equal(order[order.length - 1], "alpha finished", "the done card sinks to the bottom");
+});
+
+test("arrangeBoard leaves a section with loose prose between cards byte-for-byte untouched", () => {
+  const board = [
+    "# Tasks", "", "## Notes",
+    "- [ ] keep me",
+    "prose that sits between cards",
+    "- [ ] and me too", "",
+  ].join("\n");
+  const r = arrangeBoard(board, { today: "2026-08-24" });
+  assert.equal(r.sectionsSkipped, 1, "the unsafe section is reported skipped");
+  assert.match(r.doc, /prose that sits between cards/);
+  assert.match(r.doc, /- \[ \] keep me\nprose that sits between cards\n- \[ \] and me too/);
+});
+
+test("arrangeBoard parks a stale past-due todo (with a trail) only when given today", () => {
+  const board = ["# Tasks", "", "## L", "- [ ] old thing status:todo due:2026-01-01", ""].join("\n");
+  assert.equal(arrangeBoard(board).parked.length, 0, "no `today` ⇒ parking is skipped");
+  const r = arrangeBoard(board, { today: "2026-08-24", parkStaleDays: 30 });
+  assert.equal(r.parked.length, 1);
+  assert.equal(parseTasks(r.doc).find((t) => /old thing/.test(t.title)).col, "backlog");
+  assert.match(r.doc, /↳ parked \(2026-08-24\)/);
+});
+
+test("arrangeBoard is idempotent — a second pass is a no-op", () => {
+  const board = [
+    "# Tasks", "", "## L",
+    "- [ ] Ship the pricing page epic:launch prio:med status:todo",
+    "- [ ] Ship pricing page for launch epic:launch prio:high status:todo",
+    "- [ ] lone task epic:other status:doing", "",
+  ].join("\n");
+  const once = arrangeBoard(board, { today: "2026-08-24" });
+  const twice = arrangeBoard(once.doc, { today: "2026-08-24" });
+  assert.equal(twice.changed, false, "nothing left to tidy");
+  assert.equal(twice.doc, once.doc);
 });
 
 console.log(`\n${n} pure-logic tests passed.`);
