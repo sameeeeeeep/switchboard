@@ -1598,7 +1598,10 @@ final class CursorGuide {
         // so the card never covers the ring's target. Everything else — asks, questions, reading — → notch.
         // Honor a manual placement (⌥/ or ⌥;) across steps: only re-derive when the user hasn't moved the card.
         if !model.placementPinned {
-            if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
+            // PIP: if the user dragged the feed off to a floating spot, a card fires THERE and persists —
+            // don't snap it back to the notch (even if the step says "notch"), so they never re-drag it.
+            if model.pipActive && model.freeRemembered { model.placement = .free }
+            else if let p = s.placement, let pl = GuidePlacement(rawValue: p) { model.placement = pl }
             else if model.freeRemembered { model.placement = .free }   // a dragged spot is remembered across runs
             else { model.placement = (s.point != nil) ? .dock : .notch }
         }
@@ -2240,13 +2243,15 @@ final class CursorGuide {
     // click-through EXCEPT when the pointer is over the (draggable) feed card — the lock-proof default.
     private func installPipMouse() {
         overlay?.ignoresMouseEvents = true
+        // Include .leftMouseUp so the moment a drag ENDS, click-through re-evaluates — without it the
+        // panel stays clickable-everywhere (eating clicks / "screen frozen") until the next mouse-move.
         if mouseMonitorG == nil {
-            mouseMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            mouseMonitorG = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .leftMouseUp]) { [weak self] _ in
                 MainActor.assumeIsolated { self?.updateMousePassthrough() }
             }
         }
         if mouseMonitorL == nil {
-            mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] ev in
+            mouseMonitorL = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .leftMouseUp]) { [weak self] ev in
                 MainActor.assumeIsolated { self?.updateMousePassthrough() }; return ev
             }
         }
@@ -2351,9 +2356,13 @@ final class CursorGuide {
     private func startCursorTimer() {
         cursorTimer?.invalidate()
         cursorTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateCursor() }
+            MainActor.assumeIsolated { self?.updateCursor(); self?.updateMousePassthrough() }
         }
     }
+    // Re-evaluate click-through 30×/sec while the overlay is up. Belt-and-suspenders for the mouse
+    // monitors: mouse-UP fires neither .mouseMoved nor .leftMouseDragged, so a drag that ends over the
+    // card would otherwise leave the full-screen panel `ignoresMouseEvents=false` (eating every click)
+    // until the next mouse-move. The timer self-corrects it within a frame.
     private func stopCursorTimer() { cursorTimer?.invalidate(); cursorTimer = nil }
 
     private func updateCursor() {
