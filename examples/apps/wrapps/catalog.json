@@ -1281,6 +1281,71 @@
       ]
     },
     {
+      "id": "clone",
+      "name": "Clone",
+      "tagline": "Make a voice from a clip, then speak in it — cloned on-device",
+      "category": "tool",
+      "keywords": [
+        "voice clone",
+        "clone a voice",
+        "make a voice",
+        "youtube to voice",
+        "voice from sample",
+        "on-device tts"
+      ],
+      "components": {
+        "ui": {
+          "kind": "web",
+          "url": "http://localhost:5188/clone.html"
+        }
+      },
+      "surfaces": [
+        "browser",
+        "notch"
+      ],
+      "requires": [
+        {
+          "kind": "daemon"
+        },
+        {
+          "kind": "capability",
+          "name": "sb_speak"
+        }
+      ],
+      "resource": {
+        "egressTier": "none",
+        "engineTier": "L0",
+        "downloadBytes": 0,
+        "background": false,
+        "needsModel": false
+      },
+      "tools": [
+        {
+          "name": "clone_voice",
+          "description": "Clone a voice on-device, hands-free. Fetches an audio/YouTube link (or uses the clip already loaded on the page), takes the segment [start, start+seconds], saves + clones it, and returns the voice name to speak with.",
+          "inputSchema": {
+            "name": "string — what to name the cloned voice. Required.",
+            "url": "string — optional audio or YouTube link to clone from. If omitted, uses the clip already loaded on the page.",
+            "start": "number — optional segment start, in seconds (default 0).",
+            "seconds": "number — optional segment length, in seconds (default ~12)."
+          }
+        },
+        {
+          "name": "clone_speak",
+          "description": "Speak text on-device in a cloned voice. Uses the voice just cloned unless you pass one. Plays on the page and returns which backend spoke it.",
+          "inputSchema": {
+            "text": "string — the text to speak. Required.",
+            "voice": "string — optional cloned voice name (default: the most recently cloned voice)."
+          }
+        },
+        {
+          "name": "clone_list",
+          "description": "List the cloned / local voices available on this machine.",
+          "inputSchema": {}
+        }
+      ]
+    },
+    {
       "id": "emboss",
       "name": "Emboss",
       "tagline": "Stamp your brand onto documents & export a PDF — on your device, no AI",
