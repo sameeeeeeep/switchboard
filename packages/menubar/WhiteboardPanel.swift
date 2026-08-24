@@ -190,8 +190,11 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
         // Restore the remembered frame, else a sensible default centered on the main screen.
         let frame = WhiteboardPanel.restoredFrame()
+        // ACTIVATING panel (no .nonactivatingPanel): still borderless + floating + all-Spaces (the PIP feel),
+        // but interacting with it makes the app active — REQUIRED for trackpad pinch, since macOS delivers
+        // .magnify gesture events only to the active app (a non-activating panel never receives them at all).
         window = WhiteboardWindow(contentRect: frame,
-                                  styleMask: [.borderless, .resizable, .nonactivatingPanel],
+                                  styleMask: [.borderless, .resizable],
                                   backing: .buffered, defer: true)
         super.init()
 
@@ -211,7 +214,21 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
         buildContent(source: source, project: project)
         web.navigationDelegate = self
+
+        // Trackpad PINCH → canvas zoom. macOS delivers .magnify gesture events only to the ACTIVE app, and a
+        // local monitor is the one hook that beats WKWebView's inner content view (which eats a recognizer /
+        // magnify override). Because the panel now activates on interaction (styleMask above), the pinch reaches
+        // us; we forward each event's factor + center to the page's zoom and consume it.
+        web.allowsMagnification = false
+        pinchMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] e in
+            guard let self, e.window === self.window else { return e }
+            let p = self.web.convert(e.locationInWindow, from: nil)
+            self.web.evaluateJavaScript("window.__wbZoomBy && window.__wbZoomBy(\(1 + e.magnification),\(p.x),\(self.web.bounds.height - p.y));", completionHandler: nil)
+            return nil
+        }
     }
+
+    private var pinchMonitor: Any?
 
     // Header (drag + title + close) stacked above the web view, filling the content.
     private func buildContent(source: String?, project: String?) {
@@ -279,6 +296,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
     @objc private func closeTapped() {
         persistFrame()              // remember where the user left it for next open
+        if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }
         window.orderOut(nil)        // take it off-screen NOW — the controller's callback only retracts the
         onUserClosed?()             // trigger + drops its ref, so the window must hide itself here
     }
@@ -304,7 +322,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         web.evaluateJavaScript("window.__whiteboardRun = \(WhiteboardPanel.jsStr(newRun));", completionHandler: nil)
     }
 
-    func close() { window.orderOut(nil) }
+    func close() { if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }; window.orderOut(nil) }
 
     // Locate the whiteboard HTML: an explicit override (dev/testing), else the bundled Resources copy.
     private func htmlURL() -> URL? {

@@ -164,6 +164,9 @@
   c.addEventListener('gesturechange',function(e){ e.preventDefault(); var r=c.getBoundingClientRect();
     setZoom(gbase*e.scale, e.clientX-r.left, e.clientY-r.top); },{passive:false});
   c.addEventListener('gestureend',function(e){ e.preventDefault(); },{passive:false});
+  // Native bridge: the WKWebView host catches the trackpad pinch (WKWebView doesn't fire the gesture* events
+  // above) and calls this with a per-event zoom factor centered under the fingers (cx,cy in canvas CSS px).
+  window.__wbZoomBy=function(factor,cx,cy){ setZoom(cam.s*factor, cx, cy); };
 
   // SNAP — while moving, align the object's edges/centers to nearby objects OR the grid, and show a guide line.
   // Hold ⌥ to move freely (bypass). Threshold + grid are in world space so they feel constant at any zoom.
