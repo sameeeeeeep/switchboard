@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift NotchLauncherView.swift LauncherRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift WhiteboardPanel.swift NotchLauncherView.swift LauncherRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
 
 APP="Switchboard.app"
 rm -rf "$APP"
@@ -20,6 +20,16 @@ if [ -f "$CATALOG" ]; then
   mkdir -p "$APP/Contents/Resources"
   cp "$CATALOG" "$APP/Contents/Resources/catalog.json"
   echo "[menubar] bundled wrapp catalog ($(node -e "console.log(require('./$CATALOG').count)" 2>/dev/null || echo '?') listings)"
+fi
+
+# The floating whiteboard's page — the SAME whiteboard.html the V1 serves on :8902, bundled so the
+# native WhiteboardPanel (WhiteboardPanel.swift) loads it offline from Bundle.main. The one file works both
+# ways: served → fetch('/send'); embedded → window.webkit.messageHandlers.whiteboard. Skipped if absent.
+WHITEBOARD="../../examples/whiteboard/whiteboard.html"
+if [ -f "$WHITEBOARD" ]; then
+  mkdir -p "$APP/Contents/Resources"
+  cp "$WHITEBOARD" "$APP/Contents/Resources/whiteboard.html"
+  echo "[menubar] bundled whiteboard.html (native floating board)"
 fi
 
 # Wrapp icons — the "Instruments on the board" art (docs/ICON-SYSTEM.md), one PNG per listing id.
