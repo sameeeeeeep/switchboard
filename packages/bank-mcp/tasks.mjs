@@ -224,6 +224,195 @@ export function setStatus(match, status, existing = "") {
   return { doc: lines.join("\n"), changed: true, col: want, title: p.title, id: p.id || null };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// arrangeBoard — an on-demand CURATION pass over a task doc (docs/PM-NOTCH-OPERATOR.md slice 2). Pure
+// like the rest of this module: takes the markdown, returns the next markdown + a legible report of
+// everything it did. Three operations, every one REVERSIBLE + LEGIBLE (the founder's hard rule — a
+// merge leaves a trail, never a silent delete):
+//   1. dedupe  — fold a conservative near-duplicate card into one, appending a `↳ merged` trail + the
+//                loser's own detail lines, so nothing is lost and the fold is visible on the card.
+//   2. regroup — within each section, cluster same-epic cards and order by status then priority (done
+//                sinks to the bottom). A pure reorder of whole card blocks: no card gained or lost.
+//   3. park    — move a clearly-stale card (a past-due todo/blocked older than parkStaleDays) to
+//                backlog with a `↳ parked` trail. Skipped unless the caller passes `today`.
+// Deterministic throughout; the only "judgment" is the near-dup threshold, kept HIGH so it folds only
+// obvious restatements. A section with loose non-card prose *between* its cards is left byte-for-byte
+// untouched (reported as skipped) — safety over cleverness. Reordered/merged sections are re-rendered
+// with normalized single-blank spacing; untouched sections keep their exact original bytes (no churn).
+
+const STATUS_RANK = { doing: 0, review: 1, blocked: 2, todo: 3, backlog: 4, done: 5 };
+const PRIO_RANK = { high: 0, med: 1, low: 2 };
+const STOP = new Set(["the", "a", "an", "to", "of", "for", "and", "in", "on", "at", "via", "with", "into", "from", "not", "but"]);
+const sigToks = (s) => (String(s || "").toLowerCase().match(/[a-z0-9]+/g) || []).filter((t) => t.length >= 3 && !STOP.has(t));
+/** Conservative title similarity in [0,1]: exact (post-normalize) → 1; too few significant tokens to
+ *  judge → only exact counts; otherwise Jaccard over significant tokens. */
+function titleSim(a, b) {
+  if (norm(a) === norm(b)) return 1;
+  const A = new Set(sigToks(a)), B = new Set(sigToks(b));
+  if (A.size < 3 || B.size < 3) return 0;               // too short to fuzzy-match safely
+  let inter = 0; for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+/** Rewrite a single task line's kanban status (park uses this) — mirrors setStatus for one line. */
+function setLineStatus(line, status) {
+  const m = TASK_RE.exec(line); if (!m) return line;
+  let body = m[3].replace(/\s+status:[^\s]+/i, "");
+  if (status !== "todo" && status !== "done") body = `${body} status:${status}`;
+  return `${m[1]}- [${status === "done" ? "x" : " "}] ${body.trim()}`;
+}
+const daysBetween = (a, b) => Math.round((Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000);
+
+/** Split a doc into SECTIONS of whole card BLOCKS, preserving every line. A section = an optional `## `
+ *  heading + pre-lines (before its first card) + card blocks + trailing loose lines. A block = a
+ *  top-level task line and all its indented detail/subtask lines. A section with loose prose BETWEEN
+ *  cards is flagged unsafe (never reordered). */
+function splitSections(text) {
+  const lines = String(text || "").split("\n");
+  const sections = [];
+  let cur = { headingText: null, rawHeading: null, pre: [], blocks: [], trailing: [], safe: true, start: 0 };
+  sections.push(cur);
+  let block = null;
+  const flush = () => { if (block) { cur.blocks.push(block); block = null; } };
+  lines.forEach((l, i) => {
+    const h = HEAD_RE.exec(l);
+    if (h) {
+      flush(); cur.end = i;
+      cur = { headingText: h[1].trim(), rawHeading: l, pre: [], blocks: [], trailing: [], safe: true, start: i };
+      sections.push(cur);
+      return;
+    }
+    const m = TASK_RE.exec(l);
+    if (m) {
+      const indent = m[1].length;
+      if (block && indent > block.parentIndent) { block.lines.push(l); return; }   // subtask
+      if (cur.trailing.length) cur.safe = false;   // a card after loose prose → don't reorder this section
+      flush();
+      block = { lines: [l], parentIndent: indent, start: i };
+      return;
+    }
+    if (l.trim() === "") { flush(); return; }       // blanks separate; dropped, re-normalized on render
+    const ind = l.match(/^(\s*)/)[1].length;
+    if (block && ind > block.parentIndent) { block.lines.push(l); return; }   // detail line
+    flush();
+    if (!cur.blocks.length) cur.pre.push(l); else cur.trailing.push(l);        // loose prose
+  });
+  flush();
+  cur.end = lines.length;
+  for (const s of sections) s.origLines = lines.slice(s.start, s.end);
+  return { sections, lines };
+}
+
+/** Curate a task doc: dedupe near-dupes, regroup by epic, order by status/priority, optionally park
+ *  stale cards. Returns { doc, changed, merges, parked, regrouped, sectionsScanned, sectionsSkipped }.
+ *  Every mutation is legible: merges/parks leave an on-card `↳` trail and are also listed in the report. */
+export function arrangeBoard(text, opts = {}) {
+  const { dedupe = true, regroup = true, parkStaleDays = 30, today = null, simThreshold = 0.75 } = opts;
+  const src = String(text || "");
+  if (!src.trim()) return { doc: src, changed: false, merges: [], parked: [], regrouped: 0, sectionsScanned: 0, sectionsSkipped: 0 };
+
+  const { sections } = splitSections(src);
+  const byLine = new Map(parseTasks(src).map((t) => [t.line, t]));
+  const model = (b) => byLine.get(b.start) || { col: "todo", title: (TASK_RE.exec(b.lines[0]) ? parseBody(TASK_RE.exec(b.lines[0])[3]).title : ""), epic: null, prio: null, done: false, due: null, detail: [] };
+  for (const s of sections) for (const b of s.blocks) b.t = model(b);
+
+  const merges = [], parked = [];
+  const safeSections = sections.filter((s) => s.safe);
+
+  // 1 · DEDUPE — greedy over survivors; the richer card (further along in status, then more detail,
+  // then earlier) is kept and absorbs the other. Never merges a `done` card or two different epics.
+  if (dedupe) {
+    const richer = (a, b) => {
+      const sa = STATUS_RANK[a.t.col] ?? 3, sb = STATUS_RANK[b.t.col] ?? 3; if (sa !== sb) return sa < sb ? a : b;
+      const pa = PRIO_RANK[a.t.prio] ?? 1.5, pb = PRIO_RANK[b.t.prio] ?? 1.5; if (pa !== pb) return pa < pb ? a : b;
+      if (a.lines.length !== b.lines.length) return a.lines.length > b.lines.length ? a : b;
+      return a;
+    };
+    const survivors = [];
+    for (const s of safeSections) {
+      for (const b of s.blocks.slice()) {
+        if (b.t.done) { survivors.push({ b, s }); continue; }
+        let hit = null;
+        for (const surv of survivors) {
+          if (surv.b.t.done) continue;
+          const e1 = (b.t.epic || "").toLowerCase(), e2 = (surv.b.t.epic || "").toLowerCase();
+          if (e1 && e2 && e1 !== e2) continue;                       // distinct epics ⇒ not a dup
+          if (titleSim(b.t.title, surv.b.t.title) >= simThreshold) { hit = surv; break; }
+        }
+        if (!hit) { survivors.push({ b, s }); continue; }
+        const keep = richer(hit.b, b), loser = keep === hit.b ? b : hit.b;
+        const loserSec = keep === hit.b ? s : hit.s, keepSec = keep === hit.b ? hit.s : s;
+        // Legible trail on the survivor: name the loser, where it lived, its column — then its detail.
+        const where = loserSec.headingText && loserSec !== keepSec ? ` [was ${loserSec.headingText}]` : "";
+        const col = loser.t.col !== "todo" ? `, ${loser.t.col}` : "";
+        keep.lines.push(`  ↳ merged${today ? ` (${today})` : ""}: "${loser.t.title}"${where}${col}`);
+        for (const dl of loser.lines.slice(1)) {                     // fold the loser's detail — non-lossy
+          const trimmed = dl.trim(); if (!trimmed) continue;
+          if (!keep.lines.some((k) => k.trim() === trimmed)) keep.lines.push(`  ${trimmed}`);
+        }
+        loserSec.blocks = loserSec.blocks.filter((x) => x !== loser);
+        loserSec.changed = true; keepSec.changed = true;
+        if (keep === b) { const i = survivors.indexOf(hit); if (i >= 0) survivors[i] = { b: keep, s: keepSec }; }
+        merges.push({ into: keep.t.title, from: loser.t.title, fromSection: loserSec.headingText || "(top)", fromColumn: loser.t.col });
+      }
+    }
+  }
+
+  // 2 · PARK — a past-due todo/blocked card older than the window becomes backlog, with a trail.
+  if (today && parkStaleDays > 0) {
+    for (const s of safeSections) for (const b of s.blocks) {
+      if (b.t.done || !(b.t.col === "todo" || b.t.col === "blocked")) continue;
+      const due = b.t.due && /^\d{4}-\d{2}-\d{2}$/.test(b.t.due) ? b.t.due : null;
+      if (!due || daysBetween(today, due) <= parkStaleDays) continue;
+      b.lines[0] = setLineStatus(b.lines[0], "backlog");
+      b.lines.push(`  ↳ parked (${today}): stale — due ${due} passed`);
+      b.t = { ...b.t, col: "backlog" };
+      s.changed = true;
+      parked.push({ title: b.t.title, due });
+    }
+  }
+
+  // 3 · REGROUP — within each safe section, cluster same-epic cards, order by status then priority,
+  // done to the bottom. Stable within a group so equal cards keep their relative order.
+  let regrouped = 0;
+  if (regroup) {
+    for (const s of safeSections) {
+      const orig = s.blocks.slice();
+      if (orig.length < 2) continue;
+      const groupOrder = new Map();
+      orig.forEach((b, i) => { const k = b.t.epic ? `e:${b.t.epic.toLowerCase()}` : `n:${i}`; if (!groupOrder.has(k)) groupOrder.set(k, groupOrder.size); });
+      const keyOf = (b, i) => {
+        const gk = b.t.epic ? `e:${b.t.epic.toLowerCase()}` : `n:${i}`;
+        return [b.t.done ? 1 : 0, groupOrder.get(gk) ?? 0, STATUS_RANK[b.t.col] ?? 3, PRIO_RANK[b.t.prio] ?? 1.5, i];
+      };
+      const decorated = orig.map((b, i) => ({ b, k: keyOf(b, i) }));
+      decorated.sort((x, y) => { for (let n = 0; n < x.k.length; n++) if (x.k[n] !== y.k[n]) return x.k[n] - y.k[n]; return 0; });
+      const sorted = decorated.map((d) => d.b);
+      let moved = 0; for (let i = 0; i < sorted.length; i++) if (sorted[i] !== orig[i]) moved++;
+      if (moved) { s.blocks = sorted; s.changed = true; regrouped += moved; }
+    }
+  }
+
+  // RENDER — unchanged safe sections keep their exact bytes; changed/rebuilt ones re-render tidily.
+  // A single blank line separates sections; unchanged sections carry their own original spacing.
+  const out = [];
+  const stripLead = (arr) => { const a = arr.slice(); while (a.length && a[0].trim() === "") a.shift(); return a; };
+  for (const s of sections) {
+    if (s !== sections[0] && out.length && out[out.length - 1].trim() !== "") out.push("");
+    if (!s.changed) { out.push(...stripLead(s.origLines)); continue; }
+    if (s.rawHeading) out.push(s.rawHeading);
+    out.push(...s.pre);
+    s.blocks.forEach((b, i) => { if (i) out.push(""); out.push(...b.lines); });
+    if (s.trailing.length) { out.push(""); out.push(...s.trailing); }
+  }
+  let doc = out.join("\n").replace(/\n{3,}/g, "\n\n");
+  if (src.endsWith("\n") && !doc.endsWith("\n")) doc += "\n";
+  const changed = merges.length > 0 || parked.length > 0 || regrouped > 0;
+  return {
+    doc: changed ? doc : src, changed, merges, parked, regrouped,
+    sectionsScanned: safeSections.length, sectionsSkipped: sections.length - safeSections.length,
+  };
+}
+
 /** Ensure every task line carries an `id:` token (base36, unique within the doc), so cards can be
  *  referenced as blockers and claimed by the connector. Returns {doc, assigned}. Idempotent. */
 export function assignIds(existing = "") {
