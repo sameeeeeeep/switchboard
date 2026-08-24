@@ -44,7 +44,7 @@
   <button class="tool" id="save">▤ PNG<span class="k">⌘S</span></button>
   <button class="tool" id="send">➤ send to Claude<span class="k">⌘↵</span></button>
 </div>
-<div id="hint"><b>infinite canvas</b> · space-drag or scroll to pan · ⌘/ctrl-scroll to zoom · ⌘V pastes a screenshot · <b>send</b> when ready</div>
+<div id="hint"><b>infinite canvas</b> · space-drag or scroll to pan · pinch or ⌘-scroll to zoom · drag to <b>snap</b> (⌥ = free) · ⌘V pastes a screenshot · <b>send</b> when ready</div>
 <canvas id="c"></canvas>
 <input id="ti" />
 <script>
@@ -115,7 +115,7 @@
   function redraw(){
     x.setTransform(DPR,0,0,DPR,0,0); x.fillStyle='#0B0E08'; x.fillRect(0,0,W,H);
     x.setTransform(cam.s*DPR,0,0,cam.s*DPR,cam.x*DPR,cam.y*DPR);
-    grid(); objs.forEach(drawObj); drawSel();
+    grid(); objs.forEach(drawObj); drawSel(); drawGuides();
   }
 
   // ── interaction ──
@@ -138,7 +138,7 @@
   c.addEventListener('pointermove',function(e){ if(!down) return; var s=sp(e), p=toWorld(s.x,s.y);
     if(mode==='pan'){ cam.x+=s.x-panLast.x; cam.y+=s.y-panLast.y; panLast=s; redraw(); return; }
     if(tool==='select'&&sel){
-      if(mode==='move'){ moveObj(sel,p.x-start.x,p.y-start.y); start=p; redraw(); }
+      if(mode==='move'){ moveObj(sel,p.x-start.x,p.y-start.y); start=p; if(!e.altKey) alignSnap(sel); redraw(); }
       else if(mode==='resize'){ if(sel.t==='box'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y; }
         else if(sel.t==='img'){ var nw=Math.max(20,p.x-sel.x); sel.h=sel.h*(nw/(sel.w||1)); sel.w=nw; }
         else if(sel.t==='text'){ sel.size=Math.max(9,p.y-sel.y); } redraw(); }
@@ -148,15 +148,43 @@
     if(tool==='pen') cur.pts.push(p); else if(tool==='box'){ cur.w=p.x-cur.x; cur.h=p.y-cur.y; } else { cur.x2=p.x; cur.y2=p.y; }
     redraw(); if(cur) drawObj(cur);
   });
-  window.addEventListener('pointerup',function(){ if(!down) return; down=false; if(cur){ objs.push(cur); sel=null; cur=null; } mode=null; redraw(); });
+  window.addEventListener('pointerup',function(){ if(!down) return; down=false; if(cur){ objs.push(cur); sel=null; cur=null; } mode=null; snapGuides=[]; redraw(); });
   function moveObj(o,dx,dy){ if(o.t==='pen') o.pts.forEach(function(p){p.x+=dx;p.y+=dy;}); else { o.x+=dx;o.y+=dy; if(o.x2!=null){o.x2+=dx;o.y2+=dy;} } }
   c.addEventListener('dblclick',function(e){ var s=sp(e), p=toWorld(s.x,s.y), t=topHit(p); if(t&&t.t==='text'){ sel=t; showText(p,t); } });
 
-  // wheel: pan, or zoom with ctrl/meta
+  // wheel: pan, or zoom with ctrl/meta (Chrome maps trackpad pinch to ctrl+wheel; WebKit does NOT — see gesture* below)
   c.addEventListener('wheel',function(e){ e.preventDefault();
     if(e.ctrlKey||e.metaKey){ var s=sp(e); setZoom(cam.s*(e.deltaY<0?1.1:1/1.1), s.x, s.y); }
     else { cam.x-=e.deltaX; cam.y-=e.deltaY; redraw(); }
   },{passive:false});
+  // trackpad PINCH zoom — WebKit / the native WKWebView fires non-standard gesture* events (cumulative e.scale),
+  // NOT ctrl+wheel, so the native board needs this path to zoom on a two-finger pinch.
+  var gbase=1;
+  c.addEventListener('gesturestart',function(e){ e.preventDefault(); gbase=cam.s; },{passive:false});
+  c.addEventListener('gesturechange',function(e){ e.preventDefault(); var r=c.getBoundingClientRect();
+    setZoom(gbase*e.scale, e.clientX-r.left, e.clientY-r.top); },{passive:false});
+  c.addEventListener('gestureend',function(e){ e.preventDefault(); },{passive:false});
+
+  // SNAP — while moving, align the object's edges/centers to nearby objects OR the grid, and show a guide line.
+  // Hold ⌥ to move freely (bypass). Threshold + grid are in world space so they feel constant at any zoom.
+  var snapGuides=[];
+  function alignSnap(o){
+    snapGuides=[]; var TH=6/cam.s, G=22, b=bbox(o);
+    var meX=[b.x,b.x+b.w/2,b.x+b.w], meY=[b.y,b.y+b.h/2,b.y+b.h], candX=[], candY=[];
+    objs.forEach(function(t){ if(t===o) return; var tb=bbox(t);
+      candX.push(tb.x,tb.x+tb.w/2,tb.x+tb.w); candY.push(tb.y,tb.y+tb.h/2,tb.y+tb.h); });
+    var adjX=null,gx=null,adjY=null,gy=null;
+    meX.forEach(function(m){ candX.forEach(function(cv){ var d=cv-m; if(Math.abs(d)<TH&&(adjX==null||Math.abs(d)<Math.abs(adjX))){adjX=d;gx=cv;} });
+      var gv=Math.round(m/G)*G,dg=gv-m; if(Math.abs(dg)<TH&&(adjX==null||Math.abs(dg)<Math.abs(adjX))){adjX=dg;gx=gv;} });
+    meY.forEach(function(m){ candY.forEach(function(cv){ var d=cv-m; if(Math.abs(d)<TH&&(adjY==null||Math.abs(d)<Math.abs(adjY))){adjY=d;gy=cv;} });
+      var gv=Math.round(m/G)*G,dg=gv-m; if(Math.abs(dg)<TH&&(adjY==null||Math.abs(dg)<Math.abs(adjY))){adjY=dg;gy=gv;} });
+    if(adjX!=null){ moveObj(o,adjX,0); snapGuides.push({v:1,p:gx}); }
+    if(adjY!=null){ moveObj(o,0,adjY); snapGuides.push({v:0,p:gy}); }
+  }
+  function drawGuides(){ if(!snapGuides.length) return; var a=toWorld(0,0),z=toWorld(W,H);
+    x.strokeStyle='rgba(200,242,80,.6)'; x.lineWidth=1/cam.s; x.setLineDash([5/cam.s,4/cam.s]);
+    snapGuides.forEach(function(g){ x.beginPath(); if(g.v){ x.moveTo(g.p,a.y); x.lineTo(g.p,z.y); } else { x.moveTo(a.x,g.p); x.lineTo(z.x,g.p); } x.stroke(); });
+    x.setLineDash([]); }
 
   function showText(p,edit){ var scr={x:p.x*cam.s+cam.x, y:p.y*cam.s+cam.y};
     ti.style.display='block'; ti.style.left=scr.x+'px'; ti.style.top=scr.y+'px'; ti.style.color=color;
