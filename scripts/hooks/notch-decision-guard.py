@@ -36,14 +36,15 @@ def pip_active():
         with open(relay + "/pip.json") as f: return bool(json.load(f).get("active"))
     except Exception: return False
 if pip_active():
-    out({
-        "decision": "block",
-        "reason": ("/pip mode is ON and this turn is ending without a notch card. In PIP mode the handback "
-                   "closes at the notch, never in chat: raise an 'over to you' card via the `switchboard` "
-                   "skill (a one-line status + quick options + \u2325\u2193 freeform + a spoken `say`), poll "
-                   "~/.relay/guide-result.json, and CONTINUE from the user's answer. They are watching the "
-                   "notch, not the app. (The user can type /pip off to leave PIP mode.)")
-    })
+    # PIP is ON: don't BLOCK the turn (chat is fine) — just make sure the notch ALSO gets a signal, so
+    # the user (watching the notch, not the app) knows it's their move. Fire a lightweight ack + pass.
+    try:
+        with open(relay + "/guide-notify.json", "w") as f:
+            json.dump({"text": "Turn done \u2014 your move", "kind": "decided",
+                       "source": "Claude Code", "project": "", "ttl": 4}, f)
+    except Exception:
+        pass
+    sys.exit(0)
 
 # read the last assistant message text from the transcript
 tp = payload.get("transcript_path", "")
