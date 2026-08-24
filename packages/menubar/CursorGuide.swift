@@ -227,6 +227,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var notify: GuideNotify? = nil     // a lightweight ack toast (e.g. "task captured"), shown when idle
     @Published var pipActive = false              // /pip mode: a persistent multi-thread event feed lives at the notch
     @Published var pipRows: [PipRow] = []         // the rolling stream, newest first (capped)
+    @Published var pipFilter: String? = nil       // /pip thread selector: non-nil → feed shows ONLY this source; tap its dot again to clear
     @Published var inRun = false                  // a guided run is on screen → its card overrides the PIP feed
     @Published var done: String? = nil            // non-nil → show the completion summary card
     @Published var reduceMotion = false
@@ -518,17 +519,67 @@ struct GuideCaptionView: View {
     // DotMatrix beacon), not a stacked list (founder 2026-08-24). The latest event is the display; a "+N"
     // counts the ones behind it. Deterministic — every event came from a free write, no model. Draggable
     // off the notch (the shared cardDrag gesture) to sit anywhere.
+    //
+    // Two controls the founder asked for (2026-08-24):
+    //   • DISMISS  — a ✕ in the header hides the whole feed (writes ~/.relay/pip.json active:false; reopen
+    //                with /pip). No model, reversible.
+    //   • THREAD FILTER — each distinct source is a tappable per-thread colour dot; tap one to show ONLY
+    //                that thread, tap it again (or the whole-feed dot) to clear. Deterministic; free.
+
+    // Distinct event sources in the buffer, most-recent first — the thread dots. The active filter's source
+    // is kept present even if its rows have scrolled out of the 8-row buffer, so the user can always clear it.
+    private var pipSources: [String] {
+        var seen = Set<String>(); var out: [String] = []
+        for row in m.pipRows where !row.source.isEmpty && row.source != "•" {
+            if seen.insert(row.source).inserted { out.append(row.source) }
+        }
+        if let f = m.pipFilter, !f.isEmpty, !seen.contains(f) { out.append(f) }
+        return out
+    }
+    // The rows the feed actually shows — all of them, or just the selected thread's when a filter is on.
+    private var pipVisibleRows: [PipRow] {
+        guard let f = m.pipFilter else { return m.pipRows }
+        return m.pipRows.filter { $0.source == f }
+    }
+
     private var pipFeedCard: some View {
-        let r = m.pipRows.first
+        let sources = pipSources
+        let rows = pipVisibleRows
+        let r = rows.first
         return VStack(alignment: .leading, spacing: 10) {
+            // ── header: PIP badge · +N behind · dismiss ✕ ──
             HStack(spacing: 7) {
                 Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.7), radius: 3)
                 Text("PIP").font(.splMono(9)).tracking(1.6).foregroundColor(.lime)
                 Spacer(minLength: 0)
-                if m.pipRows.count > 1 {
-                    Text("+\(m.pipRows.count - 1)").font(.splMono(8.5)).foregroundColor(.inkFaint)
+                if rows.count > 1 {
+                    Text("+\(rows.count - 1)").font(.splMono(8.5)).foregroundColor(.inkFaint)
+                }
+                // DISMISS — hide the feed (persists pip.json active:false; /pip brings it back).
+                Button(action: { CursorGuide.shared.dismissPip() }) {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.inkDim)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.white.opacity(0.06)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss the PIP feed — reopen with /pip")
+            }
+            // ── thread selector: one tappable colour dot per thread (only worth showing with ≥2 threads,
+            //    or while a filter is pinned). Tap a dot to filter to that thread; tap again to clear. ──
+            if sources.count >= 2 || m.pipFilter != nil {
+                HStack(spacing: 6) {
+                    Text(m.pipFilter == nil ? "THREADS" : "ONLY").font(.splMono(7.5)).tracking(0.8)
+                        .foregroundColor(m.pipFilter == nil ? .inkFaint : .lime)
+                    // "all" dot: clears the filter (highlighted when nothing is filtered).
+                    pipDot(source: nil, on: m.pipFilter == nil)
+                    ForEach(sources, id: \.self) { s in
+                        pipDot(source: s, on: m.pipFilter == s)
+                    }
+                    Spacer(minLength: 0)
                 }
             }
+            // ── body: the shown event, or an empty/quiet state ──
             if let r {
                 HStack(alignment: .center, spacing: 13) {
                     DotMatrix(pattern: .working, accent: r.accent, cols: 6, rows: 6, dot: 2, gap: 2.4,
@@ -549,6 +600,15 @@ struct GuideCaptionView: View {
                         }
                     }
                 }
+            } else if let f = m.pipFilter {
+                // Filtered to a thread that has nothing in the buffer (yet) — quiet, not broken.
+                HStack(alignment: .center, spacing: 13) {
+                    Circle().fill(colorForId(f)).frame(width: 10, height: 10).opacity(0.6)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("THREAD QUIET").font(.doto(12, .bold)).tracking(1).foregroundColor(.inkFaint)
+                        Text("waiting for \(f)").font(.splMono(8)).foregroundColor(.inkFaint).lineLimit(1)
+                    }
+                }
             } else {
                 Text("WATCHING YOUR THREADS").font(.doto(12, .bold)).tracking(1).foregroundColor(.inkFaint)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -558,6 +618,21 @@ struct GuideCaptionView: View {
         .padding(.top, m.placement == .notch ? 24 : SB.s3)
         .padding(.bottom, m.placement == .notch ? 13 : SB.s3)
         .modifier(CardChrome(notch: m.placement == .notch))
+    }
+
+    // One thread-selector dot. `source == nil` is the "all" dot (clears the filter). `on` = currently the
+    // active selection → lime ring + full size; otherwise the thread's own deterministic colour, dimmed.
+    // A generous 20pt hit area wraps the small visible dot so it's tappable at the notch.
+    private func pipDot(source: String?, on: Bool) -> some View {
+        let fill: Color = source == nil ? .inkDim : colorForId(source!)
+        return Circle().fill(fill)
+            .frame(width: on ? 9 : 7, height: on ? 9 : 7)
+            .opacity(on ? 1 : 0.5)
+            .overlay(Circle().stroke(Color.lime, lineWidth: on ? 1.5 : 0).padding(-3))
+            .frame(width: 20, height: 20)          // hit target
+            .contentShape(Circle())
+            .onTapGesture { CursorGuide.shared.tapPipFilter(source) }
+            .help(source == nil ? "Show all threads" : "Show only \(source!)")
     }
     private func pipAgo(_ d: Date) -> String {
         let s = Int(max(0, Date().timeIntervalSince(d)))
@@ -2218,6 +2293,7 @@ final class CursorGuide {
     private func setPip(_ active: Bool) {
         guard active != model.pipActive else { return }
         model.pipActive = active
+        model.pipFilter = nil                          // fresh session: never inherit a stale thread filter
         if active {
             NSLog("[cursor-guide] PIP mode ON")
             if !isActive && model.notify == nil { showPipFeed() }
@@ -2231,6 +2307,21 @@ final class CursorGuide {
                 overlay?.orderOut(nil)
             }
         }
+    }
+
+    /// Thread selector (founder ask 2026-08-24). The "all" dot (source==nil) or tapping the already-active
+    /// thread clears the filter; tapping a different thread's dot filters the feed to just that source.
+    /// Deterministic — no model.
+    func tapPipFilter(_ source: String?) {
+        model.pipFilter = (source == nil || model.pipFilter == source) ? nil : source
+    }
+
+    /// DISMISS the PIP feed from the notch ✕ (founder ask 2026-08-24). Reversible: persists pip.json
+    /// active:false so the next watch tick agrees (else it'd flip straight back on), then tears the feed
+    /// down now. `/pip` (writes active:true) brings it back. Deterministic — no model.
+    func dismissPip() {
+        writeAtomic(["active": false], to: rel("pip.json"))
+        setPip(false)
     }
 
     /// Show the persistent feed (no dismiss timer — it stays until a run/notify takes over or /pip ends).
