@@ -77,11 +77,25 @@
     if(o.t==='box'||o.t==='ellipse') return {x:Math.min(o.x,o.x+o.w),y:Math.min(o.y,o.y+o.h),w:Math.abs(o.w),h:Math.abs(o.h)};
     if(o.t==='img') return {x:o.x,y:o.y,w:o.w,h:o.h};
     if(o.t==='text') return {x:o.x,y:o.y,w:(o.txt.length*(o.size*0.6))+8,h:o.size*1.2};
-    if(o.t==='line'||o.t==='arrow') return {x:Math.min(o.x,o.x2),y:Math.min(o.y,o.y2),w:Math.abs(o.x2-o.x)||1,h:Math.abs(o.y2-o.y)||1};
+    if(o.t==='line'||o.t==='arrow'){ var e=resolveEnds(o); return {x:Math.min(e.x,e.x2),y:Math.min(e.y,e.y2),w:Math.abs(e.x2-e.x)||1,h:Math.abs(e.y2-e.y)||1}; }
     if(o.t==='pen'){ var xs=o.pts.map(function(p){return p.x;}),ys=o.pts.map(function(p){return p.y;});
       var mnx=Math.min.apply(0,xs),mny=Math.min.apply(0,ys); return {x:mnx,y:mny,w:Math.max.apply(0,xs)-mnx||1,h:Math.max.apply(0,ys)-mny||1}; }
     return {x:0,y:0,w:0,h:0};
   }
+  function byId(id){ for(var i=0;i<objs.length;i++) if(objs[i].id===id) return objs[i]; return null; }
+  function isNode(o){ return o&&(o.t==='box'||o.t==='ellipse'||o.t==='img'||o.t==='text'); }
+  // the point on a node's border toward (tx,ty) — so a bound arrow touches the edge, not the center
+  function borderPoint(o,tx,ty){ var b=bbox(o),cx=b.x+b.w/2,cy=b.y+b.h/2,dx=tx-cx,dy=ty-cy;
+    if(!dx&&!dy) return {x:cx,y:cy}; var hw=(b.w/2)||1,hh=(b.h/2)||1;
+    var t=Math.min(Math.abs(dx)>1e-6?hw/Math.abs(dx):1e9, Math.abs(dy)>1e-6?hh/Math.abs(dy):1e9);
+    return {x:cx+dx*t,y:cy+dy*t}; }
+  // resolve a line/arrow's endpoints, honoring fromId/toId node bindings (falls back to stored coords)
+  function resolveEnds(o){ var a={x:o.x,y:o.y},b={x:o.x2,y:o.y2};
+    var fo=o.fromId&&byId(o.fromId), to=o.toId&&byId(o.toId);
+    var ac=fo?{x:bbox(fo).x+bbox(fo).w/2,y:bbox(fo).y+bbox(fo).h/2}:a;
+    var bc=to?{x:bbox(to).x+bbox(to).w/2,y:bbox(to).y+bbox(to).h/2}:b;
+    if(fo) a=borderPoint(fo,bc.x,bc.y); if(to) b=borderPoint(to,ac.x,ac.y);
+    return {x:a.x,y:a.y,x2:b.x,y2:b.y}; }
   function allBounds(){ var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9; objs.forEach(function(o){var b=bbox(o); mnx=Math.min(mnx,b.x);mny=Math.min(mny,b.y);mxx=Math.max(mxx,b.x+b.w);mxy=Math.max(mxy,b.y+b.h);});
     return {x:mnx,y:mny,w:mxx-mnx,h:mxy-mny}; }
   function hit(o,p){
@@ -92,6 +106,7 @@
   }
   function handleAt(o,p){ var b=bbox(o),m=11/cam.s; if(o.t==='box'||o.t==='ellipse'||o.t==='img'||o.t==='text'){ if(Math.abs(p.x-(b.x+b.w))<m&&Math.abs(p.y-(b.y+b.h))<m) return 'se'; } return null; }
   function topHit(p){ for(var i=objs.length-1;i>=0;i--) if(hit(objs[i],p)) return objs[i]; return null; }
+  function topNode(p){ for(var i=objs.length-1;i>=0;i--) if(isNode(objs[i])&&hit(objs[i],p)) return objs[i]; return null; }
 
   // ── draw ──
   function drawObj(o){
@@ -99,10 +114,10 @@
     if(o.t==='pen'){ x.beginPath(); o.pts.forEach(function(p,i){ i?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y); }); x.stroke(); }
     else if(o.t==='box'){ x.strokeRect(o.x,o.y,o.w,o.h); }
     else if(o.t==='ellipse'){ var b=bbox(o); x.beginPath(); x.ellipse(b.x+b.w/2,b.y+b.h/2,Math.max(b.w/2,.5),Math.max(b.h/2,.5),0,0,Math.PI*2); x.stroke(); }
-    else if(o.t==='line'||o.t==='arrow'){ x.beginPath();x.moveTo(o.x,o.y);x.lineTo(o.x2,o.y2);x.stroke();
-      if(o.t==='arrow'){ var a=Math.atan2(o.y2-o.y,o.x2-o.x),L=12; x.beginPath();
-        x.moveTo(o.x2,o.y2);x.lineTo(o.x2-L*Math.cos(a-.4),o.y2-L*Math.sin(a-.4));
-        x.moveTo(o.x2,o.y2);x.lineTo(o.x2-L*Math.cos(a+.4),o.y2-L*Math.sin(a+.4));x.stroke(); } }
+    else if(o.t==='line'||o.t==='arrow'){ var e=resolveEnds(o); x.beginPath();x.moveTo(e.x,e.y);x.lineTo(e.x2,e.y2);x.stroke();
+      if(o.t==='arrow'){ var a=Math.atan2(e.y2-e.y,e.x2-e.x),L=12; x.beginPath();
+        x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a-.4),e.y2-L*Math.sin(a-.4));
+        x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a+.4),e.y2-L*Math.sin(a+.4));x.stroke(); } }
     else if(o.t==='text'){ x.font=o.size+'px ui-monospace,monospace';x.textBaseline='top';x.fillText(o.txt,o.x,o.y); }
     else if(o.t==='img'){ var im=imgStore[o.img]; if(im&&im.complete) x.drawImage(im,o.x,o.y,o.w,o.h); }
   }
@@ -135,7 +150,7 @@
     snap();
     if(tool==='pen') cur={id:++uid,t:'pen',color:color,pts:[p]};
     else if(tool==='box'||tool==='ellipse') cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,w:0,h:0};
-    else cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,x2:p.x,y2:p.y};
+    else { cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,x2:p.x,y2:p.y}; var fn=topNode(p); if(fn) cur.fromId=fn.id; }  // arrow/line: bind start to a node under it
   });
   c.addEventListener('pointermove',function(e){ if(!down) return; var s=sp(e), p=toWorld(s.x,s.y);
     if(mode==='pan'){ cam.x+=s.x-panLast.x; cam.y+=s.y-panLast.y; panLast=s; redraw(); return; }
@@ -150,7 +165,9 @@
     if(tool==='pen') cur.pts.push(p); else if(tool==='box'||tool==='ellipse'){ cur.w=p.x-cur.x; cur.h=p.y-cur.y; } else { cur.x2=p.x; cur.y2=p.y; }
     redraw(); if(cur) drawObj(cur);
   });
-  window.addEventListener('pointerup',function(){ if(!down) return; down=false; if(cur){ objs.push(cur); sel=null; cur=null; } mode=null; snapGuides=[]; redraw(); });
+  window.addEventListener('pointerup',function(){ if(!down) return; down=false;
+    if(cur){ if(cur.t==='line'||cur.t==='arrow'){ var en=topNode({x:cur.x2,y:cur.y2}); if(en&&en.id!==cur.fromId) cur.toId=en.id; }  // bind end to a node under it
+      objs.push(cur); sel=null; cur=null; } mode=null; snapGuides=[]; redraw(); });
   function moveObj(o,dx,dy){ if(o.t==='pen') o.pts.forEach(function(p){p.x+=dx;p.y+=dy;}); else { o.x+=dx;o.y+=dy; if(o.x2!=null){o.x2+=dx;o.y2+=dy;} } }
   c.addEventListener('dblclick',function(e){ var s=sp(e), p=toWorld(s.x,s.y), t=topHit(p); if(t&&t.t==='text'){ sel=t; showText(p,t); } });
 
