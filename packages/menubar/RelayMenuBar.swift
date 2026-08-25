@@ -2250,6 +2250,7 @@ struct OrbView: View {
     @ObservedObject var model: Model
     @ObservedObject var glow: GlowModel
     var onOpen: () -> Void
+    @State private var hovering = false
     var body: some View {
         // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
         let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
@@ -2259,13 +2260,22 @@ struct OrbView: View {
             NotchField(accent: tint, working: model.working, animated: model.running)
                 .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
                 .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
-            shape.stroke(tint.opacity(model.running ? 0.20 : 0.10), lineWidth: 0.75)   // a faint health-tinted rim
+            // Hover cue — the rim brightens and a small ⌄ appears, signalling "click to open". Hover NO LONGER
+            // opens the panel (founder 2026-08-25: "hover shouldn't open the big panel — show an option I click").
+            shape.stroke(tint.opacity(hovering ? 0.55 : (model.running ? 0.20 : 0.10)), lineWidth: hovering ? 1.1 : 0.75)
+            if hovering {
+                VStack(spacing: 0) { Spacer(minLength: 0)
+                    Image(systemName: "chevron.compact.down").font(.system(size: 9, weight: .bold))
+                        .foregroundColor(tint.opacity(0.9)).padding(.bottom, 2)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(0.18) : .clear, radius: 4, y: 1)
+        .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(hovering ? 0.28 : 0.18) : .clear, radius: 4, y: 1)
         .contentShape(Rectangle())
-        .onHover { if $0 { onOpen() } }
-        .onTapGesture { onOpen() }
+        .onHover { hovering = $0 }        // hover only PREVIEWS the click target — it does not open
+        .onTapGesture { onOpen() }        // a deliberate CLICK opens the panel
+        .help("Click to open Switchboard")
     }
 }
 
