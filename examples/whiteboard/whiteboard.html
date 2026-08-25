@@ -19,6 +19,22 @@
   #hint b{color:var(--lime);font-weight:400} #hint.sent{color:var(--lime);border-color:var(--lime)}
   canvas{position:absolute;inset:0;touch-action:none}
   #ti{position:absolute;z-index:9;background:rgba(11,14,8,.9);border:1px dashed var(--lime);color:var(--ink);font:16px ui-monospace,monospace;padding:2px 4px;outline:none;display:none;min-width:40px;transform-origin:top left}
+  /* cv10 — recents filmstrip: reopen a past board (editable). Collapsed tab by default; expands to a bottom strip. */
+  #rtab{position:fixed;left:12px;bottom:12px;z-index:11;display:none;cursor:pointer;font-size:11px;color:var(--dim);background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:6px 10px}
+  #rtab.show{display:block} #rtab:hover{color:var(--ink)} #rtab b{color:var(--lime);font-weight:400}
+  #recents{position:fixed;left:0;right:0;bottom:0;z-index:11;display:none;flex-direction:column;gap:6px;padding:8px 12px 10px;background:linear-gradient(to top,rgba(11,14,8,.97),rgba(11,14,8,.74));border-top:1px solid var(--edge)}
+  #recents.show{display:flex}
+  #recents .rhead{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--dim);letter-spacing:.5px}
+  #recents .rhead b{color:var(--ink);font-weight:600}
+  #recents .rclose{margin-left:auto;cursor:pointer;color:var(--dim);border:1px solid var(--edge);border-radius:6px;padding:2px 8px}
+  #recents .rclose:hover{color:var(--ink)}
+  #rstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}
+  .rtile{flex:0 0 auto;width:120px;cursor:pointer;border:1px solid var(--edge);border-radius:8px;overflow:hidden;background:var(--panel);transition:border-color .15s,transform .15s}
+  .rtile:hover{border-color:var(--lime);transform:translateY(-2px)}
+  .rtile .rthumb{width:100%;height:66px;object-fit:cover;display:block;background:#0B0E08}
+  .rtile .rph{width:100%;height:66px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:10px;background:#0B0E08}
+  .rtile .rmeta{font-size:9px;color:var(--dim);padding:3px 6px;display:flex;justify-content:space-between;gap:4px}
+  @media (prefers-reduced-motion:reduce){.rtile{transition:none}}
 </style></head>
 <body>
 <div id="bar">
@@ -48,6 +64,8 @@
 </div>
 <div id="hint"><b>infinite canvas</b> · space-drag or scroll to pan · pinch or ⌘-scroll to zoom · drag to <b>snap</b> (⌥ = free) · ⌘V pastes a screenshot · N sticky <b>note</b> · <b>send</b> when ready</div>
 <canvas id="c"></canvas>
+<div id="rtab"></div>
+<div id="recents"><div class="rhead">▣ <b>Recent boards</b> <span id="rcount"></span><span class="rclose" id="rcollapse">collapse ⌄</span></div><div id="rstrip"></div></div>
 <input id="ti" />
 <script>
 (function(){
@@ -275,16 +293,22 @@
   window.addEventListener('keyup',function(e){ if(e.code==='Space'){ spaceDown=false; if(tool==='select') c.style.cursor='default'; } });
 
   // ── export: whole board (fit all), so pan/zoom doesn't crop the sketch ──
-  function boardPNG(){ sel=null; if(!objs.length){ redraw(); return c.toDataURL('image/png'); }
-    var b=allBounds(), pad=40, ex=document.createElement('canvas'), ratio=Math.min(2400/(b.w+pad*2)||2,2);
+  function exportCanvas(){ var b=allBounds(), pad=40, ex=document.createElement('canvas');
     ex.width=(b.w+pad*2); ex.height=(b.h+pad*2); var g=ex.getContext('2d');
     g.fillStyle='#0B0E08'; g.fillRect(0,0,ex.width,ex.height); g.translate(pad-b.x,pad-b.y);
     var save=cam; cam={x:0,y:0,s:1}; var realx=x; x=g; objs.forEach(drawObj); x=realx; cam=save; redraw();
-    return ex.toDataURL('image/png'); }
+    return ex; }
+  function boardPNG(){ sel=null; if(!objs.length){ redraw(); return c.toDataURL('image/png'); }
+    return exportCanvas().toDataURL('image/png'); }
+  // a small thumbnail for the recents strip (keeps localStorage light)
+  function thumbURL(){ if(!objs.length) return c.toDataURL('image/png');
+    var ex=exportCanvas(), tw=Math.min(320,ex.width||320), th=Math.max(1,Math.round((ex.height||1)*tw/(ex.width||1)));
+    var t=document.createElement('canvas'); t.width=tw; t.height=th; var g=t.getContext('2d');
+    g.fillStyle='#0B0E08'; g.fillRect(0,0,tw,th); g.drawImage(ex,0,0,tw,th); return t.toDataURL('image/png'); }
   function savePNG(){ var a=document.createElement('a'); a.download='whiteboard.png'; a.href=boardPNG(); a.click(); }
   var RUN=(window.__whiteboardRun)||(new URLSearchParams(location.search)).get('run')||'';
   window.__whiteboardSent=function(ok,err){ hint.className='sent'; hint.innerHTML=ok?'✓ sent to Claude — keep editing & send again anytime':('✕ '+(err||'send failed')); };
-  function send(){ var data=boardPNG(); hint.className='sent'; hint.innerHTML='sending…';
+  function send(){ var data=boardPNG(); try{ saveCurrentToRecents(); }catch(e){} hint.className='sent'; hint.innerHTML='sending…';
     if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.whiteboard){ window.webkit.messageHandlers.whiteboard.postMessage({run:RUN,png:data}); return; }
     fetch('/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run:RUN,png:data})})
       .then(function(r){return r.json();}).then(function(){ window.__whiteboardSent(true); })
@@ -296,8 +320,8 @@
   // native injects as window.__whiteboardSeed (or calls __wbLoadSeed at runtime). They load as fully EDITABLE
   // items — fresh ids, arrow fromId/toId remapped to the new ids — and it's ONE undo step (⌘Z → blank). This
   // is the bidirectional half: Claude sketches a base, you tweak it, then Send it back.
-  window.__wbLoadSeed=function(arr){ if(!Array.isArray(arr)||!arr.length) return;
-    snap(); var map={};
+  window.__wbLoadSeed=function(arr,noSnap){ if(!Array.isArray(arr)||!arr.length) return;
+    if(!noSnap) snap(); var map={};
     arr.forEach(function(o){ var nid=++uid; if(o&&o.id!=null) map[o.id]=nid; if(o) o.__nid=nid; });
     arr.forEach(function(o){ if(!o) return; var n=JSON.parse(JSON.stringify(o)); n.id=o.__nid; delete n.__nid; delete o.__nid;
       if(!n.color) n.color=color;
@@ -309,6 +333,57 @@
       objs.push(n); });
     sel=null; setTool('select'); requestAnimationFrame(function(){ fit(); }); };
   if(window.__whiteboardSeed){ try{ window.__wbLoadSeed(window.__whiteboardSeed); }catch(e){} }
+
+  // ── cv10 · RECENTS — reopen a past board, editable ───────────────────────────────────────────────
+  // On send we snapshot the board (objects, in the SAME seed format so reopen === __wbLoadSeed) plus a small
+  // thumbnail, into localStorage (persists across reopen + app relaunch). The filmstrip lets you reopen one:
+  // click = reopen it (replaces the current board — ONE ⌘Z restores what you had); ⌥-click = bring it in as a
+  // layer on top. Empty/one/many/broken-thumb all handled. Nothing auto-clobbers: a reopen is always undoable.
+  var RKEY='wb.recents.v1', RCAP=12, IMGCAP=1200;
+  var rtab=document.getElementById('rtab'), rpanel=document.getElementById('recents'),
+      rstrip=document.getElementById('rstrip'), rcount=document.getElementById('rcount');
+  function imgDataURL(im){ // draw an in-memory image (blob-url paste OR dataURL seed) to a (capped) dataURL
+    try{ var w=im.naturalWidth||im.width, h=im.naturalHeight||im.height; if(!w||!h) return null;
+      var sc=Math.min(1,IMGCAP/Math.max(w,h)); var cv=document.createElement('canvas');
+      cv.width=Math.max(1,Math.round(w*sc)); cv.height=Math.max(1,Math.round(h*sc));
+      cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height); return cv.toDataURL('image/png'); }
+    catch(e){ return null; } }
+  function serializeBoard(){ // objects → seed format (img carries `src`; drop in-memory `img` handle)
+    var out=[]; for(var i=0;i<objs.length;i++){ var o=objs[i]; var n=JSON.parse(JSON.stringify(o));
+      if(n.t==='img'){ var im=imgStore[o.img]; var du=im?imgDataURL(im):null; if(!du) continue; n.src=du; delete n.img; }
+      out.push(n); } return out; }
+  function loadRecents(){ try{ return JSON.parse(localStorage.getItem(RKEY))||[]; }catch(e){ return []; } }
+  function storeRecents(list){ // quota-guard: on failure drop the oldest and retry so a save never hard-fails
+    for(var tries=0;tries<list.length+1;tries++){ try{ localStorage.setItem(RKEY,JSON.stringify(list)); return true; }
+      catch(e){ if(list.length>1) list.pop(); else { try{ localStorage.removeItem(RKEY); }catch(_){} return false; } } }
+    return false; }
+  function saveCurrentToRecents(){ if(!objs.length) return; // nothing to remember
+    var rec={ id:'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), ts:Date.now(),
+              n:objs.length, thumb:thumbURL(), objects:serializeBoard() };
+    var list=loadRecents(); list.unshift(rec); if(list.length>RCAP) list=list.slice(0,RCAP);
+    storeRecents(list); renderRecents(); }
+  function relTime(ts){ var s=Math.max(0,(Date.now()-ts)/1000);
+    if(s<60) return 'now'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h';
+    return Math.floor(s/86400)+'d'; }
+  function loadRecent(rec,asLayer){ if(!rec||!rec.objects) return; snap();
+    if(!asLayer){ objs.length=0; imgStore={}; sel=null; } // reopen = replace; ⌥ = bring in as a layer
+    window.__wbLoadSeed(rec.objects,true); }
+  function tile(rec){ var d=document.createElement('div'); d.className='rtile'; d.title=asLayerHint;
+    if(rec.thumb){ var im=document.createElement('img'); im.className='rthumb'; im.src=rec.thumb;
+      im.onerror=function(){ im.remove(); var ph=document.createElement('div'); ph.className='rph'; ph.textContent='board'; d.insertBefore(ph,d.firstChild); }; d.appendChild(im); }
+    else { var ph=document.createElement('div'); ph.className='rph'; ph.textContent='board'; d.appendChild(ph); }
+    var m=document.createElement('div'); m.className='rmeta'; m.innerHTML='<span>'+relTime(rec.ts)+'</span><span>'+(rec.n||0)+'</span>'; d.appendChild(m);
+    d.addEventListener('click',function(e){ loadRecent(rec, e.altKey); }); return d; }
+  var asLayerHint='click to reopen · ⌥-click to bring in as a layer';
+  function renderRecents(){ var list=loadRecents();
+    if(!list.length){ rtab.classList.remove('show'); rpanel.classList.remove('show'); return; }
+    rtab.classList.add('show'); rtab.innerHTML='▣ <b>'+list.length+'</b> recent'+(list.length>1?'s':'');
+    rcount.textContent='· '+list.length; rstrip.textContent='';
+    for(var i=0;i<list.length;i++) rstrip.appendChild(tile(list[i])); }
+  function showPanel(on){ rpanel.classList.toggle('show',on); rtab.classList.toggle('show',!on && loadRecents().length>0); }
+  rtab.addEventListener('click',function(){ showPanel(true); });
+  document.getElementById('rcollapse').addEventListener('click',function(){ showPanel(false); });
+  renderRecents();
 })();
 </script>
 </body></html>
