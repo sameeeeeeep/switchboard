@@ -72,6 +72,13 @@ on top. Use **`group`** (a shared string id) so a "card" (its detail `img` + its
 deletes as one unit**, while each label stays individually **double-click-editable**. So a card = an `img`
 + a `text`, both `"group":"card1"`. Compose the mockup, write it as `seed`, then poll for the Send as usual.
 
+**As the notch DECISION surface (vd1).** When you're raising a *choice* rather than asking for a fresh
+sketch — "which of these layouts?", a landing/UI fork — don't describe it in prose. Render each option as a
+mockup, show them on the notch card, and let the user **draw their answer** on the one they pick: the board
+opens **seeded with that option's `img`** and their marked-up PNG comes back as the decision. That whole
+loop is orchestrated by `scripts/visual-decision.mjs` — see the **[[switchboard]]** skill's *"Visual
+decision"* section. This board's img-seed + Send is the visual-out half of it.
+
 ## Recover a missed send
 
 Every send also appends to **`~/.relay/whiteboard-history.jsonl`** (never deleted). If `whiteboard-result.json`

@@ -349,6 +349,47 @@ basename). Non-fatal by design (any error exits 0 → never blocks Claude Code).
   This is how any later Claude thread — including a fresh session — recovers the user's choices +
   screenshots to "finish it next pass."
 
+## Visual decision — show mockups, let the user DRAW their answer (vd1)
+
+Some decisions are about how a thing should *look*, and a row of text options can't carry that. For those,
+make the decision **visual-in / visual-out**: render each option as a little **mockup** shown on the notch
+card, and let the user answer by **drawing on it** — circle the bit they want, cross out the bit they
+don't, sketch the change — instead of only tapping a letter. It composes the ask-card (per-option `media`)
+with the floating **[[whiteboard]]** (img seed → drawn PNG); the bridge between them is orchestrated by
+**`scripts/visual-decision.mjs`**, so you don't wire it by hand.
+
+Run it with a spec on stdin (or a file path as argv):
+
+```bash
+node scripts/visual-decision.mjs <<'JSON'
+{ "title": "Landing hero", "question": "Which hero reads best?",
+  "source": "Claude Code · landing", "project": "Switchboard",
+  "options": [
+    { "id": "bold", "label": "Bold", "detail": "big word, lots of space", "recommended": true,
+      "svg": "<svg xmlns='http://www.w3.org/2000/svg' width='560' height='420'>…</svg>" },
+    { "id": "calm", "label": "Calm", "detail": "quiet, editorial",
+      "mockup": "/abs/path/to/calm.png" }
+  ] }
+JSON
+```
+
+- **Each option** carries either an inline **`svg`** (rasterized to a PNG via `qlmanage` — no deps — and
+  square-wrapped on a dark canvas so there's no white padding) or a ready **`mockup`** image path. Add
+  `bg` to set the pad colour (default brand-dark `#0e0e0e`). Keep mockups brand-correct — lime `#C8F250`
+  on dark (see `relay-brand-look-lime-doto`).
+- **The card** shows the mockups with your `question` + the line *"tap the closest — or ⌥↓ to open it on
+  the whiteboard and draw your answer."* One ⭐`recommended` option is pre-selected.
+- **The result** (JSON on stdout) is one of:
+  - `{"mode":"picked","chosenOption":"…"}` — they tapped an option, no changes wanted.
+  - `{"mode":"drawn","chosenOption":"…","note":"…","annotatedShot":"/…png"}` — they pressed ⌥↓, the
+    whiteboard opened **seeded with that option's mockup**, they drew, and Sent; read `annotatedShot` (the
+    marked-up PNG) as the decision and act on it.
+  - `{"mode":"noted","chosenOption":"…","note":"…"}` — they typed a change but didn't draw; honour the note.
+  - `{"mode":"aborted"}` / `{"mode":"timeout"}` — closed / never answered.
+
+Use this whenever you'd otherwise describe a visual fork in prose: landing/UI/layout choices, "which of
+these designs", before/after tweaks. For non-visual forks, the plain `ask` card above is still right.
+
 ## Rules
 
 - **One human action per step**, phrased as an imperative the person can follow without you.
