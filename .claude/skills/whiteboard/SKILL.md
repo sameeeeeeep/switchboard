@@ -62,7 +62,15 @@ Object dialect (world coords; `color` optional, defaults to lime): `box`/`ellips
 `text` = `{x,y,txt,size}`; `line`/`arrow` = `{x,y,x2,y2}` **or** bind endpoints to nodes with
 `fromId`/`toId` (referencing other seed `id`s — the arrow then sticks to those shapes' borders and follows
 when the user moves them); `pen` = `{pts:[{x,y},…]}`. Give nodes stable `id`s so `fromId`/`toId` resolve.
-Skip `img` (needs local pixels). Compose a diagram, write it as `seed`, then poll for the Send as usual.
+
+**Intricate + partly-editable mockups (the good way to seed a wireframe).** For a hi-fi mockup — as rich
+as the HTML/SVG you'd author — render it to an **`img`**: `{t:"img", x, y, w, h, src:"data:image/svg+xml;base64,…"}`
+(a self-contained SVG data-URL is ideal — vector-crisp, no rasterizer, doesn't taint the Send export). The
+user marks up **on top** with pen/text/arrows. Make it *partly* editable by layering: bake the fine detail
+into the image, but put the parts the user should touch — **titles as real `text`, cards as real objects** —
+on top. Use **`group`** (a shared string id) so a "card" (its detail `img` + its label `text`) **moves and
+deletes as one unit**, while each label stays individually **double-click-editable**. So a card = an `img`
++ a `text`, both `"group":"card1"`. Compose the mockup, write it as `seed`, then poll for the Send as usual.
 
 ## Recover a missed send
 

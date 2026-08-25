@@ -106,6 +106,10 @@
   }
   function handleAt(o,p){ var b=bbox(o),m=11/cam.s; if(o.t==='box'||o.t==='ellipse'||o.t==='img'||o.t==='text'){ if(Math.abs(p.x-(b.x+b.w))<m&&Math.abs(p.y-(b.y+b.h))<m) return 'se'; } return null; }
   function topHit(p){ for(var i=objs.length-1;i>=0;i--) if(hit(objs[i],p)) return objs[i]; return null; }
+  // GROUP — objects sharing a `group` id move (and delete) together, so a seeded "card" (its baked detail
+  // image + its editable labels) behaves as one unit while each label stays individually editable.
+  function groupMembers(o){ if(!o||!o.group) return [o]; return objs.filter(function(k){ return k.group===o.group; }); }
+  function unionBox(list){ var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9; list.forEach(function(o){ var b=bbox(o); mnx=Math.min(mnx,b.x);mny=Math.min(mny,b.y);mxx=Math.max(mxx,b.x+b.w);mxy=Math.max(mxy,b.y+b.h); }); return {x:mnx,y:mny,w:mxx-mnx,h:mxy-mny}; }
   function topNode(p){ for(var i=objs.length-1;i>=0;i--) if(isNode(objs[i])&&hit(objs[i],p)) return objs[i]; return null; }
 
   // ── draw ──
@@ -121,9 +125,11 @@
     else if(o.t==='text'){ x.font=o.size+'px ui-monospace,monospace';x.textBaseline='top';x.fillText(o.txt,o.x,o.y); }
     else if(o.t==='img'){ var im=imgStore[o.img]; if(im&&im.complete) x.drawImage(im,o.x,o.y,o.w,o.h); }
   }
-  function drawSel(){ if(!sel) return; var b=bbox(sel); x.strokeStyle='rgba(200,242,80,.9)';x.lineWidth=1/cam.s;x.setLineDash([4/cam.s,3/cam.s]);
+  function drawSel(){ if(!sel) return; var grouped=!!sel.group, b=grouped?unionBox(groupMembers(sel)):bbox(sel);
+    x.strokeStyle='rgba(200,242,80,.9)';x.lineWidth=1/cam.s;x.setLineDash([4/cam.s,3/cam.s]);
     var m=4/cam.s; x.strokeRect(b.x-m,b.y-m,b.w+2*m,b.h+2*m); x.setLineDash([]);
-    if(sel.t==='box'||sel.t==='ellipse'||sel.t==='img'||sel.t==='text'){ var h=4/cam.s; x.fillStyle='#C8F250'; x.fillRect(b.x+b.w-h,b.y+b.h-h,2*h,2*h); } }
+    // resize handle only on a single (ungrouped) resizable object — a grouped card moves as a unit
+    if(!grouped&&(sel.t==='box'||sel.t==='ellipse'||sel.t==='img'||sel.t==='text')){ var h=4/cam.s; x.fillStyle='#C8F250'; x.fillRect(b.x+b.w-h,b.y+b.h-h,2*h,2*h); } }
   function grid(){
     var tl=toWorld(0,0), br=toWorld(W,H), g=22, x0=Math.floor(tl.x/g)*g, y0=Math.floor(tl.y/g)*g;
     x.fillStyle='rgba(200,242,80,.06)'; var r=1.2/cam.s;
@@ -155,7 +161,7 @@
   c.addEventListener('pointermove',function(e){ if(!down) return; var s=sp(e), p=toWorld(s.x,s.y);
     if(mode==='pan'){ cam.x+=s.x-panLast.x; cam.y+=s.y-panLast.y; panLast=s; redraw(); return; }
     if(tool==='select'&&sel){
-      if(mode==='move'){ moveObj(sel,p.x-start.x,p.y-start.y); start=p; if(!e.altKey) alignSnap(sel); redraw(); }
+      if(mode==='move'){ var dx=p.x-start.x,dy=p.y-start.y; var g=groupMembers(sel); g.forEach(function(o){ moveObj(o,dx,dy); }); start=p; if(!e.altKey&&g.length===1) alignSnap(sel); redraw(); }
       else if(mode==='resize'){ if(sel.t==='box'||sel.t==='ellipse'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y; }
         else if(sel.t==='img'){ var nw=Math.max(20,p.x-sel.x); sel.h=sel.h*(nw/(sel.w||1)); sel.w=nw; }
         else if(sel.t==='text'){ sel.size=Math.max(9,p.y-sel.y); } redraw(); }
@@ -245,7 +251,7 @@
     if(m&&e.key==='-'){ e.preventDefault(); setZoom(cam.s/1.2); return; }
     if(m&&e.key==='0'){ e.preventDefault(); setZoom(1); return; }
     if(m) return;
-    if(e.key==='Backspace'||e.key==='Delete'){ if(sel){ e.preventDefault(); snap(); objs=objs.filter(function(o){return o!==sel;}); sel=null; redraw(); } return; }
+    if(e.key==='Backspace'||e.key==='Delete'){ if(sel){ e.preventDefault(); snap(); var g=groupMembers(sel); objs=objs.filter(function(o){return g.indexOf(o)<0;}); sel=null; redraw(); } return; }
     if(e.key==='Escape'){ sel=null; redraw(); return; }
     if(sel&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(e.key)>=0){ e.preventDefault(); var d=(e.shiftKey?10:1)/cam.s;
       snap(); moveObj(sel, e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0, e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0); redraw(); return; }
@@ -280,6 +286,9 @@
     arr.forEach(function(o){ var nid=++uid; if(o&&o.id!=null) map[o.id]=nid; if(o) o.__nid=nid; });
     arr.forEach(function(o){ if(!o) return; var n=JSON.parse(JSON.stringify(o)); n.id=o.__nid; delete n.__nid; delete o.__nid;
       if(!n.color) n.color=color;
+      // an image seed carries `src` (data-URL or url) — a Claude-rendered HTML/SVG mockup as the base layer,
+      // which the user then marks up on top. Load it into imgStore like a paste; keep given w/h for layout.
+      if(n.t==='img'&&n.src){ var key='im'+n.id, im=new Image(); im.onload=function(){ if(!n.w) n.w=im.width; if(!n.h) n.h=im.height; redraw(); }; im.src=n.src; imgStore[key]=im; n.img=key; delete n.src; }
       if(n.fromId!=null){ if(map[n.fromId]!=null) n.fromId=map[n.fromId]; else delete n.fromId; }
       if(n.toId!=null){ if(map[n.toId]!=null) n.toId=map[n.toId]; else delete n.toId; }
       objs.push(n); });
