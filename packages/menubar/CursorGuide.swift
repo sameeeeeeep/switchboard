@@ -497,10 +497,13 @@ struct GuideCaptionView: View {
             Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.7), radius: 3)
             Text("\(m.stepIndex + 1)/\(max(m.stepTotal, 1))").font(.splMono(10)).foregroundColor(.ink)
             Text("guide").font(.hanken(11, .semibold)).foregroundColor(.inkDim)
-            Text("⌥. expand").font(.splMono(8.5)).foregroundColor(.inkFaint)
+            Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 8)).foregroundColor(.inkFaint)
+            Text("tap · ⌥.").font(.splMono(8.5)).foregroundColor(.inkFaint)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(chipBackground)
+        .contentShape(Capsule())
+        .onTapGesture { m.collapsed = false }   // the pill is tappable to reopen (⌥. also works) — the minimise button's inverse
     }
 
     @ViewBuilder private var card: some View {
@@ -900,7 +903,20 @@ struct GuideCaptionView: View {
                 Image(systemName: m.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 9))
                     .foregroundColor(m.muted ? .inkFaint : .lime)
-                Text("⌥.").font(.splMono(8)).foregroundColor(.inkFaint)   // hint: ⌥. collapses the card to a pill
+                // MINIMISE — a real tappable button (founder ask 2026-08-25: ⌥. collapsed it but there was no
+                // button). Collapses the card to the pill; the pill (tap) or ⌥. reopens it.
+                Button(action: { m.collapsed = true }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "minus").font(.system(size: 9, weight: .bold))
+                        Text("⌥.").font(.splMono(8))
+                    }
+                    .foregroundColor(.inkFaint)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.07)))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Minimise to a pill (⌥.)")
             }
             // ── the instruction — a bold LEAD line (what to focus on) + dimmer detail, so a dense step is
             //    scannable instead of a wall. Short steps render as one line. NO line limit (never cut). ──
@@ -2548,7 +2564,9 @@ final class CursorGuide {
             let ml = NSEvent.mouseLocation
             model.cursorAnchor = CGPoint(x: ml.x - ov.frame.minX, y: ov.frame.maxY - ml.y)
         }
-        guard model.visible, !model.collapsed else { ov.ignoresMouseEvents = true; return }
+        // When collapsed, the pill publishes its own (small) frame like the card does, so we no longer force
+        // click-through — the frame check below captures clicks ONLY over the pill, making it tappable to reopen.
+        guard model.visible else { ov.ignoresMouseEvents = true; return }
         let cf = model.cardFrame, win = ov.frame
         guard cf.width > 1, cf.height > 1,
               cf.width < win.width * 0.9, cf.height < win.height * 0.9 else { ov.ignoresMouseEvents = true; return }

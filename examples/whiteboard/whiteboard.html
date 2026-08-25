@@ -5,16 +5,27 @@
   :root{--bg:#0B0E08;--panel:#12160c;--edge:#2a331d;--lime:#C8F250;--ink:#E8EFD8;--dim:#8b957a}
   *{box-sizing:border-box;margin:0;-webkit-user-select:none;user-select:none}
   html,body{height:100%;background:var(--bg);color:var(--ink);font-family:ui-monospace,'JetBrains Mono',monospace;overflow:hidden}
-  #bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:5px;align-items:center;
-    background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:7px 9px;box-shadow:0 10px 30px rgba(0,0,0,.5);flex-wrap:wrap;max-width:97vw}
-  .tool{font-size:12px;color:var(--dim);background:transparent;border:1px solid var(--edge);border-radius:8px;padding:6px 9px;cursor:pointer;display:flex;align-items:center;gap:5px}
-  .tool:hover{color:var(--ink)} .tool.on{color:#0B0E08;background:var(--lime);border-color:var(--lime)}
-  .tool .k{font-size:9px;opacity:.6} .tool.on .k{opacity:.8}
-  .sep{width:1px;height:22px;background:var(--edge);margin:0 3px}
+  /* compact toolbar — icon-only tools (name+key on HOVER, not inline) so the bar is slim and leaves more canvas */
+  #bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:2px;align-items:center;
+    background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:5px 6px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:97vw}
+  .tool{position:relative;font-size:14px;line-height:1;color:var(--dim);background:transparent;border:1px solid transparent;border-radius:7px;padding:6px 8px;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .tool:hover{color:var(--ink);background:rgba(232,239,216,.06)} .tool.on{color:#0B0E08;background:var(--lime);border-color:var(--lime)}
+  /* the tooltip floats BELOW the bar (absolute) so revealing it never widens the toolbar or shifts a button */
+  .tool[data-n]:hover::after{content:attr(data-n) " " attr(data-k);position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);
+    white-space:nowrap;font-size:10px;letter-spacing:.3px;color:var(--ink);background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:3px 7px;box-shadow:0 6px 16px rgba(0,0,0,.55);pointer-events:none;z-index:20}
+  .sep{width:1px;height:20px;background:var(--edge);margin:0 3px}
+  /* colour: only the CURRENT swatch shows; the full palette opens on hover — same space-saving idea as the tools */
+  .palette{position:relative;display:flex;align-items:center}
+  .palette .cur{width:20px;height:20px;border-radius:6px;cursor:pointer;border:2px solid var(--edge)}
+  .palette:hover .cur{border-color:var(--dim)}
+  .pop{position:absolute;top:100%;left:50%;transform:translateX(-50%);display:none;gap:5px;padding:10px 6px 6px;z-index:20}
+  .palette:hover .pop{display:flex}
+  .pop .popbg{position:absolute;top:6px;left:0;right:0;bottom:0;background:var(--panel);border:1px solid var(--edge);border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,.55);z-index:-1}
   .sw{width:20px;height:20px;border-radius:6px;cursor:pointer;border:2px solid transparent}
   .sw.on{border-color:var(--ink)}
-  #send{color:#0B0E08;background:var(--lime);border-color:var(--lime);font-weight:700}
-  #z{font-size:10px;color:var(--dim);min-width:34px;text-align:center}
+  #send{color:#0B0E08;background:var(--lime);border-color:var(--lime);font-weight:700;font-size:12px;padding:6px 10px}
+  #send:hover{color:#0B0E08}
+  #z{font-size:10px;color:var(--dim);min-width:30px;text-align:center}
   #hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:10;font-size:11px;color:var(--dim);background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;transition:opacity .3s}
   #hint b{color:var(--lime);font-weight:400} #hint.sent{color:var(--lime);border-color:var(--lime)}
   canvas{position:absolute;inset:0;touch-action:none}
@@ -40,29 +51,34 @@
 </style></head>
 <body>
 <div id="bar">
-  <button class="tool on" data-t="select">▹ select<span class="k">V</span></button>
-  <button class="tool" data-t="pen">✎ pen<span class="k">P</span></button>
-  <button class="tool" data-t="box">▭ box<span class="k">R</span></button>
-  <button class="tool" data-t="ellipse">◯ circle<span class="k">C</span></button>
-  <button class="tool" data-t="line">╱ line<span class="k">L</span></button>
-  <button class="tool" data-t="arrow">→ arrow<span class="k">A</span></button>
-  <button class="tool" data-t="text">T text<span class="k">T</span></button>
-  <button class="tool" data-t="note">✎ note<span class="k">N</span></button>
+  <button class="tool on" data-t="select" data-n="select" data-k="V">▹</button>
+  <button class="tool" data-t="pen" data-n="pen" data-k="P">✎</button>
+  <button class="tool" data-t="box" data-n="box" data-k="R">▭</button>
+  <button class="tool" data-t="ellipse" data-n="circle" data-k="C">◯</button>
+  <button class="tool" data-t="line" data-n="line" data-k="L">╱</button>
+  <button class="tool" data-t="arrow" data-n="arrow" data-k="A">→</button>
+  <button class="tool" data-t="text" data-n="text" data-k="T">T</button>
+  <button class="tool" data-t="note" data-n="sticky note" data-k="N">✎</button>
   <span class="sep"></span>
-  <span class="sw on" data-c="#C8F250" style="background:#C8F250"></span>
-  <span class="sw" data-c="#E8EFD8" style="background:#E8EFD8"></span>
-  <span class="sw" data-c="#8b957a" style="background:#8b957a"></span>
-  <span class="sw" data-c="#FF5F7A" style="background:#FF5F7A"></span>
-  <span class="sw" data-c="#5B9EFF" style="background:#5B9EFF"></span>
+  <div class="palette" data-n="colour" title="colour">
+    <span class="cur" id="curcolor" style="background:#C8F250"></span>
+    <div class="pop"><span class="popbg"></span>
+      <span class="sw on" data-c="#C8F250" style="background:#C8F250"></span>
+      <span class="sw" data-c="#E8EFD8" style="background:#E8EFD8"></span>
+      <span class="sw" data-c="#8b957a" style="background:#8b957a"></span>
+      <span class="sw" data-c="#FF5F7A" style="background:#FF5F7A"></span>
+      <span class="sw" data-c="#5B9EFF" style="background:#5B9EFF"></span>
+    </div>
+  </div>
   <span class="sep"></span>
-  <button class="tool" id="undo">⤺<span class="k">⌘Z</span></button>
-  <button class="tool" id="redo">⤻<span class="k">⌘⇧Z</span></button>
-  <button class="tool" id="clear" title="Clear board — start fresh">✕</button>
+  <button class="tool" id="undo" data-n="undo" data-k="⌘Z">⤺</button>
+  <button class="tool" id="redo" data-n="redo" data-k="⌘⇧Z">⤻</button>
+  <button class="tool" id="clear" data-n="clear · start fresh" data-k="">✕</button>
   <span class="sep"></span>
-  <button class="tool" id="zout">−</button><span id="z">100%</span><button class="tool" id="zin">+</button><button class="tool" id="zfit">fit</button>
+  <button class="tool" id="zout" data-n="zoom out" data-k="">−</button><span id="z">100%</span><button class="tool" id="zin" data-n="zoom in" data-k="">+</button><button class="tool" id="zfit" data-n="fit to board" data-k="">⤢</button>
   <span class="sep"></span>
-  <button class="tool" id="save">▤ PNG<span class="k">⌘S</span></button>
-  <button class="tool" id="send">➤ send to Claude<span class="k">⌘↵</span></button>
+  <button class="tool" id="save" data-n="save PNG" data-k="⌘S">▤</button>
+  <button class="tool" id="send" data-n="send to Claude" data-k="⌘↵">➤ send</button>
 </div>
 <div id="hint"><b>infinite canvas</b> · space-drag or scroll to pan · pinch or ⌘-scroll to zoom · drag to <b>snap</b> (⌥ = free) · ⌘V pastes a screenshot · N sticky <b>note</b> · <b>send</b> when ready</div>
 <canvas id="c"></canvas>
@@ -284,7 +300,8 @@
 
   function setTool(t){ tool=t; document.querySelectorAll('.tool[data-t]').forEach(function(o){o.classList.toggle('on',o.dataset.t===t);}); c.style.cursor=t==='select'?'default':(t==='text'?'text':'crosshair'); if(t!=='select'){ sel=null; redraw(); } }
   document.querySelectorAll('.tool[data-t]').forEach(function(b){ b.onclick=function(){ setTool(b.dataset.t); }; });
-  document.querySelectorAll('.sw').forEach(function(s){ s.onclick=function(){ document.querySelectorAll('.sw').forEach(function(o){o.classList.remove('on');}); s.classList.add('on'); color=s.dataset.c; if(sel){ snap(); sel.color=color; redraw(); } }; });
+  var curColor=document.getElementById('curcolor');
+  document.querySelectorAll('.sw').forEach(function(s){ s.onclick=function(){ document.querySelectorAll('.sw').forEach(function(o){o.classList.remove('on');}); s.classList.add('on'); color=s.dataset.c; if(curColor) curColor.style.background=color; if(sel){ snap(); sel.color=color; redraw(); } }; });
   document.getElementById('clear').onclick=function(){ if(objs.length){ snap(); objs=[]; sel=null; redraw(); } }; // clear board (⌘Z-undoable)
   document.getElementById('save').onclick=savePNG; document.getElementById('send').onclick=send;
 
