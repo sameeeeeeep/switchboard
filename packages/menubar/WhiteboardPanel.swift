@@ -162,13 +162,14 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     private let htmlOverride: String?
     private var sendN = 0                     // per-run shot counter → "<run>-<n>.png" (mirrors server.mjs `n`)
 
-    // Placement grammar (founder pick 2026-08-25 "both"): the board minimises to its header strip (a pill) and
-    // snaps to the notch when dragged near the top — so it behaves like the notch/PIP cards.
-    private var isMinimized = false
-    private var savedFrame: NSRect?           // the expanded frame, restored on un-minimise
-    private weak var minBtn: NSButton?        // the – / ＋ toggle
-    private weak var dragHint: NSTextField?   // right-side header hint (hidden while minimised, shown when expanded)
+    // Placement grammar: the board minimises INTO THE NOTCH TRAY as a chip (founder pick 2026-08-25 "1a") and
+    // snaps to the notch when the header is dragged near the top — so it behaves like the notch/PIP cards.
+    private var isStashed = false             // minimised → hidden + a chip in the NotchTray
+    private var savedFrame: NSRect?           // the expanded frame, restored from the tray chip
+    private weak var minBtn: NSButton?        // the – minimise button
+    private weak var dragHint: NSTextField?
     private static let headerH: CGFloat = 30
+    private var trayId: String { "whiteboard" }   // one board → one stable chip id
 
     /// Fires when the USER closes the window (the ✕ header button), so the controller can retract the trigger.
     var onUserClosed: (() -> Void)?
@@ -283,9 +284,9 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         mini.title = "–"
         mini.font = .systemFont(ofSize: 14, weight: .bold)
         mini.contentTintColor = NSColor(red: 0x8b/255.0, green: 0x95/255.0, blue: 0x7a/255.0, alpha: 1) // --dim
-        mini.toolTip = "Minimise to a pill"
+        mini.toolTip = "Minimise to the notch"
         mini.target = self
-        mini.action = #selector(minimizeToggle)
+        mini.action = #selector(minimizeToTray)
         mini.autoresizingMask = [.maxXMargin]
         header.addSubview(mini)
         self.minBtn = mini
@@ -328,6 +329,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     }
 
     @objc private func closeTapped() {
+        NotchTray.shared.remove(id: trayId)   // clear any chip (idempotent; closeTapped only fires while visible)
         persistFrame()              // remember where the user left it for next open
         if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }
         window.orderOut(nil)        // take it off-screen NOW — the controller's callback only retracts the
@@ -345,11 +347,13 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         window.orderFrontRegardless()
     }
 
-    /// Bring an already-open board forward (a re-trigger while it's up).
-    func front() { window.orderFrontRegardless() }
+    /// Bring an already-open board forward (a re-trigger while it's up). No-op while stashed in the tray, so the
+    /// controller's per-tick front() can't yank a minimised board back out from under its chip.
+    func front() { guard !isStashed else { return }; window.orderFrontRegardless() }
 
     /// Rebind to a new run (fresh shot filenames) without reloading — a new /whiteboard on the same board.
     func setRun(_ newRun: String, seed: Any? = nil) {
+        restoreFromTray()           // a re-trigger while stashed brings the board back out of the notch tray (no-op if visible)
         run = newRun
         sendN = 0
         web.evaluateJavaScript("window.__whiteboardRun = \(WhiteboardPanel.jsStr(newRun));", completionHandler: nil)
@@ -359,7 +363,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         }
     }
 
-    func close() { if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }; window.orderOut(nil) }
+    func close() { NotchTray.shared.remove(id: trayId); if let m = pinchMonitor { NSEvent.removeMonitor(m); pinchMonitor = nil }; window.orderOut(nil) }
 
     // Locate the whiteboard HTML: an explicit override (dev/testing), else the bundled Resources copy.
     private func htmlURL() -> URL? {
@@ -384,7 +388,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         return NSRect(x: 200, y: 200, width: size.width, height: size.height)
     }
     private func persistFrame() {
-        guard !isMinimized else { return }   // never remember the collapsed pill as the board's frame
+        guard !isStashed else { return }   // never persist a frame while stashed (the expanded frame is remembered on minimise)
         UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: WhiteboardPanel.frameKey)
     }
     func windowDidMove(_ notification: Notification) { persistFrame() }
@@ -392,37 +396,32 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
     // MARK: placement — minimise-to-pill + snap-to-notch (founder pick 2026-08-25 "both")
 
-    /// Collapse the whole board to its header strip (a pill), or restore the expanded frame. The – button
-    /// becomes ＋; the web view hides so a 30pt-tall window isn't a clipped board. minSize is dropped while
-    /// collapsed so the pill can be that short, and restored on expand.
-    @objc private func minimizeToggle() {
-        if isMinimized {
-            window.minSize = NSSize(width: 460, height: 340)
-            web.isHidden = false
-            dragHint?.isHidden = false
-            isMinimized = false
-            if let f = savedFrame { window.setFrame(f, display: true, animate: true) }
-            minBtn?.title = "–"; minBtn?.toolTip = "Minimise to a pill"
-        } else {
-            let f = window.frame
-            savedFrame = f
-            // Remember the EXPANDED frame for next open now (persistFrame is guarded off while minimised).
-            UserDefaults.standard.set(NSStringFromRect(f), forKey: WhiteboardPanel.frameKey)
-            let hH = WhiteboardPanel.headerH
-            let pill = NSRect(x: f.minX, y: f.maxY - hH, width: min(f.width, 320), height: hH)  // keep top-left; collapse to the header
-            isMinimized = true            // set BEFORE setFrame so the resize callback doesn't persist the pill
-            web.isHidden = true
-            dragHint?.isHidden = true
-            window.minSize = NSSize(width: 160, height: hH)
-            window.setFrame(pill, display: true, animate: true)
-            minBtn?.title = "＋"; minBtn?.toolTip = "Expand the board"
+    /// Minimise into the NOTCH TRAY: hide the board and drop a chip at the notch. Click the chip to restore it
+    /// (NotchTray calls restoreFromTray). The board's frame is remembered so it comes back exactly where it was.
+    @objc private func minimizeToTray() {
+        savedFrame = window.frame
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: WhiteboardPanel.frameKey)  // remember expanded frame
+        isStashed = true
+        window.orderOut(nil)              // hide the board; the tray chip is now its handle
+        NotchTray.shared.add(id: trayId, label: "Whiteboard", glyph: "◆") { [weak self] in
+            self?.restoreFromTray()
         }
+    }
+
+    /// Bring the board back from the tray chip (or programmatically). Safe to call from either path — it also
+    /// clears the chip, so a direct restore (e.g. a re-trigger) doesn't leave a dead chip behind.
+    private func restoreFromTray() {
+        guard isStashed else { return }
+        isStashed = false
+        NotchTray.shared.remove(id: trayId)
+        if let f = savedFrame { window.setFrame(f, display: false) }
+        window.orderFrontRegardless()
     }
 
     /// After a header drag, if the board's top edge was dropped near the screen top (the notch band), snap it
     /// flush to the top-centre — the whiteboard "attaching to the notch". Idempotent; no-op if not near the top.
     private func snapToNotchIfNear() {
-        guard !isMinimized, let screen = window.screen ?? NSScreen.main else { return }
+        guard !isStashed, let screen = window.screen ?? NSScreen.main else { return }
         let f = window.frame, vis = screen.visibleFrame
         guard abs(vis.maxY - f.maxY) < 40 else { return }        // top edge within ~40pt of the top → attach
         let snapped = NSRect(x: vis.midX - f.width / 2, y: vis.maxY - f.height, width: f.width, height: f.height)
