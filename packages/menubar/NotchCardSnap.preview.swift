@@ -26,15 +26,17 @@ enum SBr { static let xs: CGFloat = 7 }
 
 struct GuideMedia { let src: String; var caption: String? = nil; var tall: Bool = false }
 
-// ── GuideMediaView — post-fix (fit + dynamic height for step media) ──
+// ── GuideMediaView — post-fix (fit everywhere; compact option mockups shown WHOLE + responsive) ──
 struct GuideMediaView: View {
     let media: GuideMedia
     var compact = false
     private let stepCapH: CGFloat = 460
-    private var fillMode: ContentMode { compact ? .fill : .fit }
+    private var fillMode: ContentMode { .fit }   // never crop — option mockups must be compared whole
     var body: some View {
         Group {
-            if compact { content.frame(maxWidth: .infinity).frame(height: media.tall ? 420 : 40) }
+            // compact option mockup: fit, height tracks card width (grows when notch expands), capped.
+            if compact { content.frame(maxWidth: .infinity)
+                .frame(minHeight: media.tall ? 220 : 120, maxHeight: media.tall ? 480 : 300) }
             else { content.frame(maxWidth: .infinity).frame(maxHeight: stepCapH) }
         }
         .clipShape(RoundedRectangle(cornerRadius: SBr.xs))
@@ -50,7 +52,7 @@ struct GuideMediaView: View {
     }
 }
 
-struct GuideOption: Identifiable { let id = UUID(); let label: String; let detail: String?; var recommended = false }
+struct GuideOption: Identifiable { let id = UUID(); let label: String; let detail: String?; var recommended = false; var media: GuideMedia? = nil }
 
 // ── optionsRow / optionCard — post-fix fonts ──
 struct OptionsTwin: View {
@@ -79,6 +81,7 @@ struct OptionsTwin: View {
         let sel = i == selected
         let letter = i < 3 ? ["A","B","C"][i] : "\(i+1)"
         return VStack(alignment: .leading, spacing: 6) {
+            if let md = opt.media { GuideMediaView(media: md, compact: true) }   // vd1: per-option mockup, shown whole
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(sel ? "\(letter)✓" : letter).font(.splMono(10.5)).foregroundColor(sel ? .lime : .inkFaint)
                 Text(opt.label).font(.hanken(13.5, .semibold)).foregroundColor(sel ? .ink : .inkSec)
@@ -116,7 +119,8 @@ struct OptionsTwin: View {
     static func main() {
         let app = NSApplication.shared; app.setActivationPolicy(.accessory)
         DispatchQueue.main.async {
-            let sp = "/private/tmp/claude-501/-Users-sameeprehlan-Documents-Projects-relay/cafbf521-ac4b-4ce4-8129-4c75f979ee44/scratchpad"
+            let sp = ProcessInfo.processInfo.environment["SP"]
+                ?? "/private/tmp/claude-501/-Users-sameeprehlan-Documents-Projects-relay/cafbf521-ac4b-4ce4-8129-4c75f979ee44/scratchpad"
             let opts = [
                 GuideOption(label: "Phone page → inbox", detail: "works today, any phone, offline-ok", recommended: true),
                 GuideOption(label: "iPhone bridge", detail: "most private, iOS app unshipped"),
@@ -124,6 +128,12 @@ struct OptionsTwin: View {
             ]
             // transport diagram as the STEP media (the one that was cropping) — proves dynamic full-fit height
             snap("notch-card-fixed", OptionsTwin(options: opts, selected: 0, media: GuideMedia(src: sp + "/transport.png")))
+            // vd1: per-OPTION mockups must render WHOLE (not a 40px sliver) so layouts can be compared.
+            let vd = [
+                GuideOption(label: "Grid of thumbnails", detail: "all recents at a glance", recommended: true, media: GuideMedia(src: sp + "/tw-grid.png")),
+                GuideOption(label: "Filmstrip tray", detail: "current board big, recents in a strip", media: GuideMedia(src: sp + "/tw-strip.png")),
+            ]
+            snap("notch-card-vd1-mockups", OptionsTwin(options: vd, selected: 0, media: nil))
             exit(0)
         }
         app.run()
