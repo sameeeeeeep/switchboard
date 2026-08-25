@@ -34,7 +34,9 @@
   .rtile .rthumb{width:100%;height:66px;object-fit:cover;display:block;background:#0B0E08}
   .rtile .rph{width:100%;height:66px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:10px;background:#0B0E08}
   .rtile .rmeta{font-size:9px;color:var(--dim);padding:3px 6px;display:flex;justify-content:space-between;gap:4px}
-  @media (prefers-reduced-motion:reduce){.rtile{transition:none}}
+  #hint.warn{color:#f0c674;border-color:#5a4d24}
+  /* reduced-motion — honor the OS setting: kill every transition/animation/hover-transform board-wide */
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important} .rtile:hover{transform:none} #rtab,#recents,#hint{transition:none}}
 </style></head>
 <body>
 <div id="bar">
@@ -55,7 +57,7 @@
   <span class="sep"></span>
   <button class="tool" id="undo">⤺<span class="k">⌘Z</span></button>
   <button class="tool" id="redo">⤻<span class="k">⌘⇧Z</span></button>
-  <button class="tool" id="clear">✕</button>
+  <button class="tool" id="clear" title="Clear board — start fresh">✕</button>
   <span class="sep"></span>
   <button class="tool" id="zout">−</button><span id="z">100%</span><button class="tool" id="zin">+</button><button class="tool" id="zfit">fit</button>
   <span class="sep"></span>
@@ -70,6 +72,12 @@
 <script>
 (function(){
   var c=document.getElementById('c'), x=c.getContext('2d'), ti=document.getElementById('ti'), hint=document.getElementById('hint'), zlbl=document.getElementById('z');
+  // transient status in the hint bar (empty-send guard, restored-draft note, image errors), auto-reverting
+  // to the standing guidance so the bar is never a dead-end error. __whiteboardSent uses its own persistent
+  // 'sent' state and does NOT revert.
+  var HINT0=hint.innerHTML, hintTimer=null;
+  function flashHint(msg,cls){ if(hintTimer) clearTimeout(hintTimer); hint.className=cls||'warn'; hint.innerHTML=msg;
+    hintTimer=setTimeout(function(){ hint.className=''; hint.innerHTML=HINT0; hintTimer=null; },2800); }
   var DPR=Math.max(1,window.devicePixelRatio||1), W,H;
   var cam={x:0,y:0,s:1}; // pan (screen px) + zoom
   function size(){ W=innerWidth;H=innerHeight; c.width=W*DPR;c.height=H*DPR; c.style.width=W+'px';c.style.height=H+'px'; redraw(); }
@@ -151,8 +159,18 @@
         x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a-.4),e.y2-L*Math.sin(a-.4));
         x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a+.4),e.y2-L*Math.sin(a+.4));x.stroke(); } }
     else if(o.t==='text'){ x.font=o.size+'px ui-monospace,monospace';x.textBaseline='top';x.fillText(o.txt,o.x,o.y); }
-    else if(o.t==='img'){ var im=imgStore[o.img]; if(im&&im.complete) x.drawImage(im,o.x,o.y,o.w,o.h); }
+    else if(o.t==='img'){ var im=imgStore[o.img]; var okimg=im&&im.complete&&im.naturalWidth>0&&!im.__broken;
+      if(okimg){ try{ x.drawImage(im,o.x,o.y,o.w,o.h); }catch(e){ okimg=false; } }
+      // loaded-but-failed (onerror / decode error / lost handle) → a labeled placeholder that keeps the
+      // object's footprint so it stays selectable/movable/deletable. Still-loading (not complete) draws nothing.
+      if(!okimg && (!im || im.__broken || (im.complete&&im.naturalWidth===0))) drawBrokenImg(o); }
   }
+  function drawBrokenImg(o){ var w=o.w||160, h=o.h||110; x.save();
+    x.setLineDash([6/cam.s,4/cam.s]); x.strokeStyle='#FF5F7A'; x.fillStyle='rgba(255,95,122,.10)'; x.lineWidth=1.4/cam.s;
+    x.fillRect(o.x,o.y,w,h); x.strokeRect(o.x,o.y,w,h); x.setLineDash([]);
+    x.fillStyle='#FF5F7A'; x.font=Math.max(9,Math.min(h*0.16,15))+'px ui-monospace,monospace';
+    x.textAlign='center'; x.textBaseline='middle'; x.fillText('⚠ image unavailable', o.x+w/2, o.y+h/2);
+    x.textAlign='left'; x.restore(); }
   function drawSel(){ if(!sel) return; var grouped=!!sel.group, b=grouped?unionBox(groupMembers(sel)):bbox(sel);
     x.strokeStyle='rgba(200,242,80,.9)';x.lineWidth=1/cam.s;x.setLineDash([4/cam.s,3/cam.s]);
     var m=4/cam.s; x.strokeRect(b.x-m,b.y-m,b.w+2*m,b.h+2*m); x.setLineDash([]);
@@ -267,11 +285,12 @@
   function setTool(t){ tool=t; document.querySelectorAll('.tool[data-t]').forEach(function(o){o.classList.toggle('on',o.dataset.t===t);}); c.style.cursor=t==='select'?'default':(t==='text'?'text':'crosshair'); if(t!=='select'){ sel=null; redraw(); } }
   document.querySelectorAll('.tool[data-t]').forEach(function(b){ b.onclick=function(){ setTool(b.dataset.t); }; });
   document.querySelectorAll('.sw').forEach(function(s){ s.onclick=function(){ document.querySelectorAll('.sw').forEach(function(o){o.classList.remove('on');}); s.classList.add('on'); color=s.dataset.c; if(sel){ snap(); sel.color=color; redraw(); } }; });
-  document.getElementById('clear').onclick=function(){ if(objs.length){ snap(); objs=[]; sel=null; redraw(); } };
+  document.getElementById('clear').onclick=function(){ if(objs.length){ snap(); objs=[]; sel=null; redraw(); } }; // clear board (⌘Z-undoable)
   document.getElementById('save').onclick=savePNG; document.getElementById('send').onclick=send;
 
   function addImage(file){ var url=URL.createObjectURL(file), im=new Image(); im.onload=function(){ var id='im'+(++uid), sc=Math.min(1,460/im.width); imgStore[id]=im;
-    var ctr=toWorld(W/2,H/2); snap(); objs.push({id:++uid,t:'img',color:color,img:id,x:ctr.x-im.width*sc/2,y:ctr.y-im.height*sc/2,w:im.width*sc,h:im.height*sc}); sel=objs[objs.length-1]; setTool('select'); redraw(); }; im.src=url; }
+    var ctr=toWorld(W/2,H/2); snap(); objs.push({id:++uid,t:'img',color:color,img:id,x:ctr.x-im.width*sc/2,y:ctr.y-im.height*sc/2,w:im.width*sc,h:im.height*sc}); sel=objs[objs.length-1]; setTool('select'); redraw(); };
+    im.onerror=function(){ flashHint('✕ couldn’t read that image — try a PNG/JPG screenshot'); }; im.src=url; }
   window.addEventListener('paste',function(e){ var it=(e.clipboardData||{}).items||[]; for(var i=0;i<it.length;i++){ if(it[i].type.indexOf('image')===0) addImage(it[i].getAsFile()); } });
   window.addEventListener('dragover',function(e){ e.preventDefault(); });
   window.addEventListener('drop',function(e){ e.preventDefault(); var f=e.dataTransfer.files; for(var i=0;i<f.length;i++) if(f[i].type.indexOf('image')===0) addImage(f[i]); });
@@ -308,10 +327,12 @@
     var ex=exportCanvas(), tw=Math.min(320,ex.width||320), th=Math.max(1,Math.round((ex.height||1)*tw/(ex.width||1)));
     var t=document.createElement('canvas'); t.width=tw; t.height=th; var g=t.getContext('2d');
     g.fillStyle='#0B0E08'; g.fillRect(0,0,tw,th); g.drawImage(ex,0,0,tw,th); return t.toDataURL('image/png'); }
-  function savePNG(){ var a=document.createElement('a'); a.download='whiteboard.png'; a.href=boardPNG(); a.click(); }
+  function savePNG(){ if(!objs.length){ flashHint('nothing to save yet — draw or paste first'); return; }
+    var a=document.createElement('a'); a.download='whiteboard.png'; a.href=boardPNG(); a.click(); }
   var RUN=(window.__whiteboardRun)||(new URLSearchParams(location.search)).get('run')||'';
   window.__whiteboardSent=function(ok,err){ hint.className='sent'; hint.innerHTML=ok?'✓ sent to Claude — keep editing & send again anytime':('✕ '+(err||'send failed')); };
-  function send(){ var data=boardPNG(); try{ saveCurrentToRecents(); }catch(e){} hint.className='sent'; hint.innerHTML='sending…';
+  function send(){ if(!objs.length){ flashHint('nothing to send yet — draw or paste, then send'); return; }
+    var data=boardPNG(); try{ saveCurrentToRecents(); }catch(e){} if(hintTimer){ clearTimeout(hintTimer); hintTimer=null; } hint.className='sent'; hint.innerHTML='sending…';
     if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.whiteboard){ window.webkit.messageHandlers.whiteboard.postMessage({run:RUN,png:data}); return; }
     fetch('/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run:RUN,png:data})})
       .then(function(r){return r.json();}).then(function(){ window.__whiteboardSent(true); })
@@ -330,7 +351,11 @@
       if(!n.color) n.color=color;
       // an image seed carries `src` (data-URL or url) — a Claude-rendered HTML/SVG mockup as the base layer,
       // which the user then marks up on top. Load it into imgStore like a paste; keep given w/h for layout.
-      if(n.t==='img'&&n.src){ var key='im'+n.id, im=new Image(); im.onload=function(){ if(!n.w) n.w=im.width; if(!n.h) n.h=im.height; redraw(); }; im.src=n.src; imgStore[key]=im; n.img=key; delete n.src; }
+      if(n.t==='img'&&n.src){ var key='im'+n.id, im=new Image();
+        var hadW=n.w!=null, hadH=n.h!=null; if(!hadW) n.w=200; if(!hadH) n.h=140; // provisional bounds so a late/broken image still occupies (and stays selectable in) its footprint
+        (function(nn,hw,hh){ im.onload=function(){ if(!hw) nn.w=im.width; if(!hh) nn.h=im.height; redraw(); };
+          im.onerror=function(){ im.__broken=true; redraw(); }; })(n,hadW,hadH);
+        im.src=n.src; imgStore[key]=im; n.img=key; delete n.src; }
       if(n.fromId!=null){ if(map[n.fromId]!=null) n.fromId=map[n.fromId]; else delete n.fromId; }
       if(n.toId!=null){ if(map[n.toId]!=null) n.toId=map[n.toId]; else delete n.toId; }
       objs.push(n); });
@@ -387,6 +412,13 @@
   rtab.addEventListener('click',function(){ showPanel(true); });
   document.getElementById('rcollapse').addEventListener('click',function(){ showPanel(false); });
   renderRecents();
+
+  // ── cv7 · REOPEN = a CLEAN board every time (founder's call at the notch, 2026-08-25) ─────────────────
+  // The whiteboard is a fresh scratch surface on each open: an UNSENT sketch is not carried over. Boards you
+  // SENT are the ones worth keeping — they're one tap away in the Recents filmstrip above. So there is no
+  // unsent-draft persistence by design. Defensively drop any stale draft an earlier build may have written,
+  // so "reopen clears the last sketch" holds even after an upgrade.
+  try{ localStorage.removeItem('wb.draft.v1'); }catch(e){}
 })();
 </script>
 </body></html>
