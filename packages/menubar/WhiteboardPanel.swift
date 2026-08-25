@@ -147,7 +147,8 @@ final class FirstMouseButton: NSButton {
 /// The top strip: grabs the whole window (performDrag) so the board moves by its header — NOT by its body,
 /// so a drag on the canvas draws instead of moving the window (the isMovableByWindowBackground trap).
 final class WhiteboardHeaderView: NSView {
-    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    var onDragEnded: (() -> Void)?                        // fired after a header drag ends, so the panel can snap-to-notch
+    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event); onDragEnded?() }
     override var mouseDownCanMoveWindow: Bool { false }   // we drive the drag ourselves via performDrag
 }
 
@@ -160,6 +161,14 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     private var run: String
     private let htmlOverride: String?
     private var sendN = 0                     // per-run shot counter → "<run>-<n>.png" (mirrors server.mjs `n`)
+
+    // Placement grammar (founder pick 2026-08-25 "both"): the board minimises to its header strip (a pill) and
+    // snaps to the notch when dragged near the top — so it behaves like the notch/PIP cards.
+    private var isMinimized = false
+    private var savedFrame: NSRect?           // the expanded frame, restored on un-minimise
+    private weak var minBtn: NSButton?        // the – / ＋ toggle
+    private weak var dragHint: NSTextField?   // right-side header hint (hidden while minimised, shown when expanded)
+    private static let headerH: CGFloat = 30
 
     /// Fires when the USER closes the window (the ✕ header button), so the controller can retract the trigger.
     var onUserClosed: (() -> Void)?
@@ -244,11 +253,12 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         let content = NSView(frame: NSRect(x: 0, y: 0, width: window.frame.width, height: window.frame.height))
         content.autoresizingMask = [.width, .height]
 
-        let headerH: CGFloat = 30
+        let headerH = WhiteboardPanel.headerH
         let header = WhiteboardHeaderView(frame: NSRect(x: 0, y: content.bounds.height - headerH, width: content.bounds.width, height: headerH))
         header.autoresizingMask = [.width, .minYMargin]
         header.wantsLayer = true
         header.layer?.backgroundColor = NSColor(red: 0x12/255.0, green: 0x16/255.0, blue: 0x0C/255.0, alpha: 1).cgColor // --panel
+        header.onDragEnded = { [weak self] in self?.snapToNotchIfNear() }   // drop near the top → attach to the notch
 
         // ✕ close (left, macOS-conventional side for a custom bar). FirstMouseButton so it fires on the
         // very first click even when the floating panel isn't key — otherwise the first ✕ click is eaten
@@ -265,12 +275,27 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         close.autoresizingMask = [.maxXMargin]
         header.addSubview(close)
 
+        // – MINIMISE / ＋ expand — collapse the whole board to its header strip (a pill) and back. FirstMouseButton
+        // so it fires on the first click on the non-key floating panel, exactly like ✕. (founder pick 2026-08-25.)
+        let mini = FirstMouseButton(frame: NSRect(x: 28, y: 0, width: 24, height: headerH))
+        mini.bezelStyle = .regularSquare
+        mini.isBordered = false
+        mini.title = "–"
+        mini.font = .systemFont(ofSize: 14, weight: .bold)
+        mini.contentTintColor = NSColor(red: 0x8b/255.0, green: 0x95/255.0, blue: 0x7a/255.0, alpha: 1) // --dim
+        mini.toolTip = "Minimise to a pill"
+        mini.target = self
+        mini.action = #selector(minimizeToggle)
+        mini.autoresizingMask = [.maxXMargin]
+        header.addSubview(mini)
+        self.minBtn = mini
+
         // Title — brand lime "WHITEBOARD" + optional provenance, so a floating board is never a mystery.
         let title = NSTextField(labelWithString: "◆ WHITEBOARD")
         title.font = .monospacedSystemFont(ofSize: 10, weight: .bold)
         title.textColor = NSColor(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0, alpha: 1) // --lime
         title.sizeToFit()
-        title.frame.origin = NSPoint(x: 30, y: (headerH - title.frame.height) / 2)
+        title.frame.origin = NSPoint(x: 56, y: (headerH - title.frame.height) / 2)
         title.autoresizingMask = [.maxXMargin]
         header.addSubview(title)
 
@@ -292,6 +317,7 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         drag.frame.origin = NSPoint(x: content.bounds.width - drag.frame.width - 12, y: (headerH - drag.frame.height) / 2)
         drag.autoresizingMask = [.minXMargin]
         header.addSubview(drag)
+        self.dragHint = drag
 
         web.frame = NSRect(x: 0, y: 0, width: content.bounds.width, height: content.bounds.height - headerH)
         web.autoresizingMask = [.width, .height]
@@ -358,10 +384,51 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         return NSRect(x: 200, y: 200, width: size.width, height: size.height)
     }
     private func persistFrame() {
+        guard !isMinimized else { return }   // never remember the collapsed pill as the board's frame
         UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: WhiteboardPanel.frameKey)
     }
     func windowDidMove(_ notification: Notification) { persistFrame() }
     func windowDidResize(_ notification: Notification) { persistFrame() }
+
+    // MARK: placement — minimise-to-pill + snap-to-notch (founder pick 2026-08-25 "both")
+
+    /// Collapse the whole board to its header strip (a pill), or restore the expanded frame. The – button
+    /// becomes ＋; the web view hides so a 30pt-tall window isn't a clipped board. minSize is dropped while
+    /// collapsed so the pill can be that short, and restored on expand.
+    @objc private func minimizeToggle() {
+        if isMinimized {
+            window.minSize = NSSize(width: 460, height: 340)
+            web.isHidden = false
+            dragHint?.isHidden = false
+            isMinimized = false
+            if let f = savedFrame { window.setFrame(f, display: true, animate: true) }
+            minBtn?.title = "–"; minBtn?.toolTip = "Minimise to a pill"
+        } else {
+            let f = window.frame
+            savedFrame = f
+            // Remember the EXPANDED frame for next open now (persistFrame is guarded off while minimised).
+            UserDefaults.standard.set(NSStringFromRect(f), forKey: WhiteboardPanel.frameKey)
+            let hH = WhiteboardPanel.headerH
+            let pill = NSRect(x: f.minX, y: f.maxY - hH, width: min(f.width, 320), height: hH)  // keep top-left; collapse to the header
+            isMinimized = true            // set BEFORE setFrame so the resize callback doesn't persist the pill
+            web.isHidden = true
+            dragHint?.isHidden = true
+            window.minSize = NSSize(width: 160, height: hH)
+            window.setFrame(pill, display: true, animate: true)
+            minBtn?.title = "＋"; minBtn?.toolTip = "Expand the board"
+        }
+    }
+
+    /// After a header drag, if the board's top edge was dropped near the screen top (the notch band), snap it
+    /// flush to the top-centre — the whiteboard "attaching to the notch". Idempotent; no-op if not near the top.
+    private func snapToNotchIfNear() {
+        guard !isMinimized, let screen = window.screen ?? NSScreen.main else { return }
+        let f = window.frame, vis = screen.visibleFrame
+        guard abs(vis.maxY - f.maxY) < 40 else { return }        // top edge within ~40pt of the top → attach
+        let snapped = NSRect(x: vis.midX - f.width / 2, y: vis.maxY - f.height, width: f.width, height: f.height)
+        window.setFrame(snapped, display: true, animate: true)
+        persistFrame()
+    }
 
     // MARK: Send handoff — page → native → the SAME files server.mjs writes (skill polling unchanged)
 
