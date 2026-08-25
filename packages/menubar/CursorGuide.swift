@@ -2437,7 +2437,12 @@ final class CursorGuide {
                                              // to another app/Space and only returned when Switchboard was frontmost.
                                              // The presence card must persist across apps/Spaces (you act on it while away).
         panel.ignoresMouseEvents = true      // DEFAULT click-through; the cursor-tracking monitor flips it clickable ONLY while the pointer is over the card (lock-proof)
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        // .transient (NOT .stationary) + .fullScreenAuxiliary so the card/PIP feed composites OVER another
+        // app's native-fullscreen Space. .stationary marks a window desktop-attached — the window server then
+        // treats it like wallpaper, which a fullscreen Space obscures, so the whole notch went dark whenever a
+        // fullscreen app was frontmost (feed AND every ask card invisible). .transient is what the other
+        // over-fullscreen notch panels (godStatus/ambient/notchWidget) use and are proven to ride fullscreen.
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         panel.contentView = host
         panel.setFrame(screen.frame, display: false)
         panel.orderOut(nil)
@@ -2447,12 +2452,21 @@ final class CursorGuide {
     }
 
     private func showOverlay() {
-        guard let panel = overlay else { return }
+        guard let panel = overlay else {
+            NSLog("[cursor-guide] showOverlay: overlay is nil — card cannot be shown (should never happen; ensureOverlay ran?)")
+            return
+        }
         if let scr = NSScreen.main { panel.setFrame(scr.frame, display: false); model.screenSize = scr.frame.size }
         updateCursor()
         model.collapsed = false     // a fresh guide always opens expanded
         model.visible = true
+        // Re-assert the over-fullscreen behavior on every show (cheap; guards against any reset) and order
+        // front. Then order front ONCE MORE after the run-loop settles: when a native-fullscreen Space is
+        // frontmost, the window server can drop the first orderFront until the Space transition finishes, so
+        // a single call sometimes left the card invisible on fullscreen. The second assert lands it.
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         panel.orderFrontRegardless()
+        DispatchQueue.main.async { [weak self] in self?.overlay?.orderFrontRegardless() }
     }
 
     private func startCursorTimer() {

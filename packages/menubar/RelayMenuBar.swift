@@ -4497,7 +4497,7 @@ struct ActionConsentDrop: View {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .popUpMenu   // above the system menu bar, so the panel can overlap it
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]   // open the panel over a fullscreen app too
         panel.contentView = hosting
 
         // The ambient orb — always at the notch, morphing dot ↔ working-pill, hover/click opens the panel.
@@ -4507,7 +4507,10 @@ struct ActionConsentDrop: View {
         orb.backgroundColor = .clear
         orb.hasShadow = false
         orb.level = .popUpMenu
-        orb.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        // The base notch must ride a native-fullscreen Space too. It previously had .stationary and NO
+        // .fullScreenAuxiliary → the orb (and thus the whole "base notch") vanished whenever a fullscreen app
+        // was frontmost. .fullScreenAuxiliary + no .stationary = it floats over fullscreen like the other panels.
+        orb.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         orb.acceptsMouseMovedEvents = true          // so SwiftUI onHover fires on this non-key panel
         orb.contentView = orbHosting
         positionOrb()
@@ -7383,7 +7386,7 @@ struct ActionConsentDrop: View {
         // padding worked). A strictly higher level keeps the drop overlay on top through every pill
         // re-render, so dropping right on the pill takes. (Still below the .screenSaver glow.)
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 2)
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]   // .transient not .stationary → drop target works over fullscreen
         let view = FileDropView(frame: .zero)
         // A near-invisible fill over the WHOLE hit area — a clear window only receives a drop where it has
         // opaque content, so without this the drop only lands on the drawn dashed lines (the bug you saw).
@@ -7562,7 +7565,7 @@ struct ActionConsentDrop: View {
         glow.hasShadow = false
         glow.level = .screenSaver
         glow.ignoresMouseEvents = true                  // pure decoration — never intercepts a click
-        glow.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        glow.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]   // .transient not .stationary → rides fullscreen with the notch
         glow.contentView = glowHosting
         glow.setFrame(screen.frame, display: false)
         glow.orderOut(nil)                              // shown only while a state is active
