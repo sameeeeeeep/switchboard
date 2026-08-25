@@ -61,7 +61,7 @@ add a `seed` array to `~/.relay/whiteboard-run.json`: board objects that load as
 Object dialect (world coords; `color` optional, defaults to lime): `box`/`ellipse` = `{x,y,w,h}`;
 `text` = `{x,y,txt,size}`; `line`/`arrow` = `{x,y,x2,y2}` **or** bind endpoints to nodes with
 `fromId`/`toId` (referencing other seed `id`s — the arrow then sticks to those shapes' borders and follows
-when the user moves them); `pen` = `{pts:[{x,y},…]}`. Give nodes stable `id`s so `fromId`/`toId` resolve.
+when the user moves them); `pen` = `{pts:[{x,y},…]}`; `note` = `{x,y,w,h,txt,size}` (a sticky-note — tinted box + wrapped text, for annotations/comments). Give nodes stable `id`s so `fromId`/`toId` resolve.
 
 **Intricate + partly-editable mockups (the good way to seed a wireframe).** For a hi-fi mockup — as rich
 as the HTML/SVG you'd author — render it to an **`img`**: `{t:"img", x, y, w, h, src:"data:image/svg+xml;base64,…"}`
