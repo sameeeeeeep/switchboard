@@ -1108,17 +1108,19 @@ struct GuideMediaView: View {
     let media: GuideMedia
     var reduceMotion = false
     var compact = false
-    // compact = the tiny A/B/C option thumbnail (a fixed tile, crop-to-fill is fine). A STEP diagram (zone 4,
-    // non-compact) must never be cropped: fit to the card width, let height follow the image's aspect ratio,
-    // capped so a very tall board can't run off-screen. This is what makes the media zone height DYNAMIC —
-    // a 96px fixed box was chopping wide diagrams.
+    // Media is NEVER cropped — an option mockup a user has to compare must be shown WHOLE (a 40px .fill sliver
+    // was unreadable: you saw a strip of one board, not the layout). So compact media fits the card width and
+    // its height tracks that width, capped — which means it GROWS when the notch/card is expanded and shrinks
+    // on the narrow drop, instead of a dead fixed tile. `tall` just raises the band for a portrait mockup. A
+    // STEP diagram (non-compact) fits at a taller cap. Both dynamic — a fixed box chops wide diagrams/mockups.
     private let stepCapH: CGFloat = 460
-    private var fillMode: ContentMode { compact ? .fill : .fit }   // step media always FITS (no crop)
+    private var fillMode: ContentMode { .fit }   // all media FITS (no crop) — option mockups included
 
     var body: some View {
         Group {
             if compact {
-                content.frame(maxWidth: .infinity).frame(height: media.tall ? 420 : 40)
+                content.frame(maxWidth: .infinity)
+                    .frame(minHeight: media.tall ? 220 : 120, maxHeight: media.tall ? 480 : 300)
             } else {
                 // dynamic: image sizes to width by aspect (fit), height capped so tall boards don't overflow
                 content.frame(maxWidth: .infinity).frame(maxHeight: stepCapH)
