@@ -4520,6 +4520,7 @@ struct ActionConsentDrop: View {
         installHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
+        WhiteboardController.shared.install()   // arms the ~/.relay/whiteboard-run.json watcher: floats the native whiteboard board (PIP-style) on {active:true}
         installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
