@@ -253,6 +253,9 @@
     ti.style.display='block'; ti.style.left=scr.x+'px'; ti.style.top=scr.y+'px'; ti.style.color=(edit?edit.color:color);
     ti.style.transformOrigin='top left'; ti.style.transform='scale('+cam.s+')';
     ti.value=edit?edit.txt:''; ti.style.fontSize=(edit?edit.size:16)+'px';
+    // dictation is free: #ti is a real focused input, so macOS system dictation (the user's own shortcut)
+    // types straight into it — no mic plumbing needed. Surface it as a placeholder while the field is empty.
+    ti.placeholder=(edit&&edit.t==='note')?'speak it (Mac dictation) or type…':'type or dictate…';
     setTimeout(function(){ ti.focus(); if(edit&&ti.select) ti.select(); },0);
     function done(commit){ if(commit){ if(edit){ snap(); edit.txt=ti.value; } else if(ti.value.trim()){ snap(); objs.push({id:++uid,t:'text',color:color,x:p.x,y:p.y,txt:ti.value,size:16}); } }
       // drop an empty note (placed then dismissed without text) so no blank sticky lingers
