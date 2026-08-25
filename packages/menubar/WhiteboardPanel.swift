@@ -423,7 +423,10 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     private func snapToNotchIfNear() {
         guard !isStashed, let screen = window.screen ?? NSScreen.main else { return }
         let f = window.frame, vis = screen.visibleFrame
-        guard abs(vis.maxY - f.maxY) < 40 else { return }        // top edge within ~40pt of the top → attach
+        // Attach when the board's TOP edge is dropped anywhere in the top band (≤110pt below the menu bar, or
+        // above it) — the old 40pt zone was so tight the snap almost never fired. Generous so "drag it up →
+        // it attaches" just works; snapping flush is idempotent, so re-interacting near the top is harmless.
+        guard vis.maxY - f.maxY < 110 else { return }
         let snapped = NSRect(x: vis.midX - f.width / 2, y: vis.maxY - f.height, width: f.width, height: f.height)
         window.setFrame(snapped, display: true, animate: true)
         persistFrame()

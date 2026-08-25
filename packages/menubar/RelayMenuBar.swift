@@ -10,6 +10,7 @@ import Darwin
 import CoreText
 import ApplicationServices   // AXIsProcessTrusted() — the honest Accessibility check
 import AVFoundation          // microphone authorization
+import Carbon.HIToolbox       // RegisterEventHotKey — the ⌥V voice-paste global hotkey (consumes the key)
 
 let LABEL = "com.relay.sidekick"
 let PORT: UInt16 = 8787
@@ -4002,6 +4003,7 @@ struct ActionConsentDrop: View {
     private var dictating = false                 // ⌃⌥ dictation in progress (raw STT → paste/find, no God). True in BOTH modes.
     private var dictateRecorder: AVAudioRecorder? // separate recorder for the dictation gesture
     private var dictateWav: String?
+    private var voiceBuffer: String = ""           // the last dictation, for the on-demand ⌥V re-paste
     // ── Latched-dictation state machine (dictationMode == "latch") ────────────────────────────────
     // idle → (talk-chord tap) dictating → (⌃ tap) committing → idle · Esc aborts from any state.
     // `dictating` above is the single "recording is live" flag both modes share; these drive the LATCH
@@ -4531,6 +4533,7 @@ struct ActionConsentDrop: View {
             MainActor.assumeIsolated { self?.poll(); self?.refreshPermissionGate(); self?.checkOpenOSTrigger() }
         }
         installHotKey()
+        installVoicePasteHotKey()
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
         WhiteboardController.shared.install()   // arms the ~/.relay/whiteboard-run.json watcher: floats the native whiteboard board (PIP-style) on {active:true}
@@ -6809,6 +6812,7 @@ struct ActionConsentDrop: View {
     // which is the point of the dictation gesture (and, in find mode, the exact stored value).
     @MainActor private func pasteText(_ text: String) {
         guard !text.isEmpty else { return }
+        voiceBuffer = text   // remember the last dictation for the on-demand re-paste (⌥V, once bound)
         // Our own non-activating key panels (the ⌥⌥ launcher's Ask field, notch web widgets) can be TYPED
         // into — key events route to the key window's field editor — but they do NOT accept a synthetic ⌘V:
         // the app isn't active, so paste:/the Edit menu never reach that field (manual copy/paste is dead
@@ -6819,12 +6823,55 @@ struct ActionConsentDrop: View {
             tv.insertText(text, replacementRange: tv.selectedRange())
             return
         }
-        // Otherwise God is dictating at the cursor of ANOTHER app (we're not active) — the clipboard + a
-        // System-Events ⌘V is the right delivery there.
-        let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string)
-        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
-        try? p.run()
+        // Otherwise God is dictating at the cursor of ANOTHER app (we're not active) — deliver by a clipboard
+        // paste, but do it WITHOUT clobbering the user's own clipboard (founder 2026-08-26).
+        pasteAtCursorPreservingClipboard(text)
+    }
+
+    /// The reliable, non-clobbering paste: stash the user's clipboard, put `text` on it, synth ⌘V, then restore
+    /// the clipboard on the next runloop beat (after the paste is consumed). So dictation auto-insert (and the
+    /// on-demand ⌥V re-paste) drop text at the cursor WITHOUT touching the user's ⌘C/⌘V clipboard.
+    @MainActor private func pasteAtCursorPreservingClipboard(_ text: String) {
+        guard !text.isEmpty else { return }
+        let pb = NSPasteboard.general
+        let saved = pb.string(forType: .string)          // preserve the user's clipboard
+        pb.clearContents(); pb.setString(text, forType: .string)
+        synthCmdV()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            pb.clearContents(); if let s = saved { pb.setString(s, forType: .string) }
+        }
+    }
+
+    /// Synthesize ⌘V via CGEvent — needs only Accessibility (already granted for the guide key tap), unlike the
+    /// old osascript "System Events keystroke v", which needs a SEPARATE Automation grant that, when missing,
+    /// silently no-ops → the transcript just sat on the clipboard and auto-insert appeared broken.
+    @MainActor private func synthCmdV() {
+        let src = CGEventSource(stateID: .combinedSessionState)
+        let v: CGKeyCode = 9   // 'v'
+        let down = CGEvent(keyboardEventSource: src, virtualKey: v, keyDown: true);  down?.flags = .maskCommand
+        let up   = CGEvent(keyboardEventSource: src, virtualKey: v, keyDown: false); up?.flags = .maskCommand
+        down?.post(tap: .cghidEventTap); up?.post(tap: .cghidEventTap)
+    }
+
+    private var voicePasteHotKey: EventHotKeyRef?
+
+    /// Register ⌥V as a GLOBAL hotkey that re-pastes the last dictation at the cursor. RegisterEventHotKey
+    /// (Carbon) CONSUMES the key, so ⌥V doesn't type "√" while Switchboard runs. The C handler can't capture
+    /// self → it reaches the controller via NSApp.delegate. Founder pick 2026-08-26 (⌥V — no ⌘B/bold clash).
+    @MainActor private func installVoicePasteHotKey() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { (_, _, _) -> OSStatus in
+            DispatchQueue.main.async { MainActor.assumeIsolated { (NSApp.delegate as? RelayController)?.pasteVoiceBuffer() } }
+            return noErr
+        }, 1, &spec, nil, nil)
+        let hkID = EventHotKeyID(signature: OSType(0x52565042), id: 1)   // 'RVPB'
+        RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(optionKey), hkID, GetApplicationEventTarget(), 0, &voicePasteHotKey)
+    }
+
+    /// ⌥V pressed → drop the last dictation at the cursor (clipboard-preserving). Empty buffer → a short blip.
+    @MainActor func pasteVoiceBuffer() {
+        guard !voiceBuffer.isEmpty else { NSSound(named: "Bottle")?.play(); return }
+        pasteAtCursorPreservingClipboard(voiceBuffer)
     }
 
     // The gesture grammar: ⌃⌃ (idle) → start listening · single ⌃ (listening) → stop + act ·
