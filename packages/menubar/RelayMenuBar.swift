@@ -5385,6 +5385,51 @@ struct ActionConsentDrop: View {
         }.resume()
     }
 
+
+    // ── switchboard://open?url=… — a web page hands ITSELF to the native app ─────────────────────────
+    // Founder call 2026-08-27. A wrapp is just HTML, so a page can offer "Open in Switchboard" and get a
+    // real native window — no Chrome, no extension, and none of the extension's origin allowlist (the
+    // native window bridges window.claude into whatever it loads). One button also solves acquisition:
+    // installed → opens here; not installed → the page's own fallback sends them to the download.
+    //
+    // SECURITY — this is the admission gate, and it is the whole reason this isn't a one-liner. The window
+    // we open INJECTS the broker bridge, so without a gate any website could link
+    // switchboard://open?url=evil.example and hand an arbitrary page a route to the user's AI. Therefore:
+    //   • only http/https are accepted — no file:, javascript:, data: (a local-file read would be a leak)
+    //   • the user is ALWAYS asked, and the card names the HOST, not the full URL (a long path can be
+    //     crafted to push the real domain out of sight)
+    //   • default is deny: nothing opens unless they tap Open
+    //   • per-origin grants still apply INSIDE the window — admission is not authorization
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for u in urls where u.scheme?.lowercased() == "switchboard" { handleSwitchboardURL(u) }
+    }
+
+    @MainActor private func handleSwitchboardURL(_ u: URL) {
+        guard let comps = URLComponents(url: u, resolvingAgainstBaseURL: false),
+              (comps.host ?? "") == "open" || u.absoluteString.contains("open?"),
+              let raw = comps.queryItems?.first(where: { $0.name == "url" })?.value,
+              let target = URL(string: raw),
+              let scheme = target.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = target.host, !host.isEmpty
+        else {
+            NSLog("[open-scheme] rejected: %@", u.absoluteString)
+            showNotchWidget(WidgetSpec(kicker: "SWITCHBOARD", title: "That link couldn't be opened",
+                                       openLabel: "Dismiss", result: .text("Only http/https pages can be opened.")),
+                            onOpen: { [weak self] in self?.hideNotchWidget() })
+            return
+        }
+        let name = (comps.queryItems?.first(where: { $0.name == "name" })?.value) ?? host
+        NSLog("[open-scheme] asking to open %@", host)
+        // Default-deny: this only opens if the user taps.
+        showNotchWidget(
+            WidgetSpec(kicker: "OPEN IN SWITCHBOARD", title: host, openLabel: "Open",
+                       result: .text("\(name) wants to run here. It will be able to ask for your AI, tools and files — you approve each one separately.")),
+            onOpen: { [weak self] in
+                self?.hideNotchWidget()
+                self?.openWrappWindow(url: target, name: name)
+            })
+    }
+
     // Control-plane trigger: write {"id":"redline"} (or {"url":"…","name":"…"}) to ~/.relay/open-wrapp.json
     // and the app opens that wrapp in the native bridged window — the same file-handshake pattern as
     // guide-run.json, so any Claude thread can hand a surface to the human. Poll is fine at 2s.
