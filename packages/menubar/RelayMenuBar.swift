@@ -7868,7 +7868,7 @@ struct ActionConsentDrop: View {
     @MainActor private func pickAmbient(_ targetId: String) {
         hideAmbientCanvas()
         guard let l = readCatalog().first(where: { $0.id == targetId }) else { return }
-        launchWrapp(l, l.surfaces.first ?? "browser")
+        launchWrapp(l, preferredSurface(l))
     }
     @MainActor private func dismissAmbient() {
         hideAmbientCanvas()
@@ -8074,7 +8074,7 @@ struct ActionConsentDrop: View {
         let view = StoreFrontView(
             listings: listings,
             icon: { id in storeIcon(id) },
-            onGet: { [weak self] l in self?.launchWrapp(l, l.surfaces.first ?? "browser") },
+            onGet: { [weak self] l in guard let self else { return }; self.launchWrapp(l, self.preferredSurface(l)) },
             onSeeAll: { [weak self] cat in
                 guard let self else { return }
                 let classic = StoreView(listings: listings, present: self.storePresent(),
@@ -8209,11 +8209,24 @@ struct ActionConsentDrop: View {
     // web origin opens its page directly; a native/bridge principal with no page (e.g. God) has nothing to open.
     @MainActor private func openConnectedApp(_ app: AppRow) {
         if let id = app.listingId, let l = readCatalog().first(where: { $0.id == id }) {
-            launchWrapp(l, l.surfaces.first ?? "browser"); return
+            launchWrapp(l, preferredSurface(l)); return
         }
         if app.kind == .web, let u = URL(string: app.id) { NSWorkspace.shared.open(u); return }
         // native/bridge with no page — nothing to open.
     }
+    /// NATIVE-FIRST (founder call 2026-08-26): a web wrapp opens as a real Mac window, not a browser tab.
+    /// The bridged window has always been better — `window.claude` tunnels straight to the daemon, so no
+    /// browser and no extension are in the loop — but no catalog entry ever declared surfaces:["window"],
+    /// so the path was shipped and unused. Rather than churn 88 switchboard.json files, the RULE lives
+    /// here: a declared "browser" surface with a web UI resolves to "window". Every other surface
+    /// (god / tool / notch / batch) is a deliberate choice and passes through untouched, and an EXPLICIT
+    /// surface picked in the store still wins because this only resolves the DEFAULT.
+    @MainActor private func preferredSurface(_ l: SBListing) -> String {
+        let declared = l.surfaces.first ?? "browser"
+        guard declared == "browser", let u = l.components.ui?.url, !u.isEmpty else { return declared }
+        return "window"
+    }
+
     @MainActor private func launchWrapp(_ l: SBListing, _ surface: String) {
         hideStore()
         switch surface {
