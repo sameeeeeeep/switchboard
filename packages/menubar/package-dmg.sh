@@ -171,13 +171,15 @@ say "compiling the menu-bar app (all Swift files)…"
 # Keep this list in sync with build.sh (the dev build) — the OS surface files below drifted out once
 # and broke the DMG while the dev build worked. *.preview.swift are standalone ImageRenderer previews
 # (never in the app); TeamSection.swift is intentionally excluded, matching build.sh.
-swiftc -O -o "$STAGE/Contents/MacOS/Relay" \
-  "$HERE/main.swift" "$HERE/RelayMenuBar.swift" "$HERE/CursorGuide.swift" "$HERE/NotchLauncherView.swift" \
-  "$HERE/GodWidgetKit.swift" "$HERE/GodWebWindow.swift" "$HERE/StoreFrontView.swift" "$HERE/HtmlCapability.swift" \
-  "$HERE/SkillRunner.swift" "$HERE/AmbientSensor.swift" "$HERE/AmbientCanvas.swift" \
-  "$HERE/OSShellView.swift" "$HERE/OSSurfaceWorkspace.swift" "$HERE/OSSurfaceAutomate.swift" \
-  "$HERE/OSSurfaceKnowledge.swift" "$HERE/OSSurfaceDo.swift" \
-  -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices
+# Source list + frameworks are DERIVED FROM build.sh — never duplicated here. This script used to carry its
+# own hardcoded list, which silently drifted: WhiteboardPanel.swift (the whiteboard), NotchTray.swift and
+# LauncherRouting.swift were added to build.sh but not here, so the release build failed with
+# "cannot find 'WhiteboardController' in scope" while the dev build was fine. Parsing the one true list keeps
+# a new .swift file from ever being missing from a release again.
+SWIFT_ARGS="$(sed -n 's|^swiftc -O -o build/Relay \(.*\)$|\1|p' "$HERE/build.sh")"
+[ -n "$SWIFT_ARGS" ] || die "could not read the swiftc source list from build.sh (did its swiftc line change?)"
+# shellcheck disable=SC2086
+( cd "$HERE" && swiftc -O -o "$STAGE/Contents/MacOS/Relay" $SWIFT_ARGS )
 
 # House fonts (optional; the panel falls back to the system font if the dir is empty).
 if ls "$HERE"/fonts/*.ttf >/dev/null 2>&1 || ls "$HERE"/fonts/*.otf >/dev/null 2>&1; then

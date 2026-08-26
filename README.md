@@ -1,12 +1,21 @@
 # Switchboard
 
-**Your private AI workspace.**
+**The gateway between your AI and everything you use it for.**
 
-Run AI apps using your own subscriptions, local models, or hybrid infrastructure. Every app shares the
-same context — your data stays under your control. Install the macOS app and get instant access to a
-growing ecosystem of native and web AI apps, without breaking your workflow.
+Switchboard is a Mac app that sits in your menu bar and brokers every call. Apps ("wrapps") run on **your**
+Claude subscription or a local model. Your tools, your files, your context are *lent* to them through one
+consent gate — never copied out, never handed over.
 
-> **One workspace. Every AI app. Your data stays yours.**
+It runs **both ways**, and that's the point:
+
+- **Wrapps use Claude.** A wrapp is just a page — no backend, no API key of its own. It asks Switchboard,
+  which lends it your AI, your connected tools, and your project context.
+- **Claude uses Switchboard.** A Claude Code session connects to the same gate and *runs your wrapps* —
+  picking work off your board, calling a wrapp's actions, driving your apps. Your AI gets hands.
+
+Same broker, one consent gate, on your machine.
+
+> **Your AI, your tools, your data — patched through one board you own.**
 
 ---
 
@@ -43,6 +52,20 @@ Decisions, approvals, and guided steps appear as **cards right at the notch** �
 (`⌥1/2/3` to pick, `⌥→` to confirm), never a context-switch. Every card shows who's asking and which project
 it belongs to, so it's never a mystery prompt.
 
+### The whiteboard — sketch straight to Claude
+
+Open a floating board, draw the thing, hit send — no screenshots, no describing a layout in words. It's an
+infinite canvas with shapes, sticky notes, connector arrows that stay bound to what they point at, and
+pasted screenshots you can mark up. **Claude draws too:** it can seed the board with an editable diagram,
+and a decision card can be answered by *drawing on it* rather than picking a letter. Past boards reopen from
+a filmstrip — still editable, not flattened to an image.
+
+### The notch tray
+
+Minimise a surface — the whiteboard, a card — and it docks as a **chip at the notch** instead of vanishing.
+Click the chip to bring it back exactly where it was. Hovering the notch shows what's there; a deliberate
+tap opens the full panel.
+
 ### The launcher — `⌥⌥`
 
 A spotlight for your work: jump to a project, launch an app, find a file, or ask across everything — from
@@ -63,9 +86,9 @@ Bank and every surface — and your Claude — reads the same context.
 scattered brain-dump and your own Claude turns it into detailed cards, bundled together, with blockers
 marked between them — parked in Backlog for you to promote when you're ready.
 
-### Drive it from Claude Code
+### Claude runs your wrapps — the reverse flow
 
-It runs the other way, too. Connect a **Claude Code** session to your workspace (one click — a *Connect
+This is the half most people miss. Connect a **Claude Code** session to your workspace (one click — a *Connect
 Claude Code* card appears in your notch during setup) and it can **pick up work from your board**: move a
 task to Todo, then tell Claude *"pick up the next task"* — it claims the top unblocked one, does it, and
 marks it done, moving the card across as it goes. It can run your apps headless and scaffold new ones the
@@ -87,7 +110,8 @@ nothing is copied out, and you can revoke any grant at any time.
 | Shortcut | What it does |
 |---|---|
 | `⌃⌥` + click | God looks at your screen and helps |
-| `⌃⌥` hold | Dictate (Flow) — talk, it types |
+| `⌃⌥` hold | Dictate (Flow) — talk, it types at your cursor |
+| `⌥V` | Re-paste your last dictation (a voice clipboard, separate from `⌘C`/`⌘V`) |
 | `⌃⌃` | Ask across your work |
 | `⌥⌥` | Launcher / spotlight |
 | `⌘O` | Open the workspace |
@@ -105,15 +129,17 @@ On a notch card: `⌥1/2/3` pick · `⌥→` confirm · `⌥↑` back · `Esc` d
 - **Guru** — a guide for anything. It walks you through any task on any app step by step, adapting live to
   what's actually on your screen.
 
-### Available in the store
-- **BrandBrain** — brand strategy.
-- **IdeaBrain** — product ideas.
-- **Prism** — research and synthesis.
-- **AdForge** — ads and campaigns.
+### In the store — 94 wrapps, all free
 
-### Coming soon
-OS, Batch, Redline, Crest, Natal, Cast, Identity, Cartridge, AdPulse, Deck, Dub, and **sameep.ai** —
-tools for orchestration, review, storytelling, analytics, and autonomy.
+Every one runs on your own AI. A few of them:
+
+| | | |
+|---|---|---|
+| **Brandbrain** — brand studio | **Ideabrain** — pressure-test an idea | **Redline** — review + edit |
+| **Crest** — logos and marks | **Deck** — build the slide deck | **Autopilot** — plan your week |
+| **Clone** — clone a voice | **Cut** — video timeline | **Prism** — research + synthesis |
+
+[Browse the whole board →](https://thelastprompt.ai/apps/) · or scaffold your own with the `wrapp` skill.
 
 ---
 
