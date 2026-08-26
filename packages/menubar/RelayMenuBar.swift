@@ -4537,6 +4537,7 @@ struct ActionConsentDrop: View {
         installGlow()
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
         WhiteboardController.shared.install()   // arms the ~/.relay/whiteboard-run.json watcher: floats the native whiteboard board (PIP-style) on {active:true}
+        installUpdateCheck()           // daily GitHub release check → ONE notch card when a newer build ships
         installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
@@ -5315,6 +5316,75 @@ struct ActionConsentDrop: View {
         web.open()
         NSLog("[open-wrapp] native window opened: %@ → %@", name, url.absoluteString)
     }
+
+    // ── UPDATE CHECK ────────────────────────────────────────────────────────────────────────────────
+    // Founder call 2026-08-26: there was NO way to tell users a new build shipped — someone on 0.3.4 would
+    // never learn 0.3.5 existed. This is the light version: ask GitHub's PUBLIC releases API for the latest
+    // tag, compare it to our own CFBundleShortVersionString, and raise ONE notch card when we're behind.
+    //
+    // Privacy: the product line is "nothing leaves your Mac", so this is deliberately the smallest possible
+    // exception and is stated plainly — an unauthenticated GET to a public endpoint, no identifiers, no
+    // telemetry, nothing about the user or their machine attached. It can be turned off with
+    // `defaults write ai.thelastprompt.switchboard relay.update.optOut -bool YES`.
+    //
+    // It never nags: once a version has been surfaced it's remembered, so the same release is announced once.
+    private var updateTimer: Timer?
+    private static let updateSeenKey = "relay.update.lastSeenVersion"
+    private static let updateOptOutKey = "relay.update.optOut"
+
+    private func installUpdateCheck() {
+        guard !UserDefaults.standard.bool(forKey: RelayController.updateOptOutKey) else {
+            NSLog("[update] opted out — skipping check"); return
+        }
+        // Not at launch: let the app settle first, then once a day.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in self?.checkForUpdate() }
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60 * 24, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkForUpdate() }
+        }
+    }
+
+    /// "0.3.10" > "0.3.9" — compare dotted integers, not strings.
+    private static func isNewer(_ remote: String, than local: String) -> Bool {
+        let r = remote.split(separator: ".").map { Int($0.filter(\.isNumber)) ?? 0 }
+        let l = local.split(separator: ".").map { Int($0.filter(\.isNumber)) ?? 0 }
+        for i in 0..<max(r.count, l.count) {
+            let a = i < r.count ? r[i] : 0, b = i < l.count ? l[i] : 0
+            if a != b { return a > b }
+        }
+        return false
+    }
+
+    @MainActor private func checkForUpdate() {
+        let here = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+        guard let api = URL(string: "https://api.github.com/repos/sameeeeeeep/switchboard/releases/latest") else { return }
+        var req = URLRequest(url: api, timeoutInterval: 12)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { data, _, err in
+            guard err == nil, let data,
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let tag = obj["tag_name"] as? String else { return }
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            guard RelayController.isNewer(latest, than: here) else { return }
+            let title = (obj["name"] as? String) ?? "Switchboard \(latest)"
+            Task { @MainActor in
+                // Announce a given version ONCE — never nag.
+                let seen = UserDefaults.standard.string(forKey: RelayController.updateSeenKey) ?? ""
+                guard seen != latest else { return }
+                UserDefaults.standard.set(latest, forKey: RelayController.updateSeenKey)
+                NSLog("[update] %@ is out (running %@)", latest, here)
+                self.showNotchWidget(
+                    WidgetSpec(kicker: "UPDATE", title: "Switchboard \(latest) is out",
+                               openLabel: "Download", result: .text(title)),
+                    onOpen: { [weak self] in
+                        self?.hideNotchWidget()
+                        if let dmg = URL(string: "https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg") {
+                            NSWorkspace.shared.open(dmg)
+                        }
+                    })
+            }
+        }.resume()
+    }
+
     // Control-plane trigger: write {"id":"redline"} (or {"url":"…","name":"…"}) to ~/.relay/open-wrapp.json
     // and the app opens that wrapp in the native bridged window — the same file-handshake pattern as
     // guide-run.json, so any Claude thread can hand a surface to the human. Poll is fine at 2s.
