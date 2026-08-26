@@ -168,9 +168,6 @@ fi
 
 # ---------- 7. compile the menubar app + Info.plist ----------
 say "compiling the menu-bar app (all Swift files)…"
-# Keep this list in sync with build.sh (the dev build) — the OS surface files below drifted out once
-# and broke the DMG while the dev build worked. *.preview.swift are standalone ImageRenderer previews
-# (never in the app); TeamSection.swift is intentionally excluded, matching build.sh.
 # Source list + frameworks are DERIVED FROM build.sh — never duplicated here. This script used to carry its
 # own hardcoded list, which silently drifted: WhiteboardPanel.swift (the whiteboard), NotchTray.swift and
 # LauncherRouting.swift were added to build.sh but not here, so the release build failed with
