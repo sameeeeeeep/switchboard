@@ -7,7 +7,8 @@ import { Relay, whenRelayReady } from "./index.js";
  * same everywhere and the app becomes "yours" the moment you connect. It is the account / connect
  * button for Switchboard:
  *
- *   • not installed        → "Get Switchboard"     (menu: Add to Chrome / full setup guide)
+ *   • no provider          → "Open in Switchboard" (switchboard://open — native, any origin;
+ *                            falls back to the download; Chrome extension is now optional)
  *   • sidekick asleep      → "Your sidekick is asleep" (amber, auto-recovers on the health push)
  *   • daemon unpaired      → "Almost there — pair in the side panel"
  *   • installed, no grant  → "Connect Switchboard" (runs the consent flow)
@@ -308,20 +309,41 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     if (state.kind === "not-installed") {
       const url = state.installUrl;
       const wrap = el("div", "wrap");
+      // PRIMARY: hand this page to the Mac app (switchboard://open). The native window bridges
+      // window.claude into ANY origin, so this needs no Chrome extension and is subject to no origin
+      // allowlist — the install is ONE part now, not two. If the app isn't there the scheme does
+      // nothing, so we fall back to the download after a beat. The extension is demoted to optional
+      // (it only matters for staying in a browser tab).
       const b = el("button", "btn get");
-      b.append(el("span", "glyph"), el("span", undefined, "Get Switchboard"), el("span", "arr", "↗"));
-      b.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
-      wrap.append(b);
+      b.append(el("span", "glyph"), el("span", undefined, "Open in Switchboard"), el("span", "arr", "↗"));
+      b.onclick = (e) => {
+        e.stopPropagation();
+        let left = false;
+        const onHide = () => { left = true; };
+        document.addEventListener("visibilitychange", onHide, { once: true });
+        window.addEventListener("blur", onHide, { once: true });
+        try {
+          const here = location.href;
+          location.href = "switchboard://open?url=" + encodeURIComponent(here) +
+                          "&name=" + encodeURIComponent(document.title || location.hostname);
+        } catch { /* scheme unavailable — the fallback below handles it */ }
+        window.setTimeout(() => {
+          document.removeEventListener("visibilitychange", onHide);
+          if (!left) window.open(url, "_blank", "noopener");   // not installed → get it
+        }, 1200);
+      };
+      // The menu is now the SECONDARY path, for people who'd rather stay in the browser.
+      const caret = el("button", "btn caret", "⌄");
+      caret.onclick = (e) => { e.stopPropagation(); menuOpen = !menuOpen; render(); };
+      wrap.append(b, caret);
       if (menuOpen) {
         const menu = el("div", "menu");
-        // The only rung whose menu had no explanatory copy — and the one where the two-part
-        // install most needs saying, or "Add to Chrome" reads as the complete action.
-        menu.append(el("div", "body", "Two parts: the Chrome extension, then Switchboard for Mac."));
-        const store = el("button", "item", "1 · Add to Chrome ↗");
-        store.onclick = () => { menuOpen = false; render(); window.open(CHROME_STORE_URL, "_blank", "noopener"); };
-        const guide = el("button", "item", "2 · Get Switchboard for Mac ↗");
+        menu.append(el("div", "body", "Opens this page as a Mac app on your own AI. Don't have it yet?"));
+        const guide = el("button", "item", "Get Switchboard for Mac ↗");
         guide.onclick = () => { menuOpen = false; render(); window.open(url, "_blank", "noopener"); };
-        menu.append(store, guide);
+        const store = el("button", "item", "Prefer your browser? Add to Chrome ↗");
+        store.onclick = () => { menuOpen = false; render(); window.open(CHROME_STORE_URL, "_blank", "noopener"); };
+        menu.append(guide, store);
         wrap.append(menu);
       }
       mount.append(wrap);
