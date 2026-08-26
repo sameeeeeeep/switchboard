@@ -6354,6 +6354,7 @@ struct ActionConsentDrop: View {
         // ── Welcome
         steps.append(["id": "welcome",
             "text": "Welcome. In ninety seconds you're running AI on your own Mac — nothing leaves it.",
+            "say": "Welcome. In about ninety seconds you'll be running AI on your own Mac, and nothing leaves it.",
             "hint": "⌥→ next · ⌥. hide me · esc leave."])
         // ── Access — only the permissions not yet granted (a returning user skips these)
         for p in GodPerm.allCases where !p.granted {
@@ -6361,14 +6362,17 @@ struct ActionConsentDrop: View {
             case .mic:
                 steps.append(["id": "grant-mic",
                     "text": "Mic — the ear that hears you. Click Allow on the card.",
+                    "say": "First the microphone — that's the ear that hears you. Click Allow on the card.",
                     "hint": "No window? The card opens System Settings — flip Switchboard on."])
             case .accessibility:
                 steps.append(["id": "grant-accessibility",
                     "text": "Accessibility — the hand that points and types. Add Switchboard, switch it on.",
+                    "say": "Accessibility is the hand that points and types. Add Switchboard to the list and switch it on.",
                     "hint": "macOS needs you to add it yourself. The card waits."])
             case .screen:
                 steps.append(["id": "grant-screen",
                     "text": "Screen Recording — the eyes. Click Allow.",
+                    "say": "Screen recording is the eyes. Click Allow — that's the last one.",
                     "hint": "Last one. ⌥→ to keep going."])
             }
         }
@@ -6376,47 +6380,61 @@ struct ActionConsentDrop: View {
         if model.running && !model.signedIn {
             steps.append(["id": "sign-in",
                 "text": "Switchboard runs on YOUR Claude — no API key, no extra bill.",
+                "say": "Switchboard runs on your own Claude. No API key, no extra bill. Run claude in the terminal I opened, then carry on.",
                 "hint": "Run `claude` in the Terminal I opened, then ⌥→. Dot turns lime when you're in."])
         }
         // ── The three keys (hotkeys stay live during a guide, so this is real practice). Each teaches its
         //    shortcut as a keycap button. Summon + launcher use the NOTCH, so the card rides the CURSOR to free it.
         steps.append(["id": "key-summon",
             "text": "Your summon — tap it and say what you need. The orb wakes and listens.",
+            "say": "This is your summon. Tap it and say what you need — the orb wakes and listens.",
             "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
             "placement": "cursor",
             "doneWhen": ["kind": "event", "name": "summon"],   // advances the instant you actually ⌃⌃
             "hint": "Just try it — I'll move on when you do."])
         steps.append(["id": "key-dictation",
             "text": "Hold in any text field and speak — your words land at the cursor.",
+            "say": "Hold this in any text field and speak, and your words land at your cursor. If you want them again later, option V pastes your last dictation anywhere.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
             "doneWhen": ["kind": "event", "name": "dictation"],
             "hint": "Hold to talk, release to drop — I'll move on when you do."])
         steps.append(["id": "key-launcher",
             "text": "Your home — projects, files, apps, all searchable in one place.",
+            "say": "Double-tap Option for your home — projects, files and apps, all searchable in one place.",
             "keys": [["caps": ["⌥", "⌥"], "name": "Home"]],
             "placement": "cursor",
             "doneWhen": ["kind": "event", "name": "launcher"],
             "hint": "Double-tap Option — I'll move on when you do."])
+        // ── The whiteboard — when drawing beats describing (and Claude can draw back)
+        steps.append(["id": "whiteboard",
+            "text": "When it's easier to draw than describe — sketch it, and send the drawing to Claude.",
+            "say": "One more. When it's easier to draw something than describe it, open a whiteboard and sketch it. Claude reads the drawing — and can draw back, so you can answer a question by marking up what it drew.",
+            "hint": "Ask any thread for a whiteboard. Minimise it and it parks as a chip at the notch. ⌥→."])
         // ── First project (seeded demo so it's never a blank slate)
         steps.append(["id": "first-project",
             "text": "The project chip is the context every app borrows. I seeded a demo one.",
+            "say": "The project chip is the context every app borrows. I've seeded a demo one for you.",
             "hint": "Click it to peek — make your own later. ⌥→."])
         // ── First wrapp (AI)
         steps.append(["id": "first-wrapp",
             "text": "Run something real: open ideabrain, give it a rough idea, watch it think.",
+            "say": "Now run something real. Open ideabrain, give it a rough idea, and watch it think.",
             "hint": "A wrapp is a skin over your Claude — no setup. ⌥→ after a result."])
         // ── First non-AI tool (instant win, zero setup, private by construction)
         steps.append(["id": "first-tool",
             "text": "Not everything needs AI. Try QR — instant, on-device, nothing sent.",
+            "say": "Not everything needs AI. Try Q R — it's instant, on-device, and nothing gets sent.",
             "hint": "The non-AI tools are free + private. ⌥→ when you've got one."])
         // ── Background tasks
         steps.append(["id": "background",
             "text": "Long jobs run in the background — you'll get a notch nudge when they finish.",
+            "say": "Long jobs keep running in the background. You'll get a nudge at the notch when they're done.",
             "hint": "Click the dot to peek at the Running rail. ⌥→."])
         // ── Set up by choosing — an OPTIONS step. The pick is applied LIVE via onOptionApprove
         //    (onboarding is the first consumer of the guide's options hook), and recorded in the result.
         steps.append(["id": "setup-economy",
             "text": "Your call — full quality, or economy.",
+            "say": "Your call — full quality, or economy to stretch your usage.",
             "hint": "⌥1 / ⌥2 to try · ⌥→ to lock in · change anytime in Settings.",
             "options": [
                 ["id": "full", "label": "Full quality", "accent": "lime",   "detail": "Best answers",         "recommended": true],
@@ -6424,7 +6442,8 @@ struct ActionConsentDrop: View {
             ]])
         // ── What's next (compact inline recap — three KeyChips would overflow the card)
         steps.append(["id": "done",
-            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥⌥ home.",
+            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥V re-paste · ⌥⌥ home · tap the notch to open the board.",
+            "say": "That's it. Control-control to ask, control-option to dictate, option-option for home — and tap the notch any time to open the board.",
             "hint": "Browse the store for more. Replay anytime from the dot."])
 
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
