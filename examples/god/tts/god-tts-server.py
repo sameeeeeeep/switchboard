@@ -149,20 +149,47 @@ def _voice_state(name: str):
     return state
 
 
-def _synth(voice: str, text: str):
-    # Runs on the _gpu thread: clone (if needed) → generate → encode WAV bytes.
+def _post_speed_pitch(wav: bytes, speed, semitones, sr: int) -> bytes:
+    """Optional speed / pitch trim via ffmpeg (pocket-tts has no direct knobs). speed changes tempo
+    with pitch preserved; semitones shifts pitch with tempo preserved (asetrate → resample → atempo).
+    Returns the wav unchanged when neither is asked."""
+    sp = max(0.5, min(2.0, float(speed))) if speed else 1.0
+    st = max(-12.0, min(12.0, float(semitones))) if semitones else 0.0
+    if abs(sp - 1.0) < 1e-3 and abs(st) < 1e-3:
+        return wav
+    af = []
+    if abs(st) >= 1e-3:
+        f = 2.0 ** (st / 12.0)
+        af += [f"asetrate={int(sr * f)}", f"aresample={sr}", f"atempo={1.0 / f:.6f}"]
+    if abs(sp - 1.0) >= 1e-3:
+        af.append(f"atempo={sp:.6f}")
+    with tempfile.TemporaryDirectory() as td:
+        i = Path(td) / "i.wav"; o = Path(td) / "o.wav"; i.write_bytes(wav)
+        try:
+            subprocess.run([FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-i", str(i),
+                            "-af", ",".join(af), str(o)], check=True, capture_output=True, timeout=60)
+            return o.read_bytes()
+        except subprocess.CalledProcessError:
+            return wav   # never fail a synth over a post-trim; hand back the untrimmed audio
+
+
+def _synth(voice: str, text: str, steps=None, temp=None, speed=None, semitones=None):
+    # Runs on the _gpu thread: clone (if needed) → generate → optional speed/pitch trim → WAV bytes.
     state = _voice_state(voice)
     if state is None:
         return None
     m = _model_get()
-    # For a user-uploaded CLONE (any voice that isn't a fast preset), spend more flow-matching steps
-    # and a lower temperature so the output tracks the reference speaker's timbre instead of drifting.
-    # Restore the fast defaults afterwards so Moira / the companion voice stay snappy. Safe to mutate
-    # the shared model here: all synth is funnelled onto the single _gpu thread, so this is serialized.
+    # Resolve generation params: an explicit per-request control wins; else a user CLONE gets the HQ
+    # defaults (more steps + lower temp to track the speaker); else the model's own fast defaults.
     hq = voice not in FAST_VOICES
+    use_steps = steps if steps is not None else (CLONE_LSD_STEPS if hq else None)
+    use_temp = temp if temp is not None else (CLONE_TEMP if hq else None)
+    # Safe to mutate the shared model here: all synth is funnelled onto the single _gpu thread.
     prev_steps, prev_temp = m.lsd_decode_steps, m.temp
-    if hq:
-        m.lsd_decode_steps, m.temp = CLONE_LSD_STEPS, CLONE_TEMP
+    if use_steps is not None:
+        m.lsd_decode_steps = max(1, min(12, int(use_steps)))
+    if use_temp is not None:
+        m.temp = max(0.05, min(1.5, float(use_temp)))
     try:
         # trim_start_ms/fade_in_ms suppress the decoder's first-frame transient (an audible click).
         audio = m.generate_audio(state, text, trim_start_ms=40, fade_in_ms=15)
@@ -170,12 +197,17 @@ def _synth(voice: str, text: str):
         m.lsd_decode_steps, m.temp = prev_steps, prev_temp
     buf = io.BytesIO()
     sf.write(buf, np.asarray(audio), m.sample_rate, format="WAV")
-    return buf.getvalue()
+    return _post_speed_pitch(buf.getvalue(), speed, semitones, m.sample_rate)
 
 
 class Speak(BaseModel):
     text: str
     voice: str = "moira"
+    # optional per-request voice controls (Clone wrapp tuning). None → the voice's own defaults.
+    steps: int | None = None        # 1(fast)–8(more faithful) flow-matching steps — "Expression / detail"
+    temp: float | None = None       # 0.3(hug speaker)–0.7(loose) — "Faithfulness" (lower hugs her more)
+    speed: float | None = None      # 0.5–2.0 playback speed (tempo; pitch preserved)
+    semitones: float | None = None  # -12..+12 pitch shift (tempo preserved)
 
 
 class Clone(BaseModel):
@@ -363,7 +395,7 @@ def speak(s: Speak):
     text = (s.text or "").strip()
     if not text:
         return JSONResponse({"error": "empty text"}, status_code=400)
-    wav = _on_gpu(_synth, s.voice, text)
+    wav = _on_gpu(_synth, s.voice, text, s.steps, s.temp, s.speed, s.semitones)
     if wav is None:
         return JSONResponse({"error": f"no voice '{s.voice}'"}, status_code=404)
     _touch()   # refresh the keep-warm window from this real use

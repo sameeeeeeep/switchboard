@@ -68,6 +68,12 @@ let voiceName = "";        // what the user names the clone
 let voices = [];           // names known to the engine
 let savedVoice = "";       // the name we just cloned (drives the Generate panel)
 let genText = "", genUrl = null, genBackend = "";
+// Per-voice tuning — dial a clone toward the real person. Defaults match the on-device clone HQ path
+// (6 steps / temp 0.45); speed & pitch are ffmpeg post-trims. Kept per voice while the tab is open.
+const TUNE_DEFAULT = { steps: 6, temp: 0.45, speed: 1.0, semitones: 0 };
+let tuneByVoice = {};
+let tuneOpen = false;
+const tuneFor = (v) => (tuneByVoice[v] ||= { ...TUNE_DEFAULT });
 let busy = { fetch: false, clone: false, gen: false };
 let err = "";
 
@@ -243,8 +249,12 @@ async function generate() {
   try {
     // ALWAYS synth on the on-device clone engine directly — it speaks THIS clone or returns a clear
     // error. Never relay.speak (see the header note): that path degrades to the default Mac voice.
+    const t = tuneFor(savedVoice);
+    const body = { text, voice: savedVoice, steps: t.steps, temp: t.temp };
+    if (Math.abs(t.speed - 1) > 1e-3) body.speed = t.speed;
+    if (t.semitones) body.semitones = t.semitones;
     const r = await fetch(`${GOD}/speak`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice: savedVoice }), signal: AbortSignal.timeout(120000) });
+      body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
       throw new Error(e.error || `voice engine returned ${r.status}`);
@@ -327,6 +337,46 @@ function render() {
     ta.oninput = () => { genText = ta.value; };
     ta.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate(); });
     gen.append(ta);
+
+    // ── Tune the voice — dial this clone toward the real person ──────────────────────────────
+    const t = tuneFor(savedVoice);
+    const tune = el("div"); tune.style.cssText = "margin-top:12px;";
+    const tHead = el("button", "act");
+    tHead.textContent = (tuneOpen ? "▾ " : "▸ ") + "Tune the voice";
+    tHead.onclick = () => { tuneOpen = !tuneOpen; render(); };
+    tune.append(tHead);
+    if (tuneOpen) {
+      const box = el("div"); box.style.cssText = "margin-top:12px; display:flex; flex-direction:column; gap:13px; padding:14px 15px; border:1px solid var(--edge); border-radius:12px; background:var(--inset);";
+      // label, min, max, step, get(), set(v), format(v)
+      const row = (label, hint, min, max, step, get, set, fmt) => {
+        const r = el("div"); r.style.cssText = "display:flex; flex-direction:column; gap:6px;";
+        const top = el("div"); top.style.cssText = "display:flex; justify-content:space-between; align-items:baseline; gap:10px;";
+        const lab = el("span"); lab.style.cssText = "font:500 11px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim);"; lab.textContent = label;
+        const val = el("span"); val.style.cssText = "font:500 11.5px/1 var(--mono); color:var(--accent);"; val.textContent = fmt(get());
+        top.append(lab, val);
+        const rng = el("input"); rng.type = "range"; rng.min = min; rng.max = max; rng.step = step; rng.value = get();
+        rng.style.cssText = "width:100%; accent-color:var(--accent); cursor:pointer;";
+        rng.oninput = () => { set(parseFloat(rng.value)); val.textContent = fmt(parseFloat(rng.value)); };
+        const h = el("div"); h.style.cssText = "font:400 10.5px/1.4 var(--mono); color:var(--ink-faint);"; h.textContent = hint;
+        r.append(top, rng, h);
+        return r;
+      };
+      // Faithfulness 0–100% ↔ temp 0.7(loose)→0.3(hugs her)
+      const faithGet = () => Math.round((0.7 - t.temp) / 0.4 * 100);
+      const faithSet = (p) => { t.temp = +(0.7 - (p / 100) * 0.4).toFixed(3); };
+      box.append(
+        row("Faithfulness", "Higher hugs her voice more closely (less drift).", 0, 100, 5, faithGet, faithSet, (v) => v + "%"),
+        row("Expression", "More detail per frame — richer, a touch slower.", 1, 8, 1, () => t.steps, (v) => { t.steps = v; }, (v) => v + " / 8"),
+        row("Speed", "Playback tempo — pitch stays the same.", 0.5, 2, 0.05, () => t.speed, (v) => { t.speed = v; }, (v) => v.toFixed(2) + "×"),
+        row("Pitch", "Shift up or down in semitones — tempo stays.", -12, 12, 1, () => t.semitones, (v) => { t.semitones = v; }, (v) => (v > 0 ? "+" : "") + v + " st"),
+      );
+      const reset = el("button", "act"); reset.textContent = "Reset";
+      reset.style.cssText = "align-self:flex-start;"; reset.onclick = () => { tuneByVoice[savedVoice] = { ...TUNE_DEFAULT }; render(); };
+      box.append(reset);
+      tune.append(box);
+    }
+    gen.append(tune);
+
     const grow = el("div", "genrow");
     if (voices.length > 1) {
       const sel2 = el("select", "voice");
