@@ -5993,9 +5993,10 @@ struct ActionConsentDrop: View {
         "deck", "dub",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
-        // A wrapp whose PRIMARY surface is "window" is a full app, not a glance widget — the launcher's
-        // Enter honors the catalog and opens it in the native bridged window instead.
-        if l.surfaces.first == "window" { launchWrapp(l, "window"); return }
+        // A full-page wrapp opens as a native bridged window, not a glance widget. Resolve through the
+        // ONE canonical resolver (preferredSurface upgrades a `browser`+ui.url wrapp to `window`), so the
+        // launcher opens clone & every full-page wrapp natively — same as the featured store "Get".
+        if preferredSurface(l) == "window" { launchWrapp(l, "window"); return }
         // Skills all share ONE generic widget (paste → run the skill → glance result), selected by
         // ?skill=<id>. skill-widget.html reads the id from the query string AND window.__widgetInput.skill.
         if l.category == "skill", let wurl = URL(string: "http://localhost:5188/skill-widget.html?skill=\(l.id)") {
@@ -8258,7 +8259,9 @@ struct ActionConsentDrop: View {
             onSeeAll: { [weak self] cat in
                 guard let self else { return }
                 let classic = StoreView(listings: listings, present: self.storePresent(),
-                                        onLaunch: { [weak self] l, s in self?.launchWrapp(l, s) },
+                                        // Re-resolve through preferredSurface (not StoreView's raw surface) so the
+                                        // classic list opens full-page wrapps natively, identical to the featured front.
+                                        onLaunch: { [weak self] l, _ in guard let self else { return }; self.launchWrapp(l, self.preferredSurface(l)) },
                                         onClose: { [weak self] in self?.hideStore() },
                                         onAddLocal: { [weak self] in self?.addLocalWrapp() },
                                         initialCategory: cat)
