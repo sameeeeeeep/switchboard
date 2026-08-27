@@ -74,6 +74,8 @@ struct GuideStep {
     var options: [GuideOption]? = nil  // A/B/C variants to compare + approve (zone 5); ⌥→ = approve selected
     var placement: String? = nil    // "notch" | "dock" | "cursor" — where the card sits (nil = smart default)
     var keys: [GuideKeyGroup]? = nil   // shortcut(s) to teach, drawn as keycap buttons (zone: taught-keys)
+    var yieldsTo: String? = nil     // this step's practice opens a full surface ("launcher"|"summon"): collapse the
+                                    // card while that surface is up, and advance only once it CLOSES — never draw over it
 }
 
 // Where the presence/guide card sits. notch = fixed top-center + CLICKABLE; dock = fixed bottom (keyboard);
@@ -1393,9 +1395,28 @@ final class CursorGuide {
     /// The app calls this when a taught gesture actually fires (summon/dictation/launcher), so a step whose
     /// doneWhen is `{kind:"event",name:…}` advances the moment the user DOES it — no ⌥→ needed. Only counts
     /// while a guide is active; the ~4Hz watcher picks it up on its next tick.
+    // Which full surface the current step yielded to (launcher/orb) — we collapsed for it and are waiting
+    // for it to CLOSE before advancing, so the next card never draws over it (the launcher-clash fix).
+    private var yieldingSurface: String? = nil
+
     func noteEvent(_ name: String) {
         guard isActive, !capturingFeedback else { return }
+        // If the CURRENT step yields to this surface, get out of its way: collapse to the pill and DON'T
+        // advance yet. We advance when the surface closes (noteEventClose) so the next card can't overlap it.
+        if idx < steps.count, steps[idx].yieldsTo == name {
+            yieldingSurface = name
+            model.collapsed = true
+            return
+        }
         observedEvent = name
+    }
+
+    // The surface a step yielded to has CLOSED — expand the card again and let the step advance.
+    func noteEventClose(_ name: String) {
+        guard isActive, yieldingSurface == name else { return }
+        yieldingSurface = nil
+        model.collapsed = false
+        observedEvent = name   // now the step's doneWhen(event) can fire → advance to the next card
     }
 
     // ── chord edge-detect (⌃⌥ down → release = one signal; +⇧ while held = fail)
@@ -1534,6 +1555,7 @@ final class CursorGuide {
                 if !opts.isEmpty { step.options = Array(opts.prefix(3)) }   // cap at A/B/C (spec §7)
             }
             step.placement = (s["placement"] as? String)
+            step.yieldsTo = s["yieldsTo"] as? String
             if let rawKeys = s["keys"] as? [[String: Any]] {
                 let groups: [GuideKeyGroup] = rawKeys.compactMap { g in
                     guard let caps = g["caps"] as? [String], !caps.isEmpty else { return nil }

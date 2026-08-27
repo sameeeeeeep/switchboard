@@ -5842,6 +5842,7 @@ struct ActionConsentDrop: View {
         if let m = launcherMonitor { NSEvent.removeMonitor(m); launcherMonitor = nil }
         if let k = launcherKeyMonitor { NSEvent.removeMonitor(k); launcherKeyMonitor = nil }
         if let p = launcherPanel { dismissToNotch(p) }
+        CursorGuide.shared.noteEventClose("launcher")   // a yielded guide step resumes once the launcher is gone
     }
 
     // ── Guide FEEDBACK note surface — the notch becomes an anchored input during a guide (docs/FEEDBACK-CAPTURE.md).
@@ -6563,7 +6564,6 @@ struct ActionConsentDrop: View {
             "say": "This is your summon. Tap it and say what you need — the orb wakes and listens.",
             "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
             "placement": "cursor",
-            "yieldsTo": "summon",
             "doneWhen": ["kind": "event", "name": "summon"],
             "hint": "Just try it — I'll move on when you do."])
         // ── Beat 4 · Say something — dictation. (O3 opens a real scratch field to talk into; here the beat exists.)
