@@ -4324,7 +4324,7 @@ struct ActionConsentDrop: View {
                         // voice list stays truthful, and say what's actually wrong.
                         try? FileManager.default.removeItem(atPath: dst)
                         self.model.refreshFiles()
-                        self.toast(self.voiceEngineHint(err))
+                        self.offerVoiceEngineInstall(err)   // engine unwired → offer to set it up (opt-in)
                     }
                 }
             }.resume()
@@ -4340,6 +4340,48 @@ struct ActionConsentDrop: View {
             return "Voice cloning isn't set up — the voice engine (:7897) isn't running."
         }
         return "Couldn't clone that voice — check the voice engine and try again."
+    }
+
+    // When the clone engine is simply UNWIRED (the common fresh-install case), don't dead-end on a toast —
+    // OFFER to set it up. Opt-in by design: the heavy ~800MB (MLX + the voice model) is pulled only when
+    // the user says yes here, so nothing heavy ships in the app or sits idle (device-lightness). A genuine
+    // clone error (engine up, request rejected) just reports.
+    @MainActor private func offerVoiceEngineInstall(_ err: Error?) {
+        let notRunning = (err as? URLError).map {
+            [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .timedOut].contains($0.code)
+        } ?? false
+        guard notRunning else { toast(voiceEngineHint(err)); return }
+        let a = NSAlert()
+        a.messageText = "Set up the voice engine?"
+        a.informativeText = "Voice cloning runs a small on-device engine that isn't installed yet. Setting it up is a one-time ~800MB download (the MLX runtime + the voice model) and runs in the background. Cloning a specific person's voice also needs a free Hugging Face sign-in."
+        a.addButton(withTitle: "Set up"); a.addButton(withTitle: "Not now")
+        NSApp.activate(ignoringOtherApps: true)
+        if a.runModal() == .alertFirstButtonReturn { installVoiceEngine() }
+    }
+
+    // Run the BUNDLED voice-engine installer (Resources/god/tts/install-voice-engine.sh) in the
+    // background. Runs through a LOGIN shell (`zsh -lc`) so the user's PATH — Homebrew python etc. —
+    // is present; a GUI-launched app otherwise has a bare PATH and the installer can't find python3.
+    // Idempotent (the script rebuilds the venv + reloads the LaunchAgent on every run).
+    @MainActor private func installVoiceEngine() {
+        let script = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("god/tts/install-voice-engine.sh")
+        guard FileManager.default.fileExists(atPath: script) else {
+            toast("Voice engine installer isn't in this build — update Switchboard.")
+            return
+        }
+        toast("Setting up the voice engine — one-time ~800MB download, running in the background…")
+        let log = (RELAY_DIR as NSString).appendingPathComponent("god-tts.log")
+        DispatchQueue.global(qos: .utility).async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = ["-lc", "bash '\(script)' >> '\(log)' 2>&1"]
+            do { try p.run(); p.waitUntilExit() } catch { }
+            let ok = p.terminationStatus == 0
+            Task { @MainActor in
+                self.toast(ok ? "Voice engine ready — try cloning again."
+                              : "Voice engine setup didn't finish — see ~/.relay/god-tts.log")
+            }
+        }
     }
 
     // Remove a connected app/site by origin (web / tab / iPhone). Native apps go through

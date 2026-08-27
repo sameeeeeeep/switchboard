@@ -112,6 +112,14 @@ cp "$ROOT/examples/god/video2ai-pipeline.mjs" "$RES/god/video2ai-pipeline.mjs"
 # Flow's whisper STT adapter — the menubar daemon's RELAY_STT_CMD points here so God can hear you
 # (OpenAI `whisper --model tiny`, on-device, Homebrew PATH prepended inside the adapter).
 cp "$ROOT/examples/flow/whisper-stt.mjs" "$RES/god/whisper-stt.mjs"
+# The VOICE ENGINE installer + server (Clone / Convert / God's voice all speak through :7897). These
+# two files are TINY (~60KB) — the heavy ~800MB (MLX venv + pocket-tts weights) is pulled ON DEMAND by
+# the installer only when the user opts in (installVoiceEngine in the app), so the DMG stays lean.
+# Without this, a fresh install has no way to set the engine up and those features never work.
+mkdir -p "$RES/god/tts"
+cp "$ROOT/examples/god/tts/install-voice-engine.sh" "$RES/god/tts/install-voice-engine.sh"
+cp "$ROOT/examples/god/tts/god-tts-server.py" "$RES/god/tts/god-tts-server.py"
+say "bundled voice-engine installer ($(du -sh "$RES/god/tts" | cut -f1) — heavy engine installs on demand)"
 WS_DIR="$(cd "$ROOT" && node -e "process.stdout.write(require('path').dirname(require.resolve('ws/package.json')))" 2>/dev/null || true)"
 [ -n "$WS_DIR" ] && [ -d "$WS_DIR" ] || die "ws package not found — run npm install first"
 mkdir -p "$RES/god/node_modules/ws"
