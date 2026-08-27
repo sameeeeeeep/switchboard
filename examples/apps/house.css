@@ -1,0 +1,48 @@
+/* ============================================================================================
+   Switchboard wrapp house shell — the DOT-MATRIX / LED identity, in ONE place.
+   Every wrapp links this AFTER its own inline <style>, so this is the single source of truth for
+   the brand marks: the Doto LED wordmark, the lamp cluster (no logo-square), and the dot-matrix
+   display type. It only overrides the identity bits — surfaces, tokens and app CSS stay as they are.
+   Change the brand here once; every wrapp follows. (Founder: lime + Doto dot-matrix, never a
+   generic mark — see relay-brand-look-lime-doto.)
+   ============================================================================================ */
+@import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;600;800;900&display=swap");
+
+:root { --dotmx: "Doto", ui-monospace, monospace; }
+
+/* Wordmark — Doto lamps, one lime, no two-tone split. */
+.word {
+  font: 800 22px/1 var(--dotmx) !important;
+  letter-spacing: .04em !important;
+  text-transform: uppercase !important;
+  color: var(--accent) !important;
+  text-shadow: 0 0 13px rgba(200, 242, 80, .30);
+  gap: 12px !important;
+}
+.word em { font-style: normal !important; color: var(--accent) !important; }
+
+/* The old green rounded-square logo → a 2×2 LED lamp cluster, drawn in pure CSS so no wrapp markup
+   has to change. */
+.word .mk {
+  width: 14px !important; height: 14px !important;
+  border-radius: 0 !important;
+  background:
+    radial-gradient(circle at 3.5px 3.5px, var(--accent) 2.4px, transparent 2.7px),
+    radial-gradient(circle at 10.5px 3.5px, var(--accent) 2.4px, transparent 2.7px),
+    radial-gradient(circle at 3.5px 10.5px, var(--accent) 2.4px, transparent 2.7px),
+    radial-gradient(circle at 10.5px 10.5px, var(--accent) 2.4px, transparent 2.7px) !important;
+  background-repeat: no-repeat !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 4px rgba(200, 242, 80, .55));
+}
+/* dim two of the four lamps for a lit-sign shimmer */
+.word .mk { opacity: 1; }
+
+/* Hero headline in the dot-matrix face — the fuller LED look. */
+.hero h1 {
+  font-family: var(--dotmx) !important;
+  letter-spacing: .005em !important;
+  line-height: 1.15 !important;
+  text-shadow: 0 0 16px rgba(200, 242, 80, .12);
+}
+.hero h1 em { font-style: normal !important; color: var(--accent) !important; text-shadow: 0 0 18px rgba(200, 242, 80, .45); }
