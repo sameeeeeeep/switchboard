@@ -4535,6 +4535,19 @@ struct ActionConsentDrop: View {
         installHotKey()
         installVoicePasteHotKey()
         installGlow()
+        // The orb's frame is computed from the CURRENT screen; positionOrb() ran once at launch and never
+        // again. A display-geometry change — external monitor plug/unplug, resolution/scaling, sleep/wake, or
+        // a Space that lives on another display — then leaves the orb frozen off-screen: the "base notch
+        // disappears" bug (founder 2026-08-27). Re-place it (and re-anchor the glow) on every screen change.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let orbVisible = self.orb?.isVisible ?? false
+                self.positionOrb()
+                if orbVisible { self.orb?.orderFrontRegardless() }   // an off-screen window can need re-ordering after the change
+                if self.glow != nil, let scr = NSScreen.main { self.glow.setFrame(scr.frame, display: false) }
+            }
+        }
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
         WhiteboardController.shared.install()   // arms the ~/.relay/whiteboard-run.json watcher: floats the native whiteboard board (PIP-style) on {active:true}
         installUpdateCheck()           // daily GitHub release check → ONE notch card when a newer build ships
