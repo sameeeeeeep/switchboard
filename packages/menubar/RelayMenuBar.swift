@@ -6966,8 +6966,18 @@ struct ActionConsentDrop: View {
     /// the clipboard on the next runloop beat (after the paste is consumed). So dictation auto-insert (and the
     /// on-demand ⌥V re-paste) drop text at the cursor WITHOUT touching the user's ⌘C/⌘V clipboard.
     @MainActor private func pasteAtCursorPreservingClipboard(_ text: String) {
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { godLog("dictate paste: EMPTY transcript — nothing to paste"); return }
         let pb = NSPasteboard.general
+        let trusted = AXIsProcessTrusted()
+        godLog("dictate paste: len=\(text.count) trusted=\(trusted) text='\(text.prefix(50))'")
+        // A synthetic ⌘V is a CGEvent post to ANOTHER app — macOS silently blocks that without Accessibility.
+        // So when we're NOT trusted, don't clobber-then-restore into a no-op (the transcript would just vanish):
+        // leave it on the clipboard and TELL the user. One ⌘V away beats a silent drop. (founder 2026-08-27)
+        guard trusted else {
+            pb.clearContents(); pb.setString(text, forType: .string)
+            showGodStatus("Copied — press ⌘V (turn on Accessibility for auto-insert)", accent: .lime, pattern: .speaking)
+            return
+        }
         let saved = pb.string(forType: .string)          // preserve the user's clipboard
         pb.clearContents(); pb.setString(text, forType: .string)
         synthCmdV()
