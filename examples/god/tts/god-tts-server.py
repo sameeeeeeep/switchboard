@@ -276,6 +276,88 @@ def fetch_url(f: FetchUrl):
             "capped": dur >= cap - 0.5}
 
 
+# --- Media conversion (local, ffmpeg-backed) -------------------------------------------------------
+# The machine already ships ffmpeg (resolved above for TTS). Expose it as a first-class LOCAL convert
+# so the Convert wrapp — and God — transcode a dropped/named file WITHOUT a cloud round-trip or an
+# "online converter website". Audio + common video containers; lossy targets get a near-transparent
+# default. Everything runs on the user's disk; nothing leaves the machine.
+CONVERT_MAX_MB = int(os.environ.get("GOD_CONVERT_MAX_MB", "300"))   # payload guardrail
+
+def _ffmpeg_args_for(target: str) -> list:
+    """Codec/quality flags for a target extension. Lossy audio/video gets a sane near-transparent
+    default; an unknown target falls through to ffmpeg's own container defaults."""
+    return {
+        "mp3":  ["-c:a", "libmp3lame", "-q:a", "2"],
+        "m4a":  ["-c:a", "aac", "-b:a", "192k"],
+        "aac":  ["-c:a", "aac", "-b:a", "192k"],
+        "ogg":  ["-c:a", "libvorbis", "-q:a", "5"],
+        "opus": ["-c:a", "libopus", "-b:a", "128k"],
+        "wav":  ["-c:a", "pcm_s16le"],
+        "flac": ["-c:a", "flac"],
+        "aiff": ["-c:a", "pcm_s16be"],
+        "mp4":  ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"],
+        "mov":  ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"],
+        "mkv":  ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"],
+        "webm": ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "32", "-c:a", "libopus"],
+    }.get(target, [])
+
+
+class Convert(BaseModel):
+    to: str                          # target format/extension, e.g. "mp3"
+    file_b64: str | None = None      # input bytes (browser drop / queued file)
+    path: str | None = None          # OR an absolute input path already on disk (God / a file the user names)
+    name: str | None = None          # optional output basename (extension is added from `to`)
+    ext: str | None = None           # optional source-extension hint when sending bytes
+
+
+@app.post("/convert")
+def convert_media(c: Convert):
+    """Transcode one file to `to` with the on-device ffmpeg. Accepts browser bytes (file_b64) or an
+    on-disk path. Returns the result as base64 (for a browser download) and, when given a path, also
+    writes it next to the source and returns out_path. No cloud, no upload — the whole point."""
+    target = re.sub(r"[^a-z0-9]", "", (c.to or "").lower())
+    if not target:
+        return JSONResponse({"error": "no target format"}, status_code=400)
+    with tempfile.TemporaryDirectory() as td:
+        tdp = Path(td)
+        if c.path:
+            src = Path(os.path.expanduser(c.path))
+            if not src.exists():
+                return JSONResponse({"error": f"no file at {c.path}"}, status_code=400)
+        elif c.file_b64:
+            try:
+                raw = base64.b64decode(c.file_b64.split(",")[-1])
+            except Exception:
+                return JSONResponse({"error": "file_b64 is not valid base64"}, status_code=400)
+            if len(raw) > CONVERT_MAX_MB * 1024 * 1024:
+                return JSONResponse({"error": f"file over {CONVERT_MAX_MB}MB"}, status_code=413)
+            src = tdp / ("in." + (re.sub(r"[^a-z0-9]", "", (c.ext or "").lower()) or "bin"))
+            src.write_bytes(raw)
+        else:
+            return JSONResponse({"error": "send file_b64 or a path"}, status_code=400)
+        base = _slug(c.name or src.stem) or "converted"
+        out = tdp / f"{base}.{target}"
+        cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-i", str(src),
+               *_ffmpeg_args_for(target), str(out)]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return JSONResponse({"error": "conversion timed out — try a shorter/smaller file"}, status_code=504)
+        except subprocess.CalledProcessError as e:
+            return JSONResponse({"error": f"couldn't convert to {target}",
+                                 "detail": e.stderr.decode()[-300:]}, status_code=400)
+        if not out.exists() or out.stat().st_size == 0:
+            return JSONResponse({"error": "conversion produced no output"}, status_code=400)
+        data = out.read_bytes()
+        resp = {"ok": True, "filename": out.name, "bytes": len(data), "to": target}
+        if c.path:                                   # God's on-disk flow: drop the result beside the source
+            dest = src.with_name(out.name)
+            dest.write_bytes(data)
+            resp["out_path"] = str(dest)
+        resp["out_b64"] = base64.b64encode(data).decode()
+        return resp
+
+
 @app.post("/speak")
 def speak(s: Speak):
     text = (s.text or "").strip()
