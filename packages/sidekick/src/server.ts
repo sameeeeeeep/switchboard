@@ -49,6 +49,14 @@ import { classifyTool } from "./security/classifier.js";
 import { StorageStore, StorageKeyError, expandTilde } from "./storage/store.js";
 import { resolveFind, findInFolder, type FindHit } from "./storage/find.js";
 import { pickFolderNative } from "./native-picker.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// The RENDER surface of the request currently being handled — set per request in handle(), read in
+// pushPrompt so a prompt goes back to whoever ASKED, not to a surface picked by the prompt's kind.
+// A native-window wrapp (surface "app") renders its prompts on the menu bar (the notch); a browser
+// tab (the extension) renders in the extension. This is what fixes "native project-pick fires the
+// Chrome dialog": the requester, not the kind, decides. (founder 2026-08-27)
+const reqRender = new AsyncLocalStorage<"menubar" | "extension">();
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
@@ -123,12 +131,16 @@ export class Broker implements ConsentPrompter, NativeHandler {
   /** Native consent surfaces (the menu-bar app). A NATIVE app's "Allow this app?" belongs here —
    *  a native surface — not in a browser side panel. Clients declare `surface:"menubar"` on auth. */
   private menubars = new Set<WebSocket>();
+  /** Native APP clients (a GodWebWindow bridge — surface:"app"). They do NOT render prompts; their
+   *  requests route prompts to the menu bar (the notch). Kept out of `extensions` so a native
+   *  window's consent never lands in Chrome. */
+  private apps = new Set<WebSocket>();
   /** Consent + control requests awaiting a reply from the extension. */
   private pending = new Map<string, Pending>();
   /** DURABLE prompt queue: every open consent prompt, kept so it can be RE-PUSHED to any extension
    *  that (re)connects. This is what lets a consent survive an MV3 worker eviction — the daemon's
    *  prompt would otherwise land on a dropped socket and fail closed. Cleared on reply/timeout. */
-  private promptQueue = new Map<string, { kind: string; body: unknown }>();
+  private promptQueue = new Map<string, { kind: string; body: unknown; surface: "menubar" | "extension" }>();
   /** In-flight streams for cancellation. */
   private streams = new Map<string, AbortController>();
   /** Keeps every connected extension's MV3 worker alive (see start()). */
@@ -148,7 +160,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     // extension connection (tab close → ECONNRESET) trips this. Handle it at both levels.
     this.wss.on("error", (err) => console.error("[relay] wss error:", String(err).slice(0, 160)));
     this.wss.on("connection", (ws, req) => {
-      ws.on("error", (err) => { console.error("[relay] ws error:", String(err).slice(0, 120)); this.extensions.delete(ws); this.menubars.delete(ws); });
+      ws.on("error", (err) => { console.error("[relay] ws error:", String(err).slice(0, 120)); this.extensions.delete(ws); this.menubars.delete(ws); this.apps.delete(ws); });
       // Rule 1: reject connections that look like a web page reaching localhost directly.
       const origin = req.headers["origin"];
       const isExtension = !origin || origin.startsWith("chrome-extension://") || origin.startsWith("moz-extension://");
@@ -161,12 +173,12 @@ export class Broker implements ConsentPrompter, NativeHandler {
         if (!authed) {
           if (msg?.type === "auth" && msg.token === pairingToken) {
             authed = true;
-            const surface = msg.surface === "menubar" ? "menubar" : "extension";
-            (surface === "menubar" ? this.menubars : this.extensions).add(ws);
+            const surface = msg.surface === "menubar" ? "menubar" : msg.surface === "app" ? "app" : "extension";
+            (surface === "menubar" ? this.menubars : surface === "app" ? this.apps : this.extensions).add(ws);
             ws.send(JSON.stringify({ type: "auth_ok" }));
             // Re-push queued prompts destined for THIS surface (a reconnecting client missed them).
             for (const [id, p] of this.promptQueue) {
-              if (this.surfaceFor(p.kind) !== surface) continue;
+              if (p.surface !== surface) continue;
               try { ws.send(JSON.stringify({ type: "prompt", id, kind: p.kind, body: p.body })); } catch { /* ignore */ }
             }
           }
@@ -187,7 +199,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
           return;
         }
       });
-      ws.on("close", () => { this.extensions.delete(ws); this.menubars.delete(ws); });
+      ws.on("close", () => { this.extensions.delete(ws); this.menubars.delete(ws); this.apps.delete(ws); });
     });
     // HEARTBEAT — the fix for "attached but not flowing". The extension is an MV3 service worker
     // that Chrome evicts after ~30s of silence; a long model "think" produces no deltas, the worker
@@ -246,8 +258,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
       const done = (v: T) => { clearTimeout(timer); this.pending.delete(id); this.promptQueue.delete(id); resolve(v); };
       const timer = setTimeout(() => done(failValue), timeoutMs);
       this.pending.set(id, { resolve: (v) => done(v as T), reject: () => done(failValue) });
-      this.promptQueue.set(id, { kind, body });
-      this.pushPrompt(id, kind, body); // deliver to a currently-connected extension, if any
+      const surface = reqRender.getStore() ?? this.surfaceFor(kind);
+      this.promptQueue.set(id, { kind, body, surface });
+      this.pushPrompt(id, kind, body, surface); // deliver to the requester's render surface
     });
   }
 
@@ -264,11 +277,12 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const menubarKinds = ["consent:native-connect", "consent:connect", "consent:storage-bind", "consent:storage-pick"];
     return menubarKinds.includes(kind) ? "menubar" : "extension";
   }
-  private pushPrompt(id: string, kind: string, body: unknown) {
-    // Prefer the kind's own surface; fall back to the other so a prompt is never undeliverable
-    // (e.g. a native consent still works if the menu bar isn't wired/open, via the panel).
-    const primary = this.surfaceFor(kind) === "menubar" ? this.menubars : this.extensions;
-    const fallback = this.surfaceFor(kind) === "menubar" ? this.extensions : this.menubars;
+  private pushPrompt(id: string, kind: string, body: unknown, surface?: "menubar" | "extension") {
+    // The requester's render surface wins (native window / menu bar → notch; browser → extension);
+    // fall back to the kind's default, then to the OTHER surface so a prompt is never undeliverable.
+    const s = surface ?? reqRender.getStore() ?? this.surfaceFor(kind);
+    const primary = s === "menubar" ? this.menubars : this.extensions;
+    const fallback = s === "menubar" ? this.extensions : this.menubars;
     const target = [...(primary.size ? primary : fallback)][0];
     if (target) { try { target.send(JSON.stringify({ type: "prompt", id, kind, body })); } catch { /* re-pushed on reconnect */ } }
   }
@@ -277,7 +291,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private async handle(ws: WebSocket, env: RequestEnvelope) {
     const respond = (result?: unknown, error?: unknown) => ws.send(JSON.stringify({ type: "response", id: env.id, result, error }));
     try {
-      const result = await this.dispatch(env, ws);
+      // Requests from the menu bar OR a native app window render prompts on the menu bar (the notch);
+      // everything else (the browser extension) renders in the extension.
+      const renderSurface: "menubar" | "extension" = (this.menubars.has(ws) || this.apps.has(ws)) ? "menubar" : "extension";
+      const result = await reqRender.run(renderSurface, () => this.dispatch(env, ws));
       this.deps.audit.record({ origin: env.origin, kind: "request", method: env.method, outcome: "ok" });
       respond(result);
     } catch (err) {

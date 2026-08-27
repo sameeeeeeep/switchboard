@@ -73,7 +73,7 @@ final class GodDaemonBridge: NSObject {
     private func connect() {
         task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
         task?.resume(); receive()
-        send(["type": "auth", "token": token])
+        send(["type": "auth", "token": token, "surface": "app"])
     }
     private func receive() {
         task?.receive { [weak self] result in
