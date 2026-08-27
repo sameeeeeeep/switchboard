@@ -222,7 +222,17 @@ struct NotchLauncherView: View {
             SpotRow(id: "s-" + $0.rawValue, kind: .surface, label: $0.title, sub: "surface", payload: $0.rawValue) }
     }
     private var spotActions: [SpotRow] {
-        q.isEmpty ? [] : [SpotRow(id: "act-ask", kind: .action, label: "“\(query.trimmingCharacters(in: .whitespaces))”", sub: "ask across your work", payload: "ask")]
+        if q.isEmpty { return [] }
+        let typed = query.trimmingCharacters(in: .whitespaces)
+        var rows: [SpotRow] = []
+        // Paste a video link into the ask box → offer video2ai right there (it only used to appear as the
+        // HOME clipboard chip, which the moment you typed anything disappeared — the natural gesture missed it).
+        if isVideoURL(typed) {
+            rows.append(SpotRow(id: "act-extract-video", kind: .action, label: "Extract this video",
+                                sub: "transcript · frames · PDF", payload: "extract-video"))
+        }
+        rows.append(SpotRow(id: "act-ask", kind: .action, label: "“\(typed)”", sub: "ask across your work", payload: "ask"))
+        return rows
     }
     // ONE ordered list of groups — both the rendering and the ↑↓ selection index derive from it. They used
     // to be written out separately and had drifted: `spotAll` counted spotTools but `spotlightList` never
@@ -245,7 +255,9 @@ struct NotchLauncherView: View {
         case .file:     if let l = listing(forApp: r.payload) { onLaunch(l, staged?.url) } else { onClose() }   // artifact → open in its wrapp
         case .diskfile: NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: r.payload)]); onClose()  // real file → reveal in Finder
         case .surface:  onOpenSurface(r.payload); onClose()
-        case .action:   onAsk(query.trimmingCharacters(in: .whitespaces)); onClose()
+        case .action:
+            if r.payload == "extract-video" { triggerExtractVideo(query.trimmingCharacters(in: .whitespaces)) }  // closes itself
+            else { onAsk(query.trimmingCharacters(in: .whitespaces)); onClose() }
         }
     }
 

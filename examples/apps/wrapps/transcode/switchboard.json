@@ -1,0 +1,45 @@
+{
+  "id": "transcode",
+  "name": "Convert Media",
+  "tagline": "Audio & video — any format to any, on your device with ffmpeg",
+  "category": "tool",
+  "keywords": [
+    "convert audio",
+    "m4a to mp3",
+    "mp3",
+    "wav",
+    "convert video",
+    "mp4",
+    "extract audio",
+    "ffmpeg",
+    "transcode",
+    "compress video",
+    "webm"
+  ],
+  "accepts": [
+    "audio",
+    "video"
+  ],
+  "components": {
+    "ui": {
+      "kind": "web",
+      "url": "http://localhost:5188/transcode.html"
+    }
+  },
+  "surfaces": [
+    "browser",
+    "notch"
+  ],
+  "requires": [
+    {
+      "kind": "daemon"
+    }
+  ],
+  "resource": {
+    "egressTier": "none",
+    "engineTier": "L0",
+    "downloadBytes": 0,
+    "background": false,
+    "needsModel": false
+  }
+}
