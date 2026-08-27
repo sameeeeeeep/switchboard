@@ -6,7 +6,7 @@
     <title>Convert Media — audio &amp; video, any format, on your device</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Doto:wght@400;600;800;900&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       /* HOUSE "Atlas cockpit" system (brandbrain tokens). Add app CSS at the END. */
       :root {
@@ -18,6 +18,7 @@
         --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
         --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
         --mono: "Spline Sans Mono", ui-monospace, monospace;
+        --dotmx: "Doto", ui-monospace, monospace;   /* Switchboard's dot-matrix / LED identity */
       }
       * { box-sizing: border-box; }
       [hidden] { display: none !important; }
@@ -28,10 +29,17 @@
       .kicker { font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
 
       header { display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-bottom: 1px solid var(--edge-soft); }
-      .word { font: 700 20px/1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
-      .word em { font-style: normal; color: var(--accent); }
-      .word .mk { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); box-shadow: 0 0 14px rgba(200,242,80,.4); }
+      /* Dot-matrix wordmark — Switchboard's LED identity. Doto lamps, one lime, no logo-square. */
+      .word { font: 800 22px/1 var(--dotmx); letter-spacing: .04em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 12px; text-shadow: 0 0 13px rgba(200,242,80,.30); }
+      .word .lamps { display: grid; grid-template-columns: repeat(2, 5px); grid-auto-rows: 5px; gap: 3px; }
+      .word .lamps i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px rgba(200,242,80,.65); }
+      .word .lamps i:nth-child(2) { opacity: .4; }
+      .word .lamps i:nth-child(3) { opacity: .4; }
       #chip-dock { margin-left: auto; }
+
+      /* dot-matrix kicker — a lit-lamp system label above the hero */
+      .dmk { font: 900 11px/1 var(--dotmx); letter-spacing: .22em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 10px rgba(200,242,80,.35); margin: 0 0 16px; display: inline-flex; align-items: center; gap: 9px; }
+      .dmk::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 
       main { max-width: 720px; margin: 0 auto; padding: 40px 20px 90px; }
       .hero h1 { font: 700 clamp(1.7rem, 4vw, 2.5rem)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 10px; }
@@ -89,11 +97,12 @@
   </head>
   <body>
     <header>
-      <span class="word"><span class="mk"></span>Con<em>vert</em> Media</span>
+      <span class="word"><span class="lamps"><i></i><i></i><i></i><i></i></span>Convert Media</span>
       <div id="chip-dock"></div>
     </header>
     <main>
       <section class="hero" id="hero">
+        <div class="dmk">Convert · On-device</div>
         <h1>Any file in. <em>The format you need out.</em></h1>
         <p>Drop an audio or video file — m4a, mp3, wav, mp4, mov, webm — pick a target, and it transcodes right here on your Mac with the ffmpeg that's already installed. No upload, no online converter, no cost. The bytes never leave the machine.</p>
       </section>
