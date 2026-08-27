@@ -73,6 +73,17 @@ FFMPEG = _bin("ffmpeg")
 YTDLP = _bin("yt-dlp")
 CLONE_SR = 24000   # pocket-tts clones happiest from mono 24k 16-bit — normalize every sample to it.
 
+# Clone fidelity. pocket-tts's defaults (lsd_decode_steps=1, temp=0.7) are the FAST/rough settings:
+# a single flow-matching denoise step + a high temperature. Perfect for the instant companion voice,
+# but they undersell an uploaded clone — generation catches the cadence yet drifts off the speaker's
+# fine timbre. For a USER CLONE we spend more denoise steps and lower the temperature so the output
+# hugs the reference speaker. PRESET voices (Moira / the companion path) keep the fast defaults, so
+# /speak stays snappy everywhere else. All env-overridable — tune without a code change + restart.
+FAST_VOICES = {v.strip() for v in os.environ.get(
+    "GOD_TTS_FAST_VOICES", "moira,kk,zoo-guy,alba").split(",") if v.strip()}
+CLONE_LSD_STEPS = int(os.environ.get("GOD_TTS_CLONE_STEPS", "6"))    # 1 (fast) → 4-8 (more timbre fidelity)
+CLONE_TEMP = float(os.environ.get("GOD_TTS_CLONE_TEMP", "0.45"))     # 0.7 default → lower hugs the speaker
+
 
 def _slug(name: str) -> str:
     """A voice name becomes a filename (<name>.wav) AND the id every wrapp selects — keep it to the
@@ -144,8 +155,19 @@ def _synth(voice: str, text: str):
     if state is None:
         return None
     m = _model_get()
-    # trim_start_ms/fade_in_ms suppress the decoder's first-frame transient (an audible click).
-    audio = m.generate_audio(state, text, trim_start_ms=40, fade_in_ms=15)
+    # For a user-uploaded CLONE (any voice that isn't a fast preset), spend more flow-matching steps
+    # and a lower temperature so the output tracks the reference speaker's timbre instead of drifting.
+    # Restore the fast defaults afterwards so Moira / the companion voice stay snappy. Safe to mutate
+    # the shared model here: all synth is funnelled onto the single _gpu thread, so this is serialized.
+    hq = voice not in FAST_VOICES
+    prev_steps, prev_temp = m.lsd_decode_steps, m.temp
+    if hq:
+        m.lsd_decode_steps, m.temp = CLONE_LSD_STEPS, CLONE_TEMP
+    try:
+        # trim_start_ms/fade_in_ms suppress the decoder's first-frame transient (an audible click).
+        audio = m.generate_audio(state, text, trim_start_ms=40, fade_in_ms=15)
+    finally:
+        m.lsd_decode_steps, m.temp = prev_steps, prev_temp
     buf = io.BytesIO()
     sf.write(buf, np.asarray(audio), m.sample_rate, format="WAV")
     return buf.getvalue()

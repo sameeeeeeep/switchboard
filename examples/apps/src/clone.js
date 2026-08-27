@@ -28,7 +28,8 @@ const APP = {
   usesContext: "none",
 };
 const GOD = "http://127.0.0.1:7897";   // on-device voice engine (examples/god/tts/god-tts-server.py)
-const CLONE_MIN = 4, CLONE_MAX = 14;   // the sweet-spot segment length, in seconds, we nudge toward
+const CLONE_MIN = 6, CLONE_MAX = 20;   // sweet-spot segment length (s) we nudge toward — a longer, clean,
+                                       // single-speaker reference gives the cloner more timbre to work with
 
 // ==== dom + helpers =========================================================================
 const $ = (id) => document.getElementById(id);
