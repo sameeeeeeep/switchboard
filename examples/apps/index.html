@@ -340,8 +340,11 @@
       .hero-h .hl{color:var(--ink-2)}
       .hero-sub{color:var(--ink-2);max-width:64ch;margin:18px 0 24px;font-size:15px;line-height:1.62}
       .hero-sub b{color:var(--ink);font-weight:600}
+      .hero-ctas{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-top:4px}
       .hero-cta{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--r-pill);padding:13px 20px;font:600 14px/1 var(--font-sans);cursor:pointer}
       .hero-cta:hover{background:var(--accent-hover)}
+      .hero-cta.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+      .hero-cta.ghost:hover{background:var(--card);box-shadow:inset 0 0 0 1px var(--faint)}
 
       .way{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0 4px}
       .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 16px;cursor:pointer;transition:transform .12s,border-color .12s}
@@ -390,8 +393,27 @@
         background:radial-gradient(130% 120% at 50% -10%, color-mix(in srgb, var(--fam,#2E8B6A) 26%, transparent), transparent 60%)}
       .thumb::after{content:"";position:absolute;inset:0;box-shadow:0 1px 0 rgba(255,255,255,.03) inset;pointer-events:none;border-radius:inherit;z-index:2}
 
-      /* ============================ RECENTLY ADDED (icons list) ============================ */
-      #recent-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 28px}
+      /* ============================ NEW ADDITIONS (compact directory strip) ============================ */
+      .na-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:40px 0 22px}
+      .na-title{margin:0;font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.025em}
+      .na-nav{display:flex;gap:8px}
+      .na-btn{width:33px;height:33px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+        cursor:pointer;display:grid;place-items:center;font-size:17px;line-height:1;transition:border-color .12s,color .12s,background .12s}
+      .na-btn:hover{border-color:var(--line-2);color:var(--ink)}
+      .na-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px 40px}
+      .na-item{display:flex;align-items:center;gap:14px;min-width:0;padding:4px 2px;border-radius:12px;transition:transform .12s}
+      .na-item:hover{transform:translateY(-1px)}
+      .na-item .ic{flex:none}
+      .na-tx{min-width:0}
+      .na-n{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+      .na-n .verify{width:12px;height:12px}
+      .na-item:hover .na-n{color:var(--accent-hover)}
+      .na-c{display:block;font-size:13px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      @media(max-width:1100px){ .na-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px} }
+      @media(max-width:560px){ .na-grid{grid-template-columns:minmax(0,1fr)} }
+
+      /* ============================ RECENTLY ADDED (legacy icons list) ============================ */
+      #recent-list.legacy-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 28px}
       .recent-row{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid var(--line);min-width:0}
       .recent-row:hover{background:var(--card)}
       .recent-row .ic{width:34px;height:34px;border-radius:var(--r-sm);flex:none}
@@ -419,6 +441,9 @@
       .cat-tag{display:inline-block;font:600 9px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:4px 7px}
       .pro-pill{font:600 8.5px/1 var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--sim);background:var(--sim-bg);border:1px solid rgba(200,162,75,.28);border-radius:5px;padding:4px 7px}
       .ic{display:grid;place-items:center}
+      /* real generated icon PNGs — trimmed to the tile, so object-fit fills the rounded box */
+      .ic-img{overflow:hidden;background:transparent;box-shadow:0 2px 7px -3px rgba(0,0,0,.6)}
+      .ic-img img{width:100%;height:100%;object-fit:cover;display:block}
 
       .cost{display:block;margin-top:8px;font:500 9.5px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
@@ -609,20 +634,44 @@
       .hero-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,500px);gap:46px;align-items:center}
       .hero-copy{min-width:0}
       .hero-art{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
-      .hero-art a{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+      .hero-art:not(.spotlight) a{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
         overflow:hidden;box-shadow:var(--shadow);transition:transform .14s,border-color .14s}
-      .hero-art a:hover{transform:translateY(-3px);border-color:var(--line-2)}
-      .hero-art .thumb{border-radius:0}
-      .hero-art .cap{display:flex;align-items:center;gap:8px;padding:9px 11px}
-      .hero-art .cap .ic{width:22px;height:22px;border-radius:7px;flex:none}
-      .hero-art .cap .ic svg{width:56%;height:56%}
-      .hero-art .cap .nm{font-family:var(--font-display);font-size:12.5px;font-weight:600;letter-spacing:-.01em;
+      .hero-art:not(.spotlight) a:hover{transform:translateY(-3px);border-color:var(--line-2)}
+      .hero-art:not(.spotlight) .thumb{border-radius:0}
+      .hero-art:not(.spotlight) .cap{display:flex;align-items:center;gap:8px;padding:9px 11px}
+      .hero-art:not(.spotlight) .cap .ic{width:22px;height:22px;border-radius:7px;flex:none}
+      .hero-art:not(.spotlight) .cap .ic svg{width:56%;height:56%}
+      .hero-art:not(.spotlight) .cap .nm{font-family:var(--font-display);font-size:12.5px;font-weight:600;letter-spacing:-.01em;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media(max-width:1180px){
         .hero-row{grid-template-columns:minmax(0,1fr);gap:34px}
         .hero-art{grid-template-columns:repeat(4,1fr)}
       }
       @media(max-width:640px){ .hero-art{grid-template-columns:1fr 1fr} }
+      /* hero SPOTLIGHT — one big brandbrain preview is the clearest "start here" on the page */
+      .hero-art.spotlight{display:block}
+      @media(max-width:1180px){ .hero-art.spotlight{max-width:560px} }
+      .hero-art.spotlight a.hero-star{position:relative;display:block;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow);transition:transform .14s,border-color .14s,box-shadow .14s}
+      .hero-art.spotlight a.hero-star:hover{transform:translateY(-3px);border-color:var(--line-2);box-shadow:var(--shadow-pop)}
+      .hero-art.spotlight .hero-star .thumb{border-radius:0;aspect-ratio:16/10}
+      .hs-badge{position:absolute;top:12px;left:12px;z-index:3;font:600 9.5px/1 var(--font-sans);letter-spacing:.13em;
+        text-transform:uppercase;color:var(--accent-ink);background:var(--accent);border-radius:var(--r-pill);padding:6px 11px}
+      .hs-cap{display:flex;align-items:center;gap:12px;padding:13px 15px}
+      .hs-cap .ic{flex:none}
+      .hs-t{min-width:0;flex:1}
+      .hs-n{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-size:16px;font-weight:600;letter-spacing:-.01em}
+      .hs-d{display:block;font-size:12.5px;color:var(--ink-2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .hs-go{flex:none;font:600 12.5px/1 var(--font-sans);color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);
+        border-radius:var(--r-pill);padding:8px 13px;transition:background .14s,color .14s,border-color .14s}
+      .hero-star:hover .hs-go{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+      .hero-next{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+      .hn-chip{display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--r-pill);padding:6px 13px 6px 6px;transition:border-color .14s,transform .14s}
+      .hn-chip:hover{border-color:var(--line-2);transform:translateY(-2px)}
+      .hn-chip .ic{flex:none}
+      .hn-n{font:600 12px/1 var(--font-sans);color:var(--ink-2)}
+      .hn-chip:hover .hn-n{color:var(--ink)}
       /* the why cards reuse .card/.grid; only the old/new contrast pair is new */
       .why-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
       .card.why{cursor:default}
@@ -837,8 +886,11 @@
               <p class="eyebrow"><span class="dot"></span>Open source · runs on the Claude you already pay for</p>
               <h1 class="hero-h">One connection. <span class="hl">Not one per app.</span></h1>
               <p class="hero-sub">Every AI app asks you to start over — a new account, a new subscription, a new copy of everything you've already explained. Switchboard sits in between: you connect your own Claude <b>once</b>, and all <span id="hero-count">27</span> apps here run on that one connection. Nothing you type reaches a server of ours.</p>
-              <button class="hero-cta" id="hero-connect" type="button"><span>Connect Switchboard</span><span>→</span></button>
-              <p class="hero-micro">Free. No account. Takes about two minutes.</p>
+              <div class="hero-ctas">
+                <a class="hero-cta" id="hero-try" href="https://brandbrain.thelastprompt.ai/build" target="_blank" rel="noreferrer"><span>Try brandbrain</span><span>→</span></a>
+                <button class="hero-cta ghost" id="hero-connect" type="button"><span>Connect Switchboard</span></button>
+              </div>
+              <p class="hero-micro">Free · runs on the Claude you already pay for · no account. brandbrain is the one to start with.</p>
 
               <!-- Pre-connect intent bar — same synchronous keyword scorer and routing as before. -->
               <div class="next-pre" id="next-pre">
@@ -852,28 +904,6 @@
             <div class="hero-art" id="hero-art"></div>
           </div>
 
-          <!-- ===================== WHY IT'S DIFFERENT =====================
-               Same .zone → .grid → .card rhythm as the catalog below it. No new vocabulary. -->
-          <section id="why-sec">
-            <div class="zone" style="margin-top:56px"><span class="z">One connection</span><h2>Three things you set up once, instead of once per app.</h2><span class="s">what every other AI app makes you repeat — and what happens here instead</span></div>
-            <div class="grid why-grid">
-              <div class="card why"><span class="body"><span class="txt">
-                <h4>One account</h4>
-                <p class="w-old">Everywhere else: every app is another signup, another password, another company holding a login.</p>
-                <p class="w-new">Here: no account with us, and none with any app. You bring the Claude account you already have.</p>
-              </span></span></div>
-              <div class="card why"><span class="body"><span class="txt">
-                <h4>One subscription</h4>
-                <p class="w-old">Everywhere else: their model, their key, their markup — a second bill stacked on the AI you already pay for.</p>
-                <p class="w-new">Here: your Claude is already paid for and sitting idle. Apps spend that quota, and we never touch the transaction.</p>
-              </span></span></div>
-              <div class="card why"><span class="body"><span class="txt">
-                <h4>One copy of your context</h4>
-                <p class="w-old">Everywhere else: each app learns your business from scratch, so you explain it again for the third time.</p>
-                <p class="w-new">Here: your context lives in a folder on your machine. You lend it to an app for one job, and it hands it back.</p>
-              </span></span></div>
-            </div>
-          </section>
         </section>
 
         <!-- ===================== THE BOARD — one act, four strata =====================
@@ -882,32 +912,20 @@
              hero-scale advert directly above a wall of live previews is the store arguing
              with itself. The three flagships survive as a row that is all visible at once. -->
         <section id="board-sec">
-          <div class="zone"><span class="z">The board</span><h2><span id="board-count">27</span> wrapps, and every tile is the real thing.</h2><span class="s">Not screenshots. Each tile is that wrapp's own page, rendered live inside this one. Open one and it runs on your Claude.</span></div>
-          <p class="bprecise">To be exact: each tile is the app's real landing page loading live in this page. It is a live preview of a real app, not the app doing your work — that starts when you open one.</p>
-          <p class="bprecise">Every wrapp on the board today is built by us. Third-party wrapps will run inside an isolated runner that cannot phone home — that runner is designed and not yet built, which is exactly why the board is first-party today.</p>
-
-          <div class="bstrip" id="board-strip"></div>
-          <p class="bnote">Six of these are ideabrain opened to one kind of idea, not six separate apps. They get their own tile because they are their own front door, and we say it here because you would work it out in three clicks anyway.</p>
-
-          <p class="bkick">The first three cords</p>
-          <div class="flags">
-            <a class="card" data-app="brandbrain" href="https://brandbrain.thelastprompt.ai/build" data-tags="brand builder consumer launch positioning" target="_blank" rel="noreferrer">
-              <span class="body"><span class="txt"><h4>brandbrain</h4><p>Consumer brands, built on receipts — white space, every decision locked, launch. On your Claude.</p></span></span>
-            </a>
-            <a class="card" data-app="ideabrain" href="https://brandbrain.thelastprompt.ai/build?studio=idea" data-tags="idea validate startup thesis playbook deck pitch research reach-outs marketplace saas app hardware" target="_blank" rel="noreferrer">
-              <span class="body"><span class="txt"><h4>ideabrain</h4><p>Not a company yet? Research, a playbook for your kind of idea, a deck, and who to reach out to.</p></span></span>
-            </a>
-            <a class="card" data-app="bank" href="https://bank.thelastprompt.ai" data-tags="brain notes tasks second brain obsidian knowledge context bank karpathy" target="_blank" rel="noreferrer">
-              <span class="body"><span class="txt"><h4>Bank</h4><p>Notes, tasks and [[links]] in plain .md you own — a second brain you can actually ask.</p></span></span>
-            </a>
+          <!-- ===================== NEW ADDITIONS — the compact directory strip ===================== -->
+          <div class="na-head">
+            <h3 class="na-title">New Additions</h3>
+            <div class="na-nav">
+              <button class="na-btn" id="na-prev" type="button" aria-label="Previous">‹</button>
+              <button class="na-btn" id="na-add" type="button" aria-label="See all tools">+</button>
+              <button class="na-btn" id="na-next" type="button" aria-label="Next">›</button>
+            </div>
           </div>
+          <div id="recent-list" class="na-grid"></div>
 
-          <p class="bkick">Newest on the board</p>
-          <div id="recent-list"></div>
-
-        <!-- ===================== ALL WRAPPS GRID ===================== -->
+        <!-- ===================== ALL TOOLS GRID ===================== -->
         <section id="store">
-          <div class="zone" style="margin-top:36px"><span class="z">The catalog</span><h2>All wrapps</h2><span class="s">tools that run on your own AI — free</span></div>
+          <div class="zone" style="margin-top:44px"><h2>All Tools</h2><span class="s">every tile is the live app — open one and it runs on your own Claude, free</span></div>
 
           <div class="sec-h" data-cat="Brand &amp; content"><h3>Brand &amp; content</h3><span>brand systems, the knowledge bank, copy review</span></div>
           <div class="grid">
@@ -1027,6 +1045,29 @@
           <div id="no-hits" class="lib-empty" hidden>Nothing matches — try a shorter search.</div>
         </section><!-- /#store -->
         </section><!-- /#board-sec -->
+
+        <!-- ===================== WHY IT'S DIFFERENT — the pitch, below the directory now =====================
+             Same .zone → .grid → .card rhythm as the catalog above it. No new vocabulary. -->
+        <section id="why-sec">
+          <div class="zone" style="margin-top:56px"><span class="z">One connection</span><h2>Three things you set up once, instead of once per app.</h2><span class="s">what every other AI app makes you repeat — and what happens here instead</span></div>
+          <div class="grid why-grid">
+            <div class="card why"><span class="body"><span class="txt">
+              <h4>One account</h4>
+              <p class="w-old">Everywhere else: every app is another signup, another password, another company holding a login.</p>
+              <p class="w-new">Here: no account with us, and none with any app. You bring the Claude account you already have.</p>
+            </span></span></div>
+            <div class="card why"><span class="body"><span class="txt">
+              <h4>One subscription</h4>
+              <p class="w-old">Everywhere else: their model, their key, their markup — a second bill stacked on the AI you already pay for.</p>
+              <p class="w-new">Here: your Claude is already paid for and sitting idle. Apps spend that quota, and we never touch the transaction.</p>
+            </span></span></div>
+            <div class="card why"><span class="body"><span class="txt">
+              <h4>One copy of your context</h4>
+              <p class="w-old">Everywhere else: each app learns your business from scratch, so you explain it again for the third time.</p>
+              <p class="w-new">Here: your context lives in a folder on your machine. You lend it to an app for one job, and it hands it back.</p>
+            </span></span></div>
+          </div>
+        </section>
 
         <!-- ===================== THE PITCH (disconnected only) =====================
              Toggled with #hero by showDash()/hideDash(). Keeping it out of #hero is only
