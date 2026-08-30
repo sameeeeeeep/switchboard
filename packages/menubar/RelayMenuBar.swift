@@ -6852,7 +6852,7 @@ struct ActionConsentDrop: View {
         if model.shortcuts.dictationMode == "latch" {
             dictateLatched = true
             dictateFindArmed = NSEvent.modifierFlags.contains(.function)
-            dictatePrevCtrlDown = NSEvent.modifierFlags.contains(.control)
+            dictatePrevCtrlDown = Self.ctrlKeyDown()   // window-server read (matches the poll below)
             startDictateWatch()
         }
         let wav = NSTemporaryDirectory() + "god-dictate.wav"
@@ -6893,7 +6893,10 @@ struct ActionConsentDrop: View {
                 // ⌃ rising edge → COMMIT (stop + transcribe + act). The summon modifier IS the commit key,
                 // per the founder's "transcribe when ctrl is pressed"; while latched it commits instead of
                 // summoning God (onFlags is short-circuited by the `dictating` guard).
-                let ctrlDown = NSEvent.modifierFlags.contains(.control)
+                // READ CONTROL FROM THE WINDOW SERVER (like the Esc failsafe above), NOT NSEvent.modifierFlags:
+                // for a background/accessory app the latter only updates as THIS app processes events, so it
+                // goes stale in this poll and the ⌃ commit tap was being missed while a take was latched.
+                let ctrlDown = Self.ctrlKeyDown()
                 if ctrlDown && !self.dictatePrevCtrlDown {
                     self.dictatePrevCtrlDown = ctrlDown
                     self.finishDictation(find: self.dictateFindArmed)
@@ -6904,6 +6907,12 @@ struct ActionConsentDrop: View {
         }
     }
     @MainActor private func stopDictateWatch() { dictateWatchTimer?.invalidate(); dictateWatchTimer = nil }
+
+    // LIVE control-key state from the window server (independent of whether this app is processing events) —
+    // the reliable read the latched-dictation ⌃ commit needs. 59 = left control, 62 = right control.
+    private static func ctrlKeyDown() -> Bool {
+        CGEventSource.keyState(.combinedSessionState, key: 59) || CGEventSource.keyState(.combinedSessionState, key: 62)
+    }
 
     // Abort: stop recording, discard the clip, paint nothing. Reachable from any state (Esc / failsafe).
     @MainActor private func cancelDictation() {
