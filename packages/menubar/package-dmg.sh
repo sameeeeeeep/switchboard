@@ -277,14 +277,6 @@ codesign -v "$STAGE" || die "app signature verify failed"
 codesign -v "$RES/node" || die "node signature verify failed"
 codesign -v "$RES/daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude" \
   || die "claude CLI signature verify failed (was --deep used somewhere?)"
-# GATEKEEPER GATE: codesign -v does NOT catch a bundle-policy failure like an escaping/absolute symlink —
-# only spctl's exec assessment does. Without this the app signs "fine" yet opens as "damaged" on install.
-# (Skipped for ad-hoc builds, which spctl always rejects.)
-if [ -n "${IDENTITY:-}" ]; then
-  spctl -a -t exec -vv "$STAGE" 2>&1 | grep -q "accepted" \
-    || die "Gatekeeper rejected the app (spctl -t exec) — it would open as 'damaged'. Check for absolute/escaping symlinks in the bundle."
-  say "Gatekeeper: app accepted (spctl exec) — will not open as 'damaged'"
-fi
 say "signatures verified: app, node, claude CLI"
 
 # ---------- 10. smoke test the staged payload (isolated state dir + port; never ~/.relay) ----------
@@ -344,6 +336,12 @@ if [ "$NOTARIZE" = "1" ]; then
   rm -rf "$ZIP_DIR"
   xcrun stapler staple "$STAGE" || die "stapling the app failed"
   say "app notarized + stapled (first launch works offline)"
+  # GATEKEEPER GATE (only meaningful once notarized+stapled): codesign -v does NOT catch a bundle-policy
+  # failure like an escaping/absolute symlink — only spctl's exec assessment does. Without this the app
+  # signs + notarizes "fine" yet opens as "damaged and can't be opened" on a real /Applications install.
+  spctl -a -t exec -vv "$STAGE" 2>&1 | grep -q "accepted" \
+    || die "Gatekeeper rejected the notarized app (spctl -t exec) — it would open as 'damaged'. Look for absolute/escaping symlinks in the bundle."
+  say "Gatekeeper: app accepted (spctl exec) — will NOT open as 'damaged'"
 fi
 
 # ---------- 12. the DMG — built from the stapled app, then signed itself ----------
