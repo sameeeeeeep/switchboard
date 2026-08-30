@@ -240,6 +240,18 @@ if [ -f "$ICON_SRC/icon128.png" ] && command -v iconutil >/dev/null; then
   rm -rf "$ICONSET"
 fi
 
+# ---------- 8c. strip ABSOLUTE symlinks — Gatekeeper rejects a bundle containing a symlink whose target
+# is an absolute path (it "escapes" the bundle) with "damaged and can't be opened". The
+# @anthropic-ai/claude-agent-sdk-darwin-arm64 npm package ships a spurious self-referential absolute
+# symlink (claude-agent-sdk-darwin-arm64 -> /Applications/Switchboard.app/…) that is NOT in its
+# package.json `files` and is unused (the daemon calls the real `claude` binary directly). cp -R drags
+# it into the bundle. Strip every absolute symlink so the signature validates on any install path.
+STRIPPED=0
+while IFS= read -r l; do
+  case "$(readlink "$l")" in /*) rm -f "$l"; STRIPPED=$((STRIPPED+1));; esac
+done < <(find "$STAGE" -type l)
+[ "$STRIPPED" -gt 0 ] && say "stripped $STRIPPED absolute symlink(s) from the bundle (Gatekeeper: no escaping links)"
+
 # ---------- 9. sign — WITHOUT --deep (preserve Anthropic/Node signatures on nested bins) ----------
 IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application[^"]*"' | head -1 | tr -d '"')" || true
 if [ -n "${IDENTITY:-}" ]; then
@@ -265,6 +277,14 @@ codesign -v "$STAGE" || die "app signature verify failed"
 codesign -v "$RES/node" || die "node signature verify failed"
 codesign -v "$RES/daemon/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude" \
   || die "claude CLI signature verify failed (was --deep used somewhere?)"
+# GATEKEEPER GATE: codesign -v does NOT catch a bundle-policy failure like an escaping/absolute symlink —
+# only spctl's exec assessment does. Without this the app signs "fine" yet opens as "damaged" on install.
+# (Skipped for ad-hoc builds, which spctl always rejects.)
+if [ -n "${IDENTITY:-}" ]; then
+  spctl -a -t exec -vv "$STAGE" 2>&1 | grep -q "accepted" \
+    || die "Gatekeeper rejected the app (spctl -t exec) — it would open as 'damaged'. Check for absolute/escaping symlinks in the bundle."
+  say "Gatekeeper: app accepted (spctl exec) — will not open as 'damaged'"
+fi
 say "signatures verified: app, node, claude CLI"
 
 # ---------- 10. smoke test the staged payload (isolated state dir + port; never ~/.relay) ----------
