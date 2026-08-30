@@ -649,8 +649,17 @@ struct NotchLauncherView: View {
     private func isVideoURL(_ s: String) -> Bool {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard t.hasPrefix("http") else { return false }
-        return t.contains("youtube.com/watch") || t.contains("youtu.be/") || t.contains("youtube.com/shorts/")
-            || t.contains("instagram.com/p/") || t.contains("instagram.com/reel/")
+        // YouTube — watch / short link / shorts / live / embed / mobile / music
+        if t.contains("youtube.com/watch") || t.contains("youtu.be/") || t.contains("youtube.com/shorts/")
+            || t.contains("youtube.com/live/") || t.contains("youtube.com/embed/")
+            || t.contains("m.youtube.com/watch") || t.contains("music.youtube.com/watch") { return true }
+        // Instagram — post / reel / reels / tv
+        if t.contains("instagram.com/p/") || t.contains("instagram.com/reel/")
+            || t.contains("instagram.com/reels/") || t.contains("instagram.com/tv/") { return true }
+        // Other yt-dlp-supported video hosts the extractor handles
+        if t.contains("tiktok.com/") || t.contains("vimeo.com/")
+            || t.contains("dailymotion.com/video") || t.contains("twitch.tv/") { return true }
+        return false
     }
     // Fire the extraction on the copied URL and close the launcher (the notch widget takes the stage).
     private func triggerExtractVideo(_ url: String) {

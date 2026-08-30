@@ -5830,6 +5830,22 @@ struct ActionConsentDrop: View {
                 // talk-chord-ONLY handler (NOT full onFlags — its ⌃⌃-summon detector would misread the ⌃ in
                 // ⌃⌥ and spawn God). finishDictation then pastes the transcript into the focused Ask field.
                 if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // A non-activating panel never receives the app's Edit-menu key-equivalents, so ⌘V / ⌘A /
+                // ⌘C / ⌘X never reach the focused Ask field (right-click paste works because that's the
+                // field's own contextual menu). Forward the standard editing action to the panel's first
+                // responder ourselves and consume the event, so ⌘V pastes a link like anywhere else.
+                if ev.type == .keyDown,
+                   ev.modifierFlags.intersection([.command, .option, .control, .shift]) == [.command],
+                   let ch = ev.charactersIgnoringModifiers?.lowercased() {
+                    let editSel: [String: Selector] = [
+                        "v": #selector(NSText.paste(_:)), "c": #selector(NSText.copy(_:)),
+                        "x": #selector(NSText.cut(_:)), "a": #selector(NSText.selectAll(_:))]
+                    if let sel = editSel[ch],
+                       let resp = self.launcherPanel?.firstResponder, resp.responds(to: sel) {
+                        _ = resp.perform(sel, with: nil)
+                        return nil
+                    }
+                }
                 // While a take is latched, its watch timer owns esc (cancel the dictation) — don't let esc
                 // ALSO close the launcher out from under it.
                 if self.dictating { return ev.keyCode == 53 ? nil : ev }
