@@ -346,12 +346,56 @@ fi
 
 # ---------- 12. the DMG — built from the stapled app, then signed itself ----------
 DMG="$HERE/build/Switchboard-$VERSION.dmg"
-DMG_SRC="$(mktemp -d)"
-cp -R "$STAGE" "$DMG_SRC/"
-ln -s /Applications "$DMG_SRC/Applications"
+VOL="Switchboard $VERSION"
+rm -f "$DMG"
 say "creating DMG…"
-hdiutil create -volname "Switchboard $VERSION" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" -quiet
-rm -rf "$DMG_SRC"
+# Try to bake a STYLED install window (dot-matrix background + drag-to-Applications arrow) via Finder.
+# It needs a Mac session that can write to /Volumes AND drive Finder (Automation) — an automated/headless
+# build can do neither, so this is best-effort and falls back to a plain (still valid) DMG. Run
+# package-dmg in your own Terminal (grant Automation once) to get the styled window in a release.
+build_styled_dmg() {
+  local SZ_MB RW MNT rc=0
+  SZ_MB=$(du -sm "$STAGE" | cut -f1); RW="$(mktemp -u).dmg"; MNT="/Volumes/$VOL"
+  [ -f "$HERE/dmg-background.png" ] || return 1
+  hdiutil detach "$MNT" -force -quiet 2>/dev/null || true
+  hdiutil create -volname "$VOL" -fs HFS+ -format UDRW -size "$((SZ_MB + 140))m" -ov "$RW" -quiet || return 1
+  hdiutil attach "$RW" -owners off -quiet || { rm -f "$RW"; return 1; }
+  if ! cp -R "$STAGE" "$MNT/" 2>/dev/null; then hdiutil detach "$MNT" -force -quiet 2>/dev/null; rm -f "$RW"; return 1; fi
+  ln -s /Applications "$MNT/Applications" 2>/dev/null
+  mkdir -p "$MNT/.background" 2>/dev/null && cp "$HERE/dmg-background.png" "$MNT/.background/bg.png" 2>/dev/null
+  osascript >/dev/null 2>&1 <<APPLESCRIPT || say "  (Finder styling skipped — DMG still valid; grant Automation for the styled window)"
+tell application "Finder"
+  tell disk "$VOL"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {360, 120, 1020, 560}
+    set vo to the icon view options of container window
+    set arrangement of vo to not arranged
+    set icon size of vo to 96
+    set text size of vo to 12
+    set background picture of vo to file ".background:bg.png"
+    set position of item "Switchboard.app" of container window to {170, 210}
+    set position of item "Applications" of container window to {490, 210}
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+APPLESCRIPT
+  sync
+  hdiutil detach "$MNT" -quiet 2>/dev/null || hdiutil detach "$MNT" -force -quiet
+  hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG" -ov -quiet || rc=1
+  rm -f "$RW"; return $rc
+}
+if build_styled_dmg && [ -f "$DMG" ]; then
+  say "styled install window baked (dot-matrix background + drag arrow)"
+else
+  say "styled build unavailable in this environment — plain DMG (run package-dmg in a Mac Terminal for the styled window)"
+  DMG_SRC="$(mktemp -d)"; cp -R "$STAGE" "$DMG_SRC/"; ln -s /Applications "$DMG_SRC/Applications"
+  hdiutil create -volname "$VOL" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" -quiet; rm -rf "$DMG_SRC"
+fi
 
 # hdiutil emits an UNSIGNED disk image. Without this the DMG itself fails Gatekeeper with
 # "no usable signature" even when the app inside it is perfectly notarized.
