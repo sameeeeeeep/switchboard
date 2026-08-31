@@ -183,22 +183,33 @@ function catalogBlock() {
     // Cap high enough to include the SKILLS (gist/reply/nameit/…): the catalog sorts studios/agents/tools
     // BEFORE skills, so a low cap hid every skill from God — it literally couldn't pick gist. ~60 short
     // lines is cheap now that God's thread is warm-cached.
+    // Each line carries the wrapp's KEYWORDS — the synonym field the ⌥⌥ launcher routes on
+    // (LauncherRouting.swift SBRoute.score weights `keywords` almost as high as the name). Without them
+    // God saw only the marketing tagline ("A brief in, a logo out") and couldn't map a natural request
+    // ("clean up this audio", "reformat this sheet") to a wrapp — so it refused / "I don't have access."
+    // Feeding the same keywords the launcher uses is what makes God route instead of decline.
     const lines = listings.slice(0, 80).map((l) => {
       const cmds = Array.isArray(l.tools) ? l.tools : [];
       const cmdNote = cmds.length > 1 ? `  [commands: ${cmds.map((t) => t.name).join(", ")}]` : "";
-      return `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)}${cmdNote} → ${l.components.ui.url}`;
+      const kws = (Array.isArray(l.keywords) ? l.keywords : []).filter((k) => typeof k === "string" && k.trim()).slice(0, 8);
+      const kwNote = kws.length ? `  [for: ${kws.join(", ")}]` : "";
+      return `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)}${kwNote}${cmdNote} → ${l.components.ui.url}`;
     });
-    return "\n\nWRAPPS IN THE STORE (id — what it does → url):\n" + lines.join("\n") +
-      "\n\n*** HARD RULE — this OVERRIDES 'answer directly' above. *** When the user gives you a TASK that " +
-      "one of these wrapps does — summarize/TL;DR, reply, name/rename, rewrite/rephrase, extract, translate, " +
-      "make an image, draft ads, and the like — you MUST run the wrapp; do NOT perform the task yourself in " +
-      "prose and do NOT [POINT]. Emit [DRIVE:<id> <input>] on its own line (multi-command: [DRIVE:<id>:<command> " +
+    return "\n\nWRAPPS IN THE STORE (id — what it does · [for: the kinds of request it handles] → url):\n" + lines.join("\n") +
+      "\n\n*** HARD RULE — you are a LAUNCHER. This OVERRIDES 'answer directly' above. *** Almost every " +
+      "request to DO something maps to ONE of these wrapps. When the user gives you a task, find the wrapp " +
+      "whose name/tagline/[for:] keywords best fit what they asked and ROUTE to it — do NOT perform the task " +
+      "yourself in prose, do NOT [POINT], and (this is the bug we are fixing) NEVER reply that you 'don't have " +
+      "access', 'can't do that', or 'aren't able to' when any wrapp above plausibly fits: routing to that wrapp " +
+      "IS how you do it. Emit [DRIVE:<id> <input>] on its own line (multi-command: [DRIVE:<id>:<command> " +
       "<input>]) where <input> is the thing to work on (what the user spoke, or the on-screen/clipboard text " +
-      "they mean). The wrapp runs on the user's own Claude and its result becomes an INTERACTIVE widget in the " +
-      "notch — that widget IS the deliverable, far better than a spoken summary. Keep your spoken words to ONE " +
-      "short line (\"On it — running Gist.\"). ONLY answer in prose when the user asked a genuine QUESTION, or " +
-      "nothing in the list fits. Use [OPEN:<url>] only when they literally just want the app open. Never " +
-      "pretend a wrapp is already running, and never bring up this list unprompted.";
+      "they mean); if the best-fit wrapp has no command or the user just wants it open, use [OPEN:<url>] " +
+      "instead. Match generously — 'make me a logo' → crest, 'change the voice on this' → dub, 'turn these " +
+      "notes into slides' → deck, 'summarize this meeting' → huddle. The wrapp runs on the user's own Claude " +
+      "and its result becomes an INTERACTIVE widget in the notch — that widget IS the deliverable, far better " +
+      "than a spoken summary. Keep your spoken words to ONE short line (\"On it — running Crest.\"). ONLY " +
+      "answer in prose when the user asked a genuine QUESTION that no wrapp handles, or truly nothing above " +
+      "fits. Never pretend a wrapp is already running, and never bring up this list unprompted.";
   } catch { return ""; } // no catalog / unreadable → no block, God stays quiet about the store
 }
 
