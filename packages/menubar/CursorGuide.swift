@@ -1391,6 +1391,7 @@ final class CursorGuide {
     // Each entry already has its resolved `mode` injected, so a queued test-run resumes as a test.
     private var pendingRuns: [[String: Any]] = []
     private var rawRun: [String: Any]? = nil   // the original run JSON — re-saved (with startIndex) on abort so a guide can be RESUMED from the menu
+    private var callerRunId: String? = nil     // optional unique id from the run → also write guide-results/<id>.json (collision-proof result)
     private var startedAt = Date()
 
     // ── teach run state
@@ -1628,6 +1629,10 @@ final class CursorGuide {
         self.steps = parsed
         model.placementPinned = false              // a fresh guide re-derives per-step smart placement again (until the user moves the card)
         self.rawRun = obj                          // keep the raw run so we can re-save it (with startIndex) to resume
+        // Per-run result routing: the caller can pass a unique `runId`; we write the result to a per-run file
+        // (guide-results/<runId>.json) so a later card — or another session — can NEVER clobber this answer in
+        // the single shared guide-result.json. The raiser polls its own file by id. (founder 2026-08-31)
+        self.callerRunId = obj["runId"] as? String
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
         model.sourceId = (obj["sourceId"] as? String)
@@ -2180,6 +2185,12 @@ final class CursorGuide {
         ]
         writeAtomic(out, to: rel("guide-result.json"))               // unified result the daemon reads (both modes)
         if mode == .test { writeAtomic(out, to: rel("test-result.json")) }  // back-compat twin for the direct file path
+        // Per-run result file — collision-proof: only THIS run's caller reads guide-results/<runId>.json.
+        if let rid = callerRunId, !rid.isEmpty {
+            let dir = rel("guide-results")
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            writeAtomic(out, to: (dir as NSString).appendingPathComponent("\(rid).json"))
+        }
         persistDurable(out)                                          // append-only history + durable screenshots
     }
 
