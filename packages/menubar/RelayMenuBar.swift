@@ -7028,7 +7028,7 @@ struct ActionConsentDrop: View {
         guard !text.isEmpty else { godLog("dictate paste: EMPTY transcript — nothing to paste"); return }
         let pb = NSPasteboard.general
         let trusted = AXIsProcessTrusted()
-        godLog("dictate paste: len=\(text.count) trusted=\(trusted) text='\(text.prefix(50))'")
+        godLog("dictate paste: len=\(text.count) trusted=\(trusted)")   // never log the transcript content itself
         // A synthetic ⌘V is a CGEvent post to ANOTHER app — macOS silently blocks that without Accessibility.
         // So when we're NOT trusted, don't clobber-then-restore into a no-op (the transcript would just vanish):
         // leave it on the clipboard and TELL the user. One ⌘V away beats a silent drop. (founder 2026-08-27)
