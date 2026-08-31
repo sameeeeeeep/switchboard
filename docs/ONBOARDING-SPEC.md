@@ -190,3 +190,37 @@ installer · the switchboard/teach `doneWhen` predicates (`field-non-empty`, `fi
 
 Recommended first slice once approved: **O1 + O2 + O3 + O4** — the spine + the two fixes the founder hit
 hardest (no launcher clash, real things to try). O5/O6 next, O7-O9 to finish.
+
+---
+
+## 10 · Founder direction v2 (2026-08-31) — the refinements that supersede the earlier placement/copy
+
+These sharpen §3–§5 into the real build. Where they conflict with earlier beats, THESE win.
+
+1. **A real tour THROUGH the app's parts.** Onboarding walks the user across the actual surfaces —
+   notch, launcher, store, a wrapp, dictation, the board — not a slideshow. Each part is visited live.
+
+2. **Cards live at the NOTCH, then slide to the SIDE — NEVER at the cursor.** Kill `placement:"cursor"`
+   for onboarding. The guide card emerges from the notch and docks to the side of the screen (out of the
+   way of what it's pointing at). The CursorGuide placement model must add/prefer a "side" placement for
+   onboarding; the cursor-riding card is explicitly rejected.
+
+3. **ACTIVELY INITIALIZE each demo — don't narrate, set it up and let them DO it.** Every part is
+   demonstrated by the app actually spinning it up for the user, in real surfaces:
+   - **Notch option-selection** — raise a REAL presence/`ask` card at the notch and have them pick, so
+     they learn the notch-decision surface by using it.
+   - **Guided testing** — run a REAL guided step (the teach/`doneWhen` loop) they complete.
+   - **A wrapp** — actually open one, seeded, so they run it for real (not "go open X").
+   - The pattern: the operator initializes the thing, the user experiences it by doing.
+
+4. **Dictation demo = a real native window with a text field.** When teaching dictation, OPEN a native
+   window containing a focused TEXT FIELD, and have the user dictate INTO it — so the words visibly land
+   in a real field. (Supersedes §5 Beat 4's "scratch field" idea → make it a real native window.)
+
+### First build slice (proposed)
+- **S1** CursorGuide: add a "side" placement (dock the card to the screen edge from the notch); route
+  onboarding steps to it; remove cursor placement from the tour.
+- **S2** The dictation demo: a native window with a focused text field + a step that has the user dictate
+  into it (reuse the now-working ⌃⌥/⌃ pipeline; success = field non-empty).
+- **S3** One actively-initialized notch demo: raise a real `ask` option card during the tour and read the pick.
+- Then broaden to the full part-by-part tour (store, wrapp, board) using the same "initialize + let them do" pattern.
