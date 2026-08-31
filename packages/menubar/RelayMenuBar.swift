@@ -4603,25 +4603,16 @@ struct ActionConsentDrop: View {
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
         // Per-beat side effects: the onboarding operator ACTIVELY initializes a surface when its beat is
         // reached (onboarding §10). Beat 4 opens a real, seeded wrapp so the user's first win is one click.
-        CursorGuide.shared.onStepEnter = { [weak self] id in
+        CursorGuide.shared.onStepEnter = { id in
             Task { @MainActor in
-                guard let self else { return }
-                // Any beat that ISN'T dictation closes the scratch field + brings the parked card home.
-                if id != "key-dictation" { DictationScratch.shared.hide(); CursorGuide.shared.unpark() }
+                // The dictation demo now targets the LAUNCHER's own field (founder v3 — no notepad); dictation
+                // already lands in it via pasteText's LauncherPanel case. For the beats that open a surface,
+                // step the card aside so it never covers the launcher/orb; bring it home for the rest.
                 switch id {
-                case "key-dictation":
-                    // OPEN a real native window with a focused text field to talk INTO, and step the card
-                    // aside so it doesn't cover it (founder's repeated ask — "open a window with a text field").
-                    DictationScratch.shared.show()
+                case "open-launcher", "say-into-launcher", "try-god":
                     CursorGuide.shared.parkAside()
-                case "first-wrapp":
-                    // Open a real wrapp in its native window — Brand Brain if present, else Crest (both studio
-                    // wrapps show a labeled sample pre-connect, so there's always something to see).
-                    let cat = readCatalog()
-                    if let l = cat.first(where: { $0.id == "brandbrain" }) ?? cat.first(where: { $0.id == "crest" }) {
-                        self.launchWrapp(l, "window")
-                    }
-                default: break
+                default:
+                    CursorGuide.shared.unpark()
                 }
             }
         }
@@ -6622,49 +6613,42 @@ struct ActionConsentDrop: View {
                     "hint": "⌥→ to keep going."])
             }
         }
-        // ── Beat 3 · The demos, each tried for real. Dictation → God → launcher → guru (founder v2).
-        // 3a · Dictation — advances the instant you hold ⌃⌥ and speak.
-        steps.append(["id": "key-dictation",
-            "text": "3 · Try dictation — I opened a window for you. Hold ⌃⌥, talk, and watch it land there.",
-            "say": "Now try it for real. I've opened a little window with a text field. Hold control-option and say something — your words type themselves right into it. Release control when you're done.",
-            "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
-            "doneWhen": ["kind": "event", "name": "dictation"],
-            "gated": true,
-            "hint": "Hold to talk, release to drop — watch the window I opened."])
-        // 3b · God — always-on operator. Yields the notch to the orb while it listens.
-        steps.append(["id": "key-summon",
-            "text": "3 · Meet God — tap this and ask anything out loud. Always on.",
-            "say": "Meet God, your always-on operator. Tap control twice and ask anything out loud. It can see your screen only when you ask, and act through your wrapps.",
-            "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
-            "yieldsTo": "summon",
-            "doneWhen": ["kind": "event", "name": "summon"],
-            "gated": true,
-            "hint": "Just try it — I'll move on when you do."])
-        // 3c · Launcher — double-tap Option, say what you want. Yields to the launcher surface.
-        steps.append(["id": "key-launcher",
-            "text": "3 · Your launcher — double-tap Option, then say what you want. It finds the wrapp.",
-            "say": "This is your launcher. Double-tap option, and type what you want to do — it lines up the wrapps that can do it.",
-            "keys": [["caps": ["⌥", "⌥"], "name": "Home"]],
-            "yieldsTo": "launcher",
+        // ── Beat 3 · Try your shortcuts ONE BY ONE, each with a phrase God TELLS you, dictated INTO the launcher
+        // (founder v3 — no notepad; the launcher's own field is where dictation lands). Each is gated (can't ⌥→
+        // past it) and UNLOCKS once you actually do it, so you can keep playing before you move on.
+        // 3a · The launcher — press ⌥⌥, it opens.
+        steps.append(["id": "open-launcher",
+            "text": "3 · Meet your launcher — press ⌥⌥. It's your home for everything.",
+            "say": "Let's try your shortcuts, one at a time. First, press option option — that opens your launcher. It's your home for everything.",
+            "keys": [["caps": ["⌥", "⌥"], "name": "Launcher"]],
             "doneWhen": ["kind": "event", "name": "launcher"],
             "gated": true,
-            "hint": "Double-tap Option — I'll move on when you do."])
-        // 3d · Guru — the card itself IS the demo: Claude points and guides (or drives).
-        steps.append(["id": "guru",
-            "text": "3 · This card is Guru — Claude can point at anything on screen and guide you, or drive it.",
-            "say": "And this card itself is Guru. Claude can see your screen, point at anything, and walk you through it — or drive it for you, asking first on anything that matters.",
-            "hint": "⌥→ for your first wrapp."])
-        // ── Beat 4 · Your first wrapp — the app OPENS a real, seeded one for you (onStepEnter → launchWrapp).
-        steps.append(["id": "first-wrapp",
-            "text": "4 · Your first wrapp — I've opened one for you. Give it a go; it runs on your Claude.",
-            "say": "Last, a real wrapp. I've opened one for you, seeded and ready. Everything's a skin over your Claude — no setup, just go.",
-            "hint": "Try the wrapp — then ⌥→ to finish."])
+            "hint": "Press ⌥⌥ — I'll unlock the next step the moment it opens."])
+        // 3b · Dictation INTO the launcher — hold ⌃⌥ and say the TOLD idea; it lands in the field + finds the wrapp.
+        steps.append(["id": "say-into-launcher",
+            "text": "3 · Now talk to it. Hold ⌃⌥ and say the line below — watch your words land, then hit Enter.",
+            "say": "Now talk to it. With the launcher open, hold control option and say: a brand for healthy prebiotic soda with bold Indian flavours. Watch your words land in the field, then press enter to open the match.",
+            "keys": [["caps": ["⌃", "⌥"], "name": "Say it"]],
+            "doneWhen": ["kind": "event", "name": "dictation"],
+            "gated": true,
+            "hint": "Say: “a brand for healthy prebiotic soda with bold Indian flavours” — then Enter."])
+        // 3c · God — press ⌃⌃ and ask a TOLD phrase out loud.
+        steps.append(["id": "try-god",
+            "text": "3 · Now God — press ⌃⌃ and ask out loud. Try the line below.",
+            "say": "Last shortcut. Press control control and ask out loud: what should I focus on today. That's God — always on, and it can act through any of your wrapps.",
+            "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
+            "doneWhen": ["kind": "event", "name": "summon"],
+            "gated": true,
+            "hint": "Ask: “what should I focus on today?”"])
         // ── Done · the recap + the pointer to everything else.
         steps.append(["id": "done",
             "text": "That's it — ⌃⌥ dictate · ⌃⌃ ask · ⌥⌥ launcher · tap the notch for your board.",
             "say": "That's it. Control-option to dictate, control-control to ask God, option-option for your launcher. Tap the notch any time to open your board. There's more in the store whenever you want it.",
             "hint": "Browse the store for more. Replay anytime from the dot."])
 
+        // Pre-cache the spoken lines so God's voice plays with no generation lag as the tour reaches each beat
+        // (founder: "the god voice should be pre cached, it cant be generated"). Background; replays are instant.
+        preWarmGuideVoice(steps.compactMap { $0["say"] as? String })
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
         let f = (RELAY_DIR as NSString).appendingPathComponent("guide-run.json")
@@ -6704,13 +6688,60 @@ struct ActionConsentDrop: View {
             // that afplay then played truncated — the "TTS was brief / didn't finish" bug. Also require
             // curl to have SUCCEEDED (exit 0), so a timeout/failure falls back to the full macOS voice
             // instead of speaking a half-rendered clip.
+            // PRE-CACHE (founder: onboarding voice must be pre-generated, not generated live). If we already
+            // have this exact line cached for this voice, play it INSTANTLY — no /speak round trip. Otherwise
+            // generate once, then SAVE it to the cache so it's instant every time after.
+            let cached = Self.guideVoiceCachePath(voice: name, line: line)
+            if let sz = (try? FileManager.default.attributesOfItem(atPath: cached)[.size]) as? Int, sz > 1000 {
+                let play = Process(); play.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); play.arguments = [cached]
+                Task { @MainActor in self?.guideVoiceProc = play }; try? play.run()
+                return
+            }
             curl.arguments = ["-s", "-m", "60", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", wav]
             try? curl.run(); curl.waitUntilExit()
             let sz = (try? FileManager.default.attributesOfItem(atPath: wav)[.size] as? Int) ?? 0
             if curl.terminationStatus == 0, sz > 1000 {
+                // save to the cache for next time (best-effort)
+                try? FileManager.default.createDirectory(atPath: (cached as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try? FileManager.default.removeItem(atPath: cached)
+                try? FileManager.default.copyItem(atPath: wav, toPath: cached)
                 let play = Process(); play.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); play.arguments = [wav]
                 Task { @MainActor in self?.guideVoiceProc = play }; try? play.run()
             } else { sayIt() }   // clone server down → macOS voice
+        }
+    }
+
+    // Stable cache path for a spoken line + voice (djb2 hash → hex; survives restarts, no CryptoKit needed).
+    private static func guideVoiceCachePath(voice: String, line: String) -> String {
+        var h: UInt64 = 5381
+        for b in line.utf8 { h = (h &* 33) ^ UInt64(b) }
+        let safe = voice.replacingOccurrences(of: "/", with: "_")
+        return (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/cache/\(safe)-\(String(h, radix: 16)).wav")
+    }
+
+    // Pre-generate + cache a set of lines (the onboarding `say` lines) in the background, so they play from
+    // cache with zero generation lag when the tour reaches them (founder: "the god voice should be pre cached").
+    @MainActor func preWarmGuideVoice(_ lines: [String]) {
+        let name = readSelectedVoice()
+        guard !name.isEmpty, isPortOpen(7897) else { return }
+        DispatchQueue.global(qos: .utility).async {
+            for raw in lines {
+                let line = raw.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "\n", with: " ")
+                guard !line.isEmpty else { continue }
+                let cached = Self.guideVoiceCachePath(voice: name, line: line)
+                if let sz = (try? FileManager.default.attributesOfItem(atPath: cached)[.size]) as? Int, sz > 1000 { continue }
+                let tmp = NSTemporaryDirectory() + "guide-vo-warm.wav"
+                try? FileManager.default.removeItem(atPath: tmp)
+                let body = "{\"text\":\"\(line)\",\"voice\":\"\(name)\"}"
+                let curl = Process(); curl.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+                curl.arguments = ["-s", "-m", "90", "-X", "POST", "http://127.0.0.1:7897/speak", "-H", "content-type: application/json", "-d", body, "-o", tmp]
+                try? curl.run(); curl.waitUntilExit()
+                let sz = (try? FileManager.default.attributesOfItem(atPath: tmp)[.size] as? Int) ?? 0
+                if curl.terminationStatus == 0, sz > 1000 {
+                    try? FileManager.default.createDirectory(atPath: (cached as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                    try? FileManager.default.copyItem(atPath: tmp, toPath: cached)
+                }
+            }
         }
     }
     @MainActor private func stopGuideSpeech() {

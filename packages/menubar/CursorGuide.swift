@@ -225,6 +225,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var stepIndex: Int = 0            // 0-based, drives the segment progress bar
     @Published var stepTotal: Int = 0
     @Published var autoSensing = false           // this step self-advances (doneWhen/hold) → AUTO pill + status line
+    @Published var actionDone = false            // a GATED practice step whose real action just fired → UNLOCK ⌥→ (don't auto-jump; let them keep playing)
     @Published var canBack = false               // idx > 0 → the Back chip appears
     @Published var flash: GuideFlash? = nil       // brief ✓/✗ confirmation that a signal landed
     @Published var queueDepth: Int = 0            // >0 → "+N queued" — runs waiting behind this one (no-clobber queue)
@@ -1748,6 +1749,7 @@ final class CursorGuide {
         model.progress = "\(idx + 1)/\(steps.count)"
         model.stepIndex = idx
         model.stepTotal = steps.count
+        model.actionDone = false   // fresh step: a gated beat is locked again until its real action fires
         model.autoSensing = (s.doneWhen != nil) || ((s.hold ?? 0) > 0)   // step advances itself → AUTO
         model.canBack = idx > 0
         model.media = s.media
@@ -1866,7 +1868,18 @@ final class CursorGuide {
         doneStreak = ok ? doneStreak + 1 : 0
         if doneStreak >= 2 {   // debounce: two clean ticks in a row before we auto-advance
             doneStreak = 0
-            handleAdvance(fail: false, auto: true)   // the REAL action fired → advance past even a gated step
+            if steps[idx].gated {
+                // The real action fired on a GATED practice beat → UNLOCK ⌥→ but DON'T yank them to the next
+                // step: let them keep trying it (founder: "how will they test it if you auto-progress?").
+                if !model.actionDone {
+                    model.actionDone = true
+                    model.autoSensing = false
+                    model.hint = "✓ nice — take your time. ⌥→ when you're ready."
+                    onSpeak?("Nice — that's it. Play with it, and press option-right when you're ready to move on.")
+                }
+            } else {
+                handleAdvance(fail: false, auto: true)   // normal teach step → auto-advance on success
+            }
         }
     }
 
@@ -2025,7 +2038,7 @@ final class CursorGuide {
         // arrive with auto=true) advances, so onboarding teaches instead of letting you click through. A MANUAL
         // ⌥→/click (auto=false) is refused with a nudge; esc still leaves. (Options steps are exempt — ⌥→ IS the
         // pick — so this only bites a gated non-options step.)
-        if !fail, !auto, steps[idx].gated, (steps[idx].options?.isEmpty ?? true) {
+        if !fail, !auto, steps[idx].gated, !model.actionDone, (steps[idx].options?.isEmpty ?? true) {
             flash(.back)
             onSpeak?("Give it a try — I'll move on the moment you do.")
             return

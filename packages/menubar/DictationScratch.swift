@@ -88,11 +88,18 @@ import SwiftUI
     /// ⌘V would land in whatever app was frontmost before this non-activating panel, not here — the bug).
     var isShowing: Bool { panel != nil && field != nil }
 
-    /// Insert dictated text at the field's caret + keep it visible. Same path typing uses — no clipboard, no ⌘V.
+    /// Append dictated text and keep it visible. Uses the text storage directly (NOT insertText, which needs
+    /// the view to be first responder — a non-activating panel's field never truly is, so insertText was
+    /// dropped until you clicked elsewhere: the "doesn't work unless I click outside" bug).
     func insert(_ text: String) {
-        guard let tv = field else { return }
-        tv.insertText(text, replacementRange: tv.selectedRange())
-        tv.scrollRangeToVisible(tv.selectedRange())
+        guard let tv = field, let ts = tv.textStorage else { return }
+        let sep = (ts.length > 0 && !ts.string.hasSuffix(" ") && !ts.string.hasSuffix("\n")) ? " " : ""
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: tv.font ?? NSFont.systemFont(ofSize: 17),
+            .foregroundColor: ink,
+        ]
+        ts.append(NSAttributedString(string: sep + text, attributes: attrs))
+        tv.scrollRangeToVisible(NSRange(location: ts.length, length: 0))
         // a brief lime pulse on the border so the landing is unmistakable
         if let layer = tv.enclosingScrollView?.layer {
             let flash = CABasicAnimation(keyPath: "borderColor")
