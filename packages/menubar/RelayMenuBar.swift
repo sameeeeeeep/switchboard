@@ -6844,6 +6844,7 @@ struct ActionConsentDrop: View {
         dictateCommitting = false
         NSSound(named: "Tink")?.play()
         showGodStatus("Dictating", accent: .lime, pattern: .listening)
+        godLog("dictate START: mode=\(model.shortcuts.dictationMode) micAuth=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue) ctrlNow=\(Self.ctrlKeyDown())")
         onboard.note(.dictation)   // tour step 3: ⌃⌥ dictation fired
         // LATCH mode: the recording now stays on after the keys lift. Hand the commit/cancel/find lifecycle
         // to a poll timer (⌃ tap commits, Esc cancels, Fn arms find). Seed the ctrl edge-detector to the
@@ -6897,8 +6898,10 @@ struct ActionConsentDrop: View {
                 // for a background/accessory app the latter only updates as THIS app processes events, so it
                 // goes stale in this poll and the ⌃ commit tap was being missed while a take was latched.
                 let ctrlDown = Self.ctrlKeyDown()
+                if ctrlDown != self.dictatePrevCtrlDown { godLog("dictate poll: ctrl=\(ctrlDown)") }
                 if ctrlDown && !self.dictatePrevCtrlDown {
                     self.dictatePrevCtrlDown = ctrlDown
+                    godLog("dictate COMMIT (ctrl rising edge) → finishDictation")
                     self.finishDictation(find: self.dictateFindArmed)
                     return
                 }
@@ -6908,10 +6911,12 @@ struct ActionConsentDrop: View {
     }
     @MainActor private func stopDictateWatch() { dictateWatchTimer?.invalidate(); dictateWatchTimer = nil }
 
-    // LIVE control-key state from the window server (independent of whether this app is processing events) —
-    // the reliable read the latched-dictation ⌃ commit needs. 59 = left control, 62 = right control.
+    // LIVE control state from the window server, independent of whether this app is processing events.
+    // Use flagsState (the MODIFIER read) — NOT keyState(keycode), which is for regular keys and does not
+    // reliably track modifiers, so a ⌃ commit tap was never seen. NSEvent.modifierFlags also goes stale in
+    // a background poll; flagsState is the one that works from a menu-bar app's timer.
     private static func ctrlKeyDown() -> Bool {
-        CGEventSource.keyState(.combinedSessionState, key: 59) || CGEventSource.keyState(.combinedSessionState, key: 62)
+        CGEventSource.flagsState(.combinedSessionState).contains(.maskControl)
     }
 
     // Abort: stop recording, discard the clip, paint nothing. Reachable from any state (Esc / failsafe).
@@ -6940,7 +6945,8 @@ struct ActionConsentDrop: View {
         dictateRecorder?.stop(); dictateRecorder = nil
         NSSound(named: "Pop")?.play()
         showGodStatus(find ? "Finding" : "Transcribing", accent: .lime, pattern: .thinking)
-        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { hideGodStatus(); dictateCommitting = false; return }
+        godLog("dictate FINISH: wav=\(dictateWav ?? "nil") wc=\(whisperCliPath() ?? "nil") model=\(whisperModelPath() != nil)")
+        guard let wav = dictateWav, let wc = whisperCliPath(), let model = whisperModelPath() else { godLog("dictate BAIL: missing wav/whisper/model"); hideGodStatus(); dictateCommitting = false; return }
         // Transcribe off the main thread (whisper.cpp is ~0.5s warm), then act on the main actor.
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
@@ -6963,6 +6969,7 @@ struct ActionConsentDrop: View {
                     self.vaultFindAndPaste(text)   // hides status + clears dictateCommitting when it returns
                 } else {
                     self.hideGodStatus()
+                    godLog("dictate transcript: \(text.count) chars, AX=\(AXIsProcessTrusted()) → pasteText")
                     self.pasteText(text)
                     self.dictateCommitting = false
                 }
