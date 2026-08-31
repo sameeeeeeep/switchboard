@@ -442,16 +442,20 @@ privacy shouldn't be the premium tier. it should be the floor.
 
 ---
 
-# SERIES — "The Backlog" (recurring)
+# SERIES — "Half-Baked" (recurring)
+
+**The name says it first:** most of the ~94 wrapps are half-baked. Naming the series that
+disarms the criticism before anyone can make it — the self-deprecation IS the brand.
 
 **The premise, honestly:** ~94 wrapps exist; most are unfinished. That's ADHD, not a
 roadmap. Instead of hiding it, the incompleteness IS the format — the audience picks what
 gets finished, and watches it ship. Turns the liability into a content engine + free demand
 validation.
 
-**Native metaphor:** the product board is Backlog → Todo → Doing → Blocked → Review → Done.
-Half-built wrapps live in **Backlog**. The audience **promotes one to Doing**. It ships to
-**Done**, free on your own Claude.
+**Mechanic (native to the product):** the board is Backlog → Todo → Doing → Blocked → Review →
+Done. Half-baked wrapps sit in **Backlog**. The audience **promotes one to Doing**. You finish
+baking it. It ships to **Done**, free on your own Claude. ("Half-Baked" is the show; the board
+is how it runs.)
 
 **The loop (per cycle, ~weekly):**
 1. **Reveal** — show 3–4 Backlog wrapps, honest about state. Vote (native poll / comment the name).
@@ -464,24 +468,24 @@ Half-built wrapps live in **Backlog**. The audience **promotes one to Doing**. I
 stubbed; only the winner gets finished; the finished bar is real (works end to end), not a
 landing page.
 
-## Launch post — "confession"
+## Launch post — "Half-Baked"
 
 ### LinkedIn
 
-confession: i have ~94 apps in my store and most of them aren't finished.
+i'm starting a series. it's called Half-Baked.
 
-that's not a roadmap slip. that's ADHD. i get an idea, build the exciting 80%, and the second
-the hard part is solved my brain has already left for the next one.
+because that's what most of my ~94 apps are. and i'm done pretending otherwise.
 
-for years i treated that as a flaw to hide.
+it's not a roadmap slip — it's ADHD. i get an idea, build the exciting 80%, and the second the
+hard part is solved my brain has already left for the next one.
 
-i'm done hiding it. so here's the deal.
+for years i treated that as a flaw to hide. done hiding it. here's the deal instead.
 
-every half-built app lives in a Backlog — the same board my Claude works off. i'm going to show
+every half-baked app sits in a Backlog — the same board my Claude works off. i'm going to show
 you that backlog, unfinished corners and all, and you're going to tell me which one to finish.
 
-you pick. i promote it to Doing. i build it live on my own Claude — you watch the whole thing,
-scaffold to ship. then it goes Done, free for you to run.
+you pick. i move it to Doing. i finish baking it live on my own Claude — you watch the whole
+thing, scaffold to ship. then it goes Done, free for you to run.
 
 i only finish what you actually want. you watch it get made. and nobody has to pretend the store
 was ever "complete."
@@ -489,41 +493,39 @@ was ever "complete."
 turns out the most honest version of a store built by someone with ADHD is one where the
 customers decide what ships.
 
-first pick goes up this week. bring your vote.
+first one goes up this week. bring your vote.
 
 ### X / Threads
 
-1/ confession: i have ~94 apps in my store and most of them aren't finished.
+1/ starting a series. it's called Half-Baked.
 
-that's not a roadmap slip. that's ADHD.
+because that's what most of my ~94 apps are. and i'm done pretending otherwise.
+
+—
+
+2/ it's not a roadmap slip. it's ADHD.
 
 i build the exciting 80%, and the second the hard part is solved my brain's already gone to the
 next idea.
 
-—
-
-2/ for years i hid that.
-
-done hiding. new deal:
-
-every half-built app lives in a Backlog — the same board my Claude works off.
-
-i show you the backlog. you tell me what to finish.
+for years i hid that. done hiding.
 
 —
 
-3/ you pick → i promote it to Doing → i build it live on my own Claude, you watch scaffold to
-ship → it goes Done, free for you to run.
+3/ every half-baked app sits in a Backlog — the same board my Claude works off.
 
-i only finish what you actually want.
+you pick one → i move it to Doing → i finish baking it live on my own Claude, you watch scaffold
+to ship → it goes Done, free for you to run.
 
 —
 
-4/ the most honest version of a store built by someone with ADHD?
+4/ i only finish what you actually want.
+
+the most honest version of a store built by someone with ADHD?
 
 one where the customers decide what ships.
 
-first pick goes up this week. bring your vote ↓
+first one goes up this week. bring your vote ↓
 
 ## Reveal post — reusable template
 
