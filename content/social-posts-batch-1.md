@@ -370,3 +370,72 @@ built into Switchboard. free. on your own Claude.
 - **Hashtags:** left them off on purpose. Add 1–3 on LinkedIn only if you have a reason to.
 - **CTA:** none are hard-selling. When there's a public link/waitlist, add one line at the end
   of the LinkedIn versions.
+
+---
+
+# Post 6 — the five noes (privacy)
+
+**Screenshare cue:** the consent card at the notch — grant a scope, then revoke it in the
+control panel and show the audit row. The "nothing leaves without a row you approve" claim,
+made visible.
+
+### LinkedIn
+
+every app i've shown you this week has one thing in common:
+
+none of them asked you to make an account.
+
+that's not an accident. it's the whole point of Switchboard.
+
+the deal with most AI apps is quietly awful: you make yet another account, paste in a key or
+pay yet another subscription, and hand over a copy of your data so the app can call a model on
+your behalf. you're the product. again.
+
+Switchboard runs on five noes:
+
+- no account to create
+- no data leaves your Mac without a row you approve
+- no key resold — you bring your own Claude
+- no lock-in — your work is plain files you own
+- no training on your data
+
+the apps bring a UI and nothing else. they ask the broker on your machine, which lends them
+your Claude, your tools, and your context — for exactly as long as you allow, and never a copy.
+
+privacy shouldn't be the premium tier. it should be the floor.
+
+### X / Threads
+
+1/ every app i've shown you this week has one thing in common:
+
+none of them asked you to make an account.
+
+that's not an accident. it's the whole point.
+
+—
+
+2/ the deal with most AI apps is quietly awful:
+
+make yet another account. paste a key or pay another subscription. hand over a copy of your
+data so the app can call a model for you.
+
+you're the product. again.
+
+—
+
+3/ Switchboard runs on five noes:
+
+- no account
+- no data leaves your Mac without a row you approve
+- no key resold — you bring your own Claude
+- no lock-in — your work is plain files you own
+- no training on your data
+
+—
+
+4/ the apps bring a UI and nothing else.
+
+they ask the broker on your machine, which lends them your Claude, your tools, your context —
+for exactly as long as you allow. never a copy.
+
+privacy shouldn't be the premium tier. it should be the floor.
