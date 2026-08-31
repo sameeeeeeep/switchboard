@@ -175,11 +175,15 @@
         x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a-.4),e.y2-L*Math.sin(a-.4));
         x.moveTo(e.x2,e.y2);x.lineTo(e.x2-L*Math.cos(a+.4),e.y2-L*Math.sin(a+.4));x.stroke(); } }
     else if(o.t==='text'){ x.font=o.size+'px ui-monospace,monospace';x.textBaseline='top';x.fillText(o.txt,o.x,o.y); }
-    else if(o.t==='img'){ var im=imgStore[o.img]; var okimg=im&&im.complete&&im.naturalWidth>0&&!im.__broken;
-      if(okimg){ try{ x.drawImage(im,o.x,o.y,o.w,o.h); }catch(e){ okimg=false; } }
+    else if(o.t==='img'){ var im=imgStore[o.img]; var okimg=im&&im.complete&&!im.__broken;
+      // NOT naturalWidth>0: WebKit reports naturalWidth===0 for a viewBox-only SVG (no width/height attrs),
+      // which is exactly how the whiteboard skill seeds an SVG diagram/wireframe — so that guard drew every
+      // seeded SVG mockup as a ⚠ placeholder (founder: "native diagrams aren't showing up anymore"). Draw any
+      // loaded, non-errored image to its supplied w/h (SVG scales fine); only onerror or a drawImage throw = broken.
+      if(okimg){ try{ x.drawImage(im,o.x,o.y,o.w,o.h); }catch(e){ okimg=false; im.__broken=true; } }
       // loaded-but-failed (onerror / decode error / lost handle) → a labeled placeholder that keeps the
       // object's footprint so it stays selectable/movable/deletable. Still-loading (not complete) draws nothing.
-      if(!okimg && (!im || im.__broken || (im.complete&&im.naturalWidth===0))) drawBrokenImg(o); }
+      if(!okimg && (!im || im.__broken)) drawBrokenImg(o); }
   }
   function drawBrokenImg(o){ var w=o.w||160, h=o.h||110; x.save();
     x.setLineDash([6/cam.s,4/cam.s]); x.strokeStyle='#FF5F7A'; x.fillStyle='rgba(255,95,122,.10)'; x.lineWidth=1.4/cam.s;
