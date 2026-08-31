@@ -4606,7 +4606,14 @@ struct ActionConsentDrop: View {
         CursorGuide.shared.onStepEnter = { [weak self] id in
             Task { @MainActor in
                 guard let self else { return }
+                // Any beat that ISN'T dictation closes the scratch field + brings the parked card home.
+                if id != "key-dictation" { DictationScratch.shared.hide(); CursorGuide.shared.unpark() }
                 switch id {
+                case "key-dictation":
+                    // OPEN a real native window with a focused text field to talk INTO, and step the card
+                    // aside so it doesn't cover it (founder's repeated ask — "open a window with a text field").
+                    DictationScratch.shared.show()
+                    CursorGuide.shared.parkAside()
                 case "first-wrapp":
                     // Open a real wrapp in its native window — Brand Brain if present, else Crest (both studio
                     // wrapps show a labeled sample pre-connect, so there's always something to see).
@@ -6612,11 +6619,11 @@ struct ActionConsentDrop: View {
         // ── Beat 3 · The demos, each tried for real. Dictation → God → launcher → guru (founder v2).
         // 3a · Dictation — advances the instant you hold ⌃⌥ and speak.
         steps.append(["id": "key-dictation",
-            "text": "3 · Try dictation — hold in any text field and speak; your words land at the cursor.",
-            "say": "Now try it for real. Hold control-option in any text field and say something — your words type themselves. Release control when you're done.",
+            "text": "3 · Try dictation — I opened a window for you. Hold ⌃⌥, talk, and watch it land there.",
+            "say": "Now try it for real. I've opened a little window with a text field. Hold control-option and say something — your words type themselves right into it. Release control when you're done.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
             "doneWhen": ["kind": "event", "name": "dictation"],
-            "hint": "Hold to talk, release to drop — I'll move on when you do."])
+            "hint": "Hold to talk, release to drop — watch the window I opened."])
         // 3b · God — always-on operator. Yields the notch to the orb while it listens.
         steps.append(["id": "key-summon",
             "text": "3 · Meet God — tap this and ask anything out loud. Always on.",

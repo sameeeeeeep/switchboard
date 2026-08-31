@@ -1407,29 +1407,59 @@ final class CursorGuide {
     /// The app calls this when a taught gesture actually fires (summon/dictation/launcher), so a step whose
     /// doneWhen is `{kind:"event",name:…}` advances the moment the user DOES it — no ⌥→ needed. Only counts
     /// while a guide is active; the ~4Hz watcher picks it up on its next tick.
-    // Which full surface the current step yielded to (launcher/orb) — we collapsed for it and are waiting
+    // Which full surface the current step yielded to (launcher/orb) — we MOVED ASIDE for it and are waiting
     // for it to CLOSE before advancing, so the next card never draws over it (the launcher-clash fix).
     private var yieldingSurface: String? = nil
+    // Saved placement to restore when the yielded surface closes (founder 2026-08-31: the card must MOVE out
+    // of the notch to the screen side — staying READABLE beside the surface — not collapse to a blind pill).
+    private var preYieldPlacement: GuidePlacement = .notch
+    private var preYieldPinned = false
+    private var preYieldAnchor: CGPoint = .zero
 
     func noteEvent(_ name: String) {
         guard isActive, !capturingFeedback else { return }
-        // If the CURRENT step yields to this surface, get out of its way: collapse to the pill and DON'T
-        // advance yet. We advance when the surface closes (noteEventClose) so the next card can't overlap it.
+        // If the CURRENT step yields to this surface, get out of its way: SLIDE the card from the notch to the
+        // screen side (still fully readable) and DON'T advance yet. We advance when the surface closes
+        // (noteEventClose) so the next card can't overlap it.
         if idx < steps.count, steps[idx].yieldsTo == name {
             yieldingSurface = name
-            model.collapsed = true
+            moveAsideForSurface()
             return
         }
         observedEvent = name
     }
 
-    // The surface a step yielded to has CLOSED — expand the card again and let the step advance.
+    // The surface a step yielded to has CLOSED — bring the card home (to the notch) and let the step advance.
     func noteEventClose(_ name: String) {
         guard isActive, yieldingSurface == name else { return }
         yieldingSurface = nil
-        model.collapsed = false
+        restoreFromSide()
         observedEvent = name   // now the step's doneWhen(event) can fire → advance to the next card
     }
+
+    // Slide the card OUT of the notch to a fixed spot on the LEFT of the screen (upper third — clear of the
+    // top-center notch/orb and a centre launcher), so guidance and the surface are both visible, no overlap.
+    private func moveAsideForSurface() {
+        preYieldPlacement = model.placement
+        preYieldPinned = model.placementPinned
+        preYieldAnchor = model.freeAnchor
+        let y = max(90, model.screenSize.height * 0.30)
+        model.freeAnchor = CGPoint(x: 40, y: y)
+        model.placement = .free
+        model.placementPinned = true   // don't let showStep re-derive it back to the notch mid-yield
+        model.collapsed = false
+    }
+    private func restoreFromSide() {
+        model.placement = preYieldPlacement
+        model.placementPinned = preYieldPinned
+        model.freeAnchor = preYieldAnchor
+    }
+
+    // App-driven park (vs. the event-driven yield above): a beat that OPENS its own window (the dictation
+    // scratch field) asks the card to step aside so it never covers the thing to try, then bring it home.
+    private var parked = false
+    func parkAside() { guard isActive, !parked else { return }; moveAsideForSurface(); parked = true }
+    func unpark()    { guard parked else { return }; restoreFromSide(); parked = false }
 
     // ── chord edge-detect (⌃⌥ down → release = one signal; +⇧ while held = fail)
     private var chordDown = false
