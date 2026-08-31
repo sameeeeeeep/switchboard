@@ -53,6 +53,31 @@ if NODE_BIN="$(command -v node)"; then
   echo "[menubar] bundled node runtime ($("$APP/Contents/Resources/node" --version 2>/dev/null))"
 fi
 
+# The GOD CLIENT (examples/god) + its one external dep (ws) — mirrors package-dmg.sh §6b. Without this a
+# build deployed over /Applications can't LOCATE God at all: godClientPath()'s dev fallback resolves
+# relative to the .app's location (→ /examples/god/god.mjs from /Applications), so ⌃⌃/⌃⌥ do nothing. Bundle
+# the tree so God runs from the installed app.
+GOD_SRC="../../examples/god"
+if [ -d "$GOD_SRC" ]; then
+  mkdir -p "$APP/Contents/Resources/god"
+  cp "$GOD_SRC/god.mjs" "$APP/Contents/Resources/god/god.mjs"
+  cp -R "$GOD_SRC/lib" "$APP/Contents/Resources/god/lib"
+  [ -d "$GOD_SRC/personas" ] && cp -R "$GOD_SRC/personas" "$APP/Contents/Resources/god/personas"
+  [ -f "$GOD_SRC/video2ai-pipeline.mjs" ] && cp "$GOD_SRC/video2ai-pipeline.mjs" "$APP/Contents/Resources/god/video2ai-pipeline.mjs"
+  [ -f "../../examples/flow/whisper-stt.mjs" ] && cp "../../examples/flow/whisper-stt.mjs" "$APP/Contents/Resources/god/whisper-stt.mjs"
+  if [ -d "$GOD_SRC/tts" ]; then
+    mkdir -p "$APP/Contents/Resources/god/tts"
+    cp "$GOD_SRC/tts/install-voice-engine.sh" "$APP/Contents/Resources/god/tts/" 2>/dev/null || true
+    cp "$GOD_SRC/tts/god-tts-server.py" "$APP/Contents/Resources/god/tts/" 2>/dev/null || true
+  fi
+  WS_DIR="$(cd ../.. && node -e "process.stdout.write(require('path').dirname(require.resolve('ws/package.json')))" 2>/dev/null || true)"
+  if [ -n "$WS_DIR" ] && [ -d "$WS_DIR" ]; then
+    mkdir -p "$APP/Contents/Resources/god/node_modules/ws"
+    cp -R "$WS_DIR/." "$APP/Contents/Resources/god/node_modules/ws/"
+  fi
+  echo "[menubar] bundled God client (examples/god + ws)"
+fi
+
 # Wrapp icons — the "Instruments on the board" art (docs/ICON-SYSTEM.md), one PNG per listing id.
 # Bundled if present so glyphTile can show real hardware icons; the store falls back to the
 # category SF Symbol when an icon is missing, so an empty icons/ dir is fine.
