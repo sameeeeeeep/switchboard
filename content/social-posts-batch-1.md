@@ -439,3 +439,104 @@ they ask the broker on your machine, which lends them your Claude, your tools, y
 for exactly as long as you allow. never a copy.
 
 privacy shouldn't be the premium tier. it should be the floor.
+
+---
+
+# SERIES — "The Backlog" (recurring)
+
+**The premise, honestly:** ~94 wrapps exist; most are unfinished. That's ADHD, not a
+roadmap. Instead of hiding it, the incompleteness IS the format — the audience picks what
+gets finished, and watches it ship. Turns the liability into a content engine + free demand
+validation.
+
+**Native metaphor:** the product board is Backlog → Todo → Doing → Blocked → Review → Done.
+Half-built wrapps live in **Backlog**. The audience **promotes one to Doing**. It ships to
+**Done**, free on your own Claude.
+
+**The loop (per cycle, ~weekly):**
+1. **Reveal** — show 3–4 Backlog wrapps, honest about state. Vote (native poll / comment the name).
+2. **Build** — winner built live: screenshare of Claude Code + the `wrapp` skill scaffolding it
+   fast. Doubles as a platform demo (the reverse flow, in action).
+3. **Ship** — "you asked, it's live, free on your own Claude." Bar = redline quality.
+4. Repeat.
+
+**Rules of the series:** never oversell an unfinished wrapp as done; be plain about what's
+stubbed; only the winner gets finished; the finished bar is real (works end to end), not a
+landing page.
+
+## Launch post — "confession"
+
+### LinkedIn
+
+confession: i have ~94 apps in my store and most of them aren't finished.
+
+that's not a roadmap slip. that's ADHD. i get an idea, build the exciting 80%, and the second
+the hard part is solved my brain has already left for the next one.
+
+for years i treated that as a flaw to hide.
+
+i'm done hiding it. so here's the deal.
+
+every half-built app lives in a Backlog — the same board my Claude works off. i'm going to show
+you that backlog, unfinished corners and all, and you're going to tell me which one to finish.
+
+you pick. i promote it to Doing. i build it live on my own Claude — you watch the whole thing,
+scaffold to ship. then it goes Done, free for you to run.
+
+i only finish what you actually want. you watch it get made. and nobody has to pretend the store
+was ever "complete."
+
+turns out the most honest version of a store built by someone with ADHD is one where the
+customers decide what ships.
+
+first pick goes up this week. bring your vote.
+
+### X / Threads
+
+1/ confession: i have ~94 apps in my store and most of them aren't finished.
+
+that's not a roadmap slip. that's ADHD.
+
+i build the exciting 80%, and the second the hard part is solved my brain's already gone to the
+next idea.
+
+—
+
+2/ for years i hid that.
+
+done hiding. new deal:
+
+every half-built app lives in a Backlog — the same board my Claude works off.
+
+i show you the backlog. you tell me what to finish.
+
+—
+
+3/ you pick → i promote it to Doing → i build it live on my own Claude, you watch scaffold to
+ship → it goes Done, free for you to run.
+
+i only finish what you actually want.
+
+—
+
+4/ the most honest version of a store built by someone with ADHD?
+
+one where the customers decide what ships.
+
+first pick goes up this week. bring your vote ↓
+
+## Reveal post — reusable template
+
+### X / Threads (repeat weekly)
+
+this week's Backlog. all half-built, all real, all free once they're done.
+
+which one do i finish? vote 👇
+
+◻️ [wrapp A] — [one line: what it does] · [what's missing]
+◻️ [wrapp B] — [one line] · [what's missing]
+◻️ [wrapp C] — [one line] · [what's missing]
+
+winner gets built live on my own Claude this week.
+
+(fill A/B/C from the real Backlog; keep the "what's missing" honest — that's the whole point.)
