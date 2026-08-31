@@ -452,10 +452,15 @@ roadmap. Instead of hiding it, the incompleteness IS the format — the audience
 gets finished, and watches it ship. Turns the liability into a content engine + free demand
 validation.
 
-**Mechanic (native to the product):** the board is Backlog → Todo → Doing → Blocked → Review →
-Done. Half-baked wrapps sit in **Backlog**. The audience **promotes one to Doing**. You finish
-baking it. It ships to **Done**, free on your own Claude. ("Half-Baked" is the show; the board
-is how it runs.)
+**Mechanic (native to the product):** the half-baked wrapps stay in the **Store**, each badged
+*unfinished* — so the store itself is a live map of what's baked and what isn't. The vote drops
+a **"Finish [wrapp]"** card into the **Backlog** (the board my Claude works off). Winner →
+**Doing** → build live → **Done**, and the store badge flips from *unfinished* to done, free on
+your own Claude. ("Half-Baked" is the show; the store badge + the board are how it runs.)
+
+**Product prereq (small build, not content):** add an *unfinished* status/badge to Store cards,
+and let Backlog hold "Finish X" cards. Makes the series legible and gives the "ship" post its
+payoff (the badge flipping to done on-screen).
 
 **The loop (per cycle, ~weekly):**
 1. **Reveal** — show 3–4 Backlog wrapps, honest about state. Vote (native poll / comment the name).
@@ -481,11 +486,12 @@ hard part is solved my brain has already left for the next one.
 
 for years i treated that as a flaw to hide. done hiding it. here's the deal instead.
 
-every half-baked app sits in a Backlog — the same board my Claude works off. i'm going to show
-you that backlog, unfinished corners and all, and you're going to tell me which one to finish.
+they're all sitting in the store right now, badged half-baked — the store's basically a live map
+of what i finished and what i didn't. you're going to tell me which one to finish.
 
-you pick. i move it to Doing. i finish baking it live on my own Claude — you watch the whole
-thing, scaffold to ship. then it goes Done, free for you to run.
+your pick becomes the next card on the board my Claude works off — Backlog → Doing → Done. i
+finish baking it live on my own Claude, you watch the whole thing, scaffold to ship. then the
+store badge flips to done, free for you to run.
 
 i only finish what you actually want. you watch it get made. and nobody has to pretend the store
 was ever "complete."
@@ -512,10 +518,11 @@ for years i hid that. done hiding.
 
 —
 
-3/ every half-baked app sits in a Backlog — the same board my Claude works off.
+3/ they're all in the store right now, badged half-baked. the store's a live map of what i
+finished and what i didn't.
 
-you pick one → i move it to Doing → i finish baking it live on my own Claude, you watch scaffold
-to ship → it goes Done, free for you to run.
+you pick one → it becomes a card on my board (Backlog → Doing → Done) → i finish baking it live
+on my own Claude, you watch → the store badge flips to done, free for you to run.
 
 —
 
