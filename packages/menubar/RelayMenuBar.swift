@@ -8484,7 +8484,13 @@ struct ActionConsentDrop: View {
                 comps.fragment = "os=" + (json.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? json)
             }
         }
-        if let u = comps.url { NSWorkspace.shared.open(u); concierge(l) }
+        // Route through the SAME resolver the store uses: a browser-first wrapp with a page opens as a
+        // native window, not the external browser (the OS-surface launch used to always shell out to Safari).
+        if let u = comps.url {
+            if preferredSurface(l) == "window" { openWrappWindow(url: u, name: l.name) }
+            else { NSWorkspace.shared.open(u) }
+            concierge(l)
+        }
     }
 }
 
