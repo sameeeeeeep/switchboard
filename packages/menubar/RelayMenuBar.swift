@@ -5948,6 +5948,13 @@ struct ActionConsentDrop: View {
         if let m = feedbackKeyMonitor { NSEvent.removeMonitor(m); feedbackKeyMonitor = nil }
         if let p = feedbackPanel { dismissToNotch(p) }
         feedbackNote = ""; feedbackShotThumbs = []
+        // Restore the base orb that showFeedbackNote() hid (orb?.orderOut). Without this the "base notch"
+        // stays gone after a ⌥↓ freeform answer / feedback note until an app restart or a display change
+        // fires the screen observer — the founder's "base notch disappeared" (2026-08-31). Don't fight a
+        // surface that legitimately replaces the orb: only re-show when the notch is otherwise idle.
+        if !(godStatusPanel?.isVisible ?? false), !(ambientPanel?.isVisible ?? false), !(panel?.isVisible ?? false) {
+            orb?.orderFrontRegardless()
+        }
     }
 
     // ── BUNDLED WEB SERVER — a packaged app ships examples/apps in Resources/webapps + the node binary, and
@@ -6430,6 +6437,11 @@ struct ActionConsentDrop: View {
         credentialValue = ""
         pendingCredential = nil
         if let p = credentialPanel { dismissToNotch(p) }
+        // Same restore as hideFeedbackNote: showToolCredential() hid the base orb (orb?.orderOut); bring it
+        // back when the notch is otherwise idle, or the "base notch" stays gone after a credential card.
+        if !(godStatusPanel?.isVisible ?? false), !(ambientPanel?.isVisible ?? false), !(panel?.isVisible ?? false) {
+            orb?.orderFrontRegardless()
+        }
     }
 
     // Parse the Switchboard results envelope out of a tool's flattened text content. Returns nil unless it's
