@@ -761,6 +761,16 @@ struct GuideCaptionView: View {
         }
     }
 
+    // The line under the SWITCHBOARD wordmark: WHO is asking + which project (provenance), else the run
+    // title. Nil when there's nothing to say (a bare guide) → the wordmark sits alone.
+    private var headerKicker: String? {
+        var parts: [String] = []
+        if let s = m.source, !s.isEmpty { parts.append(s) }
+        else if let t = m.title, !t.isEmpty { parts.append(t) }
+        if let p = m.project, !p.isEmpty { parts.append(p) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     // Zone 5: the A/B/C variant cards. Each shows its media (or an accent swatch), a bold label, and a
     // one-line "why" (adhd-pm: make the trade-off scannable). The ⭐recommended one is pre-selected + badged
     // so a single ⌥→ / click takes it. Selected = lime border. Tappable at the notch. ⌥→ approves.
@@ -842,46 +852,24 @@ struct GuideCaptionView: View {
 
     private var stepCard: some View {
         VStack(alignment: .leading, spacing: 9) {
-            // ── provenance: WHO is asking (thread/agent) + which PROJECT, so a card is never a mystery. ──
-            if (m.source?.isEmpty == false) || (m.project?.isEmpty == false) {
-                HStack(spacing: 7) {
-                    if let s = m.source, !s.isEmpty {
-                        // Per-THREAD colour dot (deterministic from the thread id) — tell two threads apart at a glance.
-                        Circle().fill(colorForId(m.sourceId ?? s)).frame(width: 7, height: 7)
-                            .shadow(color: colorForId(m.sourceId ?? s).opacity(0.6), radius: 2)
-                        Text("⌘ \(s)").font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1)
+            // ── dot-matrix header: the SWITCHBOARD wordmark + provenance kicker. This is the notch identity
+            //    every guide/onboarding card now wears (founder 2026-08-31: "our notch should look like the
+            //    mockup"). The Doto lamp wordmark + lime is the brand mark; the per-thread dot + source/project
+            //    become the kicker underneath, so a card is still never a mystery. ──
+            HStack(spacing: 9) {
+                DotMatrix(pattern: .working, accent: .lime, cols: 5, rows: 3, dot: 2, gap: 2, animated: !m.reduceMotion)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("SWITCHBOARD").font(.doto(11.5, .heavy)).tracking(0.6).foregroundColor(.lime)
+                        .shadow(color: .lime.opacity(0.30), radius: 5)
+                    if let kick = headerKicker {
+                        HStack(spacing: 5) {
+                            if let s = m.source, !s.isEmpty {
+                                Circle().fill(colorForId(m.sourceId ?? s)).frame(width: 6, height: 6)
+                                    .shadow(color: colorForId(m.sourceId ?? s).opacity(0.6), radius: 2)
+                            }
+                            Text(kick).font(.splMono(9.5)).foregroundColor(.inkDim).lineLimit(1).truncationMode(.tail)
+                        }
                     }
-                    if let p = m.project, !p.isEmpty {
-                        Text("◆ \(p)").font(.splMono(9)).foregroundColor(.indigo).lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-            // ── permission strip: keys need Accessibility. Shown only when not trusted; the guide still
-            //    renders + esc works, but keyboard signals won't fire until granted (spec §6). ──
-            if !AXIsProcessTrusted() {
-                Button(action: { CursorGuide.shared.openAccessibilitySettings() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
-                        Text("Keys need Accessibility — tap to open Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.danger.opacity(0.85))
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            // ── header rail: segment progress · title · +N queued · AUTO pill · voice ──
-            HStack(spacing: 8) {
-                segmentBar.frame(width: 92)
-                if let t = m.title, !t.isEmpty {
-                    Text(t.uppercased())
-                        .font(.splMono(8.5)).tracking(0.7)
-                        .foregroundColor(.inkFaint)
-                        .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
                 // No-clobber queue: how many runs are waiting behind this one (docs/GUIDE-QUEUE-RESUME.md).
@@ -905,20 +893,39 @@ struct GuideCaptionView: View {
                 Image(systemName: m.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 9))
                     .foregroundColor(m.muted ? .inkFaint : .lime)
-                // MINIMISE — a real tappable button (founder ask 2026-08-25: ⌥. collapsed it but there was no
-                // button). Collapses the card to the pill; the pill (tap) or ⌥. reopens it.
+                // MINIMISE — a real tappable button; ⌥. also collapses. The pill (tap) or ⌥. reopens it.
                 Button(action: { m.collapsed = true }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "minus").font(.system(size: 9, weight: .bold))
-                        Text("⌥.").font(.splMono(8))
-                    }
-                    .foregroundColor(.inkFaint)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.07)))
-                    .contentShape(Capsule())
+                    Text("⌥.").font(.splMono(9)).foregroundColor(.inkFaint)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Capsule().stroke(Color.edge, lineWidth: 1))
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Minimise to a pill (⌥.)")
+            }
+            // ── progress: a FULL-WIDTH segment bar + STEP n / N in the Doto face (mockup layout — the bar was
+            //    a cramped 92pt sliver crammed beside the title; now it reads across the whole card). ──
+            VStack(alignment: .leading, spacing: 6) {
+                segmentBar
+                Text("STEP \(min(m.stepIndex + 1, max(m.stepTotal, 1))) / \(max(m.stepTotal, 1))")
+                    .font(.doto(9.5, .bold)).tracking(1.4).foregroundColor(.inkFaint)
+            }
+            // ── permission strip: keys need Accessibility. Shown only when not trusted; the guide still
+            //    renders + esc works, but keyboard signals won't fire until granted (spec §6). ──
+            if !AXIsProcessTrusted() {
+                Button(action: { CursorGuide.shared.openAccessibilitySettings() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(.danger)
+                        Text("Keys need Accessibility — tap to open Settings").font(.hanken(10, .medium)).foregroundColor(.danger)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.forward.app").font(.system(size: 9)).foregroundColor(.danger.opacity(0.85))
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: SBr.xs).fill(Color.danger.opacity(0.12)))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             // ── the instruction — a bold LEAD line (what to focus on) + dimmer detail, so a dense step is
             //    scannable instead of a wall. Short steps render as one line. NO line limit (never cut). ──
