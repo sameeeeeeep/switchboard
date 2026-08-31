@@ -76,6 +76,8 @@ struct GuideStep {
     var keys: [GuideKeyGroup]? = nil   // shortcut(s) to teach, drawn as keycap buttons (zone: taught-keys)
     var yieldsTo: String? = nil     // this step's practice opens a full surface ("launcher"|"summon"): collapse the
                                     // card while that surface is up, and advance only once it CLOSES — never draw over it
+    var gated: Bool = false         // a practice step you can't ⌥→ PAST — only actually DOING it (doneWhen) advances;
+                                    // onboarding must teach, not let you click through. esc still leaves.
 }
 
 // Where the presence/guide card sits. notch = fixed top-center + CLICKABLE; dock = fixed bottom (keyboard);
@@ -1586,6 +1588,7 @@ final class CursorGuide {
                 step.point = mapper(CGPoint(x: px, y: py))
             }
             step.doneWhen = Predicate.parse(s["doneWhen"])
+            step.gated = (s["gated"] as? Bool) ?? false
             step.media = parseMedia(s["media"])
             if let rawOpts = s["options"] as? [[String: Any]] {
                 let opts: [GuideOption] = rawOpts.enumerated().compactMap { (j, o) in
@@ -1831,7 +1834,7 @@ final class CursorGuide {
         // Dwell-then-advance: a purely timed step (e.g. "watch this happen for 3s"). Teach-only.
         if mode == .teach, let ms = s.hold, ms > 0 {
             holdTimer = Timer.scheduledTimer(withTimeInterval: ms / 1000.0, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated { self?.handleAdvance(fail: false) }
+                MainActor.assumeIsolated { self?.handleAdvance(fail: false, auto: true) }
             }
         }
         // Locally-sensed completion: sample the signal ~4x/sec and advance on a debounced satisfy.
@@ -1863,7 +1866,7 @@ final class CursorGuide {
         doneStreak = ok ? doneStreak + 1 : 0
         if doneStreak >= 2 {   // debounce: two clean ticks in a row before we auto-advance
             doneStreak = 0
-            handleAdvance(fail: false)   // same path as manual fn→ (records + flashes + advances)
+            handleAdvance(fail: false, auto: true)   // the REAL action fired → advance past even a gated step
         }
     }
 
@@ -2016,8 +2019,17 @@ final class CursorGuide {
 
     // MARK: signals
 
-    private func handleAdvance(fail: Bool) {
+    private func handleAdvance(fail: Bool, auto: Bool = false) {
         guard isActive, idx < steps.count, !capturingFeedback else { return }
+        // GATED practice beat: you can't ⌥→ past it — only actually DOING it (its doneWhen event / hold, which
+        // arrive with auto=true) advances, so onboarding teaches instead of letting you click through. A MANUAL
+        // ⌥→/click (auto=false) is refused with a nudge; esc still leaves. (Options steps are exempt — ⌥→ IS the
+        // pick — so this only bites a gated non-options step.)
+        if !fail, !auto, steps[idx].gated, (steps[idx].options?.isEmpty ?? true) {
+            flash(.back)
+            onSpeak?("Give it a try — I'll move on the moment you do.")
+            return
+        }
         // Options step: ⌥→ APPROVES the selected variant — record it + fire the live-apply hook.
         if !fail, let opts = steps[idx].options, !opts.isEmpty {
             let i = min(max(model.selectedOption, 0), opts.count - 1)

@@ -84,6 +84,25 @@ import SwiftUI
     private weak var field: NSTextView?
     private func focusField() { if let f = field { f.window?.makeFirstResponder(f) } }
 
+    /// Is the scratch on screen? pasteText checks this to deliver dictation STRAIGHT into the field (a synthetic
+    /// ⌘V would land in whatever app was frontmost before this non-activating panel, not here — the bug).
+    var isShowing: Bool { panel != nil && field != nil }
+
+    /// Insert dictated text at the field's caret + keep it visible. Same path typing uses — no clipboard, no ⌘V.
+    func insert(_ text: String) {
+        guard let tv = field else { return }
+        tv.insertText(text, replacementRange: tv.selectedRange())
+        tv.scrollRangeToVisible(tv.selectedRange())
+        // a brief lime pulse on the border so the landing is unmistakable
+        if let layer = tv.enclosingScrollView?.layer {
+            let flash = CABasicAnimation(keyPath: "borderColor")
+            flash.fromValue = lime.cgColor
+            flash.toValue = NSColor(red: 0x28/255.0, green: 0x28/255.0, blue: 0x29/255.0, alpha: 1).cgColor
+            flash.duration = 0.6
+            layer.add(flash, forKey: "landing")
+        }
+    }
+
     func hide() {
         panel?.orderOut(nil)
         panel = nil

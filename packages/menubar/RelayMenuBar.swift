@@ -6584,6 +6584,12 @@ struct ActionConsentDrop: View {
             "text": "Welcome to Switchboard — run AI wrapps on your own Claude. Nothing leaves this Mac.",
             "say": "Welcome to Switchboard. You run little A-I apps — wrapps — on your own Claude, right here on your Mac. Nothing leaves it. Let's take a quick tour.",
             "hint": "⌥→ next · ⌥. hide me · esc leave."])
+        // ── Beat 0b · Meet the card — teach that it lives in the notch and MOVES, BEFORE it ever does, so the
+        // move never surprises them (founder: "not giving the user the understanding the card can be pulled out").
+        steps.append(["id": "card-home",
+            "text": "This card is me — I live in the notch. Grab me to move me anywhere, and I'll step aside on my own whenever you open something.",
+            "say": "One thing before we start. This card is me, and I live up here in the notch. You can grab me and drag me anywhere you like. And whenever you open something — your launcher, an app — I'll step aside on my own so I'm never in your way.",
+            "hint": "Grab me if you like — or ⌥→ to carry on."])
         // ── Beat 1 · Connect your Claude — adaptive: guide sign-in when signed out, else confirm connected.
         if model.running && !model.signedIn {
             steps.append(["id": "connect-claude",
@@ -6623,6 +6629,7 @@ struct ActionConsentDrop: View {
             "say": "Now try it for real. I've opened a little window with a text field. Hold control-option and say something — your words type themselves right into it. Release control when you're done.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
             "doneWhen": ["kind": "event", "name": "dictation"],
+            "gated": true,
             "hint": "Hold to talk, release to drop — watch the window I opened."])
         // 3b · God — always-on operator. Yields the notch to the orb while it listens.
         steps.append(["id": "key-summon",
@@ -6631,6 +6638,7 @@ struct ActionConsentDrop: View {
             "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
             "yieldsTo": "summon",
             "doneWhen": ["kind": "event", "name": "summon"],
+            "gated": true,
             "hint": "Just try it — I'll move on when you do."])
         // 3c · Launcher — double-tap Option, say what you want. Yields to the launcher surface.
         steps.append(["id": "key-launcher",
@@ -6639,6 +6647,7 @@ struct ActionConsentDrop: View {
             "keys": [["caps": ["⌥", "⌥"], "name": "Home"]],
             "yieldsTo": "launcher",
             "doneWhen": ["kind": "event", "name": "launcher"],
+            "gated": true,
             "hint": "Double-tap Option — I'll move on when you do."])
         // 3d · Guru — the card itself IS the demo: Claude points and guides (or drives).
         steps.append(["id": "guru",
@@ -7058,6 +7067,13 @@ struct ActionConsentDrop: View {
     @MainActor private func pasteText(_ text: String) {
         guard !text.isEmpty else { return }
         voiceBuffer = text   // remember the last dictation for the on-demand re-paste (⌥V, once bound)
+        // Onboarding dictation demo: the scratch window is a NON-activating panel, so a synthetic ⌘V would
+        // land in whatever app was frontmost before it — NOT the scratch (the "dictation doesn't work there"
+        // bug). Deliver straight into its field editor, the same path typing uses.
+        if DictationScratch.shared.isShowing {
+            DictationScratch.shared.insert(text)
+            return
+        }
         // Our own non-activating key panels (the ⌥⌥ launcher's Ask field, notch web widgets) can be TYPED
         // into — key events route to the key window's field editor — but they do NOT accept a synthetic ⌘V:
         // the app isn't active, so paste:/the Edit menu never reach that field (manual copy/paste is dead
