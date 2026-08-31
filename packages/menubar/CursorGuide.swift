@@ -1234,6 +1234,11 @@ final class CursorGuide {
     var onSpeak: ((String) -> Void)?     // speak a line (interrupts any in-flight speech)
     var onStopSpeak: (() -> Void)?       // silence on teardown/abort
 
+    // Per-step side effect: fired with the step id whenever a step becomes active, so the app can
+    // ACTIVELY INITIALIZE that beat's surface (onboarding §10: the operator sets the thing up, the user
+    // does it). e.g. onboarding's "first-wrapp" beat opens a real seeded wrapp when it's reached.
+    var onStepEnter: ((_ id: String) -> Void)?
+
     // The live-apply hook (Redline-style options). CursorGuide only knows WHICH variant the user is
     // eyeing/approved; APPLYING it to the real work (re-render the doc/page) is the app/wrapp's job.
     // preview = ⌥1/2/3 (compare live); approve = ⌥→. Absent → options are still recorded, just not applied.
@@ -1716,6 +1721,7 @@ final class CursorGuide {
         model.explaining = false; model.explained = false   // each step earns its own Explain
 
         model.optionError = false
+        onStepEnter?(s.id)   // let the app actively initialize this beat's surface (e.g. open a seeded wrapp)
         // Dock-edge flip (spec §7): if the ring's target sits in the bottom band where the card lives,
         // dock the card at the TOP so it never covers the thing it's pointing at.
         if let t = s.point, model.screenSize.height > 0 {

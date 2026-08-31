@@ -4600,6 +4600,23 @@ struct ActionConsentDrop: View {
         // Spoken concierge: the welcome tour AND teach mode read each step aloud in God's voice.
         CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
+        // Per-beat side effects: the onboarding operator ACTIVELY initializes a surface when its beat is
+        // reached (onboarding §10). Beat 4 opens a real, seeded wrapp so the user's first win is one click.
+        CursorGuide.shared.onStepEnter = { [weak self] id in
+            Task { @MainActor in
+                guard let self else { return }
+                switch id {
+                case "first-wrapp":
+                    // Open a real wrapp in its native window — Brand Brain if present, else Crest (both studio
+                    // wrapps show a labeled sample pre-connect, so there's always something to see).
+                    let cat = readCatalog()
+                    if let l = cat.first(where: { $0.id == "brandbrain" }) ?? cat.first(where: { $0.id == "crest" }) {
+                        self.launchWrapp(l, "window")
+                    }
+                default: break
+                }
+            }
+        }
         // Options live-apply: when a guide step's variant is approved, apply it here. Onboarding is the
         // first consumer — the welcome tour's "setup-economy" step flips economy mode the moment you pick.
         CursorGuide.shared.onOptionApprove = { [weak self] stepId, optionId in
@@ -6554,66 +6571,81 @@ struct ActionConsentDrop: View {
         // (summon, first-win via the launcher) ride the CURSOR so the notch stays free, and declare
         // `yieldsTo` so the runtime collapses this card while that surface is up (the launcher-clash fix).
         var steps: [[String: Any]] = []
-        // ── Beat 0 · Welcome — value first, not a checklist.
+        // ── Beat 0 · Welcome — the promise, not a checklist (founder v2 copy).
         steps.append(["id": "welcome",
-            "text": "Your apps, running on your own Claude — nothing leaves this Mac. Let's get you set up.",
-            "say": "Welcome. Switchboard runs little apps on your own Claude, and nothing leaves this Mac. Let's get you set up — about a minute.",
+            "text": "Welcome to Switchboard — run AI wrapps on your own Claude. Nothing leaves this Mac.",
+            "say": "Welcome to Switchboard. You run little A-I apps — wrapps — on your own Claude, right here on your Mac. Nothing leaves it. Let's take a quick tour.",
             "hint": "⌥→ next · ⌥. hide me · esc leave."])
-        // ── Beat 1 · Connect your Claude — only if signed out. (Guarded sign-in is O5; the beat exists now.)
+        // ── Beat 1 · Connect your Claude — adaptive: guide sign-in when signed out, else confirm connected.
         if model.running && !model.signedIn {
             steps.append(["id": "connect-claude",
-                "text": "Switchboard runs on YOUR Claude — no API key, no extra bill.",
-                "say": "Switchboard runs on your own Claude. No API key, no extra bill. Sign in, then carry on — the dot turns lime when you're in.",
-                "hint": "Sign in to Claude, then ⌥→. The dot turns lime when you're in."])
+                "text": "1 · Connect — Switchboard runs on YOUR Claude. Sign in; the dot turns lime.",
+                "say": "First, your Claude. Switchboard runs on your own Claude — no key, no bill. Sign in, and the dot turns lime when you're in.",
+                "hint": "Sign in to Claude, then ⌥→."])
+        } else {
+            steps.append(["id": "connect-claude",
+                "text": "1 · Connect — you're running on your own Claude. Connected ✓",
+                "say": "First, your Claude. You're already connected — everything here runs on your own Claude. No key, no bill.",
+                "hint": "⌥→ to carry on."])
         }
         // ── Beat 2 · Give me senses — only the permissions not yet granted (returning users skip these).
         for p in GodPerm.allCases where !p.granted {
             switch p {
             case .mic:
                 steps.append(["id": "grant-mic",
-                    "text": "Mic — the ear that hears you. Click Allow on the card.",
-                    "say": "First the microphone — that's the ear that hears you. Click Allow on the card.",
+                    "text": "2 · Mic — the ear that hears you. Click Allow on the card.",
+                    "say": "Now its senses. First the microphone — the ear that hears you. Click Allow on the card.",
                     "hint": "No window? The card opens System Settings — flip Switchboard on."])
             case .accessibility:
                 steps.append(["id": "grant-accessibility",
-                    "text": "Accessibility — the hand that points and types. Add Switchboard, switch it on.",
+                    "text": "2 · Accessibility — the hand that points and types. Add Switchboard, switch it on.",
                     "say": "Accessibility is the hand that points and types. Add Switchboard to the list and switch it on.",
                     "hint": "macOS needs you to add it yourself. The card waits."])
             case .screen:
                 steps.append(["id": "grant-screen",
-                    "text": "Screen Recording — the eyes, only when you ask. Click Allow.",
-                    "say": "Screen recording is the eyes — only when you ask. Click Allow — that's the last one.",
-                    "hint": "Last one. ⌥→ to keep going."])
+                    "text": "2 · Screen — the eyes, only when you ask. Click Allow.",
+                    "say": "And screen recording — the eyes, only when you ask. Click Allow.",
+                    "hint": "⌥→ to keep going."])
             }
         }
-        // ── Beat 3 · Summon — real practice; advances the instant you ⌃⌃. Yields the screen to the orb.
-        steps.append(["id": "key-summon",
-            "text": "Your summon — tap it and say what you need. The orb wakes and listens.",
-            "say": "This is your summon. Tap it and say what you need — the orb wakes and listens.",
-            "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
-            "placement": "cursor",
-            "doneWhen": ["kind": "event", "name": "summon"],
-            "hint": "Just try it — I'll move on when you do."])
-        // ── Beat 4 · Say something — dictation. (O3 opens a real scratch field to talk into; here the beat exists.)
+        // ── Beat 3 · The demos, each tried for real. Dictation → God → launcher → guru (founder v2).
+        // 3a · Dictation — advances the instant you hold ⌃⌥ and speak.
         steps.append(["id": "key-dictation",
-            "text": "Hold in any text field and speak — your words land at the cursor.",
-            "say": "Hold this in any text field and speak, and your words land at your cursor. Option V pastes your last dictation anywhere, anytime.",
+            "text": "3 · Try dictation — hold in any text field and speak; your words land at the cursor.",
+            "say": "Now try it for real. Hold control-option in any text field and say something — your words type themselves. Release control when you're done.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Dictate"]],
             "doneWhen": ["kind": "event", "name": "dictation"],
             "hint": "Hold to talk, release to drop — I'll move on when you do."])
-        // ── Beat 5 · Your first win — the launcher, learned doing real work. (O4 seeds an example to run.)
-        steps.append(["id": "first-win",
-            "text": "Your home — double-tap Option, then open something and give it a go.",
-            "say": "Now the payoff. Double-tap Option for your home, open an app, and give it a go. Everything's a skin over your Claude — no setup.",
+        // 3b · God — always-on operator. Yields the notch to the orb while it listens.
+        steps.append(["id": "key-summon",
+            "text": "3 · Meet God — tap this and ask anything out loud. Always on.",
+            "say": "Meet God, your always-on operator. Tap control twice and ask anything out loud. It can see your screen only when you ask, and act through your wrapps.",
+            "keys": [["caps": ["⌃", "⌃"], "name": "Ask"]],
+            "yieldsTo": "summon",
+            "doneWhen": ["kind": "event", "name": "summon"],
+            "hint": "Just try it — I'll move on when you do."])
+        // 3c · Launcher — double-tap Option, say what you want. Yields to the launcher surface.
+        steps.append(["id": "key-launcher",
+            "text": "3 · Your launcher — double-tap Option, then say what you want. It finds the wrapp.",
+            "say": "This is your launcher. Double-tap option, and type what you want to do — it lines up the wrapps that can do it.",
             "keys": [["caps": ["⌥", "⌥"], "name": "Home"]],
-            "placement": "cursor",
             "yieldsTo": "launcher",
             "doneWhen": ["kind": "event", "name": "launcher"],
             "hint": "Double-tap Option — I'll move on when you do."])
-        // ── Beat 6 · You're all set — the recap + the pointer to everything else.
+        // 3d · Guru — the card itself IS the demo: Claude points and guides (or drives).
+        steps.append(["id": "guru",
+            "text": "3 · This card is Guru — Claude can point at anything on screen and guide you, or drive it.",
+            "say": "And this card itself is Guru. Claude can see your screen, point at anything, and walk you through it — or drive it for you, asking first on anything that matters.",
+            "hint": "⌥→ for your first wrapp."])
+        // ── Beat 4 · Your first wrapp — the app OPENS a real, seeded one for you (onStepEnter → launchWrapp).
+        steps.append(["id": "first-wrapp",
+            "text": "4 · Your first wrapp — I've opened one for you. Give it a go; it runs on your Claude.",
+            "say": "Last, a real wrapp. I've opened one for you, seeded and ready. Everything's a skin over your Claude — no setup, just go.",
+            "hint": "Try the wrapp — then ⌥→ to finish."])
+        // ── Done · the recap + the pointer to everything else.
         steps.append(["id": "done",
-            "text": "That's it — ⌃⌃ ask · ⌃⌥ dictate · ⌥V re-paste · ⌥⌥ home · tap the notch for your board.",
-            "say": "That's it. Control-control to ask, control-option to dictate, option-option for home — and tap the notch any time to open the board. There's more in the store whenever you want it.",
+            "text": "That's it — ⌃⌥ dictate · ⌃⌃ ask · ⌥⌥ launcher · tap the notch for your board.",
+            "say": "That's it. Control-option to dictate, control-control to ask God, option-option for your launcher. Tap the notch any time to open your board. There's more in the store whenever you want it.",
             "hint": "Browse the store for more. Replay anytime from the dot."])
 
         let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
