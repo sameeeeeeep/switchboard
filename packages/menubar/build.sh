@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift WhiteboardPanel.swift NotchTray.swift NotchLauncherView.swift LauncherRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift IgnitionOverlay.swift WhiteboardPanel.swift NotchTray.swift NotchLauncherView.swift LauncherRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
 
 APP="Switchboard.app"
 rm -rf "$APP"

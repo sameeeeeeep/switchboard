@@ -4592,6 +4592,7 @@ struct ActionConsentDrop: View {
         }
         CursorGuide.shared.install()   // arms the ~/.relay/guide-run.json watcher (dormant until a run is written): guided testing + how-to tours
         WhiteboardController.shared.install()   // arms the ~/.relay/whiteboard-run.json watcher: floats the native whiteboard board (PIP-style) on {active:true}
+        IgnitionController.shared.install()   // arms ~/.relay/ignite: the full-screen dot-matrix ignition (onboarding Frame 0) → chains into the tour
         installUpdateCheck()           // daily GitHub release check → ONE notch card when a newer build ships
         installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
