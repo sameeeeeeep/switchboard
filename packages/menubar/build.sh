@@ -32,6 +32,27 @@ if [ -f "$WHITEBOARD" ]; then
   echo "[menubar] bundled whiteboard.html (native floating board)"
 fi
 
+# The WEBAPPS — examples/apps served locally on :5188 by the app (serve.mjs) so the ⌥⌥ launcher widgets
+# and every localhost wrapp page (crest, brandbrain, …) resolve with NO dev server. This mirrors
+# package-dmg.sh §7c; without it a dev build deployed over /Applications ships an EMPTY webapps dir and
+# every :5188 wrapp 404s ("not found" opening a wrapp from the store). Skipped if the source is absent.
+WEBAPPS="../../examples/apps"
+if [ -d "$WEBAPPS" ]; then
+  mkdir -p "$APP/Contents/Resources/webapps"
+  rsync -a --delete --exclude 'node_modules' --exclude '.git' --exclude '*.map' --exclude 'harness' \
+    "$WEBAPPS/" "$APP/Contents/Resources/webapps/"
+  echo "[menubar] bundled webapps (examples/apps → :5188 serve.mjs)"
+fi
+
+# The node runtime serve.mjs (and the connector) run on. package-dmg.sh signs it with node.entitlements;
+# here we just copy it so a build deployed over /Applications carries its own runtime instead of stripping
+# the DMG's. Without this the bundled :5188 server can't launch and every localhost wrapp 404s. The deploy
+# step is responsible for (re)signing Resources/node. Copied only when a system node is on PATH.
+if NODE_BIN="$(command -v node)"; then
+  cp "$NODE_BIN" "$APP/Contents/Resources/node" && chmod 755 "$APP/Contents/Resources/node"
+  echo "[menubar] bundled node runtime ($("$APP/Contents/Resources/node" --version 2>/dev/null))"
+fi
+
 # Wrapp icons — the "Instruments on the board" art (docs/ICON-SYSTEM.md), one PNG per listing id.
 # Bundled if present so glyphTile can show real hardware icons; the store falls back to the
 # category SF Symbol when an icon is missing, so an empty icons/ dir is fine.
