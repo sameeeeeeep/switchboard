@@ -5,29 +5,24 @@
 <style>
 :root{--bg:#07080A;--ink:#EDEEEA;--dim:#8A8D94;--faint:#4A4D54;--pop:#9FCB6E;--line:#202226;--card:#0E0F12;}
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%}
-body{background:var(--bg);color:var(--ink);overflow:hidden;
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
   font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;-webkit-font-smoothing:antialiased}
-#stage{position:fixed;inset:0}
+.scroll{height:600vh;position:relative}
+.sticky{position:sticky;top:0;height:100vh;overflow:hidden}
 canvas{position:absolute;inset:0;display:block}
 .layer{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
   justify-content:center;text-align:center;pointer-events:none;padding:24px;will-change:opacity,transform}
-.l1 .big,.l2 .big{font-size:clamp(27px,4.8vw,54px);font-weight:300;line-height:1.14;
-  letter-spacing:-.015em;max-width:20ch;text-wrap:balance}
+.big{font-size:clamp(27px,4.8vw,54px);font-weight:300;line-height:1.14;letter-spacing:-.015em;
+  max-width:20ch;text-wrap:balance}
 .big .g{color:var(--pop);font-weight:400}
-/* final block */
 .final{gap:20px}
 .mark{font-size:12.5px;letter-spacing:.42em;color:var(--dim);text-transform:lowercase;padding-left:.42em}
 .mark b{color:var(--ink);font-weight:500}
-.tag{font-size:clamp(26px,4.4vw,46px);font-weight:300;letter-spacing:-.01em;line-height:1.12;
-  max-width:16ch;text-wrap:balance}
+.tag{font-size:clamp(26px,4.4vw,46px);font-weight:300;letter-spacing:-.01em;line-height:1.12;max-width:16ch;text-wrap:balance}
 .tag .g{color:var(--pop);font-weight:400}
-.vision{font-size:11.5px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase;
-  display:flex;align-items:center;gap:12px}
-.vision .step{color:var(--faint)}
-.vision .now{color:var(--dim)}
-.vision .end{color:var(--pop)}
-.vision .arr{color:var(--line)}
+.vision{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;display:flex;align-items:center;gap:12px}
+.vision .now{color:var(--dim)} .vision .step{color:var(--faint)} .vision .end{color:var(--pop)} .vision .arr{color:var(--line)}
 .card{pointer-events:auto;margin-top:8px;display:flex;align-items:center;gap:16px;text-align:left;
   background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;
   min-width:340px;max-width:min(92vw,440px);box-shadow:0 24px 60px rgba(0,0,0,.5)}
@@ -37,125 +32,130 @@ canvas{position:absolute;inset:0;display:block}
 .cmeta{flex:1;min-width:0}
 .ctitle{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
 .cdesc{font-size:11px;line-height:1.5;color:var(--dim);margin-top:3px}
-.enter{flex:none;background:var(--pop);color:#07080A;font-family:inherit;font-weight:600;
-  font-size:13px;letter-spacing:.02em;border:none;border-radius:999px;padding:11px 18px;
-  cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .15s ease,filter .15s ease}
+.enter{flex:none;background:var(--pop);color:#07080A;font-family:inherit;font-weight:600;font-size:13px;
+  letter-spacing:.02em;border:none;border-radius:999px;padding:11px 18px;cursor:pointer;text-decoration:none;
+  white-space:nowrap;transition:transform .15s ease,filter .15s ease}
 .enter:hover{filter:brightness(1.08);transform:translateY(-1px)}
-.replay{position:fixed;bottom:20px;right:22px;pointer-events:auto;background:none;border:none;
-  color:var(--faint);font-family:inherit;font-size:11px;letter-spacing:.18em;cursor:pointer;text-transform:uppercase}
-.replay:hover{color:var(--dim)}
+.hint{position:fixed;left:0;right:0;bottom:26px;text-align:center;font-size:11px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--faint);pointer-events:none}
+.hint .a{display:block;margin-top:8px;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+@media (prefers-reduced-motion:reduce){.hint .a{animation:none}}
 </style></head>
 <body>
-<div id="stage"><canvas id="c"></canvas></div>
-
-<div class="layer l1" id="line1" style="opacity:0">
-  <div class="big">you're one prompt away from <span class="g">superintelligence</span></div>
-</div>
-<div class="layer l2" id="line2" style="opacity:0">
-  <div class="big">the last prompt helps you <span class="g">close that gap</span></div>
-</div>
-<div class="layer final" id="final" style="opacity:0">
-  <div class="mark"><b>thelastprompt</b>.ai</div>
-  <div class="tag">an AI lab for <span class="g">AI experiments</span></div>
-  <div class="vision"><span class="now">prompts</span><span class="arr">→</span><span class="step">fewer</span><span class="arr">→</span><span class="end">promptless</span></div>
-  <div class="card">
-    <div class="ctile"><i></i></div>
-    <div class="cmeta">
-      <div class="ctitle">Switchboard</div>
-      <div class="cdesc">route your AI — subscription · context · models · users · agents</div>
+<div class="scroll">
+  <div class="sticky">
+    <canvas id="c"></canvas>
+    <div class="layer" id="line1" style="opacity:0"><div class="big">you're one prompt away from <span class="g">superintelligence</span></div></div>
+    <div class="layer" id="line2" style="opacity:0"><div class="big">the last prompt helps you <span class="g">close that gap</span></div></div>
+    <div class="layer final" id="final" style="opacity:0">
+      <div class="mark"><b>thelastprompt</b>.ai</div>
+      <div class="tag">an AI lab for <span class="g">AI experiments</span></div>
+      <div class="vision"><span class="now">prompts</span><span class="arr">→</span><span class="step">fewer</span><span class="arr">→</span><span class="end">promptless</span></div>
+      <div class="card">
+        <div class="ctile"><i></i></div>
+        <div class="cmeta"><div class="ctitle">Switchboard</div>
+          <div class="cdesc">route your AI — subscription · context · models · users · agents</div></div>
+        <a class="enter" href="https://thelastprompt.ai/switchboard/">Enter →</a>
+      </div>
     </div>
-    <a class="enter" href="https://thelastprompt.ai/switchboard/">Enter →</a>
+    <div class="hint" id="hint">scroll<span class="a">↓</span></div>
   </div>
 </div>
-<button class="replay" id="replay">↻ replay</button>
-
 <script>
 (function(){
   const c=document.getElementById('c'), ctx=c.getContext('2d');
   const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
-  const L1=document.getElementById('line1'),L2=document.getElementById('line2'),FIN=document.getElementById('final');
-  let W,H,cx,cy,DPR,SIM=false;
+  const L1=document.getElementById('line1'),L2=document.getElementById('line2'),FIN=document.getElementById('final'),HINT=document.getElementById('hint');
+  let W,H,cx,cy,DPR;
   function size(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;
     c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);}
   size();
-  const clamp=(v,a,b)=>v<a?a:v>b?b:v;
-  const ramp=(t,a,b)=>clamp((t-a)/(b-a),0,1);
-  const pulse=(t,ia,ib,oa,ob)=>ramp(t,ia,ib)*(1-ramp(t,oa,ob));
+  const clamp=(v,a,b)=>v<a?a:v>b?b:v, ramp=(t,a,b)=>clamp((t-a)/(b-a),0,1),
+        pulse=(t,ia,ib,oa,ob)=>ramp(t,ia,ib)*(1-ramp(t,oa,ob)), eo=x=>1-Math.pow(1-x,3);
 
-  function handPoints(scale){
-    const w=Math.round(230*scale), h=Math.round(250*scale);
-    const o=document.createElement('canvas'); o.width=w; o.height=h;
-    const g=o.getContext('2d'); g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineCap='round'; g.lineJoin='round'; const S=scale;
-    g.beginPath(); g.moveTo(20*S,95*S);
-    g.quadraticCurveTo(20*S,150*S,55*S,168*S); g.quadraticCurveTo(95*S,185*S,120*S,168*S);
-    g.quadraticCurveTo(140*S,155*S,140*S,128*S); g.quadraticCurveTo(140*S,100*S,120*S,92*S);
-    g.quadraticCurveTo(95*S,78*S,55*S,86*S); g.quadraticCurveTo(28*S,92*S,20*S,95*S); g.closePath(); g.fill();
-    for(let i=0;i<3;i++){ g.beginPath(); g.arc((60+i*26)*S,90*S,15*S,0,7); g.fill(); }
-    g.lineWidth=24*S; g.beginPath(); g.moveTo(46*S,104*S); g.quadraticCurveTo(30*S,74*S,44*S,52*S); g.stroke();
-    g.lineWidth=26*S; g.beginPath(); g.moveTo(120*S,120*S); g.quadraticCurveTo(175*S,116*S,214*S,118*S); g.stroke();
-    g.beginPath(); g.arc(214*S,118*S,13*S,0,7); g.fill();
-    const img=g.getImageData(0,0,w,h).data; const pts=[]; const step=Math.max(3,Math.round(4.4*S));
-    for(let y=0;y<h;y+=step) for(let x=0;x<w;x+=step){ if(img[(y*w+x)*4+3]>128){ pts.push({x:x+(Math.random()-.5)*step,y:y+(Math.random()-.5)*step}); } }
-    return {pts,tipx:214*S,tipy:118*S};
+  // ---- a recognisable hand (index finger extended right, forearm to the left) ----
+  function handImg(S){
+    const w=Math.round(370*S), h=Math.round(250*S);
+    const o=document.createElement('canvas'); o.width=w; o.height=h; const g=o.getContext('2d');
+    g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineCap='round'; g.lineJoin='round';
+    const M=(a)=>a*S;
+    // forearm
+    g.lineWidth=M(58); g.beginPath(); g.moveTo(M(8),M(148)); g.lineTo(M(150),M(140)); g.stroke();
+    // back of hand / palm
+    g.beginPath(); g.moveTo(M(150),M(108));
+    g.quadraticCurveTo(M(150),M(172),M(205),M(176));
+    g.quadraticCurveTo(M(250),M(178),M(258),M(150));
+    g.quadraticCurveTo(M(262),M(128),M(238),M(116));
+    g.quadraticCurveTo(M(205),M(100),M(150),M(108)); g.closePath(); g.fill();
+    // thumb (up)
+    g.lineWidth=M(26); g.beginPath(); g.moveTo(M(196),M(120)); g.quadraticCurveTo(M(196),M(86),M(224),M(74)); g.stroke();
+    g.beginPath(); g.arc(M(224),M(74),M(13),0,7); g.fill();
+    // index finger extended right, slight droop, two segments
+    g.lineWidth=M(27); g.beginPath(); g.moveTo(M(238),M(132)); g.quadraticCurveTo(M(300),M(126),M(348),M(140)); g.stroke();
+    g.beginPath(); g.arc(M(348),M(140),M(14),0,7); g.fill();
+    // curled fingers (middle/ring/pinky) folded below index
+    g.lineWidth=M(21);
+    for(let i=0;i<3;i++){ const bx=246+i*4, by=150+i*10;
+      g.beginPath(); g.moveTo(M(230),M(by)); g.quadraticCurveTo(M(bx+26),M(by+2),M(bx+18),M(by+24)); g.stroke(); }
+    const d=g.getImageData(0,0,w,h).data, pts=[], step=Math.max(3,Math.round(3.6*S));
+    for(let y=0;y<h;y+=step) for(let x=0;x<w;x+=step){ if(d[(y*w+x)*4+3]>128) pts.push({x:x+(Math.random()-.5)*step,y:y+(Math.random()-.5)*step}); }
+    return {pts,tipx:M(348),tipy:M(140)};
   }
-  let P=[], hand, handScale, tStart, boomAt=false, raf;
-  const OPEN=()=>Math.max(220,Math.min(W,H)*0.42);
-  const NEAR=()=>Math.max(46,Math.min(W,H)*0.075);
-  const REST=()=>Math.min(W,H)*0.012;
+
+  let P=[], hand, handScale;
+  const OPEN=()=>Math.max(230,Math.min(W,H)*0.44), NEAR=()=>Math.max(48,Math.min(W,H)*0.08), REST=()=>Math.min(W,H)*0.012;
   function build(){
-    handScale=Math.max(.72,Math.min(1.35,Math.min(W,H)/560)); hand=handPoints(handScale); P=[];
-    function place(side){ for(const p of hand.pts){ let lx=p.x-hand.tipx, ly=p.y-hand.tipy; if(side>0){lx=-lx;}
-      P.push({side,lx,ly,x:cx+(side<0?-1:1)*(W*0.6)+(Math.random()-.5)*140,y:cy+(Math.random()-.5)*H*0.9,
-        vx:0,vy:0,a:0,size:1.1+Math.random()*1.3,seed:Math.random()*6.28}); } }
-    place(-1); place(1); tStart=performance.now(); boomAt=false;
-    L1.style.opacity=0;L2.style.opacity=0;FIN.style.opacity=0;
+    handScale=Math.max(.7,Math.min(1.5,Math.min(W,H)/540)); hand=handImg(handScale); P=[];
+    for(const side of [-1,1]) for(const p of hand.pts){
+      let lx=p.x-hand.tipx, ly=p.y-hand.tipy; if(side>0) lx=-lx;
+      const ang=Math.atan2(ly,(side<0?-1:1)*(lx))+(Math.random()-.5)*1.1, dist=(0.8+Math.random()*1.6);
+      P.push({side,lx,ly, ex:Math.cos(ang)*dist*(side<0?-1:1)*0.7+(Math.random()-.5)*0.6, ey:Math.sin(ang)*dist+(Math.random()-.5)*0.6,
+        exd:(80+Math.random()*Math.max(W,H)*0.5), size:1+Math.random()*1.3, seed:Math.random()*6.28});
+    }
   }
-  function tipHalf(t){
-    const o=OPEN()/2,n=NEAR()/2,r=REST()/2;
-    if(t<1.0) return o;
-    if(t<2.0){ const e=1-Math.pow(1-ramp(t,1.0,2.0),3); return o+(n-o)*e; }
-    if(t<2.6) return n;
-    const e=1-Math.pow(1-ramp(t,2.6,2.85),2); return n+(r-n)*e;
-  }
-  function setText(t){
-    const o1=pulse(t,1.15,1.8,2.65,3.0), o2=pulse(t,3.5,4.1,5.15,5.6), of=ramp(t,5.75,6.7);
+  function tipHalf(p){ const o=OPEN()/2,n=NEAR()/2,r=REST()/2;
+    if(p<0.20) return o+(n-o)*eo(ramp(p,0,0.20));
+    if(p<0.26) return n+(r-n)*eo(ramp(p,0.20,0.26));
+    return r; }
+
+  let progress=0, forced=null;
+  function render(now){
+    const p=forced!=null?forced:progress;
+    ctx.clearRect(0,0,W,H); ctx.globalCompositeOperation='lighter';
+    const ex=eo(ramp(p,0.28,0.48)), touched=p>=0.26;
+    // spark near contact
+    if(p>0.16 && p<0.34){ const gg=Math.max(0,1-Math.abs(p-0.27)/0.09), r=14+gg*175;
+      const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+      gr.addColorStop(0,'rgba(226,255,198,'+(0.95*gg)+')'); gr.addColorStop(.35,'rgba(159,203,110,'+(0.5*gg)+')'); gr.addColorStop(1,'rgba(159,203,110,0)');
+      ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill(); }
+    // shockwave
+    if(p>0.28 && p<0.5){ const rt=ramp(p,0.28,0.5), rr=rt*Math.max(W,H)*0.6;
+      ctx.strokeStyle='rgba(159,203,110,'+(0.5*(1-rt))+')'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,rr,0,7); ctx.stroke(); }
+    const half=tipHalf(p);
+    for(const pt of P){
+      const baseX=cx+(pt.side<0?-1:1)*half+pt.lx, baseY=cy+pt.ly;
+      let x=baseX, y=baseY, a=1;
+      if(ex>0){ x=baseX+pt.ex*pt.exd*ex; y=baseY+pt.ey*pt.exd*ex - ex*40*Math.random()*0; a=1-ramp(p,0.30,0.52)*0.86; }
+      if(now&&p>0.5){ x+=Math.sin(now/1400+pt.seed)*0.5; y+=Math.cos(now/1600+pt.seed)*0.5; }
+      let col; if(!touched){ col=(pt.lx>-40*handScale)?'rgba(196,236,150,'+(0.86)+')':'rgba(214,226,200,0.6)'; }
+      else col='rgba(176,214,140,'+(0.72*a)+')';
+      ctx.fillStyle=col; const s=pt.size; ctx.fillRect(x,y,s,s);
+    }
+    ctx.globalCompositeOperation='source-over';
+    const o1=pulse(p,0.05,0.11,0.23,0.28), o2=pulse(p,0.42,0.49,0.60,0.66), of=ramp(p,0.72,0.83);
     L1.style.opacity=o1; L1.style.transform='translateY('+((1-o1)*8)+'px)';
     L2.style.opacity=o2; L2.style.transform='translateY('+((1-o2)*8)+'px)';
-    FIN.style.opacity=of; FIN.style.transform='translateY('+((1-of)*10)+'px)';
-    FIN.style.pointerEvents=of>0.5?'auto':'none';
+    FIN.style.opacity=of; FIN.style.transform='translateY('+((1-of)*10)+'px)'; FIN.style.pointerEvents=of>0.5?'auto':'none';
+    HINT.style.opacity=1-ramp(p,0.0,0.05);
   }
-  function frame(now){
-    const t=(now-tStart)/1000;
-    ctx.clearRect(0,0,W,H); ctx.globalCompositeOperation='lighter';
-    if(!boomAt && t>=2.9){ boomAt=true;
-      for(const p of P){ const px=cx+(p.side<0?-1:1)*tipHalf(2.85)+p.lx, py=cy+p.ly;
-        const dx=px-cx,dy=py-cy,d=Math.hypot(dx,dy)||1,f=(1.6+Math.random()*2.4);
-        p.vx=(dx/d)*f*(2.4+Math.random()*3.2)+(Math.random()-.5)*2;
-        p.vy=(dy/d)*f*(2.4+Math.random()*3.2)-(0.6+Math.random()*1.4); p.x=px; p.y=py; } }
-    setText(t);
-    // spark
-    if(t>1.6 && t<3.25){ const gg=Math.max(0,1-Math.abs(t-2.85)/0.9), r=14+gg*170;
-      const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
-      gr.addColorStop(0,'rgba(224,255,196,'+(0.92*gg)+')'); gr.addColorStop(.35,'rgba(159,203,110,'+(0.5*gg)+')');
-      gr.addColorStop(1,'rgba(159,203,110,0)'); ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill(); }
-    if(boomAt && t<3.85){ const rt=(t-2.9)/0.95, rr=rt*Math.max(W,H)*0.55;
-      ctx.strokeStyle='rgba(159,203,110,'+(0.5*(1-rt))+')'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,rr,0,7); ctx.stroke(); }
-    const half=tipHalf(t);
-    for(const p of P){ let col;
-      if(!boomAt){ const hx=cx+(p.side<0?-1:1)*half+p.lx, hy=cy+p.ly, spd=t<1.0?0.06:0.14;
-        p.x+=(hx-p.x)*spd; p.y+=(hy-p.y)*spd; p.a+=(Math.min(1,t/0.9)-p.a)*0.1;
-        col='rgba(210,224,196,'+(0.55*p.a)+')'; if(p.lx>-26*handScale){ col='rgba(190,232,150,'+(0.82*p.a)+')'; } }
-      else{ p.vx*=0.955; p.vy*=0.955; p.vy+=0.015; p.x+=p.vx; p.y+=p.vy; p.a*=0.986; col='rgba(176,214,140,'+(0.7*p.a)+')'; }
-      ctx.fillStyle=col; const s=p.size*(boomAt?0.9:1); ctx.fillRect(p.x,p.y,s,s); }
-    ctx.globalCompositeOperation='source-over';
-    if(boomAt && t>4.6){ for(const p of P){ p.x+=Math.sin(now/1400+p.seed)*0.06; p.y+=Math.cos(now/1600+p.seed)*0.05; } }
-    if(!SIM) raf=requestAnimationFrame(frame);
-  }
-  function start(){ build(); if(reduce){ L1.style.opacity=0;L2.style.opacity=0;FIN.style.opacity=1;FIN.style.pointerEvents='auto'; return; }
-    cancelAnimationFrame(raf); raf=requestAnimationFrame(frame); }
-  addEventListener('resize',size);
-  document.getElementById('replay').addEventListener('click',start);
-  start();
+  let raf; function loop(now){ render(now); raf=requestAnimationFrame(loop); }
+  function onScroll(){ const max=document.documentElement.scrollHeight-innerHeight; progress=clamp((window.scrollY||window.pageYOffset)/max,0,1); }
+  addEventListener('scroll',onScroll,{passive:true});
+  addEventListener('resize',()=>{size();build();});
+  build(); onScroll();
+  if(reduce){ forced=1; render(0); }
+  else { raf=requestAnimationFrame(loop); }
 })();
 </script>
 </body></html>
