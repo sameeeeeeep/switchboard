@@ -61,6 +61,7 @@ async function main() {
     onFolderChanged: (folder) => broker?.notifyTeamSync(folder),
     onTeamChanged: () => broker?.notifyTeamChanged(),
     onCursor: (c) => broker?.pushTeamCursor(c),   // realtime: relay a teammate's live cursor to the native app
+    onSurface: (cmd) => broker?.pushSurfaceCommand(cmd),   // remote surface control: open/place a wrapp on our screen
   });
   broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions, team });
   broker.start();

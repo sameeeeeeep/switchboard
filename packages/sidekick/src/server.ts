@@ -914,6 +914,16 @@ export class Broker implements ConsentPrompter, NativeHandler {
         // Ephemeral realtime presence; deliberately returns nothing to keep it cheap. Never persisted.
         this.deps.team.broadcastCursor(Number(args?.x) || 0, Number(args?.y) || 0);
         return { ok: true };
+      case "team.surface":
+        // The native app drives a teammate's surface: open/place a wrapp on their screen. Ephemeral.
+        this.deps.team.broadcastSurface({
+          action: String(args?.action ?? "open"),
+          wrappId: args?.wrappId ? String(args.wrappId) : undefined,
+          url: args?.url ? String(args.url) : undefined,
+          name: args?.name ? String(args.name) : undefined,
+          placement: (args?.placement && typeof args.placement === "object") ? args.placement as any : undefined,
+        });
+        return { ok: true };
       default:
         return { ok: false, error: `unknown control action ${action}` };
     }
@@ -1597,6 +1607,12 @@ export class Broker implements ConsentPrompter, NativeHandler {
   pushTeamCursor(c: { deviceId: string; name: string; x: number; y: number }) {
     const frame = JSON.stringify({ type: "event", event: "teamCursor", payload: c });
     for (const ws of this.menubars) { try { ws.send(frame); } catch { /* dropped; next frame */ } }
+  }
+
+  /** Push a teammate's SURFACE COMMAND to the native app to execute (open/place a wrapp). Menubar-only. */
+  pushSurfaceCommand(cmd: { from: string; action: string; wrappId?: string; url?: string; name?: string; placement?: { x: number; y: number; w: number; h: number } }) {
+    const frame = JSON.stringify({ type: "event", event: "teamSurface", payload: cmd });
+    for (const ws of this.menubars) { try { ws.send(frame); } catch { /* dropped */ } }
   }
 
   /** Mirror team.status() to ~/.relay/team.json so the native panel can READ team state (members, online,

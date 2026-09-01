@@ -4635,13 +4635,22 @@ struct ActionConsentDrop: View {
         // Multiplayer presence: route the daemon's live `teamCursor` events to the sprite overlay, and let the
         // overlay stream OUR cursor back up (control team.cursor → the team transport). Both are no-ops until a
         // team is active (setActive is driven from refreshFiles).
-        consent?.onEvent = { ev, payload in
-            guard ev == "teamCursor" else { return }
-            TeamCursorsOverlay.shared.update(
-                deviceId: payload["deviceId"] as? String ?? "",
-                name: payload["name"] as? String ?? "",
-                x: (payload["x"] as? Double) ?? ((payload["x"] as? NSNumber)?.doubleValue ?? 0),
-                y: (payload["y"] as? Double) ?? ((payload["y"] as? NSNumber)?.doubleValue ?? 0))
+        consent?.onEvent = { [weak self] ev, payload in
+            switch ev {
+            case "teamCursor":
+                TeamCursorsOverlay.shared.update(
+                    deviceId: payload["deviceId"] as? String ?? "",
+                    name: payload["name"] as? String ?? "",
+                    x: (payload["x"] as? Double) ?? ((payload["x"] as? NSNumber)?.doubleValue ?? 0),
+                    y: (payload["y"] as? Double) ?? ((payload["y"] as? NSNumber)?.doubleValue ?? 0))
+            case "teamSurface":
+                // A teammate is driving our surface — open the wrapp they opened. broadcast:false = no echo.
+                guard (payload["action"] as? String ?? "open") == "open",
+                      let s = payload["url"] as? String, let u = URL(string: s) else { return }
+                let name = payload["name"] as? String ?? "Wrapp"
+                Task { @MainActor in self?.openWrappWindow(url: u, name: name, broadcast: false) }
+            default: break
+            }
         }
         TeamCursorsOverlay.shared.onLocalCursor = { [weak self] x, y in
             self?.consent?.control("team.cursor", ["x": x, "y": y])
@@ -5512,7 +5521,13 @@ struct ActionConsentDrop: View {
     // App windows opened from the launcher/store ("window" surface): user-opened wrapps hosted in the
     // same bridged webview as drive — kept separate so closing an app never disturbs a drive session.
     private var appWindows: [GodWebWindow] = []
-    @MainActor func openWrappWindow(url: URL, name: String) {
+    @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true) {
+        // Remote surface control: when I open a wrapp AND I'm in a team, tell my teammates' Switchboards to open
+        // the same one (founder: "I tell the other person's switchboard what wrapp to open"). broadcast:false on
+        // the RECEIVING side stops the echo. Placement + navigation mirroring is the next increment.
+        if broadcast, model.team != nil {
+            consent?.control("team.surface", ["action": "open", "url": url.absoluteString, "name": name])
+        }
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })

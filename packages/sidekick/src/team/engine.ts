@@ -93,6 +93,9 @@ export interface TeamEngineDeps {
   /** A teammate's LIVE CURSOR arrived — ephemeral realtime presence, NEVER persisted (not files/index/cloud).
    *  The Broker pushes it straight to the native app to render the remote sprite. x,y are normalized 0..1. */
   onCursor?: (c: { deviceId: string; name: string; x: number; y: number }) => void;
+  /** A SURFACE COMMAND arrived from a teammate — "open/place/navigate this wrapp on your screen" (remote
+   *  surface control). Ephemeral/transient like cursors; the Broker pushes it to the app to execute. */
+  onSurface?: (cmd: { from: string; action: string; wrappId?: string; url?: string; name?: string; placement?: { x: number; y: number; w: number; h: number } }) => void;
 }
 
 const SCAN_MS = 1500;
@@ -703,6 +706,14 @@ export class TeamEngine {
         for (const p of this.peers.values()) if (p.deviceId !== peer.deviceId) this.sendSealed(p, "h", { kind: "cursor", ...c });
         return;
       }
+      case "surface": {
+        // A member wants to drive a surface (open/place a wrapp) on the team's screens. Bind `from` to the
+        // authenticated peer, run it locally (host executes too) + relay to the OTHER members. Ephemeral.
+        const cmd = { from: peer.deviceId, action: String(msg.action ?? "open"), wrappId: msg.wrappId, url: msg.url, name: msg.name, placement: msg.placement };
+        this.deps.onSurface?.(cmd);
+        for (const p of this.peers.values()) if (p.deviceId !== peer.deviceId) this.sendSealed(p, "h", { kind: "surface", ...cmd });
+        return;
+      }
       case "bye":
         try { peer.ws.close(); } catch { /* gone */ }
         return;
@@ -730,6 +741,19 @@ export class TeamEngine {
   broadcastCursor(x: number, y: number): void {
     if (!this.state) return;
     const frame = { kind: "cursor", deviceId: this.deviceId, name: this.deps.userName(), x, y };
+    if (this.state.role === "host") {
+      for (const p of this.peers.values()) this.sendSealed(p, "h", frame);
+    } else if (this.client) {
+      this.sendSealed(this.client, "m", frame);
+    }
+  }
+
+  /** Broadcast a SURFACE COMMAND to the team — "open/place/navigate this wrapp on your screen" (remote surface
+   *  control). Ephemeral/transient like cursors — never persisted. Host fans to all; a member sends to the host
+   *  which relays. `cmd` carries action + wrappId/url/name/placement. */
+  broadcastSurface(cmd: { action: string; wrappId?: string; url?: string; name?: string; placement?: { x: number; y: number; w: number; h: number } }): void {
+    if (!this.state) return;
+    const frame = { kind: "surface", from: this.deviceId, ...cmd };
     if (this.state.role === "host") {
       for (const p of this.peers.values()) this.sendSealed(p, "h", frame);
     } else if (this.client) {
@@ -817,6 +841,10 @@ export class TeamEngine {
           case "cursor":
             // A cursor the host relayed (its own, or another member's). Render it. Ephemeral.
             this.deps.onCursor?.({ deviceId: String(msg.deviceId ?? ""), name: String(msg.name ?? ""), x: Number(msg.x) || 0, y: Number(msg.y) || 0 });
+            return;
+          case "surface":
+            // A surface command the host relayed — open/place a wrapp on our screen. Ephemeral.
+            this.deps.onSurface?.({ from: String(msg.from ?? ""), action: String(msg.action ?? "open"), wrappId: msg.wrappId, url: msg.url, name: msg.name, placement: msg.placement });
             return;
         }
       } catch (err) {
