@@ -1,4 +1,28 @@
-# Switchboard — article series (the plan)
+# The Last Prompt — content plan
+
+## The vision everything ladders up to
+
+**The Last Prompt is an AI lab building science fiction.** All content ladders to one thesis:
+
+1. **Build science fiction** — the AI we were promised: it discovers, predicts, protects, acts.
+2. That needs **self-improving, autonomously operating AI** — runs on its own, better each day.
+3. The first step to that is a **promptless AI** — one that no longer waits for you to type.
+4. **Path 1** to promptless AI is making **AI components routable** — like MCP did for
+   *connectors*, The Last Prompt does for **harnesses, interfaces, subscriptions, models,
+   context, data, users, agents — all of it.** That path-1 product is **Switchboard.**
+
+So the brand stack is: **The Last Prompt** (the lab / the vision) → **Switchboard** (path 1,
+shipping now) → the wrapps + Half-Baked (proof the routable substrate works).
+
+**Cornerstone:** `00-manifesto.md` — the manifesto told as the story of **Sam Kurzwala**, who
+builds a personal future-prediction AI and discovers the ladder above. Everything else is a rung
+of that story made concrete. Publish it first on `/journey`; it's the piece every other links to.
+
+**Landing tagline updated** to *"an AI lab building science fiction"* (was "for AI experiments").
+
+---
+
+# Article series (the plan)
 
 **Format shift:** instead of standalone posts, the month is a set of **cornerstone articles**,
 each topped with a **branded hero image**. Longer, durable, linkable — and one article covers a

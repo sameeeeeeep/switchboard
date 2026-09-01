@@ -19,7 +19,7 @@ scrubbing back reverses it.
 | ~30% | burst into particles + shockwave ring |
 | 5–28% | line over the hands: **"you're one prompt away from superintelligence"** |
 | 42–66% | **"the last prompt helps you close that gap"** |
-| 72–100% | rests on: `thelastprompt.ai` · **an AI lab for AI experiments** · vision line **PROMPTS → FEWER → PROMPTLESS** · a **Switchboard** card with an **Enter →** CTA |
+| 72–100% | rests on: `thelastprompt.ai` · **an AI lab building science fiction** · vision line **PROMPTS → FEWER → PROMPTLESS** · a **Switchboard** card with an **Enter →** CTA |
 
 ## Hard constraints (keep these)
 - **Single self-contained file, zero dependencies.** All animation is vanilla canvas 2D; no libs.
@@ -97,7 +97,7 @@ canvas{position:absolute;inset:0;display:block}
     <div class="layer" id="line2" style="opacity:0"><div class="big">the last prompt helps you <span class="g">close that gap</span></div></div>
     <div class="layer final" id="final" style="opacity:0">
       <div class="mark"><b>thelastprompt</b>.ai</div>
-      <div class="tag">an AI lab for <span class="g">AI experiments</span></div>
+      <div class="tag">an AI lab building <span class="g">science fiction</span></div>
       <div class="vision"><span class="now">prompts</span><span class="arr">→</span><span class="step">fewer</span><span class="arr">→</span><span class="end">promptless</span></div>
       <div class="card">
         <div class="ctile"><i></i></div>
