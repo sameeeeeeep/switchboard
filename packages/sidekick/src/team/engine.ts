@@ -90,6 +90,9 @@ export interface TeamEngineDeps {
   onFolderChanged: (folder: string, files: string[]) => void;
   /** Fired on any membership/role change — the Broker nudges the panel to refresh. */
   onTeamChanged: () => void;
+  /** A teammate's LIVE CURSOR arrived — ephemeral realtime presence, NEVER persisted (not files/index/cloud).
+   *  The Broker pushes it straight to the native app to render the remote sprite. x,y are normalized 0..1. */
+  onCursor?: (c: { deviceId: string; name: string; x: number; y: number }) => void;
 }
 
 const SCAN_MS = 1500;
@@ -691,6 +694,15 @@ export class TeamEngine {
       }
       case "hb":
         return; // lastSeen already bumped
+      case "cursor": {
+        // A member's live cursor. Authorship bound to the AUTHENTICATED peer (ignore any deviceId in the
+        // frame), like ops. Raise it locally (the host's app renders it) AND relay to the OTHER members.
+        // Ephemeral — never persisted.
+        const c = { deviceId: peer.deviceId, name: typeof msg.name === "string" ? msg.name : "", x: Number(msg.x) || 0, y: Number(msg.y) || 0 };
+        this.deps.onCursor?.(c);
+        for (const p of this.peers.values()) if (p.deviceId !== peer.deviceId) this.sendSealed(p, "h", { kind: "cursor", ...c });
+        return;
+      }
       case "bye":
         try { peer.ws.close(); } catch { /* gone */ }
         return;
@@ -708,6 +720,21 @@ export class TeamEngine {
   private broadcastPresence() {
     const members = this.status().members.map(({ you: _you, ...m }) => m);
     for (const p of this.peers.values()) this.sendSealed(p, "h", { kind: "presence", members });
+  }
+
+  /** Broadcast MY live cursor to the team — the realtime presence channel that renders a remote sprite on the
+   *  other members' screens. EPHEMERAL + fire-and-forget: never written to the folder, index, or cloud store,
+   *  so it can't pollute the LWW sync. x,y are normalized 0..1 of the sender's screen; the receiver rebases to
+   *  its own. Host fans to all members; a member sends to the host, which relays to the others (see "cursor"
+   *  cases). No-op until a team exists + at least one peer/host session is up. */
+  broadcastCursor(x: number, y: number): void {
+    if (!this.state) return;
+    const frame = { kind: "cursor", deviceId: this.deviceId, name: this.deps.userName(), x, y };
+    if (this.state.role === "host") {
+      for (const p of this.peers.values()) this.sendSealed(p, "h", frame);
+    } else if (this.client) {
+      this.sendSealed(this.client, "m", frame);
+    }
   }
 
   // ---- member role ----
@@ -786,6 +813,10 @@ export class TeamEngine {
             return;
           case "hb":
             this.sendSealed(session, "m", { kind: "hb" });
+            return;
+          case "cursor":
+            // A cursor the host relayed (its own, or another member's). Render it. Ephemeral.
+            this.deps.onCursor?.({ deviceId: String(msg.deviceId ?? ""), name: String(msg.name ?? ""), x: Number(msg.x) || 0, y: Number(msg.y) || 0 });
             return;
         }
       } catch (err) {

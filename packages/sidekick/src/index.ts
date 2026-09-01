@@ -60,6 +60,7 @@ async function main() {
     audit: (method, outcome, note) => audit.record({ origin: "team", kind: "request", method, outcome, note }),
     onFolderChanged: (folder) => broker?.notifyTeamSync(folder),
     onTeamChanged: () => broker?.notifyTeamChanged(),
+    onCursor: (c) => broker?.pushTeamCursor(c),   // realtime: relay a teammate's live cursor to the native app
   });
   broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions, team });
   broker.start();

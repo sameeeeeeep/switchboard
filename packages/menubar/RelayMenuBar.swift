@@ -755,6 +755,8 @@ final class Model: ObservableObject {
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
     @Published var disabledModels: Set<String> = []  // models the user turned off (~/.relay/models.json, canonical ids)
     @Published var shortcuts = readShortcutCfg()   // the summon / talk gesture bindings (rebindable presets)
+    @Published var team: TeamState? = nil          // in-team state (nil = off/no-team) — mirror of the daemon's team.status()
+    @Published var teamEnabled = false             // the Team Mode switch itself (ON even before a team exists)
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -777,7 +779,58 @@ final class Model: ObservableObject {
         defaultShare = readDefaultShare()
         disabledModels = readModelPrefs()
         shortcuts = readShortcutCfg()
+        team = readTeam()
+        teamEnabled = readTeamEnabled()
+        // Turn the live sprite overlay + cursor stream on exactly when we're in a team (no-op if unchanged).
+        let teamActive = team != nil
+        Task { @MainActor in TeamCursorsOverlay.shared.setActive(teamActive) }
     }
+}
+
+// ~/.relay/team.json — the daemon rewrites this to team.status() (TeamStatus, see
+// packages/sidekick/src/team/engine.ts) on boot and on every team change. We DECODE it here and MAP it
+// to TeamState (the shape TeamSection wants) — the field sets don't match 1:1 (TeamStatus has `enabled`
+// + a "off" role; TeamState wants role "host"|"member" with an explicit `you` per member).
+private struct TeamStatusMirror: Decodable {
+    struct Member: Decodable { var deviceId: String; var name: String; var online: Bool; var you: Bool? }
+    var enabled: Bool
+    var role: String            // "off" | "host" | "member"
+    var teamName: String?
+    var folder: String?
+    var invite: String?         // host-only
+    var connected: Bool?
+    var members: [Member]?
+    var error: String?
+    var relay: String?
+}
+
+// The mode switch on its own — ON even before a team exists (role "off"), so the section can tell
+// "turn it on" from "you're on, create/join a team".
+func readTeamEnabled() -> Bool {
+    let f = (RELAY_DIR as NSString).appendingPathComponent("team.json")
+    guard let data = FileManager.default.contents(atPath: f),
+          let m = try? JSONDecoder().decode(TeamStatusMirror.self, from: data) else { return false }
+    return m.enabled
+}
+
+// The in-team state, or nil when Team Mode is off, there's no team yet (role "off"), or the mirror is
+// missing/corrupt — in every one of those cases TeamSection falls back to its off/empty rendering.
+func readTeam() -> TeamState? {
+    let f = (RELAY_DIR as NSString).appendingPathComponent("team.json")
+    guard let data = FileManager.default.contents(atPath: f),
+          let m = try? JSONDecoder().decode(TeamStatusMirror.self, from: data) else { return nil }
+    guard m.enabled, m.role == "host" || m.role == "member" else { return nil }
+    let members = (m.members ?? []).map {
+        TeamMember(deviceId: $0.deviceId, name: $0.name, online: $0.online, you: $0.you ?? false)
+    }
+    return TeamState(role: m.role,
+                     teamName: m.teamName ?? "",
+                     folder: m.folder ?? "",
+                     members: members,
+                     connected: m.connected ?? false,
+                     invite: m.invite,
+                     relay: m.relay,
+                     error: m.error)
 }
 
 // ⌃⌃ region select — a tiny ~/.relay/god-region flag. On → God captures an interactive drag-selected
@@ -1077,6 +1130,12 @@ struct Panel: View {
     let onSignIn: () -> Void             // onboarding: open Terminal + start the `claude` login
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
     let onStore: () -> Void              // open the wrapp store modal (drops from the notch)
+    let onSetTeamEnabled: (Bool) -> Void // Team Mode switch → team.setEnabled { on }
+    let onCreateTeam: (String) -> Void   // team name → daemon picks the folder natively, then team.host
+    let onJoinTeam: (String) -> Void     // invite code → team.join { code }
+    let onLeaveTeam: () -> Void          // team.leave (host: disband locally · member: leave)
+    let onOpenTeamFolder: (String) -> Void  // open the shared folder in Finder
+    let onCopyInvite: (String) -> Void   // copy the host invite code to the pasteboard
     let onTour: () -> Void               // launch the floating-cursor onboarding concierge (CursorGuide .tour)
     var onConnectClaudeNotch: () -> Void = {}   // raise the "Connect Claude Code" notch card (onboarding finish)
     @State private var breathe = false
@@ -1373,6 +1432,13 @@ struct Panel: View {
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
+            disclosure("team", "TEAM", summary: teamSummary) {
+                TeamSection(team: model.team, enabled: model.teamEnabled,
+                            onSetEnabled: onSetTeamEnabled, onCreate: onCreateTeam,
+                            onJoin: onJoinTeam, onLeave: onLeaveTeam,
+                            onOpenFolder: onOpenTeamFolder, onCopyInvite: onCopyInvite)
+            }
+            Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onTour() }) {
                 HStack(spacing: 9) {
                     Image(systemName: "sparkles").font(.system(size: 12)).foregroundColor(.lime).frame(width: 18)
@@ -1415,6 +1481,12 @@ struct Panel: View {
     // Compact one-line recap of both gestures for the collapsed header.
     private var shortcutSummary: String {
         "\(modGlyph(model.shortcuts.summon))\(modGlyph(model.shortcuts.summon)) · \(talkGlyphs(model.shortcuts.talk))"
+    }
+    // Team header recap: off · on (no team yet) · "N on the board" when in a team.
+    private var teamSummary: String {
+        guard model.teamEnabled else { return "off" }
+        guard let t = model.team else { return "on" }
+        return "\(t.onlineCount) on the board"
     }
 
     // YOUR NAME — the real greeting source (~/.relay/profile.json). Commit on Enter or the save button.
@@ -3528,6 +3600,7 @@ final class ConsentClient: NSObject {
     // and the caller (main) can't race the map. Fires nil on timeout / socket loss — never wedges.
     private var pending: [String: (Any?) -> Void] = [:]
     private let pendingLock = NSLock()
+    var onEvent: ((String, [String: Any]) -> Void)?   // daemon → app events (e.g. teamCursor); set by the controller
 
     init(port: UInt16, tokenProvider: @escaping () -> String?, onPrompt: @escaping (String, String, [String: Any]) -> Void) {
         self.port = port; self.tokenProvider = tokenProvider; self.onPrompt = onPrompt
@@ -3559,6 +3632,10 @@ final class ConsentClient: NSObject {
                     } else if type == "control_result", let id = o["id"] as? String {
                         // `result` may legitimately be null (e.g. vault.find no-match) — deliver as nil.
                         self.fulfil(id, o.keys.contains("result") ? o["result"] : nil)
+                    } else if type == "event", let ev = o["event"] as? String {
+                        // daemon → app push (teamCursor at ~20-30Hz, …). Hop to main; the handler is cheap.
+                        let payload = (o["payload"] as? [String: Any]) ?? [:]
+                        DispatchQueue.main.async { self.onEvent?(ev, payload) }
                     }
                 }
                 self.receive()
@@ -4415,6 +4492,54 @@ struct ActionConsentDrop: View {
         toast("Name saved: \(n)")
     }
 
+    // ---- Team Mode — the panel drives the daemon's team.* control verbs (see server.ts). The daemon
+    // rewrites ~/.relay/team.json on every change; we re-read it after each so the section reflects it. ----
+
+    // Flip the mode switch. Turning it off keeps the team config (a mode switch, not a leave).
+    @MainActor private func setTeamEnabled(_ on: Bool) {
+        consent?.control("team.setEnabled", ["on": on])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
+    }
+
+    // Create a team: the daemon raises a NATIVE folder picker (team.pickFolder → { ok, path }), then we
+    // host that folder under the given name. Uses the correlated request so the picked path chains into
+    // host; the long timeout covers the human deciding at the dialog.
+    @MainActor private func createTeam(_ teamName: String) {
+        consent?.request(action: "team.pickFolder", args: [:], timeout: 120) { [weak self] result in
+            guard let self, let obj = result as? [String: Any],
+                  (obj["ok"] as? Bool) == true, let folder = obj["path"] as? String, !folder.isEmpty else { return }
+            DispatchQueue.main.async {
+                self.consent?.control("team.host", ["folder": folder, "teamName": teamName])
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.model.refreshFiles() }
+            }
+        }
+    }
+
+    // Join a teammate's team with the invite code they sent.
+    @MainActor private func joinTeam(_ code: String) {
+        consent?.control("team.join", ["code": code])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.model.refreshFiles() }
+    }
+
+    // Leave (member) or disband-locally (host).
+    @MainActor private func leaveTeam() {
+        consent?.control("team.leave", [:])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
+    }
+
+    // Open the shared folder in Finder.
+    private func openTeamFolder(_ path: String) {
+        guard !path.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+    }
+
+    // Copy the host invite code to the pasteboard (it carries the team secret — share it like a password).
+    private func copyInvite(_ invite: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(invite, forType: .string)
+    }
+
     // Economy mode → a tiny ~/.relay/economy flag God reads to prefer a cheaper/faster model.
     @MainActor private func setEconomy(_ on: Bool) {
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
@@ -4507,6 +4632,20 @@ struct ActionConsentDrop: View {
                 default: self?.showStorageBindConsent(id, kind, body)   // storage-bind / storage-pick
                 }
             } })
+        // Multiplayer presence: route the daemon's live `teamCursor` events to the sprite overlay, and let the
+        // overlay stream OUR cursor back up (control team.cursor → the team transport). Both are no-ops until a
+        // team is active (setActive is driven from refreshFiles).
+        consent?.onEvent = { ev, payload in
+            guard ev == "teamCursor" else { return }
+            TeamCursorsOverlay.shared.update(
+                deviceId: payload["deviceId"] as? String ?? "",
+                name: payload["name"] as? String ?? "",
+                x: (payload["x"] as? Double) ?? ((payload["x"] as? NSNumber)?.doubleValue ?? 0),
+                y: (payload["y"] as? Double) ?? ((payload["y"] as? NSNumber)?.doubleValue ?? 0))
+        }
+        TeamCursorsOverlay.shared.onLocalCursor = { [weak self] x, y in
+            self?.consent?.control("team.cursor", ["x": x, "y": y])
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
@@ -4541,6 +4680,12 @@ struct ActionConsentDrop: View {
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
             onStore: { [weak self] in self?.showStore() },
+            onSetTeamEnabled: { [weak self] on in self?.setTeamEnabled(on) },
+            onCreateTeam: { [weak self] name in self?.createTeam(name) },
+            onJoinTeam: { [weak self] code in self?.joinTeam(code) },
+            onLeaveTeam: { [weak self] in self?.leaveTeam() },
+            onOpenTeamFolder: { [weak self] path in self?.openTeamFolder(path) },
+            onCopyInvite: { [weak self] invite in self?.copyInvite(invite) },
             onTour: { [weak self] in self?.startWelcomeTour() },
             onConnectClaudeNotch: { [weak self] in self?.promptConnectClaudeCodeNotch() }
         ))

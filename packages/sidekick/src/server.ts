@@ -909,6 +909,11 @@ export class Broker implements ConsentPrompter, NativeHandler {
           return { ok: false, error: String((err as Error)?.message || err).slice(0, 200) };
         }
       }
+      case "team.cursor":
+        // The native app streams MY cursor here (~20-30Hz, normalized 0..1) → broadcast to teammates.
+        // Ephemeral realtime presence; deliberately returns nothing to keep it cheap. Never persisted.
+        this.deps.team.broadcastCursor(Number(args?.x) || 0, Number(args?.y) || 0);
+        return { ok: true };
       default:
         return { ok: false, error: `unknown control action ${action}` };
     }
@@ -1585,6 +1590,13 @@ export class Broker implements ConsentPrompter, NativeHandler {
   notifyTeamChanged() {
     this.writeTeamMirror();   // keep the native app's read-back file fresh (members, online dots, invite state)
     this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "team-changed" } });
+  }
+
+  /** Push a teammate's LIVE cursor straight to the native app(s) so it renders the remote sprite. Sent only to
+   *  menubar surfaces, at cursor rate (~20-30Hz) — NOT a file mirror (too hot for that), NOT persisted. */
+  pushTeamCursor(c: { deviceId: string; name: string; x: number; y: number }) {
+    const frame = JSON.stringify({ type: "event", event: "teamCursor", payload: c });
+    for (const ws of this.menubars) { try { ws.send(frame); } catch { /* dropped; next frame */ } }
   }
 
   /** Mirror team.status() to ~/.relay/team.json so the native panel can READ team state (members, online,
