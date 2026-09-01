@@ -5896,6 +5896,20 @@ struct ActionConsentDrop: View {
                 // (NOT full onFlags, whose ⌃⌃/⌥⌥ double-tap logic would misfire here) so the talk chord still
                 // STARTS a dictation; finishDictation already routes the transcript into this note.
                 if ev.type == .flagsChanged { self.startDictationOnTalkChord(ev.modifierFlags); return ev }
+                // ⌘-edit commands into the note field. A NON-ACTIVATING panel never receives the Edit-menu key
+                // equivalents (the app isn't active), so ⌘V / ⌘A / ⌘C / ⌘X silently no-op even though right-click
+                // → Paste works (it calls the field directly). Route them to the field editor ourselves.
+                // (founder 2026-09-01: "unable to paste using cmd v, right click paste is working")
+                if ev.type == .keyDown, ev.modifierFlags.contains(.command),
+                   let ed = self.feedbackPanel?.firstResponder as? NSTextView {
+                    switch ev.charactersIgnoringModifiers {
+                    case "v": ed.paste(nil); return nil
+                    case "a": ed.selectAll(nil); return nil
+                    case "c": ed.copy(nil); return nil
+                    case "x": ed.cut(nil); return nil
+                    default: break
+                    }
+                }
                 // While a dictation is latched, its watch timer owns ⌃ (commit) and esc (cancel the take) via
                 // key-state polling — don't let esc/↵ ALSO discard or save the whole note out from under it.
                 if self.dictating { return (ev.keyCode == 53 || ev.keyCode == 36) ? nil : ev }
