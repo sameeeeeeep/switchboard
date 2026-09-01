@@ -4644,11 +4644,23 @@ struct ActionConsentDrop: View {
                     x: (payload["x"] as? Double) ?? ((payload["x"] as? NSNumber)?.doubleValue ?? 0),
                     y: (payload["y"] as? Double) ?? ((payload["y"] as? NSNumber)?.doubleValue ?? 0))
             case "teamSurface":
-                // A teammate is driving our surface — open the wrapp they opened. broadcast:false = no echo.
-                guard (payload["action"] as? String ?? "open") == "open",
-                      let s = payload["url"] as? String, let u = URL(string: s) else { return }
+                // A teammate is driving our surface: open / place / navigate a wrapp. broadcast:false + the
+                // window's own suppress flags stop the echo.
+                let action = payload["action"] as? String ?? "open"
                 let name = payload["name"] as? String ?? "Wrapp"
-                Task { @MainActor in self?.openWrappWindow(url: u, name: name, broadcast: false) }
+                Task { @MainActor in
+                    guard let self else { return }
+                    switch action {
+                    case "open":
+                        guard let s = payload["url"] as? String, let u = URL(string: s) else { return }
+                        self.openWrappWindow(url: u, name: name, broadcast: false, placement: self.placementDict(payload["placement"]))
+                    case "place":
+                        if let w = self.appWindows.first(where: { $0.key == name }), let p = self.placementDict(payload["placement"]) { w.applyFrame(self.denormFrame(p)) }
+                    case "navigate":
+                        if let w = self.appWindows.first(where: { $0.key == name }), let s = payload["url"] as? String, let u = URL(string: s) { w.navigateTo(u) }
+                    default: break
+                    }
+                }
             default: break
             }
         }
@@ -5521,13 +5533,26 @@ struct ActionConsentDrop: View {
     // App windows opened from the launcher/store ("window" surface): user-opened wrapps hosted in the
     // same bridged webview as drive — kept separate so closing an app never disturbs a drive session.
     private var appWindows: [GodWebWindow] = []
-    @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true) {
-        // Remote surface control: when I open a wrapp AND I'm in a team, tell my teammates' Switchboards to open
-        // the same one (founder: "I tell the other person's switchboard what wrapp to open"). broadcast:false on
-        // the RECEIVING side stops the echo. Placement + navigation mirroring is the next increment.
-        if broadcast, model.team != nil {
-            consent?.control("team.surface", ["action": "open", "url": url.absoluteString, "name": name])
-        }
+    // Normalize/denormalize a window frame to fractions of the main screen, so placement maps across
+    // different screen sizes/resolutions (multiplayer surface mirroring). Bottom-left origin, both sides.
+    @MainActor func normFrame(_ f: NSRect) -> [String: Double] {
+        guard let s = NSScreen.main?.frame, s.width > 0, s.height > 0 else { return [:] }
+        return ["x": Double((f.minX - s.minX) / s.width), "y": Double((f.minY - s.minY) / s.height),
+                "w": Double(f.width / s.width), "h": Double(f.height / s.height)]
+    }
+    @MainActor func denormFrame(_ p: [String: Double]) -> NSRect {
+        guard let s = NSScreen.main?.frame else { return NSRect(x: 140, y: 120, width: 1040, height: 860) }
+        return NSRect(x: s.minX + CGFloat(p["x"] ?? 0) * s.width, y: s.minY + CGFloat(p["y"] ?? 0) * s.height,
+                      width: CGFloat(p["w"] ?? 0.5) * s.width, height: CGFloat(p["h"] ?? 0.5) * s.height)
+    }
+    @MainActor func placementDict(_ any: Any?) -> [String: Double]? {
+        guard let d = any as? [String: Any] else { return nil }
+        var out: [String: Double] = [:]
+        for k in ["x", "y", "w", "h"] { out[k] = (d[k] as? Double) ?? (d[k] as? NSNumber)?.doubleValue ?? 0 }
+        return out
+    }
+
+    @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true, placement: [String: Double]? = nil) {
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
                 result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
@@ -5545,6 +5570,21 @@ struct ActionConsentDrop: View {
             if self?.appWindows.isEmpty == true { NSApp.setActivationPolicy(.accessory) }
         }
         web.open()
+        if let p = placement { web.applyFrame(denormFrame(p)) }   // a received open → land where the driver put it
+        // Multiplayer: broadcast the open (with our placement) so teammates mirror it, then keep MOVES and
+        // in-wrapp NAVIGATION mirrored live. Echo-guarded (broadcast:false receives; applyFrame/navigateTo
+        // suppress the reflected event). All no-ops unless we're in a team.
+        if broadcast, model.team != nil {
+            consent?.control("team.surface", ["action": "open", "url": url.absoluteString, "name": name, "placement": normFrame(web.currentFrame)])
+        }
+        web.onFrameChanged = { [weak self] f in
+            guard let self, self.model.team != nil else { return }
+            self.consent?.control("team.surface", ["action": "place", "name": name, "placement": self.normFrame(f)])
+        }
+        web.onNavigated = { [weak self] u in
+            guard let self, self.model.team != nil else { return }
+            self.consent?.control("team.surface", ["action": "navigate", "name": name, "url": u.absoluteString])
+        }
         NSLog("[open-wrapp] native window opened: %@ → %@", name, url.absoluteString)
     }
 

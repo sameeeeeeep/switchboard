@@ -148,6 +148,20 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     /// Fires when the USER closes the window (red button) — the drive falls back to the notch surface.
     var onUserClosed: (() -> Void)?
 
+    // ── Multiplayer surface mirroring (docs/MULTIPLAYER-VISION.md): report our window MOVES and in-wrapp
+    // NAVIGATION so a teammate's Switchboard can mirror them; apply the reverse without echoing back. ──
+    var onFrameChanged: ((NSRect) -> Void)?   // user moved/resized → broadcast (guarded while WE apply a remote frame)
+    var onNavigated: ((URL) -> Void)?         // wrapp navigated to a new page → broadcast (guarded on the initial load + remote nav)
+    private var suppressFrame = false
+    private var suppressNav = false
+    private var didFirstLoad = false
+    var key: String { window.title }
+    var currentFrame: NSRect { window.frame }
+    func applyFrame(_ f: NSRect) { suppressFrame = true; window.setFrame(f, display: true, animate: false); DispatchQueue.main.async { self.suppressFrame = false } }
+    func navigateTo(_ url: URL) { suppressNav = true; web.load(URLRequest(url: url)) }
+    func windowDidMove(_ n: Notification) { if !suppressFrame { onFrameChanged?(window.frame) } }
+    func windowDidResize(_ n: Notification) { if !suppressFrame { onFrameChanged?(window.frame) } }
+
     /// Load the wrapp. `visible: false` loads it OFFSCREEN (the notch widget is the surface; the
     /// window can be fronted later without reloading). `ready` fires once window.__god is available.
     func open(visible: Bool = true, ready: (() -> Void)? = nil) {
@@ -212,7 +226,13 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     }
 
     // MARK: WKNavigationDelegate
-    func webView(_ w: WKWebView, didFinish nav: WKNavigation!) { pollReady(80) }
+    func webView(_ w: WKWebView, didFinish nav: WKNavigation!) {
+        pollReady(80)
+        let wasRemote = suppressNav; suppressNav = false
+        // Broadcast only a REAL in-wrapp navigation: not the first load (== the open), not a remote-applied nav.
+        if didFirstLoad, !wasRemote, let u = web.url { onNavigated?(u) }
+        didFirstLoad = true
+    }
     private func pollReady(_ n: Int) {
         // Ready when EITHER bridge is present: __god (drive) OR __godWidget (widget) — a non-AI wrapp may
         // expose only the widget surface.
