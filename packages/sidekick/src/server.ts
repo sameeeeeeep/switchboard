@@ -1,7 +1,7 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath, sep as pathSep, join as joinPath } from "node:path";
-import { realpathSync, readFileSync } from "node:fs";
+import { realpathSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import type {
   BYOPMethod,
@@ -155,6 +155,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   start() {
     const { host, port, pairingToken } = this.deps.config;
+    this.writeTeamMirror();   // seed ~/.relay/team.json so the panel sees team state from the first read
     this.wss = new WebSocketServer({ host, port });
     // A ws 'error' with no listener is an UNCAUGHT exception that kills the daemon. A dropped
     // extension connection (tab close → ECONNRESET) trips this. Handle it at both levels.
@@ -1582,7 +1583,18 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   /** Team membership/presence/mode changed — the panel should re-pull team.status. */
   notifyTeamChanged() {
+    this.writeTeamMirror();   // keep the native app's read-back file fresh (members, online dots, invite state)
     this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "team-changed" } });
+  }
+
+  /** Mirror team.status() to ~/.relay/team.json so the native panel can READ team state (members, online,
+   *  folder, git) — the app can fire team.* control actions but has no other way to see the result. Written
+   *  on boot and on every membership/presence change. Best-effort; a stale/absent file just hides the section. */
+  writeTeamMirror() {
+    try {
+      const path = joinPath(this.deps.config.stateDir, "team.json");
+      writeFileSync(path, JSON.stringify(this.deps.team.status(), null, 2), { mode: 0o600 });
+    } catch {}
   }
 }
 

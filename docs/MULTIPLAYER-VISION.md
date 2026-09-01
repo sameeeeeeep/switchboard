@@ -160,3 +160,38 @@ Beyond sharing an overlay over a wrapp both already opened — one Switchboard c
 (founder verbatim: "it's like im telling the other person's switchboard what wrapp to open and it copies how
 it's placed and navigated … since wrapp has multiplayer it can be changed — imagine being able to change
 someone else's screen's app when they screenshare")
+
+## Transport + state management (founder Q, 2026-09-01)
+- **Realtime over LOCAL — YES, it's the default + fastest.** The team transport is LAN-direct P2P by default
+  (host opens a socket, joiners connect directly); same-wifi = single-digit-ms. The Cloudflare relay is ONLY
+  the cross-network (different-network/NAT) fallback (+1 WAN hop). The realtime overlay/cursor/state stream
+  rides the same LAN socket. (founder: "the real time session … same wifi is the fastest tbh" — correct.)
+- **State = two tiers:**
+  1. **Durable FILE state** — EXISTS: per-file LWW sync (Lamport clock, ~1.5s scan). The persistent record.
+  2. **Live WRAPP runtime state** — NEW: nav / current view / unsaved edits / cursors are NOT files. Needs a
+     realtime state channel over the same P2P socket (like `kind:"cursor"`), ephemeral for the session, with
+     the file LWW underneath as the durable backing. Live deltas for the session, files for the record.
+- **OPEN: the granularity of #2 — how a wrapp broadcasts its live state.** Options being decided:
+  (a) wrapp emits explicit STATE DELTAS (a small multiplayer contract each wrapp implements: serialize state
+      + apply incoming) — precise, low-bandwidth, but each wrapp opts in;
+  (b) platform SNAPSHOTS the wrapp (diff its storage / a state object) generically — works for any wrapp, but
+      coarser and heavier;
+  (c) hybrid: generic snapshot by default, explicit deltas for wrapps that opt into richer multiplayer.
+
+## State backing = the existing Cloudflare Durable Object; the crux left = the WRAPP FILE-STATE contract (founder, 2026-09-01)
+- Reuse the **Cloudflare Durable Object already in use** (relay store-and-forward + zero-knowledge cloud
+  backup, packages/relay/src/worker.ts) as the durable state store — don't invent new infra.
+- LAN P2P stays the fast hot path for the live session; the DO is the durable backing (as it already is for
+  cloud backup) + the cross-network relay.
+- **The one piece to figure out: the wrapp's FILE STATE.** How a wrapp represents its state as files in the
+  shared folder, so it (a) syncs via LWW, (b) rides the DO backup, and (c) **gets LOADED when a peer joins /
+  opens the wrapp** — so opening the shared wrapp reconstructs the same state. (founder: "we could use
+  cloudflare durable object as it's being used, just need to fig out wrapp file state, that would get loaded")
+- This makes the earlier granularity question concrete: a wrapp's live state is a projection of its file
+  state; live deltas over P2P update the running wrapp, and the file-state is the durable truth the DO/LWW
+  carry + a joiner loads from.
+
+## Note: the FOUNDATION has no design risk — buildable now, independent of the wrapp file-state contract
+- Surface Team Mode natively (team.json mirror + TeamSection into build + wiring) — pure assembly, engine done.
+- The sprite/cursor overlay: `kind:"cursor"` fan-out on the transport + the glow-style native overlay.
+Neither depends on the still-open wrapp file-state contract → can start while that's nailed down.
