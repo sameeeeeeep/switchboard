@@ -2,8 +2,12 @@
 
 **Format shift:** instead of standalone posts, the month is a set of **cornerstone articles**,
 each topped with a **branded hero image**. Longer, durable, linkable — and one article covers a
-whole theme instead of teasing it across five posts. Home base: LinkedIn articles (+ cross-post
-the intro as a short post that links to the full piece; repurpose to a blog/X longform later).
+whole theme instead of teasing it across five posts.
+
+**Publishing home:** the articles live on the blog at **thelastprompt.ai/journey**. LinkedIn +
+X get a short teaser (3 lines / a thread) that links back to the full piece on /journey — the
+blog is the canonical copy, social is distribution. This keeps SEO + the archive on your own
+domain instead of renting it on LinkedIn.
 
 **Cadence:** ~2–3 articles/week over the month. The Half-Baked "build-log" articles interleave
 as wrapps actually ship.

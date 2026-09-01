@@ -1,0 +1,232 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>thelastprompt.ai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap">
+<style>
+:root{--bg:#07080A;--ink:#EDEEEA;--dim:#7C7F86;--faint:#4A4D54;--pop:#9FCB6E;}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);overflow:hidden;
+  font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  -webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0}
+canvas{position:absolute;inset:0;display:block}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;pointer-events:none;gap:22px;padding:24px}
+.reveal{opacity:0;transform:translateY(8px);transition:opacity 1.1s ease,transform 1.1s ease}
+.reveal.show{opacity:1;transform:none}
+.mark{font-size:13px;letter-spacing:.42em;color:var(--dim);text-transform:lowercase;
+  padding-left:.42em}
+.mark b{color:var(--ink);font-weight:500}
+.tag{font-size:clamp(26px,4.4vw,46px);font-weight:300;letter-spacing:-.01em;line-height:1.12;
+  max-width:16ch;text-wrap:balance}
+.tag .g{color:var(--pop);font-weight:400}
+.sb{pointer-events:auto;font-size:12px;letter-spacing:.02em;color:var(--faint);line-height:1.7;
+  max-width:44ch}
+.sb .k{color:var(--dim)}
+.sb a{color:var(--dim);text-decoration:none;border-bottom:1px solid rgba(159,203,110,.35);
+  padding-bottom:1px}
+.sb a:hover{color:var(--pop)}
+.replay{position:fixed;bottom:22px;right:24px;pointer-events:auto;background:none;border:none;
+  color:var(--faint);font-family:inherit;font-size:11px;letter-spacing:.18em;cursor:pointer;
+  text-transform:uppercase;opacity:0;transition:opacity .8s ease .4s}
+.replay.show{opacity:1}
+.replay:hover{color:var(--dim)}
+@media (prefers-reduced-motion:reduce){.reveal{transition:none}}
+</style></head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div class="overlay">
+  <div class="mark reveal" id="r1"><b>thelastprompt</b>.ai</div>
+  <div class="tag reveal" id="r2">an AI lab for <span class="g">AI experiments</span></div>
+  <div class="sb reveal" id="r3">
+    <span class="k">Switchboard</span> — routing your AI:
+    subscription · context · models · users · agents.<br>
+    <a href="https://thelastprompt.ai/switchboard/">enter switchboard →</a>
+  </div>
+</div>
+<button class="replay" id="replay" aria-label="Replay animation">↻ replay</button>
+
+<script>
+(function(){
+  const c=document.getElementById('c'), ctx=c.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let W,H,cx,cy,DPR;
+  function size(){
+    DPR=Math.min(devicePixelRatio||1,2);
+    W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;
+    c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  size();
+
+  // ---- draw a stylised pointing hand into an offscreen canvas, sample particles ----
+  function handPoints(scale){
+    // local box, hand pointing to the RIGHT (fist on left, index extended right)
+    const w=Math.round(230*scale), h=Math.round(250*scale);
+    const o=document.createElement('canvas'); o.width=w; o.height=h;
+    const g=o.getContext('2d');
+    g.fillStyle='#fff'; g.strokeStyle='#fff';
+    g.lineCap='round'; g.lineJoin='round';
+    const S=scale;
+    // fist / palm
+    g.beginPath();
+    g.moveTo(20*S,95*S);
+    g.quadraticCurveTo(20*S,150*S,55*S,168*S);
+    g.quadraticCurveTo(95*S,185*S,120*S,168*S);
+    g.quadraticCurveTo(140*S,155*S,140*S,128*S);
+    g.quadraticCurveTo(140*S,100*S,120*S,92*S);
+    g.quadraticCurveTo(95*S,78*S,55*S,86*S);
+    g.quadraticCurveTo(28*S,92*S,20*S,95*S);
+    g.closePath(); g.fill();
+    // curled knuckles (three bumps on top of fist)
+    for(let i=0;i<3;i++){ g.beginPath(); g.arc((60+i*26)*S,90*S,15*S,0,7); g.fill(); }
+    // thumb (up-left)
+    g.lineWidth=24*S; g.beginPath();
+    g.moveTo(46*S,104*S); g.quadraticCurveTo(30*S,74*S,44*S,52*S); g.stroke();
+    // index finger extended to the right toward center
+    g.lineWidth=26*S; g.beginPath();
+    g.moveTo(120*S,120*S); g.quadraticCurveTo(175*S,116*S,214*S,118*S); g.stroke();
+    // fingertip cap
+    g.beginPath(); g.arc(214*S,118*S,13*S,0,7); g.fill();
+
+    const img=g.getImageData(0,0,w,h).data;
+    const pts=[]; const step=Math.max(3,Math.round(4.4*S));
+    for(let y=0;y<h;y+=step) for(let x=0;x<w;x+=step){
+      if(img[(y*w+x)*4+3]>128){
+        pts.push({x:x+(Math.random()-.5)*step, y:y+(Math.random()-.5)*step});
+      }
+    }
+    return {pts,w,h,tipx:214*S,tipy:118*S};
+  }
+
+  let P=[], hand, handScale, tStart, phase, boomAt=false, textShown=false, SIM=false;
+  const REST_GAP=()=>Math.min(W,H)*0.02;          // gap at contact
+  const OPEN_GAP=()=>Math.max(220,Math.min(W,H)*0.42); // gap when apart
+
+  function build(){
+    handScale=Math.max(.72,Math.min(1.35, Math.min(W,H)/560));
+    hand=handPoints(handScale);
+    P=[];
+    const openHalf=OPEN_GAP()/2;
+    // left hand: pointing right, tip should land at cx-gap/2 ; place so tip near center-left
+    // right hand: mirror
+    function place(side){
+      const dir=side; // -1 left(points right), +1 right(points left mirrored)
+      for(const p of hand.pts){
+        // local coords centered so tip is the anchor
+        let lx=p.x-hand.tipx, ly=p.y-hand.tipy; // tip at 0,0, hand extends to -x
+        if(side>0){ lx=-lx; } // mirror right hand
+        // home when apart: origin so tip is at cx ∓ openHalf
+        P.push({
+          side, lx, ly,
+          x: cx + (side<0?-1:1)*(W*0.6) + (Math.random()-.5)*140, // start off-screen scattered
+          y: cy + (Math.random()-.5)*H*0.9,
+          vx:0, vy:0, a:0, size:1.1+Math.random()*1.3,
+          seed:Math.random()*6.28
+        });
+      }
+    }
+    place(-1); place(1);
+    tStart=performance.now(); phase='form'; boomAt=false; textShown=false;
+    ['r1','r2','r3'].forEach(id=>document.getElementById(id).classList.remove('show'));
+    document.getElementById('replay').classList.remove('show');
+  }
+
+  function tipHalf(t){ // gap half-distance over form/approach
+    // 0..1 form(0-1.1s): stay open ; 1.1-2.6s: close to rest
+    if(t<1.1) return OPEN_GAP()/2;
+    const k=Math.min(1,(t-1.1)/1.5); const e=1-Math.pow(1-k,3);
+    return (OPEN_GAP()/2) + (REST_GAP()/2 - OPEN_GAP()/2)*e;
+  }
+
+  function frame(now){
+    const t=(now-tStart)/1000;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation='lighter';
+
+    // trigger explosion
+    if(!boomAt && t>=2.75){
+      boomAt=true; phase='boom';
+      const tx=cx, ty=cy;
+      for(const p of P){
+        const px=cx+(p.side<0?-1:1)*tipHalf(2.6)+p.lx, py=cy+p.ly;
+        const dx=px-tx, dy=py-ty, d=Math.hypot(dx,dy)||1;
+        const force=(1.6+Math.random()*2.4);
+        p.vx=(dx/d)*force*(2.4+Math.random()*3.2) + (Math.random()-.5)*2;
+        p.vy=(dy/d)*force*(2.4+Math.random()*3.2) - (0.6+Math.random()*1.4);
+        p.x=px; p.y=py;
+      }
+    }
+    // reveal text
+    if(!textShown && t>=3.5){
+      textShown=true;
+      document.getElementById('r1').classList.add('show');
+      setTimeout(()=>document.getElementById('r2').classList.add('show'),220);
+      setTimeout(()=>document.getElementById('r3').classList.add('show'),620);
+      setTimeout(()=>document.getElementById('replay').classList.add('show'),1200);
+    }
+
+    // spark glow near contact (2.2s -> 2.75s)
+    if(t>1.9 && t<3.15){
+      const gg=Math.max(0,1-Math.abs(t-2.75)/0.85);
+      const r=18+gg*160;
+      const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+      grad.addColorStop(0,'rgba(220,255,190,'+(0.9*gg)+')');
+      grad.addColorStop(0.35,'rgba(159,203,110,'+(0.55*gg)+')');
+      grad.addColorStop(1,'rgba(159,203,110,0)');
+      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    }
+    // shockwave ring at boom
+    if(boomAt && t<3.7){
+      const rt=(t-2.75)/0.95; const rr=rt*Math.max(W,H)*0.55;
+      ctx.strokeStyle='rgba(159,203,110,'+(0.5*(1-rt))+')'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(cx,cy,rr,0,7); ctx.stroke();
+    }
+
+    const half=tipHalf(t);
+    for(const p of P){
+      if(!boomAt){
+        // ease current -> home(apart/closing)
+        const hx=cx+(p.side<0?-1:1)*half+p.lx, hy=cy+p.ly;
+        const spd=t<1.1?0.06:0.14;
+        p.x+=(hx-p.x)*spd; p.y+=(hy-p.y)*spd;
+        p.a+=(Math.min(1,t/0.9)-p.a)*0.1;
+        var col='rgba(210,224,196,'+(0.55*p.a)+')';
+        // fingertip particles brighten as they near contact
+        if(p.lx>-26*handScale){ col='rgba(190,232,150,'+(0.8*p.a)+')'; }
+      }else{
+        p.vx*=0.955; p.vy*=0.955; p.vy+=0.015; // slight settle
+        p.x+=p.vx; p.y+=p.vy;
+        p.a*=0.986;
+        col='rgba(176,214,140,'+(0.7*p.a)+')';
+      }
+      ctx.fillStyle=col;
+      const s=p.size*(boomAt?0.9:1);
+      ctx.fillRect(p.x, p.y, s, s);
+    }
+
+    ctx.globalCompositeOperation='source-over';
+    // after settle, keep faint ambient drift
+    if(boomAt && t>4.5){
+      for(const p of P){ p.x+=Math.sin(now/1400+p.seed)*0.06; p.y+=Math.cos(now/1600+p.seed)*0.05; }
+    }
+    if(!SIM) raf=requestAnimationFrame(frame);
+  }
+
+  let raf;
+  function start(){ build(); if(reduce){ // static final
+      document.getElementById('r1').classList.add('show');
+      document.getElementById('r2').classList.add('show');
+      document.getElementById('r3').classList.add('show');
+      document.getElementById('replay').classList.add('show');
+      return;
+    } cancelAnimationFrame(raf); raf=requestAnimationFrame(frame); }
+
+  addEventListener('resize',()=>{size();});
+  document.getElementById('replay').addEventListener('click',start);
+
+  start();
+})();
+</script>
+</body></html>
