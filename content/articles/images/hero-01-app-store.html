@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:'Doto';src:url('file:///home/user/switchboard/fonts/Doto.ttf') format('truetype');font-weight:100 900;}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1200px;height:630px;overflow:hidden;background:#0A0A0B}
+body{font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#F4F4F2}
+/* full-bleed bg layer, explicit capture height */
+.bg{position:absolute;top:0;left:0;width:1200px;height:630px;
+  background:
+    radial-gradient(760px 420px at 88% -12%, rgba(159,203,110,0.20), transparent 62%),
+    radial-gradient(620px 520px at 4% 112%, rgba(94,139,35,0.13), transparent 60%),
+    #0A0A0B;}
+.bar{position:absolute;top:0;left:0;width:1200px;height:34px;background:rgba(255,255,255,.03);
+  border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:18px;padding:0 22px}
+.bar .logo{width:15px;height:15px;border-radius:5px;background:#9FCB6E}
+.bar .mi{font-size:12.5px;color:#8A8A90;font-weight:500}
+.notch{position:absolute;top:0;left:505px;width:190px;height:26px;
+  background:#000;border-radius:0 0 15px 15px;border:1px solid rgba(255,255,255,.07);border-top:none;
+  display:flex;align-items:center;justify-content:center;gap:8px;line-height:1}
+.notch .d{width:6px;height:6px;border-radius:50%;background:#9FCB6E}
+.notch .t{font-size:10.5px;letter-spacing:.16em;color:#9FCB6E;font-weight:600}
+
+.kick{position:absolute;top:120px;left:74px;font-family:'Doto';font-weight:700;font-size:28px;
+  letter-spacing:.32em;color:#9FCB6E;text-transform:uppercase;line-height:1}
+h1{position:absolute;top:170px;left:74px;font-size:82px;line-height:1.03;letter-spacing:-.035em;
+  font-weight:800;max-width:14ch}
+h1 .g{color:#9FCB6E}
+.sub{position:absolute;top:430px;left:74px;font-size:21px;line-height:1.45;color:#A2A2A8;
+  max-width:38ch;font-weight:400}
+
+.chip{position:absolute;top:500px;left:74px;display:inline-flex;align-items:center;gap:11px;
+  white-space:nowrap;line-height:1;border:1px solid rgba(159,203,110,.34);
+  background:rgba(159,203,110,.10);border-radius:999px;padding:12px 19px;font-size:14.5px;
+  color:#CFE3B4;font-weight:500}
+.chip .dm{width:9px;height:9px;background:#9FCB6E;border-radius:2px;transform:rotate(45deg)}
+.free{position:absolute;top:496px;right:74px;text-align:right;font-size:13.5px;color:#6C6C74;line-height:1.55}
+.free b{color:#F4F4F2;font-weight:600}
+</style></head><body>
+  <div class="bg"></div>
+  <div class="bar"><div class="logo"></div>
+    <div class="mi">File</div><div class="mi">Edit</div><div class="mi">Board</div><div class="mi">Apps</div>
+  </div>
+  <div class="notch"><span class="d"></span><span class="t">SWITCHBOARD</span></div>
+  <div class="kick">Switchboard</div>
+  <h1>it's not an app.<br>it's an <span class="g">app store.</span></h1>
+  <div class="sub">how a PM who couldn't code ended up building the thing the apps run on.</div>
+  <div class="chip"><span class="dm"></span>your AI, your tools, your data · one board you own</div>
+  <div class="free"><b>free</b> · runs on your own Claude<br>no account · nothing leaves your Mac</div>
+</body></html>
