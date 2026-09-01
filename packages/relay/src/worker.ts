@@ -37,6 +37,16 @@
 
 export interface Env {
   TEAM_ROOM: DurableObjectNamespace;
+  /** Per-user Slack INBOX rooms — one DO per handle, keyed by `idFromName(handle)`. Holds the
+   *  handle's connected daemon socket(s) and briefly queues tasks while it's offline. Requires a
+   *  binding + SQLite migration in wrangler.jsonc:
+   *    "durable_objects": { "bindings": [ …, { "name": "INBOX_ROOM", "class_name": "InboxRoom" } ] }
+   *    "migrations":      [ …, { "tag": "v2", "new_sqlite_classes": ["InboxRoom"] } ]              */
+  INBOX_ROOM: DurableObjectNamespace;
+  /** Slack app SIGNING SECRET (a Wrangler secret: `wrangler secret put SLACK_SIGNING_SECRET`).
+   *  Every `/slack/command` request is HMAC-verified against it; UNSET ⇒ every Slack call is
+   *  refused (fail closed — we never trust an unsigned body). See docs/SLACK-CONNECTOR.md. */
+  SLACK_SIGNING_SECRET?: string;
   /** HMAC secret that signs entitlements (a Wrangler secret). Unset ⇒ self-host, ungated. */
   STORE_SECRET?: string;
   /** "1" ⇒ ungated (a self-hoster running this on their own account). */
@@ -49,6 +59,8 @@ export interface Env {
 }
 
 const ROOM_RE = /^\/room\/([^/]+)$/;
+/** A daemon subscribing to a handle's Slack inbox: `GET /inbox/<handle>` (WebSocket upgrade). */
+const INBOX_RE = /^\/inbox\/([^/]+)$/;
 /** Close codes the daemon maps to human upgrade prompts. */
 const CLOSE_TRIAL_OVER = 4002;
 const CLOSE_SEAT_LIMIT = 4003;
@@ -59,6 +71,27 @@ export default {
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response("switchboard team relay — sealed frames only, nothing readable stored", { status: 200 });
     }
+
+    // ── SLACK INGRESS: `/notch @handle <task>` (docs/SLACK-CONNECTOR.md) ──────────────────────────
+    // A Slack slash command POSTs here. We verify Slack's signature (never trusting an unsigned
+    // body), parse `@handle <task>`, and hand the task to that handle's INBOX_ROOM, which fans it to
+    // the connected daemon (or briefly queues it). Slack needs a 200 within 3s → we ack immediately.
+    if (url.pathname === "/slack/command") {
+      if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+      return handleSlackCommand(request, env);
+    }
+
+    // ── A daemon subscribing to its handle's inbox: GET /inbox/<handle> (WebSocket) ───────────────
+    const im = INBOX_RE.exec(url.pathname);
+    if (im) {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("expected a websocket upgrade", { status: 426 });
+      }
+      const handle = decodeURIComponent(im[1]).toLowerCase();
+      const id = env.INBOX_ROOM.idFromName(handle);
+      return env.INBOX_ROOM.get(id).fetch(request);
+    }
+
     const m = ROOM_RE.exec(url.pathname);
     if (!m) return new Response("not found", { status: 404 });
     if (request.headers.get("Upgrade") !== "websocket") {
@@ -331,6 +364,173 @@ export class TeamRoom {
     }
     return false;
   }
+}
+
+// ── SLACK `/notch` INGRESS ───────────────────────────────────────────────────────────────────────
+// Slack posts an `application/x-www-form-urlencoded` body. We NEVER act on it without a valid
+// signature, then route `@handle <task>` to that handle's INBOX_ROOM and ack Slack ephemerally.
+
+/** How much clock skew a signed Slack request may carry before we treat it as a replay (Slack's own
+ *  recommended window). */
+const SLACK_MAX_SKEW_S = 60 * 5;
+
+async function handleSlackCommand(request: Request, env: Env): Promise<Response> {
+  const raw = await request.text();
+  const okSig = await verifySlackSignature(request, raw, env.SLACK_SIGNING_SECRET);
+  if (!okSig) return new Response("bad slack signature", { status: 401 });
+
+  const form = new URLSearchParams(raw);
+  const command = form.get("command") || "/notch";
+  const text = (form.get("text") || "").trim();
+  const userName = form.get("user_name") || "someone";
+  const teamId = form.get("team_id") || "";
+
+  // Parse `@handle <task…>` or `handle <task…>`. A bare handle with no task is a usage nudge.
+  const m = text.match(/^@?([A-Za-z0-9._-]+)\s+([\s\S]+)$/);
+  if (!m) return slackEphemeral(`usage: ${command} @handle <task>`);
+  const handle = m[1].toLowerCase();
+  const task = m[2].trim();
+  if (!task) return slackEphemeral(`usage: ${command} @handle <task>`);
+
+  const payload = { from: userName, text: task, mode: "notch", team: teamId, at: Date.now() };
+  let delivered = 0;
+  try {
+    const id = env.INBOX_ROOM.idFromName(handle);
+    const res = await env.INBOX_ROOM.get(id).fetch("https://inbox/deliver", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const j = (await res.json().catch(() => ({}))) as { delivered?: number };
+    delivered = j.delivered ?? 0;
+  } catch { /* the ack still tells the sender it's queued */ }
+
+  const where = delivered > 0 ? `@${handle}'s board` : `@${handle}'s board (queued — their Switchboard is offline)`;
+  return slackEphemeral(`posted to ${where}`);
+}
+
+/** A 200 Slack renders as an ephemeral reply to just the sender (visible only to them). */
+function slackEphemeral(text: string): Response {
+  return new Response(JSON.stringify({ response_type: "ephemeral", text }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** Verify `v0=HMAC-SHA256(SLACK_SIGNING_SECRET, "v0:<ts>:<rawBody>")` in constant time, rejecting a
+ *  missing/stale timestamp (replay). Fails CLOSED when the secret is unset — an unsigned body is
+ *  never trusted. */
+async function verifySlackSignature(request: Request, rawBody: string, secret?: string): Promise<boolean> {
+  if (!secret) return false;
+  const ts = request.headers.get("x-slack-request-timestamp");
+  const sig = request.headers.get("x-slack-signature");
+  if (!ts || !sig || !/^\d+$/.test(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > SLACK_MAX_SKEW_S) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`v0:${ts}:${rawBody}`));
+  return timingSafeEqualStr(`v0=${hex(mac)}`, sig);
+}
+
+function hex(buf: ArrayBuffer): string {
+  let s = "";
+  for (const b of new Uint8Array(buf)) s += b.toString(16).padStart(2, "0");
+  return s;
+}
+
+/** Length-independent-branch string compare — accumulate XOR over the shorter length + fold the
+ *  length difference in, so a match verdict never short-circuits on content. */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * One user's Slack INBOX. A single DO per handle (`INBOX_ROOM.idFromName(handle)`) that holds the
+ * connected daemon socket(s) and fans Slack-delivered tasks to them. Hibernation-style like TeamRoom
+ * (no room state in instance fields): sockets are found via `getWebSockets`, and the offline queue
+ * lives in DO storage. When no daemon is connected, a task is queued (capped + TTL'd) so a daemon
+ * that reconnects shortly after still receives it.
+ *
+ *   GET  /inbox/<handle>  — WebSocket upgrade; the daemon subscribes as this handle.
+ *   POST …/deliver        — {from, text, mode} fanned to every connected daemon → {ok, delivered}.
+ */
+const INBOX_QUEUE_MAX = 50;
+const INBOX_QUEUE_TTL_MS = 60 * 60 * 1000; // an offline daemon still gets tasks queued within the hour
+
+export class InboxRoom {
+  constructor(private state: DurableObjectState, private env: Env) {
+    // Keepalive pings answered without waking the DO (same cost lever as TeamRoom).
+    try { this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong")); } catch { /* older runtime */ }
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname.endsWith("/deliver")) return this.deliver(request);
+
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("expected a websocket upgrade", { status: 426 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    // Hibernation accept: the DO may be evicted while the daemon socket stays open. The "daemon" tag
+    // is how deliver() finds it again after eviction.
+    this.state.acceptWebSocket(server, ["daemon"]);
+    // Drain anything that arrived while this handle was offline, so a reconnecting daemon catches up.
+    await this.flushQueueTo(server);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** Fan a task to every connected daemon; queue it if none are connected. */
+  private async deliver(request: Request): Promise<Response> {
+    let task: unknown;
+    try { task = await request.json(); } catch { return json({ ok: false, delivered: 0, error: "bad json" }); }
+    const blob = JSON.stringify(task);
+    let delivered = 0;
+    for (const ws of this.state.getWebSockets("daemon")) { try { ws.send(blob); delivered++; } catch { /* gone */ } }
+    if (delivered === 0) await this.enqueue(blob);
+    return json({ ok: true, delivered });
+  }
+
+  /** Append to the offline queue (capped — drop the oldest beyond the cap). */
+  private async enqueue(blob: string): Promise<void> {
+    const seq = ((await this.state.storage.get<number>("qhead")) ?? 0) + 1;
+    await this.state.storage.put({ [`q:${pad(seq)}`]: JSON.stringify({ blob, at: Date.now() }), qhead: seq });
+    const all = await this.state.storage.list<string>({ prefix: "q:" });
+    if (all.size > INBOX_QUEUE_MAX) {
+      await this.state.storage.delete([...all.keys()].slice(0, all.size - INBOX_QUEUE_MAX));
+    }
+  }
+
+  /** Deliver every non-expired queued task to a freshly connected socket, then clear the queue
+   *  (deliver-once). Expired entries are simply dropped. */
+  private async flushQueueTo(ws: WebSocket): Promise<void> {
+    const all = await this.state.storage.list<string>({ prefix: "q:" });
+    if (!all.size) return;
+    const now = Date.now();
+    const drop: string[] = [];
+    for (const [k, v] of all) {
+      drop.push(k); // consumed either way
+      let rec: { blob?: string; at?: number };
+      try { rec = JSON.parse(v); } catch { continue; }
+      if (!rec.blob || now - (rec.at ?? 0) > INBOX_QUEUE_TTL_MS) continue;
+      try { ws.send(rec.blob); } catch { /* gone */ }
+    }
+    if (drop.length) await this.state.storage.delete(drop);
+  }
+
+  // A daemon never needs to talk BACK over this socket (Slack is one-way ingress), so inbound frames
+  // are ignored; close/error need no room-state cleanup (state lives in tags + storage).
+  async webSocketMessage(_ws: WebSocket, _message: string | ArrayBuffer): Promise<void> { /* ignore */ }
+  async webSocketClose(_ws: WebSocket): Promise<void> { /* nothing to clean up */ }
+  async webSocketError(ws: WebSocket): Promise<void> { try { ws.close(1011, "error"); } catch { /* gone */ } }
+}
+
+/** A JSON 200 (the DO's own replies to the Worker, not to Slack). */
+function json(o: unknown): Response {
+  return new Response(JSON.stringify(o), { headers: { "content-type": "application/json" } });
 }
 
 /** Zero-padded so storage.list() prefix ordering is numeric. */

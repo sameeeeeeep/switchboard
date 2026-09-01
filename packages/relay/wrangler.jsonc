@@ -6,13 +6,16 @@
   "observability": { "enabled": true },
   "durable_objects": {
     "bindings": [
-      { "name": "TEAM_ROOM", "class_name": "TeamRoom" }
+      { "name": "TEAM_ROOM", "class_name": "TeamRoom" },
+      // Per-user Slack inbox (docs/SLACK-CONNECTOR.md) — one DO per handle; holds the connected
+      // daemon socket + a short offline queue. Also SQLite-backed to stay on the free plan.
+      { "name": "INBOX_ROOM", "class_name": "InboxRoom" }
     ]
   },
-  // SQLite-backed Durable Object → eligible on the Workers FREE plan (classic KV-backed DOs need
-  // Workers Paid). The relay stores nothing, so it never touches the SQL storage — this is purely
-  // to keep deployment free. No code change required.
+  // SQLite-backed Durable Objects → eligible on the Workers FREE plan (classic KV-backed DOs need
+  // Workers Paid). The relay stores only tiny queued task JSON — this keeps deployment free.
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["TeamRoom"] }
+    { "tag": "v1", "new_sqlite_classes": ["TeamRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["InboxRoom"] }
   ]
 }

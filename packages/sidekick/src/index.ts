@@ -10,7 +10,7 @@ import { McpRegistry } from "./mcp/registry.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { BackendRegistry } from "./backends/registry.js";
 import { StorageStore } from "./storage/store.js";
-import { ContextLibrary } from "./context/library.js";
+import { ContextLibrary, folderOf } from "./context/library.js";
 import { seedExampleIfEmpty } from "./seed/example.js";
 import { seedDictionaryIfMissing } from "./media/dictionary.js";
 import { SessionManager } from "./session/manager.js";
@@ -19,6 +19,7 @@ import { Broker } from "./server.js";
 import { NativeListener } from "./native/listener.js";
 import { RoutineRegistry } from "./routines/registry.js";
 import { makeAutopilotRoutine } from "./routines/autopilot.js";
+import { InboxClient } from "./inbox/client.js";
 
 // Safety net: a long-lived daemon must NEVER die on a stray socket error or an unhandled
 // rejection (e.g. a dropped extension connection resetting mid-request). Log and keep running —
@@ -66,6 +67,18 @@ async function main() {
   broker = new Broker({ config, gate, grants, budgets, audit, mcp, backends, storage, contexts, sessions, team });
   broker.start();
   team.resume(); // no-op unless the user already enabled Team Mode and has a team
+
+  // Slack INBOX client (docs/SLACK-CONNECTOR.md) — the daemon half of the `/notch` ingress. Dials
+  // the team relay's /inbox/<handle> ONLY when the user has linked a Slack handle
+  // (~/.relay/slack.json); absent that file it makes no network connection. It ALSO watches
+  // ~/.relay/inbox-task.json as a local test path, so the whole board+notch delivery is exercisable
+  // with no Slack/Cloudflare:  echo '{"from":"Sam","text":"send the new logo","mode":"notch"}' > ~/.relay/inbox-task.json
+  const inbox = new InboxClient({
+    stateDir: config.stateDir,
+    activeFolder: () => folderOf(contexts.get(contexts.activeProject() ?? "")?.data) ?? null,
+    log: (m) => console.error("[relay/inbox]", m),
+  });
+  inbox.start();
 
   // The Run layer (docs/ROUTINES.md) — the daemon's background scheduler. Autopilot is routine #1:
   // while the menubar master switch is on it DRAFTS the active company's next moves (never acts —
