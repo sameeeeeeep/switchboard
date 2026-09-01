@@ -1,7 +1,7 @@
-# Handoff → thelastprompt.ai repo: new homepage
+# thelastprompt.ai — new homepage
 
-**Do this in the thelastprompt.ai site repo, not switchboard.** This folder is just where the
-landing was designed + verified. Below is everything that session needs.
+Everything needed to build it is in this doc. The complete, verified file is embedded at the
+bottom.
 
 ## Goal
 Replace the current (too-descriptive) homepage at the site root with a minimal, **scroll-driven**
@@ -29,7 +29,7 @@ scrubbing back reverses it.
 - Enter CTA links to `https://thelastprompt.ai/switchboard/`.
 
 ## Drop-in
-The complete file is `index.html` in this folder (and embedded below). 
+The complete file is embedded at the bottom of this doc. 
 - **Static site** → use it as the homepage directly.
 - **Next/React/other framework** → port the markup into the home route and move the `<script>`
   into a `useEffect`/client component; keep the canvas logic and the CSS verbatim. The Google
@@ -39,9 +39,6 @@ The complete file is `index.html` in this folder (and embedded below).
 - Scroll length: `.scroll{height:600vh}` — lower = faster sequence.
 - Burst shape: currently scatters horizontally (hands are side-by-side); bias `ex/ey` in `build()` for a rounder burst.
 - Pacing of each beat: the `ramp()/pulse()` progress ranges in `render()`.
-
-## Live reference
-Verified preview (scrub it): https://claude.ai/code/artifact/265ef998-b1aa-4013-b5d9-5191c491c78a
 
 ---
 
