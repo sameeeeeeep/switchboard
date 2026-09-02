@@ -1,9 +1,37 @@
-# Slack connector — `/notch` ingress
+# Slack connector — `/notch` + `/hijack` ingress
 
 `/notch @sameep send the new logo` in Slack lands as a task on that person's Switchboard board
 (tasks.md) **and** raises a notch card on their Mac. This is the ingress half of the multiplayer
-vision (docs/MULTIPLAYER-VISION.md §4). `/hijack` (the takeover) is a later mode — only `/notch`
-is wired today.
+vision (docs/MULTIPLAYER-VISION.md §4).
+
+**Two modes, same route** — the Slack command name picks the mode:
+
+- **`/notch @handle <task>`** — the passive drop. Task → their board + a "New task" notch card. They
+  deal with it whenever (an agent can draft it for review).
+- **`/hijack @handle <task>`** — the **pester** (NOT screen control). The task is **specced into
+  concrete steps + a time estimate** (a headless Claude draft), and the recipient runs a small
+  state machine at their notch, with the sender's **sprite trailing their own cursor**
+  (`~/.relay/pester.json` → TeamCursorsOverlay) whenever the task is **not yet begun**. Nobody drives
+  anyone's pointer — it's a nudge you can't ignore. Task is added to the board (tagged `via Slack
+  /hijack`).
+
+  The lifecycle (daemon-owned in `inbox/client.ts`, so it can genuinely re-nudge):
+
+  ```
+  NUDGING  — heads-up card ("🎯 Sam hijacked you: <task>", status "✓ specced & loaded · N steps · ~X min"),
+             sprite chasing.  Options:
+               • Do it now        → GUIDED
+               • See the plan     → a transparency card showing the specced steps, then Do it / Not now
+               • Not now          → snooze 15m, then re-nudge
+             (ignored → re-nudge after a breather, capped ~6 rounds, then gives up)
+  GUIDED   — the specced steps open; sprite OFF (they've BEGUN)
+               • complete ✓       → DONE (never comes back)
+               • abandon / esc    → back to NUDGING (sprite RETURNS)
+  ```
+
+  So the pest shakes off the moment they **begin**, comes **back** if they abandon, and is gone for
+  good once they **finish** — and a mid-something user can bail cleanly via *Not now* (the "warning
+  first" escape) instead of being dragged into the walkthrough.
 
 ```
 Slack slash command ──POST──▶ Cloudflare Worker /slack/command
@@ -44,6 +72,11 @@ features:
     - command: /notch
       url: https://<your-worker-domain>/slack/command
       description: Send a task to someone's Switchboard board
+      usage_hint: "@handle what to do"
+      should_escape: false
+    - command: /hijack
+      url: https://<your-worker-domain>/slack/command   # SAME route — worker picks mode from the command name
+      description: Pester someone to actually do a task
       usage_hint: "@handle what to do"
       should_escape: false
 oauth_config:
@@ -117,21 +150,28 @@ The daemon also watches `~/.relay/inbox-task.json`. Dropping a task file there r
 board + notch delivery a real Slack task would, so the whole path is testable offline:
 
 ```bash
-echo '{"from":"Sam","text":"send the new logo","mode":"notch"}' > ~/.relay/inbox-task.json
+echo '{"from":"Sam","text":"send the new logo","mode":"notch"}'  > ~/.relay/inbox-task.json   # passive drop
+echo '{"from":"Sam","text":"reply to the CFO email","mode":"hijack"}' > ~/.relay/inbox-task.json   # pester
 ```
 
 Within ~1s the daemon consumes the file, appends the task to the active project's `tasks.md`
-(with a `from Sam via Slack` note), and raises the notch card. If no project is active it falls back
-to `~/SwitchboardBrain/tasks.md`.
+(with a `from Sam via Slack` note), and — for `notch` — raises the "New task" card, or — for
+`hijack` — specs the task into a guided run + drops `~/.relay/pester.json` so the sender's sprite
+trails the cursor. If no project is active it falls back to `~/SwitchboardBrain/tasks.md`.
 
-Only `mode:"notch"` is handled; any other mode is ignored (that's where `/hijack` will slot in).
+Both `mode:"notch"` and `mode:"hijack"` are handled; any other mode is ignored.
 
 ---
 
 ## Files
 
-- `packages/relay/src/worker.ts` — `POST /slack/command` (signature verify + parse + route),
-  `GET /inbox/<handle>` (WS), and the `InboxRoom` Durable Object (fan-out + offline queue).
+- `packages/relay/src/worker.ts` — `POST /slack/command` (signature verify + parse + route; the
+  command name `/notch`|`/hijack` sets `mode`), `GET /inbox/<handle>` (WS), and the `InboxRoom`
+  Durable Object (fan-out + offline queue).
 - `packages/relay/wrangler.jsonc` — the `INBOX_ROOM` binding + `v2` SQLite migration.
 - `packages/sidekick/src/inbox/client.ts` — the daemon inbox client (relay dial + local-file test
-  path → `addTask` + notch card). Wired in `packages/sidekick/src/index.ts` after `team.resume()`.
+  path). `notch` → board + card; `hijack` → board + `specTask` (LLM) → guided run + `pester.json`.
+  Wired in `packages/sidekick/src/index.ts` (the `specTask` hook = `broker.routineDraft`).
+- `packages/menubar/TeamCursorsOverlay.swift` — the pester sprite (`startPester`/`stopPester`, a
+  labelled avatar that lerp-chases your own cursor). `packages/menubar/CursorGuide.swift` polls
+  `~/.relay/pester.json` and clears it when the hijacked run **completes** (an abort keeps chasing).

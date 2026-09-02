@@ -87,6 +87,14 @@ if compgen -G "icons/*.png" >/dev/null 2>&1; then
   echo "[menubar] bundled wrapp icons ($(ls icons/*.png | wc -l | tr -d ' ') PNGs)"
 fi
 
+# MacCat pester sprites — the animated pixel cats that chase the cursor on a /hijack (TeamCursorsOverlay
+# loads Resources/sprites/<name>-walk.png). Without this a deployed build ships no cats → the fallback 🐱.
+if compgen -G "assets/sprites/*.png" >/dev/null 2>&1; then
+  mkdir -p "$APP/Contents/Resources/sprites"
+  cp assets/sprites/*.png "$APP/Contents/Resources/sprites/" 2>/dev/null || true
+  echo "[menubar] bundled cat sprites ($(ls assets/sprites/*.png | wc -l | tr -d ' ') PNGs)"
+fi
+
 # Skill bodies — the "wear this skill" content behind a listing's components.skills refs
 # (e.g. "yc/register" → wrapps/yc/skills/register.md). Bundled flat as Resources/skills/<wrapp>/<name>.md
 # so the god surface can load the real instructions into God's context (docs/GOD-HANDS.md). A listing

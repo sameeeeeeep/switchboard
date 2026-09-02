@@ -1545,6 +1545,18 @@ final class CursorGuide {
         // stream feed lives at the notch; absent/false → off. Polled each tick; deterministic, no model.
         let pipOn = (readJSON(rel("pip.json")) as? [String: Any])?["active"] as? Bool ?? false
         if pipOn != model.pipActive { setPip(pipOn) }
+        // /hijack PESTER (docs/SLACK-CONNECTOR.md): ~/.relay/pester.json {"active":true,"from":..,"task":..}
+        // → the sender's sprite trails YOUR cursor until you finish the specced guided run. startPester is
+        // idempotent, so re-asserting it every tick is fine. Cleared by finish() on a completed run, or when
+        // the daemon removes the file.
+        let pesterObj = readJSON(rel("pester.json")) as? [String: Any]
+        if (pesterObj?["active"] as? Bool) ?? false {
+            let from = (pesterObj?["from"] as? String) ?? "Someone"
+            let task = (pesterObj?["task"] as? String) ?? ""
+            Task { @MainActor in TeamCursorsOverlay.shared.startPester(from: from, task: task) }
+        } else {
+            Task { @MainActor in TeamCursorsOverlay.shared.stopPester() }
+        }
     }
 
     // MARK: parse + start
@@ -2159,6 +2171,12 @@ final class CursorGuide {
     private func finish(outcome: String) {
         if outcome == "completed" {   // ran to the end → nothing to resume; clear any suspended guide
             try? FileManager.default.removeItem(atPath: rel("guide-suspended.json"))
+            // /hijack: finishing the specced run shakes off the pest. An ABORT deliberately does NOT —
+            // dodge the task and the sender's sprite keeps chasing you (docs/SLACK-CONNECTOR.md).
+            if FileManager.default.fileExists(atPath: rel("pester.json")) {
+                try? FileManager.default.removeItem(atPath: rel("pester.json"))
+                Task { @MainActor in TeamCursorsOverlay.shared.stopPester() }
+            }
         }
         let finishedAt = Date()
         let passed = results.filter { $0.verdict == "pass" }.count
