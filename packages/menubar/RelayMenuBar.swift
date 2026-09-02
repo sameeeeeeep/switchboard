@@ -38,6 +38,17 @@ func hasBundledDaemon() -> Bool {
 }
 func isTranslocated() -> Bool { Bundle.main.bundlePath.contains("/AppTranslocation/") }
 
+// whisper-cli feature-detect: does THIS build accept `--carry-initial-prompt`? Passing it to a build that
+// doesn't (the bundled binary) makes whisper-cli print its USAGE and emit NO transcript → silent "0 chars"
+// dictation. Cheap (~50ms `--help`); no shared mutable state, so safe to call off the main thread.
+func whisperSupportsCarryPrompt(_ wc: String) -> Bool {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: wc); p.arguments = ["--help"]
+    let out = Pipe(); p.standardOutput = out; p.standardError = out
+    do { try p.run() } catch { return false }
+    let data = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    return (String(data: data, encoding: .utf8) ?? "").contains("carry-initial-prompt")
+}
+
 enum PlistState { case missing, ours, staleOurs, foreign }
 
 /// Who owns ~/Library/LaunchAgents/com.relay.sidekick.plist right now?
@@ -7257,7 +7268,13 @@ struct ActionConsentDrop: View {
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process(); p.executableURL = URL(fileURLWithPath: wc)
             var whisperArgs = ["-m", model, "-f", wav, "-nt", "-np"]
-            if let dict = self.dictationPrompt() { whisperArgs += ["--prompt", dict, "--carry-initial-prompt"] }
+            if let dict = self.dictationPrompt() {
+                whisperArgs += ["--prompt", dict]
+                // --carry-initial-prompt only on whisper-cli builds that support it. Passing it to a build
+                // that doesn't makes whisper-cli print USAGE and emit NO transcript → silent "0 chars"
+                // dictation. Gate on --help so the bundled binary (which lacks it) still works. (regression fix)
+                if whisperSupportsCarryPrompt(wc) { whisperArgs += ["--carry-initial-prompt"] }
+            }
             p.arguments = whisperArgs
             let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
             try? p.run(); p.waitUntilExit()
