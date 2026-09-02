@@ -150,11 +150,11 @@ private struct TeamCursorsView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
+            // Each teammate is a MacCat too — it trails their live cursor (relayed) around the shared screen.
             ForEach(model.cursors) { c in
-                RemoteSpriteView(name: c.name, color: Self.color(for: c.deviceId))
-                    .position(x: CGFloat(c.x) * screenSize.width, y: CGFloat(c.y) * screenSize.height)
-                    .animation(.linear(duration: 1.0 / 30.0), value: c.x)
-                    .animation(.linear(duration: 1.0 / 30.0), value: c.y)
+                RemoteCatView(deviceId: c.deviceId, name: c.name, model: model,
+                              screenW: screenSize.width, screenH: screenSize.height)
+                    .id(c.deviceId)
             }
             if let p = model.pester {
                 PesterCatView(from: p.from, screenW: screenSize.width, screenH: screenSize.height)
@@ -183,7 +183,10 @@ private struct PesterCatView: View {
     @StateObject private var brain: PesterCatBrain
     init(from: String, screenW: CGFloat, screenH: CGFloat) {
         self.from = from
-        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH))
+        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH, wander: true, target: {
+            let l = NSEvent.mouseLocation
+            return CGPoint(x: l.x, y: screenH - l.y)   // local cursor, top-left px
+        }))
     }
     var body: some View {
         VStack(spacing: 1) {
@@ -194,6 +197,42 @@ private struct PesterCatView: View {
                 .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)   // base art faces RIGHT (maccat convention)
                 .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
             Text(from.isEmpty ? "someone" : from)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(Capsule().fill(.black.opacity(0.55)))
+        }
+        .position(x: brain.catX, y: brain.catY)
+        .onAppear { brain.start() }
+        .onDisappear { brain.stop() }
+    }
+    private var catImage: Image {
+        if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
+        return Image(systemName: "cat.fill")
+    }
+}
+
+// A teammate rendered as a MacCat that trails their live (relayed) cursor — the multiplayer "sprites, not
+// cursors" surface. Same brain as the pester, but the target is the teammate's cursor from the shared
+// model and it stays put on them (no wandering). Colour keyed to their name; name tag underneath.
+private struct RemoteCatView: View {
+    let name: String
+    @StateObject private var brain: PesterCatBrain
+    init(deviceId: String, name: String, model: TeamCursorsModel, screenW: CGFloat, screenH: CGFloat) {
+        self.name = name
+        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH, wander: false, target: { [weak model] in
+            guard let c = model?.cursors.first(where: { $0.deviceId == deviceId }) else { return nil }
+            return CGPoint(x: CGFloat(c.x) * screenW, y: CGFloat(c.y) * screenH)   // teammate's relayed cursor → px
+        }))
+    }
+    var body: some View {
+        VStack(spacing: 1) {
+            catImage
+                .interpolation(.none).resizable().frame(width: 56, height: 56)
+                .colorMultiply(PesterCats.tint(for: name))
+                .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+            Text(name.isEmpty ? "teammate" : name)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5).padding(.vertical, 1)
@@ -223,6 +262,8 @@ final class PesterCatBrain: ObservableObject {
     private let screenW: CGFloat
     private let screenH: CGFloat
     private let platformHeight: CGFloat = 60
+    private let wander: Bool                 // pester = true (lively pet); teammate = false (stays on their cursor)
+    private let targetFn: () -> CGPoint?     // where to head (top-left px): local mouse for pester, remote cursor for a teammate
     private var isFollowingMouse = false
     private var running = false
     private var frameTimer: Timer?
@@ -231,17 +272,21 @@ final class PesterCatBrain: ObservableObject {
     private var mouseTracker: Timer?
     private var lastMouse: CGPoint = .zero
 
-    init(screenW: CGFloat, screenH: CGFloat) {
-        self.screenW = screenW; self.screenH = screenH
+    init(screenW: CGFloat, screenH: CGFloat, wander: Bool = true, target: @escaping () -> CGPoint?) {
+        self.screenW = screenW; self.screenH = screenH; self.wander = wander; self.targetFn = target
         self.catX = screenW / 2; self.catY = screenH / 2
     }
 
     func start() {
         guard !running else { return }
         running = true
-        let m = mousePoint()
-        catY = min(max(m.y, 60), screenH - 60)
-        catX = m.x > screenW / 2 ? 40 : screenW - 40          // trot in from the far edge
+        let m = targetFn() ?? CGPoint(x: screenW / 2, y: screenH / 2)
+        if wander {
+            catY = min(max(m.y, 60), screenH - 60)
+            catX = m.x > screenW / 2 ? 40 : screenW - 40       // pester trots in from the far edge
+        } else {
+            catX = m.x; catY = m.y                             // teammate cat starts ON their cursor
+        }
         frameTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.frame += 1 }
         }
@@ -258,8 +303,7 @@ final class PesterCatBrain: ObservableObject {
     private func startMouseTracking() {
         mouseTracker = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                let m = self.mousePoint()
+                guard let self, let m = self.targetFn() else { return }
                 let moved = abs(m.x - self.lastMouse.x) > 3 || abs(m.y - self.lastMouse.y) > 3
                 self.lastMouse = m
                 if self.action == .sleeping || self.action == .lieDown { return }
@@ -356,6 +400,14 @@ final class PesterCatBrain: ObservableObject {
     private func pickNextAction() {
         idleTimer?.invalidate(); walkTimer?.invalidate()
         if isFollowingMouse || !running { return }
+        // A teammate cat stays ON their cursor — no wandering off. Just sit and occasionally groom in place.
+        if !wander {
+            let roll = Int.random(in: 0...100)
+            if roll < 45 { action = .grooming; frame = 0; scheduleNext(after: 3) { self.action = .idle; self.scheduleNext(after: 2) } }
+            else if roll < 70 { action = .stretch; frame = 0; scheduleNext(after: 2) { self.action = .idle; self.scheduleNext(after: 2) } }
+            else { action = .idle; frame = 0; scheduleNext(after: Double.random(in: 2...4)) }
+            return
+        }
         let roll = Int.random(in: 0...100)
         if roll < 30, let t = getWindowTops().randomElement() {
             let tx = clampX(CGFloat.random(in: (t.minX + 40)...max(t.minX + 41, t.maxX - 40)))
@@ -398,10 +450,6 @@ final class PesterCatBrain: ObservableObject {
     }
 
     private func clampX(_ x: CGFloat) -> CGFloat { max(40, min(screenW - 40, x)) }
-    private func mousePoint() -> CGPoint {
-        let loc = NSEvent.mouseLocation
-        return CGPoint(x: loc.x, y: screenH - loc.y)   // flip to top-left (panel space)
-    }
 }
 
 // Loads the maccat cat frames (Resources/sprites/cat/<name>.png), caches them, maps CatAction→frame name
@@ -446,29 +494,5 @@ enum PesterCats {
         var h: UInt64 = 1469598103934665603
         for b in from.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
         return tints[Int(h % UInt64(tints.count))]
-    }
-}
-
-// Sprite v1: a pointer + a name pill in the person's colour. (Placeholder for a real emote character sprite.)
-private struct RemoteSpriteView: View {
-    let name: String
-    let color: Color
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            // pointer
-            Image(systemName: "cursorarrow.fill")
-                .font(.system(size: 20))
-                .foregroundColor(color)
-                .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
-            // name pill
-            Text(name.isEmpty ? "teammate" : name)
-                .font(.custom("Spline Sans Mono", size: 11))
-                .foregroundColor(.black)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Capsule().fill(color))
-                .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
-                .offset(x: 12)
-        }
-        .fixedSize()
     }
 }
