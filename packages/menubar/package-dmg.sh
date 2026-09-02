@@ -201,10 +201,10 @@ if compgen -G "$HERE/icons/*.png" >/dev/null 2>&1; then
   mkdir -p "$RES/icons"; cp "$HERE"/icons/*.png "$RES/icons/" 2>/dev/null || true
   say "bundled wrapp icons ($(ls "$HERE"/icons/*.png | wc -l | tr -d ' ') PNGs)"
 fi
-# MacCat pester sprites (match build.sh) — the animated cats that chase the cursor on a /hijack.
-if compgen -G "$HERE/assets/sprites/*.png" >/dev/null 2>&1; then
-  mkdir -p "$RES/sprites"; cp "$HERE"/assets/sprites/*.png "$RES/sprites/" 2>/dev/null || true
-  say "bundled cat sprites ($(ls "$HERE"/assets/sprites/*.png | wc -l | tr -d ' ') PNGs)"
+# MacCat pester sprites (match build.sh) — the animated cat + behaviour that chases on a /hijack.
+if [ -d "$HERE/assets/sprites" ]; then
+  mkdir -p "$RES/sprites"; cp -R "$HERE"/assets/sprites/. "$RES/sprites/" 2>/dev/null || true
+  say "bundled cat sprites ($(find "$HERE/assets/sprites" -name '*.png' | wc -l | tr -d ' ') PNGs)"
 fi
 if compgen -G "$ROOT/examples/apps/wrapps/*/skills/*.md" >/dev/null 2>&1; then
   n=0; for f in "$ROOT"/examples/apps/wrapps/*/skills/*.md; do

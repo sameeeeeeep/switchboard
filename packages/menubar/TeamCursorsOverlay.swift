@@ -28,9 +28,6 @@ struct RemoteCursor: Identifiable, Equatable {
 struct PesterSprite: Equatable {
     var from: String
     var task: String
-    var x: Double
-    var y: Double
-    var facingRight: Bool = true   // flips the cat to face the way it's chasing
 }
 
 @MainActor final class TeamCursorsModel: ObservableObject {
@@ -47,10 +44,8 @@ struct PesterSprite: Equatable {
     private var active = false
     private var lastSent: (Double, Double) = (-1, -1)
     // ── /hijack pester state (independent of team `active` — a pest can chase you with no team) ──
-    private var pesterTimer: Timer?
     private var pesterFrom = ""
     private var pesterTask = ""
-    private var pesterPos: (Double, Double)? = nil   // current lerped sprite pos (normalized), nil until first tick
 
     /// Set by the controller to actually send our cursor to the daemon (→ team). x,y normalized 0..1.
     var onLocalCursor: ((Double, Double) -> Void)?
@@ -92,49 +87,15 @@ struct PesterSprite: Equatable {
         if model.pester != nil && pesterFrom == from && pesterTask == task { return }  // already chasing this one
         pesterFrom = from; pesterTask = task
         ensurePanel()
-        if pesterPos == nil { pesterPos = currentCursorNorm() }   // spawn ON the cursor, then trail it
-        let p = pesterPos ?? (0.5, 0.5)
-        model.pester = PesterSprite(from: from, task: task, x: p.0, y: p.1)
-        if pesterTimer == nil {
-            pesterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tickPester() }
-            }
-        }
+        model.pester = PesterSprite(from: from, task: task)   // PesterCatView owns the chase + animation
     }
 
     /// Stop pestering (task done, or the daemon cleared ~/.relay/pester.json). Idempotent.
     func stopPester() {
-        guard model.pester != nil || pesterTimer != nil else { return }
-        pesterTimer?.invalidate(); pesterTimer = nil
-        pesterFrom = ""; pesterTask = ""; pesterPos = nil
+        guard model.pester != nil else { return }
+        pesterFrom = ""; pesterTask = ""
         model.pester = nil
         updatePanelVisibility()
-    }
-
-    // Ease the sprite toward the live cursor each frame — a lagging chase (never snaps onto the pointer,
-    // so it reads as "following you", not "your cursor").
-    private func tickPester() {
-        guard model.pester != nil, let target = currentCursorNorm() else { return }
-        let cur = pesterPos ?? target
-        let k = 0.12   // chase stiffness — lower = more laggy pest
-        let dx = target.0 - cur.0
-        let nx = cur.0 + dx * k
-        let ny = cur.1 + (target.1 - cur.1) * k
-        pesterPos = (nx, ny)
-        model.pester?.x = nx
-        model.pester?.y = ny
-        if abs(dx) > 0.0015 { model.pester?.facingRight = dx > 0 }   // face the chase (ignore jitter when caught up)
-    }
-
-    // This machine's pointer as normalized 0..1 top-left coords (same convention as tickLocal).
-    private func currentCursorNorm() -> (Double, Double)? {
-        guard let screen = NSScreen.main else { return nil }
-        let f = screen.frame
-        guard f.width > 0, f.height > 0 else { return nil }
-        let loc = NSEvent.mouseLocation
-        let nx = min(max((loc.x - f.minX) / f.width, 0), 1)
-        let ny = min(max(1 - (loc.y - f.minY) / f.height, 0), 1)
-        return (Double(nx), Double(ny))
     }
 
     // Show the overlay iff SOMETHING wants it (a teammate cursor or a pester); otherwise tear it down.
@@ -196,10 +157,8 @@ private struct TeamCursorsView: View {
                     .animation(.linear(duration: 1.0 / 30.0), value: c.y)
             }
             if let p = model.pester {
-                PesterSpriteView(from: p.from, facingRight: p.facingRight)
-                    .position(x: CGFloat(p.x) * screenSize.width, y: CGFloat(p.y) * screenSize.height)
-                    .animation(.linear(duration: 1.0 / 30.0), value: p.x)
-                    .animation(.linear(duration: 1.0 / 30.0), value: p.y)
+                PesterCatView(from: p.from, screenW: screenSize.width, screenH: screenSize.height)
+                    .id(p.from)   // rebuild (re-spawn) when the sender changes
             }
         }
         .ignoresSafeArea()
@@ -213,79 +172,280 @@ private struct TeamCursorsView: View {
     }
 }
 
-// The /hijack pest: a MacCat — a real animated pixel cat (sprites from the maccat repo) that trails your
-// cursor. Which cat you get is keyed to the sender, so "a cat shows up and you work out who it's from"
-// is the whole charm. A small name tag underneath says who (for when you give up guessing).
-private struct PesterSpriteView: View {
+// The /hijack pest: a MacCat — a real animated pixel cat (sprites + behaviour ported from the maccat
+// repo). It WALKS toward your cursor, sits & faces you when it catches up, and grooms/stretches while it
+// waits — a living pet nagging you to do the task. Its colour is keyed to the sender, so "a cat shows up
+// and you work out who it's from" is the whole charm; a name tag says who when you give up guessing.
+enum CatAction { case idle, sitting, walking, jumping, grooming, playing, stretch, sleeping, lieDown }
+
+private struct PesterCatView: View {
     let from: String
-    let facingRight: Bool
-    @State private var frame = 0
-    private let ticker = Timer.publish(every: 0.09, on: .main, in: .common).autoconnect()   // ~11fps walk cycle
+    @StateObject private var brain: PesterCatBrain
+    init(from: String, screenW: CGFloat, screenH: CGFloat) {
+        self.from = from
+        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH))
+    }
     var body: some View {
-        let sheet = CatSprites.walk(for: from)
-        return VStack(spacing: 1) {
-            if let sheet, !sheet.frames.isEmpty {
-                Image(decorative: sheet.frames[frame % sheet.frames.count], scale: 1.0)
-                    .interpolation(.none)                       // crisp pixels, no blur when upscaled
-                    .resizable()
-                    .frame(width: 60, height: 60)
-                    .scaleEffect(x: facingRight ? 1 : -1, y: 1)  // face the chase
-                    .hueRotation(.degrees(CatSprites.hue(for: from)))   // per-sender tint → more distinct cats
-                    .shadow(color: .black.opacity(0.28), radius: 2, x: 0, y: 2)
-            } else {
-                Text("🐱").font(.system(size: 34))               // fallback if the sheet is missing
-            }
+        VStack(spacing: 1) {
+            catImage
+                .interpolation(.none).resizable()
+                .frame(width: 64, height: 64)
+                .colorMultiply(PesterCats.tint(for: from))   // white base sprite → the sender's colour
+                .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)   // base art faces RIGHT (maccat convention)
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
             Text(from.isEmpty ? "someone" : from)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5).padding(.vertical, 1)
                 .background(Capsule().fill(.black.opacity(0.55)))
         }
-        .fixedSize()
-        .onReceive(ticker) { _ in frame &+= 1 }
+        .position(x: brain.catX, y: brain.catY)
+        .onAppear { brain.start() }
+        .onDisappear { brain.stop() }
+    }
+    private var catImage: Image {
+        if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
+        return Image(systemName: "cat.fill")
     }
 }
 
-// Loads the maccat sprite roster (Resources/sprites/*.png), slices each horizontal sheet into square
-// frames, and picks a per-sender cat. Cached so the view doesn't re-decode every frame.
+// The cat's simulation — a faithful port of maccat's WalkingCatView movement (follow / platformWalk /
+// staircaseTo / diagonalHop / idle wander), minus the app-specific bits (drag, toss, toys, focus timer,
+// sound, buddy). A class so the recursive completion-driven walks stay clean.
 @MainActor
-final class SpriteSheet {
-    let frames: [CGImage]
-    init?(resource: String) {
-        guard let url = Bundle.main.url(forResource: resource, withExtension: "png", subdirectory: "sprites"),
-              let img = NSImage(contentsOf: url) else { return nil }
-        var rect = CGRect(origin: .zero, size: img.size)
-        guard let cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil), cg.height > 0 else { return nil }
-        let fw = cg.height                                   // square frames (sheet is a horizontal strip)
-        let n = max(1, cg.width / fw)
-        var fs: [CGImage] = []
-        for i in 0..<n {
-            if let c = cg.cropping(to: CGRect(x: i * fw, y: 0, width: fw, height: cg.height)) { fs.append(c) }
+final class PesterCatBrain: ObservableObject {
+    @Published var catX: CGFloat
+    @Published var catY: CGFloat
+    @Published var action: CatAction = .idle
+    @Published var frame = 0
+    @Published var facingRight = true
+
+    private let screenW: CGFloat
+    private let screenH: CGFloat
+    private let platformHeight: CGFloat = 60
+    private var isFollowingMouse = false
+    private var running = false
+    private var frameTimer: Timer?
+    private var idleTimer: Timer?
+    private var walkTimer: Timer?
+    private var mouseTracker: Timer?
+    private var lastMouse: CGPoint = .zero
+
+    init(screenW: CGFloat, screenH: CGFloat) {
+        self.screenW = screenW; self.screenH = screenH
+        self.catX = screenW / 2; self.catY = screenH / 2
+    }
+
+    func start() {
+        guard !running else { return }
+        running = true
+        let m = mousePoint()
+        catY = min(max(m.y, 60), screenH - 60)
+        catX = m.x > screenW / 2 ? 40 : screenW - 40          // trot in from the far edge
+        frameTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.frame += 1 }
         }
-        guard !fs.isEmpty else { return nil }
-        frames = fs
+        startMouseTracking()
+        pickNextAction()
+    }
+    func stop() {
+        running = false
+        [frameTimer, idleTimer, walkTimer, mouseTracker].forEach { $0?.invalidate() }
+        frameTimer = nil; idleTimer = nil; walkTimer = nil; mouseTracker = nil
+    }
+
+    // ── Follow the cursor: walk if roughly level, hop up/down like stairs otherwise ──
+    private func startMouseTracking() {
+        mouseTracker = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let m = self.mousePoint()
+                let moved = abs(m.x - self.lastMouse.x) > 3 || abs(m.y - self.lastMouse.y) > 3
+                self.lastMouse = m
+                if self.action == .sleeping || self.action == .lieDown { return }
+                guard moved else { return }
+                let dx = m.x - self.catX, dy = m.y - self.catY
+                let dist = hypot(dx, dy)
+                if dist < 70 {                                    // caught up → sit and face you
+                    if self.action == .walking || self.action == .jumping {
+                        self.walkTimer?.invalidate()
+                        self.action = .idle; self.facingRight = dx > 0; self.isFollowingMouse = false
+                    }
+                    return
+                }
+                self.idleTimer?.invalidate(); self.walkTimer?.invalidate()
+                self.isFollowingMouse = true
+                if abs(dy) < self.platformHeight * 0.6 {
+                    let tx = self.clampX(self.catX + dx * 0.7)
+                    self.platformWalk(to: tx) { self.action = .idle; self.isFollowingMouse = false }
+                } else {
+                    self.staircaseTo(targetX: m.x, targetY: m.y) { self.action = .idle; self.isFollowingMouse = false }
+                }
+            }
+        }
+    }
+
+    // Hop one platform-height at a time toward the target (the diagonal "stairs" climb).
+    private func staircaseTo(targetX: CGFloat, targetY: CGFloat, completion: @escaping () -> Void) {
+        let dy = targetY - catY
+        if abs(dy) < platformHeight * 0.5 {
+            let finalX = clampX(catX + (targetX - catX) * 0.6)
+            platformWalk(to: finalX, completion: completion); return
+        }
+        let steps = Int(ceil(abs(dy) / platformHeight))
+        let hopDx = (targetX - catX) / CGFloat(max(1, steps))
+        let hopDy: CGFloat = dy < 0 ? -platformHeight : platformHeight
+        let hopX = clampX(catX + hopDx)
+        let hopY = max(40, min(screenH - 40, catY + hopDy))
+        diagonalHop(toX: hopX, toY: hopY) {
+            if abs(targetY - self.catY) < self.platformHeight * 0.5 {
+                let finalX = self.clampX(self.catX + (targetX - self.catX) * 0.6)
+                self.platformWalk(to: finalX, completion: completion)
+            } else {
+                self.staircaseTo(targetX: targetX, targetY: targetY, completion: completion)
+            }
+        }
+    }
+
+    // A single parabolic jump arc from here to (targetX,targetY).
+    private func diagonalHop(toX targetX: CGFloat, toY targetY: CGFloat, completion: @escaping () -> Void) {
+        let startX = catX, startY = catY
+        let arcHeight: CGFloat = 22, totalSteps = 14
+        facingRight = targetX > catX
+        action = .jumping
+        var step = 0
+        walkTimer?.invalidate()
+        walkTimer = Timer.scheduledTimer(withTimeInterval: 0.018, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                step += 1
+                let p = CGFloat(step) / CGFloat(totalSteps)
+                self.catX = startX + (targetX - startX) * p
+                self.catY = startY + (targetY - startY) * p - 4.0 * arcHeight * p * (1 - p)
+                if step >= totalSteps { timer.invalidate(); self.catX = targetX; self.catY = targetY; completion() }
+            }
+        }
+    }
+
+    // Walk horizontally to targetX at a steady trot.
+    private func platformWalk(to targetX: CGFloat, completion: @escaping () -> Void) {
+        let dx = targetX - catX
+        let speed: CGFloat = 3.0
+        let steps = Int(abs(dx) / speed)
+        guard steps > 1 else { completion(); return }
+        let stepX = dx / CGFloat(steps)
+        facingRight = dx > 0
+        action = .walking
+        var n = 0
+        walkTimer?.invalidate()
+        walkTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                self.catX += stepX; n += 1
+                if n >= steps { timer.invalidate(); self.catX = targetX; completion() }
+            }
+        }
+    }
+
+    private func walkTo(x targetX: CGFloat, y targetY: CGFloat, completion: @escaping () -> Void) {
+        if abs(targetY - catY) > platformHeight * 0.5 { staircaseTo(targetX: targetX, targetY: targetY, completion: completion) }
+        else { platformWalk(to: targetX, completion: completion) }
+    }
+
+    // ── Idle personality when you're not moving the cursor: wander to a window top, groom, stretch, sit ──
+    private func pickNextAction() {
+        idleTimer?.invalidate(); walkTimer?.invalidate()
+        if isFollowingMouse || !running { return }
+        let roll = Int.random(in: 0...100)
+        if roll < 30, let t = getWindowTops().randomElement() {
+            let tx = clampX(CGFloat.random(in: (t.minX + 40)...max(t.minX + 41, t.maxX - 40)))
+            walkTo(x: tx, y: t.minY) { self.action = .idle; self.scheduleNext(after: Double.random(in: 3...6)) }
+        } else if roll < 55 {
+            let dist = CGFloat.random(in: 80...240)
+            let tx = clampX(Bool.random() ? catX + dist : catX - dist)
+            platformWalk(to: tx) { self.action = .idle; self.scheduleNext(after: Double.random(in: 1.5...4)) }
+        } else if roll < 72 {
+            action = .grooming; frame = 0; scheduleNext(after: 3) { self.action = .idle; self.scheduleNext(after: 1) }
+        } else if roll < 86 {
+            action = .stretch; frame = 0; scheduleNext(after: 2) { self.action = .idle; self.scheduleNext(after: 1.5) }
+        } else {
+            action = .sitting; frame = 0; scheduleNext(after: Double.random(in: 2...5))
+        }
+    }
+
+    private func scheduleNext(after seconds: Double, then: (() -> Void)? = nil) {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { if let then { then() } else { self?.pickNextAction() } }
+        }
+    }
+
+    // Real windows on screen → the platforms the cat walks/hops on (top edge of each), like maccat.
+    private func getWindowTops() -> [CGRect] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        var tops: [CGRect] = []
+        for w in list {
+            guard let b = w[kCGWindowBounds as String] as? [String: CGFloat],
+                  let layer = w[kCGWindowLayer as String] as? Int,
+                  let owner = w[kCGWindowOwnerName as String] as? String, layer == 0 else { continue }
+            if owner == "Relay" || owner == "Switchboard" || owner == "Window Server" { continue }
+            let x = b["X"] ?? 0, y = b["Y"] ?? 0, wd = b["Width"] ?? 0, ht = b["Height"] ?? 0
+            if wd > 100 && ht > 50 && y > 60 && y < screenH - 40 {
+                tops.append(CGRect(x: x, y: y, width: wd, height: 30))
+            }
+        }
+        return tops
+    }
+
+    private func clampX(_ x: CGFloat) -> CGFloat { max(40, min(screenW - 40, x)) }
+    private func mousePoint() -> CGPoint {
+        let loc = NSEvent.mouseLocation
+        return CGPoint(x: loc.x, y: screenH - loc.y)   // flip to top-left (panel space)
     }
 }
 
+// Loads the maccat cat frames (Resources/sprites/cat/<name>.png), caches them, maps CatAction→frame name
+// (following maccat's WalkingCatView), and picks a per-sender colour.
 @MainActor
-enum CatSprites {
-    static let variants = ["cat-orange", "cat-navy"]        // "cats to begin with"; add more sheets here
-    private static var cache: [String: SpriteSheet?] = [:]
+enum PesterCats {
+    private static var cache: [String: NSImage?] = [:]
 
-    static func walk(for from: String) -> SpriteSheet? {
-        let name = variants[bucket(from, count: variants.count)] + "-walk"
+    static func frame(_ name: String) -> NSImage? {
         if let cached = cache[name] { return cached }
-        let s = SpriteSheet(resource: name)
-        cache[name] = s
-        return s
+        let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "sprites/cat")
+        let img = url.flatMap { NSImage(contentsOf: $0) }
+        cache[name] = img
+        return img
     }
-    // A per-sender hue shift (6 buckets) multiplies the 2 base cats into ~a dozen distinguishable cats.
-    static func hue(for from: String) -> Double { Double(bucket(from + "#hue", count: 6)) * 52.0 }
 
-    private static func bucket(_ s: String, count: Int) -> Int {
+    static func spriteName(_ a: CatAction, _ frame: Int) -> String {
+        switch a {
+        case .idle:     return "sit_\(frame % 4)"
+        case .sitting:  return "sit_alt_\(frame % 4)"
+        case .walking:  let w = [3, 4, 5, 6]; return "stretch_\(w[frame % 4])"   // all-fours leg cycle
+        case .jumping:  return "play_\(2 + (frame % 2))"                          // mid-air frames
+        case .grooming: return "groom_\(frame % 6)"
+        case .playing:  return "play_\(frame % 7)"
+        case .stretch:  return "stretch_\(frame % 8)"
+        case .sleeping: return "sleep_loop_\(frame % 4)"
+        case .lieDown:  return "liedown_\(min(frame % 8, 7))"
+        }
+    }
+
+    // MacCat's cat palette — the white base sprite colour-multiplied per sender.
+    static let tints: [Color] = [
+        Color(red: 1.0, green: 0.78, blue: 0.45),   // orange
+        Color(red: 0.42, green: 0.44, blue: 0.5),   // grey/black
+        Color(red: 0.98, green: 0.98, blue: 1.0),   // white
+        Color(red: 1.0, green: 0.66, blue: 0.28),   // ginger
+        Color(red: 0.6,  green: 0.72, blue: 1.0),   // blue
+        Color(red: 1.0,  green: 0.7,  blue: 0.82),  // pink
+        Color(red: 1.0,  green: 0.85, blue: 0.42),  // golden
+    ]
+    static func tint(for from: String) -> Color {
         var h: UInt64 = 1469598103934665603
-        for b in s.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
-        return Int(h % UInt64(max(1, count)))
+        for b in from.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return tints[Int(h % UInt64(tints.count))]
     }
 }
 
