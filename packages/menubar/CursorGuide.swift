@@ -1362,6 +1362,7 @@ final class CursorGuide {
     private var watchTimer: Timer?
     private var cursorTimer: Timer?
     private var flashTimer: Timer?
+    var onTeamSetupRequested: (() -> Void)?   // ~/.relay/team-setup.json {open:true} → controller opens the Team notch flow
     private var notifyTimer: Timer?            // auto-dismiss for the notch ack toast
     private var pendingNotifyAction: String?   // the action a tappable notify (e.g. "resume") performs
     private var pendingHumanAck: String?       // the choice the human just approved → confirm at the notch on close
@@ -1545,6 +1546,14 @@ final class CursorGuide {
         // stream feed lives at the notch; absent/false → off. Polled each tick; deterministic, no model.
         let pipOn = (readJSON(rel("pip.json")) as? [String: Any])?["active"] as? Bool ?? false
         if pipOn != model.pipActive { setPip(pipOn) }
+        // Team Mode setup at the notch: ~/.relay/team-setup.json {"open":true} → run the card flow. A
+        // one-shot trigger (consumed) so the panel button, the launcher, or a Claude session can all open it.
+        let teamSetupPath = rel("team-setup.json")
+        if fm.fileExists(atPath: teamSetupPath) {
+            let open = (readJSON(teamSetupPath) as? [String: Any])?["open"] as? Bool ?? true
+            try? fm.removeItem(atPath: teamSetupPath)
+            if open { onTeamSetupRequested?() }
+        }
         // /hijack PESTER (docs/SLACK-CONNECTOR.md): ~/.relay/pester.json {"active":true,"from":..,"task":..}
         // → the sender's sprite trails YOUR cursor until you finish the specced guided run. startPester is
         // idempotent, so re-asserting it every tick is fine. Cleared by finish() on a completed run, or when
