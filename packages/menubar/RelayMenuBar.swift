@@ -1147,7 +1147,6 @@ struct Panel: View {
     let onLeaveTeam: () -> Void          // team.leave (host: disband locally · member: leave)
     let onOpenTeamFolder: (String) -> Void  // open the shared folder in Finder
     let onCopyInvite: (String) -> Void   // copy the host invite code to the pasteboard
-    var onTeamNotch: () -> Void = {}     // Team Mode setup/manage as a NOTCH card flow (replaces the inline panel controls)
     let onTour: () -> Void               // launch the floating-cursor onboarding concierge (CursorGuide .tour)
     var onConnectClaudeNotch: () -> Void = {}   // raise the "Connect Claude Code" notch card (onboarding finish)
     @State private var breathe = false
@@ -1445,26 +1444,10 @@ struct Panel: View {
             disclosure("connections", "CONNECTIONS", summary: "\(model.appList.count)") { connectionsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             disclosure("team", "TEAM", summary: teamSummary) {
-                // Setup lives at the NOTCH now (founder direction) — this is just a glanceable status + launcher.
-                VStack(alignment: .leading, spacing: 9) {
-                    if let t = model.team {
-                        Text("🛰 \(t.teamName)").font(.hanken(12.5, .semibold)).foregroundColor(.ink)
-                        Text(t.members.isEmpty ? "just you" : t.members.map { $0.name }.joined(separator: " · "))
-                            .font(.hanken(11)).foregroundColor(.inkSec)
-                    } else {
-                        Text("Work a shared folder with teammates — each on their own Claude.")
-                            .font(.hanken(11.5)).foregroundColor(.inkSec).fixedSize(horizontal: false, vertical: true)
-                    }
-                    Button(action: { showSettings = false; onTeamNotch() }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkles").font(.system(size: 11)).foregroundColor(.lime).frame(width: 16)
-                            Text(model.team == nil ? "Set up Team Mode in the notch →" : "Manage in the notch →")
-                                .font(.hanken(12, .medium)).foregroundColor(.ink)
-                            Spacer()
-                        }
-                    }.buttonStyle(.plain)
-                }
-                .padding(.vertical, 1)
+                TeamSection(team: model.team, enabled: model.teamEnabled,
+                            onSetEnabled: onSetTeamEnabled, onCreate: onCreateTeam,
+                            onJoin: onJoinTeam, onLeave: onLeaveTeam,
+                            onOpenFolder: onOpenTeamFolder, onCopyInvite: onCopyInvite)
             }
             Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onTour() }) {
@@ -4555,20 +4538,6 @@ struct ActionConsentDrop: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.model.refreshFiles() }
     }
 
-    // Team Mode setup at the NOTCH (founder direction): wires the flow to these same methods + a fresh
-    // team.json read, then runs the card sequence. The panel's Team affordance calls this instead of the
-    // inline controls.
-    @MainActor func openTeamNotchFlow() {
-        let f = TeamNotchFlow.shared
-        f.setEnabled = { [weak self] on in self?.setTeamEnabled(on) }
-        f.host = { [weak self] name in self?.createTeam(name) }
-        f.join = { [weak self] code in self?.joinTeam(code) }
-        f.leave = { [weak self] in self?.leaveTeam() }
-        f.currentTeam = { readTeam() }                      // fresh team.json each poll (not the cached model)
-        f.copyToPasteboard = { [weak self] s in self?.copyInvite(s) }
-        f.start()
-    }
-
     // Open the shared folder in Finder.
     private func openTeamFolder(_ path: String) {
         guard !path.isEmpty else { return }
@@ -4749,7 +4718,6 @@ struct ActionConsentDrop: View {
             onLeaveTeam: { [weak self] in self?.leaveTeam() },
             onOpenTeamFolder: { [weak self] path in self?.openTeamFolder(path) },
             onCopyInvite: { [weak self] invite in self?.copyInvite(invite) },
-            onTeamNotch: { [weak self] in self?.openTeamNotchFlow() },
             onTour: { [weak self] in self?.startWelcomeTour() },
             onConnectClaudeNotch: { [weak self] in self?.promptConnectClaudeCodeNotch() }
         ))
@@ -4807,7 +4775,6 @@ struct ActionConsentDrop: View {
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
-        CursorGuide.shared.onTeamSetupRequested = { [weak self] in Task { @MainActor in self?.openTeamNotchFlow() } }
         // Spoken concierge: the welcome tour AND teach mode read each step aloud in God's voice.
         CursorGuide.shared.onSpeak     = { [weak self] line in Task { @MainActor in self?.speakGuideLine(line) } }
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
