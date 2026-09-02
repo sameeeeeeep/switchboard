@@ -392,7 +392,10 @@ async function handleSlackCommand(request: Request, env: Env): Promise<Response>
   const task = m[2].trim();
   if (!task) return slackEphemeral(`usage: ${command} @handle <task>`);
 
-  const payload = { from: userName, text: task, mode: "notch", team: teamId, at: Date.now() };
+  // The command name picks the mode: `/hijack` = the pester (spec + guided notch + a sprite that trails
+  // their cursor); anything else (`/notch`) = the passive board drop. Same parse, same INBOX_ROOM route.
+  const mode = command === "/hijack" ? "hijack" : "notch";
+  const payload = { from: userName, text: task, mode, team: teamId, at: Date.now() };
   let delivered = 0;
   try {
     const id = env.INBOX_ROOM.idFromName(handle);
@@ -405,8 +408,11 @@ async function handleSlackCommand(request: Request, env: Env): Promise<Response>
     delivered = j.delivered ?? 0;
   } catch { /* the ack still tells the sender it's queued */ }
 
-  const where = delivered > 0 ? `@${handle}'s board` : `@${handle}'s board (queued — their Switchboard is offline)`;
-  return slackEphemeral(`posted to ${where}`);
+  const offline = delivered === 0 ? " (queued — their Switchboard is offline)" : "";
+  const ack = mode === "hijack"
+    ? `🎯 hijacked @${handle} — specced it to a guided card + put your sprite on their tail${offline}`
+    : `posted to @${handle}'s board${offline}`;
+  return slackEphemeral(ack);
 }
 
 /** A 200 Slack renders as an ephemeral reply to just the sender (visible only to them). */

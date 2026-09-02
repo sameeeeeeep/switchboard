@@ -76,6 +76,18 @@ async function main() {
   const inbox = new InboxClient({
     stateDir: config.stateDir,
     activeFolder: () => folderOf(contexts.get(contexts.activeProject() ?? "")?.data) ?? null,
+    // /hijack: spec a one-line task into concrete guided steps + a rough time estimate via a headless
+    // Claude draft. Returns { steps: string[], minutes: number }; on any failure the inbox client falls
+    // back to a single step with no estimate.
+    specTask: async (task: string) => {
+      const prompt = `Break this task into 2 to 4 concrete, checkable steps a person can follow to actually do it, and estimate how many minutes it realistically takes. Each step is one short imperative line. Reply with ONLY a JSON object: {"steps":["…","…"],"minutes":<integer>}. Nothing else.\n\nTask: ${task}`;
+      const { text } = await broker.routineDraft("hijack", prompt);
+      const match = text.match(/\{[\s\S]*\}/); // tolerate prose around the object
+      const obj = JSON.parse(match ? match[0] : text) as { steps?: unknown; minutes?: unknown };
+      const steps = Array.isArray(obj.steps) ? obj.steps.map((s) => String(s)) : [];
+      const minutes = Number.isFinite(Number(obj.minutes)) ? Math.round(Number(obj.minutes)) : undefined;
+      return { steps, minutes };
+    },
     log: (m) => console.error("[relay/inbox]", m),
   });
   inbox.start();
