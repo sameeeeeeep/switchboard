@@ -75,12 +75,14 @@
   <button class="tool" id="redo" data-n="redo" data-k="⌘⇧Z">⤻</button>
   <button class="tool" id="clear" data-n="clear · start fresh" data-k="">✕</button>
   <span class="sep"></span>
+  <button class="tool on" id="snaptoggle" data-n="snap · grid + align (⌥ = off · ⇧ = constrain)" data-k="">⊞</button>
+  <span class="sep"></span>
   <button class="tool" id="zout" data-n="zoom out" data-k="">−</button><span id="z">100%</span><button class="tool" id="zin" data-n="zoom in" data-k="">+</button><button class="tool" id="zfit" data-n="fit to board" data-k="">⤢</button>
   <span class="sep"></span>
   <button class="tool" id="save" data-n="save PNG" data-k="⌘S">▤</button>
   <button class="tool" id="send" data-n="send to Claude" data-k="⌘↵">➤ send</button>
 </div>
-<div id="hint"><b>infinite canvas</b> · space-drag or scroll to pan · pinch or ⌘-scroll to zoom · drag to <b>snap</b> (⌥ = free) · ⌘V pastes a screenshot · N sticky <b>note</b> · <b>send</b> when ready</div>
+<div id="hint"><b>infinite canvas</b> · pan: space-drag/scroll · zoom: pinch/⌘-scroll · <b>⇧</b> square·circle·straight · <b>snap</b> to grid+edges (⌥ off) · <b>⌘C</b>/<b>⌘V</b> copy · <b>⌘D</b> duplicate · ⌘V pastes a screenshot · <b>send</b> when ready</div>
 <canvas id="c"></canvas>
 <div id="rtab"></div>
 <div id="recents"><div class="rhead">▣ <b>Recent boards</b> <span id="rcount"></span><span class="rclose" id="rcollapse">collapse ⌄</span></div><div id="rstrip"></div></div>
@@ -98,6 +100,10 @@
   var cam={x:0,y:0,s:1}; // pan (screen px) + zoom
   function size(){ W=innerWidth;H=innerHeight; c.width=W*DPR;c.height=H*DPR; c.style.width=W+'px';c.style.height=H+'px'; redraw(); }
   var objs=[], tool='select', color='#C8F250', sel=null, uid=0, imgStore={}, undo=[], redo=[], editing=null;
+  var clip=null;          // internal element clipboard (⌘C/⌘X → ⌘V/⌘D) — separate from the OS clipboard image-paste
+  var snapOn=true;        // snap mode: grid + align-to-elements on create/move/resize (⌥ bypasses live, ⇧ constrains)
+  var pasteGuard=0;       // suppress the OS image-paste that rides along with an element ⌘V
+  var lastP=null;         // last pointer world-pos during a drag — lets ⇧ toggle constrain without moving the mouse
   function snap(){ undo.push(JSON.stringify(objs)); if(undo.length>60) undo.shift(); redo.length=0; }
   function restore(s){ objs=JSON.parse(s); sel=null; redraw(); }
   function doUndo(){ if(!undo.length) return; redo.push(JSON.stringify(objs)); restore(undo.pop()); }
@@ -220,22 +226,25 @@
     }
     if(tool==='text'){ showText(p); down=false; return; }
     if(tool==='note'){ snap(); var n={id:++uid,t:'note',color:color,x:p.x,y:p.y,w:200,h:96,txt:'',size:13}; objs.push(n); sel=n; setTool('select'); showText({x:n.x,y:n.y},n); down=false; redraw(); return; }
-    snap();
+    snap(); snapGuides=[];
+    var a=(tool!=='pen'&&snapOn&&!e.altKey)?snapXY(p.x,p.y):{x:p.x,y:p.y};   // snap the ANCHOR corner to grid/edges too (⌥ = free)
     if(tool==='pen') cur={id:++uid,t:'pen',color:color,pts:[p]};
-    else if(tool==='box'||tool==='ellipse') cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,w:0,h:0};
-    else { cur={id:++uid,t:tool,color:color,x:p.x,y:p.y,x2:p.x,y2:p.y}; var fn=topNode(p); if(fn) cur.fromId=fn.id; }  // arrow/line: bind start to a node under it
+    else if(tool==='box'||tool==='ellipse') cur={id:++uid,t:tool,color:color,x:a.x,y:a.y,w:0,h:0};
+    else { cur={id:++uid,t:tool,color:color,x:a.x,y:a.y,x2:a.x,y2:a.y}; var fn=topNode(p); if(fn) cur.fromId=fn.id; }  // arrow/line: bind start to a node under it
   });
   c.addEventListener('pointermove',function(e){ if(!down) return; var s=sp(e), p=toWorld(s.x,s.y);
     if(mode==='pan'){ cam.x+=s.x-panLast.x; cam.y+=s.y-panLast.y; panLast=s; redraw(); return; }
     if(tool==='select'&&sel){
-      if(mode==='move'){ var dx=p.x-start.x,dy=p.y-start.y; var g=groupMembers(sel); g.forEach(function(o){ moveObj(o,dx,dy); }); start=p; if(!e.altKey&&g.length===1) alignSnap(sel); redraw(); }
-      else if(mode==='resize'){ if(sel.t==='box'||sel.t==='ellipse'||sel.t==='note'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y; }
+      if(mode==='move'){ var dx=p.x-start.x,dy=p.y-start.y; var g=groupMembers(sel); g.forEach(function(o){ moveObj(o,dx,dy); }); start=p; if(!e.altKey&&snapOn&&g.length===1) alignSnap(sel); else snapGuides=[]; redraw(); }
+      else if(mode==='resize'){ snapGuides=[];
+        if(sel.t==='box'||sel.t==='ellipse'||sel.t==='note'){ sel.w=p.x-sel.x; sel.h=p.y-sel.y;
+          if(e.shiftKey){ var s=Math.max(Math.abs(sel.w),Math.abs(sel.h)); sel.w=(sel.w<0?-1:1)*s; sel.h=(sel.h<0?-1:1)*s; }   // ⇧ = square / lock aspect
+          else if(!e.altKey&&snapOn) snapCorner(sel); }                                                                        // else snap the corner to grid/edges
         else if(sel.t==='img'){ var nw=Math.max(20,p.x-sel.x); sel.h=sel.h*(nw/(sel.w||1)); sel.w=nw; }
         else if(sel.t==='text'){ sel.size=Math.max(9,p.y-sel.y); } redraw(); }
       return;
     }
-    if(!cur) return;
-    if(tool==='pen') cur.pts.push(p); else if(tool==='box'||tool==='ellipse'){ cur.w=p.x-cur.x; cur.h=p.y-cur.y; } else { cur.x2=p.x; cur.y2=p.y; }
+    if(!cur) return; lastP=p; updateCur(p,e);   // ⇧ = square/circle/45° · snap corner/endpoint to grid & edges (⌥/snap-off = free)
     redraw(); if(cur) drawObj(cur);
   });
   window.addEventListener('pointerup',function(){ if(!down) return; down=false;
@@ -283,6 +292,44 @@
     snapGuides.forEach(function(g){ x.beginPath(); if(g.v){ x.moveTo(g.p,a.y); x.lineTo(g.p,z.y); } else { x.moveTo(a.x,g.p); x.lineTo(z.x,g.p); } x.stroke(); });
     x.setLineDash([]); }
 
+  // ── snap a single POINT (a drag-corner / line-endpoint) to the grid or a nearby object edge/centre ──
+  // The move path uses alignSnap() (aligns the whole bbox); create/resize snap just their moving point via this.
+  function snapXY(px,py,exclude){ if(!snapOn) return {x:px,y:py}; var TH=6/cam.s, G=22, cxs=[], cys=[];
+    objs.forEach(function(t){ if(t===exclude) return; var tb=bbox(t); cxs.push(tb.x,tb.x+tb.w/2,tb.x+tb.w); cys.push(tb.y,tb.y+tb.h/2,tb.y+tb.h); });
+    var bx=null,gx=null; cxs.forEach(function(cv){ var d=cv-px; if(Math.abs(d)<TH&&(bx==null||Math.abs(d)<Math.abs(bx))){bx=d;gx=cv;} });
+    var gv=Math.round(px/G)*G,dg=gv-px; if(Math.abs(dg)<TH&&(bx==null||Math.abs(dg)<Math.abs(bx))){bx=dg;gx=gv;}
+    var by=null,gy=null; cys.forEach(function(cv){ var d=cv-py; if(Math.abs(d)<TH&&(by==null||Math.abs(d)<Math.abs(by))){by=d;gy=cv;} });
+    var gvy=Math.round(py/G)*G,dgy=gvy-py; if(Math.abs(dgy)<TH&&(by==null||Math.abs(dgy)<Math.abs(by))){by=dgy;gy=gvy;}
+    snapGuides=[]; if(bx!=null){ px+=bx; snapGuides.push({v:1,p:gx}); } if(by!=null){ py+=by; snapGuides.push({v:0,p:gy}); }
+    return {x:px,y:py}; }
+  function snapCorner(o){ var r=snapXY(o.x+o.w,o.y+o.h,o); o.w=r.x-o.x; o.h=r.y-o.y; }
+  function snapEnd(o){ var r=snapXY(o.x2,o.y2,o); o.x2=r.x; o.y2=r.y; }
+  // ⇧ constrain: project (x1,y1) onto the nearest 45° ray from (x0,y0) — straight/diagonal lines & arrows
+  function constrain45(x0,y0,x1,y1){ var dx=x1-x0,dy=y1-y0,step=Math.PI/4,a=Math.round(Math.atan2(dy,dx)/step)*step,len=Math.hypot(dx,dy);
+    return {x:x0+Math.cos(a)*len,y:y0+Math.sin(a)*len}; }
+  // Recompute the in-progress shape from the raw pointer + live modifiers (⇧ = square/circle/45°, ⌥ or snap-off = free).
+  // Factored so ⇧ can toggle the constraint mid-drag without the mouse moving (re-called from the Shift key handlers).
+  function updateCur(p,e){ if(!cur) return; snapGuides=[];
+    if(cur.t==='pen'){ cur.pts.push(p); return; }
+    if(cur.t==='box'||cur.t==='ellipse'){ var w=p.x-cur.x,h=p.y-cur.y;
+      if(e.shiftKey){ var s=Math.max(Math.abs(w),Math.abs(h)); w=(w<0?-1:1)*s; h=(h<0?-1:1)*s; }
+      cur.w=w; cur.h=h; if(!e.shiftKey&&!e.altKey&&snapOn) snapCorner(cur); }
+    else { var ex=p.x,ey=p.y; if(e.shiftKey){ var a=constrain45(cur.x,cur.y,ex,ey); ex=a.x; ey=a.y; }
+      cur.x2=ex; cur.y2=ey; if(!e.shiftKey&&!e.altKey&&snapOn) snapEnd(cur); } }
+
+  // ── copy / cut / paste / duplicate selected element(s) — a group moves & copies as a unit ──
+  function doCopy(){ if(!sel) return; clip=JSON.parse(JSON.stringify(groupMembers(sel))); }
+  function doPaste(){ if(!clip||!clip.length) return; snap(); var off=18/cam.s, idmap={}, added=[];
+    var ng=clip[0].group?('g'+(++uid)):null;   // a pasted group gets a fresh group id so it stays independent
+    clip.forEach(function(o){ var n=JSON.parse(JSON.stringify(o)); idmap[n.id]=(++uid); n.id=idmap[n.id];
+      if(n.group) n.group=ng; moveObj(n,off,off); added.push(n); });
+    // arrows/lines: rebind ends that pointed WITHIN the copied set; drop bindings to objects left behind
+    added.forEach(function(n){ if(n.fromId!=null) n.fromId=idmap[n.fromId]!=null?idmap[n.fromId]:null;
+      if(n.toId!=null) n.toId=idmap[n.toId]!=null?idmap[n.toId]:null; objs.push(n); });
+    sel=ng?added[0]:added[added.length-1]; redraw(); }
+  function doCut(){ if(!sel) return; doCopy(); snap(); var g=groupMembers(sel); objs=objs.filter(function(o){return g.indexOf(o)<0;}); sel=null; redraw(); }
+  function doDuplicate(){ if(!sel) return; doCopy(); doPaste(); }
+
   // Edit a text object in place. The overlay input is anchored to the text's OWN origin (not the click
   // point), and the original is HIDDEN on the canvas while editing (editing=edit, skipped in redraw) — so
   // there's no offset "duplicate" showing behind the input. Commits on Enter or blur; Escape cancels.
@@ -307,18 +354,23 @@
   var curColor=document.getElementById('curcolor');
   document.querySelectorAll('.sw').forEach(function(s){ s.onclick=function(){ document.querySelectorAll('.sw').forEach(function(o){o.classList.remove('on');}); s.classList.add('on'); color=s.dataset.c; if(curColor) curColor.style.background=color; if(sel){ snap(); sel.color=color; redraw(); } }; });
   document.getElementById('clear').onclick=function(){ if(objs.length){ snap(); objs=[]; sel=null; redraw(); } }; // clear board (⌘Z-undoable)
+  var snapBtn=document.getElementById('snaptoggle');
+  if(snapBtn) snapBtn.onclick=function(){ snapOn=!snapOn; snapBtn.classList.toggle('on',snapOn); if(!snapOn){ snapGuides=[]; redraw(); } };
   document.getElementById('save').onclick=savePNG; document.getElementById('send').onclick=send;
 
   function addImage(file){ var url=URL.createObjectURL(file), im=new Image(); im.onload=function(){ var id='im'+(++uid), sc=Math.min(1,460/im.width); imgStore[id]=im;
     var ctr=toWorld(W/2,H/2); snap(); objs.push({id:++uid,t:'img',color:color,img:id,x:ctr.x-im.width*sc/2,y:ctr.y-im.height*sc/2,w:im.width*sc,h:im.height*sc}); sel=objs[objs.length-1]; setTool('select'); redraw(); };
     im.onerror=function(){ flashHint('✕ couldn’t read that image — try a PNG/JPG screenshot'); }; im.src=url; }
-  window.addEventListener('paste',function(e){ var it=(e.clipboardData||{}).items||[]; for(var i=0;i<it.length;i++){ if(it[i].type.indexOf('image')===0) addImage(it[i].getAsFile()); } });
+  window.addEventListener('paste',function(e){ if(Date.now()-pasteGuard<400) return;   // an element ⌘V just ran — don't also drop an OS-clipboard image
+    var it=(e.clipboardData||{}).items||[]; for(var i=0;i<it.length;i++){ if(it[i].type.indexOf('image')===0) addImage(it[i].getAsFile()); } });
   window.addEventListener('dragover',function(e){ e.preventDefault(); });
   window.addEventListener('drop',function(e){ e.preventDefault(); var f=e.dataTransfer.files; for(var i=0;i<f.length;i++) if(f[i].type.indexOf('image')===0) addImage(f[i]); });
 
   window.addEventListener('keydown',function(e){
     if(e.code==='Space'&&ti.style.display!=='block'){ spaceDown=true; if(tool==='select') c.style.cursor='grab'; }
     if(ti.style.display==='block') return;
+    // ⇧ pressed mid-draw → re-constrain the in-progress shape without needing the mouse to move
+    if(e.key==='Shift'&&down&&cur&&cur.t!=='pen'&&lastP){ updateCur(lastP,e); redraw(); drawObj(cur); }
     var m=e.metaKey||e.ctrlKey;
     if(m&&e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?doRedo():doUndo(); return; }
     if(m&&e.key.toLowerCase()==='s'){ e.preventDefault(); savePNG(); return; }
@@ -326,6 +378,10 @@
     if(m&&(e.key==='='||e.key==='+')){ e.preventDefault(); setZoom(cam.s*1.2); return; }
     if(m&&e.key==='-'){ e.preventDefault(); setZoom(cam.s/1.2); return; }
     if(m&&e.key==='0'){ e.preventDefault(); setZoom(1); return; }
+    if(m&&e.key.toLowerCase()==='c'){ if(sel){ e.preventDefault(); doCopy(); } return; }
+    if(m&&e.key.toLowerCase()==='x'){ if(sel){ e.preventDefault(); doCut(); } return; }
+    if(m&&e.key.toLowerCase()==='v'){ if(clip&&clip.length){ e.preventDefault(); pasteGuard=Date.now(); doPaste(); } return; }  // else fall through to the OS image-paste listener
+    if(m&&e.key.toLowerCase()==='d'){ if(sel){ e.preventDefault(); doDuplicate(); } return; }
     if(m) return;
     if(e.key==='Backspace'||e.key==='Delete'){ if(sel){ e.preventDefault(); snap(); var g=groupMembers(sel); objs=objs.filter(function(o){return g.indexOf(o)<0;}); sel=null; redraw(); } return; }
     if(e.key==='Escape'){ sel=null; redraw(); return; }
@@ -333,7 +389,8 @@
       snap(); moveObj(sel, e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0, e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0); redraw(); return; }
     var keys={v:'select',p:'pen',r:'box',c:'ellipse',l:'line',a:'arrow',t:'text',n:'note'}, k=keys[e.key.toLowerCase()]; if(k) setTool(k);
   });
-  window.addEventListener('keyup',function(e){ if(e.code==='Space'){ spaceDown=false; if(tool==='select') c.style.cursor='default'; } });
+  window.addEventListener('keyup',function(e){ if(e.code==='Space'){ spaceDown=false; if(tool==='select') c.style.cursor='default'; }
+    if(e.key==='Shift'&&down&&cur&&cur.t!=='pen'&&lastP){ updateCur(lastP,e); redraw(); drawObj(cur); } });   // ⇧ released mid-draw → back to free
 
   // ── export: whole board (fit all), so pan/zoom doesn't crop the sketch ──
   function exportCanvas(){ var b=allBounds(), pad=40, ex=document.createElement('canvas');
