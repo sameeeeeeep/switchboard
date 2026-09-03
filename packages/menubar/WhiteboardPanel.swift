@@ -61,9 +61,11 @@ final class WhiteboardController: NSObject {
                 currentRun = run
                 panel?.setRun(run, seed: obj["seed"])
                 panel?.front()
-            } else {
-                panel?.front()
             }
+            // NOTE: no per-tick front() for the steady "same run, still active" case. Now that the board sits at
+            // .popUpMenu (alongside the notch cards), re-fronting every 0.3s would keep yanking it OVER any notch
+            // decision card that appeared while it's open. We only bring it forward on open / on a re-trigger
+            // (a new runId, above); once up it keeps its natural order so a notch card raised later stays on top.
         } else if panel != nil {
             closePanel()
         }
@@ -220,7 +222,12 @@ final class WhiteboardPanel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         window.isOpaque = false
         window.backgroundColor = NSColor(red: 0x0B/255.0, green: 0x0E/255.0, blue: 0x08/255.0, alpha: 1) // --bg
         window.hasShadow = true
-        window.level = .floating                              // above normal app windows (the PIP/notch family)
+        // .popUpMenu (not .floating) — join the rest of the presence family (notch, God, consent, store are all
+        // .popUpMenu). At .floating (level 3) the board sat BELOW the system Picture-in-Picture (19), Notification
+        // Centre (21) and every one of the app's OWN floating surfaces (101), so anything overlapping the top-centre
+        // — where the toolbar lives — hid the tools ("can't see no tools"). This lifts the board over those passive
+        // occluders; a notch DECISION card raised afterwards still wins by order-front (see the tamed front() below).
+        window.level = .popUpMenu
         window.hidesOnDeactivate = false                      // must persist when you switch apps/Spaces to act on it
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isReleasedWhenClosed = false
