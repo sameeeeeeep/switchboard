@@ -1164,6 +1164,9 @@ struct Panel: View {
     @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
     @AppStorage("userCatOn") private var userCatOn = true   // your companion cat on/off (persisted; drives the overlay)
     @AppStorage("userCatSize") private var userCatSize = 64.0   // the cat's on-screen size (px)
+    @AppStorage("wrappNotch") private var wrappNotch = true     // removable built-in wrapps (off = disabled)
+    @AppStorage("wrappGod") private var wrappGod = true
+    @AppStorage("wrappFlow") private var wrappFlow = true
     @State private var guideVoiceover = CursorGuide.shared.voiceoverOn  // mirrors the fn-m guide preference in Settings
 
     private var signedOut: Bool { model.running && !model.signedIn }
@@ -1464,7 +1467,7 @@ struct Panel: View {
                             onOpenFolder: onOpenTeamFolder, onCopyInvite: onCopyInvite)
             }
             Rectangle().fill(Color.edge).frame(height: 1)
-            disclosure("companion", "COMPANION", summary: userCatOn ? "Cat on" : "off") { companionSection }
+            disclosure("wrapps", "WRAPPS", summary: "\([wrappNotch, wrappGod, wrappFlow, userCatOn].filter { $0 }.count) on") { wrappsSection }
             Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onTour() }) {
                 HStack(spacing: 9) {
@@ -1562,23 +1565,43 @@ struct Panel: View {
     // GUIDED HELP — the two live-guide preferences, surfaced as Settings rows instead of shortcut-only:
     // spoken voiceover (fn m) as a toggle, and a reminder that screenshot+note feedback (fn ↓) works in
     // any guide. Reversible + legible: the toggle drives the SAME persisted key CursorGuide reads.
-    // Companion — your cat (the first "cat wrapp"). Toggle drives the overlay + persists via @AppStorage.
-    private var companionSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle(isOn: $userCatOn) {
-                Text("God's cat").font(.hanken(13)).foregroundColor(.ink)
+    // WRAPPS — the "perception" list (founder: everything's a wrapp; show what's ON, like Settings). Native
+    // capabilities (Notch · God · Flow · God's cat) enumerated with their state; the cat is toggleable +
+    // resizable. First step toward native features being real, addable/removable catalog wrapps.
+    @ViewBuilder private func wrappRow(_ name: String, _ desc: String, on: Bool, toggle: (() -> Void)? = nil) -> some View {
+        HStack(spacing: 10) {
+            Circle().fill(on ? Color.lime : Color.edge).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.hanken(12.5, .medium)).foregroundColor(.ink)
+                Text(desc).font(.hanken(10.5)).foregroundColor(.inkFaint)
             }
-            .toggleStyle(.switch).tint(.lime)
-            .onChange(of: userCatOn) { on in TeamCursorsOverlay.shared.setUserCat(on) }
+            Spacer(minLength: 8)
+            if let toggle {
+                Toggle("", isOn: Binding(get: { on }, set: { _ in toggle() })).toggleStyle(.switch).tint(.lime).labelsHidden()
+            } else {
+                Text("built-in").font(.splMono(9)).foregroundColor(.inkFaint)
+            }
+        }
+    }
+    private var wrappsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("What's on your Switchboard. Everything's a wrapp you add.")
+                .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+            wrappRow("Notch", "the surface everything appears on", on: wrappNotch) {
+                wrappNotch.toggle(); NotificationCenter.default.post(name: .init("wrappsChanged"), object: nil)
+            }
+            wrappRow("God", "double-tap ⌃ — see, hear, help", on: wrappGod) { wrappGod.toggle() }
+            wrappRow("Flow", "hold ⌃⌥ — dictate at your cursor", on: wrappFlow) { wrappFlow.toggle() }
+            wrappRow("God's cat", "a lime cat that follows your cursor", on: userCatOn) {
+                userCatOn.toggle(); TeamCursorsOverlay.shared.setUserCat(userCatOn)
+            }
             if userCatOn {
-                Picker("Size", selection: $userCatSize) {
+                Picker("Cat size", selection: $userCatSize) {
                     Text("Small").tag(48.0); Text("Medium").tag(64.0); Text("Large").tag(88.0)
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .onChange(of: userCatSize) { s in TeamCursorsOverlay.shared.setUserCatSize(CGFloat(s)) }
             }
-            Text("God's cat — a lime cat that hangs out and follows your cursor while you work.")
-                .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -4808,6 +4831,10 @@ struct ActionConsentDrop: View {
         installHotKey()
         installVoicePasteHotKey()
         installGlow()
+        applyNotchWrapp()   // honor the Notch wrapp toggle at launch
+        NotificationCenter.default.addObserver(forName: .init("wrappsChanged"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyNotchWrapp() }
+        }
         // The orb's frame is computed from the CURRENT screen; positionOrb() ran once at launch and never
         // again. A display-geometry change — external monitor plug/unplug, resolution/scaling, sleep/wake, or
         // a Space that lives on another display — then leaves the orb frozen off-screen: the "base notch
@@ -7116,6 +7143,15 @@ struct ActionConsentDrop: View {
     // Two gestures on one monitor, both bound from ~/.relay/shortcuts.json (defaults ⌃⌥ hold / ⌃⌃ tap):
     //   TALK chord HOLD → dictation (raw whisper transcript pasted at the cursor — no God, no cleanup)
     //   SUMMON modifier double-tap → summon God (see/hear/help)
+    /// Is a (removable) built-in wrapp on? Defaults ON when the key was never set. Removing a wrapp in the
+    /// WRAPPS list flips this off, disabling the feature — same grammar as the cat's toggle.
+    private func wrappOn(_ key: String) -> Bool { UserDefaults.standard.object(forKey: key) == nil ? true : UserDefaults.standard.bool(forKey: key) }
+
+    /// Show/hide the base notch orb per the Notch wrapp toggle. Called on launch + when it's toggled.
+    @MainActor func applyNotchWrapp() {
+        if wrappOn("wrappNotch") { positionOrb(); orb?.orderFrontRegardless() } else { orb?.orderOut(nil) }
+    }
+
     @MainActor private func onFlags(_ flags: NSEvent.ModifierFlags) {
         // NOTE: dictation (⌃⌥) stays LIVE during a guide on purpose — the guide's own signals are fn+arrow
         // keys (CursorGuide owns them), so they never collide, and the user can DICTATE feedback mid-guide.
@@ -7134,12 +7170,12 @@ struct ActionConsentDrop: View {
             if !latch && !talkHeld { finishDictation(find: false) }
             return
         }
-        if talkHeld { onboard.lastDictate = Date(); startDictation(); return }
+        if talkHeld { if wrappOn("wrappFlow") { onboard.lastDictate = Date(); startDictation() }; return }   // Flow wrapp gate
         // Summon = a double-tap of the single summon modifier — so it only arms when ONLY that key is
         // down (a chord that contains it, e.g. the talk chord, never reads as a summon tap).
         if m == summonMod && !summonWasDown {
             summonWasDown = true
-            onCtrlTap()
+            if wrappOn("wrappGod") { onCtrlTap() }        // God wrapp gate — removing it disables ⌃⌃ summon
         } else if m.isEmpty {
             summonWasDown = false
         } else {
@@ -7166,7 +7202,7 @@ struct ActionConsentDrop: View {
         guard !dictating else { return }
         let talk = chordFlags(model.shortcuts.talk)
         let m = flags.intersection([.control, .option, .command, .shift])
-        if !talk.isEmpty && m == talk { onboard.lastDictate = Date(); startDictation() }
+        if !talk.isEmpty && m == talk && wrappOn("wrappFlow") { onboard.lastDictate = Date(); startDictation() }
     }
 
     // ── ⌃⌥ dictation: record → whisper.cpp (raw, on-device) → paste at cursor. No God, no LLM cleanup —

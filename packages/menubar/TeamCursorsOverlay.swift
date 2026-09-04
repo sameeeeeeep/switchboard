@@ -247,7 +247,7 @@ private struct UserCatView: View {
     var body: some View {
         VStack(spacing: 2) {
             if model.userCatIntro {
-                Text("hi, i'm god's cat — i keep you company while you work.\n(turn me off in Settings › Companion)")
+                Text("hi, i'm god's cat — i keep you company while you work.\n(turn me off in Settings › Wrapps)")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .multilineTextAlignment(.center).foregroundColor(.black)
                     .padding(.horizontal, 9).padding(.vertical, 5)
