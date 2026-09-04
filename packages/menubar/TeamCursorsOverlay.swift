@@ -176,34 +176,17 @@ enum CatVoice {
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = false
-        // NOT globally click-through: the CatHitView below passes every click through EXCEPT one that lands
-        // on your cat, so right-click reaches the cat while the rest of the screen stays untouched.
-        p.ignoresMouseEvents = false
+        p.ignoresMouseEvents = true   // PURE decoration — clicks pass through. (A fullscreen panel that
+                                      // catches events blocks the whole screen; right-click on the cat needs
+                                      // a separate cat-sized tracking window, done later — never this layer.)
         p.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
-        let host = NSHostingView(rootView: TeamCursorsView(model: model, screenSize: screen.frame.size))
-        host.frame = NSRect(origin: .zero, size: screen.frame.size)
-        host.autoresizingMask = [.width, .height]
-        // "Hide the cat" is self-contained — turn it off + remember the choice.
+        // "Hide the cat" is self-contained — turn it off + remember the choice. (Reached from Settings for
+        // now; the right-click menu returns with the safe tracking-window approach.)
         model.onHideCat = { [weak self] in self?.setUserCat(false); UserDefaults.standard.set(false, forKey: "userCatOn") }
-        let hit = CatHitView(frame: NSRect(origin: .zero, size: screen.frame.size))
-        hit.model = model
-        hit.addSubview(host)
-        p.contentView = hit
+        p.contentView = NSHostingView(rootView: TeamCursorsView(model: model, screenSize: screen.frame.size))
         p.setFrame(screen.frame, display: true)
         p.orderFrontRegardless()
         panel = p
-    }
-}
-
-/// The overlay's content view: transparent to the mouse EVERYWHERE except over your cat's live rect, so a
-/// right-click on the cat opens its menu while every other click falls through to the app underneath.
-/// Flipped so its coordinates match the SwiftUI/brain space (top-left origin) the cat frame is reported in.
-final class CatHitView: NSView {
-    weak var model: TeamCursorsModel?
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let model, model.userCat, model.userCatFrame.contains(point) else { return nil }
-        return super.hitTest(point)   // → the SwiftUI host → the cat's .contextMenu
     }
 }
 
@@ -228,8 +211,7 @@ private struct TeamCursorsView: View {
             }
         }
         .ignoresSafeArea()
-        // Hit-testing stays ON so your cat's right-click menu works; the AppKit CatHitView gates it — only
-        // a click on the cat's rect reaches SwiftUI, everything else falls through to the app underneath.
+        .allowsHitTesting(false)   // pure decoration — never intercept the user's clicks
     }
     // Deterministic per-person colour (same idea as the presence dots).
     static func color(for id: String) -> Color {
