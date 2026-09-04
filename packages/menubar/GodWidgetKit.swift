@@ -377,6 +377,11 @@ enum WidgetResult {
     case cards(caption: String, items: [CardItem])
     case results(summary: String, items: [ResultItem])
     case text(String)
+    /// A bare announcement: an optional one-line note + a single primary button, nothing else.
+    /// For notices like "an update shipped" that must NOT wear God's answer-card chrome — no body
+    /// copy, no Copy, no Regenerate. The notch takes the form suited to the job; an update prompt is
+    /// a headline and a button, not an answer to regenerate. `nil` = header + button only, no note.
+    case notice(String?)
 }
 struct WidgetSpec {
     let kicker: String
@@ -443,6 +448,16 @@ struct NotchWidget: View {
                 ResultText(text: body)
                 ActionRow(openLabel: spec.openLabel, draggable: false, copyText: body,
                           onOpen: onOpen, onRegen: onRegen)
+            }
+        case .notice(let line):
+            VStack(alignment: .leading, spacing: WK.s4) {
+                if let line, !line.isEmpty { CaptionLine(text: line) }
+                if !spec.openLabel.isEmpty {
+                    HStack(spacing: WK.s2) {
+                        Spacer(minLength: WK.s3)
+                        WKActionButton(icon: "arrow.up.right.square.fill", label: spec.openLabel, primary: true, action: onOpen)
+                    }
+                }
             }
         }
     }

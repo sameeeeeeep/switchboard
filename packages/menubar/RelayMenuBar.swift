@@ -5647,16 +5647,18 @@ struct ActionConsentDrop: View {
                   let tag = obj["tag_name"] as? String else { return }
             let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
             guard RelayController.isNewer(latest, than: here) else { return }
-            let title = (obj["name"] as? String) ?? "Switchboard \(latest)"
             Task { @MainActor in
                 // Announce a given version ONCE — never nag.
                 let seen = UserDefaults.standard.string(forKey: RelayController.updateSeenKey) ?? ""
                 guard seen != latest else { return }
                 UserDefaults.standard.set(latest, forKey: RelayController.updateSeenKey)
                 NSLog("[update] %@ is out (running %@)", latest, here)
+                // A bare notice — headline + Download, nothing else. Was `.text(title)`, which wore
+                // God's answer-card chrome: it repeated the release name as body copy AND showed a
+                // Regenerate button (meaningless for an update). An update prompt isn't an answer.
                 self.showNotchWidget(
                     WidgetSpec(kicker: "UPDATE", title: "Switchboard \(latest) is out",
-                               openLabel: "Download", result: .text(title)),
+                               openLabel: "Download", result: .notice(nil)),
                     onOpen: { [weak self] in
                         self?.hideNotchWidget()
                         if let dmg = URL(string: "https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg") {
