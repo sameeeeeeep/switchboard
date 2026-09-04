@@ -246,7 +246,13 @@ export class TeamEngine {
   /** Resume a persisted team on daemon start (or when the mode is switched back on). A disabled
    *  or absent team does nothing at all; an already-live network is left alone. */
   resume() {
-    if (!this.enabled() || !this.state || this.wss || this.client) return;
+    // Already live ⇒ nothing to do. The guard MUST cover a relay host (`this.relayHost`) too, not
+    // just a LAN host (`this.wss`) and a member (`this.client`): a relay host has a null `wss`, so
+    // without this a redundant resume — daemon-start resume() PLUS the panel's team.setEnabled(true)
+    // (both call in) — dialed a SECOND host socket. Two hosts on one team make the relay evict each
+    // other's members ("host-changed") in a loop, so every teammate flapped connected→dropped and
+    // never recovered. One host transport, always.
+    if (!this.enabled() || !this.state || this.wss || this.relayHost || this.client) return;
     try {
       if (this.state.role === "host") this.startHosting();
       else this.startJoining().catch((err) => console.error("[team] resume failed:", String((err as Error)?.message || err).slice(0, 160)));
@@ -558,6 +564,13 @@ export class TeamEngine {
 
   private startHosting() {
     const st = this.state!;
+    // Never stack a second host transport on top of a live one — a leaked orphan keeps dialing the
+    // relay as host and evicts teammates. host() already tears the network down first; this makes
+    // startHosting() safe for EVERY caller regardless (resume, a future re-host), so at most one
+    // host socket ever exists.
+    if (this.relayHost) { try { this.relayHost.stop(); } catch { /* gone */ } this.relayHost = null; }
+    if (this.wss) { try { this.wss.close(); } catch { /* gone */ } this.wss = null; }
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     this.key = deriveTeamKey(st.secret, st.teamId);
     this.sync = new FolderSync(st.folder, this.deviceId, join(this.teamDir, st.teamId));
     this.hostListening = false;
