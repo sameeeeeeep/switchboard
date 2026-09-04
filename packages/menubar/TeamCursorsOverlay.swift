@@ -33,6 +33,7 @@ struct PesterSprite: Equatable {
 @MainActor final class TeamCursorsModel: ObservableObject {
     @Published var cursors: [RemoteCursor] = []
     @Published var pester: PesterSprite? = nil
+    @Published var userCat = false   // your OWN ambient cat — trails your cursor, independent of team/pester
 }
 
 @MainActor final class TeamCursorsOverlay {
@@ -98,9 +99,18 @@ struct PesterSprite: Equatable {
         updatePanelVisibility()
     }
 
-    // Show the overlay iff SOMETHING wants it (a teammate cursor or a pester); otherwise tear it down.
+    // ── your OWN cat: the first ambient "cat wrapp" (founder 2026-09-04). A MacCat that trails YOUR
+    // cursor all the time — not a teammate, not a pest — presence you add. Independent of team/pester,
+    // so it lives even with no team online. Persisted by the controller.
+    func setUserCat(_ on: Bool) {
+        guard on != model.userCat else { return }
+        model.userCat = on
+        if on { ensurePanel() } else { updatePanelVisibility() }
+    }
+
+    // Show the overlay iff SOMETHING wants it (a teammate cursor, a pester, or your own cat); else tear down.
     private func updatePanelVisibility() {
-        if model.cursors.isEmpty && model.pester == nil {
+        if model.cursors.isEmpty && model.pester == nil && !model.userCat {
             panel?.orderOut(nil); panel = nil
         } else {
             ensurePanel()
@@ -160,6 +170,9 @@ private struct TeamCursorsView: View {
                 PesterCatView(from: p.from, screenW: screenSize.width, screenH: screenSize.height)
                     .id(p.from)   // rebuild (re-spawn) when the sender changes
             }
+            if model.userCat {
+                UserCatView(screenW: screenSize.width, screenH: screenSize.height)
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -177,6 +190,34 @@ private struct TeamCursorsView: View {
 // waits — a living pet nagging you to do the task. Its colour is keyed to the sender, so "a cat shows up
 // and you work out who it's from" is the whole charm; a name tag says who when you give up guessing.
 enum CatAction { case idle, sitting, walking, jumping, grooming, playing, stretch, sleeping, lieDown }
+
+// YOUR cat — the first ambient "cat wrapp" (founder 2026-09-04). A MacCat that trails your OWN cursor all
+// the time; not a teammate, not a pest. Brand-lime, no name tag — it's yours. Same brain as the pester
+// (wander = a lively pet, not stuck on the pointer), targeting the live LOCAL cursor.
+private struct UserCatView: View {
+    @StateObject private var brain: PesterCatBrain
+    init(screenW: CGFloat, screenH: CGFloat) {
+        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH, wander: true, target: {
+            let l = NSEvent.mouseLocation
+            return CGPoint(x: l.x, y: screenH - l.y)   // local cursor, top-left px
+        }))
+    }
+    var body: some View {
+        catImage
+            .interpolation(.none).resizable()
+            .frame(width: 60, height: 60)
+            .colorMultiply(.lime)                                // your cat wears the brand
+            .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)
+            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+            .position(x: brain.catX, y: brain.catY)
+            .onAppear { brain.start() }
+            .onDisappear { brain.stop() }
+    }
+    private var catImage: Image {
+        if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
+        return Image(systemName: "cat.fill")
+    }
+}
 
 private struct PesterCatView: View {
     let from: String

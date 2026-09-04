@@ -4702,6 +4702,10 @@ struct ActionConsentDrop: View {
         TeamCursorsOverlay.shared.onLocalCursor = { [weak self] x, y in
             self?.consent?.control("team.cursor", ["x": x, "y": y])
         }
+        // Your OWN ambient cat (the first "cat wrapp") — follows your cursor. Default ON so it's there
+        // on first run; persisted, so a later toggle sticks. (God's cat + real store-wrapp packaging next.)
+        let catOn = UserDefaults.standard.object(forKey: "userCatOn") == nil ? true : UserDefaults.standard.bool(forKey: "userCatOn")
+        TeamCursorsOverlay.shared.setUserCat(catOn)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = glyphImage(running: false, working: false, signedIn: true, phase: 0)
         statusItem.button?.action = #selector(togglePopover)
