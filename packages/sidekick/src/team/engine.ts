@@ -784,8 +784,14 @@ export class TeamEngine {
     this.maybeStartGit(); // resume path: this member may already have opted in
     return new Promise((resolve, reject) => {
       let settled = false;
-      const settle = (err?: Error) => { if (!settled) { settled = true; err ? reject(err) : resolve(); } };
+      const settle = (err?: Error) => { if (!settled) { settled = true; clearInterval(poll); err ? reject(err) : resolve(); } };
       this.dial(settle);
+      // A transient first drop reconnects in the background (dial() re-dials without this callback), so
+      // ALSO resolve the moment we're actually welcomed on ANY retry — not only on the first dial. Without
+      // this, a member that landed a second late (host relay link still coming up) would still be failed
+      // at the timeout despite being connected.
+      const poll = setInterval(() => { if (this.clientConnected) settle(); }, 200);
+      (poll as NodeJS.Timeout).unref?.();
       setTimeout(() => settle(new Error("could not reach the host — check the invite and that the host is online")), JOIN_TIMEOUT_MS).unref?.();
     });
   }
@@ -876,7 +882,11 @@ export class TeamEngine {
         this.memberError = gateMessage(code, String(reasonBuf || ""));
         this.deps.audit("team:relay-refused", "denied", `${code} ${String(reasonBuf || "")}`.trim());
       }
-      if (!welcomed) onFirstWelcome?.(new Error(gated ? this.memberError! : "the host refused the connection — the invite may be stale"));
+      // Only a GATED close fails the join outright — it's a real refusal (seats/entitlement/membership)
+      // that won't self-heal. A non-gated drop (the host's relay link still coming up, a transient relay
+      // blip) reconnects below; startJoining resolves the instant a retry is welcomed, or delivers the
+      // honest "couldn't reach the host" at the timeout — never the misleading "invite may be stale".
+      if (!welcomed && gated) onFirstWelcome?.(new Error(this.memberError!));
       this.deps.onTeamChanged();
       if (!this.stopped && this.state?.role === "member" && this.enabled()) {
         // Still retry (a plan can be upgraded, a seat can free up) but back off hard on a refusal so
