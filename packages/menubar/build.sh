@@ -96,6 +96,9 @@ if [ -d assets/sprites ]; then
   echo "[menubar] bundled cat sprites ($(find assets/sprites -name '*.png' | wc -l | tr -d ' ') PNGs)"
 fi
 
+# The companion cat sprite (assets/catsprite.png → Resources/) — the drawn black-cat-with-lime-stripes.
+[ -f assets/catsprite.png ] && { mkdir -p "$APP/Contents/Resources"; cp assets/catsprite.png "$APP/Contents/Resources/catsprite.png"; echo "[menubar] bundled cat sprite"; }
+
 # Cat sounds — the mew the companion cat plays on intro (sounds/mew.wav → Resources/sounds/).
 if [ -d sounds ]; then
   mkdir -p "$APP/Contents/Resources/sounds"

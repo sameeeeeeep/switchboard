@@ -251,7 +251,6 @@ private struct UserCatView: View {
                     .fixedSize().transition(.opacity)
             }
             catBody
-                .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)
                 .contentShape(Rectangle())
                 .contextMenu {
                     Button("What's this?") { TeamCursorsOverlay.shared.showCatIntro() }
@@ -266,49 +265,29 @@ private struct UserCatView: View {
         .onChange(of: brain.catY) { _ in reportFrame() }
         .onChange(of: model.userCatIntro) { show in if show { hideIntroSoon() } }
     }
-    // The cat's LOOK — all CONFIGURABLE below (founder: "do it procedurally… it's configurable"). A black
-    // body with GLOWING LIME TIGER/TABBY STRIPES: VERTICAL tapering bands (tall on the torso, short at the
-    // head/tail — like real tiger stripes) masked to the sprite, so they conform to EVERY animation frame,
-    // plus a lime halo. Not hand-drawn art — procedural. A true drawn/SVG cat is the later, higher-fidelity path.
-    private static let bodyColor   = Color.black    // swap for a purple to try the alt
-    private static let stripeColor = Color.lime
-    private static let stripeCount = 7
-    private static let stripeWidth: CGFloat = 3.2
-    private static let stripeLean  = 8.0            // degrees — a slight fur-flow lean
-    private static let catSize: CGFloat = 62
-
-    private var stripes: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<UserCatView.stripeCount, id: \.self) { i in
-                let mid = Double(UserCatView.stripeCount - 1) / 2
-                let taper = mid == 0 ? 1 : 1 - 0.7 * (abs(Double(i) - mid) / mid)   // tall centre → short ends
-                Capsule().fill(UserCatView.stripeColor)
-                    .frame(width: UserCatView.stripeWidth, height: UserCatView.catSize * CGFloat(taper))
+    // The cat's LOOK: a DRAWN pixel sprite (black kitten with glowing lime tabby stripes — real tabby
+    // markings on the back, legs, tail + forehead, per the founder's reference), bundled as catsprite.png.
+    // Not procedural: the stripes are part of the art. It slides to follow your cursor (the brain drives
+    // catX/catY); a static sitting pose, no walk cycle.
+    private static let catSize: CGFloat = 68
+    private static let sprite: NSImage? = {
+        if let u = Bundle.main.url(forResource: "catsprite", withExtension: "png") { return NSImage(contentsOf: u) }
+        return nil
+    }()
+    private var catBody: some View {
+        Group {
+            if let img = UserCatView.sprite {
+                Image(nsImage: img).interpolation(.none).resizable().scaledToFit()
+            } else {
+                Image(systemName: "cat.fill").resizable().scaledToFit().foregroundColor(.lime)
             }
         }
         .frame(width: UserCatView.catSize, height: UserCatView.catSize)
-        .rotationEffect(.degrees(UserCatView.stripeLean))
+        .shadow(color: .lime.opacity(0.35), radius: 5)   // a touch of extra glow
     }
-    private var catBody: some View {
-        ZStack {
-            catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize + 8, height: UserCatView.catSize + 8)
-                .colorMultiply(.lime).blur(radius: 8).opacity(0.9)                  // lime glow halo behind
-            ZStack {
-                UserCatView.bodyColor
-                stripes
-            }
-            .frame(width: UserCatView.catSize, height: UserCatView.catSize)
-            .mask(catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize, height: UserCatView.catSize))
-            .shadow(color: .lime.opacity(0.7), radius: 5)                           // outer glow so it pops
-        }
-    }
-    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 34, y: brain.catY - 40, width: 68, height: 82) }
+    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 38, y: brain.catY - 42, width: 76, height: 88) }
     private func hideIntroSoon() {
         Task { @MainActor in try? await Task.sleep(nanoseconds: 6_000_000_000); withAnimation { model.userCatIntro = false } }
-    }
-    private var catImage: Image {
-        if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
-        return Image(systemName: "cat.fill")
     }
 }
 
