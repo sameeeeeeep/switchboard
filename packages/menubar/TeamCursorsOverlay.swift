@@ -243,7 +243,7 @@ private struct UserCatView: View {
     var body: some View {
         VStack(spacing: 2) {
             if model.userCatIntro {
-                Text("hi, i'm your cat — i hang out while you work.\nright-click me anytime.")
+                Text("hi, i'm your cat — i keep you company while you work.\n(turn me off in Settings › Companion)")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .multilineTextAlignment(.center).foregroundColor(.black)
                     .padding(.horizontal, 9).padding(.vertical, 5)
@@ -266,25 +266,40 @@ private struct UserCatView: View {
         .onChange(of: brain.catY) { _ in reportFrame() }
         .onChange(of: model.userCatIntro) { show in if show { hideIntroSoon() } }
     }
-    // The cat's LOOK: a coloured body with GLOWING LIME STRIPES, plus a lime halo. No custom art needed —
-    // the white sprite is used as a MASK, and (base colour + diagonal lime bars) is painted through it, so
-    // the stripes conform to the cat's silhouette on EVERY animation frame. Body colour is one line to flip.
-    private static let bodyColor = Color.black    // black cat, lime stripes (most on-brand); swap for purple
+    // The cat's LOOK — all CONFIGURABLE below (founder: "do it procedurally… it's configurable"). A black
+    // body with GLOWING LIME TIGER/TABBY STRIPES: VERTICAL tapering bands (tall on the torso, short at the
+    // head/tail — like real tiger stripes) masked to the sprite, so they conform to EVERY animation frame,
+    // plus a lime halo. Not hand-drawn art — procedural. A true drawn/SVG cat is the later, higher-fidelity path.
+    private static let bodyColor   = Color.black    // swap for a purple to try the alt
+    private static let stripeColor = Color.lime
+    private static let stripeCount = 7
+    private static let stripeWidth: CGFloat = 3.2
+    private static let stripeLean  = 8.0            // degrees — a slight fur-flow lean
+    private static let catSize: CGFloat = 62
+
+    private var stripes: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<UserCatView.stripeCount, id: \.self) { i in
+                let mid = Double(UserCatView.stripeCount - 1) / 2
+                let taper = mid == 0 ? 1 : 1 - 0.7 * (abs(Double(i) - mid) / mid)   // tall centre → short ends
+                Capsule().fill(UserCatView.stripeColor)
+                    .frame(width: UserCatView.stripeWidth, height: UserCatView.catSize * CGFloat(taper))
+            }
+        }
+        .frame(width: UserCatView.catSize, height: UserCatView.catSize)
+        .rotationEffect(.degrees(UserCatView.stripeLean))
+    }
     private var catBody: some View {
         ZStack {
-            catImage.interpolation(.none).resizable().frame(width: 66, height: 66)
-                .colorMultiply(.lime).blur(radius: 7).opacity(0.8)                 // lime glow halo behind
+            catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize + 8, height: UserCatView.catSize + 8)
+                .colorMultiply(.lime).blur(radius: 8).opacity(0.9)                  // lime glow halo behind
             ZStack {
                 UserCatView.bodyColor
-                HStack(spacing: 7) {                                                // diagonal lime stripes
-                    ForEach(0..<14, id: \.self) { _ in Rectangle().fill(Color.lime).frame(width: 4) }
-                }
-                .frame(width: 140, height: 140)
-                .rotationEffect(.degrees(32))
+                stripes
             }
-            .frame(width: 60, height: 60)
-            .mask(catImage.interpolation(.none).resizable().frame(width: 60, height: 60))   // clip to the cat
-            .shadow(color: .lime.opacity(0.55), radius: 4)                          // outer glow
+            .frame(width: UserCatView.catSize, height: UserCatView.catSize)
+            .mask(catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize, height: UserCatView.catSize))
+            .shadow(color: .lime.opacity(0.7), radius: 5)                           // outer glow so it pops
         }
     }
     private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 34, y: brain.catY - 40, width: 68, height: 82) }
