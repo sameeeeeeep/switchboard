@@ -80,13 +80,29 @@ final class CatControlView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }   // grab the cat without activating the app
 
     // Left-drag: pick the cat up and carry it. The overlay's brain drives catX/catY from the live mouse.
-    override func mouseDown(with event: NSEvent) { dragging = true; brain?.beginDrag() }
+    // A short trail of recent positions gives the release VELOCITY — let go fast and the cat is THROWN
+    // (maccat's toss): it flies, bounces, tumbles to a stop.
+    private var trail: [(p: CGPoint, t: TimeInterval)] = []
+    override func mouseDown(with event: NSEvent) { dragging = true; trail.removeAll(); brain?.beginDrag() }
     override func mouseDragged(with event: NSEvent) {
         guard dragging else { return }
         let l = NSEvent.mouseLocation                         // global, bottom-left origin
-        brain?.dragTo(x: l.x, y: screenH - l.y)               // → top-left px (the brain's space)
+        let p = CGPoint(x: l.x, y: screenH - l.y)             // → top-left px (the brain's space)
+        brain?.dragTo(x: p.x, y: p.y)
+        trail.append((p, Date().timeIntervalSince1970)); if trail.count > 8 { trail.removeFirst() }
     }
-    override func mouseUp(with event: NSEvent) { guard dragging else { return }; dragging = false; brain?.endDrag() }
+    override func mouseUp(with event: NSEvent) {
+        guard dragging else { return }; dragging = false
+        // velocity over the last ~100ms of the drag
+        let now = Date().timeIntervalSince1970
+        let recent = trail.filter { now - $0.t < 0.12 }
+        if let a = recent.first, let b = recent.last, b.t > a.t {
+            let dt = CGFloat(b.t - a.t)
+            let vx = (b.p.x - a.p.x) / dt, vy = (b.p.y - a.p.y) / dt
+            if hypot(vx, vy) > 550 { brain?.throwCat(vx: vx * 0.9, vy: vy * 0.9); trail.removeAll(); return }
+        }
+        trail.removeAll(); brain?.endDrag()
+    }
 
     // Right-click: the cat's menu.
     override func rightMouseDown(with event: NSEvent) {
@@ -224,7 +240,7 @@ final class CatControlView: NSView {
     }
     private func syncControlWindow() {
         guard let w = controlWindow, let b = model.userCatBrain, let screen = NSScreen.main else { return }
-        let s = model.userCatSize + 16
+        let s = model.userCatSize      // hot-box = the cat's visual size only — the smallest possible dead zone
         // brain coords are top-left px on the screen; window frames are bottom-left, screen-offset
         let x = screen.frame.minX + b.catX - s / 2
         let y = screen.frame.minY + (screen.frame.height - b.catY) - s / 2
@@ -505,10 +521,51 @@ final class PesterCatBrain: ObservableObject {
         scheduleNext(after: 1.2)
     }
     private func command(_ a: CatAction) {
-        held = false
+        held = false; stopPhysics()
         idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
         forcedAction = a; action = a; frame = 0
     }
+
+    // ── Standoff: the cat keeps its distance from the pointer so the cursor never sits ON it (a cursor
+    // parked on the cat can't scroll the page beneath). Applies to following AND idle wandering. ──
+    static let standoff: CGFloat = 120
+
+    // ── Toss physics (maccat's throw): release a drag with speed and the cat flies, arcs under gravity,
+    // bounces off the floor/edges with a little energy loss, tumbles to a stop, then gets up. ──
+    private var physicsTimer: Timer?
+    private var vx: CGFloat = 0, vy: CGFloat = 0        // px/s, top-left space (vy > 0 = down)
+    private(set) var thrown = false
+    func throwCat(vx ivx: CGFloat, vy ivy: CGFloat) {
+        held = false; forcedAction = nil
+        idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
+        vx = ivx; vy = ivy; thrown = true
+        action = .jumping; frame = 0
+        physicsTimer?.invalidate()
+        var last = Date()
+        physicsTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            MainActor.assumeIsolated {
+                guard let self else { t.invalidate(); return }
+                let now = Date(); let dt = CGFloat(min(0.05, now.timeIntervalSince(last))); last = now
+                let g: CGFloat = 2600, bounce: CGFloat = 0.55, drag: CGFloat = 0.995, floorY = self.screenH - 34
+                self.vy += g * dt; self.vx *= drag
+                self.catX += self.vx * dt; self.catY += self.vy * dt
+                if self.catX < 30 { self.catX = 30; self.vx = -self.vx * bounce }
+                if self.catX > self.screenW - 30 { self.catX = self.screenW - 30; self.vx = -self.vx * bounce }
+                if self.catY < 30 { self.catY = 30; self.vy = -self.vy * bounce }
+                if self.catY >= floorY {
+                    self.catY = floorY; self.vy = -self.vy * bounce; self.vx *= 0.8
+                    if abs(self.vy) < 80 { self.vy = 0 }                              // no micro-bounces
+                }
+                self.facingRight = self.vx >= 0
+                // settled on the floor → land, lie there a beat, then get up and carry on
+                if self.catY >= floorY - 0.5 && abs(self.vy) < 1 && abs(self.vx) < 40 {
+                    self.stopPhysics(); self.action = .lieDown; self.frame = 0
+                    self.scheduleNext(after: 1.4) { self.follow() }
+                }
+            }
+        }
+    }
+    private func stopPhysics() { physicsTimer?.invalidate(); physicsTimer = nil; thrown = false; vx = 0; vy = 0 }
 
     private let screenW: CGFloat
     private let screenH: CGFloat
@@ -546,8 +603,8 @@ final class PesterCatBrain: ObservableObject {
     }
     func stop() {
         running = false
-        [frameTimer, idleTimer, walkTimer, mouseTracker].forEach { $0?.invalidate() }
-        frameTimer = nil; idleTimer = nil; walkTimer = nil; mouseTracker = nil
+        [frameTimer, idleTimer, walkTimer, mouseTracker, physicsTimer].forEach { $0?.invalidate() }
+        frameTimer = nil; idleTimer = nil; walkTimer = nil; mouseTracker = nil; physicsTimer = nil
     }
 
     // ── Follow the cursor: walk if roughly level, hop up/down like stairs otherwise ──
@@ -557,12 +614,13 @@ final class PesterCatBrain: ObservableObject {
                 guard let self, let m = self.targetFn() else { return }
                 let moved = abs(m.x - self.lastMouse.x) > 3 || abs(m.y - self.lastMouse.y) > 3
                 self.lastMouse = m
-                if self.held || self.forcedAction != nil { return }        // picked up / commanded: don't follow
+                if self.held || self.thrown || self.forcedAction != nil { return }   // picked up / airborne / commanded
                 if self.action == .sleeping || self.action == .lieDown { return }
                 guard moved else { return }
                 let dx = m.x - self.catX, dy = m.y - self.catY
                 let dist = hypot(dx, dy)
-                if dist < 70 {                                    // caught up → sit and face you
+                let so = PesterCatBrain.standoff
+                if dist < so {                                    // close enough → sit and face you (never ON the pointer)
                     if self.action == .walking || self.action == .jumping {
                         self.walkTimer?.invalidate()
                         self.action = .idle; self.facingRight = dx > 0; self.isFollowingMouse = false
@@ -571,11 +629,13 @@ final class PesterCatBrain: ObservableObject {
                 }
                 self.idleTimer?.invalidate(); self.walkTimer?.invalidate()
                 self.isFollowingMouse = true
+                // aim for a point one standoff SHORT of the cursor along the approach, so it stops beside you
+                let sx: CGFloat = dx >= 0 ? 1 : -1
+                let goalX = self.clampX(m.x - sx * so)
                 if abs(dy) < self.platformHeight * 0.6 {
-                    let tx = self.clampX(self.catX + dx * 0.7)
-                    self.platformWalk(to: tx) { self.action = .idle; self.isFollowingMouse = false }
+                    self.platformWalk(to: goalX) { self.action = .idle; self.isFollowingMouse = false }
                 } else {
-                    self.staircaseTo(targetX: m.x, targetY: m.y) { self.action = .idle; self.isFollowingMouse = false }
+                    self.staircaseTo(targetX: goalX, targetY: m.y) { self.action = .idle; self.isFollowingMouse = false }
                 }
             }
         }
@@ -651,7 +711,14 @@ final class PesterCatBrain: ObservableObject {
     // ── Idle personality when you're not moving the cursor: wander to a window top, groom, stretch, sit ──
     private func pickNextAction() {
         idleTimer?.invalidate(); walkTimer?.invalidate()
-        if isFollowingMouse || !running || held || forcedAction != nil { return }   // commanded/held: no wandering
+        if isFollowingMouse || !running || held || thrown || forcedAction != nil { return }   // commanded/held/airborne: no wandering
+        // keep-out: never wander to a spot under/next to the pointer (a cursor parked on the cat can't scroll)
+        func keepOut(_ x: CGFloat) -> CGFloat {
+            guard let m = targetFn() else { return x }
+            let so = PesterCatBrain.standoff
+            if abs(x - m.x) < so && abs(catY - m.y) < 90 { return clampX(x < m.x ? m.x - so : m.x + so) }
+            return x
+        }
         // A teammate cat stays ON their cursor — no wandering off. Just sit and occasionally groom in place.
         if !wander {
             let roll = Int.random(in: 0...100)
@@ -662,11 +729,11 @@ final class PesterCatBrain: ObservableObject {
         }
         let roll = Int.random(in: 0...100)
         if roll < 30, let t = getWindowTops().randomElement() {
-            let tx = clampX(CGFloat.random(in: (t.minX + 40)...max(t.minX + 41, t.maxX - 40)))
+            let tx = keepOut(clampX(CGFloat.random(in: (t.minX + 40)...max(t.minX + 41, t.maxX - 40))))
             walkTo(x: tx, y: t.minY) { self.action = .idle; self.scheduleNext(after: Double.random(in: 3...6)) }
         } else if roll < 55 {
             let dist = CGFloat.random(in: 80...240)
-            let tx = clampX(Bool.random() ? catX + dist : catX - dist)
+            let tx = keepOut(clampX(Bool.random() ? catX + dist : catX - dist))
             platformWalk(to: tx) { self.action = .idle; self.scheduleNext(after: Double.random(in: 1.5...4)) }
         } else if roll < 72 {
             action = .grooming; frame = 0; scheduleNext(after: 3) { self.action = .idle; self.scheduleNext(after: 1) }
