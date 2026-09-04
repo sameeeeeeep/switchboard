@@ -768,6 +768,13 @@ final class Model: ObservableObject {
     @Published var shortcuts = readShortcutCfg()   // the summon / talk gesture bindings (rebindable presets)
     @Published var team: TeamState? = nil          // in-team state (nil = off/no-team) — mirror of the daemon's team.status()
     @Published var teamEnabled = false             // the Team Mode switch itself (ON even before a team exists)
+    /// A team is LIVE — enabled AND the host is listening or a member is connected (or peers are present).
+    /// Drives the base notch's pulsing team rim and the panel "team" button's active state. A team can be
+    /// live while signed OUT (Team Mode needs no login), so this is independent of `signedIn`.
+    var teamActive: Bool {
+        guard teamEnabled, let t = team else { return false }
+        return t.connected == true || t.members.count > 1
+    }
     let bundled = hasBundledDaemon()
     let translocated = isTranslocated()
     var toast: String? = nil { didSet { objectWillChange.send() } }
@@ -1257,6 +1264,11 @@ struct Panel: View {
                 Text("DAEMON").kicker()
                 HStack(spacing: 8) {
                     GhostButton(icon: "link", label: "pairing", action: onToken).help("Copy the pairing token")
+                    // Team Mode lives here next to pairing (not buried in Settings) — one tap opens the TEAM
+                    // section. The filled glyph mirrors the notch: person.2.fill = a team is live right now.
+                    GhostButton(icon: model.teamActive ? "person.2.fill" : "person.2", label: "team",
+                                action: { withAnimation(.easeOut(duration: 0.14)) { showSettings = true; openSection = "team" } })
+                        .help(model.teamActive ? "Team Mode — live" : "Team Mode (multiplayer)")
                     GhostButton(icon: "text.alignleft", label: "logs", action: onLogs).help("Open the daemon log")
                     Spacer(minLength: 0)
                 }
@@ -2335,6 +2347,7 @@ struct OrbView: View {
     @ObservedObject var glow: GlowModel
     var onOpen: () -> Void
     @State private var hovering = false
+    @State private var teamPulse = false
     var body: some View {
         // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
         let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
@@ -2353,12 +2366,20 @@ struct OrbView: View {
                         .foregroundColor(tint.opacity(0.9)).padding(.bottom, 2)
                 }
             }
+            // TEAM LIVE — a breathing lime rim + glow AROUND the notch. This reads on BOTH Mac types: the
+            // interior dots sit behind the camera on a notched Mac, but the rim/glow render around the
+            // physical notch. Motion (a static rim = merely running) is what separates it from the health tint.
+            if model.teamActive {
+                shape.stroke(Color.lime.opacity(teamPulse ? 0.85 : 0.30), lineWidth: 1.4)
+                    .shadow(color: Color.lime.opacity(teamPulse ? 0.50 : 0.12), radius: teamPulse ? 8 : 3, y: 1)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(hovering ? 0.28 : 0.18) : .clear, radius: 4, y: 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }        // hover only PREVIEWS the click target — it does not open
         .onTapGesture { onOpen() }        // a deliberate CLICK opens the panel
+        .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { teamPulse = true } }
         .help("Click to open Switchboard")
     }
 }
