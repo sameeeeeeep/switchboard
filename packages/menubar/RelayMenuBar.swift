@@ -2370,8 +2370,11 @@ struct OrbView: View {
             // interior dots sit behind the camera on a notched Mac, but the rim/glow render around the
             // physical notch. Motion (a static rim = merely running) is what separates it from the health tint.
             if model.teamActive {
-                shape.stroke(Color.lime.opacity(teamPulse ? 0.85 : 0.30), lineWidth: 1.4)
-                    .shadow(color: Color.lime.opacity(teamPulse ? 0.50 : 0.12), radius: teamPulse ? 8 : 3, y: 1)
+                // Two stacked shadows = a bigger bloom that pushes well past the notch rim. Slow cadence
+                // (see .onAppear) so it reads as a calm heartbeat, clearly distinct from the static health glow.
+                shape.stroke(Color.lime.opacity(teamPulse ? 0.95 : 0.26), lineWidth: 1.6)
+                    .shadow(color: Color.lime.opacity(teamPulse ? 0.72 : 0.10), radius: teamPulse ? 16 : 4, y: 0)
+                    .shadow(color: Color.lime.opacity(teamPulse ? 0.36 : 0.0),  radius: teamPulse ? 28 : 7, y: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2379,7 +2382,7 @@ struct OrbView: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }        // hover only PREVIEWS the click target — it does not open
         .onTapGesture { onOpen() }        // a deliberate CLICK opens the panel
-        .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { teamPulse = true } }
+        .onAppear { withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { teamPulse = true } }
         .help("Click to open Switchboard")
     }
 }
