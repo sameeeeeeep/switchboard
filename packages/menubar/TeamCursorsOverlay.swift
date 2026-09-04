@@ -34,6 +34,21 @@ struct PesterSprite: Equatable {
     @Published var cursors: [RemoteCursor] = []
     @Published var pester: PesterSprite? = nil
     @Published var userCat = false   // your OWN ambient cat — trails your cursor, independent of team/pester
+    @Published var userCatIntro = false          // show the one-time "hi, I'm your cat" bubble
+    @Published var userCatFrame: CGRect = .zero   // the cat's live rect (top-left px) — for right-click hit-testing
+    // Callbacks the overlay wires so the cat's right-click menu can act on the controller.
+    var onHideCat: (() -> Void)?
+    var onCatSettings: (() -> Void)?
+}
+
+/// The companion cat's little voice. Plays the bundled mew (Resources/sounds/mew.wav); no-op if absent.
+enum CatVoice {
+    private static var sound: NSSound? = {
+        if let u = Bundle.main.url(forResource: "mew", withExtension: "wav", subdirectory: "sounds")
+            ?? Bundle.main.url(forResource: "mew", withExtension: "wav") { return NSSound(contentsOf: u, byReference: true) }
+        return nil
+    }()
+    static func mew() { sound?.stop(); sound?.play() }
 }
 
 @MainActor final class TeamCursorsOverlay {
@@ -50,6 +65,9 @@ struct PesterSprite: Equatable {
 
     /// Set by the controller to actually send our cursor to the daemon (→ team). x,y normalized 0..1.
     var onLocalCursor: ((Double, Double) -> Void)?
+
+    /// Wired by the controller: the cat's "Cat settings…" menu item opens the panel's Companion section.
+    var onCatSettings: (() -> Void)? { didSet { model.onCatSettings = onCatSettings } }
 
     /// A teammate's cursor arrived (from the daemon `teamCursor` event). Show the overlay + upsert.
     func update(deviceId: String, name: String, x: Double, y: Double) {
@@ -105,8 +123,21 @@ struct PesterSprite: Equatable {
     func setUserCat(_ on: Bool) {
         guard on != model.userCat else { return }
         model.userCat = on
-        if on { ensurePanel() } else { updatePanelVisibility() }
+        if on {
+            ensurePanel()
+            if !UserDefaults.standard.bool(forKey: "userCatIntroShown") {
+                model.userCatIntro = true
+                UserDefaults.standard.set(true, forKey: "userCatIntroShown")
+            }
+            CatVoice.mew()                       // a hello mew
+        } else {
+            model.userCatFrame = .zero
+            updatePanelVisibility()
+        }
     }
+
+    /// Re-show the intro bubble (+ a mew) — the "What's this?" right-click item.
+    func showCatIntro() { guard model.userCat else { return }; model.userCatIntro = true; CatVoice.mew() }
 
     // Show the overlay iff SOMETHING wants it (a teammate cursor, a pester, or your own cat); else tear down.
     private func updatePanelVisibility() {
@@ -145,12 +176,34 @@ struct PesterSprite: Equatable {
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = false
-        p.ignoresMouseEvents = true                            // pure decoration — clicks pass through
+        // NOT globally click-through: the CatHitView below passes every click through EXCEPT one that lands
+        // on your cat, so right-click reaches the cat while the rest of the screen stays untouched.
+        p.ignoresMouseEvents = false
         p.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
-        p.contentView = NSHostingView(rootView: TeamCursorsView(model: model, screenSize: screen.frame.size))
+        let host = NSHostingView(rootView: TeamCursorsView(model: model, screenSize: screen.frame.size))
+        host.frame = NSRect(origin: .zero, size: screen.frame.size)
+        host.autoresizingMask = [.width, .height]
+        // "Hide the cat" is self-contained — turn it off + remember the choice.
+        model.onHideCat = { [weak self] in self?.setUserCat(false); UserDefaults.standard.set(false, forKey: "userCatOn") }
+        let hit = CatHitView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        hit.model = model
+        hit.addSubview(host)
+        p.contentView = hit
         p.setFrame(screen.frame, display: true)
         p.orderFrontRegardless()
         panel = p
+    }
+}
+
+/// The overlay's content view: transparent to the mouse EVERYWHERE except over your cat's live rect, so a
+/// right-click on the cat opens its menu while every other click falls through to the app underneath.
+/// Flipped so its coordinates match the SwiftUI/brain space (top-left origin) the cat frame is reported in.
+final class CatHitView: NSView {
+    weak var model: TeamCursorsModel?
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let model, model.userCat, model.userCatFrame.contains(point) else { return nil }
+        return super.hitTest(point)   // → the SwiftUI host → the cat's .contextMenu
     }
 }
 
@@ -171,11 +224,12 @@ private struct TeamCursorsView: View {
                     .id(p.from)   // rebuild (re-spawn) when the sender changes
             }
             if model.userCat {
-                UserCatView(screenW: screenSize.width, screenH: screenSize.height)
+                UserCatView(model: model, screenW: screenSize.width, screenH: screenSize.height)
             }
         }
         .ignoresSafeArea()
-        .allowsHitTesting(false)
+        // Hit-testing stays ON so your cat's right-click menu works; the AppKit CatHitView gates it — only
+        // a click on the cat's rect reaches SwiftUI, everything else falls through to the app underneath.
     }
     // Deterministic per-person colour (same idea as the presence dots).
     static func color(for id: String) -> Color {
@@ -195,23 +249,65 @@ enum CatAction { case idle, sitting, walking, jumping, grooming, playing, stretc
 // the time; not a teammate, not a pest. Brand-lime, no name tag — it's yours. Same brain as the pester
 // (wander = a lively pet, not stuck on the pointer), targeting the live LOCAL cursor.
 private struct UserCatView: View {
+    @ObservedObject var model: TeamCursorsModel
     @StateObject private var brain: PesterCatBrain
-    init(screenW: CGFloat, screenH: CGFloat) {
+    init(model: TeamCursorsModel, screenW: CGFloat, screenH: CGFloat) {
+        self.model = model
         _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH, wander: true, target: {
             let l = NSEvent.mouseLocation
             return CGPoint(x: l.x, y: screenH - l.y)   // local cursor, top-left px
         }))
     }
     var body: some View {
-        catImage
-            .interpolation(.none).resizable()
+        VStack(spacing: 2) {
+            if model.userCatIntro {
+                Text("hi, i'm your cat — i hang out while you work.\nright-click me anytime.")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .multilineTextAlignment(.center).foregroundColor(.black)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.lime))
+                    .fixedSize().transition(.opacity)
+            }
+            catBody
+                .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button("What's this?") { TeamCursorsOverlay.shared.showCatIntro() }
+                    Button("Hide the cat") { model.onHideCat?() }
+                    Button("Cat settings…") { model.onCatSettings?() }
+                }
+        }
+        .position(x: brain.catX, y: brain.catY)
+        .onAppear { brain.start(); reportFrame(); if model.userCatIntro { hideIntroSoon() } }
+        .onDisappear { brain.stop() }
+        .onChange(of: brain.catX) { _ in reportFrame() }
+        .onChange(of: brain.catY) { _ in reportFrame() }
+        .onChange(of: model.userCatIntro) { show in if show { hideIntroSoon() } }
+    }
+    // The cat's LOOK: a coloured body with GLOWING LIME STRIPES, plus a lime halo. No custom art needed —
+    // the white sprite is used as a MASK, and (base colour + diagonal lime bars) is painted through it, so
+    // the stripes conform to the cat's silhouette on EVERY animation frame. Body colour is one line to flip.
+    private static let bodyColor = Color.black    // black cat, lime stripes (most on-brand); swap for purple
+    private var catBody: some View {
+        ZStack {
+            catImage.interpolation(.none).resizable().frame(width: 66, height: 66)
+                .colorMultiply(.lime).blur(radius: 7).opacity(0.8)                 // lime glow halo behind
+            ZStack {
+                UserCatView.bodyColor
+                HStack(spacing: 7) {                                                // diagonal lime stripes
+                    ForEach(0..<14, id: \.self) { _ in Rectangle().fill(Color.lime).frame(width: 4) }
+                }
+                .frame(width: 140, height: 140)
+                .rotationEffect(.degrees(32))
+            }
             .frame(width: 60, height: 60)
-            .colorMultiply(.lime)                                // your cat wears the brand
-            .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)
-            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
-            .position(x: brain.catX, y: brain.catY)
-            .onAppear { brain.start() }
-            .onDisappear { brain.stop() }
+            .mask(catImage.interpolation(.none).resizable().frame(width: 60, height: 60))   // clip to the cat
+            .shadow(color: .lime.opacity(0.55), radius: 4)                          // outer glow
+        }
+    }
+    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 34, y: brain.catY - 40, width: 68, height: 82) }
+    private func hideIntroSoon() {
+        Task { @MainActor in try? await Task.sleep(nanoseconds: 6_000_000_000); withAnimation { model.userCatIntro = false } }
     }
     private var catImage: Image {
         if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }

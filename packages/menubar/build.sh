@@ -96,6 +96,13 @@ if [ -d assets/sprites ]; then
   echo "[menubar] bundled cat sprites ($(find assets/sprites -name '*.png' | wc -l | tr -d ' ') PNGs)"
 fi
 
+# Cat sounds — the mew the companion cat plays on intro (sounds/mew.wav → Resources/sounds/).
+if [ -d sounds ]; then
+  mkdir -p "$APP/Contents/Resources/sounds"
+  cp sounds/*.wav "$APP/Contents/Resources/sounds/" 2>/dev/null || true
+  echo "[menubar] bundled cat sounds"
+fi
+
 # Skill bodies — the "wear this skill" content behind a listing's components.skills refs
 # (e.g. "yc/register" → wrapps/yc/skills/register.md). Bundled flat as Resources/skills/<wrapp>/<name>.md
 # so the god surface can load the real instructions into God's context (docs/GOD-HANDS.md). A listing

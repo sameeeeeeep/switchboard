@@ -1162,6 +1162,7 @@ struct Panel: View {
     @State private var showSettings = false      // the right pane flips to Settings (in-panel, one grammar)
     @State private var nameDraft = ""            // the name field's working copy, committed on save
     @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
+    @AppStorage("userCatOn") private var userCatOn = true   // your companion cat on/off (persisted; drives the overlay)
     @State private var guideVoiceover = CursorGuide.shared.voiceoverOn  // mirrors the fn-m guide preference in Settings
 
     private var signedOut: Bool { model.running && !model.signedIn }
@@ -1462,6 +1463,8 @@ struct Panel: View {
                             onOpenFolder: onOpenTeamFolder, onCopyInvite: onCopyInvite)
             }
             Rectangle().fill(Color.edge).frame(height: 1)
+            disclosure("companion", "COMPANION", summary: userCatOn ? "Cat on" : "off") { companionSection }
+            Rectangle().fill(Color.edge).frame(height: 1)
             Button(action: { showSettings = false; onTour() }) {
                 HStack(spacing: 9) {
                     Image(systemName: "sparkles").font(.system(size: 12)).foregroundColor(.lime).frame(width: 18)
@@ -1558,6 +1561,19 @@ struct Panel: View {
     // GUIDED HELP — the two live-guide preferences, surfaced as Settings rows instead of shortcut-only:
     // spoken voiceover (fn m) as a toggle, and a reminder that screenshot+note feedback (fn ↓) works in
     // any guide. Reversible + legible: the toggle drives the SAME persisted key CursorGuide reads.
+    // Companion — your cat (the first "cat wrapp"). Toggle drives the overlay + persists via @AppStorage.
+    private var companionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $userCatOn) {
+                Text("Your cat").font(.hanken(13)).foregroundColor(.ink)
+            }
+            .toggleStyle(.switch).tint(.lime)
+            .onChange(of: userCatOn) { on in TeamCursorsOverlay.shared.setUserCat(on) }
+            Text("A black cat with lime stripes that hangs out and follows your cursor while you work. Right-click it anytime for options.")
+                .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var guideSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: {
@@ -4704,6 +4720,7 @@ struct ActionConsentDrop: View {
         }
         // Your OWN ambient cat (the first "cat wrapp") — follows your cursor. Default ON so it's there
         // on first run; persisted, so a later toggle sticks. (God's cat + real store-wrapp packaging next.)
+        TeamCursorsOverlay.shared.onCatSettings = { [weak self] in self?.showPanel() }
         let catOn = UserDefaults.standard.object(forKey: "userCatOn") == nil ? true : UserDefaults.standard.bool(forKey: "userCatOn")
         TeamCursorsOverlay.shared.setUserCat(catOn)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
