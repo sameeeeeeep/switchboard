@@ -1566,7 +1566,7 @@ struct Panel: View {
     private var companionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: $userCatOn) {
-                Text("Your cat").font(.hanken(13)).foregroundColor(.ink)
+                Text("God's cat").font(.hanken(13)).foregroundColor(.ink)
             }
             .toggleStyle(.switch).tint(.lime)
             .onChange(of: userCatOn) { on in TeamCursorsOverlay.shared.setUserCat(on) }
@@ -1577,7 +1577,7 @@ struct Panel: View {
                 .pickerStyle(.segmented).labelsHidden()
                 .onChange(of: userCatSize) { s in TeamCursorsOverlay.shared.setUserCatSize(CGFloat(s)) }
             }
-            Text("A lime cat that hangs out and follows your cursor while you work.")
+            Text("God's cat — a lime cat that hangs out and follows your cursor while you work.")
                 .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
         }
     }
