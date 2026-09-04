@@ -37,6 +37,7 @@ struct PesterSprite: Equatable {
     @Published var userCatSize: CGFloat = 64     // the cat's on-screen size (px) — user-adjustable
     @Published var userCatIntro = false          // show the one-time "hi, I'm your cat" bubble
     @Published var userCatFrame: CGRect = .zero   // the cat's live rect (top-left px) — for right-click hit-testing
+    @Published var userCatBrain: PesterCatBrain? = nil   // the user cat's SHARED brain: the view renders it, the control window drives it
     // Callbacks the overlay wires so the cat's right-click menu can act on the controller.
     var onHideCat: (() -> Void)?
     var onCatSettings: (() -> Void)?
@@ -50,6 +51,64 @@ enum CatVoice {
         return nil
     }()
     static func mew() { sound?.stop(); sound?.play() }
+}
+
+/// The cat-sized control window (see TeamCursorsOverlay.ensureControlWindow). Transparent, non-activating, and it
+/// takes the mouse ONLY inside its little box that rides along with the cat: left-drag = pick the cat up and carry
+/// it; right-click = the cat's menu (nap / play / groom / come to the notch / follow me / hide). The fullscreen
+/// overlay underneath draws the cat and stays fully click-through.
+final class CatControlWindow: NSPanel {
+    init(brain: PesterCatBrain, model: TeamCursorsModel, screenH: CGFloat) {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 80, height: 80), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        level = .screenSaver
+        isOpaque = false; backgroundColor = .clear; hasShadow = false
+        ignoresMouseEvents = false                                   // the ONE window that takes input — cat-sized only
+        collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        let v = CatControlView(frame: NSRect(x: 0, y: 0, width: 80, height: 80))
+        v.brain = brain; v.model = model; v.screenH = screenH
+        v.autoresizingMask = [.width, .height]
+        contentView = v
+    }
+}
+
+final class CatControlView: NSView {
+    weak var brain: PesterCatBrain?
+    weak var model: TeamCursorsModel?
+    var screenH: CGFloat = 0
+    private var dragging = false
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }   // grab the cat without activating the app
+
+    // Left-drag: pick the cat up and carry it. The overlay's brain drives catX/catY from the live mouse.
+    override func mouseDown(with event: NSEvent) { dragging = true; brain?.beginDrag() }
+    override func mouseDragged(with event: NSEvent) {
+        guard dragging else { return }
+        let l = NSEvent.mouseLocation                         // global, bottom-left origin
+        brain?.dragTo(x: l.x, y: screenH - l.y)               // → top-left px (the brain's space)
+    }
+    override func mouseUp(with event: NSEvent) { guard dragging else { return }; dragging = false; brain?.endDrag() }
+
+    // Right-click: the cat's menu.
+    override func rightMouseDown(with event: NSEvent) {
+        let menu = NSMenu()
+        func add(_ title: String, _ sel: Selector) { let i = NSMenuItem(title: title, action: sel, keyEquivalent: ""); i.target = self; menu.addItem(i) }
+        add("Nap", #selector(doNap))
+        add("Play", #selector(doPlay))
+        add("Groom", #selector(doGroom))
+        add("Come to the notch", #selector(doNotch))
+        add("Follow me", #selector(doFollow))
+        menu.addItem(.separator())
+        add("What's this?", #selector(doIntro))
+        add("Hide the cat", #selector(doHide))
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+    @objc private func doNap()    { brain?.nap() }
+    @objc private func doPlay()   { brain?.play() }
+    @objc private func doGroom()  { brain?.groom() }
+    @objc private func doNotch()  { if let s = NSScreen.main { brain?.goTo(x: s.frame.width / 2, y: 64) } }   // the notch: top-centre
+    @objc private func doFollow() { brain?.follow() }
+    @objc private func doIntro()  { TeamCursorsOverlay.shared.showCatIntro() }
+    @objc private func doHide()   { model?.onHideCat?() }
 }
 
 @MainActor final class TeamCursorsOverlay {
@@ -126,15 +185,54 @@ enum CatVoice {
         model.userCat = on
         if on {
             ensurePanel()
+            // The SHARED brain: the overlay view renders it; the control window (drag / right-click) drives it.
+            if model.userCatBrain == nil, let screen = NSScreen.main {
+                let h = screen.frame.height
+                model.userCatBrain = PesterCatBrain(screenW: screen.frame.width, screenH: h, wander: true, target: {
+                    let l = NSEvent.mouseLocation
+                    return CGPoint(x: l.x, y: h - l.y)   // local cursor, top-left px
+                })
+            }
+            ensureControlWindow()
             if !UserDefaults.standard.bool(forKey: "userCatIntroShown") {
                 model.userCatIntro = true
                 UserDefaults.standard.set(true, forKey: "userCatIntroShown")
             }
             CatVoice.mew()                       // a hello mew
         } else {
+            teardownControlWindow()
+            model.userCatBrain?.stop()
+            model.userCatBrain = nil
             model.userCatFrame = .zero
             updatePanelVisibility()
         }
+    }
+
+    // ── the cat-sized CONTROL window: rides along with the cat and catches ONLY its drag + right-click. This is
+    // the safe way to make the cat interactive — the fullscreen overlay stays click-through (making THAT take
+    // input hung the whole screen). A small moving hot-zone around the cat is the entire cost.
+    private var controlWindow: CatControlWindow?
+    private var controlSync: Timer?
+    private func ensureControlWindow() {
+        guard controlWindow == nil, let brain = model.userCatBrain, let screen = NSScreen.main else { return }
+        let w = CatControlWindow(brain: brain, model: model, screenH: screen.frame.height)
+        w.orderFrontRegardless()
+        controlWindow = w
+        controlSync = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncControlWindow() }
+        }
+    }
+    private func syncControlWindow() {
+        guard let w = controlWindow, let b = model.userCatBrain, let screen = NSScreen.main else { return }
+        let s = model.userCatSize + 16
+        // brain coords are top-left px on the screen; window frames are bottom-left, screen-offset
+        let x = screen.frame.minX + b.catX - s / 2
+        let y = screen.frame.minY + (screen.frame.height - b.catY) - s / 2
+        w.setFrame(NSRect(x: x, y: y, width: s, height: s), display: false)
+    }
+    private func teardownControlWindow() {
+        controlSync?.invalidate(); controlSync = nil
+        controlWindow?.orderOut(nil); controlWindow = nil
     }
 
     /// Re-show the intro bubble (+ a mew) — the "What's this?" right-click item.
@@ -210,8 +308,8 @@ private struct TeamCursorsView: View {
                 PesterCatView(from: p.from, screenW: screenSize.width, screenH: screenSize.height)
                     .id(p.from)   // rebuild (re-spawn) when the sender changes
             }
-            if model.userCat {
-                UserCatView(model: model, screenW: screenSize.width, screenH: screenSize.height)
+            if model.userCat, let b = model.userCatBrain {
+                UserCatView(model: model, brain: b)
             }
         }
         .ignoresSafeArea()
@@ -236,14 +334,7 @@ enum CatAction { case idle, sitting, walking, jumping, grooming, playing, stretc
 // (wander = a lively pet, not stuck on the pointer), targeting the live LOCAL cursor.
 private struct UserCatView: View {
     @ObservedObject var model: TeamCursorsModel
-    @StateObject private var brain: PesterCatBrain
-    init(model: TeamCursorsModel, screenW: CGFloat, screenH: CGFloat) {
-        self.model = model
-        _brain = StateObject(wrappedValue: PesterCatBrain(screenW: screenW, screenH: screenH, wander: true, target: {
-            let l = NSEvent.mouseLocation
-            return CGPoint(x: l.x, y: screenH - l.y)   // local cursor, top-left px
-        }))
-    }
+    @ObservedObject var brain: PesterCatBrain      // SHARED with the control window — drag / right-click drive it
     var body: some View {
         VStack(spacing: 2) {
             if model.userCatIntro {
@@ -256,12 +347,7 @@ private struct UserCatView: View {
             }
             catBody
                 .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)   // keep the animated cat's facing
-                .contentShape(Rectangle())
-                .contextMenu {
-                    Button("What's this?") { TeamCursorsOverlay.shared.showCatIntro() }
-                    Button("Hide the cat") { model.onHideCat?() }
-                    Button("Cat settings…") { model.onCatSettings?() }
-                }
+                // (right-click + drag are handled by the cat-sized CatControlWindow, not here — this overlay stays click-through)
         }
         .position(x: brain.catX, y: brain.catY)
         .onAppear { brain.start(); reportFrame(); if model.userCatIntro { hideIntroSoon() } }
@@ -373,6 +459,57 @@ final class PesterCatBrain: ObservableObject {
     @Published var frame = 0
     @Published var facingRight = true
 
+    // ── Interactive control (re-adding what maccat had; the port dropped drag/actions) ──
+    /// While HELD (being dragged) the sim is suspended and the position is set externally.
+    private(set) var held = false
+    /// A user-commanded action (nap / play / groom) the cat holds until told to follow again.
+    private(set) var forcedAction: CatAction? = nil
+
+    /// Nap: lie down and sleep in place until you say otherwise.
+    func nap()   { command(.sleeping) }
+    /// Play in place.
+    func play()  { command(.playing) }
+    /// Groom in place.
+    func groom() { command(.grooming) }
+    /// Stop any commanded action and resume following the cursor + wandering.
+    func follow() {
+        forcedAction = nil; held = false
+        action = .idle; frame = 0
+        scheduleNext(after: 0.4)
+    }
+    /// Walk to a point (e.g. the notch) and sit there until told to follow.
+    func goTo(x: CGFloat, y: CGFloat) {
+        forcedAction = nil; held = false
+        idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
+        walkTo(x: clampX(x), y: max(40, min(screenH - 40, y))) { [weak self] in
+            guard let self else { return }
+            self.action = .sitting; self.frame = 0
+            self.forcedAction = .sitting            // stay put until "Follow me"
+        }
+    }
+    /// Pick the cat up: suspend the sim; the caller drives catX/catY via dragTo.
+    func beginDrag() {
+        held = true; forcedAction = nil
+        idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
+        action = .idle; frame = 0
+    }
+    func dragTo(x: CGFloat, y: CGFloat) {
+        guard held else { return }
+        facingRight = x >= catX
+        catX = clampX(x); catY = max(30, min(screenH - 30, y))
+    }
+    /// Put the cat down where it is; it settles, then resumes normal life.
+    func endDrag() {
+        held = false
+        action = .idle; frame = 0
+        scheduleNext(after: 1.2)
+    }
+    private func command(_ a: CatAction) {
+        held = false
+        idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
+        forcedAction = a; action = a; frame = 0
+    }
+
     private let screenW: CGFloat
     private let screenH: CGFloat
     private let platformHeight: CGFloat = 60
@@ -420,6 +557,7 @@ final class PesterCatBrain: ObservableObject {
                 guard let self, let m = self.targetFn() else { return }
                 let moved = abs(m.x - self.lastMouse.x) > 3 || abs(m.y - self.lastMouse.y) > 3
                 self.lastMouse = m
+                if self.held || self.forcedAction != nil { return }        // picked up / commanded: don't follow
                 if self.action == .sleeping || self.action == .lieDown { return }
                 guard moved else { return }
                 let dx = m.x - self.catX, dy = m.y - self.catY
@@ -513,7 +651,7 @@ final class PesterCatBrain: ObservableObject {
     // ── Idle personality when you're not moving the cursor: wander to a window top, groom, stretch, sit ──
     private func pickNextAction() {
         idleTimer?.invalidate(); walkTimer?.invalidate()
-        if isFollowingMouse || !running { return }
+        if isFollowingMouse || !running || held || forcedAction != nil { return }   // commanded/held: no wandering
         // A teammate cat stays ON their cursor — no wandering off. Just sit and occasionally groom in place.
         if !wander {
             let roll = Int.random(in: 0...100)
