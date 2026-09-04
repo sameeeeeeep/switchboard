@@ -5280,7 +5280,7 @@ struct ActionConsentDrop: View {
         let clip = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clip.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Clipboard is empty", openLabel: "Close",
-                result: .text("Copy some text first — the diagram is drawn from your clipboard.")),
+                result: .notice("Copy some text first — the diagram is drawn from your clipboard.")),
                 onOpen: { [weak self] in self?.hideNotchWidget() })
             return
         }
@@ -5296,7 +5296,7 @@ struct ActionConsentDrop: View {
                     onOpen: { [weak self] in self?.hideNotchWidget() })
             case .failure(let e):
                 self.showNotchWidget(WidgetSpec(kicker: "CANVAS · DIAGRAM", title: "Diagram failed", openLabel: "Open panel",
-                    result: .text(e.localizedDescription)),
+                    result: .notice(e.localizedDescription)),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             }
         }
@@ -5436,7 +5436,7 @@ struct ActionConsentDrop: View {
     @MainActor func promptConnectClaudeCodeNotch() {
         if claudeCodeConnectorInstalled() {
             showNotchWidget(WidgetSpec(kicker: "CLAUDE CODE", title: "Already connected", openLabel: "Done",
-                result: .text("A Claude Code session can read your board and pick up tasks. Try: “what's on my Switchboard board?” or “pick up the next task.”")),
+                result: .notice("A Claude Code session can read your board and pick up tasks. Try: “what's on my Switchboard board?” or “pick up the next task.”")),
                 onOpen: { [weak self] in self?.hideNotchWidget() })
             return
         }
@@ -5566,7 +5566,7 @@ struct ActionConsentDrop: View {
     @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true, placement: [String: Double]? = nil) {
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
-                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+                result: .notice("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
         // A real content window ⇒ stop being a menu-bar-only ACCESSORY (whose windows float as overlays:
@@ -5698,7 +5698,7 @@ struct ActionConsentDrop: View {
         else {
             NSLog("[open-scheme] rejected: %@", u.absoluteString)
             showNotchWidget(WidgetSpec(kicker: "SWITCHBOARD", title: "That link couldn't be opened",
-                                       openLabel: "Dismiss", result: .text("Only http/https pages can be opened.")),
+                                       openLabel: "Dismiss", result: .notice("Only http/https pages can be opened.")),
                             onOpen: { [weak self] in self?.hideNotchWidget() })
             return
         }
@@ -5764,7 +5764,7 @@ struct ActionConsentDrop: View {
         guard let url = pageURL ?? envURL ?? URL(string: "http://localhost:5188/roast.html") else { return }
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No pairing token", openLabel: "Open panel",
-                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+                result: .notice("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
         // One drive at a time — a new ask SUPERSEDES the old run (its window closes; its late result
@@ -5855,7 +5855,7 @@ struct ActionConsentDrop: View {
         if videoExtracting { return }   // one at a time — a second copy just waits
         guard let node = nodePath(), let script = videoPipelinePath() else {
             showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Can't run the extractor",
-                openLabel: "Open panel", result: .text("No Node runtime or the video2ai pipeline script was found.")),
+                openLabel: "Open panel", result: .notice("No Node runtime or the video2ai pipeline script was found.")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
@@ -5915,14 +5915,14 @@ struct ActionConsentDrop: View {
         guard let data = json.data(using: .utf8),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Extraction failed",
-                openLabel: "Open panel", result: .text(code == 0 ? "No result came back from the extractor." : "The extractor exited with an error (code \(code)).")),
+                openLabel: "Open panel", result: .notice(code == 0 ? "No result came back from the extractor." : "The extractor exited with an error (code \(code)).")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
         if (obj["ok"] as? Bool) != true {
             let err = (obj["error"] as? String) ?? "unknown error"
             showNotchWidget(WidgetSpec(kicker: "VIDEO2AI · EXTRACT", title: "Couldn't extract that video",
-                openLabel: "Close", result: .text(err)),
+                openLabel: "Close", result: .notice(err)),
                 onOpen: { [weak self] in self?.hideNotchWidget() })
             return
         }
@@ -6280,7 +6280,7 @@ struct ActionConsentDrop: View {
         let url = resolveDriveURL(tool: l.id, fallback: fallback)
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: l.name.uppercased(), title: "No pairing token", openLabel: "Open panel",
-                result: .text("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
+                result: .notice("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
         if driveRunning, let old = godWeb { old.onUserClosed = nil; old.close() }
@@ -6302,7 +6302,7 @@ struct ActionConsentDrop: View {
                     case .success(let v): self.presentWrappWidget(v, listing: l, url: url)
                     case .failure(let e):
                         self.showNotchWidget(WidgetSpec(kicker: l.name.uppercased(), title: "Couldn't run \(l.name)", openLabel: "Open \(l.name)",
-                            result: .text(String("\(e)".prefix(300)))), onOpen: { self.hideNotchWidget(); NSWorkspace.shared.open(url) })
+                            result: .notice(String("\(e)".prefix(300)))), onOpen: { self.hideNotchWidget(); NSWorkspace.shared.open(url) })
                     }
                 }
             }
@@ -6432,7 +6432,7 @@ struct ActionConsentDrop: View {
             }
         case .failure(let e):
             showNotchWidget(WidgetSpec(kicker: "\(driveName.uppercased()) · LIVE", title: "Drive failed", openLabel: "Open panel",
-                result: .text("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
+                result: .notice("\(e.localizedDescription)\n\nIs the dev server running? (cd examples/apps && node serve.mjs)")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
         }
     }
@@ -6451,7 +6451,7 @@ struct ActionConsentDrop: View {
         let text = (input?.isEmpty == false ? input! : clip)
         guard !text.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: "Nothing to work on", openLabel: "Close",
-                result: .text("Copy some text first, or tell \(l.name) what to work on — it runs on your clipboard.")),
+                result: .notice("Copy some text first, or tell \(l.name) what to work on — it runs on your clipboard.")),
                 onOpen: { [weak self] in self?.hideNotchWidget() })
             return
         }
@@ -6483,7 +6483,7 @@ struct ActionConsentDrop: View {
                         onSteer: rerun)
                 case .failure(let e):
                     self.showNotchWidget(WidgetSpec(kicker: "\(l.name.uppercased()) · SKILL", title: "\(l.name) failed", openLabel: "Open panel",
-                        result: .text(e.localizedDescription)),
+                        result: .notice(e.localizedDescription)),
                         onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
                 }
             }
@@ -6500,7 +6500,7 @@ struct ActionConsentDrop: View {
             ?? binding.tools?.first ?? l.tools?.first?.name ?? l.id
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "No pairing token",
-                openLabel: "Open panel", result: .text("~/.relay/pairing-token is missing — is the daemon set up?")),
+                openLabel: "Open panel", result: .notice("~/.relay/pairing-token is missing — is the daemon set up?")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
@@ -6548,7 +6548,7 @@ struct ActionConsentDrop: View {
                 bridge.close()
                 if err != nil || result == nil || result is NSNull {
                     self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "Not granted",
-                        openLabel: "Close", result: .text("“\(l.name)” wasn’t granted — nothing ran.")),
+                        openLabel: "Close", result: .notice("“\(l.name)” wasn’t granted — nothing ran.")),
                         onOpen: { [weak self] in self?.hideNotchWidget() })
                     return
                 }
@@ -6581,7 +6581,7 @@ struct ActionConsentDrop: View {
         if let err {
             let msg = (err["message"] as? String) ?? "the tool call failed"
             showNotchWidget(WidgetSpec(kicker: "TOOL · \(l.name.uppercased())", title: "“\(l.name)” couldn’t run",
-                openLabel: "Open panel", result: .text(msg)),
+                openLabel: "Open panel", result: .notice(msg)),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             return
         }
@@ -6669,7 +6669,7 @@ struct ActionConsentDrop: View {
                     self?.driveThirdPartyTool(pc.l, pc.binding, command: pc.tool, input: pc.input)
                 } else {
                     self?.showNotchWidget(WidgetSpec(kicker: "TOOL · \(pc.l.name.uppercased())", title: "Couldn’t save the key",
-                        openLabel: "Close", result: .text("The credential wasn’t saved — nothing ran.")),
+                        openLabel: "Close", result: .notice("The credential wasn’t saved — nothing ran.")),
                         onOpen: { [weak self] in self?.hideNotchWidget() })
                 }
             }
@@ -7583,12 +7583,12 @@ struct ActionConsentDrop: View {
                     driveWrappLive(pageURL: resolveDriveURL(tool: cmd, fallback: base), tool: cmd, input: input, wrappName: l.name, reference: ref)
                 } else {
                     showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "Can't run “\(id)”", openLabel: "Open store",
-                        result: .text("“\(l.name)” has neither a page nor a skill body to run.")),
+                        result: .notice("“\(l.name)” has neither a page nor a skill body to run.")),
                         onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
                 }
             } else {
                 showNotchWidget(WidgetSpec(kicker: "GOD · DRIVE", title: "No wrapp “\(id)”", openLabel: "Open store",
-                    result: .text("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
+                    result: .notice("God asked to drive “\(id)” but it isn't in the catalog. Install it from the store first.")),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.showStore() })
             }
         case "fillguide":
@@ -7605,7 +7605,7 @@ struct ActionConsentDrop: View {
             if pairs.isEmpty {
                 godLog("executeGodAction: fillguide with no usable fields — \(a)")
                 showNotchWidget(WidgetSpec(kicker: "GOD · FILL", title: "Nothing to fill", openLabel: "Open panel",
-                    result: .text("God proposed a form-fill guide but no field→value pairs survived parsing — nothing was raised.")),
+                    result: .notice("God proposed a form-fill guide but no field→value pairs survived parsing — nothing was raised.")),
                     onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
             } else {
                 raiseFillGuide(pairs, source: "God")
@@ -7648,7 +7648,7 @@ struct ActionConsentDrop: View {
             let what = (a["describe"] as? String) ?? "an action I don't recognize"
             godLog("executeGodAction: unhandled action kind '\(kind)' — \(a)")
             showNotchWidget(WidgetSpec(kicker: "GOD · ACTION", title: "Couldn't run that", openLabel: "Open panel",
-                result: .text("God proposed “\(what)” (kind: \(kind)), but this build has no handler for it — nothing was done. If this keeps happening, the action God emitted and the app got out of sync.")),
+                result: .notice("God proposed “\(what)” (kind: \(kind)), but this build has no handler for it — nothing was done. If this keeps happening, the action God emitted and the app got out of sync.")),
                 onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
         }
     }
