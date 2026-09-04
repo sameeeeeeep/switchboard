@@ -1163,6 +1163,7 @@ struct Panel: View {
     @State private var nameDraft = ""            // the name field's working copy, committed on save
     @State private var openSection: String? = nil  // Settings accordion: at most one section expanded, so the panel stays short
     @AppStorage("userCatOn") private var userCatOn = true   // your companion cat on/off (persisted; drives the overlay)
+    @AppStorage("userCatSize") private var userCatSize = 64.0   // the cat's on-screen size (px)
     @State private var guideVoiceover = CursorGuide.shared.voiceoverOn  // mirrors the fn-m guide preference in Settings
 
     private var signedOut: Bool { model.running && !model.signedIn }
@@ -1569,7 +1570,14 @@ struct Panel: View {
             }
             .toggleStyle(.switch).tint(.lime)
             .onChange(of: userCatOn) { on in TeamCursorsOverlay.shared.setUserCat(on) }
-            Text("A black cat with lime stripes that hangs out and follows your cursor while you work. Right-click it anytime for options.")
+            if userCatOn {
+                Picker("Size", selection: $userCatSize) {
+                    Text("Small").tag(48.0); Text("Medium").tag(64.0); Text("Large").tag(88.0)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                .onChange(of: userCatSize) { s in TeamCursorsOverlay.shared.setUserCatSize(CGFloat(s)) }
+            }
+            Text("A lime cat that hangs out and follows your cursor while you work.")
                 .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -4721,6 +4729,7 @@ struct ActionConsentDrop: View {
         // Your OWN ambient cat (the first "cat wrapp") — follows your cursor. Default ON so it's there
         // on first run; persisted, so a later toggle sticks. (God's cat + real store-wrapp packaging next.)
         TeamCursorsOverlay.shared.onCatSettings = { [weak self] in self?.showPanel() }
+        TeamCursorsOverlay.shared.setUserCatSize(CGFloat(UserDefaults.standard.object(forKey: "userCatSize") as? Double ?? 64))
         let catOn = UserDefaults.standard.object(forKey: "userCatOn") == nil ? true : UserDefaults.standard.bool(forKey: "userCatOn")
         TeamCursorsOverlay.shared.setUserCat(catOn)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

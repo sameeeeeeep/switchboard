@@ -34,6 +34,7 @@ struct PesterSprite: Equatable {
     @Published var cursors: [RemoteCursor] = []
     @Published var pester: PesterSprite? = nil
     @Published var userCat = false   // your OWN ambient cat — trails your cursor, independent of team/pester
+    @Published var userCatSize: CGFloat = 64     // the cat's on-screen size (px) — user-adjustable
     @Published var userCatIntro = false          // show the one-time "hi, I'm your cat" bubble
     @Published var userCatFrame: CGRect = .zero   // the cat's live rect (top-left px) — for right-click hit-testing
     // Callbacks the overlay wires so the cat's right-click menu can act on the controller.
@@ -138,6 +139,9 @@ enum CatVoice {
 
     /// Re-show the intro bubble (+ a mew) — the "What's this?" right-click item.
     func showCatIntro() { guard model.userCat else { return }; model.userCatIntro = true; CatVoice.mew() }
+
+    /// Resize the cat (Settings → Companion). Clamped to a sane range.
+    func setUserCatSize(_ s: CGFloat) { model.userCatSize = min(max(s, 32), 140) }
 
     // Show the overlay iff SOMETHING wants it (a teammate cursor, a pester, or your own cat); else tear down.
     private func updatePanelVisibility() {
@@ -270,9 +274,8 @@ private struct UserCatView: View {
     // tail-wag, are the whole charm; never swap them for a static picture). Tinted brand-lime. Configurable
     // size. (Tabby STRIPES on the animated cat — the generated black+lime tabby was REFERENCE only — are a
     // later, tunable add: doing real markings across every frame needs per-frame art, so it's its own task.)
-    private static let catSize: CGFloat = 64
     private var catBody: some View {
-        catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize, height: UserCatView.catSize)
+        catImage.interpolation(.none).resizable().frame(width: model.userCatSize, height: model.userCatSize)
             .colorMultiply(.lime)
             .shadow(color: .lime.opacity(0.45), radius: 5)   // brand glow
     }
@@ -280,7 +283,10 @@ private struct UserCatView: View {
         if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
         return Image(systemName: "cat.fill")
     }
-    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 36, y: brain.catY - 40, width: 72, height: 84) }
+    private func reportFrame() {
+        let s = model.userCatSize
+        model.userCatFrame = CGRect(x: brain.catX - s/2 - 4, y: brain.catY - s/2 - 8, width: s + 8, height: s + 20)
+    }
     private func hideIntroSoon() {
         Task { @MainActor in try? await Task.sleep(nanoseconds: 6_000_000_000); withAnimation { model.userCatIntro = false } }
     }
