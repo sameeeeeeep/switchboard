@@ -251,6 +251,7 @@ private struct UserCatView: View {
                     .fixedSize().transition(.opacity)
             }
             catBody
+                .scaleEffect(x: brain.facingRight ? 1 : -1, y: 1)   // keep the animated cat's facing
                 .contentShape(Rectangle())
                 .contextMenu {
                     Button("What's this?") { TeamCursorsOverlay.shared.showCatIntro() }
@@ -265,27 +266,21 @@ private struct UserCatView: View {
         .onChange(of: brain.catY) { _ in reportFrame() }
         .onChange(of: model.userCatIntro) { show in if show { hideIntroSoon() } }
     }
-    // The cat's LOOK: a DRAWN pixel sprite (black kitten with glowing lime tabby stripes — real tabby
-    // markings on the back, legs, tail + forehead, per the founder's reference), bundled as catsprite.png.
-    // Not procedural: the stripes are part of the art. It slides to follow your cursor (the brain drives
-    // catX/catY); a static sitting pose, no walk cycle.
-    private static let catSize: CGFloat = 68
-    private static let sprite: NSImage? = {
-        if let u = Bundle.main.url(forResource: "catsprite", withExtension: "png") { return NSImage(contentsOf: u) }
-        return nil
-    }()
+    // The cat's LOOK: our ANIMATED MacCat (the founder's call — the sprite movements, walking/jumping/
+    // tail-wag, are the whole charm; never swap them for a static picture). Tinted brand-lime. Configurable
+    // size. (Tabby STRIPES on the animated cat — the generated black+lime tabby was REFERENCE only — are a
+    // later, tunable add: doing real markings across every frame needs per-frame art, so it's its own task.)
+    private static let catSize: CGFloat = 64
     private var catBody: some View {
-        Group {
-            if let img = UserCatView.sprite {
-                Image(nsImage: img).interpolation(.none).resizable().scaledToFit()
-            } else {
-                Image(systemName: "cat.fill").resizable().scaledToFit().foregroundColor(.lime)
-            }
-        }
-        .frame(width: UserCatView.catSize, height: UserCatView.catSize)
-        .shadow(color: .lime.opacity(0.35), radius: 5)   // a touch of extra glow
+        catImage.interpolation(.none).resizable().frame(width: UserCatView.catSize, height: UserCatView.catSize)
+            .colorMultiply(.lime)
+            .shadow(color: .lime.opacity(0.45), radius: 5)   // brand glow
     }
-    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 38, y: brain.catY - 42, width: 76, height: 88) }
+    private var catImage: Image {
+        if let img = PesterCats.frame(PesterCats.spriteName(brain.action, brain.frame)) { return Image(nsImage: img) }
+        return Image(systemName: "cat.fill")
+    }
+    private func reportFrame() { model.userCatFrame = CGRect(x: brain.catX - 36, y: brain.catY - 40, width: 72, height: 84) }
     private func hideIntroSoon() {
         Task { @MainActor in try? await Task.sleep(nanoseconds: 6_000_000_000); withAnimation { model.userCatIntro = false } }
     }
