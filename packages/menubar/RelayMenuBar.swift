@@ -5645,6 +5645,7 @@ struct ActionConsentDrop: View {
     }
 
     @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true, placement: [String: Double]? = nil) {
+        CursorGuide.shared.noteEvent("wrapp-opened")   // the onboarding first-win gates on a wrapp ACTUALLY opening (not just words landing)
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
                 result: .notice("~/.relay/pairing-token is missing — is the daemon set up?")), onOpen: { [weak self] in self?.hideNotchWidget(); self?.showPanel() })
@@ -6939,9 +6940,10 @@ struct ActionConsentDrop: View {
             "text": "3 · Now talk to it. Hold ⌃⌥ and say the line below — watch your words land, then hit Enter.",
             "say": "Now talk to it. With the launcher open, hold control option and say: a brand for healthy prebiotic soda with bold Indian flavours. Watch your words land in the field, then press enter to open the match.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Say it"]],
-            "doneWhen": ["kind": "event", "name": "dictation"],
+            // Success = a wrapp ACTUALLY opened from the match (the real payoff), not merely words landing.
+            "doneWhen": ["kind": "event", "name": "wrapp-opened"],
             "gated": true,
-            "hint": "Say: “a brand for healthy prebiotic soda with bold Indian flavours” — then Enter."])
+            "hint": "Say: “a brand for healthy prebiotic soda with bold Indian flavours” — then Enter to open the match."])
         // 3c · God — press ⌃⌃ and ask a TOLD phrase out loud.
         steps.append(["id": "try-god",
             "text": "3 · Now God — press ⌃⌃ and ask out loud. Try the line below.",
