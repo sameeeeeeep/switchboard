@@ -4861,8 +4861,24 @@ struct ActionConsentDrop: View {
         CursorGuide.shared.onStopSpeak = { [weak self] in Task { @MainActor in self?.stopGuideSpeech() } }
         // Per-beat side effects: the onboarding operator ACTIVELY initializes a surface when its beat is
         // reached (onboarding §10). Beat 4 opens a real, seeded wrapp so the user's first win is one click.
+        // Onboarding completion: the welcome tour carries marksOnboarded; write the ONBOARDED marker when it
+        // ENDS (completed or left) — not at tour start. A hard-quit mid-tour never reaches here, so onboarding
+        // replays next launch (docs/ONBOARDING-SPEC.md §7). Any other tour (guided tests, how-tos) passes false.
+        CursorGuide.shared.onFinish = { outcome, marks in
+            Task { @MainActor in
+                guard marks else { return }
+                try? Data("done".utf8).write(to: URL(fileURLWithPath: ONBOARDED_FILE))
+                NSLog("[onboarding] tour ended (\(outcome)) → marked onboarded")
+            }
+        }
         CursorGuide.shared.onStepEnter = { id in
             Task { @MainActor in
+                // Onboarding sound design (founder: "think sound effects"): a soft switchboard lamp tick as each
+                // beat lights, and a warm connection chime on the win + the sign-off. Gated to the onboarding run.
+                if CursorGuide.shared.onboardingActive {
+                    if id == "first-wrapp" || id == "done" { SBSound.play("connect-chime") }
+                    else { SBSound.play("lamp-tick") }
+                }
                 // The dictation demo now targets the LAUNCHER's own field (founder v3 — no notepad); dictation
                 // already lands in it via pasteText's LauncherPanel case. For the beats that open a surface,
                 // step the card aside so it never covers the launcher/orb; bring it home for the rest.
@@ -4925,8 +4941,20 @@ struct ActionConsentDrop: View {
         // after that (the token file exists on every later launch).
         // Onboarding (docs/ONBOARDING.md): until they finish it, opening the panel lands on the setup
         // ladder. Only AUTO-open on the very first run (as today) — later launches wait to be asked.
-        if !readOnboarded() { onboard.beginSetup() }
-        if firstRun {
+        if !readOnboarded() {
+            onboard.beginSetup()   // panel setup-ladder stays a fallback if they open the gear before finishing
+            // §11 Frame 0 — THE first thing a new user sees: the full-screen dot-matrix ignition, which inhales
+            // into the notch and chains straight into the god-voiced welcome tour. Previously this only fired on
+            // a manual `touch ~/.relay/ignite`, so it played once and never again — first run silently ran the
+            // old setup-ladder panel instead. Gated on !readOnboarded() (NOT TOKEN_FILE) so deleting
+            // ~/.relay/onboarded genuinely re-onboards, and a mid-tour hard-quit replays it (§6/§7).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                NSApp.activate(ignoringOtherApps: true)
+                IgnitionController.shared.present(chainTour: true)
+            }
+        } else if firstRun {
+            // Onboarded already, but no pairing token on this machine yet (re-paired / token cleared): surface
+            // the app once so the token button is found. No ignition — onboarding is already done.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
                 guard let self, self.panel?.isVisible != true else { return }
                 NSApp.activate(ignoringOtherApps: true)
@@ -6342,6 +6370,11 @@ struct ActionConsentDrop: View {
         "deck", "dub",
     ]
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
+        // Onboarding first-win gate (803df56): the beat completes when a wrapp ACTUALLY opens. openWrappWindow
+        // fires this for the WINDOW surface, but the launcher also opens wrapps as notch/skill/glance WIDGETS —
+        // fire here too so ANY wrapp open (whatever the surface the launcher routes to) satisfies the gate and
+        // never traps the user on the gated "say-into-launcher" step. Idempotent: the window path re-fires it.
+        CursorGuide.shared.noteEvent("wrapp-opened")
         // A full-page wrapp opens as a native bridged window, not a glance widget. Resolve through the
         // ONE canonical resolver (preferredSurface upgrades a `browser`+ui.url wrapp to `window`), so the
         // launcher opens clone & every full-page wrapp natively — same as the featured store "Get".
@@ -6968,7 +7001,10 @@ struct ActionConsentDrop: View {
         // Pre-cache the spoken lines so God's voice plays with no generation lag as the tour reaches each beat
         // (founder: "the god voice should be pre cached, it cant be generated"). Background; replays are instant.
         preWarmGuideVoice(steps.compactMap { $0["say"] as? String })
-        let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "steps": steps]
+        // marksOnboarded: the ONBOARDED marker is written when this tour FINISHES (CursorGuide.onFinish),
+        // not here at the start — so a tour abandoned by hard-quit replays on next launch, while completing
+        // or leaving it counts as done (docs/ONBOARDING-SPEC.md §7).
+        let payload: [String: Any] = ["mode": "tour", "title": "Welcome to Switchboard", "marksOnboarded": true, "style": "onboarding", "steps": steps]
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
         let f = (RELAY_DIR as NSString).appendingPathComponent("guide-run.json")
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
@@ -6981,8 +7017,9 @@ struct ActionConsentDrop: View {
         // Surface the REAL permission cards so the access steps have a live Grant button under the guide.
         gateDismissed = false          // clear any prior dismissal so the concierge cards can show
         refreshPermissionGate()
-        // Presence == onboarded (matches Onboard.mark semantics), so first-run auto-open doesn't re-fire.
-        try? Data("done".utf8).write(to: URL(fileURLWithPath: ONBOARDED_FILE))
+        // NB: the ONBOARDED marker is NOT written here — it's written when the tour actually finishes
+        // (CursorGuide.onFinish, wired in applicationDidFinishLaunching). Writing it at tour start locked
+        // out anyone who quit mid-tour ("seen once, never again"); §7 wants it resumable.
     }
     @objc private func replayWelcomeTour() { startWelcomeTour() }
 
@@ -7000,6 +7037,18 @@ struct ActionConsentDrop: View {
             func sayIt() {
                 let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/say"); p.arguments = [line]
                 Task { @MainActor in self?.guideVoiceProc = p }; try? p.run()
+            }
+            func play(_ path: String) {
+                let pl = Process(); pl.executableURL = URL(fileURLWithPath: "/usr/bin/afplay"); pl.arguments = [path]
+                Task { @MainActor in self?.guideVoiceProc = pl }; try? pl.run()
+            }
+            // 0. PRE-LOADED onboarding clip — bundled at build time (Resources/onboarding-voice/<hash>.wav), so
+            // the operator's voice plays INSTANTLY on first run with NO generation and NO server, even before the
+            // user has picked a voice (founder: "pre loaded, it can't be generated"). Checked FIRST — before the
+            // no-selected-voice fallback below, which is exactly the fresh-machine state onboarding runs in.
+            if let u = Bundle.main.url(forResource: Self.lineHash(line), withExtension: "wav", subdirectory: "onboarding-voice")
+                ?? Bundle.main.url(forResource: Self.lineHash(line), withExtension: "wav") {
+                play(u.path); return
             }
             guard !name.isEmpty else { sayIt(); return }
             let wav = NSTemporaryDirectory() + "guide-vo.wav"
@@ -7033,12 +7082,17 @@ struct ActionConsentDrop: View {
         }
     }
 
-    // Stable cache path for a spoken line + voice (djb2 hash → hex; survives restarts, no CryptoKit needed).
-    private static func guideVoiceCachePath(voice: String, line: String) -> String {
+    // djb2 hash of a spoken line → hex (survives restarts, no CryptoKit). The BUNDLED onboarding clips are
+    // named by THIS hash (onboarding-voice/<hash>.wav) so speakGuideLine can find the pre-loaded clip.
+    static func lineHash(_ line: String) -> String {
         var h: UInt64 = 5381
         for b in line.utf8 { h = (h &* 33) ^ UInt64(b) }
+        return String(h, radix: 16)
+    }
+    // Stable cache path for a spoken line + voice (voice-prefixed so different voices don't collide).
+    private static func guideVoiceCachePath(voice: String, line: String) -> String {
         let safe = voice.replacingOccurrences(of: "/", with: "_")
-        return (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/cache/\(safe)-\(String(h, radix: 16)).wav")
+        return (NSHomeDirectory() as NSString).appendingPathComponent(".relay/voices/cache/\(safe)-\(lineHash(line)).wav")
     }
 
     // Pre-generate + cache a set of lines (the onboarding `say` lines) in the background, so they play from

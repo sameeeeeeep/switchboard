@@ -218,6 +218,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var cursor: CGPoint = .zero      // overlay-view (top-left) coords, synced to the mouse
     @Published var screenSize: CGSize = .zero    // for the screen-edge clamp
     @Published var mode: GuideMode = .tour
+    @Published var style: String = ""            // "onboarding" → render the bespoke operator card, not the generic notch card
     @Published var title: String? = nil          // optional guide title, shown dim in the kicker
     @Published var text: String = ""
     @Published var hint: String? = nil
@@ -421,6 +422,11 @@ struct GuideCaptionView: View {
         Group {
             if m.collapsed {
                 collapsedPill
+            } else if m.style == "onboarding" {
+                // The bespoke OPERATOR card — a ground-up onboarding presence, NOT the generic notch step card
+                // (founder: "custom card not generic notch"). Same engine, panel, click-through, drag; new face.
+                onboardingCard.frame(width: min(max(cardW, 560), max(560, m.screenSize.width - 48)), alignment: .leading)
+                    .frame(minHeight: 60, alignment: .topLeading)
             } else {
                 card.frame(width: cardW, alignment: .leading)
                     .frame(minHeight: 60, alignment: .topLeading)   // never a sliver — text always has room
@@ -521,6 +527,77 @@ struct GuideCaptionView: View {
         } else {
             stepCard
         }
+    }
+
+    // ── The bespoke OPERATOR card (onboarding, style:"onboarding"). A cinematic, voice-led presence in
+    //    Switchboard's own dot-matrix language: a speaking beacon on the left, the operator's line in Doto,
+    //    taught keys as caps, and switchboard LAMPS for progress. Deliberately NOT the generic notch step
+    //    card — no Note/Unmute/Close chrome (founder: "custom card not generic notch"). Same engine + panel
+    //    + click-through + drag; new face. ──
+    private var onboardingCard: some View {
+        let total = max(m.stepTotal, 1)
+        let idx = min(max(m.stepIndex, 0), total - 1)
+        return HStack(alignment: .top, spacing: 16) {
+            // Operator beacon — a live switchboard lamp cluster; animates while the operator speaks/senses.
+            DotMatrix(pattern: .speaking, accent: Color.lime, cols: 6, rows: 6, dot: 2.4, gap: 2.6, animated: !m.reduceMotion)
+                .frame(width: 46, height: 46)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 12) {
+                // kicker: operator name · (project) · lamp progress
+                HStack(spacing: 8) {
+                    Text("THE OPERATOR").font(.splMono(9)).tracking(2).foregroundColor(.lime.opacity(0.9))
+                    if let p = m.project, !p.isEmpty {
+                        Text("·").font(.splMono(9)).foregroundColor(.inkFaint)
+                        Text(p).font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1)
+                    }
+                    Spacer(minLength: 12)
+                    HStack(spacing: 5) {
+                        ForEach(0..<total, id: \.self) { i in
+                            Circle()
+                                .fill(i <= idx ? Color.lime : Color.lime.opacity(0.16))
+                                .frame(width: 6, height: 6)
+                                .shadow(color: i <= idx ? Color.lime.opacity(0.7) : .clear, radius: i == idx ? 3 : 0)
+                        }
+                    }
+                }
+                // the operator's spoken line — big, Doto, the star of the card
+                Text(m.text.isEmpty ? " " : m.text)
+                    .font(.doto(21, .bold)).foregroundColor(.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
+                // taught keys (⌥⌥ / ⌃⌥ / ⌃⌃) rendered as caps
+                if !m.keys.isEmpty {
+                    HStack(spacing: 8) { ForEach(m.keys) { g in KeyChip(group: g) } }
+                }
+                // hint + advance affordance (listening pulse when the beat self-senses; else ⌥→ next)
+                HStack(alignment: .center, spacing: 10) {
+                    if let h = m.hint, !h.isEmpty {
+                        Text(h).font(.hanken(12, .medium)).foregroundColor(.inkDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if m.autoSensing && !m.actionDone {
+                        HStack(spacing: 5) {
+                            Circle().fill(Color.lime).frame(width: 5, height: 5)
+                                .shadow(color: Color.lime.opacity(0.8), radius: 3)
+                            Text("LISTENING").font(.splMono(8.5)).tracking(1).foregroundColor(.lime)
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            KeyCap(glyph: "⌥"); KeyCap(glyph: "→")
+                            Text("next").font(.hanken(11, .medium)).foregroundColor(.inkFaint)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.page.opacity(0.97))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.lime.opacity(0.28), lineWidth: 1))
+                .shadow(color: Color.lime.opacity(0.18), radius: 26, y: 8)
+        )
     }
 
     // PIP FEED — ONE event at a time, in Switchboard's dot-matrix language (Doto face + an animated
@@ -1242,6 +1319,16 @@ final class CursorGuide {
     // does it). e.g. onboarding's "first-wrapp" beat opens a real seeded wrapp when it's reached.
     var onStepEnter: ((_ id: String) -> Void)?
 
+    // Fired once when a run ENDS (completed or left), with the outcome and whether the run asked to mark
+    // the user onboarded (`marksOnboarded` in the payload). The onboarding tour uses this to write the
+    // ONBOARDED marker at real completion — never at tour start — so a tour abandoned by hard-quit replays,
+    // while finishing OR leaving it counts as done (docs/ONBOARDING-SPEC.md §7 reversibility/resumability).
+    var onFinish: ((_ outcome: String, _ marksOnboarded: Bool) -> Void)?
+
+    /// True while the active run is the bespoke onboarding experience (style:"onboarding") — lets the app
+    /// gate onboarding-only side effects (sound cues) inside the shared onStepEnter hook.
+    var onboardingActive: Bool { model.style == "onboarding" }
+
     // The live-apply hook (Redline-style options). CursorGuide only knows WHICH variant the user is
     // eyeing/approved; APPLYING it to the real work (re-render the doc/page) is the app/wrapp's job.
     // preview = ⌥1/2/3 (compare live); approve = ⌥→. Absent → options are still recorded, just not applied.
@@ -1395,6 +1482,7 @@ final class CursorGuide {
     private var pendingRuns: [[String: Any]] = []
     private var rawRun: [String: Any]? = nil   // the original run JSON — re-saved (with startIndex) on abort so a guide can be RESUMED from the menu
     private var callerRunId: String? = nil     // optional unique id from the run → also write guide-results/<id>.json (collision-proof result)
+    private var marksOnboarded = false         // onboarding tour: mark the user onboarded when THIS run finishes (not when it starts)
     private var startedAt = Date()
 
     // ── teach run state
@@ -1649,6 +1737,8 @@ final class CursorGuide {
         // (guide-results/<runId>.json) so a later card — or another session — can NEVER clobber this answer in
         // the single shared guide-result.json. The raiser polls its own file by id. (founder 2026-08-31)
         self.callerRunId = obj["runId"] as? String
+        self.marksOnboarded = (obj["marksOnboarded"] as? Bool) ?? false
+        model.style = (obj["style"] as? String) ?? ""   // "onboarding" swaps in the bespoke operator card
         // Provenance (docs/PRESENCE.md §4b): who's asking + which project, so a card is never a mystery prompt.
         model.source = (obj["source"] as? String)
         model.sourceId = (obj["sourceId"] as? String)
@@ -2187,6 +2277,7 @@ final class CursorGuide {
         // read the outcome and return it to the calling Claude (onboarding/tour completions included).
         // Test mode additionally emits the test-result.json/.txt twins + the on-screen summary card.
         writeResult(outcome: outcome, finishedAt: finishedAt, passed: passed, failed: failed, skipped: skipped)
+        onFinish?(outcome, marksOnboarded)   // onboarding marks the user onboarded HERE (real end), not at tour start
         if mode == .test {
             writeResultText(passed: passed, failed: failed, skipped: skipped)
             let line = "\(title) — \(passed) passed · \(failed) failed · \(skipped) skipped"

@@ -9,6 +9,20 @@
 import AppKit
 import SwiftUI
 
+// Onboarding sound design — bundled wavs in Resources/sounds (procedurally synthesized, on-brand: a
+// switchboard powering on). Cached NSSound players; a no-op if a file is missing. (founder: "think sound
+// effects".) Names: ignition-poweron · lamp-tick (per beat) · connect-chime (a grant / the first win).
+@MainActor enum SBSound {
+    private static var cache: [String: NSSound] = [:]
+    static func play(_ name: String) {
+        if let s = cache[name] { s.stop(); s.play(); return }
+        guard let u = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "sounds")
+            ?? Bundle.main.url(forResource: name, withExtension: "wav"),
+            let s = NSSound(contentsOf: u, byReference: true) else { return }
+        cache[name] = s; s.play()
+    }
+}
+
 // ── One target the dots resolve into: where a lamp lands (in the sampled shape's local space). ──
 private struct IgniteDot {
     var start: CGPoint      // where it blinks in the chaos phase (random, screen space)
@@ -49,28 +63,46 @@ private struct IgniteDot {
         let view = IgnitionView(
             screenSize: screen.frame.size,
             onDone: { [weak self] in self?.dismiss(chainTour: chainTour) },
-            onSkip: { [weak self] in self?.dismiss(chainTour: false) }
+            onSkip: { [weak self] in
+                // Skipping the ignition = skipping onboarding. The welcome tour marks onboarded when it
+                // finishes, but skip short-circuits before the tour ever starts — so write the marker here,
+                // otherwise the full-screen ignition would re-fire on every launch (it's gated on !onboarded).
+                let marker = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/onboarded")
+                try? Data("done".utf8).write(to: URL(fileURLWithPath: marker))
+                self?.dismiss(chainTour: false)
+            }
         )
         p.contentView = NSHostingView(rootView: view)
         p.setFrame(screen.frame, display: true)
         p.orderFrontRegardless()
+        SBSound.play("ignition-poweron")   // the operator powers on as the dot-matrix floods the screen
         panel = p
+        // FAILSAFE (never a stuck black screen): the SwiftUI TimelineView(.animation) that drives the dots —
+        // and its onDone — STALLS whenever this non-active panel is occluded or the display sleeps, so onDone
+        // may never fire and the full-screen black overlay would stay up forever. Force the teardown + tour
+        // chain on a hard wall-clock timer regardless of the animation. dismiss() is idempotent (panel==nil
+        // guard), so whichever fires first wins and the other is a no-op.
+        let failsafe = Timer(timeInterval: tTotalFailsafe, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismiss(chainTour: chainTour) }
+        }
+        RunLoop.main.add(failsafe, forMode: .common)
     }
+    // A hair beyond the animation's own total (chaos 1.3 + coalesce 1.5 + hold 0.7 + inhale 0.95 + 0.2 = 4.65).
+    private let tTotalFailsafe: TimeInterval = 5.6
 
     private func dismiss(chainTour: Bool) {
         guard let p = panel else { return }
         panel = nil
+        // Write the tour-chain trigger SYNCHRONOUSLY (not in the fade's completion handler) — the fade can be
+        // throttled/skipped when the display is asleep, and the completion would never run, stranding the tour.
+        if chainTour {
+            let t = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/replay-tour")
+            try? Data("1".utf8).write(to: URL(fileURLWithPath: t))
+        }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
             p.animator().alphaValue = 0
-        }, completionHandler: {
-            p.orderOut(nil)
-            if chainTour {
-                // Chain into the greeting/setup tour (the app's poll picks this up).
-                let t = (NSHomeDirectory() as NSString).appendingPathComponent(".relay/replay-tour")
-                try? Data("1".utf8).write(to: URL(fileURLWithPath: t))
-            }
-        })
+        }, completionHandler: { p.orderOut(nil) })
     }
 }
 

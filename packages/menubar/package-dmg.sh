@@ -206,6 +206,17 @@ if [ -d "$HERE/assets/sprites" ]; then
   mkdir -p "$RES/sprites"; cp -R "$HERE"/assets/sprites/. "$RES/sprites/" 2>/dev/null || true
   say "bundled cat sprites ($(find "$HERE/assets/sprites" -name '*.png' | wc -l | tr -d ' ') PNGs)"
 fi
+# Sounds (match build.sh) — cat mew + onboarding SFX (ignition power-on, lamp tick, connect chime).
+if compgen -G "$HERE/sounds/*.wav" >/dev/null 2>&1; then
+  mkdir -p "$RES/sounds"; cp "$HERE"/sounds/*.wav "$RES/sounds/" 2>/dev/null || true
+  say "bundled sounds ($(ls "$HERE"/sounds/*.wav | wc -l | tr -d ' ') wavs)"
+fi
+# Onboarding voice (match build.sh) — pre-rendered operator lines, named by line-hash, so the guided voice
+# plays instantly on first run with no generation/server (speakGuideLine's bundled-first check).
+if compgen -G "$HERE/onboarding-voice/*.wav" >/dev/null 2>&1; then
+  mkdir -p "$RES/onboarding-voice"; cp "$HERE"/onboarding-voice/*.wav "$RES/onboarding-voice/" 2>/dev/null || true
+  say "bundled onboarding voice ($(ls "$HERE"/onboarding-voice/*.wav | wc -l | tr -d ' ') clips)"
+fi
 if compgen -G "$ROOT/examples/apps/wrapps/*/skills/*.md" >/dev/null 2>&1; then
   n=0; for f in "$ROOT"/examples/apps/wrapps/*/skills/*.md; do
     w="$(basename "$(dirname "$(dirname "$f")")")"; mkdir -p "$RES/skills/$w"; cp "$f" "$RES/skills/$w/" && n=$((n+1))

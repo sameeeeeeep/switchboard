@@ -224,3 +224,202 @@ These sharpen §3–§5 into the real build. Where they conflict with earlier be
   into it (reuse the now-working ⌃⌥/⌃ pipeline; success = field non-empty).
 - **S3** One actively-initialized notch demo: raise a real `ask` option card during the tour and read the pick.
 - Then broaden to the full part-by-part tour (store, wrapp, board) using the same "initialize + let them do" pattern.
+
+---
+
+## 11 · The complete experience — founder-guided (2026-08-31)
+
+Built live, beat by beat, with the founder. This is THE first thing a user ever experiences: it must be
+super comprehensive and it must WOW. Captured in the founder's own words, enriched as we go. Supersedes
+the earlier beat lists where they conflict.
+
+### Frame 0 — the ignition (the birth, before any card)
+The instant Switchboard first opens, the user's **ENTIRE SCREEN is overlaid** with the dot-matrix field:
+hundreds of lamps blinking on/off, scattered and alive. The blinking then **organizes** — the dots migrate
+and settle until they **form the Switchboard logo (the 2×2 lamp cluster) + the name SWITCHBOARD** (Doto,
+lime). A full-screen dot-matrix title reveal. The operator announces itself — takes over the whole machine
+for a moment — before it says a word. (founder verbatim: "their entire screen overlaid with dot matrix
+blinking dots that start to form the switchboard logo with name")
+
+**Transition (DECIDED — founder):** once the dots form the logo, they are **inhaled straight up into the
+notch** — the full-screen field collapses and streams upward into the top-center, and that IS how the
+operator takes its home. The first moment doubles as orientation: the user's eyes are pulled to the notch,
+which is where everything lives from then on. Wow + "where to look" are the same beat.
+
+_Still open (minor, resolve later):_ whether the name is spoken in God's voice as it forms; a dot-matrix
+power-on sound vs. pure-visual.
+
+### Frame 1 — the greeting, then God-voice-guided setup (step form)
+Right after the logo is inhaled into the notch: the **orb pulses awake and says "hello" in God's voice**,
+and the notch greets them (a "hello" state, the way it shows "listening"). From here **God's VOICE is the
+guide** through the whole setup — not silent text cards; the operator talks you through it.
+
+**Principle — constant wow + a reason for everything.** At EVERY point the user is wowed by things
+**actively opening for them** to try or to grant, and God **tells them WHY each one is needed** (never a
+bare permission prompt). Setup is never a static checklist — the operator is doing things in front of them.
+
+**Order is deliberate — step form, one at a time:**
+1. **Accessibility FIRST** — the hand that points and types. God explains why, opens the real pane, waits
+   for the grant, celebrates it.
+2. **Mic SECOND** — so that, once granted, the user can **speak back** to God. The sequence is designed so
+   the moment mic is on, the conversation becomes two-way. God prompts them to say something and hears it.
+3. …(subsequent senses/steps continue the same way — each opens, each explained, each a small wow).
+
+(founder verbatim: "the orb pulses awake and says hello in god's voice, and the notch like it says
+listening says hello, and god's voice guides through the setup … at each point the user needs to be wowed
+with things constantly opening for them to try or grant permissions and they are told why each one is
+needed … in step form so accessibility first then mic for user to speak back")
+
+### Parallel workstream (not onboarding, founder-flagged): God must stop saying "no access"
+God currently refuses almost everything ("it doesn't have access"). Make God **launcher-like** — route a
+request to the wrapp that handles it and act, instead of refusing. Pinned to a subagent; fix tracked
+separately from the onboarding build.
+
+### Frame 2 — speak into the launcher → a wrapp opens (the first win)
+After Accessibility + Mic, God opens the **launcher (⌥⌥)** and has the user **dictate their request straight
+into the launcher field** — using the very mic + dictation they just granted. That spoken goal is **routed
+to the wrapp that handles it, which opens and runs** (launcher-style routing). (founder: "launcher, and
+dictation into the launcher itself and that should open up the wrapp")
+
+Why this is the payoff beat: it **chains everything just set up into one wow** — the hand (Accessibility) +
+the voice (Mic) + dictation + the launcher + wrapp-routing all fire together, and the reward is a **real
+app appearing and doing work because they SPOKE**. No typing, no hunting. The first win is earned by the
+setup, not bolted on after it.
+
+**The seeded example (DECIDED — founder):** God gives them a vivid idea to narrate into the launcher —
+e.g. *"imagine a brand for healthy prebiotic soda but with bold Indian flavours."* The user SPEAKS that
+idea; the launcher hears it and **surfaces Brand Brain as the suggestion** (the routing is VISIBLE — the
+user sees their vague spoken idea understood and matched to the right app); opening it launches **Brand
+Brain preloaded with that idea**, which immediately generates names, a palette, a tagline. The wow: they
+spoke a half-formed idea out loud and a real brand studio spun it into something in seconds. (founder:
+"brandbrain with a preloaded example … the user narrates an idea into the launcher … and it gives the
+suggestion of brandbrain that opens it")
+
+Two micro-beats worth keeping distinct: (1) the launcher SHOWS Brand Brain as the match (teaches routing),
+then (2) it OPENS, preloaded + running. Don't skip (1) — seeing the match land is half the magic.
+
+**Dependency:** this needs launcher→wrapp routing from a natural-language goal — the SAME capability the
+God "no access → route to a wrapp" fix is building. The onboarding's first win and the God fix share one
+routing engine. Build them to the same seam.
+
+### Frame 3 — the hand-off (the ending — DECIDED, founder approved)
+After the first win (Brand Brain has spun up their soda brand), God **hands them the keys and recedes into
+the notch**: "this is yours now — press ⌃⌃ any time." The full-screen experience collapses back up into the
+notch, leaving them with an operator living in the corner, not an app they just finished configuring. The
+last feeling is ownership + "I know how to use this," because they just DID all of it.
+
+### The two governing principles (founder, restated — hold these above every beat)
+1. **Experience + understand.** The user must EXPERIENCE each thing and come away knowing HOW to use it —
+   every beat is "watch it, then do it yourself," never told-not-shown.
+2. **Wow, really.** Each beat has to land as a genuine wow, not a functional step. If a beat isn't
+   wowing, it's not done.
+
+### Cross-cutting A — Skip onboarding (escape hatch)
+Once the ignition dots fade / inhale, a **"Skip onboarding"** control appears **top-right** and persists
+through the whole flow. Reversible at any moment — the user is never trapped. (founder: "after the dots
+fade away we should show a skip onboarding or something up the top right")
+
+### Cross-cutting B — the card MOVES notch → on-screen to avoid the clash (the real placement fix)
+When a beat opens a competing surface (the launcher, a wrapp window, the orb…), the guide card must **not**
+sit at the notch fighting it. It **animates OUT of the notch to an on-screen position** (to the side, out
+of the way) so the user sees BOTH — the guidance AND the thing they're using — without overlap. This
+REPLACES the old "collapse to a pill" behavior for these beats: the card stays READABLE beside the surface,
+it just relocates. (founder: "show the card move from notch to on screen when we show the user launcher etc
+cause otherwise it clashes"). Build note: this is the notch→side placement, triggered by a beat that owns a
+surface — extend `yieldsTo` to MOVE-and-stay rather than collapse.
+
+### Frame 2 — REVISED (founder 2026-08-31): the launcher IS the dictation surface, not a notepad
+DROP the scratch notepad from onboarding. Instead, walk the user through the **shortcuts ONE BY ONE**, using
+**dictation INTO THE LAUNCHER**, and **God TELLS them exactly what to say** each time. (founder: "instead of
+notepad make user try our different shortcuts one by one with dictation in the launcher and tell them what
+they should say")
+
+Shape (each shortcut its own guided try, with a told prompt):
+- **⌥⌥ launcher** — "Press option-option — this is your launcher."
+- **⌃⌥ dictation, into the launcher** — "Now hold control-option and say: <a told phrase>." The words land in
+  the launcher's field (that path already works — pasteText inserts into the LauncherPanel field). They SEE
+  their spoken words appear, then the launcher routes/opens the matching wrapp.
+- **⌃⌃ God** — "Press control-control and ask out loud: <a told phrase>."
+- Each is TOLD (God says the exact phrase to speak), so it's never a blank prompt. The first-win idea
+  (prebiotic-soda brand → Brand Brain) becomes the told launcher phrase.
+
+Supersedes the "dummy text field" — the field to talk into is the LAUNCHER'S own field.
+
+### Requirement — God's onboarding voice must be PRE-CACHED, not generated live (founder 2026-08-31)
+The onboarding `say` lines are known ahead of time. Pre-generate their audio (god-tts /speak) and CACHE it,
+then play the cached clip during onboarding — no live TTS generation lag mid-flow. (founder: "the god voice
+should be pre cached, it cant be generated"). Warm/pre-generate on first-run setup (or at build), keyed on
+the line text; speakGuideLine plays the cached file when present.
+
+---
+
+## 12 · Build-status ledger (2026-09-05) — what's wired, what remains
+
+The §11 experience was almost entirely BUILT, but the ignition was **orphaned from first launch** — it only
+played off a manual `touch ~/.relay/ignite` (the watcher deletes the file after firing), so it showed once
+and never again; first run silently ran the old setup-ladder panel instead. This pass wires it up.
+
+### Fixed this pass
+- **Ignition fires on first run.** `applicationDidFinishLaunching` now calls
+  `IgnitionController.shared.present(chainTour: true)` when `!readOnboarded()` — the dot-matrix reveal →
+  inhale-into-notch → chains to the god-voiced welcome tour. (`RelayMenuBar.swift`, first-run block.)
+- **Re-onboard actually works.** The trigger is gated on `!readOnboarded()` (the `~/.relay/onboarded`
+  marker), NOT `TOKEN_FILE` — so deleting the marker genuinely re-onboards (fixes §6 "Re-onboard" row).
+- **Marker written at real completion, not tour start.** `startWelcomeTour` no longer writes `onboarded`
+  up front; the tour payload carries `marksOnboarded:true` and `CursorGuide.onFinish` writes it when the
+  tour **ends** (completed OR left). A hard-quit mid-tour never reaches `onFinish`, so onboarding replays —
+  §7 resumability, and the direct cause of "seen once, never again" for anyone who bailed mid-tour.
+- **Skip marks onboarded.** The ignition's top-right "Skip onboarding" writes the marker (the tour marks on
+  finish, but skip short-circuits before the tour) — otherwise the full-screen ignition re-fired every launch.
+- **First-win gate de-risked (803df56).** `wrapp-opened` now fires from `showWrappWidget` (the launcher's
+  path) as well as `openWrappWindow`, so beat 3b completes whatever surface the launcher routes the wrapp to
+  — the user can't get trapped on the gated step because the wrapp opened as a widget rather than a window.
+
+### To replay / reset (testing)
+- Replay the whole first-run experience: `rm ~/.relay/onboarded` and relaunch Switchboard.
+- Ignition only (visual): `touch ~/.relay/ignite`. Tour only: `touch ~/.relay/replay-tour` (or the menu's
+  "Replay the welcome tour").
+
+### COMPLETION LOOP (started 2026-09-05, founder /loop "bring this to completion — wow, sound effects, pre-loaded voice, properly open things, custom card not generic notch")
+Constraints: wow · sound effects · guided voice PRE-LOADED · properly open real things · CUSTOM card (not the generic notch).
+- [x] **Custom operator card** — bespoke `onboardingCard` in CursorGuide, activated by `style:"onboarding"` on the
+  tour run. Dot-matrix `.speaking` beacon + operator line in Doto + taught-keys caps + switchboard-lamp progress;
+  no Note/Unmute/Close chrome. Same engine/panel/click-through. VERIFIED rendering on screen. (`CursorGuide.swift`
+  `onboardingCard`, model `.style`; `RelayMenuBar.swift` payload `style:"onboarding"`.)
+- [x] **Sound effects** — 3 procedurally-synthesized on-brand wavs in `packages/menubar/sounds/` (auto-bundled):
+  `ignition-poweron` (fires in IgnitionOverlay.present), `lamp-tick` (per beat), `connect-chime` (win/sign-off).
+  `SBSound` helper in IgnitionOverlay; gated to onboarding via `CursorGuide.onboardingActive`. VERIFIED: ignition
+  full-screen dot-matrix + power-on confirmed on screen. (External ElevenLabs SFX API was erroring → local synth.)
+- [x] **Pre-loaded voice** — copy LOCKED (founder approved 2026-09-05). All 12 `say` lines pre-rendered (voice
+  'moira') → `packages/menubar/onboarding-voice/<lineHash>.wav`, bundled by build.sh + package-dmg.sh. speakGuideLine
+  now checks the bundled clip FIRST (before the no-selected-voice fallback — the fresh-machine state), so the guided
+  voice plays instantly with NO generation and NO server on first run. `RelayMenuBar.lineHash` (djb2) matches the
+  bake script (scripts/bake_voice.py). Regenerate clips if any `say` line changes. (Was: warm-at-tour-start = live lag.)
+- [x] **Ignition robustness (CRITICAL FIX)** — the ignition could get STUCK as a full-screen black overlay: its
+  SwiftUI `TimelineView(.animation)` stalls when the panel is occluded OR the display sleeps, so `onDone` never
+  fired → no teardown, no tour chain (guide-runs stayed stale). FIX: a wall-clock `Timer` failsafe in
+  `IgnitionController.present` always calls `dismiss` (idempotent), and `dismiss` now writes the `replay-tour`
+  chain SYNCHRONOUSLY (not in the fade's completion, which the display-asleep state skips). No more black-screen.
+- [ ] **Properly open things** — audit each beat's onStepEnter opens its REAL target (accessibility pane, mic prompt,
+  launcher, Brand Brain preloaded). Depends on launcher NL-routing for the first win (THE remaining epic — the
+  same routing engine as the God "no access → route to a wrapp" fix; needs founder direction, out of polish scope).
+- [ ] **Wow arc end-to-end** — ignition → wake → senses → first win → hand-off, verified on a real first run.
+- Deploy note: build.sh signs Developer ID when the Apple timestamp server is up; when it's DOWN it falls back to
+  ad-hoc (resets TCC) — re-sign with `codesign --force --deep --options runtime --timestamp=none --entitlements
+  Relay.entitlements --sign "Developer ID Application: STAYOFT VENTURES PRIVATE LIMITED (55354KFTHU)" Switchboard.app`.
+
+### Still open (deeper — NOT in this pass)
+- **Launcher NL-routing is the real dependency for the wow.** Beat 3b's payoff — speak "a brand for healthy
+  prebiotic soda with bold Indian flavours" → the launcher SHOWS Brand Brain as the match → opens it
+  preloaded — needs launcher goal→wrapp routing (the same engine as the God "no access → route to a wrapp"
+  fix, §11 parallel workstream). If routing doesn't surface a match, no wrapp opens and the gate waits (the
+  user can still `esc` out — not trapped, but not the wow). This is the keystone remaining build.
+- **Notch→side card MOVE** (§11 Cross-cutting B) is currently `parkAside`/`unpark` on the three surface-
+  owning beats (open-launcher / say-into-launcher / try-god) — verify it reads as a *move*, not a hide.
+- **Frame 3 hand-off** ("this is yours now" — God recedes into the notch) is the `done` step's copy only;
+  the visual recede-into-notch is not built.
+- **Dead code to remove** (superseded, still present): `DictationScratch.swift`; the old 4-step
+  `Onboard.tourCount` state machine coexisting with the 7-beat `startWelcomeTour` spine; `docs/ONBOARDING.md`
+  still describes the dead tour.
+- **Ignition is silent** — §11 Frame 0 leaves "power-on sound vs. pure-visual" open; the remembered "sound
+  effects" are God's TTS + system sounds during the tour, not the ignition itself.

@@ -103,6 +103,15 @@ if [ -d sounds ]; then
   echo "[menubar] bundled cat sounds"
 fi
 
+# Onboarding voice — the operator's spoken lines, PRE-RENDERED (default voice) and named by line-hash, so
+# they play instantly on first run with no TTS generation and no server (onboarding-voice/<hash>.wav →
+# Resources/onboarding-voice/). See speakGuideLine's bundled-first check + scripts/bake_voice.py.
+if [ -d onboarding-voice ]; then
+  mkdir -p "$APP/Contents/Resources/onboarding-voice"
+  cp onboarding-voice/*.wav "$APP/Contents/Resources/onboarding-voice/" 2>/dev/null || true
+  echo "[menubar] bundled onboarding voice ($(ls onboarding-voice/*.wav 2>/dev/null | wc -l | tr -d ' ') clips)"
+fi
+
 # Skill bodies — the "wear this skill" content behind a listing's components.skills refs
 # (e.g. "yc/register" → wrapps/yc/skills/register.md). Bundled flat as Resources/skills/<wrapp>/<name>.md
 # so the god surface can load the real instructions into God's context (docs/GOD-HANDS.md). A listing
