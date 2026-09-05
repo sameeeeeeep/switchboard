@@ -495,7 +495,10 @@ final class PesterCatBrain: ObservableObject {
     }
     /// Walk to a point (e.g. the notch) and sit there until told to follow.
     func goTo(x: CGFloat, y: CGFloat) {
-        forcedAction = nil; held = false
+        // Hold a non-nil forcedAction for the WHOLE trip (not just on arrival) so the cursor-follow
+        // tracker's guard (`forcedAction != nil`) suppresses it in transit — otherwise the first
+        // cursor move after the context menu closes cancels the walk and the cat never reaches the notch.
+        forcedAction = .walking; held = false
         idleTimer?.invalidate(); walkTimer?.invalidate(); isFollowingMouse = false
         walkTo(x: clampX(x), y: max(40, min(screenH - 40, y))) { [weak self] in
             guard let self else { return }
