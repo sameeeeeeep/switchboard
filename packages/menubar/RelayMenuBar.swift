@@ -6902,7 +6902,9 @@ struct ActionConsentDrop: View {
                 "hint": "⌥→ to carry on."])
         }
         // ── Beat 2 · Give me senses — only the permissions not yet granted (returning users skip these).
-        for p in GodPerm.allCases where !p.granted {
+        // ORDER IS DELIBERATE (spec §11): Accessibility FIRST (the hand), then Mic (so the user can speak
+        // back the moment it's on), then Screen — not allCases order.
+        for p in [GodPerm.accessibility, GodPerm.mic, GodPerm.screen] where !p.granted {
             switch p {
             case .mic:
                 steps.append(["id": "grant-mic",
@@ -6948,6 +6950,13 @@ struct ActionConsentDrop: View {
             "doneWhen": ["kind": "event", "name": "summon"],
             "gated": true,
             "hint": "Ask: “what should I focus on today?”"])
+        // ── Beat 4 · Your first wrapp — God's cat. Everything here is a wrapp you ADD (founder: onboarding =
+        // adding your first wrapps; the cat is the first). It's switched on as the tour starts so it's already
+        // on screen when this beat lands — the beat names it, shows it's yours, and where to add/remove wrapps.
+        steps.append(["id": "first-wrapp",
+            "text": "4 · Your first wrapp: God's cat. It's on your screen now — drag it, right-click it. Everything here is a wrapp you add or remove in Settings › Wrapps.",
+            "say": "One more thing — your first wrapp. That's God's cat, on your screen right now. Drag it around, right-click it to make it nap or come to the notch. Everything in Switchboard is a wrapp like this: something you add, and can remove, in Settings, Wrapps.",
+            "hint": "Try right-clicking the cat — then ⌥→."])
         // ── Done · the recap + the pointer to everything else.
         steps.append(["id": "done",
             "text": "That's it — ⌃⌥ dictate · ⌃⌃ ask · ⌥⌥ launcher · tap the notch for your board.",
@@ -6964,6 +6973,9 @@ struct ActionConsentDrop: View {
             try? data.write(to: URL(fileURLWithPath: f), options: .atomic)
         }
         seedExampleProject()           // so the "first project / first wrapp" steps aren't a blank slate
+        // The first wrapp (God's cat) is ADDED as the tour starts, so it's already on screen by beat 4.
+        UserDefaults.standard.set(true, forKey: "userCatOn")
+        TeamCursorsOverlay.shared.setUserCat(true)
         // Surface the REAL permission cards so the access steps have a live Grant button under the guide.
         gateDismissed = false          // clear any prior dismissal so the concierge cards can show
         refreshPermissionGate()
