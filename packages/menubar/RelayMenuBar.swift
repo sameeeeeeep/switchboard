@@ -383,6 +383,20 @@ func readNativeApps() -> [String] {
 // The daemon's live tool inventory (connectors it can grant to apps) doesn't live in a file the
 // panel can read — the servers are inherited via the claude.ai SDK. So the daemon writes a small
 // status.json on each health poll; until it does, this reads empty and the TOOLS section hides.
+struct ModelProvider: Identifiable {
+    let id: String
+    let models: [String]
+    let online: Bool
+    let signedIn: Bool
+    var label: String { id == "claude-code" ? "Claude Code" : (id == "codex" ? "Codex" : id) }
+}
+func readModelProviders() -> [ModelProvider] {
+    guard let status = readJSON(STATUS_FILE) as? [String: Any], let rows = status["modelProviders"] as? [[String: Any]] else { return [] }
+    return rows.compactMap { row in
+        guard let id = row["id"] as? String else { return nil }
+        return ModelProvider(id: id, models: row["models"] as? [String] ?? [], online: row["online"] as? Bool ?? false, signedIn: row["signedIn"] as? Bool ?? false)
+    }
+}
 let STATUS_FILE = (RELAY_DIR as NSString).appendingPathComponent("status.json")
 struct Connector: Identifiable { let id: String; let name: String; let tools: Int; let ok: Bool }
 func readConnectors() -> [Connector] {
@@ -764,6 +778,8 @@ final class Model: ObservableObject {
     @Published var economy = false                // prefer a cheaper/faster model to spend fewer tokens
     @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
+    @Published var modelProviders: [ModelProvider] = []
+    @Published var preferredModel: String = ""
     @Published var disabledModels: Set<String> = []  // models the user turned off (~/.relay/models.json, canonical ids)
     @Published var shortcuts = readShortcutCfg()   // the summon / talk gesture bindings (rebindable presets)
     @Published var team: TeamState? = nil          // in-team state (nil = off/no-team) — mirror of the daemon's team.status()
@@ -796,6 +812,8 @@ final class Model: ObservableObject {
         regionSelect = readRegionSelect()
         defaultShare = readDefaultShare()
         disabledModels = readModelPrefs()
+        modelProviders = readModelProviders()
+        preferredModel = ((readJSON((RELAY_DIR as NSString).appendingPathComponent("models.json")) as? [String: Any])?["defaultModel"] as? String) ?? ""
         shortcuts = readShortcutCfg()
         team = readTeam()
         teamEnabled = readTeamEnabled()
@@ -1641,8 +1659,17 @@ struct Panel: View {
     // MODELS (docs/MODEL-SELECTION.md §8) — the user's allow/deny list. Each chip is a CHECKBOX: checked =
     // allowed, unchecked = in the ~/.relay/models.json deny-list (nothing, God or any wrapp, uses it). Two
     // "off"s never blur: disabled-by-choice = an unchecked box; OFFLINE (signed out / Ollama down) = dimmed
-    // with its reason, checkbox state preserved. A last-of-class lock keeps at least one model of each class on.
-    private let cloudModels: [(name: String, canon: String)] = [("Opus 4.8", "opus"), ("Sonnet", "sonnet"), ("Haiku", "haiku")]
+    // with its reason, checkbox state preserved. Every provider may be turned off.
+    private var cloudModels: [(name: String, canon: String, provider: String, online: Bool)] {
+        model.modelProviders.filter { $0.id != "ollama" }.flatMap { p in
+            var seen = Set<String>()
+            return p.models.compactMap { name -> (name: String, canon: String, provider: String, online: Bool)? in
+                let canon = canonicalModelId(name)
+                guard seen.insert(canon).inserted else { return nil }
+                return (name: name, canon: canon, provider: p.label, online: p.online && p.signedIn)
+            }
+        }
+    }
     private var modelsSummary: String {
         let on = cloudModels.filter { !model.disabledModels.contains($0.canon) }.count
               + ollama.models.filter { !model.disabledModels.contains(canonicalModelId($0.name)) }.count
@@ -1650,49 +1677,48 @@ struct Panel: View {
         return "\(on) of \(total) on"
     }
     private var modelsSettingsSection: some View {
-        let cloudCanons = cloudModels.map { $0.canon }
-        let localCanons = ollama.models.map { canonicalModelId($0.name) }
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                IconView(store: icons, key: "conn:claude", hosts: ["claude.ai"], symbol: "sparkle",
-                         tint: model.signedIn ? .lime : .danger, bg: Color.panel, size: 15, corner: 4)
-                Text(model.signedIn ? "CLAUDE CODE" : "CLAUDE CODE · SIGNED OUT").font(.splMono(9)).kerning(0.4)
-                    .foregroundColor(model.signedIn ? .inkDim : .danger)
-            }
-            FlowLayout(spacing: 6) {
-                ForEach(cloudModels, id: \.canon) { m in
-                    modelToggle(name: m.name, canon: m.canon, offline: !model.signedIn, offlineReason: "signed out", classCanons: cloudCanons)
+        VStack(alignment: .leading, spacing: 12) {
+            Menu {
+                Button("App's requested model") { setPreferredModel("") }
+                ForEach(cloudModels.filter { $0.online && !model.disabledModels.contains($0.canon) }, id: \.canon) { m in
+                    Button("\(m.provider) · \(m.name)") { setPreferredModel(m.name) }
                 }
-            }
-            HStack(spacing: 8) {
-                ZStack { RoundedRectangle(cornerRadius: 4).fill(Color.raised)
-                    Image(systemName: "cpu").font(.system(size: 9)).foregroundColor(.inkDim) }.frame(width: 15, height: 15)
-                Text(ollama.up ? "OLLAMA" : "OLLAMA · NOT RUNNING").font(.splMono(9)).kerning(0.4).foregroundColor(.inkDim)
-            }
-            if !ollama.models.isEmpty {
+                ForEach(ollama.models.filter { ollama.up && !model.disabledModels.contains(canonicalModelId($0.name)) }) { m in Button(m.name) { setPreferredModel(m.name) } }
+            } label: { Text("New apps: \(model.preferredModel.isEmpty ? "app choice" : model.preferredModel)").font(.hanken(12)) }
+            ForEach(model.modelProviders.filter { $0.id != "ollama" }) { p in
+                Text(p.label.uppercased() + (!p.online ? " · UNAVAILABLE" : p.signedIn ? "" : " · SIGN IN REQUIRED")).font(.splMono(10)).foregroundColor(.inkDim)
                 FlowLayout(spacing: 6) {
-                    ForEach(ollama.models) { m in
-                        modelToggle(name: m.name, canon: canonicalModelId(m.name), offline: !ollama.up, offlineReason: "Ollama off", classCanons: localCanons)
+                    ForEach(cloudModels.filter { $0.provider == p.label }, id: \.canon) { m in
+                        modelToggle(name: m.name, canon: m.canon, offline: !m.online, offlineReason: "unavailable")
                     }
                 }
-            } else if ollama.up {
-                Text("No local models — pull one with `ollama pull`").font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Turn a model off and nothing — God or any wrapp — will use it. At least one per group stays on.")
-                .font(.hanken(10.5)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
+            Text(ollama.up ? "OLLAMA" : "OLLAMA · NOT RUNNING").font(.splMono(10)).foregroundColor(.inkDim)
+            FlowLayout(spacing: 6) {
+                ForEach(ollama.models) { m in
+                    modelToggle(name: m.name, canon: canonicalModelId(m.name), offline: !ollama.up, offlineReason: "offline")
+                }
+            }
+            Text("Choose an app's model when connecting. Existing conversations keep their starting model; disabling it pauses them.").font(.hanken(11)).foregroundColor(.inkFaint)
         }
     }
-    // One toggle chip. `classCanons` = the canonical ids in this model's class (cloud or local); the LAST
-    // enabled one of a class is locked (can't be unchecked) so an allowed set is never empty.
-    private func modelToggle(name: String, canon: String, offline: Bool, offlineReason: String, classCanons: [String]) -> some View {
+    private func setPreferredModel(_ name: String) {
+        let path = (RELAY_DIR as NSString).appendingPathComponent("models.json")
+        var obj = (readJSON(path) as? [String: Any]) ?? [:]
+        obj["defaultModel"] = name.isEmpty ? nil : name
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        }
+        model.refreshFiles()
+    }
+    // Every provider can be switched off. The daemon reports no available model if all are disabled.
+    private func modelToggle(name: String, canon: String, offline: Bool, offlineReason: String) -> some View {
         let enabled = !model.disabledModels.contains(canon)
-        let enabledInClass = classCanons.filter { !model.disabledModels.contains($0) }
-        let locked = enabled && enabledInClass.count <= 1     // last one on in its class → can't turn it off
-        return Button(action: { if !locked { onSetModelDisabled(name, enabled) } }) {
+        return Button(action: { onSetModelDisabled(name, enabled) }) {
             HStack(spacing: 7) {
-                Image(systemName: locked ? "lock.fill" : (enabled ? "checkmark.square.fill" : "square"))
+                Image(systemName: enabled ? "checkmark.square.fill" : "square")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(locked ? .inkFaint : (enabled ? .lime : .inkFaint))
+                    .foregroundColor(enabled ? .lime : .inkFaint)
                 Text(name).font(canon == name ? .splMono(11) : .hanken(11, .medium))
                     .foregroundColor(enabled ? .ink : .inkFaint).lineLimit(1)
                 if offline {
@@ -1705,9 +1731,8 @@ struct Panel: View {
             .opacity(offline ? 0.55 : 1)
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
-         .help(locked ? "At least one model in this group must stay on"
-                      : (offline ? "\(name) is \(offlineReason) right now — it stays \(enabled ? "allowed" : "off") once it's back"
-                                 : (enabled ? "On — turn off so nothing uses it" : "Off — turn back on")))
+         .help(offline ? "\(name) is \(offlineReason) right now — it stays \(enabled ? "allowed" : "off") once it's back"
+                        : (enabled ? "On — turn off so nothing uses it" : "Off — turn back on"))
     }
 
     // KEYBOARD SHORTCUTS — the two global gestures, listed in-place with a live tester and a rebind menu.
@@ -2107,15 +2132,13 @@ struct Panel: View {
 
     // ---------- COMMAND CENTRE — pick the model right here (task #5). Tapping a card allows/denies it in
     // ~/.relay/models.json (the SAME deny-list Settings writes; a denied model is used by nothing — God or any
-    // wrapp); the last model of a class stays locked ON. Loaded local models keep an ⏏ to free memory. ----
+    // wrapp). Loaded local models keep an ⏏ to free memory. ----
     private var commandMeta: String {
-        let cloud = model.signedIn ? "Claude Code" : "signed out"
+        let cloud = model.modelProviders.filter { $0.id != "ollama" && $0.signedIn }.map { $0.label }.joined(separator: " + ")
         if ollama.up && ollama.loadedCount > 0 { return "\(cloud) · \(ollama.loadedCount) local loaded" }
         return cloud
     }
     private var commandCentreSection: some View {
-        let cloudCanons = cloudModels.map { $0.canon }
-        let localCanons = ollama.models.map { canonicalModelId($0.name) }
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Text("COMMAND CENTRE").kicker(); Text("· model").font(.splMono(9.5)).foregroundColor(.inkFaint)
@@ -2124,15 +2147,15 @@ struct Panel: View {
             HDragScroll(height: 68) {
                 HStack(spacing: 10) {
                     ForEach(cloudModels, id: \.canon) { m in
-                        modelCard(name: m.name, canon: m.canon, provider: "claude", detail: "cloud",
-                                  offline: !model.signedIn, live: false, classCanons: cloudCanons, onUnload: nil)
+                        modelCard(name: m.name, canon: m.canon, provider: m.provider, detail: m.provider,
+                                  offline: !m.online, live: false, onUnload: nil)
                     }
                     if !ollama.models.isEmpty {
                         Rectangle().fill(Color.edge).frame(width: 1, height: 46).padding(.horizontal, 2)   // a hairline provider seam — never dots
                         ForEach(ollama.models) { m in
                             modelCard(name: m.name, canon: canonicalModelId(m.name), provider: "ollama",
                                       detail: m.loaded ? (m.expiresIn.isEmpty ? String(format: "%.1fGB", m.vramGB) : m.expiresIn) : (m.sizeGB > 0 ? String(format: "%.1fGB", m.sizeGB) : "local"),
-                                      offline: !ollama.up, live: m.loaded, classCanons: localCanons,
+                                      offline: !ollama.up, live: m.loaded,
                                       onUnload: m.loaded ? { ollama.unload(m.name) } : nil)
                         }
                     } else if ollama.up {
@@ -2144,10 +2167,8 @@ struct Panel: View {
         }.padding(.leading, 18).padding(.vertical, 14)
     }
     private func modelCard(name: String, canon: String, provider: String, detail: String,
-                           offline: Bool, live: Bool, classCanons: [String], onUnload: (() -> Void)?) -> some View {
+                           offline: Bool, live: Bool, onUnload: (() -> Void)?) -> some View {
         let enabled = !model.disabledModels.contains(canon)
-        let enabledInClass = classCanons.filter { !model.disabledModels.contains($0) }
-        let locked = enabled && enabledInClass.count <= 1     // last one on in its class → can't turn it off
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 7) {
                 if live { Circle().fill(Color.lime).frame(width: 6, height: 6).shadow(color: Color.lime.opacity(0.5), radius: 3) }
@@ -2156,17 +2177,13 @@ struct Panel: View {
                     .foregroundColor(enabled ? .ink : .inkFaint).lineLimit(1)
             }
             HStack(spacing: 6) {
-                Text(offline ? (provider == "claude" ? "signed out" : "offline") : detail).font(.monoSm).foregroundColor(.inkFaint)
+                Text(offline ? "unavailable" : detail).font(.monoSm).foregroundColor(.inkFaint)
                 Spacer(minLength: 6)
                 if let u = onUnload {
                     Button(action: u) { Image(systemName: "eject.fill").font(.system(size: 9)).foregroundColor(.inkFaint) }
                         .buttonStyle(.plain).help("Unload now, free the memory")
                 }
-                if locked {
-                    HStack(spacing: 3) { Image(systemName: "lock.fill").font(.system(size: 8)); Text("ON").font(.splMono(9)).kerning(0.6) }.foregroundColor(.inkFaint)
-                } else {
-                    Text(enabled ? "ON" : "OFF").font(.splMono(9)).kerning(0.8).foregroundColor(enabled ? .lime : .inkFaint)
-                }
+                Text(enabled ? "ON" : "OFF").font(.splMono(9)).kerning(0.8).foregroundColor(enabled ? .lime : .inkFaint)
             }
         }
         .frame(width: 130, alignment: .leading)
@@ -2174,9 +2191,8 @@ struct Panel: View {
         .sbCard(active: enabled)
         .opacity(enabled ? (offline ? 0.6 : 1) : 0.5)
         .contentShape(Rectangle())
-        .onTapGesture { if !locked { onSetModelDisabled(name, enabled) } }
-        .help(locked ? "At least one \(provider == "claude" ? "cloud" : "local") model stays on"
-                     : (enabled ? "Tap to turn off — nothing will use it" : "Tap to turn on"))
+        .onTapGesture { onSetModelDisabled(name, enabled) }
+        .help(enabled ? "Tap to turn off — nothing will use it" : "Tap to turn on")
     }
 
     // tools — real brand logos, a horizontal card rail (matching apps + command centre, one grammar)
@@ -3016,6 +3032,17 @@ struct StorageBindDrop: View {
 /// Mirrors the extension consent-view: origin + reason, model checkboxes (requested pre-selected), tool
 /// checkboxes with a read/write badge. Approve returns the grant OBJECT
 /// {models, tools:[{name,access}], budgets, contextKinds}; Deny returns nil. Wired via ConsentClient.replyResult.
+final class ConnectGrantSelection: ObservableObject {
+    @Published var models: Set<String>
+    @Published var tools: Set<String>
+    @Published var defaultModel: String
+    init(available: [String], requested: [String], tools: [String]) {
+        let requested = requested.filter { available.contains($0) }
+        let initial = requested.isEmpty ? Array(available.prefix(1)) : requested
+        self.models = Set(initial); self.tools = Set(tools); self.defaultModel = initial.first ?? ""
+    }
+}
+
 struct ConnectGrantDrop: View {
     let origin: String
     let reason: String
@@ -3026,16 +3053,14 @@ struct ConnectGrantDrop: View {
     var onApprove: ([String: Any]) -> Void
     var onDeny: () -> Void
 
-    @State private var selModels: Set<String>
-    @State private var selTools: Set<String>
+    @ObservedObject var selection: ConnectGrantSelection
 
     init(origin: String, reason: String, availableModels: [String], requestedModels: [String],
          tools: [(name: String, access: String, label: String)], budgets: [String: Any], contextKinds: [String],
-         onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
+         selection: ConnectGrantSelection? = nil, onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
         self.origin = origin; self.reason = reason; self.availableModels = availableModels; self.tools = tools
         self.budgets = budgets; self.contextKinds = contextKinds; self.onApprove = onApprove; self.onDeny = onDeny
-        _selModels = State(initialValue: Set(requestedModels.isEmpty ? Array(availableModels.prefix(1)) : requestedModels))
-        _selTools = State(initialValue: Set(tools.map { $0.name }))
+        self.selection = selection ?? ConnectGrantSelection(available: availableModels, requested: requestedModels, tools: tools.map { $0.name })
     }
 
     private func host(_ s: String) -> String { URL(string: s)?.host ?? s }
@@ -3084,16 +3109,22 @@ struct ConnectGrantDrop: View {
                 VStack(alignment: .leading, spacing: 11) {
                     if !availableModels.isEmpty {
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
+                            Text("ALLOW THESE MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
                             ForEach(chunked(availableModels, 3), id: \.self) { row in
                                 HStack(spacing: 7) {
                                     ForEach(row, id: \.self) { m in
-                                        Button { if selModels.contains(m) { selModels.remove(m) } else { selModels.insert(m) } } label: { pill(m, selModels.contains(m)) }.buttonStyle(.plain)
+                                        Button { if selection.models.contains(m) { selection.models.remove(m) } else { selection.models.insert(m) } } label: { pill(m, selection.models.contains(m)) }.buttonStyle(.plain)
                                     }
                                     Spacer(minLength: 0)
                                 }
                             }
                         }
+                    }
+                    if !selection.models.isEmpty {
+                        Picker("New conversations use", selection: $selection.defaultModel) {
+                            ForEach(selection.models.sorted(), id: \.self) { Text($0).tag($0) }
+                        }.font(.hanken(12))
+                        Text("Each conversation keeps its starting model.").font(.hanken(11)).foregroundColor(.inkFaint)
                     }
                     if !tools.isEmpty {
                         VStack(alignment: .leading, spacing: 7) {
@@ -3106,7 +3137,7 @@ struct ConnectGrantDrop: View {
                                 HStack(spacing: 7) {
                                     ForEach(row, id: \.self) { name in
                                         if let t = tools.first(where: { $0.name == name }) {
-                                            Button { if selTools.contains(name) { selTools.remove(name) } else { selTools.insert(name) } } label: { toolChip(t, selTools.contains(name)) }.buttonStyle(.plain)
+                                            Button { if selection.tools.contains(name) { selection.tools.remove(name) } else { selection.tools.insert(name) } } label: { toolChip(t, selection.tools.contains(name)) }.buttonStyle(.plain)
                                         }
                                     }
                                     Spacer(minLength: 0)
@@ -3129,20 +3160,21 @@ struct ConnectGrantDrop: View {
                 Spacer(minLength: 0)
                 Button {
                     let grant: [String: Any] = [
-                        "models": Array(selModels),
-                        "tools": tools.filter { selTools.contains($0.name) }.map { ["name": $0.name, "access": $0.access] },
+                        "models": Array(selection.models).sorted(),
+                        "modelOverride": selection.models.contains(selection.defaultModel) ? selection.defaultModel : (selection.models.sorted().first ?? ""),
+                        "tools": tools.filter { selection.tools.contains($0.name) }.map { ["name": $0.name, "access": $0.access] },
                         "budgets": budgets,
                         "contextKinds": contextKinds,
                     ]
                     onApprove(grant)
                 } label: {
                     HStack(spacing: 6) {
-                        Text("Approve \u{00B7} \(selTools.count) tool\(selTools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold))
+                        Text("Approve \u{00B7} \(selection.tools.count) tool\(selection.tools.count == 1 ? "" : "s")").font(.hanken(11.5, .semibold))
                         KeyCap(glyph: "↵", recessed: true)
                     }.foregroundColor(.page)
                         .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).disabled(selection.models.isEmpty)
             }.padding(.top, 1)
         }
         .padding(16)
@@ -3150,6 +3182,9 @@ struct ConnectGrantDrop: View {
         .padding(.horizontal, 14)
         .background(Color.page)
         .clipShape(NotchDropShape())
+        .onChange(of: selection.models) { values in
+            if !values.contains(selection.defaultModel) { selection.defaultModel = values.sorted().first ?? "" }
+        }
     }
 }
 
@@ -4324,6 +4359,7 @@ struct ActionConsentDrop: View {
         }
         // A THIRD-PARTY tool (origin tool://<id>) gets the dedicated provenance-forward card — no model
         // pills (no LLM in the loop), keys-local lane badge, "you didn't build this" framing (§task 5).
+        let selection = ConnectGrantSelection(available: available, requested: requested, tools: tools.map { $0.name })
         let content: AnyView
         if origin.hasPrefix("tool://") {
             content = AnyView(makeToolGrant(origin: origin, reason: reason, requestedTools: tools,
@@ -4331,7 +4367,7 @@ struct ActionConsentDrop: View {
         } else {
             content = AnyView(ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
                                     tools: tools, budgets: budgets, contextKinds: contextKinds,
-                                    onApprove: { finish($0) }, onDeny: { finish(nil) }))
+                                    selection: selection, onApprove: { finish($0) }, onDeny: { finish(nil) }))
         }
         let view = content
         if consentPanel == nil {
@@ -4349,14 +4385,15 @@ struct ActionConsentDrop: View {
             consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
         }
         presentFromNotch(consentPanel)
-        // Approve with the DEFAULT scope (requested models + all requested tools) on ↵/⌥→; deny on Esc.
-        // Same object the card's Approve button builds from its default selection.
-        let defaultGrant: [String: Any] = [
-            "models": requested.isEmpty ? Array(available.prefix(1)) : requested,
-            "tools": tools.map { ["name": $0.name, "access": $0.access] },
-            "budgets": budgets, "contextKinds": contextKinds,
-        ]
-        armConsentKeys(approve: { finish(defaultGrant) }, deny: { finish(nil) })
+        armConsentKeys(approve: {
+            guard origin.hasPrefix("tool://") || !selection.models.isEmpty else { return }
+            finish([
+                "models": selection.models.sorted(),
+                "modelOverride": selection.models.contains(selection.defaultModel) ? selection.defaultModel : (selection.models.sorted().first ?? ""),
+                "tools": tools.filter { selection.tools.contains($0.name) }.map { ["name": $0.name, "access": $0.access] },
+                "budgets": budgets, "contextKinds": contextKinds,
+            ])
+        }, deny: { finish(nil) })
     }
 
     // Build the third-party TOOL grant card from the daemon's consent:connect body. The requested tools
@@ -4644,17 +4681,17 @@ struct ActionConsentDrop: View {
 
     // Model selection (docs/MODEL-SELECTION.md §8) — write the deny-list to ~/.relay/models.json. `name` is
     // any friendly/backend id; we store it CANONICAL so disabling "Opus 4.8" also catches "claude-opus-4-8".
-    // The daemon-side substitution/filter is a separate job; this just owns the file. Guard: never write an
-    // empty allowed set — the last-of-class lock lives in the UI, this is the belt-and-suspenders.
+    // The daemon enforces this preference and notifies connected apps when this file changes.
     @MainActor private func setModelDisabled(_ name: String, _ disabled: Bool) {
         let id = canonicalModelId(name)
         var set = readModelPrefs()
         if disabled { set.insert(id) } else { set.remove(id) }
         try? FileManager.default.createDirectory(atPath: RELAY_DIR, withIntermediateDirectories: true)
         let f = (RELAY_DIR as NSString).appendingPathComponent("models.json")
-        let obj: [String: Any] = ["disabled": Array(set).sorted()]
+        var obj = (readJSON(f) as? [String: Any]) ?? [:]
+        obj["disabled"] = Array(set).sorted()
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
-            try? data.write(to: URL(fileURLWithPath: f))
+            try? data.write(to: URL(fileURLWithPath: f), options: .atomic)
         }
         model.refreshFiles()
         toast(disabled ? "\(name) off — nothing will use it" : "\(name) back on")

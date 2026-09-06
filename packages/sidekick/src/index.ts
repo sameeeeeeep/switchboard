@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync } from "node:fs";
+import { writeFileSync, watchFile } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import { GrantStore } from "./security/grant-store.js";
@@ -39,6 +39,8 @@ async function main() {
   const audit = new AuditLog(config.stateDir);
   const mcp = await McpRegistry.boot(loadMcpConfig(config.stateDir));
   const backends = await BackendRegistry.boot();
+  process.once("exit", () => backends.close());
+  for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => { backends.close(); process.exit(0); });
   const storage = new StorageStore(config.stateDir);
   const contexts = new ContextLibrary(config.stateDir);
   seedExampleIfEmpty(config.stateDir, contexts, storage, (m) => console.error("[relay/seed]", m)); // fresh machine ⇒ one example project so nothing's empty
@@ -127,14 +129,19 @@ async function main() {
         connectors,
         toolCount: connectors.reduce((n, c) => n + c.tools, 0),
         backends: await backends.onlineIds(),
+        modelProviders: await backends.inventory(),
         updatedAt: Date.now(),
       };
       writeFileSync(join(config.stateDir, "status.json"), JSON.stringify(status, null, 2), { mode: 0o600 });
+      await broker.notifyModelsChanged();
     } catch (err) {
       console.error("[relay] status write failed:", String(err).slice(0, 120));
     }
   }
   await writeStatus();
+  watchFile(join(config.stateDir, "models.json"), { persistent: false, interval: 1000 }, () => {
+    void broker.notifyModelsChanged().catch((err) => console.error("[relay] model notification failed:", String(err).slice(0, 120)));
+  });
   setInterval(() => { void writeStatus(); }, 30_000).unref?.();
 
   console.error(`[relay] pairing token (paste into the extension): ${config.pairingToken}`);

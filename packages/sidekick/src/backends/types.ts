@@ -1,4 +1,4 @@
-import type { CompletionParams, StreamDelta, ToolCallRequest, ToolCallResult } from "@relay/protocol";
+import type { CompletionParams, StreamDelta, ToolCallRequest, ToolCallResult, ToolDescriptor } from "@relay/protocol";
 
 /**
  * A model backend. Claude Code is the reference; local OpenAI-compatible runners (Ollama,
@@ -24,9 +24,11 @@ export interface BackendRunContext {
   authorizeToolCall: (call: ToolCallRequest) => Promise<{ allow: boolean; message?: string }>;
   /** AUTHORIZE-AND-EXECUTE gate for backends that run their OWN tool loop (e.g. the local
    *  OpenAI backend parsing tool_calls). Resolves to the tool result or a denial. */
-  gateToolCall: (call: ToolCallRequest) => Promise<ToolCallResult>;
+  gateToolCall: (call: ToolCallRequest, signal?: AbortSignal) => Promise<ToolCallResult>;
   /** The exact allowlisted, server-qualified tool names this origin may use. Empty = non-agentic. */
   allowedTools: string[];
+  /** Broker-discovered MCP tool schemas. Execution still goes through gateToolCall. */
+  tools?: ToolDescriptor[];
   /** MCP servers to expose to the runtime for the agentic loop (creds stay here, never to page). */
   mcpServers?: Record<string, unknown>;
   /** Emit a streaming delta to the page. */
@@ -46,6 +48,10 @@ export interface ModelBackend {
    *  opposite of BYO-local. The daemon surfaces this so the panel can badge the trust trade
    *  honestly ("prompts routed through a provider") and never default to it. Absent = local/BYO. */
   hosted?: boolean;
+  capabilities?: { vision: boolean; agentic: boolean; warmSessions?: boolean };
+  defaultModel?(): string | undefined;
+  endSession?(origin: string, sessionId: string): Promise<void>;
+  close?(): void;
   /** Model ids this backend can currently serve. */
   listModels(): Promise<string[]>;
   /** True if the backend is reachable right now (CLI present / local server up). */

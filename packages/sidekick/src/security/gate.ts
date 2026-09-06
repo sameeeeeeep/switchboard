@@ -54,6 +54,15 @@ export class Gate {
     return false;
   }
 
+  /** Consent may outlive the grant it was opened under. Check current scope again before use. */
+  private scopeDenial(origin: string, call: ToolCallRequest, access: "read" | "write"): string | undefined {
+    const grant = this.grants.get(origin);
+    if (!grant) return "origin not connected";
+    if (!grant.tools.some((t) => this.matches(t.name, call.name))) return `tool ${call.name} not in this origin's allowlist`;
+    if (access === "write" && grant.mode === "readonly") return "this site is set to read-only";
+    return undefined;
+  }
+
   /**
    * AUTHORIZE-ONLY path. Used by the gated agentic loop's `canUseTool`, where the Agent SDK
    * EXECUTES the tool itself after we allow. So this runs the full policy (scope, allowlist,
@@ -95,6 +104,11 @@ export class Gate {
         this.audit.record({ origin, kind: "consent", toolName: call.name, outcome: "ok", decision: "user-approved" });
       }
     }
+    const changedScope = this.scopeDenial(origin, call, access);
+    if (changedScope) {
+      this.audit.record({ origin, kind: "tool_call", toolName: call.name, outcome: "denied", decision: "blocked", note: changedScope });
+      return { allow: false, message: changedScope };
+    }
     this.budgets.recordCall(origin);
     return { allow: true, decision: access === "read" || grant.mode === "trust" ? "auto-approved" : "user-approved" };
   }
@@ -105,10 +119,12 @@ export class Gate {
    * checks than a direct call. Returns a ToolCallResult; denials come back as ok:false with a
    * code so the model can be told "not permitted" without the action ever running.
    */
-  async gateToolCall(origin: string, call: ToolCallRequest): Promise<ToolCallResult> {
+  async gateToolCall(origin: string, call: ToolCallRequest, signal?: AbortSignal): Promise<ToolCallResult> {
+    if (signal?.aborted) return deny(BYOPErrorCode.CONSENT_DENIED, "call cancelled");
     // Same policy as the agentic path (single source of truth), then EXECUTE — because here the
     // page named the tool directly and no model/SDK is in the loop to run it for us.
     const decision = await this.authorize(origin, call);
+    if (signal?.aborted) return deny(BYOPErrorCode.CONSENT_DENIED, "call cancelled");
     if (!decision.allow) {
       // Map the policy failure to a stable BYOP code for the page.
       const code = decision.message?.includes("not connected") ? BYOPErrorCode.UNAUTHORIZED
@@ -116,6 +132,13 @@ export class Gate {
         : decision.message?.includes("rate limit") ? BYOPErrorCode.BUDGET_EXCEEDED
         : BYOPErrorCode.CONSENT_DENIED;
       return deny(code, decision.message ?? "denied");
+    }
+    // authorize() yields to the event loop, so revocation can also occur between its result
+    // and direct execution. There is no asynchronous boundary after this final scope check.
+    const changedScope = this.scopeDenial(origin, call, this.classify(call.name));
+    if (changedScope) {
+      this.audit.record({ origin, kind: "tool_call", toolName: call.name, outcome: "denied", decision: "blocked", note: changedScope });
+      return deny(BYOPErrorCode.CONSENT_DENIED, changedScope);
     }
     try {
       const result = await this.mcp.invoke(call);

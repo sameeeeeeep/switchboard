@@ -22,6 +22,7 @@ import {
   type ToolDescriptor,
   type UserIdentity,
   type SpeakResult,
+  type TranscribeResult,
   type HealthStatus,
   type HealthReason,
 } from "@relay/protocol";
@@ -128,6 +129,12 @@ export class Relay {
     return this.provider.request({ method: "claude_speak", params: { text, voice: opts?.voice } }).catch(() => null);
   }
 
+  /** Transcribe an inline audio data URL using the user's configured local recognizer.
+   * Check capabilities().local?.stt first. No microphone access is requested by the SDK. */
+  transcribe(audio: string, opts?: { language?: string }): Promise<TranscribeResult> {
+    return this.provider.request({ method: "claude_transcribe", params: { audio, language: opts?.language } });
+  }
+
   listTools(): Promise<ToolDescriptor[]> {
     return this.provider.request({ method: "claude_listTools" }).then((r) => r.tools);
   }
@@ -170,7 +177,7 @@ export class Relay {
     }
   }
 
-  on(event: "connect" | "disconnect" | "permissionsChanged" | "health", handler: (payload: unknown) => void) {
+  on(event: "connect" | "disconnect" | "permissionsChanged" | "capabilitiesChanged" | "health", handler: (payload: unknown) => void) {
     this.provider.on(event, handler);
   }
 

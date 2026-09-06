@@ -88,6 +88,7 @@ export function saveCloudConfig(patch: Partial<CloudConfig>): CloudConfig {
  *  like "llama3:8b" pass through). Empty ⇒ everything on. */
 export interface ModelPrefs {
   disabled: string[];
+  defaultModel?: string;
 }
 
 /** Load the model deny-list, canonicalizing on read so comparisons are exact. Never throws; a missing
@@ -101,7 +102,7 @@ export function loadModelPrefs(): ModelPrefs {
       const disabled = Array.isArray(raw?.disabled)
         ? [...new Set((raw.disabled as unknown[]).filter((x): x is string => typeof x === "string" && !!x).map(canonicalModel))]
         : [];
-      return { disabled };
+      return { disabled, ...(typeof raw.defaultModel === "string" ? { defaultModel: raw.defaultModel } : {}) };
     }
   } catch { /* malformed ⇒ no preference (everything on) */ }
   return { disabled: [] };
@@ -112,8 +113,9 @@ export function loadModelPrefs(): ModelPrefs {
 export function saveModelPrefs(prefs: ModelPrefs): ModelPrefs {
   ensureDir();
   const disabled = [...new Set((prefs.disabled ?? []).filter((x): x is string => typeof x === "string" && !!x).map(canonicalModel))];
-  writeCredential(MODELS_FILE, JSON.stringify({ disabled }, null, 2));
-  return { disabled };
+  const saved = { disabled, ...(prefs.defaultModel ? { defaultModel: prefs.defaultModel } : {}) };
+  writeCredential(MODELS_FILE, JSON.stringify(saved, null, 2));
+  return saved;
 }
 
 /** The paired user's public identity — a display name (and optional avatar) any connected app can

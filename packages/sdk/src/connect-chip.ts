@@ -52,7 +52,7 @@ type State =
   | { kind: "unreachable"; appMissing?: boolean }
   | { kind: "unpaired" }
   | { kind: "disconnected"; relay: Relay }
-  | { kind: "connected"; relay: Relay; user: UserIdentity | null; project: Context | null };
+  | { kind: "connected"; relay: Relay; user: UserIdentity | null; project: Context | null; model: string | null };
 
 /** A rejected provider request, as the extension delivers it: a 4900 carries `data.reason` naming
  *  which rung failed (see HealthReason). Older workers send the code with no `data` at all. */
@@ -221,13 +221,14 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
       state = { kind: "disconnected", relay: r }; emitTransition(false); return render();
     }
     const wantsContext = opts.context !== "none";
-    const [user, project] = await Promise.all([
-      r.identity(),
+    const [capabilities, project] = await Promise.all([
+      r.capabilities().catch(() => null),
       wantsContext ? r.context.active().catch(() => null) : Promise.resolve(null),
     ]);
     if (destroyed || my !== seq) return;
     const wasAlreadyConnected = wasConnected;
-    state = { kind: "connected", relay: r, user, project };
+    const model = capabilities?.sessionModelPinning ? (capabilities.defaultModel ?? null) : (grant.modelOverride ?? grant.models[0] ?? null);
+    state = { kind: "connected", relay: r, user: capabilities?.user ?? null, project, model };
     emitTransition(true);
     // Honor the documented contract: onProjectChange fires however the lent project changed — the
     // chip's own switcher, the side panel, or another tab (all funnel through permissionsChanged →
@@ -252,6 +253,8 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
     if (subscribed) return; subscribed = true;
     // The panel (or another tab) can change the lent project or revoke — reflect it live.
     r.on("permissionsChanged", () => { void refresh(); });
+    r.on("capabilitiesChanged", () => { void refresh(); });
+    r.on("connect", () => { void refresh(); });
     r.on("disconnect", () => { void refresh(); });
     // The setup ladder moved (daemon woke or slept, pairing landed) — upgrade AND downgrade live,
     // the same late-binding pattern as the provider watch, now for the whole ladder. This is the
@@ -449,6 +452,10 @@ export function mountConnect(target: HTMLElement, opts: ConnectChipOptions = {})
         menu.append(row, el("div", "sep"));
       }
       const dc = el("button", "item", "Disconnect this app"); dc.onclick = doDisconnect;
+      menu.append(el("div", "lbl", "New conversations"));
+      const modelChoice = el("button", "item", `${state.model ?? "Choose an available model"} · Change…`);
+      modelChoice.onclick = () => { menuOpen = false; render(); void doConnect(); };
+      menu.append(modelChoice, el("div", "foot", "Conversations keep their starting model. Change the default at the connection notch."), el("div", "sep"));
       menu.append(dc);
       menu.append(el("div", "foot", "Connectors, budgets & activity live in the Switchboard toolbar panel."));
       wrap.append(menu);

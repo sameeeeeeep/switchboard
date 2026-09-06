@@ -138,6 +138,7 @@ function toSdkPrompt(params: CompletionParams): string | AsyncIterable<SDKUserMe
 
 export class ClaudeCodeBackend implements ModelBackend {
   id = "claude-code";
+  capabilities = { vision: true, agentic: true, warmSessions: true };
 
   async healthy(): Promise<boolean> {
     if (!cliProbe || Date.now() - cliProbe.at > PROBE_TTL_MS) {

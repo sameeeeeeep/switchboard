@@ -46,7 +46,7 @@ export async function runClaude(prompt, opts = {}) {
   try {
     const r = await provider.request({
       method: "claude_complete",
-      params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: wantsTools(opts) },
+      params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, sessionId: opts.sessionId, attachments: opts.attachments, maxTokens: opts.maxTokens, agentic: wantsTools(opts) },
     });
     return typeof r?.text === "string" ? r.text : null;
   } catch {
@@ -68,11 +68,12 @@ export function runClaudeStream(prompt, opts = {}) {
         if (!streamId || d.streamId !== streamId) return;
         if (d.type === "text") send({ type: "text", text: d.text });
         else if (d.type === "sources") send({ type: "sources", urls: d.urls });
-        else if (d.type === "done" || d.type === "error") { provider.removeListener?.("delta", onDelta); try { controller.close(); } catch {} }
+        else if (d.type === "done") { provider.removeListener?.("delta", onDelta); send({ type: "done", model: d.result?.model }); try { controller.close(); } catch {} }
+        else if (d.type === "error") { provider.removeListener?.("delta", onDelta); try { controller.error(new Error(d.error?.message ?? "AI request failed")); } catch {} }
       };
       provider.on("delta", onDelta);
       try {
-        const res = await provider.request({ method: "claude_stream", params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, agentic: wantsTools(opts) } });
+        const res = await provider.request({ method: "claude_stream", params: { prompt, system: opts.system, model: opts.model, effort: opts.effort, sessionId: opts.sessionId, attachments: opts.attachments, maxTokens: opts.maxTokens, agentic: wantsTools(opts) } });
         streamId = res?.streamId;
       } catch { provider.removeListener?.("delta", onDelta); try { controller.close(); } catch {} }
     },

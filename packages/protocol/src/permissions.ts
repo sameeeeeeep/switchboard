@@ -59,9 +59,9 @@ export interface OriginGrant {
   mode: ConsentMode;
   /** Model ids this origin may request. Empty = none. Maps to daemon model backends. */
   models: string[];
-  /** USER-chosen model override. When set, the daemon runs THIS model regardless of which granted
-   *  model the app asks for (BYO-compute: model choice is the user's, not the app's). Must be one of
-   *  `models`; cleared if it ever falls out of grant. undefined = honor the app's requested model. */
+  /** USER-chosen default for new conversations, overriding the app's requested model.
+   * Existing conversation IDs keep their starting model. Must be one of `models`;
+   * cleared if it falls out of grant. undefined = honor the app's request/global preference. */
   modelOverride?: string;
   /** Tools this origin may see/call, each with its assigned access class. */
   tools: ToolGrant[];

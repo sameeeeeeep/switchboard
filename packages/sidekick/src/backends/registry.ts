@@ -1,5 +1,7 @@
 import type { ModelBackend } from "./types.js";
+import { BYOPErrorCode, ProviderError, type ModelInfo } from "@relay/protocol";
 import { ClaudeCodeBackend } from "./claude-code.js";
+import { CodexBackend } from "./codex.js";
 import { LocalOpenAIBackend } from "./local-openai.js";
 import { OpenRouterBackend } from "./openrouter.js";
 import { loadCloudConfig, loadModelPrefs } from "../config.js";
@@ -20,6 +22,7 @@ export class BackendRegistry {
   static async boot(): Promise<BackendRegistry> {
     const reg = new BackendRegistry();
     reg.register(new ClaudeCodeBackend());
+    if (process.env.RELAY_CODEX !== "0") reg.register(new CodexBackend());
     // Local runner (Ollama / LM Studio) — AUTO-DETECTED at Ollama's default port so every daemon
     // (incl. the always-on menu-bar one) can serve local models with zero config. healthy() gates
     // it: nothing listening ⇒ no models, inert. RELAY_LOCAL_OPENAI_URL overrides the URL;
@@ -57,6 +60,7 @@ export class BackendRegistry {
 
   backendFor(model: string | undefined): ModelBackend | null {
     if (model && this.modelToBackend.has(model)) return this.modelToBackend.get(model)!;
+    if (process.env.RELAY_BACKEND === "codex") return this.backends.find((b) => b.id === "codex" && this.lastHealthy.get(b.id)) ?? null;
     // Default: first HEALTHY backend — but NEVER a hosted one. An omitted or unknown model id means
     // "the user's own default", and resolving that to a hosted backend would send prompts off the
     // machine without anyone opting in — the one thing this product must never do. Hosted backends
@@ -66,6 +70,53 @@ export class BackendRegistry {
 
   async models(): Promise<string[]> {
     return [...this.modelToBackend.keys()];
+  }
+
+  modelInfo(): ModelInfo[] {
+    return this.allowedModels().map((id) => {
+      const backend = this.modelToBackend.get(id)!;
+      return {
+        id, backend: backend.id, hosted: backend.hosted === true,
+        capabilities: {
+          vision: backend.capabilities?.vision === true,
+          agentic: backend.capabilities?.agentic === true,
+          warmSessions: backend.capabilities?.warmSessions === true,
+        },
+        toolSource: backend.id === "claude-code" ? "claude-code" : backend.capabilities?.agentic ? "broker-mcp" : "none",
+      };
+    });
+  }
+
+  /** Explicit operator choice maps legacy Claude aliases BEFORE consent and grant validation.
+   * Never silently expands an existing origin grant. */
+  preferredModel(model: string | undefined): string | undefined {
+    if (model && !["opus", "sonnet", "haiku"].includes(canonicalModel(model))) return model;
+    const preference = loadModelPrefs().defaultModel;
+    if (preference && this.isAllowed(preference)) return preference;
+    if (process.env.RELAY_BACKEND !== "codex") return model;
+    const backend = this.backends.find((b) => b.id === "codex");
+    const selected = backend?.defaultModel?.();
+    if (!selected) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "Codex is selected but unavailable. Install Codex, sign in with codex login, then retry.");
+    return selected;
+  }
+
+  supports(model: string, need: { vision: boolean; agentic: boolean }): boolean {
+    const capabilities = this.modelToBackend.get(model)?.capabilities;
+    return (!need.vision || capabilities?.vision === true) && (!need.agentic || capabilities?.agentic === true);
+  }
+
+  async endSession(origin: string, sessionId: string) {
+    await Promise.all(this.backends.map((b) => b.endSession?.(origin, sessionId)));
+  }
+
+  close() { for (const backend of this.backends) backend.close?.(); }
+
+  async inventory() {
+    return Promise.all(this.backends.map(async (backend) => ({
+      id: backend.id, online: this.lastHealthy.get(backend.id) === true,
+      signedIn: this.lastHealthy.get(backend.id) ? (backend.signedIn ? await backend.signedIn() : true) : false,
+      models: [...this.modelToBackend].filter(([, b]) => b === backend).map(([model]) => model),
+    })));
   }
 
   // ── User model selection (docs/MODEL-SELECTION.md §3) ─────────────────────────────────────────
@@ -92,14 +143,13 @@ export class BackendRegistry {
     return !this.disabledSet().has(canonicalModel(model));
   }
 
-  /** Capability set minus the deny-list, honoring the health map already baked into the model map.
-   *  BELT-AND-SUSPENDERS (§5 "all models disabled"): if the deny-list would empty the allowed set,
-   *  fall back to the full capability set — the daemon warns but NEVER bricks. */
+  /** Capability set minus the deny-list. An empty selection stays empty so controls and routing
+   * agree; the user must enable a model before starting another conversation. */
   allowedModels(): string[] {
     const all = this.capabilityModels();
     const disabled = this.disabledSet();
     const allowed = all.filter((m) => !disabled.has(canonicalModel(m)));
-    return allowed.length ? allowed : all;
+    return allowed;
   }
 
   /** First candidate that isn't disabled (canonical compare), or undefined. */
@@ -111,10 +161,11 @@ export class BackendRegistry {
   /** Which CLASS of backend serves a model — so substitution can preserve the class of work:
    *  "claude" (vision + agentic), "hosted" (third-party, never a SILENT substitute), "local" (an
    *  Ollama-style runner: non-multimodal, can't drive the tool loop). null = not currently served. */
-  backendKindOf(model: string): "claude" | "hosted" | "local" | null {
+  backendKindOf(model: string): "claude" | "codex" | "hosted" | "local" | null {
     const b = this.modelToBackend.get(model);
     if (!b) return null;
     if (b.hosted) return "hosted";
+    if (b.id === "codex") return "codex";
     return b.id === "claude-code" ? "claude" : "local";
   }
 
@@ -147,26 +198,29 @@ export class BackendRegistry {
    *  those serve the default route. Otherwise the verdict is the BYO default's own (`signedIn()`).
    *  `undefined` = can't tell (never asserts signed-out). */
   async signedIn(): Promise<boolean | undefined> {
+    let unknown = false;
     for (const b of this.backends) {
-      if (b.id === "claude-code") continue;
-      if (this.lastHealthy.get(b.id) === true) return true; // a usable non-BYO backend is enough
+      if (!this.lastHealthy.get(b.id)) continue;
+      if (process.env.RELAY_BACKEND === "codex" && b.id !== "codex") continue;
+      const signedIn = b.signedIn ? await b.signedIn() : true;
+      if (signedIn === true) return true;
+      if (signedIn === undefined) unknown = true;
     }
-    const cc = this.backends.find((b) => b.id === "claude-code");
-    return cc?.signedIn ? cc.signedIn() : undefined;
+    return unknown ? undefined : false;
   }
 
   async onlineIds(): Promise<string[]> {
     const ids: string[] = [];
-    let cameOnline = false;
+    let changed = false;
     for (const b of this.backends) {
       const ok = await b.healthy();
-      if (ok && this.lastHealthy.get(b.id) === false) cameOnline = true;
+      if (this.lastHealthy.get(b.id) !== ok) changed = true;
       this.lastHealthy.set(b.id, ok);
       if (ok) ids.push(b.id);
     }
     // A backend that was down at boot (e.g. Claude installed AFTER Relay) has no models in the
     // map; rebuild once on the transition so recovery doesn't require a daemon restart.
-    if (cameOnline) await this.refreshModels();
+    if (changed) await this.refreshModels();
     return ids;
   }
 }

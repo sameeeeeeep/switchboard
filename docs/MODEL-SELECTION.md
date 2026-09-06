@@ -1,3 +1,11 @@
+> Updated provider behavior: [Codex integration](CODEX.md) adds runtime-discovered Codex models,
+> an explicit default in connection consent, and model pinning for each conversation. Changing a
+> default affects new conversations. Disabling a pinned model pauses its conversation. These rules
+> supersede earlier Claude-only routing and silent-substitution descriptions below. Disabling every
+> model leaves the allowed set empty; models are never silently re-enabled as a fallback.
+> [App model discovery](MODEL-DISCOVERY.md) documents BYOP 1.3 feature metadata, effective defaults,
+> and live change events. Native controls now permit turning off every model in a provider group.
+
 # Model selection — a user preference layer for God and wrapps
 
 **Status:** design (no code yet)

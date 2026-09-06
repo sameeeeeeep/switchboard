@@ -2,8 +2,7 @@
 
 **The gateway between your AI and everything you use it for.**
 
-Switchboard is a Mac app that sits in your menu bar and brokers every call. Apps ("wrapps") run on **your**
-Claude subscription or a local model. Your tools, your files, your context are *lent* to them through one
+Switchboard is a Mac app that sits in your menu bar and brokers every call. Apps ("wrapps") run through **your** Claude Code or Codex runtime, or a supported local model. Your tools, your files, your context are *lent* to them through one
 consent gate — never copied out, never handed over.
 
 It runs **both ways**, and that's the point:
@@ -14,6 +13,9 @@ It runs **both ways**, and that's the point:
   picking work off your board, calling a wrapp's actions, driving your apps. Your AI gets hands.
 
 Same broker, one consent gate, on your machine.
+
+Building an app? See [model discovery and provider compatibility](docs/MODEL-DISCOVERY.md)
+for Codex support, model selection, and live capability updates.
 
 > **Your AI, your tools, your data — patched through one board you own.**
 
@@ -198,9 +200,13 @@ Every one runs on your own AI. A few of them:
 
 ## Bring your own AI
 
+Codex support includes headless runs, separate warm conversations, streamed responses, and
+Switchboard-gated MCP tools. Choose the app’s default at the connection notch; existing conversations
+keep their starting model. See [Codex setup and compatibility](docs/CODEX.md).
+
 Switchboard runs on **your** infrastructure — your choice:
 
-- **Your subscription** — bring your Claude and every app runs on it.
+- **Your subscription** — connect Claude Code or Codex and choose the model each app can use.
 - **A local model** — keep everything on-device.
 - **Hybrid** — local by default, reach for the cloud only when you opt in.
 
@@ -249,7 +255,7 @@ Switchboard is open source — an npm-workspaces monorepo:
 - `packages/protocol` — the wire types + error codes (BYOP).
 - `packages/sdk` — `getRelay` / `whenRelayReady` + the connect chip.
 - `packages/extension` — the MV3 browser extension.
-- `packages/sidekick` — the Node daemon: WS server, consent broker, model backends, context library, storage.
+- `packages/sidekick` — the Node daemon (Claude Code, Codex App Server, local runners): WS server, consent broker, model backends, context library, storage.
 - `packages/menubar` — the macOS menu-bar app (Swift) that supervises the daemon.
 - `packages/bank-mcp` — an MCP server that exposes your vault to any Claude thread.
 - `packages/relay` — the Cloudflare Worker that relays sealed team frames + Slack `/notch` and `/hijack`.
