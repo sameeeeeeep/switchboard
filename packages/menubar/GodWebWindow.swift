@@ -144,6 +144,7 @@ final class GodWebWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         window.contentView = web
         web.navigationDelegate = self
     }
+    var originKey: String { origin }
 
     /// Fires when the USER closes the window (red button) — the drive falls back to the notch surface.
     var onUserClosed: (() -> Void)?

@@ -398,6 +398,14 @@ func readModelProviders() -> [ModelProvider] {
     }
 }
 let STATUS_FILE = (RELAY_DIR as NSString).appendingPathComponent("status.json")
+// Each connected wrapp's CURRENT model (its per-origin modelOverride the daemon persists in grants.json) →
+// so a card can show "what's running" and the detail view can preselect it. Absent = the app's default.
+func readOriginModels() -> [String: String] {
+    guard let arr = readJSON((RELAY_DIR as NSString).appendingPathComponent("grants.json")) as? [[String: Any]] else { return [:] }
+    var out: [String: String] = [:]
+    for g in arr { if let o = g["origin"] as? String, let m = g["modelOverride"] as? String, !m.isEmpty { out[o] = m } }
+    return out
+}
 struct Connector: Identifiable { let id: String; let name: String; let tools: Int; let ok: Bool }
 func readConnectors() -> [Connector] {
     guard let obj = readJSON(STATUS_FILE) as? [String: Any],
@@ -779,6 +787,7 @@ final class Model: ObservableObject {
     @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
     @Published var modelProviders: [ModelProvider] = []
+    @Published var originModels: [String: String] = [:]   // origin → its current model (grants.json modelOverride)
     @Published var preferredModel: String = ""
     @Published var disabledModels: Set<String> = []  // models the user turned off (~/.relay/models.json, canonical ids)
     @Published var shortcuts = readShortcutCfg()   // the summon / talk gesture bindings (rebindable presets)
@@ -813,6 +822,7 @@ final class Model: ObservableObject {
         defaultShare = readDefaultShare()
         disabledModels = readModelPrefs()
         modelProviders = readModelProviders()
+        originModels = readOriginModels()
         preferredModel = ((readJSON((RELAY_DIR as NSString).appendingPathComponent("models.json")) as? [String: Any])?["defaultModel"] as? String) ?? ""
         shortcuts = readShortcutCfg()
         team = readTeam()
@@ -1162,6 +1172,7 @@ struct Panel: View {
     let onSetRegion: (Bool) -> Void      // ⌃⌃ region select: drag to pick what God sees
     let onSetDefaultShare: (Bool) -> Void  // default screen-share: plain ⌃⌃ auto-shares the whole screen
     let onSetModelDisabled: (String, Bool) -> Void  // MODELS: allow/deny a model (writes ~/.relay/models.json)
+    var onSelectApp: (AppRow) -> Void = { _ in }  // tap a connected-app card → open its per-wrapp detail view
     let onSetShortcut: (String, String) -> Void  // rebind a gesture ("summon"/"talk" → preset value)
     let onSignIn: () -> Void             // onboarding: open Terminal + start the `claude` login
     let onFixSenses: () -> Void          // onboarding: surface the mic/accessibility/screen gate
@@ -1285,7 +1296,10 @@ struct Panel: View {
             VStack(alignment: .leading, spacing: 9) {
                 if let t = model.toast { Text(t).font(.hanken(10)).foregroundColor(.lime).lineLimit(1) }
                 Text("DAEMON").kicker()
-                HStack(spacing: 8) {
+                // FlowLayout (not HStack): three labeled pills don't fit the 206pt rail's ~170pt content width,
+                // so a fixed row pushed "logs" past the column edge into the TOOLS section. FlowLayout wraps it
+                // to a second line instead of overflowing.
+                FlowLayout(spacing: 8) {
                     GhostButton(icon: "link", label: "pairing", action: onToken).help("Copy the pairing token")
                     // Team Mode lives here next to pairing (not buried in Settings) — one tap opens the TEAM
                     // section. The filled glyph mirrors the notch: person.2.fill = a team is live right now.
@@ -1293,7 +1307,6 @@ struct Panel: View {
                                 action: { withAnimation(.easeOut(duration: 0.14)) { showSettings = true; openSection = "team" } })
                         .help(model.teamActive ? "Team Mode — live" : "Team Mode (multiplayer)")
                     GhostButton(icon: "text.alignleft", label: "logs", action: onLogs).help("Open the daemon log")
-                    Spacer(minLength: 0)
                 }
                 HStack(spacing: 8) {
                     if model.running {
@@ -2106,14 +2119,16 @@ struct Panel: View {
                 Text("No apps yet — open a wrapp and it'll ask to connect.").font(.label).foregroundColor(.inkFaint)
                     .fixedSize(horizontal: false, vertical: true).padding(.trailing, 18)
             } else {
-                HDragScroll(height: 118) {
+                HDragScroll(height: 146) {
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(model.appList) { app in
                             AppCardView(
                                 icon: AnyView(appIcon(app, size: 38)
                                     .overlay(alignment: .bottomTrailing) { platformBadge(app.kind).offset(x: 4, y: 4) }),
                                 label: app.label, status: appStatus(app), dim: app.kind == .tab,
-                                onRemove: removeAction(app))
+                                onRemove: removeAction(app),
+                                currentModel: model.originModels[app.id] ?? "",
+                                onSelect: { onSelectApp(app) })
                         }
                     }.padding(.trailing, 18).padding(.vertical, 2)
                 }
@@ -3676,12 +3691,19 @@ struct AppCardView: View {
     let status: AppStatus
     let dim: Bool                    // a raw browser tab reads faint
     let onRemove: (() -> Void)?
+    // "What's running" + tap-to-open-detail (founder). currentModel is the wrapp's live model (blank = default);
+    // onSelect opens the per-wrapp detail view where the model + other settings are changed. No inline chip.
+    var currentModel: String = ""
+    var onSelect: (() -> Void)? = nil
     @State private var hover = false
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             icon
             Text(label).font(.label).foregroundColor(dim ? .inkFaint : .ink).lineLimit(1)
             StatusPill(status: status)
+            // WHAT'S RUNNING — the live model, quietly. Blank → "default" (the app's own choice). Tap the card to change.
+            Text(currentModel.isEmpty ? "default" : currentModel)
+                .font(.splMono(8.5)).foregroundColor(.inkFaint).lineLimit(1)
         }
         .frame(width: 84)
         .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 9)
@@ -3697,7 +3719,184 @@ struct AppCardView: View {
                 }.buttonStyle(.plain).help("Disconnect this app").padding(4)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect?() }   // open the per-wrapp detail view
+        .help("Open \(label) — model + settings")
         .onHover { hover = $0 }
+    }
+}
+
+// Per-wrapp state passed to the detail view — all read per-origin from grants.json + the provider inventory.
+struct WrappDetail {
+    let name: String
+    let origin: String
+    let kind: String                 // web · native · iphone · tab
+    let online: Bool
+    let currentModel: String         // "" = the wrapp's own default (no override)
+    let providers: [(provider: String, models: [String])]   // model choices grouped by provider (subscription)
+    let tools: [(name: String, access: String)]
+    let mode: String                 // ask · trust · readonly
+    let contextKinds: [String]
+    let project: String?
+    let maxTokensPerDay: Int
+    let maxCallsPerMin: Int
+    let lastActive: String           // "2m ago" · "" if unknown
+    let hasGrant: Bool               // false → connected but no stored grant (identity + Open only)
+}
+
+// Per-wrapp DETAIL VIEW (founder: "a detailed view — not just connector selection, view more things").
+// Opened by tapping a connected-app card. SEE the wrapp's whole state (model, trust, tools, context, usage)
+// and change its model/subscription + trust. Model radios call setModelOverride for this origin.
+struct WrappDetailDrop: View {
+    let d: WrappDetail
+    var onPick: (String) -> Void
+    var onUseDefault: () -> Void
+    var onSetMode: (String) -> Void
+    var onOpen: () -> Void
+    var onDisconnect: () -> Void
+    var onClose: () -> Void
+
+    private func kindLabel(_ k: String) -> String { ["web":"Web","native":"Native","iphone":"iPhone","tab":"Tab"][k] ?? k }
+    private let modes: [(id: String, label: String)] = [("ask","Ask"),("trust","Trust"),("readonly","Read-only")]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ── HEADER ──
+            HStack(spacing: 11) {
+                RoundedRectangle(cornerRadius: 9).fill(Color.lime.opacity(0.15))
+                    .overlay(Image(systemName: "square.grid.2x2").font(.system(size: 16)).foregroundColor(.lime))
+                    .frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(d.name).font(.doto(17, .bold)).foregroundColor(.ink).lineLimit(1)
+                    Text(d.origin).font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 5) {
+                    Circle().fill(d.online ? Color.lime : Color.inkFaint).frame(width: 6, height: 6)
+                    Text(d.online ? "READY" : "IDLE").font(.splMono(8.5)).tracking(1).foregroundColor(d.online ? .lime : .inkFaint)
+                }
+            }
+            HStack(spacing: 6) {
+                chip(kindLabel(d.kind))
+                Spacer(minLength: 0)
+            }.padding(.top, 8)
+
+            if !d.hasGrant {
+                Text("Connected, but no stored permissions yet — open it and it'll ask for what it needs.")
+                    .font(.hanken(12)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                        // ── MODEL & SUBSCRIPTION ──
+                        section("MODEL & SUBSCRIPTION")
+                        modelRow(label: "App default", sub: "the wrapp chooses", selected: d.currentModel.isEmpty, action: onUseDefault)
+                        if d.providers.isEmpty {
+                            Text("No models available — enable one in Settings › Models.").font(.hanken(11.5)).foregroundColor(.inkFaint).padding(.top, 6)
+                        }
+                        ForEach(Array(d.providers.enumerated()), id: \.offset) { _, p in
+                            Text(p.provider.uppercased()).font(.splMono(8.5)).tracking(1).foregroundColor(.inkFaint).padding(.top, 9).padding(.bottom, 2)
+                            ForEach(p.models, id: \.self) { m in
+                                modelRow(label: m, sub: p.provider, selected: d.currentModel == m, action: { onPick(m) })
+                            }
+                        }
+
+                        // ── TRUST ──
+                        section("TRUST")
+                        HStack(spacing: 6) {
+                            ForEach(modes, id: \.id) { m in
+                                let on = d.mode == m.id
+                                Button(action: { onSetMode(m.id) }) {
+                                    Text(m.label).font(.hanken(11.5, on ? .semibold : .medium)).foregroundColor(on ? .page : .inkDim)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                        .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.lime : Color.raised))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                        Text(d.mode == "trust" ? "Runs allowed tools without asking." : d.mode == "readonly" ? "Read-only — never writes or acts." : "Asks before each write/action.")
+                            .font(.hanken(10.5)).foregroundColor(.inkFaint).padding(.top, 5)
+
+                        // ── TOOLS & PERMISSIONS ──
+                        section("TOOLS & PERMISSIONS · \(d.tools.count)")
+                        if d.tools.isEmpty {
+                            Text("None granted.").font(.hanken(11.5)).foregroundColor(.inkFaint)
+                        } else {
+                            VStack(spacing: 5) {
+                                ForEach(Array(d.tools.prefix(8).enumerated()), id: \.offset) { _, t in
+                                    HStack(spacing: 8) {
+                                        Text(prettyTool(t.name)).font(.splMono(10)).foregroundColor(.inkSec).lineLimit(1).truncationMode(.middle)
+                                        Spacer(minLength: 6)
+                                        Text(t.access).font(.splMono(8.5)).foregroundColor(t.access == "write" ? .lime : .inkDim)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(Capsule().stroke(t.access == "write" ? Color.lime.opacity(0.4) : Color.edge, lineWidth: 1))
+                                    }
+                                }
+                                if d.tools.count > 8 { Text("+\(d.tools.count - 8) more").font(.splMono(9)).foregroundColor(.inkFaint).frame(maxWidth: .infinity, alignment: .leading) }
+                            }
+                        }
+
+                        // ── CONTEXT ──
+                        section("CONTEXT")
+                        HStack(spacing: 6) {
+                            Text(d.project ?? "Using none").font(.hanken(12, .medium)).foregroundColor(d.project == nil ? .inkFaint : .ink)
+                            Spacer(minLength: 0)
+                            ForEach(d.contextKinds.prefix(3), id: \.self) { k in chip(k) }
+                        }
+
+                        // ── USAGE ──
+                        section("USAGE")
+                        Text("\(fmtTokens(d.maxTokensPerDay)) tokens/day · \(d.maxCallsPerMin) calls/min" + (d.lastActive.isEmpty ? "" : " · active \(d.lastActive)"))
+                            .font(.splMono(10)).foregroundColor(.inkDim).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            // ── FOOTER ──
+            Rectangle().fill(Color.edge).frame(height: 1).padding(.top, 14).padding(.bottom, 12)
+            HStack(spacing: 8) {
+                Button(action: onDisconnect) {
+                    Text("Disconnect").font(.hanken(11.5, .medium)).foregroundColor(.danger)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.danger.opacity(0.35), lineWidth: 1)))
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Text("Done").font(.hanken(11.5, .medium)).foregroundColor(.inkDim)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.raised).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.edge, lineWidth: 1)))
+                }.buttonStyle(.plain)
+                Button(action: onOpen) {
+                    HStack(spacing: 6) { Text("Open").font(.hanken(11.5, .semibold)); Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .bold)) }
+                        .foregroundColor(.page).padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.lime))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(18)
+        .frame(width: 380)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.panel).overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.edge, lineWidth: 1)))
+    }
+
+    @ViewBuilder private func section(_ t: String) -> some View {
+        Text(t).font(.splMono(9)).tracking(1.2).foregroundColor(.inkFaint).padding(.top, 15).padding(.bottom, 7)
+    }
+    private func chip(_ t: String) -> some View {
+        Text(t).font(.splMono(9)).foregroundColor(.inkDim).padding(.horizontal, 7).padding(.vertical, 3)
+            .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
+    }
+    private func prettyTool(_ n: String) -> String {
+        if n.hasPrefix("mcp__") { let parts = n.dropFirst(5).split(separator: "__"); return parts.count >= 2 ? "\(parts[0]) · \(parts.dropFirst().joined(separator: "·"))" : n }
+        return n
+    }
+    private func fmtTokens(_ n: Int) -> String { n >= 1_000_000 ? "\(n/1_000_000)M" : n >= 1000 ? "\(n/1000)k" : "\(n)" }
+    @ViewBuilder private func modelRow(label: String, sub: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle").font(.system(size: 13)).foregroundColor(selected ? .lime : .inkFaint)
+                Text(label).font(.hanken(12.5, selected ? .semibold : .regular)).foregroundColor(.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.lime.opacity(0.10) : Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.lime.opacity(0.4) : Color.edge, lineWidth: 1)))
+        }.buttonStyle(.plain)
     }
 }
 
@@ -4182,6 +4381,7 @@ struct ActionConsentDrop: View {
     private var glowHosting: NSHostingView<GodGlowView>!
     private let glowModel = GlowModel()
     private var consentPanel: NSPanel!             // the notch-drop "Allow this app?" (replaces the NSAlert)
+    private var detailPanel: NSPanel!             // the per-wrapp detail view (model + settings), opened from a card
     private var gatePanel: NSPanel!                // the permissions concierge card (notch drop)
     private var gateDismissed = false             // user closed the card this session → don't nag again until relaunch
     private var gateShowingPerm: GodPerm?         // which permission step is currently on screen
@@ -4822,6 +5022,7 @@ struct ActionConsentDrop: View {
             onSetRegion: { [weak self] on in self?.setRegion(on) },
             onSetDefaultShare: { [weak self] on in self?.setDefaultShare(on) },
             onSetModelDisabled: { [weak self] name, off in self?.setModelDisabled(name, off) },
+            onSelectApp: { [weak self] app in self?.showWrappDetail(app) },
             onSetShortcut: { [weak self] kind, value in self?.setShortcut(kind, value) },
             onSignIn: { [weak self] in self?.startClaudeLogin() },
             onFixSenses: { [weak self] in self?.refreshPermissionGate() },
@@ -5709,7 +5910,154 @@ struct ActionConsentDrop: View {
         return out
     }
 
-    @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true, placement: [String: Double]? = nil) {
+    // ── Native-window ADMISSION (security) ────────────────────────────────────────────────────────────
+    // Opening a native window injects the broker bridge (window.claude → the user's AI, tools, files). So the
+    // ADMISSION of an origin is gated, centrally, right here — every caller (switchboard:// deep link, the
+    // open-wrapp.json file trigger, a teammate's mirrored open, the store/launcher) flows through this one
+    // function, so none can bypass it. A TRUSTED origin opens; anything else asks in the notch (default-deny)
+    // and, once approved, is remembered. (founder: "at least once … trusted apps really encoded … sandbox".)
+    private static let firstPartyHosts: Set<String> = ["thelastprompt.ai", "localhost", "127.0.0.1"]
+    private func wrappOrigin(_ url: URL) -> String {
+        let scheme = (url.scheme ?? "https").lowercased(); let host = (url.host ?? "").lowercased()
+        return host.isEmpty ? url.absoluteString : "\(scheme)://\(host)"
+    }
+    private func isFirstParty(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return RelayController.firstPartyHosts.contains(host) || host.hasSuffix(".thelastprompt.ai")
+    }
+    private var trustedOriginsFile: String { (RELAY_DIR as NSString).appendingPathComponent("trusted-origins.json") }
+    private func trustedOrigins() -> Set<String> {
+        guard let arr = readJSON(trustedOriginsFile) as? [String] else { return [] }
+        return Set(arr)
+    }
+    private func rememberTrustedOrigin(_ origin: String) {
+        var s = trustedOrigins(); s.insert(origin)
+        if let data = try? JSONSerialization.data(withJSONObject: Array(s).sorted(), options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: trustedOriginsFile), options: .atomic)
+        }
+    }
+    private func isTrustedWrapp(_ url: URL) -> Bool { isFirstParty(url) || trustedOrigins().contains(wrappOrigin(url)) }
+
+    // The admission trust card — a real Allow/DENY ConsentDrop (default-deny, host-named), reusing the same
+    // notch-drop panel + Esc/↵ keys as the native "Allow this app?" consent. Deny/dismiss = nothing opens.
+    @MainActor private func presentAdmissionConsent(host: String, origin: String, name: String, onAllow: @escaping () -> Void) {
+        let allow: () -> Void = { [weak self] in self?.consentPanel?.orderOut(nil); self?.disarmConsentKeys(); onAllow() }
+        let deny:  () -> Void = { [weak self] in self?.consentPanel?.orderOut(nil); self?.disarmConsentKeys() }
+        let view = ConsentDrop(name: host, appId: origin,
+                               reason: "\(name) wants to open a window here",
+                               canDo: "ask for your AI, tools and files — you approve each one separately",
+                               onAllow: allow, onDeny: deny)
+        if consentPanel == nil {
+            consentPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            consentPanel.isOpaque = false; consentPanel.backgroundColor = .clear; consentPanel.hasShadow = false
+            consentPanel.level = .popUpMenu; consentPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        consentPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = consentPanel.contentView!.fittingSize
+        consentPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            consentPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(consentPanel)
+        armConsentKeys(approve: allow, deny: deny)
+    }
+
+    // Providers grouped for the detail view — enabled, available models under each provider (subscription).
+    private func detailProviders() -> [(provider: String, models: [String])] {
+        var out: [(provider: String, models: [String])] = []
+        for p in model.modelProviders where p.online && p.signedIn {
+            let ms = p.models.filter { !model.disabledModels.contains(canonicalModelId($0)) }
+            if !ms.isEmpty { out.append((provider: p.label, models: ms)) }
+        }
+        return out
+    }
+    private func readGrant(_ origin: String) -> [String: Any]? {
+        guard let arr = readJSON((RELAY_DIR as NSString).appendingPathComponent("grants.json")) as? [[String: Any]] else { return nil }
+        return arr.first { ($0["origin"] as? String) == origin }
+    }
+    private func agoFrom(_ ms: Double) -> String {
+        let s = max(0, Int(Date().timeIntervalSince1970 - ms / 1000))
+        if s < 60 { return "just now" }; if s < 3600 { return "\(s/60)m ago" }
+        if s < 86400 { return "\(s/3600)h ago" }; return "\(s/86400)d ago"
+    }
+
+    // Open the per-wrapp DETAIL VIEW from a tapped app card (founder: "view more things"). Builds the whole
+    // per-origin state from grants.json (model · trust · tools · context · usage); model radios → setModelOverride,
+    // trust → setMode, Open launches it (user-initiated), Disconnect revokes.
+    @MainActor private func showWrappDetail(_ app: AppRow) {
+        let origin = app.id
+        let refresh: () -> Void = { [weak self] in DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self?.model.refreshFiles() } }
+        let g = readGrant(origin)
+        let tools: [(name: String, access: String)] = ((g?["tools"] as? [[String: Any]]) ?? []).compactMap {
+            guard let n = $0["name"] as? String else { return nil }; return (name: n, access: ($0["access"] as? String) ?? "read")
+        }
+        let budgets = g?["budgets"] as? [String: Any]
+        let kindStr: String = { switch app.kind { case .web: return "web"; case .native: return "native"; case .iphone: return "iphone"; case .tab: return "tab" } }()
+        let detail = WrappDetail(
+            name: app.label, origin: origin, kind: kindStr,
+            online: Date().timeIntervalSince1970 - app.lastSeen < 120,
+            currentModel: model.originModels[origin] ?? "",
+            providers: detailProviders(),
+            tools: tools,
+            mode: (g?["mode"] as? String) ?? "ask",
+            contextKinds: (g?["contextKinds"] as? [String]) ?? [],
+            project: nil,
+            maxTokensPerDay: (budgets?["maxTokensPerDay"] as? Int) ?? 0,
+            maxCallsPerMin: (budgets?["maxCallsPerMin"] as? Int) ?? 0,
+            lastActive: (g?["updatedAt"] as? Double).map { agoFrom($0) } ?? "",
+            hasGrant: g != nil)
+        let view = WrappDetailDrop(
+            d: detail,
+            onPick: { [weak self] m in
+                self?.consent?.control("setModelOverride", ["origin": origin, "model": m])
+                self?.model.toast = "\(app.label): \(m)"; self?.detailPanel?.orderOut(nil); refresh()
+            },
+            onUseDefault: { [weak self] in
+                self?.consent?.control("setModelOverride", ["origin": origin, "model": NSNull()])
+                self?.model.toast = "\(app.label): app default"; self?.detailPanel?.orderOut(nil); refresh()
+            },
+            onSetMode: { [weak self] mode in
+                self?.consent?.control("setMode", ["origin": origin, "mode": mode])
+                self?.model.toast = "\(app.label): \(mode)"; self?.detailPanel?.orderOut(nil); refresh()
+            },
+            onOpen: { [weak self] in
+                self?.detailPanel?.orderOut(nil)
+                if let u = URL(string: origin), u.scheme?.hasPrefix("http") == true { self?.openWrappWindow(url: u, name: app.label, userInitiated: true) }
+            },
+            onDisconnect: { [weak self] in
+                if app.kind == .native, let id = app.appId { self?.disconnectNativeApp(id) } else { self?.revokeOrigin(origin) }
+                self?.detailPanel?.orderOut(nil)
+            },
+            onClose: { [weak self] in self?.detailPanel?.orderOut(nil) })
+        if detailPanel == nil {
+            detailPanel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            detailPanel.isOpaque = false; detailPanel.backgroundColor = .clear; detailPanel.hasShadow = false
+            detailPanel.level = .popUpMenu; detailPanel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        }
+        detailPanel.contentView = NoInsetHostingView(rootView: view)
+        let size = detailPanel.contentView!.fittingSize
+        detailPanel.setContentSize(size)
+        if let screen = statusItem?.button?.window?.screen ?? NSScreen.main {
+            detailPanel.setFrameTopLeftPoint(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY + notchTopBleed))
+        }
+        presentFromNotch(detailPanel)
+    }
+
+    @MainActor func openWrappWindow(url: URL, name: String, broadcast: Bool = true, placement: [String: Double]? = nil, userInitiated: Bool = false) {
+        // ADMISSION GATE — untrusted + not an explicit user action ⇒ ask first (default-deny), name the HOST
+        // (a long path can hide the real domain), remember on approve. Trusted/first-party or user-clicked pass.
+        if !(userInitiated || isTrustedWrapp(url)) {
+            let host = url.host ?? name
+            let origin = wrappOrigin(url)
+            NSLog("[admission] untrusted native open — asking: %@", host)
+            // A real Allow/DENY trust card (ConsentDrop) — default-deny, names the host, warns to only allow
+            // apps you installed yourself. NOT the generic widget (which wrongly showed Copy/Regenerate/Open).
+            presentAdmissionConsent(host: host, origin: origin, name: name, onAllow: { [weak self] in
+                self?.rememberTrustedOrigin(origin)   // approved once → remembered for next time
+                self?.openWrappWindow(url: url, name: name, broadcast: broadcast, placement: placement, userInitiated: true)
+            })
+            return
+        }
         CursorGuide.shared.noteEvent("wrapp-opened")   // the onboarding first-win gates on a wrapp ACTUALLY opening (not just words landing)
         guard let token = try? String(contentsOfFile: TOKEN_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             showNotchWidget(WidgetSpec(kicker: name.uppercased(), title: "No pairing token", openLabel: "Open panel",
@@ -5850,15 +6198,9 @@ struct ActionConsentDrop: View {
             return
         }
         let name = (comps.queryItems?.first(where: { $0.name == "name" })?.value) ?? host
-        NSLog("[open-scheme] asking to open %@", host)
-        // Default-deny: this only opens if the user taps.
-        showNotchWidget(
-            WidgetSpec(kicker: "OPEN IN SWITCHBOARD", title: host, openLabel: "Open",
-                       result: .text("\(name) wants to run here. It will be able to ask for your AI, tools and files — you approve each one separately.")),
-            onOpen: { [weak self] in
-                self?.hideNotchWidget()
-                self?.openWrappWindow(url: target, name: name)
-            })
+        // Admission is enforced centrally in openWrappWindow — a deep link is never user-initiated, so an
+        // untrusted origin is asked (default-deny) and a trusted/first-party one opens. One consent surface.
+        openWrappWindow(url: target, name: name)
     }
 
     // Control-plane trigger: write {"id":"redline"} (or {"url":"…","name":"…"}) to ~/.relay/open-wrapp.json
