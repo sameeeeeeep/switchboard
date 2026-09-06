@@ -6960,17 +6960,23 @@ struct ActionConsentDrop: View {
             "text": "This card is me — I live in the notch. Grab me to move me anywhere, and I'll step aside on my own whenever you open something.",
             "say": "One thing before we start. This card is me, and I live up here in the notch. You can grab me and drag me anywhere you like. And whenever you open something — your launcher, an app — I'll step aside on my own so I'm never in your way.",
             "hint": "Grab me if you like — or ⌥→ to carry on."])
-        // ── Beat 1 · Connect your Claude — adaptive: guide sign-in when signed out, else confirm connected.
-        if model.running && !model.signedIn {
+        // ── Beat 1 · Connect your backend — provider-aware: Switchboard runs on Claude Code OR Codex (or a
+        // local model). Recognize EITHER so a Codex-only user isn't told to sign into Claude, confirm whatever's
+        // already connected, and NEVER block Next — you can connect a backend now or skip and do it later.
+        let provs = model.modelProviders
+        let codexReady  = provs.contains { $0.id == "codex" && $0.signedIn }
+        let claudeReady = (model.running && model.signedIn) || provs.contains { $0.id == "claude-code" && $0.signedIn }
+        if claudeReady || codexReady {
+            let who = (claudeReady && codexReady) ? "Claude Code and Codex" : (codexReady ? "Codex" : "your own Claude")
             steps.append(["id": "connect-claude",
-                "text": "1 · Connect — Switchboard runs on YOUR Claude. Sign in; the dot turns lime.",
-                "say": "First, your Claude. Switchboard runs on your own Claude — no key, no bill. Sign in, and the dot turns lime when you're in.",
-                "hint": "Sign in to Claude, then ⌥→."])
+                "text": "1 · Connect — you're running on \(who). Connected ✓",
+                "say": "First, your backend. You're already connected — everything here runs on your own A I, right on this Mac. No key, no bill.",
+                "hint": "⌥→ to carry on."])
         } else {
             steps.append(["id": "connect-claude",
-                "text": "1 · Connect — you're running on your own Claude. Connected ✓",
-                "say": "First, your Claude. You're already connected — everything here runs on your own Claude. No key, no bill.",
-                "hint": "⌥→ to carry on."])
+                "text": "1 · Connect — Switchboard runs on your own AI: Claude Code OR Codex. Connect one and the dot turns lime — or skip for now.",
+                "say": "First, your backend. Switchboard runs on your own A I — Claude Code or Codex, whichever you already have. Connect one and the dot turns lime. No key, no bill. Or skip this and connect later.",
+                "hint": "Connect Claude Code or Codex, then Next — or just skip for now."])
         }
         // ── Beat 2 · Give me senses — only the permissions not yet granted (returning users skip these).
         // ORDER IS DELIBERATE (spec §11): Accessibility FIRST (the hand), then Mic (so the user can speak
@@ -7008,12 +7014,12 @@ struct ActionConsentDrop: View {
         // 3b · Dictation INTO the launcher — hold ⌃⌥ and say the TOLD idea; it lands in the field + finds the wrapp.
         steps.append(["id": "say-into-launcher",
             "text": "3 · Now talk to it. Hold ⌃⌥ and say the line below — watch your words land, then hit Enter.",
-            "say": "Now talk to it. With the launcher open, hold control option and say: a brand for healthy prebiotic soda with bold Indian flavours. Watch your words land in the field, then press enter to open the match.",
+            "say": "Now talk to it. Hold control option and say: brand a coffee shop. Watch your words land in the field, then press enter.",
             "keys": [["caps": ["⌃", "⌥"], "name": "Say it"]],
             // Success = a wrapp ACTUALLY opened from the match (the real payoff), not merely words landing.
             "doneWhen": ["kind": "event", "name": "wrapp-opened"],
             "gated": true,
-            "hint": "Say: “a brand for healthy prebiotic soda with bold Indian flavours” — then Enter to open the match."])
+            "hint": "Say: “brand a coffee shop” — then Enter."])
         // 3c · God — press ⌃⌃ and ask a TOLD phrase out loud.
         steps.append(["id": "try-god",
             "text": "3 · Now God — press ⌃⌃ and ask out loud. Try the line below.",

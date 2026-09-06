@@ -577,16 +577,29 @@ struct GuideCaptionView: View {
                     }
                     Spacer(minLength: 8)
                     if m.autoSensing && !m.actionDone {
+                        // Gated beat, waiting for the real gesture → show LISTENING, PLUS a clickable Skip so a
+                        // user without Accessibility (who can't perform ⌥⌥/⌃⌥/⌃⌃ at all) is never trapped here.
                         HStack(spacing: 5) {
                             Circle().fill(Color.lime).frame(width: 5, height: 5)
                                 .shadow(color: Color.lime.opacity(0.8), radius: 3)
                             Text("LISTENING").font(.splMono(8.5)).tracking(1).foregroundColor(.lime)
                         }
+                        Button(action: { CursorGuide.shared.tapForceNext() }) {
+                            Text("Skip").font(.hanken(11.5, .semibold)).foregroundColor(.inkDim)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(Capsule().fill(Color.raised).overlay(Capsule().stroke(Color.edge, lineWidth: 1)))
+                        }.buttonStyle(.plain)
                     } else {
-                        HStack(spacing: 4) {
-                            KeyCap(glyph: "⌥"); KeyCap(glyph: "→")
-                            Text("next").font(.hanken(11, .medium)).foregroundColor(.inkFaint)
-                        }
+                        // Primary CLICKABLE Next — a real mouse target that works with NO Accessibility grant
+                        // (the ⌥→ hotkey needs Accessibility, which the first beats run before it's granted).
+                        Button(action: { CursorGuide.shared.tapPrimary() }) {
+                            HStack(spacing: 7) {
+                                Text("Next").font(.hanken(12.5, .semibold)).foregroundColor(.page)
+                                Text("⌥→").font(.splMono(10)).foregroundColor(.page.opacity(0.75))
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(Capsule().fill(Color.lime))
+                        }.buttonStyle(.plain)
                     }
                 }
             }
@@ -1976,8 +1989,14 @@ final class CursorGuide {
                 if !model.actionDone {
                     model.actionDone = true
                     model.autoSensing = false
-                    model.hint = "✓ nice — take your time. ⌥→ when you're ready."
-                    onSpeak?("Nice — that's it. Play with it, and press option-right when you're ready to move on.")
+                    if model.style == "onboarding" {
+                        // No live-TTS nudge in onboarding (jarring + not pre-cached) and don't tell them to press
+                        // a hotkey they may not have — the clickable Next handles it.
+                        model.hint = "✓ nice — press Next when you're ready."
+                    } else {
+                        model.hint = "✓ nice — take your time. ⌥→ when you're ready."
+                        onSpeak?("Nice — that's it. Play with it, and press option-right when you're ready to move on.")
+                    }
                 }
             } else {
                 handleAdvance(fail: false, auto: true)   // normal teach step → auto-advance on success
@@ -2134,15 +2153,17 @@ final class CursorGuide {
 
     // MARK: signals
 
-    private func handleAdvance(fail: Bool, auto: Bool = false) {
+    private func handleAdvance(fail: Bool, auto: Bool = false, forceGate: Bool = false) {
         guard isActive, idx < steps.count, !capturingFeedback else { return }
         // GATED practice beat: you can't ⌥→ past it — only actually DOING it (its doneWhen event / hold, which
         // arrive with auto=true) advances, so onboarding teaches instead of letting you click through. A MANUAL
         // ⌥→/click (auto=false) is refused with a nudge; esc still leaves. (Options steps are exempt — ⌥→ IS the
         // pick — so this only bites a gated non-options step.)
-        if !fail, !auto, steps[idx].gated, !model.actionDone, (steps[idx].options?.isEmpty ?? true) {
+        // EXCEPTION — forceGate: the onboarding card's clickable "Skip" bypasses this, so a user WITHOUT
+        // Accessibility (who can't perform the ⌥⌥/⌃⌥/⌃⌃ gesture at all) is never trapped on a gated beat.
+        if !fail, !auto, !forceGate, steps[idx].gated, !model.actionDone, (steps[idx].options?.isEmpty ?? true) {
             flash(.back)
-            onSpeak?("Give it a try — I'll move on the moment you do.")
+            if model.style != "onboarding" { onSpeak?("Give it a try — I'll move on the moment you do.") }
             return
         }
         // Options step: ⌥→ APPROVES the selected variant — record it + fire the live-apply hook.
@@ -2177,6 +2198,9 @@ final class CursorGuide {
     //    locked the screen — so we never do that; cursor-tracking is the lock-proof approach. ──
     private func applyMousePolicy() { updateMousePassthrough() }
     func tapPrimary()      { handleAdvance(fail: false) }
+    // Onboarding's clickable Next/Skip — advances even a gated beat (forceGate) so a user without Accessibility
+    // (who can't perform the taught gesture) is never stuck. Pure mouse path; needs no Accessibility grant.
+    func tapForceNext()    { handleAdvance(fail: false, forceGate: true) }
     func tapFail()         { if mode == .test { handleAdvance(fail: true) } }
     // Click an option: pick it; clicking the already-selected/recommended card approves (same as ⌥→).
     func tapOption(_ i: Int) {
