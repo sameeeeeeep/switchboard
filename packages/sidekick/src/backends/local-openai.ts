@@ -24,6 +24,7 @@ export interface LocalOpenAIOptions {
 
 export class LocalOpenAIBackend implements ModelBackend {
   id: string;
+  capabilities = { vision: false, agentic: false, warmSessions: false };
   private baseUrl: string;
   constructor(opts: LocalOpenAIOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
@@ -54,6 +55,7 @@ export class LocalOpenAIBackend implements ModelBackend {
     params: CompletionParams,
     ctx: BackendRunContext,
   ): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }> {
+    if (params.attachments?.length) throw new Error("local-openai backend does not support image attachments");
     // Fail closed: the gated tool loop (parse tool_calls → ctx.gateToolCall → feed results back)
     // isn't implemented yet, so refuse any run that would put tools in play rather than silently
     // running tool-free. A backend must never be the thing that narrows/widens scope.

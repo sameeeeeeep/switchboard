@@ -31,8 +31,21 @@ export interface UserIdentity {
 export interface LocalCapabilities {
   /** Text-to-speech is available locally (a local TTS server, or the OS engine e.g. macOS `say`). */
   tts: boolean;
+  /** Local speech recognition is configured (Whisper or a local transcription service). */
+  stt?: boolean;
   /** A few local voice ids the app can offer, if known. */
   voices?: string[];
+}
+
+/** A routable model and the features Switchboard supports on its backend. */
+export interface ModelInfo {
+  id: string;
+  backend: string;
+  /** Opt-in third-party inference, distinct from the user's own provider account. */
+  hosted: boolean;
+  capabilities: { vision: boolean; agentic: boolean; warmSessions: boolean };
+  /** Codex uses broker MCP tools; Claude Code may also use its runtime's tools. */
+  toolSource: "broker-mcp" | "claude-code" | "none";
 }
 
 /** Provider capabilities, returned by claude_capabilities for feature detection. */
@@ -41,6 +54,14 @@ export interface Capabilities {
   methods: BYOPMethod[];
   /** Model ids the daemon can route to right now (across all backends). */
   models: string[];
+  /** Feature metadata for enabled, available models. Optional on older daemons.
+   * Availability is not permission: intersect with permissions().models after connecting. */
+  modelInfo?: ModelInfo[];
+  /** Effective model for this app's new conversations when the model is omitted.
+   * Absent when no enabled, available model is granted. */
+  defaultModel?: string;
+  /** Existing conversation IDs keep their starting model when defaults change. */
+  sessionModelPinning?: boolean;
   /** Backends currently online, e.g. ["claude-code", "ollama"]. */
   backends: string[];
   /** Rung 4 (STATES.md §4): whether the daemon can actually fulfil a completion right now — Claude

@@ -50,11 +50,11 @@
       <div class="head"><span class="mk"></span><span class="name">Brand<em>brain</em></span><span class="kicker">on your claude</span></div>
       <div>
         <label class="flabel" for="brand">Describe your brand in a line or two</label>
-        <textarea id="brand" autofocus placeholder="A privacy-first AI broker that lets you run apps on your own Claude."></textarea>
+        <textarea id="brand" autofocus placeholder="A privacy-first AI broker that lets you run apps on your selected AI."></textarea>
       </div>
       <div class="row"><button id="go" class="go">Find the angles</button></div>
       <div class="out" id="out"><div class="placeholder">Describe your brand — get 3 positioning angles you can run with.</div></div>
-      <div class="foot"><span class="dot"></span>Positioning drafted on your own Claude</div>
+      <div class="foot"><span class="dot"></span>Positioning drafted on your selected AI</div>
     </div>
 
     <script type="module">
@@ -65,7 +65,7 @@
         if (typeof w === "string" && w.trim()) return w;
         return "";
       }
-      const SCOPE = { reason: "Brandbrain widget — turn a brand description into positioning angles, on your own Claude", models: ["sonnet"], contextKinds: ["brand", "project"] };
+      const SCOPE = { reason: "Brandbrain widget — turn a brand description into positioning angles, on your selected AI", models: ["sonnet"], contextKinds: ["brand", "project"] };
       function provider() { const c = window.claude; return (c && c.isRelay && typeof c.request === "function") ? c : null; }
       function waitForProvider(ms = 1500) {
         const p = provider(); if (p) return Promise.resolve(p);
@@ -96,7 +96,7 @@
         const p = await waitForProvider();
         if (!p) throw new Error("Switchboard isn't connected — open this widget from the notch.");
         await ensureGrant(p);
-        return streamPrompt(p, { prompt, model: "sonnet", maxTokens: 1800 }, onText);
+        return streamPrompt(p, { prompt, maxTokens: 1800 }, onText);
       }
 
       function buildPrompt(brand) {

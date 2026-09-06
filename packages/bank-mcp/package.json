@@ -9,6 +9,7 @@
   },
   "exports": {
     "./brand-extract.mjs": { "types": "./brand-extract.d.ts", "default": "./brand-extract.mjs" },
+    "./tasks.mjs": { "types": "./tasks.d.ts", "default": "./tasks.mjs" },
     "./site.mjs": "./site.mjs",
     "./brand.mjs": "./brand.mjs"
   },

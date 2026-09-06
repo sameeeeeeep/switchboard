@@ -443,7 +443,7 @@ const canonicalModel = (m) => MODEL_ALIASES[m] ?? m;
 function readModelPrefs() {
   try {
     const raw = JSON.parse(readFileSync(join(homedir(), ".relay", "models.json"), "utf8"));
-    return { disabled: Array.isArray(raw?.disabled) ? raw.disabled.filter((x) => typeof x === "string").map(canonicalModel) : [] };
+    return { defaultModel: typeof raw?.defaultModel === "string" ? raw.defaultModel : undefined, disabled: Array.isArray(raw?.disabled) ? raw.disabled.filter((x) => typeof x === "string").map(canonicalModel) : [] };
   } catch { return { disabled: [] }; }
 }
 // Capability set minus the user's deny-list — a disabled model is simply never a candidate (§4a).
@@ -460,6 +460,8 @@ function allowedModels(models) {
 function pickVisionModel(models) {
   const allowed = allowedModels(models);
   if (process.env.GOD_MODEL && allowed.includes(process.env.GOD_MODEL)) return process.env.GOD_MODEL;
+  const preferred = readModelPrefs().defaultModel;
+  if (preferred && allowed.includes(preferred) && !isLocalModel(preferred)) return preferred;
   // Economy (Settings → Mode): spend fewer tokens — reach for Haiku first, still a real vision model.
   if (readEconomy()) {
     const cheap = allowed.find((m) => /haiku/i.test(m)) || allowed.find((m) => /sonnet/i.test(m));

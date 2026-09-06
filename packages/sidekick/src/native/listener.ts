@@ -26,6 +26,7 @@ export interface NativeHandler {
   /** Interactive "Allow this app": an UNregistered app asked to connect. Pushes a consent prompt to
    *  the panel; on approval mints the app's per-app token + grant and returns it. null = denied. */
   requestNativeConnect(appId: string, reason?: string, name?: string): Promise<{ token: string; models: string[] } | null>;
+  subscribeNativeEvents?(principal: string, send: (event: unknown) => void): () => void;
 }
 
 interface NativeMsg { type?: string; id?: string; token?: string; method?: string; params?: unknown; appId?: string; reason?: string; name?: string }
@@ -49,14 +50,30 @@ export class NativeListener {
       if (req.headers["origin"]) { ws.close(1008, "forbidden origin"); return; }
       // Rule 2: per-app token auth as the first message; the daemon derives the principal from it.
       let principal: string | null = null;
+      let authenticatedToken = "";
+      let authenticating = false;
+      let unsubscribe: (() => void) | undefined;
+      const validToken = () => {
+        const appId = resolveAppToken(authenticatedToken);
+        return !!appId && nativePrincipal(appId) === principal;
+      };
+      const subscribe = () => {
+        if (!principal) return;
+        unsubscribe = this.handler.subscribeNativeEvents?.(principal, (event) => {
+          if (!validToken()) { ws.close(1008, "authorization revoked"); return; }
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
+        });
+      };
+      ws.on("close", () => unsubscribe?.());
       ws.on("message", async (data) => {
         let msg: NativeMsg;
         try { msg = JSON.parse(data.toString()); } catch { return; }
         if (!principal) {
+          if (authenticating) return;
           // Path A: a registered app presents its per-app token.
           if (msg?.type === "auth" && typeof msg.token === "string") {
             const appId = resolveAppToken(msg.token);
-            if (appId) { principal = nativePrincipal(appId); ws.send(JSON.stringify({ type: "auth_ok", appId })); }
+            if (appId) { principal = nativePrincipal(appId); authenticatedToken = msg.token; subscribe(); ws.send(JSON.stringify({ type: "auth_ok", appId })); }
             else ws.close(1008, "unauthorized");
             return;
           }
@@ -68,15 +85,18 @@ export class NativeListener {
             if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/.test(appId)) { ws.close(1008, "bad appId"); return; }
             const reason = typeof msg.reason === "string" ? msg.reason.slice(0, 200) : undefined;
             const name = typeof msg.name === "string" ? msg.name.slice(0, 80) : undefined;
+            authenticating = true;
             let res: { token: string; models: string[] } | null = null;
             try { res = await this.handler.requestNativeConnect(appId, reason, name); } catch { res = null; }
-            if (res) { principal = nativePrincipal(appId); ws.send(JSON.stringify({ type: "registered", appId, token: res.token, models: res.models })); }
+            if (ws.readyState !== ws.OPEN) return;
+            if (res) { principal = nativePrincipal(appId); authenticatedToken = res.token; subscribe(); ws.send(JSON.stringify({ type: "registered", appId, token: res.token, models: res.models })); }
             else ws.close(1008, "denied");
             return;
           }
           ws.close(1008, "unauthorized");
           return;
         }
+        if (!validToken()) { ws.close(1008, "authorization revoked"); return; }
         if (msg?.type === "request" && typeof msg.method === "string") {
           const id = msg.id;
           try {
@@ -92,5 +112,5 @@ export class NativeListener {
     console.error(`[relay:native] listening on ws://${this.host}:${this.port} (per-app-token)`);
   }
 
-  stop() { try { this.wss?.close(); } catch { /* ignore */ } this.wss = null; }
+  stop() { try { for (const ws of this.wss?.clients ?? []) ws.terminate(); this.wss?.close(); } catch { /* ignore */ } this.wss = null; }
 }

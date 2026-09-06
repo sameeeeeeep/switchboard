@@ -31,7 +31,7 @@ import type {
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
 import { CONNECTOR_META, connectorIdOf, connectorsInClass, type ConnectorClass } from "@relay/protocol";
 import type { DaemonConfig } from "./config.js";
-import { saveProfile, saveCloudConfig } from "./config.js";
+import { saveProfile, saveCloudConfig, loadModelPrefs } from "./config.js";
 import type { Gate } from "./security/gate.js";
 import type { GrantStore } from "./security/grant-store.js";
 import { canonicalModel } from "./security/grant-store.js";
@@ -60,6 +60,7 @@ const reqRender = new AsyncLocalStorage<"menubar" | "extension">();
 import { ContextLibrary, folderOf } from "./context/library.js";
 import { resolveCsv, assertPublicUrl } from "./context/resolver.js";
 import { SessionManager } from "./session/manager.js";
+import { SessionRoutes } from "./session/routes.js";
 import { TeamEngine } from "./team/engine.js";
 import { localTTS, ttsAvailable, ttsVoices } from "./media/speech.js";
 import { localSTT, sttAvailable } from "./media/stt.js";
@@ -119,6 +120,7 @@ const BUILTIN_TOOLS: Array<{ name: string; server: string; description: string }
 
 /** App-level keepalive frame (Chrome resets the MV3 idle timer on received WS messages). */
 const PING_MSG = JSON.stringify({ type: "ping" });
+const NATIVE_METHODS: BYOPMethod[] = ["claude_capabilities", "claude_permissions", "claude_complete", "claude_listTools", "claude_callTool", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe"];
 
 /** GATE-dispatch shapes (docs/COMPANY-OS.md §2b) — shared by the routine (full-auto) and the page
  *  (the cockpit's assisted "Approve & send" tap). */
@@ -135,6 +137,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  requests route prompts to the menu bar (the notch). Kept out of `extensions` so a native
    *  window's consent never lands in Chrome. */
   private apps = new Set<WebSocket>();
+  private appOrigins = new Map<WebSocket, string>();
+  private nativeEvents = new Set<{ principal: string; send: (event: unknown) => void }>();
   /** Consent + control requests awaiting a reply from the extension. */
   private pending = new Map<string, Pending>();
   /** DURABLE prompt queue: every open consent prompt, kept so it can be RE-PUSHED to any extension
@@ -150,8 +154,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  ITS OWN thread. This is what makes CompletionParams.sessionId real — the "God remembers across
    *  ⌃⌃ presses" the code long claimed but never delivered (complete() used to ignore sessionId). */
   private completionSessions = new Map<string, string>();
+  private modelStateSignature: string | undefined;
 
-  constructor(private deps: BrokerDeps) {}
+  private sessionRoutes: SessionRoutes;
+  constructor(private deps: BrokerDeps) { this.sessionRoutes = new SessionRoutes(deps.config.stateDir); }
 
   start() {
     const { host, port, pairingToken } = this.deps.config;
@@ -200,7 +206,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
           return;
         }
       });
-      ws.on("close", () => { this.extensions.delete(ws); this.menubars.delete(ws); this.apps.delete(ws); });
+      ws.on("close", () => { this.extensions.delete(ws); this.menubars.delete(ws); this.apps.delete(ws); this.appOrigins.delete(ws); });
     });
     // HEARTBEAT — the fix for "attached but not flowing". The extension is an MV3 service worker
     // that Chrome evicts after ~30s of silence; a long model "think" produces no deltas, the worker
@@ -259,7 +265,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
       const done = (v: T) => { clearTimeout(timer); this.pending.delete(id); this.promptQueue.delete(id); resolve(v); };
       const timer = setTimeout(() => done(failValue), timeoutMs);
       this.pending.set(id, { resolve: (v) => done(v as T), reject: () => done(failValue) });
-      const surface = reqRender.getStore() ?? this.surfaceFor(kind);
+      // The menubar implements only connect and folder cards. Context pickers and write
+      // approvals must still reach the extension, including requests from native apps.
+      const surface = reqRender.getStore() === "extension" ? "extension" : this.surfaceFor(kind);
       this.promptQueue.set(id, { kind, body, surface });
       this.pushPrompt(id, kind, body, surface); // deliver to the requester's render surface
     });
@@ -290,6 +298,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
 
   // ---- request routing: one authoritative `origin` per envelope, set by the extension. ----
   private async handle(ws: WebSocket, env: RequestEnvelope) {
+    if (this.apps.has(ws)) this.appOrigins.set(ws, env.origin);
     const respond = (result?: unknown, error?: unknown) => ws.send(JSON.stringify({ type: "response", id: env.id, result, error }));
     try {
       // Requests from the menu bar OR a native app window render prompts on the menu bar (the notch);
@@ -317,7 +326,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     if ((method as string) === "claude_setToolSecret") return this.setToolSecret(origin, env.params as { server?: string; env?: string; value?: string });
     switch (method as BYOPMethod) {
       case "claude_capabilities":
-        return this.capabilities();
+        return this.capabilities(origin);
       case "claude_connect":
         return this.connect(origin, (env.params as ScopeRequest) ?? {});
       case "claude_disconnect":
@@ -379,19 +388,40 @@ export class Broker implements ConsentPrompter, NativeHandler {
     return { ok: true };
   }
 
-  private async capabilities(): Promise<Capabilities> {
+  private async capabilities(origin?: string): Promise<Capabilities> {
+    // Refresh health before reading the model map so recovery appears in the same snapshot.
+    const backends = await this.deps.backends.onlineIds();
+    let defaultModel: string | undefined;
+    if (origin && this.deps.grants.get(origin)) {
+      try {
+        const selected = this.selectCompletion(origin, {}).model;
+        if (selected && this.deps.backends.allowedModels().includes(selected) && this.deps.grants.allowsModel(origin, selected)) defaultModel = selected;
+      } catch { /* No usable default: discovery must still show the recovery choices. */ }
+    }
     return {
       version: BYOP_VERSION,
       methods: ["claude_capabilities", "claude_connect", "claude_disconnect", "claude_complete", "claude_stream", "claude_cancel", "claude_listTools", "claude_callTool", "claude_permissions", "claude_storage", "claude_context", "claude_session", "claude_speak", "claude_transcribe", "sb_brand", "guide_run", "guide_history"],
       // Enumerating consumers (the panel, feature-detect) see the ALLOWED set — a model the user
       // disabled in Settings → Models never even appears as a choice (docs/MODEL-SELECTION.md §4c).
       models: this.deps.backends.allowedModels(),
-      backends: await this.deps.backends.onlineIds(),
+      modelInfo: this.deps.backends.modelInfo(),
+      defaultModel,
+      sessionModelPinning: true,
+      backends,
       signedIn: await this.deps.backends.signedIn(),
-      agentic: true,
+      agentic: this.deps.backends.modelInfo().some((m) => m.capabilities.agentic),
       user: this.deps.config.profile,
-      local: { tts: ttsAvailable(), voices: ttsVoices() },
+      local: { tts: ttsAvailable(), stt: sttAvailable(), voices: ttsVoices() },
     };
+  }
+
+  /** Invalidate open app/panel catalogs after preferences, sign-in, or backend availability moves. */
+  async notifyModelsChanged(): Promise<void> {
+    const signature = JSON.stringify({ models: this.deps.backends.modelInfo(), providers: await this.deps.backends.inventory(), preferences: loadModelPrefs() });
+    if (signature === this.modelStateSignature) return;
+    const initial = this.modelStateSignature === undefined;
+    this.modelStateSignature = signature;
+    if (!initial) this.broadcast({ type: "event", event: "capabilitiesChanged", payload: { reason: "models-changed" } });
   }
 
   /** claude_speak — synthesize speech on-device (local TTS server or the OS engine). No cloud, no
@@ -529,8 +559,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
   // ── Native (direct-principal) surface ────────────────────────────────────────────────────────
   // Served on the SEPARATE native listener, never this Broker's extension socket. A native app
   // proves identity with its own per-app token; the daemon stamps `native@<appId>` and routes the
-  // request through the SAME grant/gate/audit machinery — only over a small allowlist of verbs that
-  // need no live consent-popup (that surface is the menubar and comes later). Fail-closed on the rest.
+  // request through the SAME grant/gate/audit machinery. Interactive consent uses the menubar;
+  // native discovery advertises only the methods this transport implements.
 
   /** Register a native app OUT OF BAND (the menubar/CLI, i.e. the native connect-consent step): mint
    *  its per-app token and grant it the requested scope so it is "connected". Returns the token the
@@ -573,7 +603,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     this.pendingNativeConnect.add(appId);
     try {
       const principal = nativePrincipal(appId);
-      const canDo = ["Transcribe audio on-device", "Clean up and generate text on your Claude"];
+      const canDo = ["Use your enabled AI models", "Transcribe and speak on-device", "Save this app's private data", "Use context you lend this app"];
       // `name` is the app's own display name (shown to the human); `appId` is the identity the daemon
       // trusts. Both are shown so the user sees a name AND can verify the id.
       const ok = await this.ask<boolean>("consent:native-connect", { appId, name, reason, verified: false, canDo }, 120_000, false);
@@ -585,19 +615,31 @@ export class Broker implements ConsentPrompter, NativeHandler {
     }
   }
 
-  /** NativeHandler — dispatch a request already stamped with its verified native principal, over a
-   *  strict allowlist. Anything not listed fails closed (native apps can't reach write/consent verbs
-   *  until the menubar consent surface is wired). Mirrors `handle`'s audit envelope. */
+  /** Native apps use the same per-principal scope, storage and context gate. Supported consent
+   * cards render at the notch; context pickers and write approvals use the extension. */
   async handleNativeRequest(principal: string, method: string, params: unknown): Promise<unknown> {
+    return reqRender.run("menubar", () => this.dispatchNativeRequest(principal, method, params));
+  }
+
+  subscribeNativeEvents(principal: string, send: (event: unknown) => void): () => void {
+    const subscriber = { principal, send };
+    this.nativeEvents.add(subscriber);
+    return () => { this.nativeEvents.delete(subscriber); };
+  }
+
+  private async dispatchNativeRequest(principal: string, method: string, params: unknown): Promise<unknown> {
     try {
       let result: unknown;
       switch (method) {
-        case "claude_capabilities": result = await this.capabilities(); break;
+        case "claude_capabilities": result = { ...await this.capabilities(principal), methods: NATIVE_METHODS }; break;
+        case "claude_permissions": result = this.deps.grants.get(principal) ?? null; break;
+        case "claude_storage": result = await this.storageOp(principal, params as StorageRequest); break;
+        case "claude_context": result = await this.contextOp(principal, params as ContextRequest); break;
+        case "claude_session": result = await this.sessionOp(principal, params as SessionRequest); break;
         case "claude_transcribe": result = await this.transcribe(principal, params as TranscribeParams); break;
         case "claude_speak": result = await this.speak(principal, params as SpeakParams); break;
         // One-shot completion (e.g. cleaning up a raw transcript). Self-contained — it never
-        // streams to or needs the extension socket. Agentic tool calls would need the consent
-        // surface a native app doesn't have yet, so this stays one-shot/text-only here.
+        // streams to the extension socket. Tool calls still use the broker's grant and consent gate.
         case "claude_complete": result = await this.complete(principal, params as CompletionParams); break;
         // The "run things" hand (God's connector reach). A native app may ENUMERATE the tools its
         // grant covers and CALL one — but only through the exact same gate as a page: the call is
@@ -684,7 +726,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
         const origin = String(args?.origin ?? "");
         this.deps.grants.revoke(origin);
         this.deps.audit.record({ origin, kind: "revoke", outcome: "ok" });
-        this.broadcast({ type: "event", event: "disconnect", payload: { reason: "user-revoked" } });
+        this.broadcast({ type: "event", event: "disconnect", payload: { reason: "user-revoked" }, origin });
         return { ok: true };
       }
       case "setMode": {
@@ -698,8 +740,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
         // (null clears it → honor the app's request). Rejected if the model isn't granted.
         const origin = String(args?.origin ?? "");
         const model = args?.model == null ? null : String(args.model);
+        if (model && !this.deps.backends.allowedModels().includes(model)) return { ok: false, error: "Choose an enabled, available model." };
         const g = this.deps.grants.setModelOverride(origin, model);
-        if (g) { this.deps.audit.record({ origin, kind: "request", method: `model-override:${model ?? "(cleared)"}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g }); }
+        if (g) { this.deps.audit.record({ origin, kind: "request", method: `model-override:${model ?? "(cleared)"}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g, origin }); }
         return { ok: !!g, grant: g };
       }
       case "listContexts":
@@ -870,7 +913,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
           ok: true,
           enabled: this.deps.backends.hasHosted(),
           hostedModels: this.deps.backends.hostedModels(),
-          models: await this.deps.backends.models(),
+          models: this.deps.backends.allowedModels(),
+          modelInfo: this.deps.backends.modelInfo(),
         };
       case "cloud.setKey": {
         // The user pastes their own OpenRouter key (a credential — stored 0600, never leaves the
@@ -879,6 +923,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
         if (!key) return { ok: false, error: "an OpenRouter key is required" };
         const saved = saveCloudConfig({ openrouterKey: key, baseUrl: args?.baseUrl ? String(args.baseUrl) : undefined, models: Array.isArray(args?.models) ? args.models.map(String) : undefined });
         await this.deps.backends.setCloudBackend(saved);
+        await this.notifyModelsChanged();
         this.deps.audit.record({ origin: "*", kind: "request", method: "cloud:enable", outcome: "ok" });
         this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "cloud-changed" } });
         return { ok: true, enabled: this.deps.backends.hasHosted(), hostedModels: this.deps.backends.hostedModels() };
@@ -886,6 +931,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
       case "cloud.clear": {
         saveCloudConfig({ openrouterKey: undefined });
         await this.deps.backends.setCloudBackend({});
+        await this.notifyModelsChanged();
         this.deps.audit.record({ origin: "*", kind: "request", method: "cloud:disable", outcome: "ok" });
         this.broadcast({ type: "event", event: "permissionsChanged", payload: { reason: "cloud-changed" } });
         return { ok: true, enabled: false };
@@ -951,10 +997,18 @@ export class Broker implements ConsentPrompter, NativeHandler {
       access: classifyTool(name),
       label: builtinDesc.get(name) ?? this.deps.mcp.get(name)?.title ?? connectorLabel(name),
     }));
+    const existing = this.deps.grants.get(origin);
+    const availableModels = this.deps.backends.allowedModels();
+    const suggested = existing?.modelOverride ?? this.deps.backends.preferredModel(undefined);
+    const requestedModels = [...new Set([
+      ...(suggested ? [suggested] : []),
+      ...(existing?.models ?? []),
+      ...(requested.models ?? []).map((m) => this.deps.backends.preferredModel(m) ?? m),
+    ])].filter((m) => availableModels.includes(m));
     const consentBody = {
       origin,
       reason: requested.reason,
-      models: { available: await this.deps.backends.models(), requested: requested.models ?? [] },
+      models: { available: availableModels, requested: requestedModels, default: requestedModels[0] },
       tools: requestedTools,
       budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
       // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
@@ -977,6 +1031,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const approvedKinds = (approved as unknown as { contextKinds?: unknown }).contextKinds;
     const contextKinds = Array.isArray(approvedKinds) ? approvedKinds.map((k) => String(k)).filter(Boolean) : undefined;
     const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, contextKinds, expiresAt: approved.expiresAt });
+    const selectedModel = (approved as unknown as { modelOverride?: string }).modelOverride;
+    if (selectedModel && approved.models.includes(selectedModel)) this.deps.grants.setModelOverride(origin, selectedModel);
+    else if (approved.models.length === 1) this.deps.grants.setModelOverride(origin, approved.models[0]!);
     this.deps.audit.record({ origin, kind: "connect", outcome: "ok" });
     this.broadcast({ type: "event", event: "connect", payload: grant });
     return grant;
@@ -1126,6 +1183,11 @@ export class Broker implements ConsentPrompter, NativeHandler {
       case "publish": {
         if (grant.mode === "readonly") { log("publish", "denied", "readonly"); throw new ProviderError(BYOPErrorCode.CONSENT_DENIED, "site is read-only"); }
         if (!req.context?.name) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "publish requires context.name");
+        const existing = req.context.id ? lib.get(req.context.id) : null;
+        if (existing && existing.publishedBy !== origin) {
+          log("publish", "denied", "another app owns this context");
+          throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "cannot replace another app's context");
+        }
         const ctx = lib.publish(origin, req.context);
         log("publish", "ok", ctx.name.slice(0, 60));
         this.broadcast({ type: "event", event: "permissionsChanged", payload: grant });
@@ -1198,14 +1260,32 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const grant = this.deps.grants.get(origin);
     if (!grant) throw new ProviderError(BYOPErrorCode.UNAUTHORIZED, "connect before using a session");
     if (!req.sessionId) throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, "session requires a sessionId");
-    if (req.op === "end") { this.deps.sessions.end(origin, req.sessionId); return { ok: true }; }
+    if (req.op === "end") {
+      this.deps.sessions.end(origin, req.sessionId);
+      await this.deps.backends.endSession(origin, req.sessionId);
+      this.sessionRoutes.end(origin, req.sessionId);
+      for (const key of this.completionSessions.keys()) {
+        const [sessionOrigin, , sessionId] = JSON.parse(key) as [string, string, string];
+        if (sessionOrigin === origin && sessionId === req.sessionId) this.completionSessions.delete(key);
+      }
+      return { ok: true };
+    }
     if (req.op !== "send") throw new ProviderError(BYOPErrorCode.INVALID_PARAMS, `unknown session op ${(req as any).op}`);
     // Global allow/deny (docs/MODEL-SELECTION.md §4b): substitute a disabled model down to an allowed
     // one before the gate. A session is a read-only warm thread (no attachments/agentic here), so the
     // substitute needs neither vision nor the tool loop.
-    const model = this.withModelPreference({ prompt: req.prompt ?? "", model: req.model }).model;
+    const model = this.selectCompletion(origin, { prompt: req.prompt ?? "", model: req.model, sessionId: req.sessionId }).model;
+    if (!model || !this.deps.backends.capabilityModels().includes(model)) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "This conversation's model is unavailable. Reconnect its provider or start a new conversation.");
+    if (this.deps.backends.backendFor(model)?.id === "codex") {
+      const out = await this.complete(origin, { prompt: req.prompt ?? "", model, system: req.system, effort: req.effort, sessionId: req.sessionId });
+      return { ok: true, text: out.text };
+    }
+    if (this.deps.backends.backendFor(model)?.id !== "claude-code") {
+      throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, `${model} does not support warm sessions yet. Select Claude Code or Codex for this conversation.`);
+    }
     // Gate the turn exactly like a completion: model in scope + rate/token budget.
     this.deps.gate.assertCompletionAllowed(origin, model, 4096);
+    if (model) this.sessionRoutes.pin(origin, req.sessionId, model);
     // A session may use ONLY the web reads the origin already granted — never a write tool.
     const granted = new Set(grant.tools.map((t) => t.name));
     const allowedReadTools = ["WebSearch", "WebFetch"].filter((t) => granted.has(t));
@@ -1232,31 +1312,31 @@ export class Broker implements ConsentPrompter, NativeHandler {
   }
 
   /** Apply the user's per-origin model override: if set, run THAT model instead of the one the app
-   *  asked for (the app never learns; it just runs on the user's chosen backend). The override is
+   *  asked for in a new conversation. Capabilities and completion results expose the choice. The override is
    *  always a granted model (enforced at set-time), so assertCompletionAllowed still passes. */
   private withModelOverride(origin: string, params: CompletionParams): CompletionParams {
     const override = this.deps.grants.get(origin)?.modelOverride;
     // Precedence (docs/MODEL-SELECTION.md §6/§7): a GLOBAL disable beats a per-site pin. If the pinned
     // model has since been turned off in Settings → Models, don't resurrect it — fall through to
     // withModelPreference, which substitutes the app's originally-requested model to an allowed one.
-    return override && this.deps.backends.isAllowed(override) ? { ...params, model: override } : params;
+    return override && this.deps.backends.isAllowed(override)
+      ? { ...params, model: override }
+      : { ...params, model: this.deps.backends.preferredModel(params.model) };
   }
 
   /** Apply the user's global model deny-list (docs/MODEL-SELECTION.md §4b). If the requested model is
-   *  disabled, SUBSTITUTE a capability-preserving allowed model before the gate — the wrapp never
-   *  learns (same contract as withModelOverride). Runs AFTER withModelOverride and BEFORE backendFor +
+   *  disabled, SUBSTITUTE a capability-preserving allowed model before the gate. The result reports
+   *  the actual model. Runs AFTER withModelOverride and BEFORE backendFor +
    *  assertCompletionAllowed, so the gate validates the model that will actually run. The substitute is
    *  drawn from the origin's full granted capability set, so allowsModel() still passes — no widening. */
-  private withModelPreference(params: CompletionParams): CompletionParams {
+  private withModelPreference(origin: string, params: CompletionParams): CompletionParams {
     const requested = params.model;
     if (!requested || this.deps.backends.isAllowed(requested)) return params; // omitted default / allowed ⇒ untouched
-    const sub = this.chooseAllowedSubstitute(requested, { vision: !!params.attachments?.length, agentic: !!params.agentic });
+    const sub = this.chooseAllowedSubstitute(origin, requested, { vision: !!params.attachments?.length, agentic: !!params.agentic });
     if (!sub) {
       throw new ProviderError(
         BYOPErrorCode.NO_ALLOWED_MODEL,
-        params.agentic
-          ? "every model that can run this (a tool loop needs Claude, not a local model) is turned off — re-enable one in Settings → Models"
-          : "every model that can run this is turned off — re-enable one in Settings → Models",
+        "No enabled, granted model supports this request. Enable a compatible model in Settings or reconnect this app.",
       );
     }
     return { ...params, model: sub };
@@ -1267,14 +1347,15 @@ export class Broker implements ConsentPrompter, NativeHandler {
    *  tool loop); a hosted model is never a SILENT substitute unless the request was itself hosted
    *  (keeping faith with backendFor's no-silent-hosted rule). Prefers an allowed Claude model near the
    *  requested tier (opus→sonnet→haiku ladder). undefined ⇒ nothing qualifies ⇒ NO_ALLOWED_MODEL. */
-  private chooseAllowedSubstitute(requested: string, opts: { vision: boolean; agentic: boolean }): string | undefined {
+  private chooseAllowedSubstitute(origin: string, requested: string, opts: { vision: boolean; agentic: boolean }): string | undefined {
     const reg = this.deps.backends;
     const requestedKind = reg.backendKindOf(requested);
     const forbidLocal = opts.vision || opts.agentic;
     const candidates = reg.allowedModels().filter((m) => {
+      if (!this.deps.grants.get(origin)?.models.some((granted) => canonicalModel(granted) === canonicalModel(m))) return false;
       const k = reg.backendKindOf(m);
       if (!k) return false;                                        // not currently served
-      if (forbidLocal && k === "local") return false;             // never vision/agentic on a local runner
+      if (forbidLocal && !reg.supports(m, opts)) return false;
       if (k === "hosted" && requestedKind !== "hosted") return false; // no silent hosted substitute
       return true;
     });
@@ -1294,23 +1375,38 @@ export class Broker implements ConsentPrompter, NativeHandler {
     return claude[0] ?? candidates[0];
   }
 
+  private selectCompletion(origin: string, params: CompletionParams): CompletionParams {
+    const pinned = this.sessionRoutes.get(origin, params.sessionId);
+    if (pinned) {
+      if (!this.deps.backends.isAllowed(pinned)) throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, `This conversation uses ${pinned}, which is turned off. Re-enable it or start a new conversation.`);
+      return { ...params, model: pinned };
+    }
+    const selected = this.withModelPreference(origin, this.withModelOverride(origin, params));
+    if (selected.model) return selected;
+    const model = this.deps.grants.get(origin)?.models.find((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
+    if (!model) throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, "No enabled, available model is granted to this app. Enable a model or reconnect the app.");
+    return { ...selected, model };
+  }
+
   private async complete(origin: string, params: CompletionParams) {
-    params = this.withModelOverride(origin, params);    // per-site pin (if still allowed)
-    params = this.withModelPreference(params);          // global allow/deny + substitution
+    params = this.selectCompletion(origin, params);
+    if (params.model && !this.deps.backends.capabilityModels().includes(params.model)) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, `${params.model} is unavailable. Reconnect its provider or start a new conversation.`);
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
+    if (params.model) this.sessionRoutes.pin(origin, params.sessionId, params.model);
     const controller = new AbortController();
     // Warm-thread continuity: when the caller tags a sessionId, resume the SDK session we minted for
     // (origin, sessionId) last turn — the model continues the real conversation (prior turns + prompt
     // caching), while THIS turn's attachments still carry live vision. Keyed by origin so a page can
     // only continue its own thread.
-    const skey = params.sessionId ? `${origin}::${params.sessionId}` : null;
+    const skey = params.sessionId ? JSON.stringify([origin, backend.id, params.sessionId]) : null;
     const ctx = {
       origin,
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
+      tools: this.listTools(origin).filter((t) => !!this.deps.mcp.get(t.name)),
       authorizeToolCall: (call: ToolCallRequest) => this.deps.gate.authorize(origin, call).then((d) => (d.allow ? { allow: true, message: undefined } : { allow: false, message: d.message })),
-      gateToolCall: (call: ToolCallRequest) => this.deps.gate.gateToolCall(origin, call),
+      gateToolCall: (call: ToolCallRequest, signal?: AbortSignal) => this.deps.gate.gateToolCall(origin, call, signal ? AbortSignal.any([signal, controller.signal]) : controller.signal),
       mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments, this.gitCtxFor(origin)),
       emit: (_d: StreamDelta) => { /* one-shot: deltas discarded */ },
       signal: controller.signal,
@@ -1334,7 +1430,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const origin = `routine@${routineId}`;
     const model = this.deps.backends.allowedModels()[0];
     const backend = this.deps.backends.backendFor(model);
-    if (!backend) { this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: "no backend online" }); return { text: "", tokens: 0 }; }
+    if (!model || !backend) { this.deps.audit.record({ origin, kind: "request", method: "claude_complete", outcome: "denied", note: "no enabled backend online" }); return { text: "", tokens: 0 }; }
     const controller = new AbortController();
     const ctx = {
       origin,
@@ -1498,14 +1594,16 @@ export class Broker implements ConsentPrompter, NativeHandler {
   }
 
   private async startStream(origin: string, params: CompletionParams, ws: WebSocket): Promise<{ streamId: string }> {
-    params = this.withModelOverride(origin, params);    // per-site pin (if still allowed)
-    params = this.withModelPreference(params);          // global allow/deny + substitution
+    params = this.selectCompletion(origin, params);
+    if (params.model && !this.deps.backends.capabilityModels().includes(params.model)) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, `${params.model} is unavailable. Reconnect its provider or start a new conversation.`);
     const backend = this.deps.backends.backendFor(params.model);
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
+    if (params.model) this.sessionRoutes.pin(origin, params.sessionId, params.model);
     const streamId = randomUUID();
     const controller = new AbortController();
     this.streams.set(streamId, controller);
+    const skey = params.sessionId ? JSON.stringify([origin, backend.id, params.sessionId]) : null;
     // Deltas go to the socket that ASKED, not to every connected browser. Broadcasting leaked
     // one origin's model output into every other paired profile's extension (and from there into
     // every page port). sendTo falls back to broadcast only if the requesting socket is gone —
@@ -1514,11 +1612,13 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const ctx = {
       origin,
       allowedTools: params.agentic ? this.deps.gate.allowedToolsFor(origin) : [],
+      tools: this.listTools(origin).filter((t) => !!this.deps.mcp.get(t.name)),
       authorizeToolCall: (call: ToolCallRequest) => this.deps.gate.authorize(origin, call).then((d) => (d.allow ? { allow: true, message: undefined } : { allow: false, message: d.message })),
-      gateToolCall: (call: ToolCallRequest) => this.deps.gate.gateToolCall(origin, call),
+      gateToolCall: (call: ToolCallRequest, signal?: AbortSignal) => this.deps.gate.gateToolCall(origin, call, signal ? AbortSignal.any([signal, controller.signal]) : controller.signal),
       mcpServers: buildMcpServers(this.deps.mcp.sdkServersFor(origin, this.deps.grants.get(origin)?.tools.map((t) => t.name) ?? []), params.attachments, this.gitCtxFor(origin)),
       emit,
       signal: controller.signal,
+      resumeSessionId: skey ? this.completionSessions.get(skey) : undefined,
     };
     // Fire and forget; deltas flow as events keyed by streamId. Lifecycle is LOGGED so a hung or
     // failed backend shows up in sidekick.log instead of a silent, undiagnosable stall.
@@ -1526,6 +1626,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     console.error(`[stream] ${streamId.slice(0, 8)} start origin=${origin} model=${params.model ?? backend.id} agentic=${!!params.agentic} prompt=${(params.prompt ?? "").length}ch`);
     backend.run(params, ctx)
       .then((out) => {
+        if (skey && out.sessionId) this.completionSessions.set(skey, out.sessionId);
         const tokens = out.usage ? out.usage.inputTokens + out.usage.outputTokens : estimateTokens(out.text);
         this.deps.gate.recordCompletion(origin, tokens);
         console.error(`[stream] ${streamId.slice(0, 8)} done in ${((Date.now() - t0) / 1000).toFixed(1)}s text=${out.text.length}ch`);
@@ -1553,8 +1654,19 @@ export class Broker implements ConsentPrompter, NativeHandler {
   }
 
   private broadcast(msg: unknown) {
-    const s = JSON.stringify(msg);
+    const event = msg as { origin?: string; payload?: { origin?: string } };
+    const origin = event.origin ?? event.payload?.origin;
+    const frame = origin ? { ...event, origin } : msg;
+    const s = JSON.stringify(frame);
     for (const ext of this.extensions) { try { ext.send(s); } catch { /* dropped */ } }
+    for (const app of this.apps) {
+      if (origin && this.appOrigins.get(app) !== origin) continue;
+      try { app.send(s); } catch { /* dropped */ }
+    }
+    for (const client of this.nativeEvents) {
+      if (origin && client.principal !== origin) continue;
+      try { client.send(frame); } catch { /* dropped */ }
+    }
   }
 
   // ---- Team Mode notifications. Both ride the existing `permissionsChanged` fan-out on purpose:

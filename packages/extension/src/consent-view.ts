@@ -19,7 +19,7 @@ type Access = "read" | "write";
 interface ConnectBody {
   origin: string;
   reason?: string;
-  models: { available: string[]; requested: string[] };
+  models: { available: string[]; requested: string[]; default?: string };
   tools: Array<{ name: string; access: Access; label: string }>;
   budgets: { maxTokensPerDay: number; maxCallsPerMin: number };
   /** Library kinds the app asks to SEE (names only; data reads stay per-item + audited). */
@@ -195,7 +195,7 @@ function ensureStyles() {
   document.head.appendChild(s);
 }
 
-export type Decision = null | false | { models: string[]; tools: Array<{ name: string; access: Access }>; budgets?: { maxTokensPerDay: number; maxCallsPerMin: number }; contextKinds?: string[] };
+export type Decision = null | false | { modelOverride?: string; models: string[]; tools: Array<{ name: string; access: Access }>; budgets?: { maxTokensPerDay: number; maxCallsPerMin: number }; contextKinds?: string[] };
 
 /** Render a consent prompt into `root`; call `onDecision` with the result. */
 export function renderConsent(root: HTMLElement, prompt: Prompt, onDecision: (d: Decision) => void) {
@@ -308,7 +308,8 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
 
   // ---- Models — compact toggle chips (default = the requested set, else the first available).
   // Chips wrap, so even 6 models stay ~2 rows and need no fold; the daemon runs the user's pick. ----
-  const wantModels = new Set(body.models.requested.length ? body.models.requested : body.models.available.slice(0, 1));
+  const requestedModels = body.models.requested.filter((m) => body.models.available.includes(m));
+  const wantModels = new Set(requestedModels.length ? requestedModels : body.models.available.slice(0, 1));
   const modelBoxes: Array<[string, HTMLInputElement]> = [];
   const mSec = section(custom, "Models", () => toggleAll(modelBoxes.map(([, c]) => c)));
   const mchips = el("div", "mchips");
@@ -319,6 +320,22 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     mchips.append(chip);
   }
   mSec.append(mchips);
+  const defaultModel = el("select") as HTMLSelectElement;
+  defaultModel.setAttribute("aria-label", "Model for new conversations");
+  const updateDefaults = () => {
+    const previous = defaultModel.value;
+    defaultModel.replaceChildren();
+    for (const [name, checkbox] of modelBoxes) if (checkbox.checked) {
+      const option = el("option") as HTMLOptionElement;
+      option.value = name; option.textContent = name; defaultModel.append(option);
+    }
+    if (Array.from(defaultModel.options).some((o) => o.value === previous)) defaultModel.value = previous;
+  };
+  modelBoxes.forEach(([, checkbox]) => checkbox.addEventListener("change", updateDefaults));
+  updateDefaults();
+  if (body.models.default && wantModels.has(body.models.default)) defaultModel.value = body.models.default;
+  mSec.append(wrapLabel("New conversations use", defaultModel));
+  mSec.append(el("div", "empty", "Each conversation keeps its starting model."));
 
   // ---- Tools — grouped, collapsed by default; the live Approve label mirrors the selection ----
   const toolBoxes: Array<[{ name: string; access: Access }, HTMLInputElement]> = [];
@@ -404,7 +421,7 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
   custHead.append(el("span", undefined, "Customize tools, models, budget"), el("span", "chev", "▾"));
   const defModels = wantModels.size;
   const custSum = el("div", "custsum",
-    `${body.tools.length} tool${body.tools.length === 1 ? "" : "s"} · ${defModels} model${defModels === 1 ? "" : "s"} · runs on your Claude`);
+    `${body.tools.length} tool${body.tools.length === 1 ? "" : "s"} · ${defModels} model${defModels === 1 ? "" : "s"} · runs on your selected AI`);
   custHead.onclick = () => { const open = custom.classList.toggle("open"); custHead.classList.toggle("open", open); custSum.style.display = open ? "none" : "block"; };
   rc.append(custHead, custSum, custom);
 
@@ -416,7 +433,10 @@ function renderConnect(rc: HTMLElement, body: ConnectBody, onDecision: (d: Decis
     // re-classifies every approved tool out of band, so a substitute can't sneak in as a cheaper class.
     for (const s of subChecks) if (s.cb.checked) for (const name of s.tools)
       if (!tools.some((t) => t.name === name)) tools.push({ name, access: "write" });
+    if (!modelBoxes.some(([, c]) => c.checked)) return;
+    updateDefaults();
     onDecision({
+      modelOverride: defaultModel.value,
       models: modelBoxes.filter(([, c]) => c.checked).map(([m]) => m),
       tools,
       budgets: { maxTokensPerDay: numVal(tok), maxCallsPerMin: numVal(calls) },

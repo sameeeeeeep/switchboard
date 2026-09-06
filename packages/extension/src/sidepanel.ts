@@ -757,15 +757,21 @@ function renderApps(data: PanelData) {
     const m = el("div", "m"); const fill = el("i"); Object.assign(fill.style, { width: `${Math.max(3, pct * 100)}%`, background: meterColor(pct) }); m.append(fill);
     bar.append(m, el("span", "v", `${kfmt(g.usage.tokensToday)} / ${kfmt(g.budgets.maxTokensPerDay)}`)); use.append(bar); detail.append(use);
 
-    // model choice — the USER decides which granted model this app runs on, regardless of what it
-    // asks for (BYO-compute). Only meaningful when there's a choice (2+ granted models).
-    if (g.models.length > 1) {
+    // Defaults apply to new conversations. Availability never expands the app's granted scope.
+    if (g.models.length) {
       const mrow = el("div", "drow");
-      mrow.append(el("span", "k", "Runs on"));
+      mrow.append(el("span", "k", "New conversations"));
       const sel = el("select", "modelsel") as HTMLSelectElement;
+      sel.setAttribute("aria-label", "Model for new conversations");
+      sel.title = "Existing conversations keep their starting model. Reconnect the app to grant another provider.";
       const appOpt = el("option") as HTMLOptionElement; appOpt.value = ""; appOpt.textContent = "App's choice";
       sel.append(appOpt);
-      for (const m of g.models) { const o = el("option") as HTMLOptionElement; o.value = m; o.textContent = m; sel.append(o); }
+      for (const m of g.models) {
+        const available = data.cloud?.models?.includes(m) ?? true;
+        const o = el("option") as HTMLOptionElement;
+        o.value = m; o.textContent = available ? m : `${m} · unavailable`; o.disabled = !available;
+        sel.append(o);
+      }
       sel.value = g.modelOverride ?? "";
       sel.onclick = (e) => e.stopPropagation();
       sel.onchange = (e) => {

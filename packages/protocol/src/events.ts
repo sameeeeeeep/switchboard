@@ -12,6 +12,8 @@ export interface BYOPEvents {
   disconnect: { reason: "user-revoked" | "kill-switch" | "expired" | "page-closed" };
   /** The origin's granted scope changed (narrowed, widened via re-consent, or budget reset). */
   permissionsChanged: OriginGrant;
+  /** Model availability or global preferences changed. Re-read capabilities and permissions. */
+  capabilitiesChanged: { reason: "models-changed" };
   /** A streaming delta for an in-flight claude_stream, tagged with its streamId. */
   delta: { streamId: string } & StreamDelta;
   /** The setup ladder moved (socket open/close, auth accepted/rejected, pair, kill switch).
