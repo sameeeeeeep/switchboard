@@ -154,7 +154,7 @@ export const manifest = {
   name: "redline",
   title: "Redline",
   origin: "https://redline.thelastprompt.ai",
-  scope: { models: ["sonnet"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"] },
   actions: [
     {
       name: "audit",

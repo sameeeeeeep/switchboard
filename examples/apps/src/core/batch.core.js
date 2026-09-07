@@ -113,7 +113,7 @@ export const manifest = {
   name: "batch",
   title: "Batch",
   origin: "https://batch.thelastprompt.ai",
-  scope: { models: ["sonnet"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"] },
   actions: [
     {
       name: "draft",

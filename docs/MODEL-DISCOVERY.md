@@ -18,6 +18,7 @@ BYOP `1.3.0` adds optional fields to `relay.capabilities()`:
 | --- | --- |
 | `models` | Enabled, available model IDs; retained for older apps |
 | `modelInfo` | Each model's backend, vision/tool/warm-session support, and tool source |
+| `modelInfo[].classes` | Capability classes the model satisfies — `cloud-coding`, `cloud-vision`, `local-text` — the vocabulary of class requests |
 | `defaultModel` | This app's effective model when a new request omits `model`; absent when none is usable |
 | `sessionModelPinning` | Existing conversation IDs keep their starting model |
 | `local.stt` | A local speech recognizer is configured; optional on older daemons |
@@ -92,3 +93,17 @@ Local voice is independent of the text model. Check `local.stt` before offering
 clients use the same discovery fields but must also inspect `methods`: their separate
 transport does not yet implement streaming or cancellation. See
 [native and local integration](NATIVE-AND-LOCAL.md) for the standalone client and proof.
+
+## Ask for a class, not a model
+
+Instead of naming a provider's model ids, an app can ask for a capability class:
+
+```js
+mountConnectChip({ scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"] } });
+```
+
+`requirements` makes the grant class-based (`OriginGrant.classes` + `providers`): the user still approves
+concrete models on the card — which shows "ASKS FOR · CLOUD CODING → Claude Code: sonnet · Codex: …" — and a
+new conversation then resolves to any enabled model of that class on a provider they allowed. That keeps the
+app working when a provider's catalog moves or one provider is offline. Keep `models` alongside for daemons
+that predate class grants (they ignore `requirements`). See [Codex](CODEX.md#model-selection).

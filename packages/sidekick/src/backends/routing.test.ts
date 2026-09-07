@@ -475,8 +475,13 @@ test("class grants: resolve per granted provider, never to an excluded one, and 
     assert.equal(grants.setModelOverride(classy, "codex-b")?.modelOverride, "codex-b");
     assert.equal(grants.setModelOverride(legacy, "codex-b"), null);
     // connect(): an app that asks for a CLASS gets classes + providers derived from what the user approved
-    broker.requestConnectConsent = async (_o: string, body: any) => ({ models: body.models.available, tools: [], budgets: body.budgets });
+    let hint: any = null;
+    broker.requestConnectConsent = async (_o: string, body: any) => { hint = body.models; return { models: body.models.available, tools: [], budgets: body.budgets }; };
     const g = await broker.connect("https://asks-class.test", { reason: "t", tools: [], requirements: [{ class: "cloud-coding" }] });
+    // 5b: the card is told the class and what it resolves to on each provider right now
+    assert.deepEqual(hint.classes, ["cloud-coding"]);
+    assert.deepEqual(Object.keys(hint.resolves).sort(), ["claude-code", "codex"]);
+    assert.equal(hint.resolves.codex, "codex-b");
     assert.deepEqual(g.classes, ["cloud-coding"]);
     assert.deepEqual([...g.providers].sort(), ["claude-code", "codex"]);
     assert.ok((await broker.capabilities("https://asks-class.test")).modelInfo.every((m: any) => Array.isArray(m.classes)));
