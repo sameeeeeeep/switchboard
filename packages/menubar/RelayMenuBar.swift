@@ -768,6 +768,7 @@ func agoText(_ ts: Double) -> String {
 final class Model: ObservableObject {
     @Published var running = false
     @Published var working = false
+    @Published var panelVisible = false   // the menu-bar panel is on screen → its dot-field may animate (else it pauses: CPU fix 2026-09-07)
     /** Rung 4: Claude Code signed in on this Mac. Defaults true; poll() refreshes from the marker. */
     @Published var signedIn = true
     @Published var contexts: [Ctx] = []
@@ -2270,7 +2271,7 @@ struct Panel: View {
             // Texture, not "live": ~5% opacity, speeds up while the daemon works, danger-tinted when signed-out.
             ZStack {
                 Color.page
-                PanelDotField(accent: signedOut ? .danger : .lime, speed: model.working ? 2.4 : 1.0)
+                PanelDotField(accent: signedOut ? .danger : .lime, speed: model.working ? 2.4 : 1.0, paused: !model.panelVisible)
             }
         )
         .clipShape(NotchDropShape())   // no stroke — the black shape blends into the notch, no grey line
@@ -2409,7 +2410,7 @@ struct NotchField: View {
     }
     var body: some View {
         if reduceMotion || !animated { Canvas { ctx, size in draw(ctx, size, 0.6) } }   // a still, legible mid-frame
-        else { TimelineView(.animation) { tl in Canvas { ctx, size in draw(ctx, size, tl.date.timeIntervalSinceReferenceDate) } } }
+        else { TimelineView(.animation(minimumInterval: 1.0 / 24)) { tl in Canvas { ctx, size in draw(ctx, size, tl.date.timeIntervalSinceReferenceDate) } } }   // 24 fps cap (CPU fix 2026-09-07)
     }
 }
 
@@ -2513,7 +2514,7 @@ struct GodGlowView: View {
             if m.state != .idle {
                 // Just the sparkles — a light, unobtrusive shimmer trailing the cursor (no aura, no
                 // core dot, no halo). Presence, not a spotlight.
-                TimelineView(.animation) { tl in
+                TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
                     let t = tl.date.timeIntervalSinceReferenceDate
                     ZStack {
                         ForEach(0..<sparks.count, id: \.self) { i in
@@ -2594,7 +2595,7 @@ struct DotMatrix: View {
     }
     var body: some View {
         if reduceMotion || !animated { grid(0) }                      // a still, legible mid-frame
-        else { TimelineView(.animation) { tl in grid(tl.date.timeIntervalSinceReferenceDate) } }
+        else { TimelineView(.animation(minimumInterval: 1.0 / 24)) { tl in grid(tl.date.timeIntervalSinceReferenceDate) } }   // 24 fps cap (CPU fix 2026-09-07)
     }
 }
 
@@ -2705,7 +2706,7 @@ struct NotchFieldLED: View {
         }
     }
     var body: some View {
-        TimelineView(.animation) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
             Canvas { ctx, _ in draw(ctx, tl.date.timeIntervalSinceReferenceDate) }.frame(width: w, height: h)
         }
     }
@@ -2738,6 +2739,7 @@ struct PanelDotField: View {
     var accent: Color = .lime
     var speed: Double = 1
     var fieldOpacity: Double = 0.05
+    var paused: Bool = false   // panel hidden → stop the timeline entirely (CPU fix 2026-09-07)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private func working(_ c: Int, _ t: Double) -> Double { 0.16 + 0.84 * (0.5 + 0.5 * sin(Double(c) * 0.55 - t * 2.6)) }
     private func draw(_ ctx: GraphicsContext, _ size: CGSize, _ t: Double) {
@@ -2756,7 +2758,9 @@ struct PanelDotField: View {
             if reduceMotion {
                 Canvas { ctx, size in draw(ctx, size, 0) }
             } else {
-                TimelineView(.animation) { tl in
+                // 24 fps is plenty for a 5%-opacity dot sweep; .animation alone redraws at the display's full
+                // refresh (120 Hz on ProMotion) — and kept doing so while the panel was HIDDEN.
+                TimelineView(.animation(minimumInterval: 1.0 / 24, paused: paused)) { tl in
                     Canvas { ctx, size in draw(ctx, size, tl.date.timeIntervalSinceReferenceDate * speed) }
                 }
             }
@@ -3265,7 +3269,7 @@ struct PairLink: View {
                 endpoint(app: false, glow: 0.55)
             }
         } else {
-            TimelineView(.animation) { tl in
+            TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate
                 let travel = 1.4, pause = 1.0, cyc = travel + pause
                 let u = t.truncatingRemainder(dividingBy: cyc)
@@ -3641,14 +3645,24 @@ struct HDragScroll<Content: View>: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let host = scroll.documentView as? NoInsetHostingView<AnyView> else { return }
+        // HANG FIX (2026-09-07): this used to force `layoutSubtreeIfNeeded()` and set `host.frame` on EVERY
+        // SwiftUI update. Setting the frame invalidates the hosting view → AppKit re-lays out the window →
+        // SwiftUI re-runs this update → frame set again → an unbounded relayout loop (sampled: main thread
+        // 99% in `_layoutSubtreeWithOldSize` recursion, whole app frozen, even with the panel hidden).
+        // Two guards break it: never re-enter from our own frame change, and never set an unchanged frame.
+        let co = context.coordinator
+        guard !co.updating else { return }
+        co.updating = true; defer { co.updating = false }
         host.rootView = AnyView(content())
-        host.layoutSubtreeIfNeeded()
         let w = max(host.fittingSize.width, scroll.contentView.bounds.width)
-        host.frame = NSRect(x: 0, y: 0, width: w, height: height)
+        if abs(host.frame.width - w) > 0.5 || abs(host.frame.height - height) > 0.5 {
+            host.frame = NSRect(x: 0, y: 0, width: w, height: height)
+        }
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator {
         weak var scroll: NSScrollView?
+        var updating = false          // re-entrancy guard for updateNSView (see HANG FIX above)
         private var last: CGFloat = 0
         @objc func onPan(_ g: NSPanGestureRecognizer) {
             guard let scroll = scroll, let doc = scroll.documentView else { return }
@@ -7241,6 +7255,7 @@ struct ActionConsentDrop: View {
 
     private func showPanel() {
         guard let btnWindow = statusItem.button?.window, let screen = btnWindow.screen ?? NSScreen.main else { return }
+        model.panelVisible = true
         model.refreshFiles()
         ollama.refresh()
         let size = hosting.fittingSize
@@ -7264,6 +7279,7 @@ struct ActionConsentDrop: View {
     }
 
     private func hidePanel() {
+        model.panelVisible = false
         dismissToNotch(panel)   // collapse back into the notch
         openedByHover = false
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }

@@ -1382,7 +1382,12 @@ export class Broker implements ConsentPrompter, NativeHandler {
       return { ...params, model: pinned };
     }
     const selected = this.withModelPreference(origin, this.withModelOverride(origin, params));
-    if (selected.model) return selected;
+    // An IMPLICIT model (the per-app override or the GLOBAL Settings → Models default) must never route
+    // an app to a model it wasn't granted. 2026-09-07: with the global default set to a Codex model,
+    // Brandbrain (Claude-only grant) was silently sent to gpt-5.5 and denied as "model gpt-5.5 not
+    // granted" — surfacing in the wrapp as "not signed in". An EXPLICIT client request still passes
+    // through untouched (the gate judges it; we never widen a grant, we only choose from within it).
+    if (selected.model && (params.model || this.deps.grants.allowsModel(origin, selected.model))) return selected;
     const model = this.deps.grants.get(origin)?.models.find((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
     if (!model) throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, "No enabled, available model is granted to this app. Enable a model or reconnect the app.");
     return { ...selected, model };
