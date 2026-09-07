@@ -1468,6 +1468,10 @@ export class Broker implements ConsentPrompter, NativeHandler {
     if (!backend) throw new ProviderError(BYOPErrorCode.PROVIDER_UNAVAILABLE, "no backend online");
     this.deps.gate.assertCompletionAllowed(origin, params.model, params.maxTokens ?? 4096);
     if (params.model) this.sessionRoutes.pin(origin, params.sessionId, params.model);
+    // Mirror of the [stream] line: one-shot completions are what most wrapps use, and without this the
+    // log could not answer "which provider served that turn?" (2026-09-07 live test — routing had to be
+    // inferred from the providers' own transcripts). Same shape so one grep covers both paths.
+    console.error(`[complete] origin=${origin} model=${params.model ?? backend.id} backend=${backend.id} agentic=${!!params.agentic} session=${params.sessionId ?? "-"} prompt=${(params.prompt ?? "").length}ch`);
     const controller = new AbortController();
     // Warm-thread continuity: when the caller tags a sessionId, resume the SDK session we minted for
     // (origin, sessionId) last turn — the model continues the real conversation (prior turns + prompt
