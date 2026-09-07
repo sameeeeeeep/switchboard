@@ -124,8 +124,12 @@ test("apps discover backend features and their own granted default", async () =>
   assert.equal((await broker.capabilities("https://unconnected.test")).defaultModel, undefined);
   writeFileSync(join(directory, "models.json"), JSON.stringify({ disabled: [], defaultModel: "model-b" }));
   try {
-    // Catalog discovery must never imply that a global preference grants another app access.
-    assert.equal((await broker.capabilities("https://a.test")).defaultModel, undefined);
+    // Catalog discovery must never imply that a global preference grants another app access — but the
+    // app still gets a usable EFFECTIVE default: the first enabled model in its own grant. (2026-09-07:
+    // advertising `undefined` here while routing then picked the ungranted global default was the bug.)
+    const effective = (await broker.capabilities("https://a.test")).defaultModel;
+    assert.notEqual(effective, "model-b");
+    assert.equal(effective, "model-a");
     assert.deepEqual(grants.get("https://a.test")?.models, ["model-a"]);
   } finally { writeFileSync(join(directory, "models.json"), JSON.stringify({ disabled: [] })); }
 });
@@ -321,3 +325,45 @@ test("ending a conversation clears the completion backend's resume token", async
   await broker.complete(origin, { prompt: "new", model: "sonnet", sessionId: "one" });
   assert.deepEqual(resumes, [undefined, "runtime-session", undefined]);
 });
+
+// ── MIXED PROVIDERS (2026-09-07). The Codex validation registered ONLY Codex; the first run with both
+// providers signed in broke: the GLOBAL default model (Settings → Models) was applied before the app's
+// grant, so a Claude-only app was routed to a Codex model and denied ("model gpt-5.5 not granted"),
+// surfacing in the wrapp as "is Claude Code signed in?". These pin the interchangeability contract.
+test("mixed providers: an implicit model never leaves the app's grant; explicit requests never widen it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-mixed-"));
+  const backends = new BackendRegistry();
+  const claude: ModelBackend = { id: "claude-code", capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => ["claude-a", "claude-b"], run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) };
+  const codex: ModelBackend = { id: "codex", capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => ["codex-a"], run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) };
+  backends.register(claude); backends.register(codex);
+  await backends.refreshModels();
+  const grants = new GrantStore(dir);
+  const budgets = new BudgetLedger();
+  const audit = new AuditLog(dir);
+  const mcp = new McpRegistry();
+  const gate = new Gate(grants, budgets, audit, { requestWriteConsent: async () => false } as any, mcp);
+  const broker = new Broker({ config: { stateDir: dir }, backends, grants, budgets, audit, gate, mcp, storage: new StorageStore(dir), sessions: { end() {} } } as any) as any;
+  const claudeOnly = "https://claude-only.test", both = "https://both.test";
+  grants.upsert(claudeOnly, { models: ["claude-a", "claude-b"], tools: [], budgets: { maxCallsPerMin: 100, maxTokensPerDay: 100000 } });
+  grants.upsert(both, { models: ["claude-a", "codex-a"], tools: [], budgets: { maxCallsPerMin: 100, maxTokensPerDay: 100000 } });
+  // The user's GLOBAL default is a Codex model (set while trying Codex) — legal for the user, not granted to every app.
+  writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [], defaultModel: "codex-a" }));
+  try {
+    // 1 · A Claude-only app that names no model must route INSIDE its grant, never to the global default.
+    assert.equal((await broker.complete(claudeOnly, { prompt: "brief", sessionId: "s1" })).model, "claude-a");
+    // 2 · An app granted both honours the user's default.
+    assert.equal((await broker.complete(both, { prompt: "brief", sessionId: "s2" })).model, "codex-a");
+    // 3 · A conversation pinned to Claude stays on Claude when the default points at Codex.
+    assert.equal((await broker.complete(both, { prompt: "start", model: "claude-a", sessionId: "pinned" })).model, "claude-a");
+    assert.equal((await broker.complete(both, { prompt: "continue", sessionId: "pinned" })).model, "claude-a");
+    // 4 · An EXPLICIT request for an ungranted provider is still refused — the fix chooses within a grant, it never widens one.
+    await assert.rejects(broker.complete(claudeOnly, { prompt: "x", model: "codex-a", sessionId: "s3" }), /grant|scope|not granted/i);
+    // 5 · Discovery agrees with routing: the advertised default for the Claude-only app is never the Codex model.
+    const caps = await broker.capabilities(claudeOnly);
+    assert.notEqual(caps.defaultModel, "codex-a");
+    assert.ok(caps.defaultModel === undefined || ["claude-a", "claude-b"].includes(caps.defaultModel));
+  } finally {
+    writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [] }));
+  }
+});
+

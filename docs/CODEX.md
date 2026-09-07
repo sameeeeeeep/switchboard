@@ -59,6 +59,9 @@ disables discovery. `RELAY_DIR` relocates Switchboard state for an isolated test
   pinned model produces an explicit error rather than migrating the conversation to another provider.
 - **Legacy apps:** an explicit user choice translates requests such as `sonnet` before grant validation.
   Existing grants are never automatically expanded. Reconnect an existing app to grant a Codex model.
+- **Global default vs. an app's grant:** if the global `defaultModel` is not granted to an app, that
+  app's effective default is the first enabled model in its own grant — discovery and routing agree,
+  and the grant is never widened. An explicit request for an ungranted model is still refused.
 
 An app starts a new conversation by using a new `sessionId`, or ends one through `claude_session`
 with `op: "end"`. Single-shot requests without a session use the current app default.
