@@ -72,6 +72,18 @@ export class BackendRegistry {
     return [...this.modelToBackend.keys()];
   }
 
+  /** Capability classes a model satisfies (protocol ModelClass). Local runners are text-only; a cloud model
+   *  with an agentic tool loop is "cloud-coding"; a vision-capable cloud model is also "cloud-vision". */
+  classesOf(model: string): Array<"cloud-coding" | "cloud-vision" | "local-text"> {
+    const backend = this.modelToBackend.get(model);
+    if (!backend) return [];
+    if (backend.id === "ollama" || /[:/]/.test(model)) return ["local-text"];
+    const out: Array<"cloud-coding" | "cloud-vision" | "local-text"> = [];
+    if (backend.capabilities?.agentic) out.push("cloud-coding");
+    if (backend.capabilities?.vision) out.push("cloud-vision");
+    return out;
+  }
+
   modelInfo(): ModelInfo[] {
     return this.allowedModels().map((id) => {
       const backend = this.modelToBackend.get(id)!;
@@ -83,6 +95,7 @@ export class BackendRegistry {
           warmSessions: backend.capabilities?.warmSessions === true,
         },
         toolSource: backend.id === "claude-code" ? "claude-code" : backend.capabilities?.agentic ? "broker-mcp" : "none",
+        classes: this.classesOf(id),
       };
     });
   }

@@ -117,6 +117,7 @@ test("apps discover backend features and their own granted default", async () =>
   assert.deepEqual(a.modelInfo.find((m: any) => m.id === "model-a"), {
     id: "model-a", backend: "codex", hosted: false,
     capabilities: { vision: true, agentic: true, warmSessions: true }, toolSource: "broker-mcp",
+    classes: ["cloud-coding", "cloud-vision"],   // slice 5a: discovery advertises capability classes
   });
   assert.deepEqual(a.modelInfo.find((m: any) => m.id === "local-text").capabilities,
     { vision: false, agentic: false, warmSessions: false });
@@ -436,5 +437,51 @@ test("mixed providers: picking an ungranted provider's model raises a one-tap re
   asked = null;
   r = await broker.handleControl("setModelOverride", { origin: app, model: "claude-a" });
   assert.equal(asked, null); assert.equal(r.ok, true); assert.equal(grants.get(app)?.modelOverride, "claude-a");
+});
+
+test("class grants: resolve per granted provider, never to an excluded one, and survive catalog drift", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-class-"));
+  const backends = new BackendRegistry();
+  const codexModels = ["codex-a"];
+  const mk = (id: string, models: () => string[]): ModelBackend => ({ id, capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => models(), run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) });
+  backends.register(mk("claude-code", () => ["claude-a"])); backends.register(mk("codex", () => codexModels));
+  await backends.refreshModels();
+  const grants = new GrantStore(dir);
+  const mcp = new McpRegistry();
+  const gate = new Gate(grants, new BudgetLedger(), new AuditLog(dir), { requestWriteConsent: async () => false } as any, mcp);
+  const broker = new Broker({ config: { stateDir: dir }, backends, grants, budgets: new BudgetLedger(), audit: new AuditLog(dir), gate, mcp, storage: new StorageStore(dir), sessions: { end() {} } } as any) as any;
+  const b = { maxCallsPerMin: 100, maxTokensPerDay: 100000 };
+  const classy = "https://classy.test", excl = "https://claude-only-class.test", legacy = "https://legacy-ids.test";
+  grants.upsert(classy, { models: ["claude-a", "codex-a"], tools: [], budgets: b, classes: ["cloud-coding"], providers: ["claude-code", "codex"] });
+  grants.upsert(excl,   { models: ["claude-a"],            tools: [], budgets: b, classes: ["cloud-coding"], providers: ["claude-code"] });
+  grants.upsert(legacy, { models: ["claude-a", "codex-a"], tools: [], budgets: b });
+  try {
+    // default on Codex: the class-granted app honours it; the provider-excluded app never leaves Claude
+    writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [], defaultModel: "codex-a" }));
+    assert.equal((await broker.complete(classy, { prompt: "x", sessionId: "c1" })).model, "codex-a");
+    assert.equal((await broker.complete(excl, { prompt: "x", sessionId: "e1" })).model, "claude-a");
+    await assert.rejects(broker.complete(excl, { prompt: "x", model: "codex-a", sessionId: "e2" }), /grant|scope|not granted/i);
+    // CATALOG DRIFT: Codex retires codex-a and ships codex-b (2026-09-07: gpt-5.5 → gpt-6-astra)
+    codexModels.splice(0, 1, "codex-b"); await backends.refreshModels();
+    writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [], defaultModel: "codex-b" }));
+    // the CLASS-granted app follows the provider's new model (class × provider still granted) …
+    assert.equal((await broker.complete(classy, { prompt: "x", sessionId: "c2" })).model, "codex-b");
+    assert.equal(grants.allowsModel(classy, "codex-b"), true);
+    // … the LEGACY id-only app is never widened to it: falls back inside its explicit ids
+    assert.equal((await broker.complete(legacy, { prompt: "x", sessionId: "l1" })).model, "claude-a");
+    assert.equal(grants.allowsModel(legacy, "codex-b"), false);
+    await assert.rejects(broker.complete(legacy, { prompt: "x", model: "codex-b", sessionId: "l2" }), /grant|scope|not granted/i);
+    // a user override may now point at a class-allowed model
+    assert.equal(grants.setModelOverride(classy, "codex-b")?.modelOverride, "codex-b");
+    assert.equal(grants.setModelOverride(legacy, "codex-b"), null);
+    // connect(): an app that asks for a CLASS gets classes + providers derived from what the user approved
+    broker.requestConnectConsent = async (_o: string, body: any) => ({ models: body.models.available, tools: [], budgets: body.budgets });
+    const g = await broker.connect("https://asks-class.test", { reason: "t", tools: [], requirements: [{ class: "cloud-coding" }] });
+    assert.deepEqual(g.classes, ["cloud-coding"]);
+    assert.deepEqual([...g.providers].sort(), ["claude-code", "codex"]);
+    assert.ok((await broker.capabilities("https://asks-class.test")).modelInfo.every((m: any) => Array.isArray(m.classes)));
+  } finally {
+    writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [] }));
+  }
 });
 

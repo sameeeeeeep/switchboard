@@ -62,6 +62,12 @@ disables discovery. `RELAY_DIR` relocates Switchboard state for an isolated test
   or pick a Codex model in the app's card in the menu-bar panel: Switchboard raises the same connect
   card pre-filled with the current grant plus that model, and one tap widens it (Deny changes nothing).
   New connects pre-select every signed-in provider's default, grouped by provider; untick to refuse.
+- **Class grants (opt-in):** an app may ask for a capability class instead of ids —
+  `claude_connect({ requirements: [{ class: "cloud-coding" }] })`. The user still approves concrete models on
+  the card; the providers behind them become the grant's allowed providers, and a new conversation resolves to
+  any enabled model of that class on those providers. That keeps a grant working when a provider's catalog
+  moves (gpt-5.5 → gpt-6-astra) or one provider is offline. Legacy `scope.models` grants are unchanged and
+  never widened. `claude_capabilities().modelInfo[].classes` lists each model's classes.
 - **Global default vs. an app's grant:** if the global `defaultModel` is not granted to an app, that
   app's effective default is the first enabled model in its own grant — discovery and routing agree,
   and the grant is never widened. An explicit request for an ungranted model is still refused.
