@@ -33,6 +33,8 @@ This resolves the landing-page and onboarding concerns at the root. → **Decisi
 
 ## P0 — blocks launch
 
+- [ ] **Provider parity gate green** — `npm run try-parity` with Claude Code AND Codex signed in on this Mac (same real flows per provider + the mixed cases; exit 0). After any Codex CLI upgrade also run the revalidation in docs/CODEX.md. Hosted CI (`.github/workflows/ci.yml`) covers the no-sign-in half.
+
 - ✅ **Autopilot defaults to ON — FIXED.** Daemon now seeds `routines-control.json {off:true}` at first
   boot (`registry.ts seedControlIfAbsent`) and `control()` treats an absent/unreadable file as OFF, so
   autonomous routines never run without an explicit opt-in. Existing settings preserved. Verified with a

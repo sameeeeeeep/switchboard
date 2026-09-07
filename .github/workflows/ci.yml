@@ -1,0 +1,38 @@
+name: ci
+
+# The no-sign-in half of the interchangeability gate (codex-parity slice 4). A hosted runner has no Claude
+# Code or Codex account, so this runs everything that needs none: builds, typecheck, the fixture-backed
+# daemon suites (routing incl. mixed-provider + tool pre-flight, Codex App Server contract, storage) and the
+# headless Swift routing/consent tests. The real-provider matrix is `npm run try-parity` on a signed-in Mac
+# (docs/GO-LIVE.md P0). This exists because a red `tsc` once shipped past a tests-only gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: build (protocol → sidekick → sdk)
+        run: npm run build -w @relay/protocol && npm run build -w @relay/sidekick && npm run build -w @relay/sdk
+      - name: typecheck
+        run: npm run typecheck
+      - name: daemon suites (fixtures, no provider sign-in)
+        run: node --test packages/sidekick/dist/backends/routing.test.js packages/sidekick/dist/backends/codex.test.js packages/sidekick/dist/storage/find.test.js
+
+  swift-headless:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: launcher routing
+        run: cd packages/menubar && swiftc -parse-as-library LauncherRouting.swift LauncherRouting.test.swift -o /tmp/rt && /tmp/rt
+      - name: consent routing (dual-grant pre-selection)
+        run: cd packages/menubar && swiftc -parse-as-library ConsentRouting.swift ConsentRouting.test.swift -o /tmp/ct && /tmp/ct
