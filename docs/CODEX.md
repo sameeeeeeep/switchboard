@@ -92,8 +92,14 @@ before the pending action can execute.
 
 ## Compatibility boundaries
 
-- Implemented against Codex CLI **0.135.0** and its generated App Server schema. Dynamic tools and
-  environment selection are experimental interfaces; revalidate them when upgrading the runtime.
+- Implemented against Codex CLI **0.135.0**; revalidated on **0.153.4** (2026-09-07) after OpenAI's model
+  catalog began advertising a reasoning-effort value 0.135.0 could not decode (`unknown variant 'max'` →
+  every session stuck "Reconnecting"). Dynamic tools and environment selection are experimental
+  interfaces. **Revalidate on every CLI upgrade:** a direct `codex exec --model <m> "Reply OK"` (cap it
+  yourself — macOS has no `timeout`), then `node --test packages/sidekick/dist/backends/codex.test.js`,
+  then `node examples/brandbrain-port/proof/run-codex-release.mjs` (7 live checks, isolated state), then
+  restart the daemon (`launchctl kickstart -k gui/$UID/com.relay.sidekick`) so it spawns the new binary.
+  The daemon's health check (`codex login status`) can report Codex online while turns cannot start.
 - Local runners currently support one-shot text completions. Warm-session requests fail explicitly
   instead of falling through to Claude.
 - Claude-account-only connectors and Claude's built-in WebSearch/WebFetch do not automatically become
