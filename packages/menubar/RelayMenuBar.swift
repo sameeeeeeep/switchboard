@@ -3069,6 +3069,7 @@ struct ConnectGrantDrop: View {
     let tools: [(name: String, access: String, label: String)]
     let budgets: [String: Any]
     let contextKinds: [String]
+    let groups: [(label: String, models: [String])]   // pills grouped by provider (empty → one flat list)
     var onApprove: ([String: Any]) -> Void
     var onDeny: () -> Void
 
@@ -3076,9 +3077,10 @@ struct ConnectGrantDrop: View {
 
     init(origin: String, reason: String, availableModels: [String], requestedModels: [String],
          tools: [(name: String, access: String, label: String)], budgets: [String: Any], contextKinds: [String],
+         groups: [(label: String, models: [String])] = [],
          selection: ConnectGrantSelection? = nil, onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
         self.origin = origin; self.reason = reason; self.availableModels = availableModels; self.tools = tools
-        self.budgets = budgets; self.contextKinds = contextKinds; self.onApprove = onApprove; self.onDeny = onDeny
+        self.budgets = budgets; self.contextKinds = contextKinds; self.groups = groups; self.onApprove = onApprove; self.onDeny = onDeny
         self.selection = selection ?? ConnectGrantSelection(available: availableModels, requested: requestedModels, tools: tools.map { $0.name })
     }
 
@@ -3129,12 +3131,17 @@ struct ConnectGrantDrop: View {
                     if !availableModels.isEmpty {
                         VStack(alignment: .leading, spacing: 7) {
                             Text("ALLOW THESE MODELS").font(.splMono(9)).foregroundColor(.inkFaint).tracking(1.4)
-                            ForEach(chunked(availableModels, 3), id: \.self) { row in
-                                HStack(spacing: 7) {
-                                    ForEach(row, id: \.self) { m in
-                                        Button { if selection.models.contains(m) { selection.models.remove(m) } else { selection.models.insert(m) } } label: { pill(m, selection.models.contains(m)) }.buttonStyle(.plain)
+                            // Grouped by provider when the daemon told us who serves what ("CLAUDE CODE" / "CODEX"),
+                            // else the old flat grid — so the founder reads providers, not one soup of ids.
+                            ForEach(Array((groups.isEmpty ? [(label: "", models: availableModels)] : groups).enumerated()), id: \.offset) { _, g in
+                                if !g.label.isEmpty { Text(g.label.uppercased()).font(.splMono(8.5)).tracking(1).foregroundColor(.inkFaint).padding(.top, 2) }
+                                ForEach(chunked(g.models, 3), id: \.self) { row in
+                                    HStack(spacing: 7) {
+                                        ForEach(row, id: \.self) { m in
+                                            Button { if selection.models.contains(m) { selection.models.remove(m) } else { selection.models.insert(m) } } label: { pill(m, selection.models.contains(m)) }.buttonStyle(.plain)
+                                        }
+                                        Spacer(minLength: 0)
                                     }
-                                    Spacer(minLength: 0)
                                 }
                             }
                         }
@@ -4573,14 +4580,20 @@ struct ActionConsentDrop: View {
         }
         // A THIRD-PARTY tool (origin tool://<id>) gets the dedicated provenance-forward card — no model
         // pills (no LLM in the loop), keys-local lane badge, "you didn't build this" framing (§task 5).
-        let selection = ConnectGrantSelection(available: available, requested: requested, tools: tools.map { $0.name })
+        // Dual-grant by default (codex-parity slice 3a): pre-select the requested models PLUS each other signed-in
+        // provider's default, grouped by provider on the card. Pre-selection only — the user unticks to refuse;
+        // nothing is granted silently. Third-party tools (tool://) have no model pills, so they're untouched.
+        let providers = model.modelProviders.map { SBConsent.Provider(id: $0.id, label: $0.label, signedIn: $0.signedIn, online: $0.online, models: $0.models) }
+        let preselected = origin.hasPrefix("tool://") ? requested : SBConsent.preselect(requested: requested, available: available, providers: providers)
+        let groups = SBConsent.groups(available: available, providers: providers)
+        let selection = ConnectGrantSelection(available: available, requested: preselected, tools: tools.map { $0.name })
         let content: AnyView
         if origin.hasPrefix("tool://") {
             content = AnyView(makeToolGrant(origin: origin, reason: reason, requestedTools: tools,
                                             budgets: budgets, contextKinds: contextKinds, finish: finish))
         } else {
-            content = AnyView(ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: requested,
-                                    tools: tools, budgets: budgets, contextKinds: contextKinds,
+            content = AnyView(ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: preselected,
+                                    tools: tools, budgets: budgets, contextKinds: contextKinds, groups: groups,
                                     selection: selection, onApprove: { finish($0) }, onDeny: { finish(nil) }))
         }
         let view = content

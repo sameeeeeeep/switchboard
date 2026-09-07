@@ -58,7 +58,10 @@ disables discovery. `RELAY_DIR` relocates Switchboard state for an isolated test
   `session-models.json`. Changing defaults affects new conversations. A disabled, offline, or revoked
   pinned model produces an explicit error rather than migrating the conversation to another provider.
 - **Legacy apps:** an explicit user choice translates requests such as `sonnet` before grant validation.
-  Existing grants are never automatically expanded. Reconnect an existing app to grant a Codex model.
+  Existing grants are never automatically expanded. Reconnect an existing app to grant a Codex model —
+  or pick a Codex model in the app's card in the menu-bar panel: Switchboard raises the same connect
+  card pre-filled with the current grant plus that model, and one tap widens it (Deny changes nothing).
+  New connects pre-select every signed-in provider's default, grouped by provider; untick to refuse.
 - **Global default vs. an app's grant:** if the global `defaultModel` is not granted to an app, that
   app's effective default is the first enabled model in its own grant — discovery and routing agree,
   and the grant is never widened. An explicit request for an ungranted model is still refused.
@@ -89,8 +92,14 @@ before the pending action can execute.
 
 ## Compatibility boundaries
 
-- Implemented against Codex CLI **0.135.0** and its generated App Server schema. Dynamic tools and
-  environment selection are experimental interfaces; revalidate them when upgrading the runtime.
+- Implemented against Codex CLI **0.135.0**; revalidated on **0.153.4** (2026-09-07) after OpenAI's model
+  catalog began advertising a reasoning-effort value 0.135.0 could not decode (`unknown variant 'max'` →
+  every session stuck "Reconnecting"). Dynamic tools and environment selection are experimental
+  interfaces. **Revalidate on every CLI upgrade:** a direct `codex exec --model <m> "Reply OK"` (cap it
+  yourself — macOS has no `timeout`), then `node --test packages/sidekick/dist/backends/codex.test.js`,
+  then `node examples/brandbrain-port/proof/run-codex-release.mjs` (7 live checks, isolated state), then
+  restart the daemon (`launchctl kickstart -k gui/$UID/com.relay.sidekick`) so it spawns the new binary.
+  The daemon's health check (`codex login status`) can report Codex online while turns cannot start.
 - Local runners currently support one-shot text completions. Warm-session requests fail explicitly
   instead of falling through to Claude.
 - Claude-account-only connectors and Claude's built-in WebSearch/WebFetch do not automatically become

@@ -405,3 +405,36 @@ test("mixed providers: tool pre-flight routes agentic turns only where the app's
   }
 });
 
+test("mixed providers: picking an ungranted provider's model raises a one-tap re-consent, never a silent widen", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-reconsent-"));
+  const backends = new BackendRegistry();
+  const mk = (id: string, models: string[]): ModelBackend => ({ id, capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => models, run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) });
+  backends.register(mk("claude-code", ["claude-a"])); backends.register(mk("codex", ["codex-a"]));
+  await backends.refreshModels();
+  const grants = new GrantStore(dir);
+  const mcp = new McpRegistry();
+  const gate = new Gate(grants, new BudgetLedger(), new AuditLog(dir), { requestWriteConsent: async () => false } as any, mcp);
+  const broker = new Broker({ config: { stateDir: dir }, backends, grants, budgets: new BudgetLedger(), audit: new AuditLog(dir), gate, mcp, storage: new StorageStore(dir), sessions: { end() {} } } as any) as any;
+  const app = "https://legacy.test";
+  grants.upsert(app, { models: ["claude-a"], tools: [{ name: "WebSearch", access: "read" }], budgets: { maxCallsPerMin: 100, maxTokensPerDay: 100000 } });
+  // The user DENIES the re-consent → grant untouched, pick refused, and the card asked for exactly grant + pick.
+  let asked: any = null;
+  broker.requestConnectConsent = async (_o: string, body: any) => { asked = body; return null; };
+  let r = await broker.handleControl("setModelOverride", { origin: app, model: "codex-a" });
+  assert.equal(r.ok, false);
+  assert.match(String(asked?.reason), /Also allow Codex/);
+  assert.deepEqual(asked.models.requested, ["claude-a", "codex-a"]);
+  assert.deepEqual(asked.tools.map((t: any) => t.name), ["WebSearch"]);
+  assert.deepEqual(grants.get(app)?.models, ["claude-a"]);
+  // The user APPROVES → the grant now carries both providers and the pick sticks.
+  broker.requestConnectConsent = async (_o: string, body: any) => ({ models: body.models.requested, tools: body.tools.map((t: any) => ({ name: t.name, access: t.access })), budgets: body.budgets });
+  r = await broker.handleControl("setModelOverride", { origin: app, model: "codex-a" });
+  assert.equal(r.ok, true);
+  assert.deepEqual(grants.get(app)?.models, ["claude-a", "codex-a"]);
+  assert.equal(grants.get(app)?.modelOverride, "codex-a");
+  // A model that is already granted never re-asks.
+  asked = null;
+  r = await broker.handleControl("setModelOverride", { origin: app, model: "claude-a" });
+  assert.equal(asked, null); assert.equal(r.ok, true); assert.equal(grants.get(app)?.modelOverride, "claude-a");
+});
+
