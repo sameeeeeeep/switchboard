@@ -741,6 +741,34 @@ export class Broker implements ConsentPrompter, NativeHandler {
         const origin = String(args?.origin ?? "");
         const model = args?.model == null ? null : String(args.model);
         if (model && !this.deps.backends.allowedModels().includes(model)) return { ok: false, error: "Choose an enabled, available model." };
+        // ONE-TAP RE-CONSENT (codex-parity slice 3b, 2026-09-07). Picking a model the app was never granted — a
+        // Codex model for a wrapp that connected before Codex existed — used to fail silently right here. Now
+        // it raises the SAME connect card, pre-filled with the current grant plus the picked model, so the USER
+        // widens the grant with one tap. Deny → nothing changes. A grant is never widened without that tap.
+        const existing = model ? this.deps.grants.get(origin) : null;
+        if (model && existing && !this.deps.grants.allowsModel(origin, model)) {
+          const backendId = this.deps.backends.backendFor(model)?.id ?? "this provider";
+          const provider = backendId === "claude-code" ? "Claude Code" : backendId === "codex" ? "Codex" : backendId;
+          const builtinDesc = new Map(BUILTIN_TOOLS.map((t) => [t.name, t.description]));
+          const approved = await this.requestConnectConsent(origin, {
+            origin,
+            reason: `Also allow ${provider} for this app?`,
+            models: { available: this.deps.backends.allowedModels(), requested: [...existing.models, model], default: model },
+            tools: existing.tools.map((t) => ({ name: t.name, access: t.access, label: builtinDesc.get(t.name) ?? this.deps.mcp.get(t.name)?.title ?? connectorLabel(t.name) })),
+            budgets: existing.budgets,
+            contextKinds: existing.contextKinds ?? [],
+            needs: [],
+            connectors: this.connectorInventory(),
+          });
+          if (!approved) {
+            this.deps.audit.record({ origin, kind: "request", method: `model-override:${model}`, outcome: "denied", note: "re-consent declined" });
+            return { ok: false, error: `${provider} was not allowed for this app.` };
+          }
+          const tools = approved.tools.map((t) => ({ name: t.name, access: classifyTool(t.name) }));
+          const kinds = (approved as unknown as { contextKinds?: unknown }).contextKinds;
+          this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets ?? existing.budgets, contextKinds: Array.isArray(kinds) ? kinds.map(String) : existing.contextKinds, expiresAt: approved.expiresAt });
+          this.deps.audit.record({ origin, kind: "connect", outcome: "ok", note: `re-consent: +${model}` });
+        }
         const g = this.deps.grants.setModelOverride(origin, model);
         if (g) { this.deps.audit.record({ origin, kind: "request", method: `model-override:${model ?? "(cleared)"}`, outcome: "ok" }); this.broadcast({ type: "event", event: "permissionsChanged", payload: g, origin }); }
         return { ok: !!g, grant: g };
