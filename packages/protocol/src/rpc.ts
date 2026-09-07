@@ -46,6 +46,8 @@ export interface ModelInfo {
   capabilities: { vision: boolean; agentic: boolean; warmSessions: boolean };
   /** Codex uses broker MCP tools; Claude Code may also use its runtime's tools. */
   toolSource: "broker-mcp" | "claude-code" | "none";
+  /** Capability classes this model satisfies (see permissions ModelClass). */
+  classes?: Array<"cloud-coding" | "cloud-vision" | "local-text">;
 }
 
 /** Provider capabilities, returned by claude_capabilities for feature detection. */

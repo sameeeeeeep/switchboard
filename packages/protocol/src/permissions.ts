@@ -52,6 +52,11 @@ export interface Budgets {
 }
 
 /** The grant object stored (authoritatively) in the daemon and mirrored to the extension UI. */
+/** CAPABILITY CLASS of a model — what an app can ask for instead of a provider's model id, so a grant
+ *  survives a provider's catalog moving under it (2026-09-07: Codex gpt-5.5 → gpt-6-astra) and works on
+ *  whichever granted provider is online. A model may satisfy several classes. */
+export type ModelClass = "cloud-coding" | "cloud-vision" | "local-text";
+
 export interface OriginGrant {
   /** Browser-verified origin, e.g. "https://shop.example". The permission key. */
   origin: string;
@@ -59,6 +64,12 @@ export interface OriginGrant {
   mode: ConsentMode;
   /** Model ids this origin may request. Empty = none. Maps to daemon model backends. */
   models: string[];
+  /** CLASS grant (additive; set only when the app opted in via ScopeRequest.requirements): when present,
+   *  ANY enabled, online model of one of these classes on one of `providers` is also allowed — resolved at
+   *  call time. `models` stays the explicit-id set. Absent on legacy grants ⇒ behaviour unchanged. */
+  classes?: ModelClass[];
+  /** Provider ids the user allowed at consent (derived from the approved models' backends). Never widened. */
+  providers?: string[];
   /** USER-chosen default for new conversations, overriding the app's requested model.
    * Existing conversation IDs keep their starting model. Must be one of `models`;
    * cleared if it falls out of grant. undefined = honor the app's request/global preference. */
@@ -78,6 +89,9 @@ export interface OriginGrant {
  *  in the consent popup — the granted scope may be smaller than requested, never larger. */
 export interface ScopeRequest {
   models?: string[];
+  /** Ask for a CLASS of model instead of ids (e.g. [{ class: "cloud-coding" }]). Opting in makes the grant
+   *  class-based (OriginGrant.classes/providers) so it is not bound to one provider's model ids. */
+  requirements?: Array<{ class: ModelClass }>;
   /** Tool names the site wants; the daemon resolves each to an access class and the user
    *  approves per-tool. Omit to request "read-only tools only". */
   tools?: string[];

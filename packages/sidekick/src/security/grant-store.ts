@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { OriginGrant, ScopeRequest, ToolGrant } from "@relay/protocol";
+import type { OriginGrant, ScopeRequest, ToolGrant, ModelClass } from "@relay/protocol";
 import { DEFAULT_BUDGETS } from "@relay/protocol";
 
 /**
@@ -35,6 +35,17 @@ export class GrantStore {
     this.load();
   }
 
+  /** CLASS grants (slice 5a) need to know a model's classes + provider; the registry owns that, so the
+   *  broker injects a resolver rather than this store importing backends. Without one, class grants are inert. */
+  private classResolver: ((model: string) => { classes: string[]; provider: string } | null) | null = null;
+  setClassResolver(fn: (model: string) => { classes: string[]; provider: string } | null) { this.classResolver = fn; }
+  /** Is this model allowed by the grant's CLASS × PROVIDER set (ignoring the explicit id list)? */
+  classAllows(g: OriginGrant, model: string): boolean {
+    if (!g.classes?.length || !g.providers?.length || !this.classResolver) return false;
+    const r = this.classResolver(model);
+    return !!r && g.providers.includes(r.provider) && r.classes.some((c) => (g.classes as string[]).includes(c));
+  }
+
   private load() {
     if (!existsSync(this.file)) return;
     try {
@@ -66,13 +77,15 @@ export class GrantStore {
 
   /** Create/replace a grant from the scope the USER approved (already narrowed by the consent
    *  UI). `approvedTools` carries each tool with its daemon-assigned access class. */
-  upsert(origin: string, approved: { models: string[]; tools: ToolGrant[]; budgets: ScopeRequest["budgets"]; contextKinds?: string[]; expiresAt?: number }): OriginGrant {
+  upsert(origin: string, approved: { models: string[]; tools: ToolGrant[]; budgets: ScopeRequest["budgets"]; contextKinds?: string[]; expiresAt?: number; classes?: ModelClass[]; providers?: string[] }): OriginGrant {
     const now = Date.now();
     const prev = this.grants.get(origin);
     const grant: OriginGrant = {
       origin,
       mode: prev?.mode ?? "ask", // preserve the user's chosen trust mode across re-consents; default ask
       models: approved.models,
+      classes: approved.classes?.length ? approved.classes : undefined,
+      providers: approved.providers?.length ? approved.providers : undefined,
       // Preserve the user's model override across re-consents, but only if it's still granted.
       modelOverride: prev?.modelOverride && approved.models.includes(prev.modelOverride) ? prev.modelOverride : undefined,
       tools: approved.tools,
@@ -92,7 +105,7 @@ export class GrantStore {
   setModelOverride(origin: string, model: string | null): OriginGrant | null {
     const g = this.grants.get(origin);
     if (!g) return null;
-    if (model && !g.models.includes(model)) return null; // can only override to a granted model
+    if (model && !this.allowsModel(origin, model)) return null; // can only override to a granted model (id or class×provider)
     g.modelOverride = model ?? undefined;
     g.updatedAt = Date.now();
     this.persist();
@@ -146,9 +159,9 @@ export class GrantStore {
   allowsModel(origin: string, model: string | undefined): boolean {
     const g = this.get(origin);
     if (!g) return false;
-    if (!model) return g.models.length > 0;
+    if (!model) return g.models.length > 0 || !!g.classes?.length;
     const want = canonicalModel(model);
-    return g.models.some((m) => canonicalModel(m) === want);
+    return g.models.some((m) => canonicalModel(m) === want) || this.classAllows(g, model);
   }
 
   toolGrant(origin: string, name: string): ToolGrant | null {

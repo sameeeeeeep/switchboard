@@ -27,6 +27,7 @@ import type {
   SbBrandResult,
   GuideRunParams,
   GuideResult,
+  ModelClass,
 } from "@relay/protocol";
 import { BYOP_VERSION, BYOPErrorCode, ProviderError, isTabPrincipal, hostOfTabPrincipal, nativePrincipal } from "@relay/protocol";
 import { CONNECTOR_META, connectorIdOf, connectorsInClass, type ConnectorClass } from "@relay/protocol";
@@ -157,7 +158,9 @@ export class Broker implements ConsentPrompter, NativeHandler {
   private modelStateSignature: string | undefined;
 
   private sessionRoutes: SessionRoutes;
-  constructor(private deps: BrokerDeps) { this.sessionRoutes = new SessionRoutes(deps.config.stateDir); }
+  constructor(private deps: BrokerDeps) {
+    // CLASS grants (slice 5a): the grant store checks class×provider through the registry's view of a model.
+    this.deps.grants?.setClassResolver?.((m) => { const b = this.deps.backends.backendFor(m); return b ? { classes: this.deps.backends.classesOf(m), provider: b.id } : null; }); this.sessionRoutes = new SessionRoutes(deps.config.stateDir); }
 
   start() {
     const { host, port, pairingToken } = this.deps.config;
@@ -1058,7 +1061,13 @@ export class Broker implements ConsentPrompter, NativeHandler {
     // = the UI never asked (a scope-upgrade re-consent may ask later).
     const approvedKinds = (approved as unknown as { contextKinds?: unknown }).contextKinds;
     const contextKinds = Array.isArray(approvedKinds) ? approvedKinds.map((k) => String(k)).filter(Boolean) : undefined;
-    const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, contextKinds, expiresAt: approved.expiresAt });
+    // CLASS grant (slice 5a) — only when the app opted in with `requirements`. The user still approved concrete
+    // models on the card; the providers behind those become the allowed provider set, and the requested classes
+    // let a NEW conversation resolve to any enabled model of that class on those providers — so the grant is
+    // not bound to one provider's model ids (catalog drift, provider offline). Legacy apps: unchanged.
+    const classes = (requested.requirements ?? []).map((r) => r.class).filter((c): c is ModelClass => c === "cloud-coding" || c === "cloud-vision" || c === "local-text");
+    const providers = classes.length ? [...new Set(approved.models.map((m) => this.deps.backends.backendFor(m)?.id).filter((id): id is string => !!id))] : [];
+    const grant = this.deps.grants.upsert(origin, { models: approved.models, tools, budgets: approved.budgets, contextKinds, expiresAt: approved.expiresAt, classes, providers });
     const selectedModel = (approved as unknown as { modelOverride?: string }).modelOverride;
     if (selectedModel && approved.models.includes(selectedModel)) this.deps.grants.setModelOverride(origin, selectedModel);
     else if (approved.models.length === 1) this.deps.grants.setModelOverride(origin, approved.models[0]!);
@@ -1431,7 +1440,14 @@ export class Broker implements ConsentPrompter, NativeHandler {
       if (fit.ok) return { ...selected, model: candidate };
       if (explicit) throw this.toolsUnservable(candidate, fit.unservable);
     }
-    const eligible = (this.deps.grants.get(origin)?.models ?? []).filter((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
+    const grantNow = this.deps.grants.get(origin);
+    const idEligible = (grantNow?.models ?? []).filter((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
+    // CLASS grant (slice 5a): any enabled, online model of a granted class on a granted provider is eligible
+    // too — this is what lets a grant survive a provider's catalog moving under it.
+    const classEligible = grantNow?.classes?.length
+      ? this.deps.backends.allowedModels().filter((m) => this.deps.backends.capabilityModels().includes(m) && !idEligible.includes(m) && this.deps.grants.classAllows(grantNow, m))
+      : [];
+    const eligible = [...idEligible, ...classEligible];
     const fitModel = eligible.find((m) => this.toolFit(origin, m, params).ok);
     if (fitModel) return { ...selected, model: fitModel };
     const blamed = candidate ?? eligible[0];
