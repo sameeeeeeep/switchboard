@@ -1407,7 +1407,7 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const fitModel = eligible.find((m) => this.toolFit(origin, m, params).ok);
     if (fitModel) return { ...selected, model: fitModel };
     const blamed = candidate ?? eligible[0];
-    if (blamed) throw this.toolsUnservable(blamed, this.toolFit(origin, blamed, params).unservable);
+    if (blamed) { const fit = this.toolFit(origin, blamed, params); throw this.toolsUnservable(blamed, fit.ok ? [] : fit.unservable); }
     throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, "No enabled, available model is granted to this app. Enable a model or reconnect the app.");
   }
 
