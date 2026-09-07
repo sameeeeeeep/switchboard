@@ -44,13 +44,18 @@ export function connectAsExtension({ port, token, origin, onConsent, onEvent }) 
       request: (method, params) => rpc({ type: "request", origin, method, params, sentAt: Date.now() }).then((m) => { if (m.error) throw Object.assign(new Error(m.error.message), m.error); return m.result; }),
       control: (action, args) => rpc({ type: "control", action, args }),
       /** Stream a completion; calls onDelta for each delta; resolves the final result on 'done'. */
-      stream: (params, onDelta) => new Promise(async (res, rej) => {
-        const { streamId } = await api.request("claude_stream", params);
-        streams.set(streamId, (d) => {
-          onDelta?.(d);
-          if (d.type === "done") { streams.delete(streamId); res(d.result); }
-          else if (d.type === "error") { streams.delete(streamId); rej(Object.assign(new Error(d.error.message), d.error)); }
-        });
+      // A daemon-time refusal (gate/routing rejects the claude_stream REQUEST before any stream exists —
+      // e.g. "Codex can't run WebSearch for this app") must reject THIS promise. The old `async` executor
+      // swallowed that rejection, so Node killed the whole harness as an unhandled rejection instead of
+      // letting the caller assert on it (found by run-parity, 2026-09-07).
+      stream: (params, onDelta) => new Promise((res, rej) => {
+        api.request("claude_stream", params).then(({ streamId }) => {
+          streams.set(streamId, (d) => {
+            onDelta?.(d);
+            if (d.type === "done") { streams.delete(streamId); res(d.result); }
+            else if (d.type === "error") { streams.delete(streamId); rej(Object.assign(new Error(d.error.message), d.error)); }
+          });
+        }).catch(rej);
       }),
       close: () => ws.close(),
     };

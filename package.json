@@ -2,7 +2,7 @@
   "name": "relay",
   "private": true,
   "version": "0.0.0",
-  "description": "Your private AI workspace. A local sidekick brokers your own model + MCP tools to any website through window.claude, under per-origin, out-of-band consent — your data stays yours.",
+  "description": "Your private AI workspace. A local sidekick brokers your own model + MCP tools to any website through window.claude, under per-origin, out-of-band consent \u2014 your data stays yours.",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -28,7 +28,8 @@
     "daemon:restart": "npm run build -w @relay/sidekick && launchctl kickstart -k gui/$(id -u)/com.relay.sidekick && echo restarted",
     "runner": "node examples/runner/serve.mjs",
     "try-team-cloud": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-team-cloud.mjs",
-    "try-compat": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-compat.mjs"
+    "try-compat": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-compat.mjs",
+    "try-parity": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-parity.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
