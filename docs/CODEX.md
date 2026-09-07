@@ -95,7 +95,10 @@ before the pending action can execute.
   instead of falling through to Claude.
 - Claude-account-only connectors and Claude's built-in WebSearch/WebFetch do not automatically become
   Codex tools. Configure the equivalent MCP services in Switchboard. A tool-dependent request with no
-  usable broker tools fails explicitly. Brandbrain's knowledge-only warm path works; parity for every
+  usable broker tools fails explicitly. Routing pre-flights this: an agentic turn with an implicit model goes
+  to a granted model whose provider can serve at least one of the app's granted tools; an explicit request
+  or a pinned conversation on a provider that can't gets an explicit, provider-named error (it is never
+  migrated). Brandbrain's knowledge-only warm path works; parity for every
   research, media, or computer-use workflow is not implied by the live proof.
 - Codex maintains conversation history. This does not guarantee permanent server-side prompt caching
   or constant latency. Usage from each turn is recorded, including cached input in total input usage.

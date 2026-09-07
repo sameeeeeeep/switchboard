@@ -1379,6 +1379,8 @@ export class Broker implements ConsentPrompter, NativeHandler {
     const pinned = this.sessionRoutes.get(origin, params.sessionId);
     if (pinned) {
       if (!this.deps.backends.isAllowed(pinned)) throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, `This conversation uses ${pinned}, which is turned off. Re-enable it or start a new conversation.`);
+      const pinFit = this.toolFit(origin, pinned, params);
+      if (!pinFit.ok) throw this.toolsUnservable(pinned, pinFit.unservable);   // a pinned conversation is never migrated — it gets the honest reason
       return { ...params, model: pinned };
     }
     const selected = this.withModelPreference(origin, this.withModelOverride(origin, params));
@@ -1387,10 +1389,48 @@ export class Broker implements ConsentPrompter, NativeHandler {
     // Brandbrain (Claude-only grant) was silently sent to gpt-5.5 and denied as "model gpt-5.5 not
     // granted" — surfacing in the wrapp as "not signed in". An EXPLICIT client request still passes
     // through untouched (the gate judges it; we never widen a grant, we only choose from within it).
-    if (selected.model && (params.model || this.deps.grants.allowsModel(origin, selected.model))) return selected;
-    const model = this.deps.grants.get(origin)?.models.find((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
-    if (!model) throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, "No enabled, available model is granted to this app. Enable a model or reconnect the app.");
-    return { ...selected, model };
+    const explicit = !!params.model;
+    const candidate = selected.model && (explicit || this.deps.grants.allowsModel(origin, selected.model)) ? selected.model : undefined;
+    // TOOL PRE-FLIGHT (codex-parity slice 2, 2026-09-07). Providers don't share tools: a Claude Code model
+    // inherits WebSearch/WebFetch + claude.ai connectors + broker MCP; a broker-MCP provider (Codex) can only
+    // run tools that resolve in Switchboard's own MCP registry; a local runner runs none. Until now this was
+    // only discovered INSIDE the Codex backend after routing (codex.ts), so a dual-granted app couldn't fall
+    // back and the error couldn't say what was missing. Decide it here, before the model is chosen:
+    //   • an IMPLICIT choice that can't serve this turn's tools yields to a granted model that can;
+    //   • an EXPLICIT request is never swapped — it gets a provider-named, tool-named refusal.
+    if (candidate) {
+      const fit = this.toolFit(origin, candidate, params);
+      if (fit.ok) return { ...selected, model: candidate };
+      if (explicit) throw this.toolsUnservable(candidate, fit.unservable);
+    }
+    const eligible = (this.deps.grants.get(origin)?.models ?? []).filter((m) => this.deps.backends.isAllowed(m) && this.deps.backends.capabilityModels().includes(m));
+    const fitModel = eligible.find((m) => this.toolFit(origin, m, params).ok);
+    if (fitModel) return { ...selected, model: fitModel };
+    const blamed = candidate ?? eligible[0];
+    if (blamed) throw this.toolsUnservable(blamed, this.toolFit(origin, blamed, params).unservable);
+    throw new ProviderError(BYOPErrorCode.NO_ALLOWED_MODEL, "No enabled, available model is granted to this app. Enable a model or reconnect the app.");
+  }
+
+  /** Can `model`'s provider serve the tools this turn may call? Non-agentic turns need none. Mirrors the
+   *  rule the Codex backend enforces on its own (at least one granted tool must resolve as a broker tool),
+   *  hoisted to routing time so we can choose a fitting model instead of failing after the fact. */
+  private toolFit(origin: string, model: string, params: CompletionParams): { ok: true } | { ok: false; unservable: string[] } {
+    if (!params.agentic) return { ok: true };
+    const granted = this.deps.gate.allowedToolsFor(origin);
+    if (!granted.length) return { ok: true };
+    const source = this.deps.backends.modelInfo().find((m) => m.id === model)?.toolSource ?? "none";
+    if (source === "claude-code") return { ok: true };
+    const servable = source === "broker-mcp" ? this.listTools(origin).filter((t) => !!this.deps.mcp.get(t.name)).map((t) => t.name) : [];
+    const covers = (pattern: string) => servable.some((n) => pattern === n || (pattern.endsWith("*") && n.startsWith(pattern.slice(0, -1))));
+    const unservable = granted.filter((pattern) => !covers(pattern));
+    return unservable.length < granted.length ? { ok: true } : { ok: false, unservable };
+  }
+
+  private toolsUnservable(model: string, unservable: string[]): ProviderError {
+    const id = this.deps.backends.backendFor(model)?.id ?? "this provider";
+    const label = id === "claude-code" ? "Claude Code" : id === "codex" ? "Codex" : id;
+    const shown = unservable.slice(0, 4).join(", ") + (unservable.length > 4 ? ` +${unservable.length - 4} more` : "");
+    return new ProviderError(BYOPErrorCode.UNSUPPORTED_METHOD, `${label} can't run ${shown} for this app. Use a Claude Code model, or connect an equivalent MCP server in Switchboard.`);
   }
 
   private async complete(origin: string, params: CompletionParams) {

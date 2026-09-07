@@ -367,3 +367,41 @@ test("mixed providers: an implicit model never leaves the app's grant; explicit 
   }
 });
 
+test("mixed providers: tool pre-flight routes agentic turns only where the app's tools can run", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-preflight-"));
+  const backends = new BackendRegistry();
+  const mk = (id: string, models: string[]): ModelBackend => ({ id, capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => models, run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) });
+  backends.register(mk("claude-code", ["claude-a"])); backends.register(mk("codex", ["codex-a"]));
+  await backends.refreshModels();
+  const grants = new GrantStore(dir);
+  const mcp = new McpRegistry() as any;
+  // One tool the broker can serve (a local MCP server), stubbed the way the registry exposes it.
+  const webTool = { name: "mcp__web__search", server: "web", title: "search", description: "search", access: "read" };
+  mcp.all = () => [webTool]; mcp.get = (n: string) => (n === webTool.name ? webTool : null);
+  const gate = new Gate(grants, new BudgetLedger(), new AuditLog(dir), { requestWriteConsent: async () => false } as any, mcp);
+  const broker = new Broker({ config: { stateDir: dir }, backends, grants, budgets: new BudgetLedger(), audit: new AuditLog(dir), gate, mcp, storage: new StorageStore(dir), sessions: { end() {} } } as any) as any;
+  const b = { maxCallsPerMin: 100, maxTokensPerDay: 100000 };
+  const dual = "https://dual.test", codexOnly = "https://codex-only.test", mcpApp = "https://mcp-app.test";
+  grants.upsert(dual, { models: ["claude-a", "codex-a"], tools: [{ name: "WebSearch", access: "read" }], budgets: b });
+  grants.upsert(codexOnly, { models: ["codex-a"], tools: [{ name: "WebSearch", access: "read" }], budgets: b });
+  grants.upsert(mcpApp, { models: ["codex-a"], tools: [{ name: "mcp__web__*", access: "read" }], budgets: b });
+  writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [], defaultModel: "codex-a" }));
+  try {
+    // knowledge-only turn: the default (Codex) is fine — no tools needed
+    assert.equal((await broker.complete(dual, { prompt: "brief", sessionId: "k1" })).model, "codex-a");
+    // agentic turn, implicit model: Codex can't run WebSearch → falls back to the granted Claude model
+    assert.equal((await broker.complete(dual, { prompt: "research", agentic: true, sessionId: "a1" })).model, "claude-a");
+    // agentic turn, EXPLICIT Codex request: never swapped — refused with the provider and the tool named
+    await assert.rejects(broker.complete(dual, { prompt: "research", agentic: true, model: "codex-a", sessionId: "a2" }), /Codex can't run WebSearch/);
+    // Codex-only app with a Claude-only tool: honest, provider-named refusal (was a generic backend error)
+    await assert.rejects(broker.complete(codexOnly, { prompt: "research", agentic: true, sessionId: "a3" }), /Codex can't run WebSearch/);
+    // Codex CAN serve a broker MCP tool the app is granted
+    assert.equal((await broker.complete(mcpApp, { prompt: "search", agentic: true, sessionId: "a4" })).model, "codex-a");
+    // a conversation PINNED to Codex is never migrated when a later turn needs Claude-only tools
+    assert.equal((await broker.complete(dual, { prompt: "start", model: "codex-a", sessionId: "pin" })).model, "codex-a");
+    await assert.rejects(broker.complete(dual, { prompt: "now research", agentic: true, sessionId: "pin" }), /Codex can't run WebSearch/);
+  } finally {
+    writeFileSync(join(process.env.RELAY_DIR!, "models.json"), JSON.stringify({ disabled: [] }));
+  }
+});
+
