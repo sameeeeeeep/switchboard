@@ -474,7 +474,7 @@ struct TasksSurface: View {
     private func item(_ t: RealTask, statusId: String, statusName: String, col: Int) -> TaskItem {
         TaskItem(title: t.title, tag: t.wrapp.map { "@" + $0 }, proj: t.projTag.map { "#" + $0 },
                  prog: t.col == "doing",
-                 wait: t.blockedTitles.isEmpty ? nil : "waiting: " + t.blockedTitles.joined(separator: ", "),
+                 wait: t.blockedTitles.isEmpty ? nil : "waits on · " + t.blockedTitles.joined(separator: ", "),
                  due: t.due, over: t.over, statusId: statusId, statusName: statusName, colIndex: col,
                  checkedNow: t.done, refIdx: all.firstIndex { $0.id == t.id } ?? -1,
                  epic: t.epic, prio: t.prio, detail: t.detail, kanban: t.col)
@@ -633,6 +633,12 @@ struct TasksSurface: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header
+                    // AT A GLANCE on its own quiet row (approved design B, 2026-09-07 — board-b.png): quiet Doto numerals
+                    // for done · doing · blocked. Its own row so it can never squeeze the header controls. Reads statuses only.
+                    GlanceStrip(done: doneTasks.count,
+                                doing: open.filter { $0.col == "doing" }.count,
+                                blocked: open.filter { $0.col == "blocked" }.count)
+                        .padding(.top, 12)
                     if showSpec { specPanel }
                     ForEach(broken, id: \.self) { path in TasksBrokenBanner(path: path).padding(.top, 14) }
                     if scoped.isEmpty {
@@ -667,6 +673,7 @@ struct TasksSurface: View {
             SurfaceKicker(title: "Tasks", project: scopeIsAll ? "All projects" : (activeCtx?.name ?? "All projects"))
             ScopePill(label: scopeIsAll ? "All projects ▾" : "\(activeCtx?.name ?? "") ▾") { scopeAll.toggle() }
             Spacer(minLength: 0)
+            DoneChip(count: doneTasks.count) { showDone = true; view = .list }
             SegBar {
                 SegButton(label: "Board", active: view == .board) { view = .board }
                 SegButton(label: "List", active: view == .list) { view = .list }
@@ -762,8 +769,6 @@ struct TasksSurface: View {
                         onOpen: { detailTask = $0 })
                     .frame(width: 216, alignment: .top)
                 }
-                DoneColumn(count: doneTasks.count) { showDone = true; view = .list }
-                    .frame(width: 132)
             }
             .padding(.bottom, 6)
         }
@@ -989,10 +994,12 @@ private struct TaskColumnView: View {
         VStack(alignment: .leading, spacing: 10) {
             Button(action: onHeader) {
                 HStack(spacing: 8) {
-                    Circle().fill(column.dot).frame(width: 7, height: 7)
-                    Text(column.name).font(.hanken(12, .semibold))
-                        .foregroundColor(selected ? .ink : .inkSec)
-                    Text("\(column.tasks.count)").font(.splMono(10)).foregroundColor(.inkFaint)
+                    // Approved design B: Doto column names, DOING lit lime, count in quiet mono.
+                    Circle().fill(column.dot).frame(width: 6, height: 6)
+                        .shadow(color: column.id == "doing" ? Color.lime.opacity(0.7) : .clear, radius: 3)
+                    Text(column.name.uppercased()).font(.doto(12, .bold)).tracking(0.8)
+                        .foregroundColor(selected ? .ink : (column.id == "doing" ? .lime : .inkDim))
+                    Text("\(column.tasks.count)").font(.splMono(9.5)).foregroundColor(.inkFaint)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 3)
@@ -1003,6 +1010,8 @@ private struct TaskColumnView: View {
             }
             .buttonStyle(.plain)
             .onHover { headHover = $0 }
+            .padding(.bottom, 4)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.edge).frame(height: 1) }   // design B hairline under the header
 
             ForEach(column.tasks) { t in
                 TaskCardView(task: t, checked: t.checkedNow,
@@ -1062,22 +1071,18 @@ private struct TaskCardView: View {
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: 9) {
                 TaskCheckbox(checked: checked, onToggle: onToggle)         // checking does NOT launch the wrapp
                 Text(task.title)
-                    .font(.hanken(13))
+                    .font(.hanken(12.5, .semibold))
                     .foregroundColor(checked ? .inkFaint : .ink)
                     .strikethrough(checked, color: .inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                if let prio = task.prio, prio != "low" {
-                    Text(prio == "high" ? "●" : "○").font(.splMono(9))
-                        .foregroundColor(prio == "high" ? .danger : sbAmber)
-                        .help("priority: \(prio)")
-                }
             }
             TaskRowBits(task: task)
+            TaskStatusLine(task: task)   // approved design B: Doing "doing · <latest note>" · Blocked "waits on · <blocker>"
             if !task.detail.isEmpty {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 5) {
@@ -1107,9 +1112,6 @@ private struct TaskCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(hover ? Color.raised : Color.panel))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(hover ? Color.inkFaint : Color.edge, lineWidth: 1))
-        .overlay(alignment: .leading) {
-            if task.wait != nil { Rectangle().fill(Color.danger).frame(width: 2).clipShape(RoundedRectangle(cornerRadius: 12)) }
-        }
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { onOpen(task) }                                       // → task detail panel (launch is an explicit button there)
@@ -1118,40 +1120,51 @@ private struct TaskCardView: View {
 
 private struct TaskRowBits: View {
     let task: TaskItem
-    // A flow layout so a narrow kanban column wraps the chips to the next line instead of char-wrapping.
+    // Design B meta: quiet plain mono tokens (no capsules), lime only for prio:high, danger only when overdue.
+    // A flow layout so a narrow kanban column wraps tokens to the next line instead of char-wrapping.
     var body: some View {
-        FlowLayout(spacing: 6) {
+        FlowLayout(spacing: 7) {
             if let tag = task.tag {
-                HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 3)
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2)
                         .fill(task.swHex.map { hexColor($0) }
                             ?? Color(hue: hueForId(task.appName), saturation: 0.6, brightness: 0.8))
-                        .frame(width: 8, height: 8)
-                    Text(tag).font(.splMono(10)).foregroundColor(.inkDim).lineLimit(1).fixedSize()
+                        .frame(width: 6, height: 6)
+                    Text(tag).font(.splMono(9)).foregroundColor(.inkDim).lineLimit(1).fixedSize()
                 }
-                .padding(.horizontal, 7).padding(.vertical, 1)
-                .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
             }
-            if let proj = task.proj {
-                Text(proj).font(.splMono(10)).foregroundColor(.inkFaint).lineLimit(1).fixedSize()
+            if let proj = task.proj { Text(proj).font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1).fixedSize() }
+            if let epic = task.epic { Text("epic:" + epic).font(.splMono(9)).foregroundColor(.inkFaint).lineLimit(1).fixedSize() }
+            if let pr = task.prio, pr != "low" {
+                Text("prio:" + pr).font(.splMono(9)).foregroundColor(pr == "high" ? .lime : .inkFaint).lineLimit(1).fixedSize()
             }
-            if let epic = task.epic {
-                HStack(spacing: 4) {
-                    Text("◇").font(.splMono(8.5)).foregroundColor(.indigo)
-                    Text(epic).font(.splMono(10)).foregroundColor(.indigo).lineLimit(1).fixedSize()
-                }
-                .padding(.horizontal, 6).padding(.vertical, 1)
-                .overlay(Capsule().stroke(Color.indigo.opacity(0.4), lineWidth: 1))
+            if let due = task.due {
+                Text((task.over ? "overdue:" : "due:") + due).font(.splMono(9))
+                    .foregroundColor(task.over ? .danger : .inkFaint).lineLimit(1).fixedSize()
             }
-            if task.prog {
-                Circle().fill(sbAmber).frame(width: 8, height: 8)          // in progress
-            }
-            if let wait = task.wait {
-                Text(wait).font(.splMono(10)).foregroundColor(.danger).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 7).padding(.vertical, 1)
-                    .overlay(Capsule().stroke(Color.danger.opacity(0.5), lineWidth: 1))
-            }
-            if let due = task.due { DueChip(text: due, over: task.over) }
+        }
+    }
+}
+
+// The per-card STATUS line (approved design B): a Doing card says what it's doing — its latest plain detail
+// note, the thing agents actually write as they work (never an invented "doing…" string); a Blocked card
+// says what it waits on (resolved blocker titles). Lime = alive, danger = waiting. Nothing for other columns.
+private struct TaskStatusLine: View {
+    let task: TaskItem
+    private var doingNote: String? {
+        task.detail.last { !$0.sub && !$0.text.hasPrefix("!") && !$0.text.hasPrefix("[[") }?.text
+    }
+    var body: some View {
+        if task.kanban == "doing" {
+            line("doing" + (doingNote.map { " · " + $0 } ?? ""), .lime)
+        } else if let w = task.wait {
+            line(w, .danger)
+        }
+    }
+    private func line(_ text: String, _ c: Color) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Circle().fill(c).frame(width: 5, height: 5).shadow(color: c.opacity(0.8), radius: 3).padding(.top, 4)
+            Text(text).font(.splMono(9.5)).foregroundColor(c).lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1165,6 +1178,42 @@ private struct DueChip: View {
             .padding(.horizontal, 7).padding(.vertical, 1)
             .background(Capsule().fill(over ? Color.lime : .clear))
             .overlay(Capsule().stroke(over ? Color.lime : Color.edge, lineWidth: 1))
+    }
+}
+
+// AT A GLANCE (approved design B): quiet Doto numerals for done · doing · blocked. Reads the existing
+// statuses; adds no lane. Lime = doing (alive), danger = blocked.
+private struct GlanceStrip: View {
+    let done: Int, doing: Int, blocked: Int
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 18) {
+            Text("AT A GLANCE").font(.splMono(9)).tracking(1.6).foregroundColor(.inkFaint).lineLimit(1).fixedSize()
+            stat(done, "done", .ink); stat(doing, "doing", .lime); stat(blocked, "blocked", .danger)
+        }
+        .fixedSize()   // never let the header's Spacer squeeze this into a vertical column of characters
+    }
+    private func stat(_ n: Int, _ label: String, _ c: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("\(n)").font(.doto(20, .bold)).foregroundColor(c).lineLimit(1).fixedSize()
+            Text(label.uppercased()).font(.splMono(8.5)).tracking(1.2).foregroundColor(.inkFaint).lineLimit(1).fixedSize()
+        }
+    }
+}
+
+// The Done tally as a quiet header chip (approved design B) — replaces the dashed gradient DoneColumn.
+private struct DoneChip: View {
+    let count: Int
+    let onOpen: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: onOpen) {
+            Text("done · \(count) ▾").font(.splMono(9.5)).foregroundColor(hover ? .inkDim : .inkFaint)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .overlay(Capsule().stroke(Color.edge, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
 
