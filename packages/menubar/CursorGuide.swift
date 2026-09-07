@@ -236,6 +236,7 @@ final class GuideOverlayModel: ObservableObject {
     @Published var pipFilter: String? = nil       // /pip thread selector: non-nil → feed shows ONLY this source; tap its dot again to clear
     @Published var inRun = false                  // a guided run is on screen → its card overrides the PIP feed
     @Published var done: String? = nil            // non-nil → show the completion summary card
+    @Published var receding = false               // onboarding finish: the whole card shrinks + rises into the notch, then teardown (spec §5 Beat6 / Frame 3)
     @Published var reduceMotion = false
     @Published var target: CGPoint? = nil         // a step's point → the ring indicates it (nil = no ring this step)
     @Published var collapsed = false              // card collapsed to a small docked pill (⌥. toggles)
@@ -535,6 +536,50 @@ struct GuideCaptionView: View {
     //    card — no Note/Unmute/Close chrome (founder: "custom card not generic notch"). Same engine + panel
     //    + click-through + drag; new face. ──
     private var onboardingCard: some View {
+        Group {
+            if let done = m.done { onboardingDoneFace(done) }   // completion MOMENT at tour end
+            else { onboardingStepFace }
+        }
+        // RECEDE INTO THE NOTCH (spec §5 Beat6 / Frame 3): on finish the whole card shrinks toward the
+        // notch (top-center), rises, and fades — paying off the card's own "I live in the notch" promise
+        // instead of vanishing cold. Reduce-motion skips the transform (finishOnboarding tears down flat).
+        .scaleEffect(m.receding ? 0.18 : 1, anchor: .top)
+        .offset(y: m.receding ? -160 : 0)
+        .opacity(m.receding ? 0 : 1)
+        .animation(m.reduceMotion ? nil : .easeIn(duration: 0.55), value: m.receding)
+    }
+
+    // The completion FACE — shown for a beat at the very end of the onboarding tour. Same operator language
+    // (a lamp beacon + one Doto line) but a SETTLED "you're set" posture: no taught keys, no Next, a steady
+    // ✓ READY badge instead of the LISTENING pulse. finishOnboarding sets m.done → this renders → recede.
+    private func onboardingDoneFace(_ line: String) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            DotMatrix(pattern: .speaking, accent: Color.lime, cols: 6, rows: 6, dot: 2.4, gap: 2.6, animated: false)
+                .frame(width: 46, height: 46).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("THE OPERATOR").font(.splMono(9)).tracking(2).foregroundColor(.lime.opacity(0.9))
+                    Spacer(minLength: 12)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundColor(.page)
+                            .frame(width: 14, height: 14).background(Circle().fill(Color.lime))
+                        Text("READY").font(.splMono(8.5)).tracking(1).foregroundColor(.lime)
+                    }
+                }
+                Text(line).font(.doto(21, .bold)).foregroundColor(.ink)
+                    .fixedSize(horizontal: false, vertical: true).lineSpacing(3)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.page.opacity(0.97))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.lime.opacity(0.28), lineWidth: 1))
+                .shadow(color: Color.lime.opacity(0.18), radius: 26, y: 8)
+        )
+    }
+
+    private var onboardingStepFace: some View {
         let total = max(m.stepTotal, 1)
         let idx = min(max(m.stepIndex, 0), total - 1)
         return HStack(alignment: .top, spacing: 16) {
@@ -1521,6 +1566,18 @@ final class CursorGuide {
     private var preYieldPinned = false
     private var preYieldAnchor: CGPoint = .zero
 
+    /// True while the active guide is GATED on the current step and still waiting for a `wrapp-opened`
+    /// event — i.e. the onboarding first-win beat ("say a line → a wrapp opens"). The launcher reads this
+    /// to GUARANTEE a wrapp actually opens when the user commits a no-match query, so the gated payoff beat
+    /// can never trap them. Goes false the instant the gate fires (actionDone) or the guide isn't on it.
+    var awaitingWrappOpen: Bool {
+        guard isActive, !model.actionDone, idx >= 0, idx < steps.count else { return false }
+        let s = steps[idx]
+        guard s.gated else { return false }
+        if case .event(let name)? = s.doneWhen, name == "wrapp-opened" { return true }
+        return false
+    }
+
     func noteEvent(_ name: String) {
         guard isActive, !capturingFeedback else { return }
         // If the CURRENT step yields to this surface, get out of its way: SLIDE the card from the notch to the
@@ -2309,7 +2366,33 @@ final class CursorGuide {
             showCompletion(line)
         } else {
             NSLog("[cursor-guide] DONE \(outcome): tour \"\(title)\" (\(results.count) steps) → ~/.relay/guide-result.json")
-            teardown()
+            // The onboarding tour earns a completion MOMENT (a "you're set" face that recedes into the notch)
+            // before teardown — but ONLY when it ran to the end (a mid-tour esc/abort just leaves). How-to
+            // tours still teardown immediately; nothing else reaches finishOnboarding.
+            if outcome == "completed", marksOnboarded || model.style == "onboarding" { finishOnboarding() }
+            else { teardown() }
+        }
+    }
+
+    // The onboarding tour's completion MOMENT (spec §5 Beat6 / Frame 3). Show the settled "you're set" face,
+    // hold it briefly so the last spoken line lands, then RECEDE the card into the notch and teardown. Purely
+    // visual + time-based; the onboarded marker was already written in onFinish above, so nothing here is
+    // load-bearing — if a timer never fired, the next launch still sees the user as onboarded.
+    private func finishOnboarding() {
+        model.done = "You're all set. Tap the notch any time — I'll be right here."
+        model.collapsed = false
+        model.receding = false
+        let reduce = model.reduceMotion
+        flashTimer?.invalidate()
+        Timer.scheduledTimer(withTimeInterval: reduce ? 1.4 : 1.9, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if reduce { self.teardown(); return }
+                withAnimation(.easeIn(duration: 0.55)) { self.model.receding = true }
+                Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.teardown() }
+                }
+            }
         }
     }
 
@@ -2644,6 +2727,7 @@ final class CursorGuide {
         autoClipboard = false
         model.visible = false
         model.done = nil
+        model.receding = false
         model.flash = nil
         model.target = nil
         overlay?.orderOut(nil)

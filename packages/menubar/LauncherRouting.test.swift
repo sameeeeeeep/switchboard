@@ -34,6 +34,11 @@ private let catalog: [SBRoute.Fields] = [
           tagline: "Generate a QR code"),
     .init(id: "hn", name: "Hacker News", keywords: ["news", "trending", "tech"],
           tagline: "What's on the front page", commands: ["top_stories · fetch trending tech stories"]),
+    // brandbrain — the onboarding first-win demo ("brand a coffee shop"). Real manifest fields (catalog.json).
+    .init(id: "brandbrain", name: "brandbrain",
+          keywords: ["brand system", "brand voice", "brand guidelines", "tone of voice", "positioning", "brand palette"],
+          tagline: "Your whole brand, one place.",
+          inside: ["A living brand system — voice, palette, and positioning in one vault"]),
 ]
 
 /// The one call the launcher makes: rank the catalog for a query.
@@ -72,6 +77,17 @@ private func top(_ q: String) -> String? { rank(q).first }
         expect(rank("zzzqqq").isEmpty, "gibberish matches nothing")
         expect(rank("the a of to").isEmpty, "an all-stopword query matches nothing")
         expect(SBRoute.score("", catalog[0]) == 0, "empty query scores 0")
+
+        print("\n── onboarding first-win (beat 3b) ───────────────────────")
+        // HAPPY PATH: the suggested line resolves to brandbrain via the "brand" token, so the gated beat
+        // releases as designed. (If this ever regresses, onboarding's payoff silently breaks.)
+        expect(top("brand a coffee shop") == "brandbrain", "\"brand a coffee shop\" → brandbrain (the demo line)")
+        expect(top("brand voice for my startup") == "brandbrain", "\"brand voice for my startup\" → brandbrain")
+        // THE GAP the app-side no-trap guarantee (onAsk → openOnboardingFirstWin) exists to cover: a
+        // dictation mis-hear that drops "brand", or an improvised phrase, scores NO app — Enter would fall
+        // to "ask" and the GATED beat would trap. Routing alone cannot save these; the guarantee must.
+        expect(rank("a coffee shop").isEmpty, "mis-hear \"a coffee shop\" (brand dropped) → no app match (why the guarantee exists)")
+        expect(top("help me name my cafe") != "brandbrain", "improv \"help me name my cafe\" → brandbrain NOT matched by routing")
 
         print("\n── file kinds ───────────────────────────────────────────")
         expect(SBRoute.kind(forPath: "/tmp/shot.PNG") == .image, "shot.PNG → image (case-insensitive)")

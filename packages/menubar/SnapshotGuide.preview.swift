@@ -209,6 +209,37 @@ struct GuidePill: View {
     }
 }
 
+// ---- the onboarding COMPLETION face (faithful port of CursorGuide.onboardingDoneFace) — the "you're set"
+//      moment shown for a beat at tour end, then it recedes into the notch. Preview stand-ins: DMStub for
+//      the DotMatrix beacon, .brico for the Doto display line (the preview carries no Doto face). ----
+struct OperatorDoneCard: View {
+    var line = "You're all set. Tap the notch any time — I'll be right here."
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            DMStub(accent: .lime).scaleEffect(1.6).frame(width: 46, height: 46).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("THE OPERATOR").font(.splMono(9)).tracking(2).foregroundColor(.lime.opacity(0.9))
+                    Spacer(minLength: 12)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundColor(.page)
+                            .frame(width: 14, height: 14).background(Circle().fill(Color.lime))
+                        Text("READY").font(.splMono(8.5)).tracking(1).foregroundColor(.lime)
+                    }
+                }
+                Text(line).font(.brico(21, .bold)).foregroundColor(.ink)
+                    .fixedSize(horizontal: false, vertical: true).lineSpacing(3)
+            }
+        }
+        .padding(20).frame(width: 560, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18).fill(Color.page.opacity(0.97))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.lime.opacity(0.28), lineWidth: 1))
+                .shadow(color: Color.lime.opacity(0.18), radius: 26, y: 8)
+        )
+    }
+}
+
 // ---- pointer ring (verbatim look from GuideCaptionView, still frame at mid-pulse) ----
 struct GuideRing: View {
     var body: some View {
@@ -298,6 +329,17 @@ struct SnapshotGuide {
             Text("Export ▾").font(.hanken(12, .semibold)).foregroundColor(.ink).padding(.horizontal,12).padding(.vertical,7).background(RoundedRectangle(cornerRadius:8).fill(Color.indigo.opacity(0.9))).position(ringPt)
             GuideRing().position(ringPt)
             VStack { Spacer(); OptionsCard(sel: 1) }.padding(.bottom, 40).frame(width: W, height: H)
+        }.frame(width: W, height: H).background(Color.black))
+        // onboarding completion MOMENT — the "you're set" face (full), and mid-RECEDE (scaled + rising +
+        // fading toward the notch) so the end-of-tour transition is verifiable without a live run.
+        snap("guide-onboarding-done", ZStack {
+            MockDesktop().frame(width: W, height: H)
+            OperatorDoneCard()
+        }.frame(width: W, height: H).background(Color.black))
+        snap("guide-onboarding-recede", ZStack {
+            MockDesktop().frame(width: W, height: H)
+            OperatorDoneCard()
+                .scaleEffect(0.4, anchor: .top).opacity(0.5).offset(y: -90)
         }.frame(width: W, height: H).background(Color.black))
         exit(0)
     }

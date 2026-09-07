@@ -6515,7 +6515,17 @@ struct ActionConsentDrop: View {
                 else { self?.showWrappWidget(listing, input: nil) }
             },
             onOpenSurface: { [weak self] raw in self?.hideLauncher(); OSShellWindowController.shared.show(Surface(rawValue: raw) ?? .home) },
-            onAsk: { [weak self] q in self?.hideLauncher(); if q.isEmpty { self?.triggerGod() } else { self?.triggerGod(instruction: q) } },
+            onAsk: { [weak self] q in
+                guard let self else { return }
+                self.hideLauncher()
+                // Onboarding first-win NO-TRAP guarantee. Beat 3b ("say a line → a wrapp opens") is GATED and
+                // only releases on a `wrapp-opened` event. If the user's spoken/typed line matched no app —
+                // a dictation mis-hear of "brand a coffee shop", or an improvised phrase — they land on this
+                // Ask fallback, no wrapp opens, and the gate would trap them (Skip/esc only). During that
+                // exact beat, open the demo wrapp instead so the payoff always fires and the gate releases.
+                if CursorGuide.shared.awaitingWrappOpen, self.openOnboardingFirstWin() { return }
+                if q.isEmpty { self.triggerGod() } else { self.triggerGod(instruction: q) }
+            },
             onClose: { [weak self] in self?.hideLauncher() })
         let host = NoInsetHostingView(rootView: view)
         if launcherPanel == nil {
@@ -6748,6 +6758,19 @@ struct ActionConsentDrop: View {
         // new: Deck (slides→pptx), Dub (audio→per-speaker TTS revoice)
         "deck", "dub",
     ]
+    // Open the onboarding first-win wrapp so beat 3b's gated `wrapp-opened` always fires — the no-trap
+    // guarantee for the launcher's Ask fallback (see onAsk). Prefers brandbrain (the "brand a coffee shop"
+    // demo), then any studio wrapp, then any first-party wrapp. Returns false only if the catalog is empty,
+    // in which case the caller falls through to asking God so the user is never left with nothing.
+    @MainActor private func openOnboardingFirstWin() -> Bool {
+        let cat = readCatalog()
+        let pick = cat.first { $0.id == "brandbrain" }
+            ?? cat.first { $0.category == "studio" && !$0.isThirdParty }
+            ?? cat.first { !$0.isThirdParty }
+        guard let l = pick else { return false }
+        showWrappWidget(l, input: nil)
+        return true
+    }
     @MainActor func showWrappWidget(_ l: SBListing, input fileURL: URL?) {
         // Onboarding first-win gate (803df56): the beat completes when a wrapp ACTUALLY opens. openWrappWindow
         // fires this for the WINDOW surface, but the launcher also opens wrapps as notch/skill/glance WIDGETS —
