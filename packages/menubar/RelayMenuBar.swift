@@ -3070,6 +3070,7 @@ struct ConnectGrantDrop: View {
     let budgets: [String: Any]
     let contextKinds: [String]
     let groups: [(label: String, models: [String])]   // pills grouped by provider (empty → one flat list)
+    let classHint: String?                             // "ASKS FOR · CLOUD CODING → Claude Code: sonnet · Codex: gpt-6-astra" (class requests only)
     var onApprove: ([String: Any]) -> Void
     var onDeny: () -> Void
 
@@ -3077,10 +3078,10 @@ struct ConnectGrantDrop: View {
 
     init(origin: String, reason: String, availableModels: [String], requestedModels: [String],
          tools: [(name: String, access: String, label: String)], budgets: [String: Any], contextKinds: [String],
-         groups: [(label: String, models: [String])] = [],
+         groups: [(label: String, models: [String])] = [], classHint: String? = nil,
          selection: ConnectGrantSelection? = nil, onApprove: @escaping ([String: Any]) -> Void, onDeny: @escaping () -> Void) {
         self.origin = origin; self.reason = reason; self.availableModels = availableModels; self.tools = tools
-        self.budgets = budgets; self.contextKinds = contextKinds; self.groups = groups; self.onApprove = onApprove; self.onDeny = onDeny
+        self.budgets = budgets; self.contextKinds = contextKinds; self.groups = groups; self.classHint = classHint; self.onApprove = onApprove; self.onDeny = onDeny
         self.selection = selection ?? ConnectGrantSelection(available: availableModels, requested: requestedModels, tools: tools.map { $0.name })
     }
 
@@ -3124,6 +3125,7 @@ struct ConnectGrantDrop: View {
             VStack(alignment: .leading, spacing: 3) {
                 (Text("Connect to ").foregroundColor(.ink) + Text(host(origin)).foregroundColor(.lime) + Text("?").foregroundColor(.ink)).font(.hanken(14.5, .semibold))
                 if !reason.isEmpty { Text("\u{201C}\(reason)\u{201D}").font(.hanken(10.5)).italic().foregroundColor(.inkFaint).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+                if let h = classHint { Text(h).font(.splMono(8.5)).tracking(1).foregroundColor(.lime.opacity(0.9)).lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 2) }
             }
             Rectangle().fill(Color.edge).frame(height: 1)
             ScrollView {
@@ -4568,6 +4570,14 @@ struct ActionConsentDrop: View {
         let modelsDict = body["models"] as? [String: Any] ?? [:]
         let available = (modelsDict["available"] as? [String]) ?? []
         let requested = (modelsDict["requested"] as? [String]) ?? []
+        // CLASS request (slice 5b): "ASKS FOR · CLOUD CODING → Claude Code: sonnet · Codex: gpt-6-astra".
+        let askedClasses = (modelsDict["classes"] as? [String]) ?? []
+        let resolves = (modelsDict["resolves"] as? [String: String]) ?? [:]
+        let classHint: String? = askedClasses.isEmpty ? nil : {
+            let label: (String) -> String = { id in self.model.modelProviders.first { $0.id == id }?.label ?? id }
+            let parts = resolves.keys.sorted().map { "\(label($0)): \(resolves[$0] ?? "")" }
+            return "ASKS FOR · " + askedClasses.map { $0.replacingOccurrences(of: "-", with: " ").uppercased() }.joined(separator: " + ") + (parts.isEmpty ? "" : "  →  " + parts.joined(separator: " · "))
+        }()
         let tools: [(name: String, access: String, label: String)] = ((body["tools"] as? [[String: Any]]) ?? []).map {
             (name: $0["name"] as? String ?? "", access: $0["access"] as? String ?? "read", label: $0["label"] as? String ?? "")
         }.filter { !$0.name.isEmpty }
@@ -4593,7 +4603,7 @@ struct ActionConsentDrop: View {
                                             budgets: budgets, contextKinds: contextKinds, finish: finish))
         } else {
             content = AnyView(ConnectGrantDrop(origin: origin, reason: reason, availableModels: available, requestedModels: preselected,
-                                    tools: tools, budgets: budgets, contextKinds: contextKinds, groups: groups,
+                                    tools: tools, budgets: budgets, contextKinds: contextKinds, groups: groups, classHint: classHint,
                                     selection: selection, onApprove: { finish($0) }, onDeny: { finish(nil) }))
         }
         let view = content

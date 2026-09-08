@@ -180,7 +180,7 @@ export const manifest = {
   name: "autopilot",
   title: "Autopilot",
   origin: "https://sameep.ai",
-  scope: { models: ["sonnet"], contextKinds: ["brand", "project", "idea"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"], contextKinds: ["brand", "project", "idea"] },
   actions: [
     {
       name: "slate",

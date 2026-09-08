@@ -291,7 +291,7 @@ export const manifest = {
   name: "reachout",
   title: "Reachout",
   origin: "https://reachout.thelastprompt.ai",
-  scope: { models: ["sonnet"], contextKinds: ["brand"], tools: ["mcp__claude_ai_Gmail__*"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"], contextKinds: ["brand"], tools: ["mcp__claude_ai_Gmail__*"] },
   actions: [
     {
       name: "draftSequence",

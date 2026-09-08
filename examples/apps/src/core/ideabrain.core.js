@@ -87,7 +87,7 @@ export const manifest = {
   name: "ideabrain",
   title: "ideabrain",
   origin: "https://brandbrain.thelastprompt.ai",
-  scope: { models: ["sonnet", "claude-haiku-4-5"], contextKinds: ["idea"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet", "claude-haiku-4-5"], contextKinds: ["idea"] },
   actions: [
     {
       name: "brief",

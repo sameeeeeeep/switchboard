@@ -159,6 +159,20 @@ async function main() {
     setModelsJson({ disabled: [] });
   }
 
+  // ── class request (slice 5): an app that asks for a CLASS gets a provider-spanning grant and resolves inside it ──
+  await cell("class", "app asks for a class → grant spans the approved providers → resolves in it", async () => {
+    const all = providers.flatMap((p) => byBackend[p]);
+    const app = await connect(tok, "https://classy.parity", all);
+    await app.request("claude_connect", { reason: "parity class", tools: [], requirements: [{ class: "cloud-coding" }] });
+    const ext = await connect(tok, "control", []);
+    const g = (await ext.control("listGrants")).grants.find((x) => x.origin === "https://classy.parity"); ext.close();
+    if (!g?.classes?.includes("cloud-coding")) throw new Error(`grant carries no class: ${JSON.stringify(g?.classes)}`);
+    if (!(g.providers ?? []).length) throw new Error("grant carries no providers");
+    const res = await withTimeout(app.stream({ prompt: "Say OK." }), "class implicit"); app.close();
+    if (!all.includes(res.model)) throw new Error(`routed to ${res.model}`);
+    return `classes=${g.classes} providers=${g.providers.join("+")} → ${res.model}`;
+  });
+
   // ── report ──
   const fails = rows.filter((r) => r.status === "FAIL").length, skips = rows.filter((r) => r.status === "SKIP").length;
   console.log(`\n${"provider".padEnd(12)} ${"check".padEnd(64)} status`);

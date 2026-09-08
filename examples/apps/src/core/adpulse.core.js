@@ -256,7 +256,7 @@ export const manifest = {
   name: "adpulse",
   title: "AdPulse",
   origin: "https://adpulse.thelastprompt.ai",
-  scope: { models: ["sonnet"], contextKinds: ["brand"] },
+  scope: { requirements: [{ class: "cloud-coding" }], models: ["sonnet"], contextKinds: ["brand"] },
   actions: [
     {
       name: "analyze",

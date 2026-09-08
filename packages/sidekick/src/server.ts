@@ -1036,10 +1036,19 @@ export class Broker implements ConsentPrompter, NativeHandler {
       ...(existing?.models ?? []),
       ...(requested.models ?? []).map((m) => this.deps.backends.preferredModel(m) ?? m),
     ])].filter((m) => availableModels.includes(m));
+    // CLASS request (slice 5b): tell the card which class the app asked for and what it resolves to on each
+    // online provider right now, so the user reads "CLOUD CODING → Claude Code: sonnet · Codex: gpt-6-astra"
+    // instead of a soup of ids. Display only — the approved concrete models are still what the grant stores.
+    const askedClasses = (requested.requirements ?? []).map((r) => r.class);
+    const resolves: Record<string, string> = {};
+    for (const m of this.deps.backends.modelInfo()) {
+      if (!availableModels.includes(m.id) || !askedClasses.some((c) => (m.classes ?? []).includes(c))) continue;
+      if (!(m.backend in resolves)) resolves[m.backend] = m.id;
+    }
     const consentBody = {
       origin,
       reason: requested.reason,
-      models: { available: availableModels, requested: requestedModels, default: requestedModels[0] },
+      models: { available: availableModels, requested: requestedModels, default: requestedModels[0], classes: askedClasses, resolves },
       tools: requestedTools,
       budgets: { maxTokensPerDay: requested.budgets?.maxTokensPerDay ?? 200_000, maxCallsPerMin: requested.budgets?.maxCallsPerMin ?? 30 },
       // Library visibility the app asks for (names by kind, e.g. ["brand"]) — its own consent row.
