@@ -1,0 +1,38 @@
+.operator-stage{padding-top:20px}
+.operator-stage .mini-app{max-width:574px}
+.wrapp-input{padding:9px;background:#0d1410}
+.wrapp-input .mini-composer{margin:0}
+.wrapp-input .demo-prompt{height:46px!important;min-height:46px!important;font:13px/1.45 ui-sans-serif,system-ui,sans-serif!important;padding:8px 10px 0!important}
+.wrapp-input .composer-tools{padding:3px 7px 5px 10px}.wrapp-input .composer-tools>span{font-size:10px}.wrapp-input .prompt-send{height:24px!important;width:24px!important}
+.wrapp-internals{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:640px;width:100%;margin:auto;padding-top:24px;position:relative}
+.wrapp-links{position:absolute;top:0;left:0;height:24px;width:100%;fill:none;stroke:#73875980;stroke-width:1}
+.wrapp-links .internal-signal{stroke:#c8f250;stroke-dasharray:6 10;animation:internal-call 1.4s linear infinite}
+.agent-harness,.wrapp-artifact{position:relative;min-width:0;min-height:126px;padding:11px 12px;border:1px solid #52644266;border-radius:8px;background:linear-gradient(140deg,#1a2417,#0e160f);text-align:left}
+.agent-harness{transition:border-color .3s,box-shadow .3s}
+.agent-harness[data-working=true]{border-color:#b5d278aa;box-shadow:0 0 22px #c8f2500b}
+.agent-harness header,.wrapp-artifact header{display:flex;align-items:center;gap:7px;color:#c8d7b8;font:11px/1.3 ui-sans-serif,system-ui,sans-serif;height:23px}
+.agent-harness header>.wrapp-icon{width:22px;height:22px;border-radius:5px}
+.agent-harness header>strong{font-weight:550}.agent-harness header>svg{margin-left:auto;color:#728963}
+.agent-harness[data-working=true] header>svg{color:#c8f250;animation:agent-loop 3s linear infinite}
+.harness-capabilities{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.harness-capabilities>span{display:flex;align-items:center;gap:4px;padding:4px 5px;background:#27332077;border:1px solid #73835433;border-radius:4px;font-size:9px;color:#a8b894}
+.harness-tool-call{display:flex;align-items:center;gap:6px;margin-top:12px;font:10px/1.4 ui-sans-serif,system-ui,sans-serif;color:#becdb0}
+.harness-tool-call>svg{color:#94b168;flex-shrink:0}.harness-tool-call>span{flex:1}.harness-tool-call>i{height:4px;width:4px;border-radius:50%;background:#c8f250;box-shadow:0 0 8px #c8f25066}
+.harness-port{position:absolute;bottom:-2px;left:calc(50% - 5px);height:3px;width:10px;border-radius:2px;background:#a6c577}
+.wrapp-artifact{background:#111811;border-color:#5c704133}
+.wrapp-artifact header{color:#91a77b}.wrapp-artifact header>small{margin-left:auto;font:7px/1 var(--mono);letter-spacing:.07em;color:#627653}
+.artifact-copy{padding-top:11px}.artifact-copy>strong{display:block;font:550 15px/1.3 ui-sans-serif,system-ui,sans-serif;color:#dce8d0}.artifact-copy>p{font:11px/1.4 ui-sans-serif,system-ui,sans-serif;margin:5px 0 0;color:#99af88}
+.artifact-placeholder{display:flex;flex-direction:column;gap:8px;padding-top:18px}.artifact-placeholder>span{height:4px;width:80%;background:#3a4e2c66;border-radius:3px}.artifact-placeholder>span:nth-child(2){width:58%}.artifact-placeholder>span:last-child{width:70%}
+.artifact-saved{display:flex;align-items:center;gap:5px;font-size:8px;color:#8fae6c;margin-top:8px}.artifact-saved>svg:last-child{margin-left:auto}
+.diagram-pause{position:absolute!important;top:4px;right:4px;width:23px!important;height:23px!important;color:#8b9b79!important;z-index:4;opacity:.65;background:transparent!important;border:0!important}
+.diagram-pause:hover,.diagram-pause:focus-visible{opacity:1}
+.scene-footer{justify-content:center}
+.scene-paused .internal-signal,.scene-paused .agent-harness header>svg{animation-play-state:paused}
+@keyframes internal-call{to{stroke-dashoffset:-32}}
+@keyframes agent-loop{to{transform:rotate(360deg)}}
+@media(max-width:700px){.operator-stage{padding-top:18px}.wrapp-internals{gap:7px}.agent-harness,.wrapp-artifact{padding:9px;min-height:138px}.agent-harness header,.wrapp-artifact header{font-size:10px;gap:5px}.agent-harness header>.wrapp-icon{height:20px;width:20px}.harness-capabilities{gap:4px;margin-top:8px}.harness-capabilities>span{font-size:8px;padding:3px}.harness-tool-call{font-size:10px;gap:4px;margin-top:10px}.artifact-copy>strong{font-size:13px}.artifact-copy>p{font-size:11px}.wrapp-input .demo-prompt{height:53px!important;min-height:53px!important}.wrapp-artifact header>small{font-size:6px}}
+@media(prefers-reduced-motion:reduce){.agent-harness header>svg,.internal-signal{animation:none!important}}
+.harness-output-link{position:absolute;top:88px;left:calc(50% - 6px);width:12px;border-top:1px solid #72865380;z-index:2}
+.harness-output-link:after{content:'';position:absolute;right:1px;top:-3px;width:5px;height:5px;border-top:1px solid #72865380;border-right:1px solid #72865380;transform:rotate(45deg)}
+.wrapp-internals[data-result=true] .harness-output-link{border-color:#c8f250}.wrapp-internals[data-result=true] .harness-output-link:after{border-color:#c8f250}
+@media(max-width:700px){.harness-output-link{width:7px;left:calc(50% - 3.5px)}}

@@ -1,0 +1,80 @@
+/* Fit the complete call diagram in a laptop viewport without scaling its text. */
+.operator-stage{max-width:880px;padding:12px 18px 13px;border-radius:18px;scroll-margin-top:16px}
+.operator-stage .journey-narration{min-height:42px;margin-bottom:10px;max-width:760px}
+.operator-stage .journey-narration>p{font-size:16px;line-height:1.35}
+.operator-stage .mini-app{max-width:574px;animation-duration:.35s}
+.operator-stage .mini-app-chrome{height:32px}
+.compact-harness{height:211px;padding:9px 12px;display:flex;flex-direction:column;gap:7px;background:#0c1110;text-align:left;font-family:ui-sans-serif,system-ui,sans-serif}
+.compact-app-nav{display:flex;align-items:center;justify-content:space-between;gap:5px;font:9px/1.4 var(--mono);color:#99a78e;height:14px;flex-shrink:0}
+.compact-app-nav>small{font-size:8px;color:#69795e}
+.compact-harness .mini-composer{margin:0;flex-shrink:0}
+.compact-harness .demo-prompt{height:46px!important;min-height:46px!important;padding:7px 9px 0!important;font:13px/1.45 ui-sans-serif,system-ui,sans-serif!important}
+.compact-harness .composer-tools{padding:3px 7px 5px 9px}
+.compact-harness .composer-tools>span{font-size:9px}
+.compact-harness .prompt-send{width:23px!important;height:23px!important}
+.compact-harness .voice-input{height:46px;font-size:12px}
+.compact-result{min-height:68px;display:flex;align-items:center;gap:12px;padding:8px 10px;background:#141d12;border:1px solid #7086532b;border-radius:6px;position:relative;flex:1}
+.compact-result>svg{color:#8ca76a;flex-shrink:0}.compact-result>div{min-width:0}
+.compact-result small{font:8px/1.2 var(--mono);letter-spacing:.07em;color:#8fa874;text-transform:uppercase;display:block;margin-bottom:4px}
+.compact-result strong{font-size:14px;line-height:1.3;color:#dce8d0;font-weight:550;display:block}
+.compact-result p{font-size:11px;line-height:1.35;color:#96a88a;margin:4px 0 0}
+.compact-result-copy{animation:compact-return .4s .65s both}
+.compact-done{margin-left:auto;color:#c8f250!important}
+.compact-skeleton{display:flex;gap:5px;margin-top:7px}.compact-skeleton>i{width:75px;height:3px;border-radius:3px;background:#43563166}.compact-skeleton>i+ i{width:38px}
+.compact-run{display:flex;align-items:center;gap:12px;height:15px;flex-shrink:0;white-space:nowrap;font:9px/1.3 var(--mono);color:#5d7155}
+.compact-run>span{display:flex;align-items:center;gap:4px}.compact-run>span>i{height:4px;width:4px;border-radius:50%;border:1px solid currentColor}.compact-run>[data-active=true]{color:#afc696}.compact-run>[data-done=true]{color:#c8f250}.compact-run>svg{margin-left:auto;color:#c8f250}
+.operator-stage .routing-plane{padding-top:112px}
+.operator-stage .scene-gateway{top:17px}
+.operator-stage .gateway-surface{width:89px;height:51px;border-radius:6px 6px 15px 15px}
+.operator-stage .gateway-surface>.notch-matrix{width:77px;height:46px}
+.operator-stage .gateway-edge{border-radius:4px 4px 11px 11px}
+.operator-stage .gateway-port{top:20px;height:9px}
+.operator-stage .scene-gateway>strong{font-size:14px;margin-top:8px}
+.operator-stage .gateway-state{font-size:7px;margin-top:3px}
+.operator-stage .journey-resources{gap:12px}
+.operator-stage .resource-label{font-size:10px;margin-bottom:7px;letter-spacing:.04em}
+.operator-stage .model-with-connectors .resource-compute{min-height:68px;padding:8px 10px}
+.operator-stage .resource-compute .resource-detail{display:none}
+.operator-stage .resource-compute .identity-compact{height:29px}
+.operator-stage .connector-stem{height:13px}
+.operator-stage .connector-bank{padding:7px 8px}
+.operator-stage .connector-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.operator-stage .connector-tile{padding:5px 2px;gap:3px}.operator-stage .connector-tile>img{height:18px;width:18px}.operator-stage .connector-tile>svg{height:18px;width:18px}.operator-stage .connector-tile>span{font-size:9px;line-height:1.2}
+.operator-stage .project-bank{padding:9px 10px}
+.operator-stage .project-folder{padding:5px;gap:6px}.operator-stage .project-folder strong{font-size:11px}
+.operator-stage .project-files{gap:5px;margin:6px 2px 7px 7px}.operator-stage .project-files>span{font-size:10px;line-height:1.2}
+.operator-stage .project-files>[data-recent=false]{display:none}
+.operator-stage .project-files>[data-saved=false]{display:none}
+.operator-stage .project-bank>small{font-size:9px;margin-top:5px}
+.operator-stage .local-bank{padding:9px 10px}
+.operator-stage .local-service{padding:7px 6px;margin:5px 0;gap:8px}.operator-stage .local-service>span{gap:3px}.operator-stage .local-service strong{font-size:12px}.operator-stage .local-service small{font-size:10px}.operator-stage .local-service>svg{height:18px;width:18px}
+.operator-stage .journey-chapters{padding-top:10px;margin-top:12px}.operator-stage .journey-chapters button{padding:4px;gap:6px}
+.operator-stage .journey-chapters .wrapp-icon{width:25px;height:25px;border-radius:6px}.operator-stage .journey-chapters button>span{font-size:10px}.operator-stage .journey-chapters button>small,.operator-stage .journey-chapters button>svg{display:none}
+.operator-stage .journey-chapters .chapter-current:before{top:-11px}
+@keyframes compact-return{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(max-width:700px){.operator-stage{padding:10px;border-radius:13px}.operator-stage .journey-narration{min-height:48px;margin-bottom:9px;padding:0}.operator-stage .journey-narration>p{font-size:14px}.operator-stage .journey-narration>span{font-size:8px}.compact-harness{height:219px;padding:9px;gap:7px}.compact-harness .demo-prompt{height:51px!important;min-height:51px!important;font-size:13px!important}.compact-result{padding:7px;gap:8px}.compact-result strong{font-size:13px}.compact-result p{font-size:11px}.compact-run{font-size:8px;gap:8px}.operator-stage .journey-resources{gap:6px}.operator-stage .routing-resource,.operator-stage .model-with-connectors .resource-compute,.operator-stage .connector-bank{padding:7px}.operator-stage .resource-label{font-size:9px;letter-spacing:0}.operator-stage .connector-tile>span{font-size:8px}.operator-stage .connector-grid{gap:3px}.operator-stage .connector-tile{padding:5px 1px}.operator-stage .connector-tile>img,.operator-stage .connector-tile>svg{height:17px;width:17px}.operator-stage .project-folder{padding:5px 1px;gap:4px}.operator-stage .project-folder strong{font-size:10px}.operator-stage .project-folder>svg{width:13px}.operator-stage .project-files{margin-left:0}.operator-stage .project-files>span{font-size:9px;word-break:break-word;line-height:1.25}.operator-stage .project-files>[data-recent=true]{display:none}.operator-stage .project-files>[data-writing=true]{display:flex}.operator-stage .project-bank>small{font-size:9px}.operator-stage .local-service{padding:7px 2px;gap:5px}.operator-stage .local-service strong{font-size:11px}.operator-stage .local-service small{font-size:9px}.operator-stage .local-service>svg{height:15px;width:15px}.operator-stage .journey-chapters button{gap:4px}.operator-stage .journey-chapters button>span{font-size:9px}.operator-stage .journey-chapters .wrapp-icon{height:24px;width:24px}.operator-stage .journey-chapters{margin-top:10px;padding-top:9px}.operator-stage .journey-chapters .chapter-current:before{top:-10px}}
+@media(prefers-reduced-motion:reduce){.compact-result-copy{animation:none}}
+.operator-stage .journey-narration{min-height:34px;margin-bottom:7px}
+.compact-harness{height:190px;padding:8px 12px;gap:5px}
+.compact-app-nav{height:12px}
+.compact-harness .demo-prompt{height:40px!important;min-height:40px!important}
+.compact-result{min-height:52px;padding-block:6px}
+.compact-run{height:12px}
+.operator-stage .routing-plane{padding-top:92px}
+.operator-stage .scene-gateway{top:11px}
+.operator-stage .gateway-surface{height:45px;width:83px}
+.operator-stage .gateway-surface>.notch-matrix{height:41px;width:72px}
+.operator-stage .scene-gateway>strong{font-size:13px;margin-top:6px}
+.operator-stage .gateway-state{margin-top:2px}
+.operator-stage .model-with-connectors .resource-compute{min-height:61px;padding-block:6px}
+.operator-stage .connector-stem{height:9px}
+.operator-stage .connector-tile{padding-block:3px;gap:1px}
+.operator-stage .connector-bank .resource-label{margin-bottom:5px}
+.operator-stage .local-service{padding-block:5px}
+@media(max-width:700px){.operator-stage .journey-narration{min-height:40px}.compact-harness{height:198px;padding:8px 9px;gap:5px}.compact-harness .demo-prompt{height:44px!important;min-height:44px!important}.operator-stage .connector-tile{padding-block:3px;gap:2px}.operator-stage .project-files>[data-current-output=true]{display:flex}.operator-stage .local-service{padding-block:6px}}
+/* Keep the explanation legible throughout every transition. */
+.operator-stage .journey-narration>p{animation:none}
+.compact-result-copy{animation:compact-return .35s both}
+@keyframes compact-return{from{opacity:.75;transform:translateY(2px)}to{opacity:1;transform:none}}
+.operator-stage .journey-chapters button{opacity:.8;color:#a4b397}
+.operator-stage .journey-chapters .chapter-current{opacity:1;color:#dfedcd}

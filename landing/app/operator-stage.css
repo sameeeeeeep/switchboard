@@ -1,0 +1,77 @@
+/* The operator stage: one physical surface, quiet idle ports, light that follows work. */
+.scene-hero{position:relative;padding-top:32px}
+.scene-intro h1{letter-spacing:-.055em}
+.scene-intro>p{max-width:750px;font-size:13px;line-height:1.7;color:#899184;letter-spacing:.015em}
+.scene-headline{margin-top:33px}
+.scene-hero .purpose-line{font-size:clamp(30px,3.6vw,46px)}
+.scene-hero .format-line{font-size:18px;color:#96a18a}
+.scene-hero .runtime-line{font-size:18px;gap:7px}
+.operator-stage{max-width:1000px;padding:20px 24px 23px;margin-top:25px;border:1px solid #5763473b;border-radius:24px;background:radial-gradient(ellipse at 50% 35%,#b9e16a08,transparent 54%),linear-gradient(170deg,#151b16b0,#080d0bbb 46%,#101710c0);box-shadow:0 1px 0 #d9ebc51a inset,0 35px 100px #0004;isolation:isolate;overflow:hidden}
+.operator-stage:before{inset:0;background:linear-gradient(90deg,transparent,#ccf28d09,transparent);mask-image:none;pointer-events:none}
+.operator-stage:after{content:'';height:1px;position:absolute;left:20%;right:20%;top:0;background:linear-gradient(90deg,transparent,#b0c79180,transparent);pointer-events:none}
+.operator-stage .journey-chapters{order:5;margin:23px 0 0;max-width:none;gap:0;border-top:1px solid #64724d36;padding-top:17px;position:relative}
+.operator-stage .journey-chapters:before{content:'';position:absolute;top:0;height:1px;left:7%;right:7%;background:linear-gradient(90deg,transparent,#92b06544,transparent)}
+.operator-stage .journey-chapters button{background:none;border:none;justify-content:center;position:relative;gap:8px;transition:color .3s,transform .3s;opacity:.55;padding:8px 4px;border-radius:6px}
+.operator-stage .journey-chapters button:hover{opacity:1;transform:translateY(-3px)}
+.operator-stage .journey-chapters .chapter-current{opacity:1;color:#dceacc}
+.operator-stage .journey-chapters .chapter-current:before{content:'';position:absolute;top:-18px;width:35px;height:2px;background:#c8f250;box-shadow:0 0 14px #b8ef5670;border-radius:3px}
+.operator-stage .journey-chapters .chapter-complete{opacity:.8;color:#9cad8c}
+.operator-stage .journey-chapters .wrapp-icon{width:33px;height:33px;border-radius:8px;box-shadow:0 4px 9px #0005;transition:transform .4s}
+.operator-stage .chapter-current .wrapp-icon{transform:translateY(-2px);box-shadow:0 6px 13px #0007,0 0 17px #b8ef5612}
+.operator-stage .journey-chapters button>small,.operator-stage .journey-chapters button>svg{margin-left:0;position:absolute;top:3px;right:9px;font-size:8px}
+.operator-stage .journey-narration{min-height:55px;max-width:790px;gap:15px;justify-content:center}
+.operator-stage .journey-narration>span{color:#9eb778;font-size:9px;letter-spacing:.12em;padding:7px 8px;border:1px solid #6e825146;border-radius:4px}
+.operator-stage .journey-narration>p{font:500 clamp(14px,1.65vw,19px)/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.025em;text-wrap:balance;color:#e1ead9;animation:operator-caption .45s cubic-bezier(.2,.7,.2,1) both}
+.operator-stage .journey-beats{gap:17px;margin:8px 0 20px}
+.operator-stage .journey-beats>span{position:relative;transition:color .4s;letter-spacing:.015em;font-size:9px}
+.operator-stage .journey-beats>span:not(:last-child):after{content:'›';position:absolute;right:-12px;color:#667255}
+.beat-provider-icon{width:13px;height:13px;object-fit:contain;border-radius:2px}
+.operator-stage .mini-app{max-width:680px;border-radius:12px;border-color:#9cae8b4d;background:#101611;box-shadow:0 0 0 5px #19201680,0 0 0 6px #6674511c,0 20px 48px #0009,0 1px 0 #efffce20 inset;animation:operator-app-in .65s cubic-bezier(.16,1,.3,1) both;transition:box-shadow .6s,border-color .6s}
+.operator-stage[data-phase=work] .mini-app{border-color:#9bbb6977;box-shadow:0 0 0 5px #19201680,0 0 0 6px #829d462b,0 20px 48px #0009,0 -5px 40px #bced4b06}
+.operator-stage .mini-app-chrome{height:37px;background:linear-gradient(#202820,#161d18);border-bottom:1px solid #9cac7e23;padding-inline:13px}
+.operator-stage .mini-app-chrome>strong{font-size:12px}.operator-stage .mini-project{font-size:9px;letter-spacing:.12em;border:1px solid #606d4636;border-radius:3px}
+.operator-stage .mini-app-chrome>.wrapp-icon{width:24px;height:24px}
+.operator-stage .harness-canvas{padding:14px 17px 9px}
+.operator-stage .harness-canvas h3{font-size:21px;margin-bottom:12px}
+.operator-stage .harness-app{background:#0c1010}.operator-stage .brand-navigation{background:#0b0f0d;border-color:#46523833}
+.operator-stage .harness-execution{padding:8px 0;margin:9px 0 12px}.operator-stage .harness-results article{min-height:87px}
+.operator-stage .harness-result-heading{margin-bottom:8px}.operator-stage .harness-result-heading>strong{font-size:14px}
+.operator-stage .harness-results article[data-ready=true]{animation:operator-result .55s cubic-bezier(.2,.8,.2,1) both}
+.operator-stage .mini-composer{border-color:#8b9f5855;background:linear-gradient(130deg,#1b241a,#131b16);box-shadow:0 1px 0 #d3e6aa09 inset}
+.operator-stage .prompt-send{border-radius:6px!important;box-shadow:0 2px 0 #778e3b,0 0 17px #c8f25018!important}
+.operator-stage .routing-plane{padding-top:165px;position:relative}
+.operator-field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.operator-stage .scene-gateway{top:32px;z-index:2}
+.operator-stage .gateway-surface{position:relative;width:120px;height:73px;border:1px solid #738257;border-top-color:#b7c593;border-radius:8px 8px 23px 23px;background:linear-gradient(145deg,#303b22 0%,#10180c 8%,#070d06 48%,#17200e 100%);box-shadow:0 4px 0 #202c15,0 5px 0 #81915966,0 12px 28px #0009,0 1px 0 #d7ecad2e inset;transform:perspective(600px) rotateX(12deg);transition:box-shadow .6s,border-color .6s}
+.gateway-edge{position:absolute;inset:4px;border:1px solid #97ac5830;border-radius:5px 5px 18px 18px;pointer-events:none}
+.operator-stage .gateway-surface>.notch-matrix{width:106px;height:65px;color:#a9d15b;filter:drop-shadow(0 0 3px #a9d15b33)}
+.operator-stage .gateway-active .gateway-surface{border-color:#b8d684;box-shadow:0 4px 0 #334224,0 5px 0 #a8c27988,0 12px 28px #0009,0 0 45px #bcee551c}
+.gateway-port{position:absolute;top:27px;width:3px;height:12px;background:#789840;border-radius:2px;box-shadow:0 0 7px #a9d15b44}.port-left{left:-2px}.port-right{right:-2px}
+.operator-stage .scene-gateway>strong{font-size:17px;letter-spacing:.03em;margin-top:11px;background:#0c120c}
+.gateway-state{font:8px/1.3 var(--mono);color:#809464;letter-spacing:.14em;margin-top:5px;background:#0c120c}
+.operator-stage .journey-resources{gap:15px;position:relative;z-index:1}
+.operator-stage .routing-resource,.operator-stage .connector-bank{background:linear-gradient(150deg,#1b2319ed,#0c130eed);border-color:#68785344;border-radius:9px;box-shadow:0 1px 0 #d4e6b60c inset,0 8px 20px #0003;transition:border-color .4s,box-shadow .4s,background .4s;position:relative}
+.operator-stage .resource-active{border-color:#b6d47399;background:linear-gradient(150deg,#26331a,#111b0f);box-shadow:0 0 0 1px #bfe37412,0 0 28px #bfee5d0b,0 8px 20px #0003}
+.operator-stage .routing-resource:before{content:'';position:absolute;top:-3px;left:calc(50% - 5px);width:10px;height:3px;background:#768b51;border-radius:2px;box-shadow:0 0 8px #bfe37422}
+.operator-stage .resource-active:before{background:#d2fb8b;box-shadow:0 0 12px #bfe37488}
+.operator-stage .resource-label{font-size:9px;letter-spacing:.1em;color:#9ba88c;min-height:0;margin-bottom:12px}
+.operator-stage .model-with-connectors .resource-compute{min-height:99px;padding:12px}
+.operator-stage .resource-detail{font-size:10px;text-align:center;color:#809271;margin-top:7px}
+.operator-stage .connector-bank{padding:11px}.operator-stage .connector-grid{gap:5px}
+.operator-stage .connector-tile{background:#121a12;border-color:#70864f25;border-radius:6px;padding:9px 3px;transition:background .3s,box-shadow .3s,transform .3s}
+.operator-stage .connector-tile[data-active=true]{background:#2a381b;border-color:#b0d36588;box-shadow:0 0 18px #b4e0560d;transform:translateY(-2px)}
+.operator-stage .connector-tile>img{background:#dfe6d7;border-radius:4px}.operator-stage .connector-tile>span{font-size:8px}
+.operator-stage .project-bank{padding:12px}.operator-stage .project-folder{padding:7px 5px}.operator-stage .project-files{gap:7px;margin-block:9px}
+.operator-stage .project-files>span[data-saved=false]{opacity:.32}.operator-stage .project-files>span[data-writing=true]{animation:operator-file .65s ease both}
+.operator-stage .local-service{padding:11px 7px;background:#111911;border-color:#71805325}
+.operator-stage .local-service[data-active=true]{background:#28361a;border-color:#b0d36588;box-shadow:0 0 20px #bfee5d0b}
+.operator-stage .connector-bank>small,.operator-stage .project-bank>small,.operator-stage .local-bank>small{font-size:9px;color:#718468}
+.scene-paused .operator-stage *{animation-play-state:paused!important}
+@keyframes operator-app-in{from{opacity:0;transform:perspective(1100px) rotateX(3deg) translateY(15px) scale(.985)}to{opacity:1;transform:perspective(1100px) rotateX(0) translateY(0) scale(1)}}
+@keyframes operator-caption{from{opacity:0;transform:translateY(6px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+@keyframes operator-result{from{opacity:0;transform:translateY(7px);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+@keyframes operator-file{from{opacity:.2;transform:translateX(9px);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+@media(max-width:700px){.operator-stage{padding:13px 10px 16px;border-radius:15px;margin-top:20px}.operator-stage .journey-narration{min-height:59px;gap:9px;justify-content:flex-start;padding-inline:5px}.operator-stage .journey-narration>span{padding:5px;font-size:8px}.operator-stage .journey-beats{gap:12px;row-gap:7px;margin:7px 0 17px}.operator-stage .journey-beats>span{font-size:8px}.operator-stage .journey-beats>span:not(:last-child):after{right:-8px}.operator-stage .journey-resources{gap:7px}.operator-stage .routing-resource,.operator-stage .project-bank,.operator-stage .connector-bank{padding:8px}.operator-stage .resource-label{font-size:8px;letter-spacing:0;line-height:1.4}.operator-stage .connector-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.operator-stage .journey-chapters button{flex-direction:column;gap:5px;padding-top:2px}.operator-stage .journey-chapters .wrapp-icon{width:28px;height:28px}.operator-stage .journey-chapters button>span{font-size:8px}.operator-stage .journey-chapters .chapter-current:before{top:-18px;width:25px}.operator-stage .journey-chapters button>small,.operator-stage .journey-chapters button>svg{display:none}.operator-stage .harness-canvas{padding:13px 12px 7px}.operator-stage .harness-canvas h3{font-size:20px}.operator-stage .harness-results article{min-height:108px}.operator-stage .project-files>span{font-size:8px;letter-spacing:-.04em}.operator-stage .local-service{padding:9px 3px}.operator-stage .resource-detail{font-size:9px}.operator-stage .mini-project{font-size:8px}.scene-intro>p{font-size:12px}.scene-headline{margin-top:26px}.scene-hero .format-line{font-size:18px}.scene-hero .runtime-line{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.operator-stage *{animation:none!important;transition:none!important}.operator-stage .mini-app{transform:none}}
+.operator-stage .harness-results article[data-ready=true]{animation-delay:.7s;animation-duration:.4s}
+.operator-stage .project-files>span[data-writing=true]{animation-delay:.7s;animation-fill-mode:both}

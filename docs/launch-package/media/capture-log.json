@@ -1,0 +1,28 @@
+[
+  {
+    "id": "brandbrain",
+    "url": "https://brandbrain.thelastprompt.ai/build",
+    "title": "brandbrain",
+    "text": "brandbrain\nHome\nAsk brandbrain\nDiscover brands\nNew brand\nS\nLoading…",
+    "errors": []
+  },
+  {
+    "id": "adforge",
+    "url": "https://adforge.thelastprompt.ai",
+    "title": "AdForge — Meta ads from your brand",
+    "text": "AdForge\nYour brand in → Meta ads out · forged on your own Claude\n\n01 · SOURCE\n\nSITE URL\nSAMPLE — SWAP IN YOURS\nForge concepts\nUse a brand instead\nSee a sample — Allbirds\nSwitchboard isn't installed — get it here to fire the forge.\nANGLE STEER\n· OPTIONAL\nAdForge ships only the interface. The brand it works from is lent by you, and every word of copy and every rendered creative runs on your own Claude and your own connectors, brokered by Switchboard.",
+    "errors": []
+  },
+  {
+    "id": "adpulse",
+    "url": "https://adpulse.thelastprompt.ai",
+    "error": "locator.scrollIntoViewIfNeeded: Timeout 29962.15400000001ms exceeded.\nCall log:\n\u001b[2m  - attempting scroll into view action\u001b[22m\n\u001b[2m    2 × waiting for element to be stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying scroll into view action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying scroll into view action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    52 × waiting for element to be stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying scroll into view action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+  },
+  {
+    "id": "crest",
+    "url": "http://localhost:5188/crest.html",
+    "title": "Crest — a brief in, a logo out",
+    "text": "CR\nEST\nA brief in. A logo out.\n\nDescribe your brand in a line — your own Claude drafts a brand foundation and three directions, you pick a look, and Crest renders four marks (wireframe + a real image) you can keep, tweak, or regenerate. Runs on your Claude + Higgsfield via Switchboard — the operator holds no key and never sees your data.\n\n1 · Install Switchboard (button, top-right)\n2 · One line in — the pipeline runs itself\n3 · Pick a card, steer anywhere, keep what you like\nSAMPLE BRIEF (CONNECT TO MAKE YOUR OWN)\nNorthwind — a small-batch coffee roaster for early-morning commuters who want a calmer, more deliberate start to the day. Warm, honest, unfussy.",
+    "errors": []
+  }
+]

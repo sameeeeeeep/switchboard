@@ -1,0 +1,24 @@
+AdPulse
+your Meta ads post-mortem in 30 seconds — read by your own Claude
+SIGNAL DESK · META ADS DIAGNOSTICS · NOTHING UPLOADED — RUNS ON YOUR MODEL
+
+01
+FEED — YOUR ACCOUNT
+
+⚡ Pull from Ads Manager
+reads your last 30 days through your own Meta connector — nothing leaves this tab
+or paste a Meta CSV export
+browse .csv
+reload the sample account
+…or drag a .csv straight onto this panel
+⚠ Cannot set properties of null (setting 'disabled')
+
+03
+STEER — WHAT SHOULD THE DIAGNOSIS CHASE?
+
+Find wasted spend
+Which creatives are fatigued?
+What do I scale tomorrow?
+Why did ROAS drop?
+▶ analyse
+AdPulse ships only the interface. Your CSV parses in this tab; the diagnosis runs on your own Claude through Switchboard — the operator never sees your numbers and pays for nothing.
