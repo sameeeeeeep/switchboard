@@ -1,0 +1,11 @@
+CR
+EST
+A brief in. A logo out.
+
+Describe your brand in a line — your own Claude drafts a brand foundation and three directions, you pick a look, and Crest renders four marks (wireframe + a real image) you can keep, tweak, or regenerate. Runs on your Claude + Higgsfield via Switchboard — the operator holds no key and never sees your data.
+
+1 · Install Switchboard (button, top-right)
+2 · One line in — the pipeline runs itself
+3 · Pick a card, steer anywhere, keep what you like
+SAMPLE BRIEF (CONNECT TO MAKE YOUR OWN)
+Northwind — a small-batch coffee roaster for early-morning commuters who want a calmer, more deliberate start to the day. Warm, honest, unfussy.

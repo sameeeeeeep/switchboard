@@ -1,0 +1,47 @@
+'use client';
+import { useState } from 'react';
+import { ArrowUpRight, ArrowRight, Check, ShieldCheck, Cpu, FolderOpen, Plus, Laptop, Globe, Database, FileText, ArrowDown } from 'lucide-react';
+import HeroRouting from '../route-scene';
+import {Questions,OpenSource} from './questions';
+import {SharedBrand,MacSetup,TrustMarks,SetupReuse} from './product-scenes';
+import HarnessRun from './harness-run';
+import SwitchboardBoard from './switchboard-board';
+import './v2.css';
+import './refinements.css';
+import './product-proof.css';
+const releases='https://github.com/sameeeeeeep/switchboard/releases/latest';
+const apps=[
+ {id:'brandbrain',name:'Brandbrain',verb:'Build a brand',role:'Give your idea a brand.',detail:'Start with a brief. Work through the market, audience and positioning in a workspace built for the job.',image:'/product-captures/brandbrain.png',icon:'/wrapps/brandbrain.png',href:'https://brandbrain.thelastprompt.ai/build',proof:'Live app · brand brief entry'},
+ {id:'adforge',name:'AdForge',verb:'Make the ads',role:'Turn your brand into ads.',detail:'Create campaign concepts from a website or a brand you share through Switchboard. Keep the voice and product context.',image:'/product-captures/adforge.png',icon:'/wrapps/adforge.png',href:'https://adforge.thelastprompt.ai',proof:'Live app · built-in Allbirds sample'},
+ {id:'crest',name:'Crest',verb:'Find its identity',role:'Explore your brand’s logo.',detail:'Brief the brand, explore directions and refine a logo with the AI and image tools connected to your setup.',image:'/product-captures/crest.png',icon:'/wrapps/crest.png',href:releases,proof:'Bundled app · entry screen'},
+];
+function Mark(){return <svg viewBox="0 0 32 32" aria-hidden="true">{Array.from({length:35},(_,i)=><circle key={i} cx={4+i%7*4} cy={8+Math.floor(i/7)*4} r="1.3" fill="currentColor" opacity={.3+(i%5)*.17}/>)}</svg>;}
+export default function FreehandLanding(){
+ const [appIndex,setAppIndex]=useState(0);const app=apps[appIndex];
+ return <div className="v2">
+  <a className="v2-skip" href="#v2-main">Skip to content</a>
+  <header className="v2-header"><a href="#" className="v2-logo"><Mark/>SWITCHBOARD</a><nav><a href="#v2-apps">The apps</a><a href="#v2-work">Work with us</a><a href="/workshops/">Workshops</a><a href="/switchboard/blog/">Blog</a><a href="/developers">For developers</a><a href={releases} className="v2-nav-download">Get Switchboard <ArrowUpRight size={14}/></a></nav></header>
+  <main id="v2-main">
+   <section className="v2-hero">
+    <div className="v2-intro"><span className="v2-kicker"><i/> YOUR AI, CONNECTED.</span><h1>“Hello operator,<br/>connect me to<br/><em>superintelligence.”</em></h1></div><section className="v2-download-card" aria-label="Download Switchboard for Mac"><div className="v2-download-copy"><span className="v2-kicker">YOUR AI SETUP. READY FOR MORE.</span><p>Switchboard routes your AI, tools and context into lightweight apps and harnesses. <strong>No additional AI subscription needed.</strong></p></div><div className="v2-download-action"><a href={releases} className="v2-primary"><svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true"><path d="M17.05 12.54c.03 3.11 2.73 4.15 2.76 4.16-.02.07-.43 1.48-1.43 2.94-.87 1.26-1.77 2.52-3.19 2.55-1.39.03-1.84-.83-3.43-.83-1.59 0-2.09.8-3.41.86-1.37.05-2.42-1.37-3.29-2.63-1.79-2.58-3.15-7.3-1.31-10.48.91-1.58 2.55-2.58 4.33-2.6 1.35-.03 2.63.91 3.46.91.83 0 2.39-1.13 4.03-.97.68.03 2.58.27 3.8 2.05-.1.06-2.27 1.32-2.25 4.04ZM14.43 4.72c.73-.88 1.22-2.1 1.09-3.32-1.05.04-2.32.7-3.07 1.58-.67.77-1.25 2-1.09 3.18 1.17.09 2.35-.59 3.07-1.44Z"/></svg>Download Switchboard<ArrowUpRight size={16}/></a><small>FREE FOR INDIVIDUALS · MACOS 13+ · APPLE SILICON</small></div></section>
+    <div className="v2-original-diagram"><HeroRouting releases={releases} diagramOnly /></div>
+   </section>
+   <section className="v2-board" id="v2-board"><div className="v2-board-head"><div><span className="v2-kicker"><i/> THE BOARD</span><h2>Your AI. Your tools. Your context.<br/><em>Available to the apps you allow.</em></h2></div><p>Switchboard is the connection between them. Every app calls in on the top rail, waits at the consent gate, and is patched through to the setup you already have. Illustrated routing, not a live run.</p></div><SwitchboardBoard/></section>
+   <section className="v2-thesis"><div><span className="v2-kicker">THE CONNECTION IS THE DIFFERENCE</span><h2>You already have the subscription.<br/><em>Use it across apps.</em></h2><p>Use the AI account you already have across compatible Wrapps. Switchboard is free for individuals; your provider’s usage limits still apply.</p></div><SetupReuse/></section>
+   <section id="v2-apps" className="v2-showcase"><div className="v2-showcase-head"><div><span className="v2-kicker">WRAPPS FOR THE WORK YOU DO</span><h2 className="showcase-title">What you can run<br/><em>with Switchboard.</em></h2></div><span className="v2-showcase-index">0{appIndex+1} <span>/ 03</span></span></div><div className="v2-showcase-body"><div className="v2-app-story"><img src={app.icon} alt=""/><h3>{app.role}</h3><p>{app.detail}</p><a href={app.href}>Open {app.name} <ArrowUpRight size={16}/></a><div className="v2-showcase-choices">{apps.map((item,i)=><button key={item.id} onClick={()=>setAppIndex(i)} aria-label={'Show '+item.name} aria-pressed={i===appIndex}>{String(i+1).padStart(2,'0')}<span>{item.name}</span><ArrowRight size={13}/></button>)}</div></div><figure><HarnessRun key={app.id} id={app.id} name={app.name} icon={app.icon}/><figcaption>Illustrated run, same steps as the real {app.name} run · timing dramatised · sample Verra project</figcaption></figure></div><a className="v2-community-count" href="https://thelastprompt.ai/apps/"><span className="community-numbers"><span><strong>93</strong> OTHER WRAPPS</span><span><strong>12</strong> DEVELOPERS</span></span><span>Explore the directory <ArrowUpRight size={16}/></span></a></section>
+   <section id="v2-build" className="v2-builder"><span className="v2-kicker">FOR THE PEOPLE BUILDING</span><h2>Build the app.<br/><em>Don’t worry about inference.</em></h2><div><p>An easier way to distribute the small software you build. Keep it private, or bring it to the public Wrapp directory.</p><a href="/developers" className="v2-primary">Build. Distribute. Earn. <ArrowUpRight size={16}/></a></div></section>
+   <section className="v2-mac-section"><div><span className="v2-kicker">NO EXTRA MACHINE. NO SERVER TO MANAGE.</span><h2>Your Mac<br/><em>is all you need.</em></h2><p>Run lightweight harnesses on the Mac you already use. Install Switchboard, connect your AI and open a Wrapp.</p></div><MacSetup/></section>
+   <section id="brand-assets" className="v2-context brand-continuity"><div><span className="v2-kicker">YOUR BRAND KIT GOES WITH YOU.</span><h2>Your colours.<br/>Your assets.<br/><em>In every app.</em></h2><p>Give the next app access to your brand kit. Your logo, colours and product images are ready to use.</p></div><SharedBrand/></section><TrustMarks/>
+
+   <section id="v2-work" className="v2-work"><div className="v2-work-head"><span className="v2-kicker"><i/> WORK WITH THE LAB</span><h2>Switchboard is free.<br/><em>Getting your work onto it is what we do.</em></h2><p>The app costs nothing and runs on the subscription you already have. The lab makes its living four ways, all of them in the room with you.</p></div><div className="v2-work-grid">
+    <a href="/workshops/"><span>01</span><h3>Workshops</h3><p>AI Guru: one guide, your own laptop, your own work. Free, sponsored, in-office and paid batches. One of them certifies you.</p><b>See the calendar →</b></a>
+    <a href="/workshops/#book"><span>02</span><h3>Implementation</h3><p>We set up the AI-native workspace for your brand, agency or company: Claude Code or Codex, Switchboard, connectors, a context vault, and the first apps running on it. We stay until it runs on every machine.</p><b>Ask about a rollout →</b></a>
+    <a href="/workshops/#book"><span>03</span><h3>A custom harness</h3><p>Your weekly job as a harness that runs on your own subscription: tools, context, instructions, gates. Built with your team, handed over, yours.</p><b>Describe the job →</b></a>
+    <a href="/workshops/#book"><span>04</span><h3>Training inside your company</h3><p>The ladder, prompted to promptless, taught to your people on your project. Any level, any size, at your office.</p><b>Bring it in-office →</b></a>
+   </div></section>
+   <Questions/><OpenSource/>
+   <section className="v2-get"><Mark/><h2>Let’s connect.</h2><p>Install Switchboard on your Mac, connect your AI and open an app.</p><a href={releases} className="v2-primary">Get Switchboard <ArrowUpRight size={18}/></a><small>Free for individual users · Open source · Apple Silicon</small><a className="v2-extension" href="https://chromewebstore.google.com/detail/injmjolmnekmahlnackakiamjepegagb">Add the Chrome extension for web apps <ArrowUpRight size={12}/></a></section>
+  </main>
+  <footer className="v2-footer"><a className="v2-logo" href="#"><Mark/>SWITCHBOARD</a><nav aria-label="Footer"><a href="#v2-faq">FAQ</a><a href="/workshops/">Workshops</a><a href="/switchboard/blog/">Blog</a><a href="/developers">Developers</a><a href="https://github.com/sameeeeeeep/switchboard/releases/latest">Releases</a></nav><a href="https://github.com/sameeeeeeep/switchboard">GitHub <ArrowUpRight size={12}/></a></footer>
+ </div>;
+}
