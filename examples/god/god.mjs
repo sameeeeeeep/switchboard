@@ -42,7 +42,12 @@ import { runOnboard } from "./lib/concierge.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dirname, "../..");
 const DAEMON = resolve(REPO, "packages/sidekick/dist/index.js");
-const STT_ADAPTER = resolve(__dirname, "../flow/whisper-stt.mjs"); // reuse Flow's on-device STT
+// Reuse Flow's on-device STT. In the repo it lives at examples/flow/; the app bundle copies it BESIDE
+// god.mjs (build.sh → Resources/god/whisper-stt.mjs), where "../flow/" does not exist — so the bundled
+// God registered a dead RELAY_STT_CMD, the daemon reported "no local STT", and every ⌃⌃ voice command
+// was dropped in favour of the default glance. Prefer the sibling copy, fall back to the repo path.
+const STT_ADAPTER = [resolve(__dirname, "whisper-stt.mjs"), resolve(__dirname, "../flow/whisper-stt.mjs")]
+  .find((p) => existsSync(p)) || resolve(__dirname, "../flow/whisper-stt.mjs");
 
 const APP_ID = "ai.thelastprompt.god";
 // GOD_ATTACH=1 → talk to the ALREADY-RUNNING menu-bar daemon (~/.relay, default ports) instead of

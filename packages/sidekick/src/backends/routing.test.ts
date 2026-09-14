@@ -334,7 +334,7 @@ test("ending a conversation clears the completion backend's resume token", async
 test("mixed providers: an implicit model never leaves the app's grant; explicit requests never widen it", async () => {
   const dir = mkdtempSync(join(tmpdir(), "sb-mixed-"));
   const backends = new BackendRegistry();
-  const claude: ModelBackend = { id: "claude-code", capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => ["claude-a", "claude-b"], run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) };
+  const claude: ModelBackend = { id: "claude-code", capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => ["claude-a", "claude-b", "sonnet"], run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) };
   const codex: ModelBackend = { id: "codex", capabilities: { vision: true, agentic: true }, healthy: async () => true, listModels: async () => ["codex-a"], run: async (params) => ({ text: params.model!, usage: { inputTokens: 1, outputTokens: 1 } }) };
   backends.register(claude); backends.register(codex);
   await backends.refreshModels();
@@ -359,6 +359,10 @@ test("mixed providers: an implicit model never leaves the app's grant; explicit 
     assert.equal((await broker.complete(both, { prompt: "continue", sessionId: "pinned" })).model, "claude-a");
     // 4 · An EXPLICIT request for an ungranted provider is still refused — the fix chooses within a grant, it never widens one.
     await assert.rejects(broker.complete(claudeOnly, { prompt: "x", model: "codex-a", sessionId: "s3" }), /grant|scope|not granted/i);
+    // 6 · An explicit LEGACY ALIAS ("sonnet") from a Claude-only app is never swapped for an ungranted global default
+    //     (God asks for "sonnet" on every ⌃⌃; with defaultModel=codex-a this used to die as "model codex-a not granted").
+    grants.upsert(claudeOnly, { models: ["claude-a", "claude-b", "sonnet"], tools: [], budgets: { maxCallsPerMin: 100, maxTokensPerDay: 100000 } });
+    assert.equal((await broker.complete(claudeOnly, { prompt: "alias", model: "sonnet", sessionId: "s4" })).model, "sonnet");
     // 5 · Discovery agrees with routing: the advertised default for the Claude-only app is never the Codex model.
     const caps = await broker.capabilities(claudeOnly);
     assert.notEqual(caps.defaultModel, "codex-a");
