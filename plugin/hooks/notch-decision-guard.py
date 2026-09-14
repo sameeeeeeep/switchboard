@@ -5,6 +5,8 @@
 # adhd-pm rule "decisions go to the notch" — so it doesn't depend on remembering. Conservative: only
 # fires on clear decision phrasing; passes silently otherwise. Never blocks twice (stop_hook_active).
 import sys, os, json, re, time, glob
+from notify import agent_name, atomic_json
+from pathlib import Path
 
 def out(obj): print(json.dumps(obj)); sys.exit(0)
 
@@ -21,7 +23,7 @@ if os.system("pgrep -f 'MacOS/Relay' >/dev/null 2>&1") != 0:
     sys.exit(0)
 
 # was a notch card raised recently (this turn)? guide-run.json (consumed) / result / history mtime < 6 min
-relay = os.path.expanduser("~/.relay")
+relay = os.environ.get("RELAY_DIR", os.path.expanduser("~/.relay"))
 now = time.time()
 def fresh(p, win=360):
     try: return (now - os.path.getmtime(p)) < win
@@ -41,27 +43,28 @@ if pip_active():
     try:
         with open(relay + "/guide-notify.json", "w") as f:
             json.dump({"text": "Turn done \u2014 your move", "kind": "decided",
-                       "source": "Claude Code", "project": "", "ttl": 4}, f)
+                       "source": agent_name(payload), "project": os.path.basename(payload.get("cwd", "")), "ttl": 4}, f)
     except Exception:
         pass
     sys.exit(0)
 
 # read the last assistant message text from the transcript
 tp = payload.get("transcript_path", "")
-text = ""
+text = payload.get("last_assistant_message") or ""
 try:
-    with open(os.path.expanduser(tp)) as f:
-        lines = f.readlines()
-    for ln in reversed(lines):
-        try: o = json.loads(ln)
-        except Exception: continue
-        if o.get("type") == "assistant" or o.get("message", {}).get("role") == "assistant":
-            c = o.get("message", {}).get("content", o.get("content"))
-            if isinstance(c, list):
-                text = " ".join(seg.get("text","") for seg in c if isinstance(seg, dict))
-            elif isinstance(c, str):
-                text = c
-            if text.strip(): break
+    if not text:
+        with open(os.path.expanduser(tp)) as f:
+            lines = f.readlines()
+        for ln in reversed(lines):
+            try: o = json.loads(ln)
+            except Exception: continue
+            if o.get("type") == "assistant" or o.get("message", {}).get("role") == "assistant":
+                c = o.get("message", {}).get("content", o.get("content"))
+                if isinstance(c, list):
+                    text = " ".join(seg.get("text","") for seg in c if isinstance(seg, dict))
+                elif isinstance(c, str):
+                    text = c
+                if text.strip(): break
 except Exception:
     sys.exit(0)
 
@@ -80,7 +83,7 @@ if any(re.search(p, text, re.I | re.M) for p in cues):
         "decision": "block",
         "reason": ("A decision/approval for the user is in your last message, the Switchboard app is up, "
                    "and no notch card was raised this turn. Per the adhd-pm skill (§0 pre-handback gate), "
-                   "route it through the notch: use the `switchboard` skill to write ~/.relay/guide-run.json "
+                   "route it through the notch: use the `switchboard` skill and switchboard_present "
                    "with options + a spoken `say` + ⭐recommended, then read the pick back. Chat is only the "
                    "written record. If your message truly has no decision, add a brief non-decision note and stop again.")
     })

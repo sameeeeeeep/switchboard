@@ -1,10 +1,26 @@
 {
   "name": "switchboard",
-  "version": "0.1.1",
-  "description": "The Switchboard operator loop for Claude Code: a self-contained task-board MCP connector plus the adhd-pm, spec, switchboard, wrapp, and task skills — one install so any project folder gets the whole workflow.",
+  "version": "0.2.0",
+  "description": "Shared Switchboard tools and nine operator skills for Claude Code and Codex.",
   "author": {
     "name": "sameeeeeeep",
     "email": "sameep@stayoften.com",
     "url": "https://github.com/sameeeeeeep/switchboard"
+  },
+  "hooks": {
+    "hooks": {
+      "Notification": [
+        {
+          "matcher": "idle_prompt",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/notify.py\"",
+              "timeout": 5
+            }
+          ]
+        }
+      ]
+    }
   }
 }

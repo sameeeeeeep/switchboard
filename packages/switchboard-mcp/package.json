@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node switchboard-mcp.mjs mcp",
-    "test": "node switchboard-mcp.test.mjs"
+    "test": "node switchboard-mcp.test.mjs && node --test presence.test.mjs",
+    "test:plugin": "node --test plugin.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

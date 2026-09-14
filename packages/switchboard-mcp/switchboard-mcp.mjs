@@ -25,6 +25,8 @@ import { actionTable, toolName, MANIFESTS } from "./registry.mjs";
 import { withDaemon, daemonSbForOrigin, daemonAvailable, readPairingToken, WS_URL } from "./daemon-client.mjs";
 import { mockSb } from "./mock-sb.mjs";
 import { scaffoldWrapp } from "./scaffold.mjs";
+import { registerPresenceTools, relayDir, atomicJSON, appRunning } from "./presence.mjs";
+let clientSource = "Switchboard agent";
 // The task board is the one thing the connector touches by FILE, not daemon: tasks live as plain
 // `tasks.md` lines in the project's vault (the same dialect the OS board + Obsidian read). The pure
 // transforms are shared with the Bank connector so the board can never disagree with itself.
@@ -42,12 +44,13 @@ const fail = (message, extra) => ({ isError: true, content: [{ type: "text", tex
 // the Switchboard app shows as a brief toast at the notch — so an action taken in a Claude thread
 // ("task captured", "spec added") is FELT on-screen, not silently buried in chat. Never throws: no
 // ~/.relay dir (not a Switchboard user) → silent no-op; the app also suppresses it during an active run.
-function notchNotify(text, { kind = "captured", source = "Claude Code", project } = {}) {
+function notchNotify(text, { kind = "captured", source = clientSource, project } = {}) {
   try {
-    const dir = join(homedir(), ".relay");
-    if (!existsSync(dir)) return;
-    writeFileSync(join(dir, "guide-notify.json"), JSON.stringify({ text, kind, source, project, ttl: 2.6 }));
-  } catch { /* non-fatal — a toast is never worth failing the tool over */ }
+    const dir = relayDir();
+    if (!existsSync(dir) || !appRunning()) return false;
+    atomicJSON(join(dir, "guide-notify.json"), { text, kind, source, project, ttl: 2.6 });
+    return true;
+  } catch { return false; /* a toast is never worth failing the tool over */ }
 }
 
 // ---- the task board (file-based, not daemon) ----------------------------------------------------
@@ -132,7 +135,7 @@ function registerTaskTools(server) {
       },
     },
     async ({ kind, text, project, source }) => {
-      const fired = notchNotify(text, { kind, project, source: source || "Claude Code · adhd-pm" });
+      const fired = notchNotify(text, { kind, project, source: source || clientSource });
       return ok({ ok: true, fired, kind, text });
     },
   );
@@ -165,7 +168,7 @@ function registerTaskTools(server) {
         if (r.merges.length) bits.push(`${r.merges.length} merged`);
         if (r.regrouped) bits.push(`${r.regrouped} regrouped`);
         if (r.parked.length) bits.push(`${r.parked.length} parked`);
-        notchNotify(`Board tidied — ${bits.join(", ")}`, { kind: "spec", source: "Claude Code · adhd-pm" });
+        notchNotify(`Board tidied — ${bits.join(", ")}`, { kind: "spec", source: clientSource });
       }
       return ok({
         ok: true, changed: r.changed, dryRun,
@@ -248,7 +251,7 @@ function registerTaskTools(server) {
     {
       title: "Pick up the next task to work on",
       description:
-        "Claim the next actionable task the user has RELEASED for work — the top unblocked `todo` card, optionally scoped to a project or epic. This is how a Claude session PICKS UP work from the board: it returns the card's full spec (title, detail, subtasks) and — unless you pass claim:false — moves it to `doing` so it won't be picked up twice. When you finish, call switchboard_move_task(match:<id>, column:'done'). NEVER pulls from `backlog` (parked items the user hasn't promoted), and skips blocked / doing / review cards — so the user's Backlog→Todo drag is the deliberate 'agent, go' signal.",
+        "Claim the next actionable task the user has RELEASED for work — the top unblocked `todo` card, optionally scoped to a project or epic. This is how an agent session PICKS UP work from the board: it returns the card's full spec (title, detail, subtasks) and — unless you pass claim:false — moves it to `doing` so it won't be picked up twice. When you finish, call switchboard_move_task(match:<id>, column:'done'). NEVER pulls from `backlog` (parked items the user hasn't promoted), and skips blocked / doing / review cards — so the user's Backlog→Todo drag is the deliberate 'agent, go' signal.",
       inputSchema: {
         project: z.string().optional().describe("only consider tasks for this project (matches #proj tag or list, slug-tolerant)"),
         epic: z.string().optional().describe("only consider tasks in this epic/bundle"),
@@ -295,7 +298,7 @@ function shapeFor(inputDoc) {
 }
 
 // ---- sb mode: mock | daemon | auto (default). NEVER silently fall back to mock once we've decided
-// daemon — a mock result dressed as the user's Claude is exactly the dishonest failure the storage-
+// daemon — a mock result dressed as the user's model is exactly the dishonest failure the storage-
 // key bug taught us to make loud. auto probes ONCE at startup and says which it chose. ----
 async function resolveMode() {
   const want = (process.env.SWITCHBOARD_SB || "auto").toLowerCase();
@@ -336,6 +339,11 @@ async function runAction(entry, args, mode) {
 async function main() {
   const mode = await resolveMode();
   const server = new McpServer({ name: "switchboard", version: "0.1.0" });
+  server.server.oninitialized = () => {
+    const name = server.server.getClientVersion()?.name || "Switchboard agent";
+    clientSource = /codex/i.test(name) ? "Codex" : /claude/i.test(name) ? "Claude Code" : name;
+  };
+  registerPresenceTools(server);
   const table = actionTable();
 
   for (const [name, entry] of table) {
@@ -345,10 +353,10 @@ async function main() {
       {
         title: `${manifest.title || manifest.name} — ${action.name}`,
         description:
-          `${action.summary}\n\nRuns the “${manifest.name}” wrapp on the user's own Claude via Switchboard (origin ${manifest.origin}). ` +
+          `${action.summary}\n\nRuns the “${manifest.name}” wrapp on the user's granted model via Switchboard (origin ${manifest.origin}). ` +
           `Output: ${JSON.stringify(action.output)}. ` +
           (mode === "mock"
-            ? "NOTE: the Switchboard daemon isn't reachable, so results are a structurally-valid MOCK, not the user's Claude."
+            ? "NOTE: the Switchboard daemon isn't reachable, so results are a structurally-valid MOCK, not the user's model."
             : "Requires the wrapp to be authorized in Switchboard first (a one-time human Connect); otherwise this returns a clear error."),
         inputSchema: shapeFor(action.input),
       },

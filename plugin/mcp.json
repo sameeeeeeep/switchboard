@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "switchboard": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "${PLUGIN_ROOT}/connector/launch.sh"
+      ],
+      "env": {
+        "SWITCHBOARD_SB": "daemon"
+      },
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  },
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+}

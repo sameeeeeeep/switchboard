@@ -3,6 +3,10 @@ name: wrapp
 description: Generate a new Switchboard wrapp from a one-line idea, CARVE a feature out of an existing app into its own wrapp, or COMPOSE elements from several apps into one. Copies the house template (plumbing, SDK contracts, and design system already correct) so generation only writes the app-specific pipeline. Use for "make a wrapp that…", "new wrapp", "carve X into a wrapp", "add an app to the store".
 ---
 
+Use the same Switchboard MCP tools in Claude Code and Codex; discover their actual host prefix.
+Read [host bindings](../switchboard/references/hosts.md) when a workflow needs host tools,
+repo helpers, or lifecycle hooks. Label presence with the current agent and task id.
+
 # One-line idea → shipped wrapp
 
 A wrapp = one static page + one esbuild bundle in `examples/apps` (`<id>.html` + `src/<id>.js`),
@@ -24,8 +28,8 @@ Only ask the user when the idea is genuinely ambiguous. State the spec in one sh
 
 **2 · Copy, then edit.**
 ```bash
-cp .claude/skills/wrapp/template.html examples/apps/<id>.html
-cp .claude/skills/wrapp/template.js  examples/apps/src/<id>.js
+cp <this-skill-directory>/template.html examples/apps/<id>.html
+cp <this-skill-directory>/template.js  examples/apps/src/<id>.js
 ```
 Edit ONLY:
 - html: `<title>`, word mark, hero `h1`/`p`, `./dist/<id>.js` script src, app CSS **at the end** of the style block
