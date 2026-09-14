@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState,useSyncExternalStore} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState,useSyncExternalStore} from 'react';
 
 const words=['apps','harnesses','wrappers','Wrapps'];
 function subscribeToMotion(change:()=>void){
@@ -24,9 +24,23 @@ export function useWordCycle(){
 }
 
 export function CyclingWord({cycle,punctuation=''}: {cycle:ReturnType<typeof useWordCycle>;punctuation?:string}){
- return <button type="button" className="v2-cycling-word" onClick={cycle.toggle} disabled={!cycle.allowed}
+ const button=useRef<HTMLButtonElement>(null);
+ const text=useRef<HTMLSpanElement>(null);
+ useLayoutEffect(()=>{
+  const element=text.current;
+  if(!element)return;
+  const fit=()=>{
+   if(button.current)button.current.style.width=`${element.getBoundingClientRect().width}px`;
+  };
+  fit();
+  // Re-measure after a font loads or the responsive heading size changes.
+  const observer=new ResizeObserver(fit);
+  observer.observe(element);
+  return ()=>observer.disconnect();
+ },[cycle.index,punctuation]);
+ return <button ref={button} type="button" className="v2-cycling-word" onClick={cycle.toggle} disabled={!cycle.allowed}
   aria-label={`${words[cycle.index]}. ${cycle.paused?'Resume':'Pause'} word cycling`}
   title={cycle.paused?'Resume word cycling':'Pause word cycling'}>
-  {words.map((word,i)=><span key={word} aria-hidden="true" data-active={cycle.index===i}>{word}{punctuation}</span>)}
+  <span ref={text} aria-hidden="true"><span key={words[cycle.index]} className="v2-cycling-word-text">{words[cycle.index]}{punctuation}</span></span>
  </button>;
 }

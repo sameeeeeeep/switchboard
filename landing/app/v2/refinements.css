@@ -9,9 +9,18 @@
 @media(max-width:570px){.v2-showcase-body{display:flex;gap:24px}.v2-app-story h3{font-size:23px}.v2-app-story{align-items:center}.v2 .showcase-title{font-size:32px}.product-project{gap:10px}.product-project>span:last-child{font-size:8px}.product-scene{padding:18px 14px}.product-scene h3{font-size:26px}.brand-directions{grid-template-columns:1fr 1fr}.brand-directions strong{font-size:14px}.brand-directions small{font-size:7px}.brand-directions p{font-size:11px}.product-prompt{font-size:11px;padding:12px}.ad-concept strong{font-size:16px}.ad-concepts{gap:6px}.serum-bottle{width:30px;height:67px}.ad-brand{font-size:17px}.logo-direction strong{font-size:28px}.logo-2 strong{font-size:15px}.logo-direction span{font-size:7px}.logo-direction{min-height:180px;gap:25px}.v2-community-count{padding:25px 0;gap:24px}.community-numbers{width:100%;justify-content:space-between}.community-numbers>span{flex-direction:column;align-items:flex-start;gap:8px}.community-numbers strong{font-size:57px}.brand-destinations{gap:8px}.brand-output{padding:12px 8px;min-height:175px}.brand-output strong{font-size:21px}.output-crest strong{font-size:33px}.brand-source{flex-wrap:wrap;gap:13px}.brand-source>p{margin-left:0!important;flex-basis:100%}.v2-trust-marks{margin:45px 18px;padding:28px 0}.v2-trust-badges{grid-template-columns:1fr 1fr;gap:24px 12px}.v2-trust-badges>span,.v2-trust-badges>a{gap:8px}.v2-context.brand-continuity{padding:0 18px}.mac-ready-main>strong{font-size:21px}}
 @media(prefers-reduced-motion:reduce){.mac-ready-screen{transform:none}}
 
-/* Reserve the widest term so the heading stays still while the words change. */
-.v2 .v2-cycling-word{display:inline-grid;vertical-align:baseline;text-align:left;padding:0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;line-height:inherit;border-radius:2px}
-.v2-cycling-word>span{grid-area:1/1;opacity:0;transition:opacity .22s ease;white-space:nowrap}
-.v2-cycling-word>span[data-active=true]{opacity:1}
+/* Fit the active word; animate the width so adjacent text follows it. */
+.v2 .v2-cycling-word{display:inline-block;vertical-align:baseline;text-align:left;padding:0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;line-height:inherit;border-radius:2px;transition:width .28s ease}
+.v2-cycling-word>span{display:inline-block;white-space:nowrap}
+.v2-cycling-word-text{display:inline-block;animation:v2-word-in .36s ease both}
+@keyframes v2-word-in{0%,45%{opacity:0;transform:translateY(.08em)}100%{opacity:1;transform:none}}
 .v2-cycling-word:focus-visible{outline:2px solid currentColor;outline-offset:4px}
 .v2-cycling-word:disabled{cursor:inherit}
+.v2-setup-friction{margin-top:24px;display:grid;gap:18px}
+.v2-setup-friction p{margin:0;padding-left:16px;border-left:1px solid #82916555;font-size:15px;line-height:1.65;color:#a4b096}
+.v2-setup-friction strong{display:block;margin-bottom:5px;font-weight:500;color:#d9e5cb}
+@media(max-width:570px){.v2-setup-friction p{font-size:14px}}
+/* Keep the changing phrase together, with a consistent line break on phones. */
+.v2-board-allow{white-space:nowrap}
+@media(max-width:800px){.v2-board-allow{display:block}}
+@media(max-width:360px){.v2-board-head h2 em{font-size:26px}}
