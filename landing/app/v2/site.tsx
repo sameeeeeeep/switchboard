@@ -3,9 +3,10 @@
 import { ArrowUpRight } from 'lucide-react';
 import HeroRouting from '../route-scene';
 import {Questions,OpenSource} from './questions';
-import {SharedBrand,TrustMarks,SetupReuse} from './product-scenes';
+import {SharedBrand,TrustMarks} from './product-scenes';
 import SwitchboardBoard from './switchboard-board';
 import ExampleShowcase from './example-showcase';
+import SetupComparison from './setup-comparison';
 import {CyclingWord,useWordCycle} from './cycling-word';
 import './v2.css';
 import './refinements.css';
@@ -24,7 +25,7 @@ export default function FreehandLanding(){
     <div className="v2-original-diagram"><HeroRouting releases={releases} diagramOnly /></div>
    </section>
    <section className="v2-board" id="v2-board"><div className="v2-board-head"><div><span className="v2-kicker"><i/> THE BOARD</span><h2>Your AI. Your tools. Your context.<br/><em>Available to the <span className="v2-board-allow"><CyclingWord cycle={wordCycle}/> you allow.</span></em></h2></div><p>Switchboard is the connection between them. Every app calls in on the top rail, waits at the consent gate, and is patched through to the setup you already have. Illustrated routing, not a live run.</p></div><SwitchboardBoard/></section>
-   <section className="v2-thesis"><div><span className="v2-kicker">THE CONNECTION IS THE DIFFERENCE</span><h2>Set up once.<br/><em>Use it across<br/><CyclingWord cycle={wordCycle} punctuation="."/></em></h2><div className="v2-setup-friction"><p><strong>Open source can mean setting up all over again.</strong> Another install. More API keys, dependencies and connectors to configure. Doing that for every tool adds up.</p><p><strong>Paid apps often mean paying all over again.</strong> A new account. A new subscription. The same context to upload and explain, again.</p></div><p>With Switchboard, connect your AI, tools and context once. Give each compatible harness access to what it needs, and get straight to the work.</p></div><SetupReuse/></section>
+   <section className="v2-thesis v2-thesis-compare" id="v2-compare" aria-labelledby="v2-compare-title"><div className="v2-comparison-intro"><div><span className="v2-kicker">THE CONNECTION IS THE DIFFERENCE</span><h2 id="v2-compare-title">Set up once.<br/><em>Use it across<br/><CyclingWord cycle={wordCycle} punctuation="."/></em></h2></div><p>A new tool shouldn’t mean starting from scratch. Connect your AI, tools and context once, then choose what each harness can use.</p></div><SetupComparison/></section>
    <ExampleShowcase/>
    <section id="v2-build" className="v2-builder"><span className="v2-kicker">FOR THE PEOPLE BUILDING</span><h2>Build the harness.<br/><em>Don’t worry about inference.</em></h2><div><p>Bring your own compute and combine the tools, context and capabilities your work needs. Register your interest in building with Switchboard.</p><a href="mailto:sameep@stayoften.com?subject=Switchboard%20builder%20registration" className="v2-primary">sameep@stayoften.com <ArrowUpRight size={16}/></a></div></section>
    <section id="brand-assets" className="v2-context brand-continuity"><div><span className="v2-kicker">YOUR BRAND KIT GOES WITH YOU.</span><h2>Your colours.<br/>Your assets.<br/><em>In every app.</em></h2><p>Give the next app access to your brand kit. Your logo, colours and product images are ready to use.</p></div><SharedBrand/></section><TrustMarks/>
