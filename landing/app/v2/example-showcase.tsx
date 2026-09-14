@@ -9,8 +9,8 @@ import './example-showcase.css';
 
 const releases = 'https://github.com/sameeeeeeep/switchboard/releases/latest/download/Switchboard.dmg';
 const examples = [
-  { id: 'brandbrain', name: 'Brandbrain', title: 'Give your idea a brand.', detail: 'Start with a brief. Work through the market, audience and positioning in a workspace built for the job.', icon: LayoutGrid, image: '/wrapps/brandbrain.png', href: 'https://brandbrain.thelastprompt.ai/build' },
   { id: 'flow', name: 'Flow', title: 'Say it. Put it into words.', detail: 'Speak into the app you’re using. Flow transcribes on your Mac and puts your words at the cursor.', icon: Mic, image: '/wrapps/flow.png' },
+  { id: 'brandbrain', name: 'Brandbrain', title: 'Give your idea a brand.', detail: 'Start with a brief. Work through the market, audience and positioning in a workspace built for the job.', icon: LayoutGrid, image: '/wrapps/brandbrain.png', href: 'https://brandbrain.thelastprompt.ai/build' },
   { id: 'guru', name: 'Guided notch', title: 'Your next step, right there.', detail: 'Get a guided step, answer a question or approve an action at the notch. Keep the app you’re working in in view.', icon: LayoutGrid },
   { id: 'adforge', name: 'AdForge', title: 'Turn your brand into ads.', detail: 'Create campaign concepts from a website or a brand you share through Switchboard. Keep the voice and product context.', icon: LayoutGrid, image: '/wrapps/adforge.png', href: 'https://adforge.thelastprompt.ai' },
   { id: 'whiteboard', name: 'Whiteboard', title: 'Sketch it with your AI.', detail: 'Draw an idea, mark up a screenshot or work through an editable diagram with your AI.', icon: PenTool },
@@ -18,11 +18,6 @@ const examples = [
   { id: 'crest', name: 'Crest', title: 'Explore your brand’s logo.', detail: 'Brief the brand, explore directions and refine a logo with the AI and image tools connected to your setup.', icon: LayoutGrid, image: '/wrapps/crest.png' },
   { id: 'launcher', name: 'Launcher', title: 'Your work, a shortcut away.', detail: 'Find a project, jump into an app or find the right tool for a file from the launcher.', icon: Search },
   { id: 'workspace', name: 'Workspace', title: 'Keep the work together.', detail: 'Keep tasks, project notes and run history together. Follow work from your backlog through to done.', icon: ListTodo },
-];
-const audienceStarts = [
-  { audience: 'For founders', title: 'Shape your next launch.', detail: 'Work through your brand’s positioning with Brandbrain.', example: 'brandbrain' },
-  { audience: 'For agencies', title: 'Explore the next campaign.', detail: 'Turn a website or shared brand brief into concepts with AdForge.', example: 'adforge' },
-  { audience: 'For creators', title: 'Get the idea out.', detail: 'Dictate into the app you’re creating in with Flow.', example: 'flow' },
 ];
 
 export default function ExampleShowcase() {
@@ -71,12 +66,7 @@ export default function ExampleShowcase() {
       <div className="v2-showcase-head">
         <div><span className="v2-kicker">FOR THE WORK YOU DO</span><h2 id="showcase-title" className="showcase-title">What you can run<br /><em>with Switchboard.</em></h2></div>
       </div>
-      <p className="example-intro">Start with a job you recognise. Use a ready-made Wrapp, dictate an idea or bring your next decision to the notch.</p>
-      <div className="example-audiences" aria-label="Find an example for your work">
-        {audienceStarts.map(item => <button type="button" key={item.audience} onClick={() => select(examples.findIndex(candidate => candidate.id === item.example))} aria-controls="example-current-slide">
-          <span>{item.audience}</span><strong>{item.title}</strong><small>{item.detail}</small><ArrowRight size={18} aria-hidden="true"/>
-        </button>)}
-      </div>
+      <p className="example-intro">Dictate a thought. Build a brand. Get guided through the next step.</p>
       <div className="example-controls">
         <span className="example-position" aria-live={playing ? 'off' : 'polite'}>{String(index + 1).padStart(2, '0')} <span>/ {String(examples.length).padStart(2, '0')}</span><strong>{example.name}</strong></span>
         <div className="example-transport">
@@ -102,7 +92,7 @@ export default function ExampleShowcase() {
       <fieldset className="example-picker"><legend className="example-sr-only">Choose an example</legend>
         {examples.map((item, i) => <button type="button" key={item.id} aria-label={`Show ${item.name}`} aria-pressed={index === i} onClick={() => select(i)}><span aria-hidden="true" />{item.name}</button>)}
       </fieldset>
-      <a className="v2-community-count" href="https://thelastprompt.ai/apps/"><span className="community-numbers"><span><strong>93</strong> OTHER WRAPPS</span><span><strong>12</strong> DEVELOPERS</span></span><span>Explore the directory <ArrowUpRight size={16} /></span></a>
+      <a className="v2-community-count" href="https://thelastprompt.ai/apps/"><span className="community-numbers"><span><strong>93</strong> OTHER HARNESSES</span><span><strong>12</strong> DEVELOPERS</span></span><span>Explore the directory <ArrowUpRight size={16} /></span></a>
     </section>
   );
 }
