@@ -1365,9 +1365,15 @@ export class Broker implements ConsentPrompter, NativeHandler {
     // Precedence (docs/MODEL-SELECTION.md §6/§7): a GLOBAL disable beats a per-site pin. If the pinned
     // model has since been turned off in Settings → Models, don't resurrect it — fall through to
     // withModelPreference, which substitutes the app's originally-requested model to an allowed one.
-    return override && this.deps.backends.isAllowed(override)
-      ? { ...params, model: override }
-      : { ...params, model: this.deps.backends.preferredModel(params.model) };
+    if (override && this.deps.backends.isAllowed(override)) return { ...params, model: override };
+    // The user's GLOBAL default (Settings → Models) may stand in for a legacy alias the app asked for
+    // ("sonnet") — but only when THIS origin is granted the substitute. Otherwise a Claude-only app that
+    // asked for "sonnet" was silently rerouted to e.g. gpt-5.5 and then refused by the gate as
+    // "model gpt-5.5 not granted" — God's every ⌃⌃ died that way. Keep the app's own request instead;
+    // the grant-aware resolution downstream picks the concrete model inside the grant.
+    const preferred = this.deps.backends.preferredModel(params.model);
+    if (preferred !== undefined && preferred !== params.model && !this.deps.grants.allowsModel(origin, preferred)) return params;
+    return { ...params, model: preferred };
   }
 
   /** Apply the user's global model deny-list (docs/MODEL-SELECTION.md §4b). If the requested model is
