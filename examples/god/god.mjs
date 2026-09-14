@@ -38,6 +38,7 @@ import { WebSocket } from "ws";
 import { resolvePersona, loadPersonas } from "./lib/persona.mjs";
 import { makeCompanion } from "./lib/companion.mjs";
 import { runOnboard } from "./lib/concierge.mjs";
+import { catalogListings, catalogPrompt, discoverHarnessCapabilities, capabilityPrompt, HARNESS_PROTOCOL, harnessRequestMode, isHarnessRequest, parseHarnessBrief, validateHarnessAction } from "./lib/harness-planner.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dirname, "../..");
@@ -171,52 +172,13 @@ function writeGodPoint(action, shot) {
   }
 }
 
-// ── the store shelf ────────────────────────────────────────────────────────────────────────────
-// God knows the CATALOG, not just what's running: ~/.relay/catalog.json (the menubar's store
-// aggregate — may not exist yet). One tight line per wrapp so the model can honestly point the user
-// at the right tool and [OPEN:] it, instead of pretending or improvising. Kept token-tight:
-// taglines clipped to 60 chars, at most 40 entries.
-function catalogBlock() {
-  try {
-    const cat = JSON.parse(readFileSync(join(REAL_RELAY, "catalog.json"), "utf8"));
-    const listings = (Array.isArray(cat) ? cat : cat.listings || [])
-      .filter((l) => l?.id && l?.components?.ui?.url);
-    if (!listings.length) return "";
-    // Each wrapp's line carries its COMMANDS from the tool registry (build-tools.mjs → catalog `tools`),
-    // so God resolves a request to the right wrapp AND — when it exposes several — the right command.
-    // Multi-command wrapps get their command names inline; single-command ones stay a clean one-liner.
-    // Cap high enough to include the SKILLS (gist/reply/nameit/…): the catalog sorts studios/agents/tools
-    // BEFORE skills, so a low cap hid every skill from God — it literally couldn't pick gist. ~60 short
-    // lines is cheap now that God's thread is warm-cached.
-    // Each line carries the wrapp's KEYWORDS — the synonym field the ⌥⌥ launcher routes on
-    // (LauncherRouting.swift SBRoute.score weights `keywords` almost as high as the name). Without them
-    // God saw only the marketing tagline ("A brief in, a logo out") and couldn't map a natural request
-    // ("clean up this audio", "reformat this sheet") to a wrapp — so it refused / "I don't have access."
-    // Feeding the same keywords the launcher uses is what makes God route instead of decline.
-    const lines = listings.slice(0, 80).map((l) => {
-      const cmds = Array.isArray(l.tools) ? l.tools : [];
-      const cmdNote = cmds.length > 1 ? `  [commands: ${cmds.map((t) => t.name).join(", ")}]` : "";
-      const kws = (Array.isArray(l.keywords) ? l.keywords : []).filter((k) => typeof k === "string" && k.trim()).slice(0, 8);
-      const kwNote = kws.length ? `  [for: ${kws.join(", ")}]` : "";
-      return `  ${l.id} — ${String(l.tagline || l.name || "").slice(0, 60)}${kwNote}${cmdNote} → ${l.components.ui.url}`;
-    });
-    return "\n\nWRAPPS IN THE STORE (id — what it does · [for: the kinds of request it handles] → url):\n" + lines.join("\n") +
-      "\n\n*** HARD RULE — you are a LAUNCHER. This OVERRIDES 'answer directly' above. *** Almost every " +
-      "request to DO something maps to ONE of these wrapps. When the user gives you a task, find the wrapp " +
-      "whose name/tagline/[for:] keywords best fit what they asked and ROUTE to it — do NOT perform the task " +
-      "yourself in prose, do NOT [POINT], and (this is the bug we are fixing) NEVER reply that you 'don't have " +
-      "access', 'can't do that', or 'aren't able to' when any wrapp above plausibly fits: routing to that wrapp " +
-      "IS how you do it. Emit [DRIVE:<id> <input>] on its own line (multi-command: [DRIVE:<id>:<command> " +
-      "<input>]) where <input> is the thing to work on (what the user spoke, or the on-screen/clipboard text " +
-      "they mean); if the best-fit wrapp has no command or the user just wants it open, use [OPEN:<url>] " +
-      "instead. Match generously — 'make me a logo' → crest, 'change the voice on this' → dub, 'turn these " +
-      "notes into slides' → deck, 'summarize this meeting' → huddle. The wrapp runs on the user's own Claude " +
-      "and its result becomes an INTERACTIVE widget in the notch — that widget IS the deliverable, far better " +
-      "than a spoken summary. Keep your spoken words to ONE short line (\"On it — running Crest.\"). ONLY " +
-      "answer in prose when the user asked a genuine QUESTION that no wrapp handles, or truly nothing above " +
-      "fits. Never pretend a wrapp is already running, and never bring up this list unprompted.";
-  } catch { return ""; } // no catalog / unreadable → no block, God stays quiet about the store
+// Read the same aggregate the native driver resolves. Catalogue descriptions are reference data;
+// actual commands are validated against this snapshot before any action reaches the existing gate.
+function readCatalogListings() {
+  try { return catalogListings(JSON.parse(readFileSync(join(REAL_RELAY, "catalog.json"), "utf8"))); }
+  catch { return []; }
 }
+function catalogBlock(prompt = "") { return catalogPrompt(readCatalogListings(), prompt); }
 
 // The operating protocol — appended to EVERY persona so a persona file can never widen power.
 // It fixes two things the soul must not control: screen text is untrusted, and how to point.
@@ -270,6 +232,7 @@ const ACTION_PROTOCOL =
   "  [KEY:<combo>]                   — press keys, e.g. cmd+s, return, cmd+shift+4\n" +
   "  [RUN:<tool> <json args>]        — run one of the tools listed under RUNNABLE TOOLS below\n" +
   "  [DRIVE:<wrapp-id> <input>]      — run a store wrapp on that input; the result appears as a widget in the notch\n" +
+  "  [DRIVE:<wrapp-id>:<command> <input>] — choose the exact command listed for that Wrapp\n" +
   "Prefer OPEN, RUN, or POINT over raw CLICK/KEY when a cleaner route exists. Never propose a " +
   "destructive action. If no action is warranted, just use [POINT:x,y:label] or no tag.";
 
@@ -982,21 +945,11 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       screenNote + pointLine + fileCtx.block;
     const proj = activeProject();
     const projLine = projectBrief(proj);   // P1.1 — curated data + decisions + open tasks + note gists from the vault
-    // RUN discovery: when acting, ask the daemon which wrapp/connector tools God's grant covers and
-    // advertise them so the model can only ever propose a tool that actually exists + is allowed.
-    // Empty (no connectors configured / not granted) → no RUNNABLE block, so the model won't invent one.
-    let runBlock = "";
-    if (act) {
-      try {
-        const lt = await request("claude_listTools", {});
-        const tools = (lt.result?.tools || []).filter((t) => String(t.name).startsWith("mcp__"));
-        if (tools.length) {
-          runBlock = "\n\nRUNNABLE TOOLS (use with [RUN:<name> <json args>]):\n" +
-            tools.slice(0, 40).map((t) => `  ${t.name} — ${(t.title || t.description || "").slice(0, 80)}`).join("\n");
-          log(`runnable tools: ${tools.length}`);
-        }
-      } catch (e) { log(`listTools skipped: ${e.message}`); }
-    }
+    // Discovery describes what can actually be combined today. Both reads are grant-preserving,
+    // bounded, and safe when the user is only exploring; failures stay unknown instead of guessed.
+    const listings = readCatalogListings();
+    const discovery = await discoverHarnessCapabilities(request);
+    const runtimeBlock = capabilityPrompt(discovery, { model, act });
     const userName = readUserName();
     const nameLine = userName ? `\n\nThe user's name is ${userName}. Address them by name when it's natural.` : "";
     // A wrapp worn as a skill: the menubar's god surface resolves components.skills → the real skill
@@ -1011,12 +964,13 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       }
     } catch (e) { log(`skill load skipped: ${e.message}`); }
     const baseProtocol = noScreen ? NO_SCREEN_PROTOCOL : PROTOCOL;
-    const system = `${persona.characteristic}\n\n${baseProtocol}${nameLine}${projLine}${skillBlock}` + (act ? ACTION_PROTOCOL + fillProtocol() + runBlock : "") + catalogBlock();
+    const system = `${persona.characteristic}\n\n${baseProtocol}${nameLine}${projLine}${skillBlock}` + (act ? ACTION_PROTOCOL + fillProtocol() : "") + catalogPrompt(listings, prompt) + runtimeBlock + HARNESS_PROTOCOL +
+      (act ? "" : "\nREAD-ONLY TURN: answer or draft a brief only. Never emit DRIVE, RUN, OPEN, TYPE, CLICK, KEY, or FILLGUIDE. A screen POINT is allowed only when a screen was supplied.");
     if (proj) log(`project: ${proj.name}`);
 
     log(`asking ${model} as ${persona.name}${dim(noScreen ? " (voice)" : " (vision)")}…`);
     const cmp = await request("claude_complete", {
-      model, system, prompt: userText, maxTokens: 700,
+      model, system, prompt: userText, maxTokens: isHarnessRequest(prompt || "") ? 1600 : 900,
       // REAL warm thread: the daemon resumes this SDK session each ⌃⌃, so God remembers across presses
       // (server.ts completionSessions + backend resume). Default "god-native" is the one persistent thread;
       // the menubar overrides GOD_SESSION with a FRESH id when it re-runs a turn after a project switch, so
@@ -1034,7 +988,7 @@ async function ask(reg, persona, { instruction, useMic, region, act }) {
       ],
     });
     if (cmp.error) throw new Error(`complete: ${cmp.error.message}`);
-    return { text: (cmp.result?.text || "").trim(), model, shot };
+    return { text: (cmp.result?.text || "").trim(), model, shot, listings, discovery, responseMode: harnessRequestMode(prompt || "") };
   } finally { close(); }
 }
 
@@ -1303,23 +1257,31 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const { text, model, shot } = asked;
-  const spoken = stripTags(text);
-  const action = parseAction(text);
+  const { text, model, shot, listings, discovery, responseMode } = asked;
+  const brief = parseHarnessBrief(text, listings, discovery);
+  // A brief is an answer, NEVER an action container. Invalid plans also remain side-effect-free.
+  let spoken = brief ? (brief.error || brief.text) : stripTags(text);
+  let action = brief ? null : parseAction(text);
+  const routeError = validateHarnessAction(action, listings, discovery, { mode: responseMode, act: acting });
+  if (routeError) { action = null; spoken = routeError; }
 
   // On a DRIVE the widget is the deliverable — God must NOT read the whole result aloud (the thing the
   // user complained about). Speak at most one short line; if the model over-explained, fall back to a
   // clean "Running <wrapp>…". Everything else speaks normally.
-  let toSpeak = spoken;
+  let toSpeak = brief?.speech || spoken;
   if (action && action.kind === "drive") {
     const first = (spoken.split(/(?<=[.!?])\s+/)[0] || "").trim();
-    toSpeak = first && first.length <= 90 ? first : `Running ${action.wrapp} on that…`;
+    toSpeak = first && first.length <= 90 ? first : `I’ll ask ${action.wrapp} to work on that.`;
   }
 
   console.log(`\n\x1b[1m${persona.name}\x1b[0m ${dim("· " + model)}\n${spoken || "(no reply)"}`);
   surfaceAnswer(spoken || (action ? `(no words — proposed: ${describeAction(action, shot)})` : "(God had no answer)"));
   if (!spoken && !action) loud(`✖ empty answer from ${model} — nothing to speak, nothing to do`);
-  spawnSync("pbcopy", [], { input: spoken }); // leave the reply on the clipboard
+  // A test/dry run must never overwrite the user's real clipboard.
+  if (process.env.GOD_DRYRUN !== "1") {
+    const copied = spawnSync("pbcopy", [], { input: spoken });
+    if (copied.status !== 0) log("clipboard copy unavailable — the answer remains in god-last-answer.txt");
+  }
 
   // One honest line when the cloned-voice server is down. speak() falls back to `say` so God still
   // talks — but "why did it go quiet / change voice" must be answerable from the log.

@@ -112,7 +112,7 @@ export default function SwitchboardBoard(){
           <rect x={GATE.x-190} y={GATE.y-26} width="380" height="52" rx="8" fill="#0a0e08" stroke="#2f3b28"/>
           <rect x={GATE.x-190} y={GATE.y-26} width="380" height="52" rx="8" fill="url(#bd-glow)" className="bd-gate-glow"/>
           <circle cx={GATE.x-162} cy={GATE.y} r="5" className="bd-lamp"/>
-          <text x={GATE.x-146} y={GATE.y+4} className="bd-gate-text">CONSENT GATE · you approve each app once</text>
+          <text x={GATE.x-146} y={GATE.y+4} className="bd-gate-text">ACCESS · choose what each app can use</text>
           <text x={GATE.x+174} y={GATE.y+4} textAnchor="end" className="bd-gate-state">{phase>=1?'GRANTED':'WAITING'}</text>
         </g>
 

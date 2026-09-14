@@ -1,0 +1,16 @@
+/* oxlint-disable next/no-img-element -- Static Vite export serves these local image assets directly. */
+import { ArrowRight, Check, FileText, Mic, MousePointer2, PenTool, Search } from 'lucide-react';
+
+export default function ExampleScene({ id }: { id: string }) {
+  if (id === 'flow') return <div className="example-native example-dictation">
+    <div className="example-paper"><span className="example-small">YOUR DRAFT</span><p>Let’s make the next version simpler.<span className="example-caret" aria-hidden="true" /></p><div className="example-paper-line" /></div>
+    <div className="example-voice"><span aria-hidden="true"><Mic size={22} />{[8, 15, 23, 12, 28, 19, 10, 22, 14].map((height, i) => <i key={i} style={{ height }} />)}</span><span><Check size={16} /> Transcribed on your Mac</span></div>
+  </div>;
+  if (id === 'guru') return <div className="example-native example-notch"><div className="example-camera" aria-hidden="true"><i /></div><div className="example-notch-card">
+    <span className="example-small">GURU · YOUR PROJECT · STEP 2 OF 3</span><h4>Review the opening paragraph.</h4><p>Make sure it says what you want to say. Continue when you’re ready.</p><div className="example-notch-actions" aria-hidden="true"><span>Back</span><span>Next step <ArrowRight size={16} /></span></div>
+  </div></div>;
+  if (id === 'whiteboard') return <div className="example-native example-whiteboard"><header><PenTool size={18} /> A plan you can work on together</header><div className="example-map"><span>Idea</span><i /><span>Sketch</span><i /><span>Build</span></div><div className="example-sticky">Keep the first version simple.</div><footer>Sketches · notes · editable diagrams</footer></div>;
+  if (id === 'god') return <div className="example-native example-screen"><div className="example-paper"><span className="example-small">YOUR APP</span><h4>Ready to share?</h4><p>Review your draft, then choose who can see it.</p><div className="example-point-target" aria-hidden="true">Share <MousePointer2 size={26} /></div></div><div className="example-answer"><MousePointer2 size={20} /><p>The Share control is here. Open it to choose who gets access.</p></div></div>;
+  if (id === 'launcher') return <div className="example-native example-launcher"><div className="example-search"><Search size={20} /><span>Verra</span><kbd>⌥ ⌥</kbd></div><div className="example-result"><FileText size={22} /><span><strong>Verra</strong><small>Project · brand notes and assets</small></span><ArrowRight size={18} /></div><div className="example-result"><img src="/wrapps/brandbrain.png" alt="" /><span><strong>Brandbrain</strong><small>Open your brand workspace</small></span><ArrowRight size={18} /></div><footer>Find a project. Open an app. Keep going.</footer></div>;
+  return <div className="example-native example-workspace"><header><FileText size={18} /><span>Verra · Project workspace</span></header><div className="example-board">{[{ title: 'To do', task: 'Review the brief' }, { title: 'Doing', task: 'Explore directions' }, { title: 'Done', task: 'Save brand notes' }].map(column => <div key={column.title}><span className="example-small">{column.title}</span><p>{column.title === 'Done' && <Check size={14} />}{column.task}</p></div>)}</div><footer>Your tasks, notes and history in one place.</footer></div>;
+}
