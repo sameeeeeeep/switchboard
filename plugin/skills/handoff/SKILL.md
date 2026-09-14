@@ -3,6 +3,10 @@ name: handoff
 description: Clean thread handoff. On /handoff, make the current thread end SAFELY and pass the baton — nothing stranded. Two tracks run in parallel — (A) commit + push everything in the thread, and (B) reconcile the board (mark done what's done, update statuses, re-queue/arrange, and surface + hand off the next task) — streaming each step to the notch. Use when the user types "/handoff", "hand off", "wrap this thread", "clean handoff", "close out and queue the next", or any point they want the current thread safely closed and the next one teed up.
 ---
 
+Use the same Switchboard MCP tools in Claude Code and Codex; discover their actual host prefix.
+Read [host bindings](../switchboard/references/hosts.md) when a workflow needs host tools,
+repo helpers, or lifecycle hooks. Label presence with the current agent and task id.
+
 # /handoff — close the thread clean, queue the next
 
 `/handoff` ends a thread the way an operator hands off a shift: **no work stranded, the board

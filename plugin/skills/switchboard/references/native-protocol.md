@@ -1,44 +1,29 @@
----
-name: switchboard
-description: >-
-  The one skill for talking to the user through their Switchboard (the Mac menu-bar app) instead of
-  burying it in chat. It's a PRESENCE layer: raise a card at the notch/cursor to (a) ASK a question or
-  present A/B/C options and get the pick back, (b) request an APPROVAL, (c) run a guided TEST / walkthrough
-  where the human does something only they can (grant a permission, click a native app, sign in, eyeball
-  a result) and reports pass/fail, or (d) notify with actions. The card is clickable at the notch, shows
-  who's asking (thread + project), and the answer comes back as JSON. **Default to this whenever you need
-  the user to decide, approve, test on the real app, or do something at their keyboard.** Trigger for:
-  "ask the user", "present options", "let them pick / decide / approve", "walk me through…", "test this on
-  the real app", "let me test it", "guided test", "have the human grant X", "check the notch renders",
-  "guru with eyes", "live guide", "guide me through this on any app" (the dynamic closed-loop mode).
----
-
 # Switchboard — talk to the user through the notch (ask · approve · guide · notify)
 
 Switchboard's menubar app runs a **CursorGuide**: a **docked instruction card** (bottom-center — it no
 longer chases the cursor) with a **pointing ring** that lands on the target element, one step at a time.
-Any Claude session drives it through a plain file handshake — no grants, no code, no MCP. Use it to
-(a) **help** a human do something Claude can't do itself, or (b) **test** a GUI flow where a human
+Any connected agent session drives it through a plain file handshake — no grants, no code, no MCP. Use it to
+(a) **help** a human do something the agent can't do itself, or (b) **test** a GUI flow where a human
 confirms each step. The result comes back as machine-readable JSON you read and act on.
 
 **Default to this for ANY testing that needs the human's real screen/hands** — don't hand the user a
 wall of manual steps; fire a guided run and read the structured result back.
 
-This closes the GUI self-test gap: Claude scripts the steps, the app docks the card + points the ring,
+This closes the GUI self-test gap: The agent scripts the steps, the app docks the card + points the ring,
 the human advances each (**⌥→** next/pass · **⌥←** fail · **⌥↑** back · **⌥↓** feedback · **⌥.**
 collapse · **esc** aborts), and a summary returns to you. Steps mostly **auto-advance** (see `doneWhen`).
 
 ## When to use it
 
 - A step **requires a human hand**: granting Accessibility / Screen-Recording / mic permission,
-  clicking a control in a native app Claude can't drive, entering a credential (the human enters it,
+  clicking a control in a native app the agent can't drive, entering a credential (the human enters it,
   never you), plugging something in, signing in.
 - You need a human to **judge** something on screen ("does the notch widget render?", "is this the
   right colour?") and report back structured pass/fail.
 - You're running a **guided test pass** of a flow and want a per-step verdict + optional
   screenshot/note feedback captured at the moment of failure.
 
-Do **not** use it for anything Claude can already do headlessly (files, builds, harness, HTTP). It is
+Do **not** use it for anything the agent can already do headlessly (files, builds, harness, HTTP). It is
 specifically for the human-in-the-loop boundary.
 
 ## Guru with eyes — dynamic mode (closed loop)
@@ -52,7 +37,7 @@ menu that only appears *after* a click; this can. Full spec: `docs/GURU-LIVE.md`
 Trigger it (needs the daemon running + the switchboard repo's God client):
 
 ```bash
-GOD_ATTACH=1 node /Users/sameeprehlan/Documents/Projects/relay/examples/god/god.mjs guide-live "help me <goal>"
+GOD_ATTACH=1 node <switchboard-repo>/examples/god/god.mjs guide-live "help me <goal>"
 # GOD_DRYRUN=1 → plan + walk WITHOUT taking over the screen (a safe smoke test)
 ```
 
@@ -67,13 +52,23 @@ GOD_ATTACH=1 node /Users/sameeprehlan/Documents/Projects/relay/examples/god/god.
 ## Prerequisite
 
 The **Switchboard menubar app must be running** — it owns the on-screen chip and watches the trigger
-file. Check quickly:
+file. A card written with no watcher is **silently lost** (no error path), so check **immediately before
+EVERY write** — never reuse a check from earlier in the session (a `build.sh` rebuild or a quit kills the
+running app without you noticing; this cost a real 25-min "no answer" that was just the app being OFF).
+
+**If it isn't running, OPEN IT YOURSELF, then fire** — never hand the user a "please launch Switchboard"
+chore for something you can do:
 
 ```bash
-pgrep -f "MacOS/Relay" >/dev/null && echo "app up" || echo "app NOT running — ask the user to launch Switchboard first"
+APP=/Applications/Switchboard.app
+pgrep -f "MacOS/Relay" >/dev/null || { open "$APP"; sleep 4; }
+pgrep -f "MacOS/Relay" >/dev/null && echo "app up" || echo "app FAILED to launch — tell the user, fall back to written instructions"
 ```
 
-If it isn't running, don't write the trigger — tell the user to launch Switchboard, then retry.
+Only if it genuinely fails to launch do you fall back to plain written instructions. Two more rules that
+follow from this: (1) after any `build.sh`, assume the app is down and relaunch before the next card;
+(2) a freshly-launched app consumes an already-present `guide-run.json` on startup — so if you relaunch
+with a pending card on disk, it will show; don't double-write it.
 
 ## The protocol (two files, in `~/.relay/`)
 
@@ -201,7 +196,7 @@ auto-advancing) · `doneWhen` (a predicate the runtime evaluates locally).
 
 ### Plan-time recipe: one screenshot → `[POINT]` tags → steps
 
-You don't guess coordinates. Capture **one** screenshot of the target screen, hand it to Claude, and
+You don't guess coordinates. Capture **one** screenshot of the target screen, inspect it with the host image reader, and
 ask for `[POINT:x,y]` tags on each element you want to point at (God's-eye [POINT] tagging is
 pixel-accurate to ~1px). Then:
 
@@ -279,6 +274,26 @@ The user presses `⌥1/2/3` (or clicks — the notch card is clickable) then `�
 (`notch` clickable · `dock` · `cursor`) · options gain `detail` (one-line why) + `recommended` (⭐,
 pre-selected). `⌥/` moves notch↔dock, `⌥.` collapses. An option can carry `media` (an image thumbnail).
 
+### Freeform answer — "none of these, here's what I actually want"
+
+The options are never a cage. On **any** `ask` card the user can press **⌥↓** to open the notch's
+focused text field and **type their own answer** (↵ saves, esc discards) — the same input surface the
+feedback note uses. Their text comes back as **`results[i].feedback.note`** in `guide-result.json`. So
+after any ask, read BOTH: `chosenOption` (the tapped option) AND `feedback.note` (their typed override) —
+if they typed something, that IS the answer, honor it over the pre-selected pick. When a decision might
+not fit your options, say so in the step text: *"…or ⌥↓ to tell me in your own words."* Same secret rule:
+never ask them to type a password/key into it.
+
+### Explain with a diagram / infographic when a picture lands better
+
+A decision card isn't limited to words. Attach an explanatory image via step-level **`media`**
+(`"media": "/abs/path.png"` — file path, http url, or `{src,caption}`; also GIF) or give each **option**
+its own `media` thumbnail so the user compares *pictures*, not prose. Use it whenever a diagram, a
+before/after, an architecture sketch, or a small infographic explains the trade-off faster than a
+sentence — options with visual differences especially. Generate the image first (the `visualize` tool →
+SVG, or an image tool → PNG; save it to a real path), then pass that path as `media`. Keep it glanceable:
+one clear diagram, not a dense figure — the card is small.
+
 ## Recipe: help the user fill a form (guided fill)
 
 Turn "help me fill this form" into a guided fill — no screen-reading needed:
@@ -303,21 +318,11 @@ Turn "help me fill this form" into a guided fill — no screen-reading needed:
 The "⌘V — pasted for you" cursor hint shows on each step. Secrets rule still holds: never place a
 password/API key on the clipboard — write a plain "type your … here" step instead.
 
-## Claude Code → the notch (attention hook)
+## Agent lifecycle hooks
 
-`cc-notify.py` (in this skill dir) turns Claude Code's own "needs you" moments into a notch card instead
-of a silent terminal wait — the same trigger `claude-sounds` beeps on, but you get the message on-screen.
-Install once:
-```bash
-mkdir -p ~/.relay/hooks && cp "$(dirname "$0")/cc-notify.py" ~/.relay/hooks/cc-notify.py 2>/dev/null || true
-```
-Then register it on the `Notification` event in `~/.claude/settings.json` (merge — don't clobber existing hooks):
-```jsonc
-"hooks": { "Notification": [ { "matcher": "",
-  "hooks": [ { "type": "command", "command": "python3 ~/.relay/hooks/cc-notify.py" } ] } ] }
-```
-The script reads the event JSON on stdin and raises a notch card (`source: "Claude Code"`, project = cwd
-basename). Non-fatal by design (any error exits 0 → never blocks Claude Code).
+The plugin bundles shared PermissionRequest and Stop hooks in `hooks/hooks.json`. Claude also
+uses its Notification event for idle prompts. Codex requires the user to trust installed hooks
+in its `/hooks` screen. Do not copy handlers into user hook directories or register them twice.
 
 ## Current runtime — newer capabilities (all additive; old runs still work)
 
@@ -346,7 +351,7 @@ basename). Non-fatal by design (any error exits 0 → never blocks Claude Code).
   ```bash
   tail -5 ~/.relay/guide-history.jsonl
   ```
-  This is how any later Claude thread — including a fresh session — recovers the user's choices +
+  This is how any later agent task — including a fresh session — recovers the user's choices +
   screenshots to "finish it next pass."
 
 ## Visual decision — show mockups, let the user DRAW their answer (vd1)
@@ -392,7 +397,24 @@ these designs", before/after tweaks. For non-visual forks, the plain `ask` card 
 
 ## Rules
 
+- **DO the steps you can DO; only guide the ones you can't.** A guided flow is for the HUMAN-necessary
+  actions — approvals, credentials, physical/GUI acts only they can perform. Everything the assistant can do
+  itself, it DOES inline, not as a step telling the human to do it: **open an app** (`open -a Terminal`),
+  **open a website** (open it in the browser for them), **run a command** (run it via the shell — e.g.
+  `wrangler login` opens the browser itself; you don't tell them to paste it), navigate, fetch, build. Reserve
+  guide steps for the irreducible human bits (click Allow on an OAuth page, type a password into the real app,
+  grant an OS permission, plug something in) — and for those, pre-load the clipboard per the rule below. Never
+  make the human open a Terminal, open a URL, or run a command you could have run for them.
 - **One human action per step**, phrased as an imperative the person can follow without you.
+- **DEFAULT: pre-load the clipboard with anything the human must paste, type, OR OPEN.** Every guided /
+  notch / teach step that asks them to run a command, enter a value, or **go to a website** must ship that
+  exact content on their clipboard via the step's `copy` (set `autoClipboard: true` on the run, or `copy`
+  per step). This is not optional polish — it is the default of every guided flow: never make the human
+  hand-type a command, a value, or a URL you could put on their clipboard. **URLs/websites count**: a step
+  like "open api.slack.com/apps" pre-loads that URL in `copy` (they ⌘L then ⌘V into the address bar); a
+  "run this" step pre-loads the command; a "paste this config" step pre-loads the config. Say the shortcut
+  in the step text ("⌘V — it's on your clipboard" / "⌘L then ⌘V for the URL"). The ONLY exception is the
+  secret rule below — never place a password/API key/token; those the human types into the real app.
 - **Never put a secret in a step and never read one back** — if a step involves a password/key, the
   human enters it into the real app; the step just says "enter your … in the field", and you never ask
   for or log the value.

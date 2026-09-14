@@ -1,137 +1,40 @@
 #!/usr/bin/env node
-// check-operator-loop.mjs — read-only health probe for Switchboard's operator loop.
-//
-// The operator loop = app + connector + skills: a Claude Code session that reads the
-// user's board, picks up a task, and runs the wrapps to clear it. A fresh install ships
-// the app but a half-wired connector and zero skills, so this script reports the two
-// readiness rungs that decide whether the loop can close (§6 of docs/STATES.md), plus the
-// vault they operate on.
-//
-// It ONLY READS ~/.claude.json and ~/.claude/skills — it never modifies Claude Code's
-// config. Zero dependencies; Node 20+. Always exits 0 (a report, not a gate).
-
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { readFileSync, existsSync, statSync } from "node:fs";
-
-const HOME = homedir();
-const CLAUDE_JSON = join(HOME, ".claude.json");
-const SKILLS_DIR = join(HOME, ".claude", "skills");
-const REQUIRED_SKILLS = ["adhd-pm", "spec", "switchboard", "wrapp", "task"];
-const DEFAULT_VAULT = join(HOME, "SwitchboardBrain");
-
-// ── tiny formatting helpers ────────────────────────────────────────────────
-const supportsColor = process.stdout.isTTY && !process.env.NO_COLOR;
-const paint = (code, s) => (supportsColor ? `\x1b[${code}m${s}\x1b[0m` : s);
-const green = (s) => paint("32", s);
-const red = (s) => paint("31", s);
-const dim = (s) => paint("2", s);
-const bold = (s) => paint("1", s);
-const CHECK = () => green("✓"); // ✓
-const CROSS = () => red("✗"); //  ✗
-
-function line(ok, label, detail) {
-  const mark = ok ? CHECK() : CROSS();
-  const tail = detail ? "  " + dim(detail) : "";
-  console.log(`  ${mark} ${label}${tail}`);
-}
-
-// ── rung 7: the switchboard MCP connector ──────────────────────────────────
-// The CLI can register it at user scope (mcpServers.switchboard) or project scope
-// (projects[<dir>].mcpServers.switchboard, how `-s project` records it). Accept either.
-function checkConnector() {
-  if (!existsSync(CLAUDE_JSON)) {
-    return { ok: false, detail: `no ${CLAUDE_JSON} — Claude Code not set up here` };
+// Read-only diagnostics for the shared Claude/Codex operator integration.
+import { readFileSync, existsSync, realpathSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+const homeDir = homedir();
+const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const canonical = join(repo, 'plugin/skills');
+const skills = readdirSync(canonical).filter(n => existsSync(join(canonical, n, 'SKILL.md'))).sort();
+const read = p => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+const report = [];
+const add = (name, ok, detail) => report.push({ name, ok, detail });
+try { execFileSync('pgrep', ['-f', 'MacOS/Relay'], { stdio: 'ignore' }); add('Native app', true, 'running'); }
+catch { add('Native app', false, 'not running or process inspection unavailable'); }
+const cc = read(join(homeDir, '.claude.json')) || {};
+const connections = [cc.mcpServers?.switchboard, ...Object.values(cc.projects || {}).map(p => p.mcpServers?.switchboard)].filter(Boolean);
+add('Claude MCP', connections.length === 1, `${connections.length} standalone Switchboard registration(s)`);
+const linked = skills.filter(name => {
+  try { return realpathSync(join(homeDir, '.claude/skills', name)) === realpathSync(join(canonical, name)); } catch { return false; }
+});
+add('Claude skills', linked.length === skills.length, `${linked.length}/${skills.length} reference the shared source`);
+try {
+  const market = read(join(homeDir, '.agents/plugins/marketplace.json'));
+  if (!market?.name) throw new Error('personal marketplace absent');
+  const listing = JSON.parse(execFileSync('codex', ['plugin', 'list', '--marketplace', market.name, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+  const installed = listing.installed.filter(p => p.name === 'switchboard');
+  add('Codex plugin', installed.length === 1 && installed[0].enabled, `${installed.length} installed; ${installed[0]?.version || 'missing'}`);
+  if (installed.length === 1) {
+    const cache = join(homeDir, '.codex/plugins/cache', market.name, 'switchboard', installed[0].version);
+    const present = skills.filter(name => existsSync(join(cache, 'skills', name, 'SKILL.md')));
+    const mcp = read(join(cache, '.mcp.json'));
+    add('Codex components', present.length === skills.length && !!mcp?.mcpServers?.switchboard, `${present.length}/${skills.length} skills; one shared MCP config`);
+    add('Codex hooks packaged', existsSync(join(cache, 'hooks/hooks.json')), 'Review/trust their current definitions in Codex /hooks');
   }
-  let cfg;
-  try {
-    cfg = JSON.parse(readFileSync(CLAUDE_JSON, "utf8"));
-  } catch (e) {
-    return { ok: false, detail: `couldn't parse ~/.claude.json (${e.message})` };
-  }
-
-  const found = [];
-  if (cfg.mcpServers && cfg.mcpServers.switchboard) {
-    found.push({ scope: "user", entry: cfg.mcpServers.switchboard });
-  }
-  for (const [dir, proj] of Object.entries(cfg.projects || {})) {
-    if (proj && proj.mcpServers && proj.mcpServers.switchboard) {
-      found.push({ scope: `project ${dir}`, entry: proj.mcpServers.switchboard });
-    }
-  }
-
-  if (found.length === 0) {
-    return {
-      ok: false,
-      detail: "no `switchboard` MCP registered — run: claude mcp add switchboard -s user -- <node> <path>/switchboard-mcp.mjs mcp",
-    };
-  }
-
-  // Report the vault the connector points at (explicit --vault, else the default).
-  const { scope, entry } = found[0];
-  const args = Array.isArray(entry.args) ? entry.args : [];
-  const vi = args.indexOf("--vault");
-  const vault = vi !== -1 && args[vi + 1] ? args[vi + 1] : null;
-  const scopeNote = found.length > 1 ? `${scope} (+${found.length - 1} more)` : scope;
-  const vaultNote = vault
-    ? `--vault ${vault}`
-    : `no --vault flag, relies on ~/SwitchboardBrain default`;
-  return { ok: true, detail: `${scopeNote}; ${vaultNote}`, vault: vault || DEFAULT_VAULT };
-}
-
-// ── rung 8: the five operator skills ────────────────────────────────────────
-function checkSkills() {
-  const present = [];
-  const missing = [];
-  for (const name of REQUIRED_SKILLS) {
-    const skillMd = join(SKILLS_DIR, name, "SKILL.md");
-    (existsSync(skillMd) ? present : missing).push(name);
-  }
-  const ok = missing.length === 0;
-  const detail = ok
-    ? `all 5 present: ${present.join(", ")}`
-    : `${present.length} of 5 — missing: ${missing.join(", ")}`;
-  return { ok, detail, present, missing };
-}
-
-// ── the vault the loop operates on ──────────────────────────────────────────
-function checkVault(connectorVault) {
-  const vault = process.env.SWITCHBOARD_VAULT || connectorVault || DEFAULT_VAULT;
-  if (!existsSync(vault) || !statSync(vault).isDirectory()) {
-    return { ok: false, detail: `${vault} — not found` };
-  }
-  const tasks = join(vault, "tasks.md");
-  if (!existsSync(tasks)) {
-    return { ok: false, detail: `${vault} exists, but no tasks.md — the board is empty` };
-  }
-  return { ok: true, detail: `${vault} (has tasks.md)` };
-}
-
-// ── run ─────────────────────────────────────────────────────────────────────
-console.log(bold("\nSwitchboard operator loop — health check"));
-console.log(dim("  app + connector + skills → a Claude Code session that runs your board\n"));
-
-const connector = checkConnector();
-line(connector.ok, "connector  (switchboard MCP in Claude Code)", connector.detail);
-
-const skills = checkSkills();
-line(skills.ok, "skills     (5 operator skills in ~/.claude/skills)", skills.detail);
-
-const vault = checkVault(connector.vault);
-line(vault.ok, "vault      (board the loop operates on)", vault.detail);
-
-// One-line verdict. Connector + skills are what gate the loop; vault is a warning.
-const missing = [];
-if (!connector.ok) missing.push("connector");
-if (!skills.ok) missing.push("skills");
-if (!vault.ok) missing.push("vault");
-
-console.log("");
-if (missing.length === 0) {
-  console.log("  " + bold(green("operator loop: ready")));
-} else {
-  console.log("  " + bold(red(`operator loop: missing ${missing.join(", ")}`)));
-}
-console.log("");
-
-process.exit(0);
+} catch (e) { add('Codex plugin', false, e.message); }
+add('Shared vault', existsSync(join(homeDir, 'SwitchboardBrain')), join(homeDir, 'SwitchboardBrain'));
+if (process.argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
+else for (const row of report) console.log(`${row.ok ? '✓' : '✗'} ${row.name}: ${row.detail}`);

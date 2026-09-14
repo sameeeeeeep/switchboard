@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "switchboard",
+  "version": "0.2.0+codex.20260910083143",
+  "description": "Shared Switchboard tools and operator skills for Claude Code and Codex.",
+  "author": {
+    "name": "sameeeeeeep",
+    "url": "https://github.com/sameeeeeeep/switchboard"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Switchboard",
+        "shortDescription": "Tasks, notch, whiteboard, and wrapps.",
+        "longDescription": "Operate the same local Switchboard workspace from Claude Code or Codex, with shared skills and one MCP connector.",
+        "developerName": "sameeeeeeep",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Show my Switchboard tasks.",
+          "Open the Switchboard whiteboard.",
+          "Use Switchboard PIP mode."
+        ]
+      },
+      "hooks": "./hooks/hooks.json"
+    }
+  }
+}

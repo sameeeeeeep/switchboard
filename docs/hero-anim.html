@@ -1,0 +1,132 @@
+<meta charset="utf8">
+<title>Switchboard hero — what your task really reaches</title>
+<style>
+  :root{ --void:#07090b; --lime:#C8F250; --ink:#E8EDF4; --dim:#8A93A2; --faint:#4a5158; --edge:#20262b; }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--void);color:var(--ink);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:26px;padding:24px}
+  .stage{position:relative;width:min(1140px,96vw);aspect-ratio:1140/430}
+  canvas{position:absolute;inset:0;width:100%;height:100%}
+  .lyr{position:absolute;inset:0;pointer-events:none}
+  /* Typographic, not cards. The incoming task is type on the board; each capability is a labelled jack. */
+  .chip{position:absolute;transform:translate(0,-50%);font-size:15px;white-space:nowrap;transition:opacity .4s}
+  .chip .k{color:var(--dim);font-size:9.5px;letter-spacing:2px;display:block;margin-bottom:5px;text-transform:uppercase}
+  .chip .v{color:var(--ink);font-weight:500}
+  .chip .cur{display:inline-block;width:8px;height:16px;background:var(--lime);margin-left:5px;vertical-align:-3px;
+             animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .node{position:absolute;transform:translate(0,-50%);font-size:13.5px;display:flex;align-items:center;gap:10px;
+        color:var(--dim);transition:color .35s,opacity .35s;white-space:nowrap}
+  .node .mk{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center}
+  .node .mk .dot{width:6px;height:6px;border-radius:50%;background:var(--faint);transition:background .35s,box-shadow .35s}
+  .node .mk img{width:22px;height:22px;border-radius:6px;filter:grayscale(.4) opacity(.55);transition:filter .35s}
+  .node small{color:var(--faint)}
+  .node.lit{color:var(--ink)}
+  .node.lit .mk .dot{background:var(--lime);box-shadow:0 0 12px var(--lime)}
+  .node.lit .mk img{filter:none}
+  .side{position:absolute;top:0;font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase}
+</style>
+
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div class="lyr" id="lyr">
+    <div class="side" style="left:0">you · a wrapp · a task</div>
+    <div class="side" style="right:0;text-align:right">what it reaches — on your machine</div>
+
+    <div class="chip" id="task" style="left:2%;top:50%;opacity:0">
+      <span class="k">incoming</span><span class="v" id="taskv">Draft the launch email</span><span class="cur"></span>
+    </div>
+
+    <div class="node" id="n0" style="left:64%;top:16%"><span class="mk"><span class="dot"></span></span><span>Your Claude</span></div>
+    <div class="node" id="n1" style="left:64%;top:34%"><span class="mk"><img src="landing-assets/wrapp-icons/prism.png" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'dot'}))"></span><span>Image generation</span></div>
+    <div class="node" id="n2" style="left:64%;top:52%"><span class="mk"><span class="dot"></span></span><span>Skills <small>workflows</small></span></div>
+    <div class="node" id="n3" style="left:64%;top:70%"><span class="mk"><img src="landing-assets/wrapp-icons/cast.png" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'dot'}))"></span><span>Wrapps <small>apps</small></span></div>
+    <div class="node" id="n4" style="left:64%;top:88%"><span class="mk"><span class="dot"></span></span><span>Your vault <small>your data</small></span></div>
+  </div>
+</div>
+<div class="cap" id="cap" style="font-size:14px;color:var(--dim);min-height:20px;text-align:center;max-width:760px"></div>
+<style>.cap b{color:var(--lime);font-weight:600}</style>
+
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+const cap=document.getElementById('cap'),task=document.getElementById('task'),taskv=document.getElementById('taskv');
+const nodes=[0,1,2,3,4].map(i=>document.getElementById('n'+i));
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let W,H,DPR;
+function size(){ DPR=Math.min(2,devicePixelRatio||1); const r=c.getBoundingClientRect();
+  W=r.width;H=r.height;c.width=W*DPR;c.height=H*DPR;x.setTransform(DPR,0,0,DPR,0,0); }
+new ResizeObserver(size).observe(c); size();
+
+const GAP=17,R=1.6;
+function grid(){ const cols=Math.floor(W/GAP),rows=Math.floor(H/GAP);
+  return {cols,rows,ox:(W-(cols-1)*GAP)/2,oy:(H-(rows-1)*GAP)/2}; }
+
+// bezier from the task (left) to the routed capability (right)
+function pathPoint(t,y0,y1){ const x0=W*0.10,x1=W*0.71,mx=W*0.44,my=(y0+y1)/2;
+  const u=t,iu=1-u; return [iu*iu*x0+2*iu*u*mx+u*u*x1, iu*iu*y0+2*iu*u*my+u*u*y1]; }
+
+// Each task routes to a DIFFERENT real capability — that's the point: one board, many real tools.
+const TASKS=[
+  {v:"Make a launch poster",         node:1, cap:"image generation"},
+  {v:"Automate my weekly standup",   node:2, cap:"a skill"},
+  {v:"Turn this doc into a reel",     node:3, cap:"a wrapp"},
+  {v:"What did we agree on pricing?", node:4, cap:"your vault"},
+  {v:"Draft the launch email",        node:0, cap:"your Claude"},
+];
+let ti=0;
+const NY=[0.16,0.34,0.52,0.70,0.88];
+
+const T_IN=650,T_CONNECT=1150,T_ENGAGE=1200,T_HOLD=1100,T_OUT=500;
+const TOTAL=T_IN+T_CONNECT+T_ENGAGE+T_HOLD+T_OUT;
+let start=null;
+
+function frame(now){
+  if(start==null)start=now; let e=now-start;
+  if(e>=TOTAL){ start=now;e=0; ti=(ti+1)%TASKS.length; taskv.textContent=TASKS[ti].v; }
+  const cur=TASKS[ti], yTask=H*0.5, yNode=H*NY[cur.node];
+
+  const pIn=Math.min(1,e/T_IN);
+  const pCon=Math.min(1,Math.max(0,e-T_IN)/T_CONNECT);
+  const pEng=Math.min(1,Math.max(0,e-T_IN-T_CONNECT)/T_ENGAGE);
+  const pHold=Math.min(1,Math.max(0,e-T_IN-T_CONNECT-T_ENGAGE)/T_HOLD);
+  const pOut=Math.min(1,Math.max(0,e-T_IN-T_CONNECT-T_ENGAGE-T_HOLD)/T_OUT);
+
+  if(pOut>0) cap.innerHTML='Your keys never leave. Your data never leaves. <b>It just connects.</b>';
+  else if(pHold>0) cap.innerHTML='→ reaching <b>'+cur.cap+'</b> — through your own Claude.';
+  else if(pCon>0.15) cap.innerHTML='Switchboard <b>wires it through</b> — the dots are the connection.';
+  else cap.innerHTML='A task comes in.';
+
+  task.style.opacity=(pIn*(1-pOut)).toFixed(2);
+  task.style.left=(2 - pOut*3)+'%';
+
+  x.clearRect(0,0,W,H);
+  const g=grid(), head=reduce?1:pCon;
+  for(let cc=0;cc<g.cols;cc++)for(let rr=0;rr<g.rows;rr++){
+    const gx=g.ox+cc*GAP, gy=g.oy+rr*GAP; let b=0.05;
+    if(head>0){ const seg=Math.max(1,Math.floor(head*40));
+      for(let s=0;s<seg;s++){ const [px,py]=pathPoint(s/40,yTask,yNode);
+        const d=Math.hypot(gx-px,gy-py); if(d<11)b=Math.max(b,1-d/11); } }
+    x.fillStyle=`rgba(200,242,80,${b})`;
+    x.beginPath();x.arc(gx,gy,R+(b>0.5?0.7:0),0,6.28);x.fill();
+  }
+  if(!reduce&&pCon>0&&pCon<1){ const [hx,hy]=pathPoint(pCon,yTask,yNode);
+    x.fillStyle='#fff';x.shadowColor='#C8F250';x.shadowBlur=16;
+    x.beginPath();x.arc(hx,hy,3.2,0,6.28);x.fill();x.shadowBlur=0; }
+
+  nodes.forEach((n,i)=>{
+    let lit=reduce;
+    if(i===cur.node && (pCon>0.82||pEng>0)) lit=true;          // the routed capability
+    if(i===0 && pEng>0.15 && cur.node!==0) lit=true;           // …always through your Claude
+    n.classList.toggle('lit',lit);
+    n.style.opacity=(0.55+0.45*Math.min(1,pIn*2)).toFixed(2);
+  });
+  requestAnimationFrame(frame);
+}
+taskv.textContent=TASKS[0].v;
+const _q=new URLSearchParams(location.search),_f=_q.get('t');
+if(_f!=null){ ti=+(_q.get('task')||0); taskv.textContent=TASKS[ti].v;
+  requestAnimationFrame(t=>{ start=t-(+_f); frame(t); }); }
+else if(reduce){ requestAnimationFrame(t=>{ start=t-(T_IN+T_CONNECT+T_ENGAGE); frame(t); }); }
+else requestAnimationFrame(frame);
+</script>

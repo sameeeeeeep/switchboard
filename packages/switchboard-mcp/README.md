@@ -1,3 +1,9 @@
+# Switchboard MCP connector
+
+For the maintained tool inventory, Claude/Codex installation, shared skills, and packaging, see
+[the operator package](../../plugin/README.md). The source below describes the original wrapp bridge;
+the connector now also exposes board management and native presence tools.
+
 # @relay/switchboard-mcp — run & set up Switchboard wrapps from Claude Code
 
 The **reverse arrow**. Switchboard's normal direction is a web page consuming the user's Claude

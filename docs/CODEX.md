@@ -1,5 +1,9 @@
 # Codex in Switchboard
 
+For **Codex operating Switchboard** (board, notch, whiteboard, PIP, wrapps), install the shared
+[operator plugin](../plugin/README.md) with `npm run operator:install -- --client codex`.
+The rest of this document covers **Switchboard using Codex** as a model runtime.
+
 Switchboard can route existing wrapps through Claude Code, Codex App Server, or a local runner.
 The browser contract remains `window.claude`: this is a compatibility name, not a provider restriction.
 Independent native apps can also connect; see [native apps and local voice](NATIVE-AND-LOCAL.md).

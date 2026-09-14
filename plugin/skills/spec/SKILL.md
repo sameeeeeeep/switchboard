@@ -1,8 +1,11 @@
 ---
 name: spec
 description: Turn a rough task into a real SPEC and a checklist of sub-tasks on the board — then get it approved at the notch. Use when a founder drops a one-line task/idea that needs to become "the whole thing" (all states, reversibility, edges) decomposed into ordered sub-tasks a session can pick up. Triggers - "spec this", "spec it out", "turn this into a spec", "break this down", "make this a proper plan", a rough task on the board that isn't decomposed, or the task→spec→sub-tasks loop routed from the notch. Composes the switchboard connector task tools + the switchboard presence skill + adhd-pm Gate A.
-allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Skill, mcp__ccd_session__mark_chapter, mcp__switchboard__switchboard_add_task, mcp__switchboard__switchboard_list_tasks, mcp__switchboard__switchboard_move_task, mcp__switchboard__switchboard_complete_task, mcp__switchboard__switchboard_next_task
 ---
+
+Use the same Switchboard MCP tools in Claude Code and Codex; discover their actual host prefix.
+Read [host bindings](../switchboard/references/hosts.md) when a workflow needs host tools,
+repo helpers, or lifecycle hooks. Label presence with the current agent and task id.
 
 # spec — a rough task becomes a spec becomes a checklist, approved at the notch
 
@@ -79,7 +82,7 @@ founder's default decision channel:
 ## 5 · RELEASE — hand it to the runners
 
 On `approve`: promote every sub-task `backlog → todo` (`switchboard_move_task`) so it's released for
-pickup. From here any Claude session — including a fresh one — calls `switchboard_next_task` to claim the
+pickup. From here any connected agent session — including a fresh one — calls `switchboard_next_task` to claim the
 top unblocked sub-task (it moves to `doing`), does it to Definition-of-Done, and
 `switchboard_move_task(column:"done")` on finish. On `revise` / a typed note: apply the change and
 re-raise (§4). On `drop`: leave it parked in `backlog`, don't delete.

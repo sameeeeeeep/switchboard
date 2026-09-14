@@ -29,7 +29,10 @@
     "runner": "node examples/runner/serve.mjs",
     "try-team-cloud": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-team-cloud.mjs",
     "try-compat": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-compat.mjs",
-    "try-parity": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-parity.mjs"
+    "try-parity": "npm run build -w @relay/protocol && npm run build -w @relay/sidekick && node examples/harness/run-parity.mjs",
+    "operator:install": "node scripts/install-operator.mjs",
+    "operator:check": "node scripts/check-operator-loop.mjs",
+    "operator:test": "node plugin/connector/build.mjs && node --test packages/switchboard-mcp/presence.test.mjs packages/switchboard-mcp/plugin.test.mjs scripts/install-operator.test.mjs plugin/hooks/hooks.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",

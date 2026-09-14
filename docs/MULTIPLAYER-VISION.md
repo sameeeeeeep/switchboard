@@ -195,3 +195,18 @@ someone else's screen's app when they screenshare")
 - Surface Team Mode natively (team.json mirror + TeamSection into build + wiring) — pure assembly, engine done.
 - The sprite/cursor overlay: `kind:"cursor"` fan-out on the transport + the glow-style native overlay.
 Neither depends on the still-open wrapp file-state contract → can start while that's nailed down.
+
+## Dependency: the Slack CONNECTOR gates /notch + /hijack (founder, 2026-09-01)
+`/notch @sameep …` and `/hijack sameep …` are Slack SLASH COMMANDS — they need a Slack connector to receive
+them. So the Slack connector is the prerequisite ingress. Its real shape:
+- A **Slack app** with `/notch` + `/hijack` slash commands, each with a request URL.
+- A **public endpoint** (Slack can't reach 127.0.0.1): reuse the **Cloudflare Worker + Durable Object already
+  running for the team relay** — the Slack webhook lands there and forwards to the target's daemon over the
+  same relay.
+- **`@sameep` → their Switchboard**: a one-time LINK of a Slack identity to a Switchboard, so the endpoint
+  knows which daemon to route to.
+- **Consent**: an external Slack command driving your machine (`/hijack`) needs an explicit opt-in ("allow
+  these people to hijack me") — not a footgun.
+Build order: Slack connector (ingress + linking) → `/notch` (task → the existing Tasks board) → `/hijack`
+(task → board + takeover) → the takeover mechanism (overlay drives the pointer + locks input; same regardless
+of trigger, testable peer-to-peer). (founder: "for that to work will have to fig our slack connector first")
