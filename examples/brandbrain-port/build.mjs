@@ -111,6 +111,8 @@ const seamPlugin = {
       const p = args.path;
       if (p === "@/lib/claude" || /(^|\/)claude$/.test(p)) return { path: join(SHIMS, "claude.mjs") };
       if (p === "@/lib/claude-session" || /(^|\/)claude-session$/.test(p)) return { path: join(SHIMS, "claude-session.mjs") };
+      // The site reader must run where there is no CORS — the daemon (sb_brand) — never in the browser.
+      if (p === "@/lib/extract") return { path: join(SHIMS, "extract.mjs") };
       if (/server\/workspace-store$/.test(p)) return { path: join(SHIMS, "workspace-store.mjs") };
       if (/server\/vendor-store$/.test(p)) return { path: join(SHIMS, "vendor-store.mjs") };
       if (p === "node:fs" || p === "fs" || p === "node:fs/promises" || p === "fs/promises") return { path: join(SHIMS, "node-fs.mjs") };
