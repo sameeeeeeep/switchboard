@@ -63,7 +63,7 @@ Free, open source, runs on your own AI through Switchboard.
 
 ### A03 — THE ECOSYSTEM POST (the Cap-style reveal, third beat)
 
-**Visual:** `assets/19-ai-already-paid.png` or the store grid — brandbrain among other wrapps.
+**Visual:** CAPTURED 18 Sep — `media/brandbrain-oneline-idea-16s.mp4`: the anchor line demonstrated (one typed line → Start building → the brand lands; setup 6x sped, needs a "SETUP SHORTENED" caption in the edit; 29s honest raw alongside). Alternative: `assets/19-ai-already-paid.png` or the store grid.
 
 **Copy**
 
