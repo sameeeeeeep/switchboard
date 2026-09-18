@@ -31,7 +31,7 @@ The platform is never the headline. It is the last line of every post, always th
 
 ### A01 — THE PASTE-A-WEBSITE POST (lead with the new fetch)
 
-**Visual:** screen recording — paste `nailin.it` into "already have a brand? drop its website", watch the palette + 32 products land. Re-capture per `05-capture-evidence.md`; `media/brandbrain-walkthrough.mp4` shows the older flow.
+**Visual:** CAPTURED 18 Sep — `media/brandbrain-import-nailinit-25s.mp4` (25s cut; the reading wait is 6x sped **and needs a "READING SHORTENED" caption added in the edit** — this build of ffmpeg couldn't burn it) or `media/brandbrain-import-nailinit-raw.mp4` (49s real-time, honest as-is). Real flow against the real product: type nailin.it → Build my brand from it → the brand lands. Payoff still: `media/brandbrain-nailinit-market.png` — the researched category with 14 real competitors and prices.
 
 **Copy**
 
@@ -45,7 +45,7 @@ It's free, and it runs on the AI subscription you already have. brandbrain is on
 
 ### A02 — THE DECK POST (lead with the new personas)
 
-**Visual:** two deck covers side by side — a clinical single-sachet brand vs a loud incense brand — same data pipeline, different art direction.
+**Visual:** CAPTURED 18 Sep — `social-images/deck-personas-pocketpause-dayproof.png`: two real workspace brands' covers side by side (Pocketpause renders clinical, Dayproof renders editorial), rendered from the same shared deck model the .pptx uses.
 
 **Copy**
 
