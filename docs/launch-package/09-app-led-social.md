@@ -117,3 +117,32 @@ Slot into the six-week calendar as an **app-led lane**, one per week alongside t
 - "per-brand deck art direction" — shipped 18 Sep 2026: deck personas (editorial / pop / clinical / craft) + distinct slide archetypes.
 - "free, open source, runs on your own AI" — existing positioning, per the terms FAQ (per-user-local Agent SDK use).
 - Numbers slide "figures that could actually be cited" — validation layer is cite-or-omit.
+
+
+## Founder DMs — the outreach lane (added 22 Sep)
+
+Direct messages to founders, sent personally — not posts. Same register rules. The pitch order is Cap's: the app first, the platform as the last line.
+
+**On the framing "make custom harnesses in HTML for any use case":** the true version is strong enough — a wrapp is one HTML file; `window.claude` hands it your model, tools, files and storage through the consent broker on your machine. Say "one HTML file" (true, concrete, surprising) and show brandbrain as proof. Avoid "any use case" — it over-promises; anchor on "the job you keep briefing out" and the capabilities that exist today.
+
+### D01 — warm founder DM (demo-led)
+
+built something i want to show you — one line turns into a working brand: market read, every decision as options, deck, site, ads. 40 seconds: [demo link]
+
+it runs on the claude you already pay for, through switchboard — free, open source. if there's a job in your company you keep briefing out, tell me what it is; a harness for it is one html file away.
+
+### D02 — builder founder DM (how it works)
+
+the part i think you'd like: a wrapp is literally one html file. window.claude gives it your model, your tools, your files — through a consent broker running on your machine, so the app never holds keys or data. brandbrain (the brand studio in the demo) is built exactly this way.
+
+sdk + examples: github.com/sameeeeeeep/switchboard — if you tell me a workflow you'd want harnessed, i'll sketch it with you.
+
+### D03 — short X/DM opener
+
+one line → brand system + deck + site + ads, on your own claude. 40s: [demo link]. open source — and the interesting bit is that the whole app is one html file on switchboard.
+
+### Sending notes
+
+- Attach the demo video directly where the platform allows; a native upload beats a link.
+- Personalise the first line with the founder's actual company/job ("for you this would be X") — one sentence, no flattery.
+- The ask is a conversation, not a download: "tell me the job you keep briefing out."
