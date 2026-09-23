@@ -1697,11 +1697,11 @@ final class CursorGuide {
         if fm.fileExists(atPath: notifyPath) {
             let obj = readJSON(notifyPath)
             try? fm.removeItem(atPath: notifyPath)
-            showNotify(obj)
+            if notchOn { showNotify(obj) }                     // notch off → no toasts either
         }
         // /pip MODE toggle (docs/PM-NOTCH-OPERATOR.md): ~/.relay/pip.json {"active":true} → the persistent
         // stream feed lives at the notch; absent/false → off. Polled each tick; deterministic, no model.
-        let pipOn = (readJSON(rel("pip.json")) as? [String: Any])?["active"] as? Bool ?? false
+        let pipOn = notchOn && ((readJSON(rel("pip.json")) as? [String: Any])?["active"] as? Bool ?? false)
         if pipOn != model.pipActive { setPip(pipOn) }
         // /hijack PESTER (docs/SLACK-CONNECTOR.md): ~/.relay/pester.json {"active":true,"from":..,"task":..}
         // → the sender's sprite trails YOUR cursor until you finish the specced guided run. startPester is
@@ -1719,10 +1719,40 @@ final class CursorGuide {
 
     // MARK: parse + start
 
+    /// The Notch wrapp toggle (Settings → Wrapps → Notch). Unset = on.
+    private var notchOn: Bool {
+        UserDefaults.standard.object(forKey: "wrappNotch") == nil ? true : UserDefaults.standard.bool(forKey: "wrappNotch")
+    }
+
+    /// Notch OFF: an agent's card is never shown — it's ANSWERED at once with outcome "notch_off", so the
+    /// caller falls back to asking in chat instead of waiting on a card nobody will see. Same result
+    /// files a real run writes (shared + per-runId), so every poller unblocks.
+    private func declineNotchOff(_ obj: [String: Any], title: String, mode: GuideMode) {
+        let now = iso.string(from: Date())
+        let out: [String: Any] = [
+            "title": title, "mode": mode.rawValue, "outcome": "notch_off",
+            "note": "The notch is turned off (Settings → Wrapps → Notch). Ask in chat instead.",
+            "startedAt": now, "finishedAt": now, "passed": 0, "failed": 0, "skipped": 0, "total": 0, "results": [],
+        ]
+        writeAtomic(out, to: rel("guide-result.json"))
+        if let rid = obj["runId"] as? String, !rid.isEmpty {
+            let dir = rel("guide-results")
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            writeAtomic(out, to: (dir as NSString).appendingPathComponent("\(rid).json"))
+        }
+        NSLog("[cursor-guide] notch off — declined card '\(title)'")
+    }
+
     private func begin(_ raw: Any?, defaultMode: GuideMode) {
         guard let obj = raw as? [String: Any] else { logMalformed(); return }
         let m = GuideMode(rawValue: (obj["mode"] as? String) ?? "") ?? defaultMode
         let title = (obj["title"] as? String) ?? "Untitled"
+        // Notch off → agent cards don't appear. /screen + /reference grabs are the user's own action, and
+        // onboarding is how Switchboard gets set up, so those still run.
+        if !notchOn && m != .grab && (obj["style"] as? String) != "onboarding" {
+            declineNotchOff(obj, title: title, mode: m)
+            return
+        }
         // Direct-grab mode (/screen + /reference): NO guide card at all — go straight to the fn+drag grab +
         // note panel. Needs no `steps`, so branch out before the steps guard below.
         if m == .grab {

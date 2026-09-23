@@ -1619,7 +1619,7 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("What's on your Switchboard. Everything's a wrapp you add.")
                 .font(.hanken(11)).foregroundColor(.inkFaint).fixedSize(horizontal: false, vertical: true)
-            wrappRow("Notch", "the surface everything appears on", on: wrappNotch) {
+            wrappRow("Notch", wrappNotch ? "the surface everything appears on" : "off — no cards or toasts; agents ask in chat", on: wrappNotch) {
                 wrappNotch.toggle(); NotificationCenter.default.post(name: .init("wrappsChanged"), object: nil)
             }
             wrappRow("God", "double-tap ⌃ — see, hear, help", on: wrappGod) { wrappGod.toggle() }
