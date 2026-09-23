@@ -67,11 +67,6 @@ const isDemoEmpty = isDemo && new URLSearchParams(location.search).get("demo") =
 // hero speaks instead — the same rule the rest of this file follows: never invent a count.
 const demoTasks = isDemo && !isDemoEmpty;
 
-// The newest arrivals — the founder-mandated icons list. Curated newest-first (the in-page ./ wrapps
-// are the latest builds); each row carries the wrapp glyph + a category one-liner.
-// Ids must exist in APPS — renderRecent() silently skips unknown ones, so a stale entry
-// here ships a list whose length quietly lies. ("chat" lived here until it left the catalog.)
-const RECENTLY_ADDED = ["huddle", "reel", "identity", "take", "batch", "marquee", "redline"];
 
 // ---------- WHAT'S NEXT / TASKS — the intent bar + the one shared task list ----------
 // The store writes tasks into the SAME file + dialect Bank writes (bank.js:29,75-89,760-777), so a
@@ -442,26 +437,46 @@ function renderBoardCounts() {
   }
 }
 
-// The hero's right column: four real apps, previewed live. Same makeThumb() the catalog uses,
-// so the first screen shows the product instead of describing it. Chosen for visual variety
-// across families rather than curated by hand — ids are checked so a catalog edit can't 404.
-const HERO_ART = ["brandbrain", "adforge", "arcana", "bank"];
+// The hero's right column is a SPOTLIGHT, not a wall of equal tiles: one big live brandbrain
+// preview badged "Start here", because the whole store is worthless if a first-time visitor
+// doesn't know which app to open first. Clicking it goes straight to brandbrain (the try, not the
+// tour). Under it, a thin "popular next" row keeps the other flagships one tap away.
+const HERO_STAR = "brandbrain";
+const HERO_NEXT = ["adforge", "bank", "redline"];
 function renderHeroArt() {
   const box = $("hero-art");
   if (!box) return;
   box.textContent = "";
-  for (const id of HERO_ART) {
+  const star = APP_BY_ID[HERO_STAR];
+  if (!star) return;
+  box.classList.add("spotlight");
+
+  const a = mk("a", "hero-star");
+  a.href = star.href;                       // straight to the app — this tile IS the "try it"
+  if (/^https:/.test(star.href)) { a.target = "_blank"; a.rel = "noreferrer"; }
+  a.title = `Try ${star.name}`;
+  a.dataset.app = star.id;
+  const cap = mk("span", "hs-cap");
+  const t = mk("span", "hs-t");
+  const nm = mk("span", "hs-n");
+  nm.append(document.createTextNode(star.name));
+  if (isVerified(star)) nm.insertAdjacentHTML("beforeend", verifyBadge());
+  t.append(nm, mk("span", "hs-d", "Consumer brands, built on receipts — on your own Claude."));
+  cap.append(glyphTile(star.id, 40), t, mk("span", "hs-go", "Try it →"));
+  a.append(makeThumb(star, true), mk("span", "hs-badge", "Start here"), cap);
+  box.append(a);
+
+  const row = mk("div", "hero-next");
+  for (const id of HERO_NEXT) {
     const app = APP_BY_ID[id];
     if (!app) continue;
-    const a = mk("a");
-    a.href = detailHref(app.id);
-    a.title = app.name;
-    a.dataset.app = app.id;
-    const cap = mk("span", "cap");
-    cap.append(glyphTile(app.id, 22), mk("span", "nm", app.name));
-    a.append(makeThumb(app, true), cap);
-    box.append(a);
+    const chip = mk("a", "hn-chip");
+    pointAtDetail(chip, app);               // these are "see the wrapp", not "open it"
+    chip.title = app.name;
+    chip.append(glyphTile(app.id, 26), mk("span", "hn-n", app.name));
+    row.append(chip);
   }
+  box.append(row);
 }
 
 // The designation strip over the board — same scroll-to-section behaviour as the sidebar
@@ -489,31 +504,48 @@ function renderBoardStrip() {
 
 
 // ========================================================================================
-// RECENTLY ADDED — the icons list (founder-mandated glyphs)
+// NEW ADDITIONS — the compact directory strip: 12 icon rows (icon + name + category),
+// a rotating window over a larger pool driven by the ‹ + › head controls. This is the first
+// browsable section under the hero — the "get me straight to the tools" surface.
 // ========================================================================================
+// The pool the strip rotates through. Broader than the visible 12 so ‹ › actually turns up
+// fresh tiles; every id is checked against APPS so a catalog edit can't 404 a row.
+const NA_POOL = [
+  "redline", "marquee", "batch", "take", "identity", "reel", "huddle", "cast", "prism", "adgen",
+  "arcana", "natal", "cartridge", "shelf", "studio", "aplus", "adforge", "adpulse", "mkt", "capp",
+].filter((id) => APP_BY_ID[id]);
+const NA_SHOWN = 12;
+let naStart = 0;
 function renderRecent() {
   const box = $("recent-list");
+  if (!box) return;
   box.textContent = "";
-  for (const id of RECENTLY_ADDED) {
+  const n = Math.min(NA_SHOWN, NA_POOL.length);
+  for (let i = 0; i < n; i++) {
+    const id = NA_POOL[(naStart + i) % NA_POOL.length];
     const app = APP_BY_ID[id];
     if (!app) continue;
-    const row = mk("a", "recent-row");
+    const row = mk("a", "na-item");
     row.dataset.app = id;
     pointAtDetail(row, app);
-    row.append(glyphTile(id, 34));
-    const t = mk("span", "rr-t");
-    const n = mk("span", "rr-n");
-    n.append(document.createTextNode(app.name));
-    if (isVerified(app)) n.insertAdjacentHTML("beforeend", verifyBadge());
-    t.append(n, mk("span", "rr-c", firstLine(app)));
-    row.append(t, mk("span", "rr-cat", categoryOf(id)));
+    row.append(glyphTile(id, 44));
+    const t = mk("span", "na-tx");
+    const nm = mk("span", "na-n");
+    nm.append(document.createTextNode(app.name));
+    if (isVerified(app)) nm.insertAdjacentHTML("beforeend", verifyBadge());
+    t.append(nm, mk("span", "na-c", categoryOf(id)));
+    row.append(t);
     box.append(row);
   }
 }
-function firstLine(app) {
-  const card = document.querySelector(`a.card[data-app="${app.id}"] p`);
-  return card ? card.textContent : categoryOf(app.id);
+function turnNewAdditions(dir) {
+  const len = NA_POOL.length || 1;
+  naStart = (naStart + dir * 4 + len) % len;
+  renderRecent();
 }
+$("na-prev")?.addEventListener("click", () => turnNewAdditions(-1));
+$("na-next")?.addEventListener("click", () => turnNewAdditions(1));
+$("na-add")?.addEventListener("click", () => $("store")?.scrollIntoView({ behavior: "smooth", block: "start" }));
 
 // ========================================================================================
 // THE WAY — onboarding stepper (reflects reality, routes the click to the next move)
@@ -761,6 +793,7 @@ function onDisconnected() {
 function showDash() {
   $("hero").hidden = true;
   if ($("pitch")) $("pitch").hidden = true;   // the pitch is for strangers, not for your dashboard
+  if ($("why-sec")) $("why-sec").hidden = true; // ditto — the "why one connection" cards left the hero
   $("dash").hidden = false;
   $("wallet-chip").hidden = false;
   $("dock").hidden = false;
@@ -776,6 +809,7 @@ function hideDash() {
   promotedAction = null;
   $("hero").hidden = false;
   if ($("pitch")) $("pitch").hidden = false;
+  if ($("why-sec")) $("why-sec").hidden = false;
   $("wallet-chip").hidden = true;
   $("dock").hidden = true;
   document.body.classList.remove("plan-pro", "is-demo");

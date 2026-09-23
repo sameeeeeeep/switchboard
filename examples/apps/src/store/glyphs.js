@@ -131,12 +131,37 @@ const TILE = {
 /** The saturated icon colour for a catalog id (per-app, with a family fallback). */
 export function tileColor(id) { return TILE[id] || FAM_TILE[entry(id).fam] || "#12A594"; }
 
-/** A rounded app-icon tile: saturated per-app fill + white glyph + soft top-light. Cards, dock, list. */
+// ---- The real icon set. One finished PNG per id in ./img/icons/<id>.png — a matte gradient tile
+// with a white two-tone symbol, generated as a cohesive family and trimmed to the tile bounds. Any
+// id NOT listed here (parked / one-off wrapps without a made icon yet) falls back to the inline
+// gradient glyph tile below, so the store never renders a broken image. ----
+export const ICON_IDS = new Set([
+  "brandbrain", "ideabrain", "bank", "mkt", "capp", "saas", "retail", "hardware", "feature",
+  "adpulse", "adforge", "shelf", "studio", "aplus", "batch", "take", "identity", "reel", "marquee",
+  "huddle", "natal", "arcana", "redline", "cartridge", "cast", "prism", "adgen",
+]);
+export const hasIcon = (id) => ICON_IDS.has(id);
+export const iconSrc = (id) => `./img/icons/${id}.png`;
+
+/** A rounded app-icon tile. A real generated icon PNG when we have one; otherwise the inline
+ * gradient glyph tile (parked wrapps). Radius scales with size so it reads as one icon at any size. */
 export function glyphTile(id, size = 34) {
-  const c = tileColor(id);
   const s = document.createElement("span");
   s.className = "ic";
   s.style.width = s.style.height = size + "px";
+  s.style.borderRadius = Math.max(6, Math.round(size * 0.235)) + "px";
+  if (ICON_IDS.has(id)) {
+    s.classList.add("ic-img");
+    const img = document.createElement("img");
+    img.src = iconSrc(id);
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.draggable = false;
+    s.appendChild(img);
+    return s;
+  }
+  const c = tileColor(id);
   s.style.background = `linear-gradient(155deg, color-mix(in srgb, ${c} 76%, #fff 24%), ${c} 74%)`;
   s.style.color = "#fff";
   s.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.34), inset 0 0 0 1px rgba(255,255,255,.10), 0 3px 8px -3px rgba(0,0,0,.6)";
