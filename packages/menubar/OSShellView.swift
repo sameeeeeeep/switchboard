@@ -150,7 +150,7 @@ struct IsoTile: View {
 enum Surface: String, CaseIterable, Identifiable {
     case home, tasks, calendar, bank                 // WORKSPACE
     case dashboard, needs, routines, workflows       // AUTOMATE
-    case history, graph, dictionary                  // KNOWLEDGE
+    case history, journal, graph, dictionary         // KNOWLEDGE
     case apps, store                                 // DO
     var id: String { rawValue }
 
@@ -160,7 +160,7 @@ enum Surface: String, CaseIterable, Identifiable {
         case .calendar: return "Calendar";  case .bank: return "Bank"
         case .dashboard: return "Dashboard"; case .needs: return "Needs attention"
         case .routines: return "Routines";  case .workflows: return "Workflows"
-        case .history: return "History";    case .graph: return "Graph"
+        case .history: return "History";    case .journal: return "Journal"; case .graph: return "Graph"
         case .dictionary: return "Dictionary"; case .apps: return "Apps"
         case .store: return "Store"
         }
@@ -170,7 +170,7 @@ enum Surface: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "⌂";      case .tasks: return "✓";     case .calendar: return "▦"
         case .bank: return "▤";      case .dashboard: return "▚"; case .needs: return "!"
-        case .routines: return "⟳";  case .workflows: return "⇉"; case .history: return "⟲"
+        case .routines: return "⟳";  case .workflows: return "⇉"; case .history: return "⟲"; case .journal: return "◉"
         case .graph: return "⊹";     case .dictionary: return "Aa"; case .apps: return "▥"
         case .store: return "+"
         }
@@ -187,6 +187,7 @@ enum Surface: String, CaseIterable, Identifiable {
         case .routines: return "Manage and monitor the things that run without me."
         case .workflows: return "Run and manage my multi-step pipelines — the reusable batch recipes."
         case .history: return "Let me find and reopen anything I did — every God/wrapp run as a receipt."
+        case .journal: return "Show me what I saw and heard, as a timeline I can search and forget."
         case .graph: return "Show how everything connects, so I can navigate by relationship, not just by list."
         case .dictionary: return "Hold what my words mean — so every surface and wrapp speaks my language."
         case .apps: return "Launch, manage, and understand the tools I have."
@@ -205,6 +206,7 @@ enum Surface: String, CaseIterable, Identifiable {
         case .routines: return ["Active", "Paused", "Last run", "Next run", "Logs"]
         case .workflows: return ["Pipelines", "Steps", "Runs", "Templates"]
         case .history: return ["Today", "Yesterday", "Filters", "Reopen"]
+        case .journal: return ["Day strip", "Sessions", "Search", "Forget"]
         case .graph: return ["Canvas", "Filters", "Inspector", "List view"]
         case .dictionary: return ["A–Z index", "Term", "Definition", "Scope", "Source"]
         case .apps: return ["Pinned", "All apps", "Categories", "God can drive"]
@@ -217,7 +219,7 @@ struct RailGroup: Identifiable { let name: String; let items: [Surface]; var id:
 let OS_GROUPS: [RailGroup] = [
     RailGroup(name: "Workspace", items: [.home, .tasks, .calendar, .bank]),
     RailGroup(name: "Automate",  items: [.dashboard, .needs, .routines, .workflows]),
-    RailGroup(name: "Knowledge", items: [.history, .graph, .dictionary]),
+    RailGroup(name: "Knowledge", items: [.history, .journal, .graph, .dictionary]),
     RailGroup(name: "Do",        items: [.apps, .store]),
 ]
 
@@ -607,6 +609,7 @@ struct OSShellView: View {
                     case .routines:   RoutinesSurface(onNavigate: { selected = $0 })
                     case .workflows:  WorkflowsSurface(onNavigate: { selected = $0 })
                     case .history:    HistorySurface(onNavigate: { selected = $0 })
+                    case .journal:    JournalSurface(onNavigate: { selected = $0 })
                     case .graph:      GraphSurface(onNavigate: { selected = $0 })
                     case .dictionary: DictionarySurface(onNavigate: { selected = $0 })
                     case .apps:       AppsSurface(onNavigate: { selected = $0 })

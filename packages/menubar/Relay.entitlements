@@ -17,6 +17,9 @@
 	<!-- God's ear: capture the microphone (⌃⌃ push-to-talk). -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Journal camera presence (opt-in, CameraPresence.swift): at desk / away / people in view. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
 	<!-- God's hands: drive System Events / other apps via Apple Events (type, keys, open). -->
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
