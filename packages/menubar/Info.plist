@@ -13,7 +13,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.0</string>
+	<string>0.4.1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -26,13 +26,15 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>42</string>
+	<string>43</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>God opens apps, types, and presses the keys you approve — every action asks first, in the notch. If you opt in, Switchboard also reads your active browser tab's address locally to suggest relevant tools. Nothing leaves your Mac unasked.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Switchboard uses the camera only if you turn on camera presence in your journal settings. It notices whether you are at your desk and how many people are in view, on this Mac. No images are saved.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Switchboard — BYO-Claude</string>
 	<key>NSMicrophoneUsageDescription</key>

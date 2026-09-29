@@ -67,6 +67,10 @@ final class LooseNotch {
 
     func open() { onOpen() }
 
+    // Where the eyes are on screen, so they can look at the pointer.
+    nonisolated func notchCenter() -> CGPoint? { MainActor.assumeIsolated { let f = notchFrame(); return f == .zero ? nil : CGPoint(x: f.midX, y: f.midY) } }
+    nonisolated func creatureCenter() -> CGPoint? { MainActor.assumeIsolated { panel.map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) } } }
+
     func dock() {
         panel?.orderOut(nil)
         model?.creatureLoose = false
@@ -146,18 +150,16 @@ struct CreatureView: View {
         let shape = Capsule()
         ZStack {
             shape.fill(Color.page)
-            NotchField(accent: tint, working: model.working, animated: model.running, eyes: true)
+            NotchField(accent: tint, working: model.working, animated: model.running, eyes: true,
+                       eyeColor: model.cameraOn ? Color.senseCamera : (model.listening ? Color.senseAudio : nil),
+                       gaze: { loose.creatureCenter() })
                 .padding(.horizontal, 6).padding(.vertical, 3)
                 .clipShape(shape)
             shape.stroke(tint.opacity(hovering ? 0.55 : 0.22), lineWidth: hovering ? 1.1 : 0.75)
             if hovering && !dragging {
                 // The pill is small: icon buttons, with tooltips, instead of the notch's word pills.
                 HStack(spacing: 8) {
-                    if model.journalOn {
-                        CreatureIconButton(symbol: "eye.slash", help: "Stop watching (pause the screen journal)") {
-                            try? FileManager.default.removeItem(atPath: (NSHomeDirectory() as NSString).appendingPathComponent(".relay/journal-on"))
-                        }
-                    }
+                    SensesPill()
                     CreatureIconButton(symbol: "arrow.up.to.line", help: "Put it back in the notch") { loose.dock() }
                 }
             }

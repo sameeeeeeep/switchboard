@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 echo "[menubar] compiling…"
 mkdir -p build
-swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift TeamSection.swift TeamCursorsOverlay.swift IgnitionOverlay.swift DictationScratch.swift WhiteboardPanel.swift NotchTray.swift NotchLauncherView.swift LauncherRouting.swift ConsentRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift ScreenJournal.swift LooseNotch.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
+swiftc -O -o build/Relay main.swift RelayMenuBar.swift CursorGuide.swift TeamSection.swift TeamCursorsOverlay.swift IgnitionOverlay.swift DictationScratch.swift WhiteboardPanel.swift NotchTray.swift NotchLauncherView.swift LauncherRouting.swift ConsentRouting.swift GodWidgetKit.swift GodWebWindow.swift StoreFrontView.swift HtmlCapability.swift SkillRunner.swift AmbientSensor.swift AmbientCanvas.swift ScreenJournal.swift LooseNotch.swift CallAudio.swift CallCaptions.swift CameraPresence.swift Senses.swift CameraPanel.swift OSShellView.swift OSSurfaceWorkspace.swift OSSurfaceAutomate.swift OSSurfaceKnowledge.swift OSSurfaceDo.swift OSSurfaceJournal.swift -framework AppKit -framework SwiftUI -framework WebKit -framework ApplicationServices -framework CoreServices
 
 APP="Switchboard.app"
 rm -rf "$APP"

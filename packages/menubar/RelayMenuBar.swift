@@ -195,6 +195,9 @@ extension Color {
     static let inkDim = Color(red: 0x9A/255.0, green: 0x9A/255.0, blue: 0xA2/255.0)  // neutral, no blue
     static let inkFaint = Color(red: 0x6C/255.0, green: 0x6C/255.0, blue: 0x74/255.0)
     static let lime = Color(red: 0xC8/255.0, green: 0xF2/255.0, blue: 0x50/255.0)
+    // Eye colours = what Switchboard can sense: lime = screen, amber = screen + audio, coral = + camera (reserved).
+    static let senseAudio = Color(red: 0xFF/255.0, green: 0xB5/255.0, blue: 0x47/255.0)
+    static let senseCamera = Color(red: 0xFF/255.0, green: 0x6B/255.0, blue: 0x5A/255.0)
     static let danger = Color(red: 0xFF/255.0, green: 0x2D/255.0, blue: 0x6E/255.0)
     static let ok = Color(red: 0x3D/255.0, green: 0xD6/255.0, blue: 0x8C/255.0)   // "connected" green
     static let amber = Color(red: 0xEF/255.0, green: 0x9F/255.0, blue: 0x27/255.0)  // pending / needs-attention
@@ -788,6 +791,8 @@ final class Model: ObservableObject {
     @Published var journalOn = false              // screen journal recording (~/.relay/journal-on) → eyes on the notch
     @Published var creatureLoose = false          // the Loose Notch pill is off the notch (LooseNotch.swift) → the eyes go with it
     @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
+    @Published var listening = false              // CallAudio is transcribing a call → the eyes turn amber
+    @Published var cameraOn = false               // CameraPresence is watching → the eyes turn coral
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
     @Published var modelProviders: [ModelProvider] = []
     @Published var originModels: [String: String] = [:]   // origin → its current model (grants.json modelOverride)
@@ -2398,8 +2403,13 @@ struct NotchField: View {
     private static let eyeShape: [(Int, Int)] = [(1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (3, 1), (1, 2), (2, 2)]
     private func eyeLamp(_ c: Int, _ r: Int, _ cols: Int, _ rows: Int, _ t: Double) -> Bool {
         let blink = t.truncatingRemainder(dividingBy: 4.2) < 0.16
-        let glance = [0, 0, -1, 0, 1, 0][Int(t / 5.3) % 6]
-        let top = max(0, rows / 2 - 1)
+        var glance = [0, 0, -1, 0, 1, 0][Int(t / 5.3) % 6], lift = 0
+        if let c = gaze?() {                                    // look at the pointer: ±2 lamps across, ±1 up/down
+            let m = NSEvent.mouseLocation
+            glance = max(-2, min(2, Int(((m.x - c.x) / 90).rounded())))
+            if rows >= 5 { lift = m.y - c.y > 40 ? -1 : (m.y - c.y < -40 ? 1 : 0) }
+        }
+        let top = max(0, min(rows - 3, rows / 2 - 1 + lift))
         let left = cols / 2 - 5 + glance                       // two 4-wide eyes, 2 lamps apart, centred
         for ox in [left, left + 6] {
             for (dc, dr) in Self.eyeShape where !(blink && dr != 1) {
@@ -2418,13 +2428,17 @@ struct NotchField: View {
         // Lamp density matches the dictation DotMatrix (founder-approved 2026-08-13, "chunky lamps"):
         // pitch 6 / dot 3 — bolder + less dense than the old fine field (pitch 4 / dot 1.8).
         let gap: CGFloat = 6.0, d: CGFloat = 3.0
+    var eyeColor: Color? = nil                 // nil = the accent; amber while listening to a call
+    /// Screen point of this field's centre; when set, the eyes look toward the mouse pointer.
+    var gaze: (() -> CGPoint?)? = nil
         let cols = max(1, Int(size.width / gap)), rows = max(1, Int(size.height / gap))
         let ox = (size.width - CGFloat(cols - 1) * gap) / 2, oy = (size.height - CGFloat(rows - 1) * gap) / 2
         for c in 0..<cols {
             for r in 0..<rows {
                 let x = ox + CGFloat(c) * gap - d / 2, y = oy + CGFloat(r) * gap - d / 2
-                let b = eyes ? (eyeLamp(c, r, cols, rows, t) ? 1.0 : bright(c, r, t) * 0.28) : bright(c, r, t)
-                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color(accent.opacity(b)))
+                let isEye = eyes && eyeLamp(c, r, cols, rows, t)
+                let b = eyes ? (isEye ? 1.0 : bright(c, r, t) * 0.28) : bright(c, r, t)
+                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color((isEye ? (eyeColor ?? accent) : accent).opacity(b)))
             }
         }
     }
@@ -2474,19 +2488,20 @@ struct OrbView: View {
         let shape = NotchDropShape(ear: 9, botR: 10)
         ZStack {
             shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
-            NotchField(accent: tint, working: model.working, animated: model.running, eyes: model.journalOn && !model.creatureLoose)
+            NotchField(accent: tint, working: model.working, animated: model.running, eyes: (model.journalOn || model.cameraOn || model.listening) && !model.creatureLoose,
+                       eyeColor: model.cameraOn ? Color.senseCamera : (model.listening ? Color.senseAudio : nil),
+                       gaze: { LooseNotch.shared.notchCenter() })
                 .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
                 .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
             // Hover cue — the rim brightens and a small ⌄ appears, signalling "click to open". Hover NO LONGER
             // opens the panel (founder 2026-08-25: "hover shouldn't open the big panel — show an option I click").
             shape.stroke(tint.opacity(hovering ? 0.55 : (model.running ? 0.20 : 0.10)), lineWidth: hovering ? 1.1 : 0.75)
             // SCREEN JOURNAL — while it records, the notch has eyes. Tap them to pause (they close).
-            if model.journalOn {
-                VStack(spacing: 0) { Spacer(minLength: 0)
-                    if hovering { JournalStopPill().padding(.bottom, 3) }
-                }
+            // Hover: one switch per sense (screen / meeting audio / camera), not a single "stop watching".
+            if hovering {
+                VStack(spacing: 0) { Spacer(minLength: 0); SensesPill().padding(.bottom, 3) }
             }
-            if hovering && !model.journalOn {
+            if false && hovering {                // the senses pill replaces the chevron on hover
                 VStack(spacing: 0) { Spacer(minLength: 0)
                     Image(systemName: "chevron.compact.down").font(.system(size: 9, weight: .bold))
                         .foregroundColor(tint.opacity(0.9)).padding(.bottom, 2)
@@ -5273,6 +5288,12 @@ struct ActionConsentDrop: View {
         // …and SHOW the app once. An accessory app's launch is otherwise invisible: no Dock icon,
         // no window — just an 18px mark appearing in a crowded menu bar. Presenting the popover
         // one time teaches where Relay lives and puts the token button on screen. Never again
+        CallAudio.shared.onListening = { [weak self] on in self?.model.listening = on }
+        CallAudio.shared.record = { ScreenJournal.shared.record($0) }
+        CallAudio.shared.arm()   // background meeting watch; asks at the notch before transcribing
+        CameraPresence.shared.onCamera = { [weak self] on in self?.model.cameraOn = on }
+        CameraPresence.shared.record = { ScreenJournal.shared.record($0) }
+        CameraPresence.shared.arm()   // opt-in ("camera": true): at desk / away / people in view, no identities
         // after that (the token file exists on every later launch).
         // Onboarding (docs/ONBOARDING.md): until they finish it, opening the panel lands on the setup
         // ladder. Only AUTO-open on the very first run (as today) — later launches wait to be asked.
@@ -5522,7 +5543,8 @@ struct ActionConsentDrop: View {
             // Optional file body = the surface to land on (e.g. `echo tasks > ~/.relay/open-os`); empty = Home.
             let want = (try? String(contentsOfFile: p, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             try? FileManager.default.removeItem(atPath: p)
-            if !want.isEmpty, let s = Surface(rawValue: want) { OSShellWindowController.shared.show(s) }
+            if want == "camera" { if Senses.cameraLab { CameraPanelController.shared.show() } }   // `echo camera > ~/.relay/open-os` (camera lab only)
+            else if !want.isEmpty, let s = Surface(rawValue: want) { OSShellWindowController.shared.show(s) }
             else { OSShellWindowController.shared.show() }
         }
         // `touch ~/.relay/fill-form` → guided form-fill from the clipboard (scriptable + self-test hook).

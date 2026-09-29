@@ -9,7 +9,11 @@
 //     Anything that later leaves the Mac (recall, live cards) goes through a separate, redacting step.
 //   • BLOCK LIST. Password managers, private messengers, system security UI, private/incognito windows and
 //     banking-looking pages are never read. Secure (password) fields are never read anywhere.
-//     ~/.relay/journal.json {"block": [bundleIds], "blockWords": [...], "retentionDays": 30} extends it.
+//     ~/.relay/journal.json {"block": [bundleIds], "blockWords": [...], "retentionDays": 30, "calls": true} extends it.
+//   • CALL AUDIO (CallAudio.swift): with "audio": true, calls also get on-device Me / Them transcripts.
+//   • CALLS. Meet/Zoom/Teams/FaceTime windows are re-read every 20 s at higher OCR resolution (screen shares change
+//     without the title changing); "calls": false turns call capture off entirely. On every app switch the window
+//     being left gets one LAST LOOK, so a quick glance at a call or document is still journaled.
 //   • DIFF, NOT DUMP. Only lines not seen recently are written; secret-looking tokens are masked on write.
 //   • RETENTION. Days older than retentionDays (default 30) are deleted on start and daily.
 //
@@ -30,6 +34,7 @@ final class ScreenJournal {
     private var seen: [String: Date] = [:]   // line hash → last written (drops re-renders of the same text)
     private var lastPrune = Date.distantPast
     private var electronAsked = Set<pid_t>()
+    private var lastApp: NSRunningApplication?        // the app last sampled as frontmost → its "last look" on switch
     private var lastOn: Bool?
     private var lastOCRKey = ""
     private var lastOCR = Date.distantPast
@@ -88,12 +93,38 @@ final class ScreenJournal {
         godLog("screen journal OFF")
     }
 
-    @objc private func appActivated(_ note: Notification) { queue.asyncAfter(deadline: .now() + 1) { self.tick(force: true) } }
+    /// On every app switch: first a LAST LOOK at the window being left (it is still on screen, and a call or a
+    /// shared document can change without its title changing, so the regular re-read may never have caught it),
+    /// then a fresh read of the app now in front.
+    @objc private func appActivated(_ note: Notification) {
+        let next = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+        queue.async {
+            if let prev = self.lastApp, prev.processIdentifier != next, !prev.isTerminated {
+                self.sample(prev, force: true, lastLook: true)
+            }
+        }
+        queue.asyncAfter(deadline: .now() + 1) { self.tick(force: true) }
+    }
 
     // MARK: sampling
 
     private func tick(force: Bool) {
-        guard running, FileManager.default.fileExists(atPath: flagPath), AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        lastApp = app
+        sample(app, force: force, lastLook: false)
+    }
+
+    /// Video calls: screen shares and captions change without the window title changing.
+    private func isCall(bundle: String, title: String, url: String?) -> Bool {
+        let callApps: Set<String> = ["us.zoom.xos", "com.microsoft.teams", "com.microsoft.teams2", "com.apple.facetime", "com.cisco.webexmeetingsapp"]
+        if callApps.contains(bundle) { return true }
+        let u = (url ?? "").lowercased(), t = title.lowercased()
+        return u.range(of: #"meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}"#, options: .regularExpression) != nil
+            || t.hasPrefix("meet – ") || t.hasPrefix("meet - ") || u.contains("zoom.us/wc") || u.contains("teams.microsoft.com")
+    }
+
+    private func sample(_ app: NSRunningApplication, force: Bool, lastLook: Bool) {
+        guard running, FileManager.default.fileExists(atPath: flagPath), AXIsProcessTrusted() else { return }
         let bundle = (app.bundleIdentifier ?? "unknown").lowercased()
         let cfg = config()
         if cfg.block.contains(bundle) { return }
@@ -107,11 +138,17 @@ final class ScreenJournal {
         guard let win = jElement(axApp, kAXFocusedWindowAttribute as String) else { note("skip \(bundle): no focused window"); return }
         let title = jString(win, kAXTitleAttribute as String) ?? ""
         let key = bundle + "|" + title
-        let stale = Date().timeIntervalSince(lastRead) > 30
-        guard force || key != lastKey || stale else { return }
-        lastKey = key; lastRead = Date()
-
         let url = jURL(win)
+        let call = isCall(bundle: bundle, title: title, url: url)
+        if call && !cfg.calls { CallAudio.shared.stopIfActive(reason: "calls off"); return }   // "calls": false → never journal calls
+        // Call audio has its own background meeting watch + consent card (CallAudio.arm); nothing to do here.
+        let every: TimeInterval = call ? 20 : 30
+        if !lastLook {
+            let stale = Date().timeIntervalSince(lastRead) > every
+            guard force || key != lastKey || stale else { return }
+            lastKey = key; lastRead = Date()
+        }
+
         let haystack = (title + " " + (url ?? "")).lowercased()
         if let w = cfg.blockWords.first(where: { haystack.contains($0) }) { note("skip \(bundle): block word '\(w)'"); return }
 
@@ -120,10 +157,11 @@ final class ScreenJournal {
         var via = "ax"
         // Thin AX text (Chrome and other apps that hide page text from accessibility) → read the pixels:
         // on-device Vision OCR of just this window. On a window change, and at most once a minute otherwise.
-        if lines.count < 8 || lines.reduce(0, { $0 + $1.count }) < 300,
-           key != lastOCRKey || Date().timeIntervalSince(lastOCR) > 60 {
+        let sinceOCR = Date().timeIntervalSince(lastOCR)
+        let ocrDue = lastLook ? !(key == lastOCRKey && sinceOCR < 10) : (key != lastOCRKey || sinceOCR > (call ? 20 : 60))
+        if lines.count < 8 || lines.reduce(0, { $0 + $1.count }) < 300 || call, ocrDue {
             lastOCRKey = key; lastOCR = Date()
-            let ocr = ocrWindow(pid: app.processIdentifier)
+            let ocr = ocrWindow(pid: app.processIdentifier, maxWidth: call ? 2400 : 1600)
             if !ocr.isEmpty { lines = Array(NSOrderedSet(array: lines + ocr)) as? [String] ?? lines; via = "ocr" }
         }
         let ms = Int(Date().timeIntervalSince(started) * 1000)
@@ -138,8 +176,11 @@ final class ScreenJournal {
         if seen.count > 20000 { seen = seen.filter { now.timeIntervalSince($0.value) < 3600 } }
         if !fresh.isEmpty || lines.isEmpty { note("\(bundle): \(lines.count) lines via \(via), \(fresh.count) new (\(ms)ms)") }
         guard !fresh.isEmpty else { return }
-        append(["t": ISO8601DateFormatter().string(from: now), "app": app.localizedName ?? bundle, "bundle": bundle,
-                "window": title, "url": url ?? NSNull(), "via": via, "lines": fresh])
+        var entry: [String: Any] = ["t": ISO8601DateFormatter().string(from: now), "app": app.localizedName ?? bundle, "bundle": bundle,
+                                    "window": title, "url": url ?? NSNull(), "via": via, "lines": fresh]
+        if call { entry["call"] = true }
+        if lastLook { entry["lastLook"] = true }
+        append(entry)
         if now.timeIntervalSince(lastPrune) > 24 * 3600 { prune() }
     }
 
@@ -177,7 +218,7 @@ final class ScreenJournal {
     /// Capture ONLY the frontmost window of `pid` with the system screencapture tool (same path the app's
     /// OCR already uses), recognise text on-device, delete the image immediately. Needs Screen Recording
     /// permission; macOS shows its own prompt once, the user decides there.
-    private func ocrWindow(pid: pid_t) -> [String] {
+    private func ocrWindow(pid: pid_t, maxWidth: Int = 1600) -> [String] {
         guard CGPreflightScreenCaptureAccess() else {
             if !askedScreenPermission { askedScreenPermission = true; note("OCR needs Screen Recording permission")
                 DispatchQueue.main.async { _ = CGRequestScreenCaptureAccess() } }
@@ -196,8 +237,8 @@ final class ScreenJournal {
         do { try cap.run(); cap.waitUntilExit() } catch { return [] }
         guard var img = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
         // Retina windows are ~3k px wide; text stays legible at 1600, and Vision's cost scales with pixels.
-        if img.width > 1600 {
-            let w = 1600, h = img.height * 1600 / img.width
+        if img.width > maxWidth {
+            let w = maxWidth, h = img.height * maxWidth / img.width
             if let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) {
                 ctx.interpolationQuality = .medium
@@ -220,6 +261,15 @@ final class ScreenJournal {
 
     private var lastNote = ""
     private func note(_ s: String) { if s != lastNote { lastNote = s; godLog("journal: " + s) } }
+
+    /// Entries produced elsewhere (CallAudio transcripts): masked like screen text, appended on the journal queue.
+    func record(_ entry: [String: Any]) {
+        queue.async {
+            var e = entry                                      // audio / camera have their own switches (Senses.swift)
+            if let lines = e["lines"] as? [String] { e["lines"] = lines.map { self.mask($0) } }
+            self.append(e)
+        }
+    }
 
     // MARK: storage
 
@@ -246,16 +296,18 @@ final class ScreenJournal {
         }
     }
 
-    private func config() -> (block: Set<String>, blockWords: [String], retentionDays: Int) {
-        var block = Self.defaultBlock, words = Self.defaultBlockWords, days = 30
+    private func config() -> (block: Set<String>, blockWords: [String], retentionDays: Int, calls: Bool, audio: Bool) {
+        var block = Self.defaultBlock, words = Self.defaultBlockWords, days = 30, calls = true, audio = false
         let path = (relay as NSString).appendingPathComponent("journal.json")
         if let d = FileManager.default.contents(atPath: path),
            let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
             (j["block"] as? [String])?.forEach { block.insert($0.lowercased()) }
             (j["blockWords"] as? [String])?.forEach { words.append($0.lowercased()) }
             if let r = j["retentionDays"] as? Int, r > 0 { days = r }
+            if let c = j["calls"] as? Bool { calls = c }
+            if let a = j["audio"] as? Bool { audio = a }
         }
-        return (block, words, days)
+        return (block, words, days, calls, audio)
     }
 
     /// Mask secret-looking tokens before they ever touch disk (API keys, long hex/base64 blobs, card numbers).
