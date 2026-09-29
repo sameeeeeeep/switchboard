@@ -789,10 +789,10 @@ final class Model: ObservableObject {
     @Published var userName: String = ""          // what God calls you (~/.relay/profile.json → name)
     @Published var economy = false                // prefer a cheaper/faster model to spend fewer tokens
     @Published var journalOn = false              // screen journal recording (~/.relay/journal-on) → eyes on the notch
-    @Published var creatureLoose = false          // the Loose Notch pill is off the notch (LooseNotch.swift) → the eyes go with it
-    @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
     @Published var listening = false              // CallAudio is transcribing a call → the eyes turn amber
     @Published var cameraOn = false               // CameraPresence is watching → the eyes turn coral
+    @Published var creatureLoose = false          // the Loose Notch pill is off the notch (LooseNotch.swift) → the eyes go with it
+    @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
     @Published var modelProviders: [ModelProvider] = []
     @Published var originModels: [String: String] = [:]   // origin → its current model (grants.json modelOverride)
@@ -2398,6 +2398,9 @@ struct NotchField: View {
     /// Screen journal recording → the field's OWN lamps form two eyes (no overlay): lamps inside the eye
     /// shapes glow full, the rest of the field dims so they read. Blink + glance ride the same clock.
     var eyes: Bool = false
+    var eyeColor: Color? = nil                 // nil = the accent; amber while listening to a call
+    /// Screen point of this field's centre; when set, the eyes look toward the mouse pointer.
+    var gaze: (() -> CGPoint?)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // One eye on the lamp grid: 4 wide × 3 tall with the corners off (an almond). A blink keeps only the middle row.
     private static let eyeShape: [(Int, Int)] = [(1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (3, 1), (1, 2), (2, 2)]
@@ -2428,9 +2431,6 @@ struct NotchField: View {
         // Lamp density matches the dictation DotMatrix (founder-approved 2026-08-13, "chunky lamps"):
         // pitch 6 / dot 3 — bolder + less dense than the old fine field (pitch 4 / dot 1.8).
         let gap: CGFloat = 6.0, d: CGFloat = 3.0
-    var eyeColor: Color? = nil                 // nil = the accent; amber while listening to a call
-    /// Screen point of this field's centre; when set, the eyes look toward the mouse pointer.
-    var gaze: (() -> CGPoint?)? = nil
         let cols = max(1, Int(size.width / gap)), rows = max(1, Int(size.height / gap))
         let ox = (size.width - CGFloat(cols - 1) * gap) / 2, oy = (size.height - CGFloat(rows - 1) * gap) / 2
         for c in 0..<cols {
@@ -5263,6 +5263,12 @@ struct ActionConsentDrop: View {
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
         ScreenJournal.shared.onRecordingChange = { [weak self] on in self?.model.journalOn = on }
+        CallAudio.shared.onListening = { [weak self] on in self?.model.listening = on }
+        CallAudio.shared.record = { ScreenJournal.shared.record($0) }
+        CallAudio.shared.arm()   // background meeting watch; asks at the notch before transcribing
+        CameraPresence.shared.onCamera = { [weak self] on in self?.model.cameraOn = on }
+        CameraPresence.shared.record = { ScreenJournal.shared.record($0) }
+        CameraPresence.shared.arm()   // opt-in ("camera": true): at desk / away / people in view, no identities
         ScreenJournal.shared.start()   // local screen journal (records only while ~/.relay/journal-on exists)
 
         // FIRST RUN: launching the app IS the user's intent to run the daemon it ships — the
@@ -5288,12 +5294,6 @@ struct ActionConsentDrop: View {
         // …and SHOW the app once. An accessory app's launch is otherwise invisible: no Dock icon,
         // no window — just an 18px mark appearing in a crowded menu bar. Presenting the popover
         // one time teaches where Relay lives and puts the token button on screen. Never again
-        CallAudio.shared.onListening = { [weak self] on in self?.model.listening = on }
-        CallAudio.shared.record = { ScreenJournal.shared.record($0) }
-        CallAudio.shared.arm()   // background meeting watch; asks at the notch before transcribing
-        CameraPresence.shared.onCamera = { [weak self] on in self?.model.cameraOn = on }
-        CameraPresence.shared.record = { ScreenJournal.shared.record($0) }
-        CameraPresence.shared.arm()   // opt-in ("camera": true): at desk / away / people in view, no identities
         // after that (the token file exists on every later launch).
         // Onboarding (docs/ONBOARDING.md): until they finish it, opening the panel lands on the setup
         // ladder. Only AUTO-open on the very first run (as today) — later launches wait to be asked.
