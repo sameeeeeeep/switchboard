@@ -785,6 +785,8 @@ final class Model: ObservableObject {
     @Published var selectedVoice: String = ""     // the one God speaks in (empty = macOS `say`)
     @Published var userName: String = ""          // what God calls you (~/.relay/profile.json → name)
     @Published var economy = false                // prefer a cheaper/faster model to spend fewer tokens
+    @Published var journalOn = false              // screen journal recording (~/.relay/journal-on) → eyes on the notch
+    @Published var creatureLoose = false          // the Loose Notch pill is off the notch (LooseNotch.swift) → the eyes go with it
     @Published var regionSelect = false           // ⌃⌃ lets you drag a screen region → only that is sent
     @Published var defaultShare = false           // ⌃⌃ auto-shares the whole screen (fn+click then TOGGLES it off)
     @Published var modelProviders: [ModelProvider] = []
@@ -2388,7 +2390,24 @@ struct NotchField: View {
     var accent: Color
     var working: Bool
     var animated: Bool
+    /// Screen journal recording → the field's OWN lamps form two eyes (no overlay): lamps inside the eye
+    /// shapes glow full, the rest of the field dims so they read. Blink + glance ride the same clock.
+    var eyes: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // One eye on the lamp grid: 4 wide × 3 tall with the corners off (an almond). A blink keeps only the middle row.
+    private static let eyeShape: [(Int, Int)] = [(1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (3, 1), (1, 2), (2, 2)]
+    private func eyeLamp(_ c: Int, _ r: Int, _ cols: Int, _ rows: Int, _ t: Double) -> Bool {
+        let blink = t.truncatingRemainder(dividingBy: 4.2) < 0.16
+        let glance = [0, 0, -1, 0, 1, 0][Int(t / 5.3) % 6]
+        let top = max(0, rows / 2 - 1)
+        let left = cols / 2 - 5 + glance                       // two 4-wide eyes, 2 lamps apart, centred
+        for ox in [left, left + 6] {
+            for (dc, dr) in Self.eyeShape where !(blink && dr != 1) {
+                if c == ox + dc && r == top + dr { return true }
+            }
+        }
+        return false
+    }
     private func bright(_ c: Int, _ r: Int, _ t: Double) -> Double {
         let cx = Double(c), rx = Double(r)
         if working { return 0.16 + 0.84 * (0.5 + 0.5 * sin(cx * 0.55 - t * 2.6)) }   // travelling wave
@@ -2404,7 +2423,8 @@ struct NotchField: View {
         for c in 0..<cols {
             for r in 0..<rows {
                 let x = ox + CGFloat(c) * gap - d / 2, y = oy + CGFloat(r) * gap - d / 2
-                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color(accent.opacity(bright(c, r, t))))
+                let b = eyes ? (eyeLamp(c, r, cols, rows, t) ? 1.0 : bright(c, r, t) * 0.28) : bright(c, r, t)
+                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)), with: .color(accent.opacity(b)))
             }
         }
     }
@@ -2421,6 +2441,27 @@ struct NotchField: View {
 /// travelling ripple while a model runs. Hover / click opens the full panel; cards grow FROM this same
 /// silhouette; God's live phase still drops below as GodStatusDrop. A FIXED hit-area keeps the window
 /// one constant size; only the content morphs.
+/// Hover control while the journal records: one tap stops it (removes ~/.relay/journal-on; the eyes go away).
+struct JournalStopPill: View {
+    @State private var over = false
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "eye.slash").font(.system(size: 8, weight: .bold))
+            Text("STOP WATCHING").font(.doto(9, .black))
+        }
+        .foregroundColor(over ? Color.page : Color.lime)
+        .padding(.horizontal, 6).padding(.vertical, 2)
+        .background(Capsule().fill(over ? Color.lime : Color.page))
+        .overlay(Capsule().stroke(Color.lime.opacity(0.8), lineWidth: 0.8))
+        .contentShape(Capsule())
+        .onHover { over = $0 }
+        .onTapGesture {
+            try? FileManager.default.removeItem(atPath: (NSHomeDirectory() as NSString).appendingPathComponent(".relay/journal-on"))
+        }
+        .help("Stop the screen journal. Turn it back on from Claude (switchboard_journal on).")
+    }
+}
+
 struct OrbView: View {
     @ObservedObject var model: Model
     @ObservedObject var glow: GlowModel
@@ -2433,13 +2474,19 @@ struct OrbView: View {
         let shape = NotchDropShape(ear: 9, botR: 10)
         ZStack {
             shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
-            NotchField(accent: tint, working: model.working, animated: model.running)
+            NotchField(accent: tint, working: model.working, animated: model.running, eyes: model.journalOn && !model.creatureLoose)
                 .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
                 .clipShape(shape)                                    // dots clipped to the silhouette (ears + rounded bottom)
             // Hover cue — the rim brightens and a small ⌄ appears, signalling "click to open". Hover NO LONGER
             // opens the panel (founder 2026-08-25: "hover shouldn't open the big panel — show an option I click").
             shape.stroke(tint.opacity(hovering ? 0.55 : (model.running ? 0.20 : 0.10)), lineWidth: hovering ? 1.1 : 0.75)
-            if hovering {
+            // SCREEN JOURNAL — while it records, the notch has eyes. Tap them to pause (they close).
+            if model.journalOn {
+                VStack(spacing: 0) { Spacer(minLength: 0)
+                    if hovering { JournalStopPill().padding(.bottom, 3) }
+                }
+            }
+            if hovering && !model.journalOn {
                 VStack(spacing: 0) { Spacer(minLength: 0)
                     Image(systemName: "chevron.compact.down").font(.system(size: 9, weight: .bold))
                         .foregroundColor(tint.opacity(0.9)).padding(.bottom, 2)
@@ -2460,6 +2507,10 @@ struct OrbView: View {
         .shadow(color: (model.running && model.signedIn) ? Color.lime.opacity(hovering ? 0.28 : 0.18) : .clear, radius: 4, y: 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }        // hover only PREVIEWS the click target — it does not open
+        // Pull DOWN on the notch to set it loose (LooseNotch.swift): past 24 pt a pill follows the pointer.
+        .gesture(DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { v in LooseNotch.shared.pullFromNotch(translation: v.translation, ended: false) }
+            .onEnded { v in LooseNotch.shared.pullFromNotch(translation: v.translation, ended: true) })
         .onTapGesture { onOpen() }        // a deliberate CLICK opens the panel
         .onAppear { withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { teamPulse = true } }
         .help("Click to open Switchboard")
@@ -5098,6 +5149,13 @@ struct ActionConsentDrop: View {
         orb.contentView = orbHosting
         positionOrb()
         orb.orderFrontRegardless()
+        LooseNotch.shared.attach(model: model, notchFrame: { [weak self] in self?.orb.frame ?? .zero },
+                                 onOpen: { [weak self] in self?.openFromOrb() },
+                                 setNotchGone: { [weak self] gone in
+                                     // alpha + click-through (not orderOut): other paths re-front the orb, and it must stay gone.
+                                     self?.orb.alphaValue = gone ? 0 : 1
+                                     self?.orb.ignoresMouseEvents = gone
+                                 })
 
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: true) { [weak self] _ in
@@ -5189,6 +5247,8 @@ struct ActionConsentDrop: View {
         startBundledWebServer()        // packaged app: serve the bundled wrapps/widgets locally so ⌥⌥ works offline
         refreshPermissionGate()
         startAmbientIfEnabled()   // strictly-local awareness (flag-gated, default off)
+        ScreenJournal.shared.onRecordingChange = { [weak self] on in self?.model.journalOn = on }
+        ScreenJournal.shared.start()   // local screen journal (records only while ~/.relay/journal-on exists)
 
         // FIRST RUN: launching the app IS the user's intent to run the daemon it ships — the
         // landing page promises "Launch it once — it prints a pairing token", so keep it. Auto-

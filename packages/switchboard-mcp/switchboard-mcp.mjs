@@ -26,6 +26,7 @@ import { withDaemon, daemonSbForOrigin, daemonAvailable, readPairingToken, WS_UR
 import { mockSb } from "./mock-sb.mjs";
 import { scaffoldWrapp } from "./scaffold.mjs";
 import { registerPresenceTools, relayDir, atomicJSON, appRunning } from "./presence.mjs";
+import { registerSystem1Tools } from "./system1.mjs";
 let clientSource = "Switchboard agent";
 // The task board is the one thing the connector touches by FILE, not daemon: tasks live as plain
 // `tasks.md` lines in the project's vault (the same dialect the OS board + Obsidian read). The pure
@@ -344,6 +345,7 @@ async function main() {
     clientSource = /codex/i.test(name) ? "Codex" : /claude/i.test(name) ? "Claude Code" : name;
   };
   registerPresenceTools(server);
+  registerSystem1Tools(server);
   const table = actionTable();
 
   for (const [name, entry] of table) {
