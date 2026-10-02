@@ -22,12 +22,16 @@ its own installation cache; that cache is a generated copy, not a separate sourc
 Start a new Codex task after installation. Review/trust the plugin's hooks in Codex's `/hooks` UI;
 installation does not automatically trust lifecycle hooks. Tools and skills work independently.
 
-Claude's marketplace installation is also supported:
+Claude's marketplace installation is also supported, in Claude Code:
 
 ```text
-/plugin marketplace add sameeeeeeep/switchboard
-/plugin install switchboard@switchboard
+/plugin install switchboard --marketplace sameeeeeeep/switchboard-plugin
 ```
+
+`sameeeeeeep/switchboard-plugin` is a ~2 MB mirror of this directory made by `plugin/publish.sh`, so
+the install doesn't clone this whole repo. Its marketplace is also named `switchboard`, so the plugin
+id stays `switchboard@switchboard`; an existing `/plugin marketplace add sameeeeeeep/switchboard`
+keeps working.
 
 Use one installation route per host. The checkout installer detects an enabled Claude plugin and
 avoids adding a standalone duplicate. Repo `.claude/skills/*` entries are discovery symlinks to the
