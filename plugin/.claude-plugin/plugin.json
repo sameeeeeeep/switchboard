@@ -8,19 +8,17 @@
     "url": "https://github.com/sameeeeeeep/switchboard"
   },
   "hooks": {
-    "hooks": {
-      "Notification": [
-        {
-          "matcher": "idle_prompt",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/notify.py\"",
-              "timeout": 5
-            }
-          ]
-        }
-      ]
-    }
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/notify.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

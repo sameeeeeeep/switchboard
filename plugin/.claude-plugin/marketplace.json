@@ -1,5 +1,6 @@
 {
   "name": "switchboard",
+  "description": "Switchboard's plugins for Claude Code: the operator connector and skills, and the notch question card.",
   "owner": {
     "name": "sameeeeeeep",
     "url": "https://github.com/sameeeeeeep/switchboard"
