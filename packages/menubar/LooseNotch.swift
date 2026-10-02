@@ -150,7 +150,8 @@ struct CreatureView: View {
         let shape = Capsule()
         ZStack {
             shape.fill(Color.page)
-            NotchField(accent: tint, working: model.working, animated: model.running, eyes: true,
+            // Docked = panel ordered out but this view still alive; its 24 fps TimelineView kept ticking unseen.
+            NotchField(accent: tint, working: model.working, animated: model.running && model.creatureLoose, eyes: true,
                        eyeColor: model.cameraOn ? Color.senseCamera : (model.listening ? Color.senseAudio : nil),
                        gaze: { loose.creatureCenter() })
                 .padding(.horizontal, 6).padding(.vertical, 3)

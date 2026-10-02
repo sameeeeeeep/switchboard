@@ -1278,8 +1278,11 @@ struct Panel: View {
                     // USE B: the hero liveness BEACON — a real 7×5 operator lamp field replacing the flat dot.
                     // The phase is carried by the PATTERN (thinking idle · working busy · listening signed-out),
                     // one accent only (lime, or the sanctioned danger when signed-out; faint + still when offline).
+                    // Animate ONLY while the panel is on screen: an ordered-out NSHostingView keeps its
+                    // TimelineView ticking, and this 35-view HStack/VStack grid re-laid-out the WHOLE hidden
+                    // panel 24×/s (~22% idle CPU, measured 2026-10-02). Same fix as PanelDotField's `paused`.
                     DotMatrix(pattern: heroPattern, accent: heroBeaconAccent, cols: 7, rows: 5, dot: 2.6, gap: 2.4,
-                              animated: model.running)
+                              animated: model.running && model.panelVisible)
                         .frame(width: 34, alignment: .leading)
                     Text(heroTitle).font(.display).foregroundColor(heroColor).lineLimit(1)
                 }
@@ -1812,8 +1815,13 @@ struct Panel: View {
                 Text(sub).font(.hanken(10.5)).foregroundColor(.inkFaint)
             }
             Spacer(minLength: 6)
-            // Refresh once a second so "detected" decays back to "used Ns ago" on its own.
-            TimelineView(.periodic(from: Date(), by: 1)) { ctx in testPill(pulse: pulse, now: ctx.date) }
+            // Refresh once a second so "detected" decays back to "used Ns ago" on its own — only while the
+            // panel is on screen (Settings stays open across hides; a hidden 1 Hz tick re-laid-out the panel).
+            if model.panelVisible {
+                TimelineView(.periodic(from: Date(), by: 1)) { ctx in testPill(pulse: pulse, now: ctx.date) }
+            } else {
+                testPill(pulse: pulse, now: Date())
+            }
             trailing()
         }.padding(.vertical, 7)
     }
@@ -2064,7 +2072,9 @@ struct Panel: View {
             } else {
                 HStack(spacing: 5) {
                     Circle().fill(Color.lime).frame(width: 5, height: 5)
-                        .opacity(breathe ? 1 : 0.3).animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: breathe)
+                        // Breathe only while the panel is on screen (a repeatForever keeps the hidden panel's
+                        // display cycle running); `breathe` follows panelVisible, nil animation = stop instantly.
+                        .opacity(breathe ? 1 : 0.3).animation(model.panelVisible ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : nil, value: breathe)
                     Text("try it").font(.hanken(10, .semibold)).foregroundColor(.lime)
                 }.padding(.horizontal, 9).padding(.vertical, 5).background(Capsule().stroke(Color.lime.opacity(0.4), lineWidth: 1))
             }
@@ -2283,7 +2293,8 @@ struct Panel: View {
         )
         .clipShape(NotchDropShape())   // no stroke — the black shape blends into the notch, no grey line
         .ignoresSafeArea()
-        .onAppear { breathe = true }
+        .onAppear { breathe = model.panelVisible }
+        .onChange(of: model.panelVisible) { v in breathe = v }
         .onChange(of: showSettings) { open in if open { onboard.note(.settings) } }   // tour step 2
     }
 }
@@ -2482,13 +2493,18 @@ struct OrbView: View {
     var onOpen: () -> Void
     @State private var hovering = false
     @State private var teamPulse = false
+    private func setTeamPulse(_ on: Bool) {
+        if on { withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { teamPulse = true } }
+        else { var t = Transaction(); t.animation = nil; withTransaction(t) { teamPulse = false } }
+    }
     var body: some View {
         // Health tint: lime = running + signed-in · red = running, signed-out · faint = daemon down.
         let tint = model.running ? (model.signedIn ? Color.lime : Color.danger) : Color.inkFaint
         let shape = NotchDropShape(ear: 9, botR: 10)
         ZStack {
             shape.fill(Color.page)                                   // the black notch body — a notch on any Mac
-            NotchField(accent: tint, working: model.working, animated: model.running, eyes: (model.journalOn || model.cameraOn || model.listening) && !model.creatureLoose,
+            // While the creature is loose the orb is alpha-0 but still ordered front — don't animate an invisible field.
+            NotchField(accent: tint, working: model.working, animated: model.running && !model.creatureLoose, eyes: (model.journalOn || model.cameraOn || model.listening) && !model.creatureLoose,
                        eyeColor: model.cameraOn ? Color.senseCamera : (model.listening ? Color.senseAudio : nil),
                        gaze: { LooseNotch.shared.notchCenter() })
                 .padding(.horizontal, 6).padding(.top, 1).padding(.bottom, 4)
@@ -2527,7 +2543,10 @@ struct OrbView: View {
             .onChanged { v in LooseNotch.shared.pullFromNotch(translation: v.translation, ended: false) }
             .onEnded { v in LooseNotch.shared.pullFromNotch(translation: v.translation, ended: true) })
         .onTapGesture { onOpen() }        // a deliberate CLICK opens the panel
-        .onAppear { withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { teamPulse = true } }
+        // The team heartbeat runs ONLY while a team is live — a repeatForever started unconditionally at
+        // launch kept the always-on orb's display cycle busy for every user, team or not.
+        .onAppear { setTeamPulse(model.teamActive) }
+        .onChange(of: model.teamActive) { on in setTeamPulse(on) }
         .help("Click to open Switchboard")
     }
 }
@@ -5201,6 +5220,7 @@ struct ActionConsentDrop: View {
         IgnitionController.shared.install()   // arms ~/.relay/ignite: the full-screen dot-matrix ignition (onboarding Frame 0) → chains into the tour
         installUpdateCheck()           // daily GitHub release check → ONE notch card when a newer build ships
         installOpenWrappTrigger()      // ~/.relay/open-wrapp.json → open that wrapp in the native bridged window (CLI threads can launch surfaces)
+        refreshInstalledVoiceServer()  // an app update carries a newer god-tts-server.py → swap it into an installed voice engine
         // Feedback capture: a fail (or fn↓) during a guide raises the notch note field + arms the fn-drag grab.
         CursorGuide.shared.onFeedbackBegin = { [weak self] _ in Task { @MainActor in self?.showFeedbackNote() } }
         CursorGuide.shared.onFeedbackEnd   = { [weak self] in Task { @MainActor in self?.hideFeedbackNote() } }
@@ -8990,6 +9010,10 @@ struct ActionConsentDrop: View {
         // ambient notch is already there the instant the phase drop clears (no flash of nothing).
         orb?.orderFrontRegardless()
         godStatusPanel?.orderOut(nil)
+        // Drop the content too: showGodStatus() builds a fresh hosting view on every show, and an ordered-out
+        // NSHostingView keeps its NotchFieldLED / DotMatrix TimelineView running (30 fps forever after the
+        // first God turn or dictation).
+        godStatusPanel?.contentView = nil
     }
 
     // ── Ambient mode ─────────────────────────────────────────────────────────────────────────────
@@ -9078,6 +9102,7 @@ struct ActionConsentDrop: View {
         ambientSuppressUntil = Date().addingTimeInterval(120)   // a manual dismiss hushes ambient for 2 min
     }
 
+    private var glyphKey = ""
     private func poll() {
         checkReachable { ok in
             self.checkWorking { busy in
@@ -9086,15 +9111,24 @@ struct ActionConsentDrop: View {
                     // Rung 4: only meaningful once the daemon is up. When up-but-signed-out, the glyph
                     // goes RED and the tooltip names the one fix — the cliff caught before the first call.
                     let signedIn = ok ? readSignedIn() : true
-                    self.model.running = ok
-                    self.model.working = ok && busy && signedIn
-                    self.model.signedIn = signedIn
-                    self.model.updateAvailable = updateReady
+                    // Write @Published state ONLY on change: an unconditional assignment fires objectWillChange
+                    // every 1.6 s, re-rendering every view that observes Model (the orb, the hidden panel…).
+                    let working = ok && busy && signedIn
+                    if self.model.running != ok { self.model.running = ok }
+                    if self.model.working != working { self.model.working = working }
+                    if self.model.signedIn != signedIn { self.model.signedIn = signedIn }
+                    if self.model.updateAvailable != updateReady { self.model.updateAvailable = updateReady }
                     self.phase += 1
-                    self.statusItem.button?.image = glyphImage(running: ok, working: self.model.working, signedIn: signedIn, phase: self.phase)
-                    self.statusItem.button?.toolTip = !ok ? "Switchboard — sidekick offline"
+                    // The glyph only changes with state (+ the blink phase while working) — skip identical redraws.
+                    let glyphKey = "\(ok)|\(working)|\(signedIn)|\(working ? self.phase % 2 : 0)"
+                    if glyphKey != self.glyphKey {
+                        self.glyphKey = glyphKey
+                        self.statusItem.button?.image = glyphImage(running: ok, working: working, signedIn: signedIn, phase: self.phase)
+                    }
+                    let tip = !ok ? "Switchboard — sidekick offline"
                         : !signedIn ? "Switchboard — \(SIGN_IN_HINT)"
                         : (ok && busy) ? "Switchboard — your model is working…" : "Switchboard — connected"
+                    if self.statusItem.button?.toolTip != tip { self.statusItem.button?.toolTip = tip }
                     if self.panel.isVisible { self.model.refreshFiles(); self.ollama.refresh() }
                 }
             }
@@ -9239,6 +9273,29 @@ struct ActionConsentDrop: View {
     private func toast(_ t: String) {
         model.toast = t
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.model.toast = nil }
+    }
+
+    /// The voice engine is opt-in: install-voice-engine.sh copies the bundled god-tts-server.py into
+    /// ~/.relay/tts ONCE, so a fix to the server (e.g. 0.4.2's MLX cache cap: 5.3 GB → ~0.6 GB resident)
+    /// would never reach a machine that already has the engine. On launch, if the engine is installed and
+    /// its server differs from this build's copy, replace it and restart the LaunchAgent. Never installs
+    /// the engine where it isn't (no venv/model download) — only refreshes the one script.
+    private func refreshInstalledVoiceServer() {
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            let bundled = ((Bundle.main.resourcePath ?? "") as NSString).appendingPathComponent("god/tts/god-tts-server.py")
+            let installed = (RELAY_DIR as NSString).appendingPathComponent("tts/god-tts-server.py")
+            guard fm.fileExists(atPath: installed), let new = fm.contents(atPath: bundled),
+                  let old = fm.contents(atPath: installed), new != old else { return }
+            do {
+                try new.write(to: URL(fileURLWithPath: installed), options: .atomic)
+            } catch { godLog("voice server refresh failed: \(error.localizedDescription)"); return }
+            godLog("voice server updated from the app bundle — restarting com.relay.godtts")
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            p.arguments = ["kickstart", "-k", "gui/\(getuid())/com.relay.godtts"]
+            try? p.run(); p.waitUntilExit()
+        }
     }
 
     private func launchctl(_ args: [String]) {

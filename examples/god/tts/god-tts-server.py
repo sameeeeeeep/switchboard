@@ -112,9 +112,23 @@ def _normalize_wav(src: Path, dst: Path, start: float = 0.0, dur: float | None =
 # standard MLX-under-a-server pattern; without it /speak fails with "no Stream(gpu, 0)".)
 _gpu = ThreadPoolExecutor(max_workers=1, thread_name_prefix="god-tts-gpu")
 
+# MEMORY: MLX keeps every freed Metal buffer in its allocator cache, and the default cache limit is the
+# whole recommended GPU working set (~5.7GB on an 8GB M1). Each synth allocates fresh activations, so the
+# cache ratcheted up to ~5GB of DEAD buffers held forever by an idle voice server — the machine swapped
+# (measured 2026-10-02: 5.25GB phys_footprint, 5.0GB of it IOAccelerator). The model's live weights are a
+# small fraction of that. Cap the cache and hand freed buffers back after every GPU job; the compiled
+# kernels (the expensive ~22s cold-compile keep-warm protects) live elsewhere and are unaffected.
+CACHE_LIMIT_MB = int(os.environ.get("GOD_TTS_CACHE_MB", "128"))
+mx.set_cache_limit(CACHE_LIMIT_MB * 1024 * 1024)
+
 
 def _on_gpu(fn, *a, **k):
-    return _gpu.submit(fn, *a, **k).result()
+    def job():
+        try:
+            return fn(*a, **k)
+        finally:
+            mx.clear_cache()   # return this job's freed activations to the OS (runs on the MLX thread)
+    return _gpu.submit(job).result()
 
 
 def _model_get():
