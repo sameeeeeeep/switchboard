@@ -10,7 +10,9 @@
 //   stdout: {"answer":"<label>","index":n} | {"answer":"<typed>","typed":true}
 //           | {"cancelled":true,"reason":"esc"|"timeout"}
 //
-// Keys: 1-4 pick · ↑↓ move · ⏎ confirm · type + ⏎ answers in your own words · esc cancels.
+// The card never takes the keyboard when it appears, so typing in another app can't answer it.
+// Clicking an option answers. Clicking the card enables its keys: 1-4 pick · ↑↓ move · ⏎ confirm ·
+// esc cancels. Clicking the text box lets you type your own answer (digits are text there).
 
 import AppKit
 import SwiftUI
@@ -20,6 +22,7 @@ struct CardSpec: Decodable {
     let title: String?; let question: String; let options: [CardOption]
     let at: String?; let source: String?; let timeout: Double?
     let appearance: String?   // "light" | "dark"; omitted = follow the system
+    let debug: Bool?          // tests: report focus changes on stderr
 }
 
 // Claude's design language: warm ivory / warm charcoal surfaces, terracotta accent, serif voice.
@@ -46,6 +49,7 @@ final class Model: ObservableObject {
     @Published var selected: Int
     @Published var typed = ""
     @Published var shown = false
+    @Published var fieldFocused = false
     init(_ spec: CardSpec) {
         self.spec = spec
         selected = spec.options.firstIndex { $0.recommended == true } ?? 0
@@ -85,15 +89,22 @@ struct CardView: View {
             VStack(spacing: 6) {
                 ForEach(Array(m.spec.options.enumerated()), id: \.offset) { i, o in row(i, o) }
             }
-            TextField("", text: $m.typed,
-                      prompt: Text("Something else? Type it here").foregroundColor(p.muted.opacity(0.7)))
+            // Our own placeholder: the system one is dimmed to near-invisible while the card isn't key.
+            TextField("", text: $m.typed)
                 .textFieldStyle(.plain).font(.system(size: 12.5)).foregroundColor(p.text)
+                .background(alignment: .leading) {
+                    if m.typed.isEmpty {
+                        Text("Something else? Type it here").font(.system(size: 12.5))
+                            .foregroundColor(p.muted.opacity(0.8)).allowsHitTesting(false)
+                    }
+                }
                 .padding(.horizontal, 11).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 10).fill(p.bg))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(p.border, lineWidth: 1))
                 .focused($fieldFocused)
                 .onSubmit { m.submit() }
             HStack(spacing: 10) {
+                hint("click", "for keys")
                 hint("1–\(max(1, m.spec.options.count))", "choose")
                 hint("↵", "confirm")
                 hint("esc", "dismiss")
@@ -105,7 +116,7 @@ struct CardView: View {
         .overlay(shape.stroke(p.border, lineWidth: 1))
         .scaleEffect(m.shown ? 1 : 0.92, anchor: .top)
         .opacity(m.shown ? 1 : 0)
-        .onAppear { fieldFocused = true }
+        .onChange(of: fieldFocused) { f in m.fieldFocused = f }   // macOS 13 form
     }
 
     func hint(_ key: String, _ what: String) -> some View {
@@ -157,6 +168,25 @@ struct CardView: View {
 
 final class CardPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    // Clicking the card is the user choosing it, so only then does it take the keyboard: macOS
+    // delivers keys to the active app, so activate as well as becoming key. 1-4, arrows, return
+    // and esc work from then on. When the card closes, focus returns to the previous app.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !(isKeyWindow && NSApp.isActive) {
+            NSApp.activate(ignoringOtherApps: true)
+            makeKey()
+            // Becoming key auto-focuses the text box, which would turn 1-4 into typed text. Clear
+            // it; if this click is on the text box, super.sendEvent focuses it again.
+            makeFirstResponder(nil)
+        }
+        super.sendEvent(event)
+    }
+}
+
+// The card isn't key when it appears, so without this the first click would only focus it and a
+// second click would be needed to pick an option.
+final class CardHost<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // ── main ──
@@ -172,7 +202,7 @@ let isDark = spec.appearance.map { $0 == "dark" }
     ?? (app.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
 
 let model = Model(spec)
-let host = NSHostingView(rootView: CardView(m: model, dark: isDark))
+let host = CardHost(rootView: CardView(m: model, dark: isDark))
 host.layoutSubtreeIfNeeded()
 let size = host.fittingSize
 
@@ -202,14 +232,19 @@ panel.hasShadow = true
 panel.level = .popUpMenu                      // above the menu bar, so it can sit in the notch
 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
 panel.isMovableByWindowBackground = false
-panel.makeKeyAndOrderFront(nil)
-app.activate(ignoringOtherApps: true)
+panel.becomesKeyOnlyIfNeeded = false           // a click anywhere on the card makes it key
+panel.orderFrontRegardless()                   // show without taking focus or activating
+if spec.debug == true {
+    NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main) { _ in
+        FileHandle.standardError.write(Data("became-key\n".utf8))
+    }
+}
 DispatchQueue.main.async {
     withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { model.shown = true }
 }
 
-// Keys the text field doesn't consume: digits pick (only while the field is empty), arrows move,
-// esc dismisses. Return is handled by the field's onSubmit.
+// Keys reach the card only after it's clicked (it's key then). Outside the text box: digits pick,
+// arrows move, return confirms. In the text box, digits and return belong to the field (onSubmit).
 NSEvent.addLocalMonitorForEvents(matching: .keyDown) { ev in
     switch ev.keyCode {
     case 53: emit(["cancelled": true, "reason": "esc"])
@@ -217,8 +252,9 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { ev in
     case 126: model.selected = max(model.selected - 1, 0); return nil
     default: break
     }
-    if model.typed.isEmpty, let c = ev.charactersIgnoringModifiers, let n = Int(c),
-       n >= 1, n <= spec.options.count {
+    if model.fieldFocused { return ev }
+    if ev.keyCode == 36 || ev.keyCode == 76, !spec.options.isEmpty { model.pick(model.selected) }
+    if let c = ev.charactersIgnoringModifiers, let n = Int(c), n >= 1, n <= spec.options.count {
         model.pick(n - 1)
     }
     return ev

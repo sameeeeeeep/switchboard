@@ -1,6 +1,6 @@
 {
   "name": "switchboard-notch",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Claude's questions drop from your Mac's notch as a native card. Pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual.",
   "author": {
     "name": "sameeeeeeep",
