@@ -5,9 +5,12 @@ can answer without switching back to the terminal.
 
 ![A question from Claude shown as a card at the Mac notch, with three numbered options and a text box](assets/card-light.png)
 
-- **1–4** picks an option, **↵** confirms the highlighted one (Claude's recommendation starts highlighted)
-- **Type** in the box to answer in your own words
-- **esc** dismisses the card and the question appears in Claude Code as usual, so it is never lost
+- **Click an option** to answer. The card never takes your keyboard when it appears, so typing in
+  another app can't answer it by accident.
+- **Click the card** to use keys: **1–4** picks an option, **↵** confirms the highlighted one
+  (Claude's recommendation starts highlighted), **esc** dismisses it and the question appears in
+  Claude Code as usual, so it is never lost
+- **Click the text box** to answer in your own words
 
 Needs macOS 13+ and Claude Code **v2.1.287** or later (`claude --version`). It is a Claude Code
 [mod](https://code.claude.com/docs/en/plugins/mods/overview): it hooks Claude's `AskUserQuestion`
