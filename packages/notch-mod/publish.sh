@@ -22,7 +22,8 @@ git rm -rq --ignore-unmatch . >/dev/null
 cd - >/dev/null
 
 # Plugin files, plus a marketplace file so the repo is its own marketplace.
-cp -R .claude-plugin hooks helper tests assets README.md build.sh publish.sh .gitignore "$TMP/repo/"
+# build.sh and publish.sh stay here: they use the maintainer's notary and GitHub credentials.
+cp -R .claude-plugin hooks helper tests assets README.md .gitignore "$TMP/repo/"
 rm -rf "$TMP/repo/.claude-plugin/types"
 # The directory's validator blocks macOS/Windows system files anywhere in the plugin folder.
 find "$TMP/repo" \( -name .DS_Store -o -name Thumbs.db -o -name desktop.ini -o -name __MACOSX \) -prune -exec rm -rf {} +
