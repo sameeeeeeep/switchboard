@@ -23,12 +23,13 @@ Ask Claude something that makes it ask you back, or run `/notch test`.
 
 ## Keep it
 
-In Claude Code:
+In Claude Code (v2.1.275+ adds the marketplace and installs in one step):
 
 ```text
-/plugin marketplace add sameeeeeeep/switchboard
-/plugin install switchboard-notch@switchboard
+/plugin install switchboard-notch --marketplace sameeeeeeep/switchboard
 ```
+
+Updates: `claude plugin update switchboard-notch@switchboard`.
 
 ## Settings
 
@@ -49,7 +50,7 @@ steps aside and Claude Code asks as usual.
 
 ## What it does on your machine
 
-The mod's only action is to run `bin/sb-card`, a small native program that draws one card and
+The mod's only action is to run `helper/sb-card`, a small native program that draws one card and
 prints your answer. It needs no permissions, makes no network requests, and exits as soon as you
 answer. The binary is signed with Developer ID (STAYOFT VENTURES PRIVATE LIMITED, 55354KFTHU) and
 notarized by Apple. Its source is [`helper/sb-card.swift`](helper/sb-card.swift). To see what the mod
@@ -60,5 +61,5 @@ hooks before you load it, run `claude plugin validate` on this directory.
 ```sh
 claude --plugin-dir "$PWD"          # load this checkout; edits hot-reload
 claude plugin test                   # unit tests (no session needed)
-./build.sh                           # rebuild, sign and notarize bin/sb-card
+./build.sh                           # rebuild, sign and notarize helper/sb-card
 ```

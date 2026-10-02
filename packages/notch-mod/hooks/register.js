@@ -1,6 +1,6 @@
 // switchboard-notch — Claude's questions as a native card at the notch.
 //
-// Claude's AskUserQuestion is answered from bin/sb-card, a one-shot native window that drops from
+// Claude's AskUserQuestion is answered from helper/sb-card, a one-shot native window that drops from
 // the notch (or opens beside the cursor). Esc at the card, a timeout, or a missing helper falls back
 // to Claude Code's own dialog, so a question is never lost.
 
@@ -73,7 +73,7 @@ async function showCard($, spec, at) {
   $.ui.status('question waiting at the ' + at)
   try {
     const r = await $.process.run(
-      [$.plugin.root + '/bin/sb-card', JSON.stringify({ ...spec, at, source: 'Claude Code', timeout: CARD_TIMEOUT_S })],
+      [$.plugin.root + '/helper/sb-card', JSON.stringify({ ...spec, at, source: 'Claude Code', timeout: CARD_TIMEOUT_S })],
       { timeoutMs: (CARD_TIMEOUT_S + 15) * 1000 },
     )
     const line = r.stdout.trim().split('\n').pop()
