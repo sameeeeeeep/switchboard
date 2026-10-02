@@ -16,7 +16,7 @@ tool and nothing else.
 Nothing is installed and nothing is written to your settings:
 
 ```sh
-claude --plugin-url https://github.com/sameeeeeeep/switchboard/releases/download/notch-v0.1.0/switchboard-notch.zip
+claude --plugin-url https://github.com/sameeeeeeep/switchboard-notch/releases/download/v0.1.0/switchboard-notch.zip
 ```
 
 Ask Claude something that makes it ask you back, or run `/notch test`.
@@ -26,10 +26,10 @@ Ask Claude something that makes it ask you back, or run `/notch test`.
 In Claude Code (v2.1.275+ adds the marketplace and installs in one step):
 
 ```text
-/plugin install switchboard-notch --marketplace sameeeeeeep/switchboard
+/plugin install switchboard-notch --marketplace sameeeeeeep/switchboard-notch
 ```
 
-Updates: `claude plugin update switchboard-notch@switchboard`.
+Updates: `claude plugin update switchboard-notch@switchboard-notch`.
 
 ## Settings
 
@@ -53,7 +53,7 @@ steps aside and Claude Code asks as usual.
 The mod's only action is to run `helper/sb-card`, a small native program that draws one card and
 prints your answer. It needs no permissions, makes no network requests, and exits as soon as you
 answer. The binary is signed with Developer ID (STAYOFT VENTURES PRIVATE LIMITED, 55354KFTHU) and
-notarized by Apple. Its source is [`helper/sb-card.swift`](helper/sb-card.swift). To see what the mod
+notarized by Apple. Its source is [`helper/sb-card.swift`](helper/sb-card.swift). Source of truth: [`packages/notch-mod`](https://github.com/sameeeeeeep/switchboard/tree/main/packages/notch-mod) in the switchboard repo. To see what the mod
 hooks before you load it, run `claude plugin validate` on this directory.
 
 ## Develop
@@ -62,4 +62,5 @@ hooks before you load it, run `claude plugin validate` on this directory.
 claude --plugin-dir "$PWD"          # load this checkout; edits hot-reload
 claude plugin test                   # unit tests (no session needed)
 ./build.sh                           # rebuild, sign and notarize helper/sb-card
+./publish.sh                         # mirror to sameeeeeeep/switchboard-notch and release
 ```
