@@ -1,6 +1,6 @@
 {
   "name": "switchboard-notch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claude's questions drop from your Mac's notch as a native card. Pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual.",
   "author": {
     "name": "sameeeeeeep",
@@ -8,11 +8,17 @@
   },
   "displayName": "Switchboard Notch",
   "homepage": "https://thelastprompt.ai/switchboard",
+  "repository": "https://github.com/sameeeeeeep/switchboard-notch",
   "license": "MIT",
   "keywords": [
     "notch",
     "macos",
     "mod",
+    "questions",
     "AskUserQuestion"
-  ]
+  ],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/sameeeeeeep/switchboard-notch#readme",
+  "supportUrl": "https://github.com/sameeeeeeep/switchboard-notch/issues",
+  "privacyPolicyUrl": "https://github.com/sameeeeeeep/switchboard-notch#privacy"
 }

@@ -22,8 +22,10 @@ git rm -rq --ignore-unmatch . >/dev/null
 cd - >/dev/null
 
 # Plugin files, plus a marketplace file so the repo is its own marketplace.
-cp -R .claude-plugin hooks helper tests README.md build.sh publish.sh .gitignore "$TMP/repo/"
+cp -R .claude-plugin hooks helper tests assets README.md build.sh publish.sh .gitignore "$TMP/repo/"
 rm -rf "$TMP/repo/.claude-plugin/types"
+# The directory's validator blocks macOS/Windows system files anywhere in the plugin folder.
+find "$TMP/repo" \( -name .DS_Store -o -name Thumbs.db -o -name desktop.ini -o -name __MACOSX \) -prune -exec rm -rf {} +
 cp ../../LICENSE "$TMP/repo/LICENSE"
 cat > "$TMP/repo/.claude-plugin/marketplace.json" <<'EOF'
 {
@@ -55,7 +57,7 @@ if gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1; then
   gh release upload "v$VERSION" dist/switchboard-notch.zip -R "$REPO" --clobber
 else
   gh release create "v$VERSION" dist/switchboard-notch.zip -R "$REPO" --title "Switchboard Notch $VERSION" \
-    --notes "Try for one session: \`claude --plugin-url https://github.com/$REPO/releases/download/v$VERSION/switchboard-notch.zip\`
+    --notes "Try for one session: \`claude --plugin-url https://github.com/$REPO/releases/latest/download/switchboard-notch.zip\`
 
 Keep it, in Claude Code: \`/plugin install switchboard-notch --marketplace $REPO\`"
 fi

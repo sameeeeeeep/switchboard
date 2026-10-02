@@ -24,5 +24,5 @@ fi
 
 mkdir -p dist
 rm -f dist/switchboard-notch.zip
-zip -qr dist/switchboard-notch.zip .claude-plugin/plugin.json hooks helper/sb-card README.md
+zip -qr dist/switchboard-notch.zip .claude-plugin/plugin.json hooks helper/sb-card assets README.md
 echo "built dist/switchboard-notch.zip"
