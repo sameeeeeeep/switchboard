@@ -19,6 +19,7 @@ struct CardOption: Decodable { let label: String; let detail: String?; let recom
 struct CardSpec: Decodable {
     let title: String?; let question: String; let options: [CardOption]
     let at: String?; let source: String?; let timeout: Double?
+    let appearance: String?   // "light" | "dark"; omitted = follow the system
 }
 
 // Claude's design language: warm ivory / warm charcoal surfaces, terracotta accent, serif voice.
@@ -59,9 +60,9 @@ final class Model: ObservableObject {
 
 struct CardView: View {
     @ObservedObject var m: Model
-    @Environment(\.colorScheme) var scheme
+    let dark: Bool
     @FocusState var fieldFocused: Bool
-    var p: Palette { scheme == .dark ? .dark : .light }
+    var p: Palette { dark ? .dark : .light }
     var shape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 20,
                                bottomTrailingRadius: 20, topTrailingRadius: 12)
@@ -166,13 +167,12 @@ guard CommandLine.arguments.count > 1,
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-// Test hook: force an appearance (SB_CARD_APPEARANCE=light|dark); otherwise follow the system.
-if let a = ProcessInfo.processInfo.environment["SB_CARD_APPEARANCE"] {
-    app.appearance = NSAppearance(named: a == "dark" ? .darkAqua : .aqua)
-}
+// Light or dark: the spec can force one (for screenshots); otherwise follow the system.
+let isDark = spec.appearance.map { $0 == "dark" }
+    ?? (app.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
 
 let model = Model(spec)
-let host = NSHostingView(rootView: CardView(m: model))
+let host = NSHostingView(rootView: CardView(m: model, dark: isDark))
 host.layoutSubtreeIfNeeded()
 let size = host.fittingSize
 
