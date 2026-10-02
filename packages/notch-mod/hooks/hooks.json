@@ -1,0 +1,4 @@
+{
+  "description": "Routes AskUserQuestion to the native notch card (helper/sb-card)",
+  "modules": ["./register.js"]
+}

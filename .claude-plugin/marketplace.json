@@ -9,6 +9,11 @@
       "name": "switchboard",
       "source": "./plugin",
       "description": "One Switchboard connector and eight shared operator skills for Claude Code and Codex: tasks, notch, whiteboard, PIP, and wrapps."
+    },
+    {
+      "name": "switchboard-notch",
+      "source": "./packages/notch-mod",
+      "description": "Claude's questions drop from your Mac's notch as a native card. A Claude Code mod (v2.1.287+, macOS 13+)."
     }
   ]
 }
