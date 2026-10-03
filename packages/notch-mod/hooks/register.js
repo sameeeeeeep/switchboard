@@ -1,18 +1,20 @@
-// switchboard-notch — Claude's questions as a native card at the notch.
+// Ask Notch: Claude's questions as a native card at the notch.
 //
-// Claude's AskUserQuestion is answered from helper/sb-card, a one-shot native window that drops from
-// the notch (or opens beside the cursor). Esc at the card, a timeout, or a missing helper falls back
-// to Claude Code's own dialog, so a question is never lost.
+// Claude's AskUserQuestion is answered from helper/card.js, a one-shot window drawn by macOS's
+// built-in script runner (osascript, JavaScript for Automation). Esc at the card, a timeout, or a
+// card that can't start falls back to Claude Code's own dialog, so a question is never lost.
 
 const CARD_TIMEOUT_S = 540
+const OSASCRIPT = '/usr/bin/osascript'
+const COMPANIONS = ['cat', 'clawd', 'off']
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
     try {
       await $.command.register({
         name: 'notch',
-        description: 'Claude questions at the notch: on · off · notch · cursor · test',
-        argumentHint: '[on|off|notch|cursor|test]',
+        description: 'Claude questions at the notch: on · off · notch · cursor · companion · test',
+        argumentHint: '[on|off|notch|cursor|companion cat|companion off|test]',
         immediate: true,
       })
     } catch {}
@@ -21,21 +23,24 @@ export function register(on) {
 
   on('command.run', { command: 'notch' }, async ($, e) => {
     const cfg = await loadCfg($)
-    const arg = (e.args || '').trim()
+    const [arg = '', value = ''] = (e.args || '').trim().split(/\s+/)
     if (arg === 'on' || arg === 'off') cfg.on = arg === 'on'
     else if (arg === 'notch' || arg === 'cursor') cfg.at = arg
-    else if (arg === 'test') {
+    else if (arg === 'companion') {
+      if (!COMPANIONS.includes(value)) return { text: 'Companion is ' + cfg.companion + ' · /notch companion cat|off' }
+      cfg.companion = value
+    } else if (arg === 'test') {
       const r = await showCard($, {
         question: 'Notch cards are working. Keep Claude\'s questions here?',
         options: [
           { label: 'Keep them here', detail: 'Questions drop from the notch', recommended: true },
           { label: 'Beside the cursor', detail: 'Card opens where you are pointing' },
         ],
-      }, cfg.at)
+      }, cfg)
       return { text: 'test card → ' + JSON.stringify(r) }
     }
     await $.store.set('cfg', cfg)
-    return { text: 'Notch cards ' + (cfg.on ? 'on' : 'off') + ' · at ' + cfg.at }
+    return { text: 'Notch cards ' + (cfg.on ? 'on' : 'off') + ' · at ' + cfg.at + ' · companion ' + cfg.companion }
   })
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
@@ -55,8 +60,8 @@ export function register(on) {
           detail: o.description,
           recommended: /\(recommended\)\s*$/i.test(String(o.label)),
         })),
-      }, cfg.at)
-      // Dismissed, timed out, or helper failed: hand the whole question set to Claude Code's dialog.
+      }, cfg)
+      // Dismissed, timed out, or the card failed: hand the whole question set to Claude Code's dialog.
       if (!r || r.cancelled || !r.answer) return next(e)
       answers[q.question] = r.answer
     }
@@ -66,14 +71,21 @@ export function register(on) {
 
 async function loadCfg($) {
   const saved = await $.store.get('cfg')
-  return { on: true, at: 'notch', ...(saved || {}) }
+  const cfg = { on: true, at: 'notch', companion: 'off', ...(saved || {}) }
+  if (!COMPANIONS.includes(cfg.companion)) cfg.companion = 'off'
+  return cfg
 }
 
-async function showCard($, spec, at) {
-  $.ui.status('question waiting at the ' + at)
+async function showCard($, spec, cfg) {
+  const root = $.plugin.root
+  const companion = cfg.companion !== 'off'
+    ? { name: cfg.companion, dir: root + '/assets/companion/' + cfg.companion }
+    : undefined
+  $.ui.status('question waiting at the ' + cfg.at)
   try {
     const r = await $.process.run(
-      [$.plugin.root + '/helper/sb-card', JSON.stringify({ ...spec, at, source: 'Claude Code', timeout: CARD_TIMEOUT_S })],
+      [OSASCRIPT, '-l', 'JavaScript', root + '/helper/card.js',
+        JSON.stringify({ ...spec, at: cfg.at, source: 'Claude Code', timeout: CARD_TIMEOUT_S, companion })],
       { timeoutMs: (CARD_TIMEOUT_S + 15) * 1000 },
     )
     const line = r.stdout.trim().split('\n').pop()

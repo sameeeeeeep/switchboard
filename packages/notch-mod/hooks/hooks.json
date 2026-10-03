@@ -1,5 +1,5 @@
 {
-  "description": "Routes AskUserQuestion to the native notch card (helper/sb-card)",
+  "description": "Routes AskUserQuestion to the notch card (helper/card.js, run by macOS's osascript)",
   "modules": ["./register.js"],
   "hooks": {}
 }
