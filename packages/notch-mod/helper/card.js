@@ -256,18 +256,15 @@ function imageOf(rep, w, h) {
   return img
 }
 
+// Frame list for each companion (the PNGs live in assets/companion/<name>/). Painted by the plugin author.
+var COMPANION_SEQUENCES = {"cat": {"canvas": [120, 60], "overlap": 48, "intro": {"delay_ms": 180, "frames": [["intro-01.png", 130], ["intro-02.png", 60], ["intro-03.png", 60], ["intro-04.png", 60], ["intro-05.png", 60], ["intro-06.png", 70], ["intro-07.png", 70], ["intro-08.png", 70], ["intro-09.png", 70]]}, "idle": "sit.png", "settle": {"after_s": 20, "frames": [["settle-1.png", 240], ["settle-2.png", 0]]}}}
+
 // ── companion: a small animated character beside the card ──
-// assets/companion/<name>/sequence.json lists the frames; no sequence.json means no companion.
-function readText(path) {
-  var s = $.NSString.stringWithContentsOfFileEncodingError(path, 4, null)
-  return s.isNil() ? null : s.js
-}
+// COMPANION_SEQUENCES lists the frames; an unknown name means no companion.
 function loadCompanion(c) {
   if (!c || typeof c.dir !== 'string') return null
-  var src = readText(c.dir + '/sequence.json')
-  if (!src) return null
-  var seq
-  try { seq = JSON.parse(src) } catch (e) { return null }
+  var seq = COMPANION_SEQUENCES[c.name]
+  if (!seq) return null
   var images = {}
   function frame(name) {
     if (!/^[\w.-]+\.png$/.test(name)) return null
@@ -588,11 +585,18 @@ function after(seconds, fn) {
   })
 }
 
+// The question arrives as JSON on standard input (the mod writes it there); an argument works too.
+function readStdin() {
+  var data = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile
+  var str = $.NSString.alloc.initWithDataEncoding(data, 4)
+  return str.isNil() ? '' : str.js
+}
+
 function run(argv) {
   var spec
-  try { spec = JSON.parse(argv[0]) } catch (e) { spec = null }
+  try { spec = JSON.parse(argv && argv[0] ? argv[0] : readStdin()) } catch (e) { spec = null }
   if (!spec || typeof spec.question !== 'string') {
-    log("usage: osascript -l JavaScript card.js '<json>'")
+    log("usage: echo '<json>' | osascript -l JavaScript card.js")
     $.exit(2)
   }
   main(spec)

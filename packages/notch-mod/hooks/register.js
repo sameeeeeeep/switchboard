@@ -5,8 +5,7 @@
 // card that can't start falls back to Claude Code's own dialog, so a question is never lost.
 
 const CARD_TIMEOUT_S = 540
-const OSASCRIPT = '/usr/bin/osascript'
-const COMPANIONS = ['cat', 'clawd', 'off']
+const COMPANIONS = ['cat', 'off']
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
@@ -77,17 +76,16 @@ async function loadCfg($) {
 }
 
 async function showCard($, spec, cfg) {
-  const root = $.plugin.root
-  const companion = cfg.companion !== 'off'
-    ? { name: cfg.companion, dir: root + '/assets/companion/' + cfg.companion }
-    : undefined
+  const companion = cfg.companion === 'cat' ? { name: 'cat', dir: 'assets/companion/cat' } : undefined
   $.ui.status('question waiting at the ' + cfg.at)
   try {
-    const r = await $.process.run(
-      [OSASCRIPT, '-l', 'JavaScript', root + '/helper/card.js',
-        JSON.stringify({ ...spec, at: cfg.at, source: 'Claude Code', timeout: CARD_TIMEOUT_S, companion })],
-      { timeoutMs: (CARD_TIMEOUT_S + 15) * 1000 },
-    )
+    // Always the same command: macOS's own osascript running this plugin's helper/card.js. The question
+    // goes to it on standard input; its answer comes back on standard output. Nothing leaves the Mac.
+    const r = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', 'helper/card.js'], {
+      cwd: $.plugin.root,
+      stdin: JSON.stringify({ ...spec, at: cfg.at, source: 'Claude Code', timeout: CARD_TIMEOUT_S, companion }),
+      timeoutMs: (CARD_TIMEOUT_S + 15) * 1000,
+    })
     const line = r.stdout.trim().split('\n').pop()
     return line ? JSON.parse(line) : null
   } catch {

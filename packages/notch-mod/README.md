@@ -90,19 +90,25 @@ plugin ships no compiled code.
   answer in place of Claude Code's own question dialog, in the same shape the dialog returns. If you
   press esc, the card times out (9 minutes), the question is multi-select, text or number, or the
   card can't start, it hands the question back to Claude Code's dialog unchanged.
-- **The one program it starts, and why.** It runs macOS's built-in script runner,
-  `/usr/bin/osascript -l JavaScript helper/card.js`, with one more argument: a JSON object holding the
-  question, its options, where to show the card and, if you turned one on, the companion's folder.
-  It starts nothing else and runs no shell.
+- **The one program it starts, and why.** It always runs the same fixed command,
+  `/usr/bin/osascript -l JavaScript helper/card.js`, from this plugin's own folder. `osascript` is
+  macOS's built-in script runner; the plugin needs it because a Claude Code mod can only draw inside
+  Claude Code's window, and the card has to appear at the Mac's notch. The question, its options,
+  where to show the card and, if you turned one on, the companion's folder go to the card on its
+  **standard input** as one JSON object. It starts nothing else and runs no shell.
 - **What the card does.** `helper/card.js` uses macOS's JavaScript bridge to AppKit to draw one
   window, reads the pointer position (for `/notch cursor`) and, with a companion, the pictures in
   `assets/companion/`. It prints your answer as one line of JSON and exits. It makes no network
   requests, writes no files, reads no environment variables and needs no permissions. It refuses
   the keyboard until you click it, and appears without activating, so it can't take keystrokes
   meant for the app you're using.
-- **What it reads, and where that goes.** It reads the question Claude is asking (part of your
-  conversation) and passes it to the card as that argument. The card prints your answer and exits,
-  and the mod gives the answer back to Claude. Nothing is sent anywhere else.
+- **What it reads, and where it sends it.** It reads the question Claude is asking (part of your
+  conversation) and sends it to exactly one place: the local `osascript` process above, on its
+  standard input. The card prints your answer on standard output and exits, and the mod gives the
+  answer back to Claude. Nothing leaves your Mac: no network requests, no files written, no
+  credentials or environment variables read.
+- **Standing in for a tool.** The mod answers `AskUserQuestion` in place of Claude Code's dialog
+  only when you answer on the card; every other case calls through to Claude Code's own dialog.
 - **What it stores.** Only your `/notch` settings (on or off, notch or cursor, companion), in
   Claude Code's local storage for this plugin.
 
@@ -127,7 +133,6 @@ The source lives in [`packages/notch-mod`](https://github.com/sameeeeeeep/switch
 in the Switchboard repo, which also holds the build and release scripts; this repo is a mirror.
 
 ```sh
-claude --plugin-dir "$PWD"          # load a checkout for one session; edits hot-reload
+claude --plugin-dir /path/to/ask-notch   # load a checkout for one session; edits hot-reload
 claude plugin test                   # unit tests (no session needed)
-sh tests/card-selftest.sh            # the real card, off-screen, driven from inside its own process
 ```

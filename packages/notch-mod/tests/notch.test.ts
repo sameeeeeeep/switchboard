@@ -19,14 +19,15 @@ function base(on: any, saved?: unknown) {
 test('a picked card answers the question without Claude Code\'s dialog', async ($, on) => {
   base(on)
   let argv: string[] = []
-  on('process.run', (_$, e) => { argv = e.argv; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
+  let stdin = ''
+  on('process.run', (_$, e) => { argv = e.argv; stdin = e.init?.stdin ?? ''; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
   on('tool.call', () => ({ result: 'DIALOG' }))
   const r = await $.tool.call(ask as any)
   expect((r.result as any).answers).toEqual({ 'Which layout?': 'Compact' })
   // The card is a readable script run by macOS's own osascript, not a compiled helper.
   expect(argv.slice(0, 3)).toEqual(['/usr/bin/osascript', '-l', 'JavaScript'])
-  expect(argv[3].endsWith('/helper/card.js')).toBe(true)
-  const spec = JSON.parse(argv[4])
+  expect(argv[3]).toBe('helper/card.js')
+  const spec = JSON.parse(stdin)
   expect(spec.options[0]).toEqual({ label: 'Spacious', detail: 'More room', recommended: true })
   expect(spec.title).toBe('Claude asks · Layout')
   expect(spec.at).toBe('notch')
@@ -80,25 +81,27 @@ test('/notch off hands questions to Claude Code', async ($, on) => {
 test('/notch companion cat puts the cat beside the card', async ($, on) => {
   base(on)
   let argv: string[] = []
-  on('process.run', (_$, e) => { argv = e.argv; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
+  let stdin = ''
+  on('process.run', (_$, e) => { argv = e.argv; stdin = e.init?.stdin ?? ''; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
   on('tool.call', () => ({ result: 'DIALOG' }))
   const { text } = await $.command.run({ command: 'notch', args: 'companion cat' })
   expect(text).toContain('companion cat')
   await $.tool.call(ask as any)
-  const spec = JSON.parse(argv[4])
+  const spec = JSON.parse(stdin)
   expect(spec.companion.name).toBe('cat')
-  expect(spec.companion.dir.endsWith('/assets/companion/cat')).toBe(true)
+  expect(spec.companion.dir).toBe('assets/companion/cat')
 })
 
 test('/notch companion off and unknown companions', async ($, on) => {
   base(on, { on: true, at: 'cursor', companion: 'cat' })
   let argv: string[] = []
-  on('process.run', (_$, e) => { argv = e.argv; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
+  let stdin = ''
+  on('process.run', (_$, e) => { argv = e.argv; stdin = e.init?.stdin ?? ''; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
   on('tool.call', () => ({ result: 'DIALOG' }))
   expect((await $.command.run({ command: 'notch', args: 'companion dragon' })).text).toContain('Companion is cat')
   await $.command.run({ command: 'notch', args: 'companion off' })
   await $.tool.call(ask as any)
-  const spec = JSON.parse(argv[4])
+  const spec = JSON.parse(stdin)
   expect(spec.companion).toBeUndefined()
   expect(spec.at).toBe('cursor')
 })
