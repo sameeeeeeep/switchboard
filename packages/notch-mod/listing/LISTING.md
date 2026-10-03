@@ -1,98 +1,127 @@
-# Switchboard Notch: directory listing draft
+# Ask Notch: directory listing (new submission, 0.2.0)
 
-Portal: https://claude.ai/directory/manage → **Submit new** → **Plugin bundle**.
-For plugins, the portal reads the listing from `.claude-plugin/plugin.json` and `README.md`. You don't
-type most of it into a form: to change a field, edit the file, run `./publish.sh`, and **Re-validate**.
-Everything below is either already in those files, or is an answer you give in the form.
+Ask Notch replaces the **switchboard-notch** submission (portal id `ce733ea6-f8b8-4e94-bcbf-836559d96e85`,
+v0.1.3, in human review). It is a new plugin name, so it is a **new submission**, not a version of the old one.
+
+Portal: https://claude.ai/directory/manage. For plugins, the portal reads the listing from
+`.claude-plugin/plugin.json` and `README.md`. To change a field, edit the file, run `./build.sh && ./publish.sh`,
+and **Re-validate**. Everything below is either already in those files or is an answer you give in the form.
+
+## What changed vs switchboard-notch
+
+| | switchboard-notch 0.1.x | Ask Notch 0.2.0 |
+| --- | --- | --- |
+| Name | `switchboard-notch` / Switchboard Notch | `ask-notch` / Ask Notch |
+| The card | `helper/sb-card`, a compiled Swift binary (signed + notarized) | `helper/card.js`, plain JavaScript run by macOS's own `/usr/bin/osascript -l JavaScript` |
+| Directory scan | "ships code the scan can't read" (the binary) | no compiled code; every file is readable text or a PNG |
+| Look and behaviour | Claude design language card | the same card, pixel-matched (see `compare-0.2.0.jpg`) |
+| Keyboard on appear | could be handed activation when the app that started it was frontmost | appears as a background-only app, refuses to become key until clicked, hands activation back if macOS gives it anyway |
+| Settings | `/notch on\|off\|notch\|cursor\|test` | the same, plus `/notch companion cat\|off` (off by default) |
+| Repo / install | `sameeeeeeep/switchboard-notch` | `sameeeeeeep/ask-notch` |
 
 ## Source step (typed in the portal)
 
 | Field | Value |
 | --- | --- |
-| Repository | `sameeeeeeep/switchboard-notch` |
+| Repository | `sameeeeeeep/ask-notch` |
 | Plugin path | leave empty (the plugin is at the repository root) |
 | Branch or tag | leave empty (follows `main`) |
 
-Submit the small mirror repo, not `sameeeeeeep/switchboard` with path `packages/notch-mod`. In a subfolder,
-the validator also holds `hooks/register.js` ("Scripts the validator couldn't follow"), and `packages/` holds
-other plugins.
+Submit the small mirror repo, not `sameeeeeeep/switchboard` with path `packages/notch-mod`.
 
 ## Listing details (read from plugin.json and README.md)
 
-| Field | Value | Source | Status |
-| --- | --- | --- | --- |
-| Name (permanent) | `switchboard-notch` | plugin.json `name` | set |
-| Display name | Switchboard Notch | plugin.json `displayName` | set |
-| Short description | Claude's questions drop from your Mac's notch as a native card. Pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual. | plugin.json `description` | set |
-| Long description | The README, shown as the listing description | `README.md` | set (about 690 words outside code blocks; 40 needed) |
-| Icon | `./assets/icon.png` (512×512 PNG, the Switchboard lime dot mark) | plugin.json `icon` | set; reaches GitHub on the next `./publish.sh` |
-| Version | 0.1.0 | plugin.json `version` | set |
-| Author / publisher | sameeeeeeep | plugin.json `author.name` | set (consider `Sameep Rehlan` or `The Last Prompt` if you want a recognisable publisher) |
-| License | MIT | plugin.json `license` + `LICENSE` file | set |
-| Homepage | https://thelastprompt.ai/switchboard | plugin.json `homepage` | live (200) |
-| Repository | https://github.com/sameeeeeeep/switchboard-notch | plugin.json `repository` | live |
-| Documentation URL | https://github.com/sameeeeeeep/switchboard-notch#readme | plugin.json `documentationUrl` | live |
-| Support URL | https://github.com/sameeeeeeep/switchboard-notch/issues | plugin.json `supportUrl` | live (issues enabled) |
-| Privacy policy URL | https://github.com/sameeeeeeep/switchboard-notch#privacy | plugin.json `privacyPolicyUrl` | **NOT LIVE YET**: the `## Privacy` README section exists only locally until `./publish.sh` runs. The existing https://thelastprompt.ai/switchboard/privacy covers the browser extension and daemon only, not this plugin, so it isn't used. |
-| Terms of service URL | not set | plugin.json `termsOfServiceUrl` | optional; there is no thelastprompt.ai terms page (404) |
-| Keywords | notch, macos, mod, questions, AskUserQuestion | plugin.json `keywords` | set |
-| Category | not asked for plugins in the current docs (only connectors have "one to five categories"). If the form asks, pick **Developer tools**, then **Productivity**. | portal | n/a |
-| Supported surfaces | Claude Code only (macOS). The portal works this out from the components. Hooks are "Ignored" in Chat, so the listing will show it doing nothing in claude.ai chat. | derived | expected |
+| Field | Value | Source |
+| --- | --- | --- |
+| Name (permanent) | `ask-notch` | plugin.json `name` |
+| Display name | Ask Notch | plugin.json `displayName` |
+| Short description | Claude's questions drop from your Mac's notch as a card. Click an option, pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual. | plugin.json `description` |
+| Long description | The README | `README.md` |
+| Icon | `./assets/icon.png` (512×512; still the Switchboard dot mark, replace if Ask Notch gets its own) | plugin.json `icon` |
+| Version | 0.2.0 | plugin.json `version` |
+| Author / publisher | sameeeeeeep | plugin.json `author.name` |
+| License | MIT | plugin.json `license` + `LICENSE` (copied by publish.sh) |
+| Homepage | https://github.com/sameeeeeeep/ask-notch | plugin.json `homepage` (live once the repo exists) |
+| Repository | https://github.com/sameeeeeeep/ask-notch | plugin.json `repository` |
+| Documentation URL | https://github.com/sameeeeeeep/ask-notch#readme | plugin.json `documentationUrl` |
+| Support URL | https://github.com/sameeeeeeep/ask-notch/issues | plugin.json `supportUrl` (enable issues on the new repo) |
+| Privacy policy URL | https://github.com/sameeeeeeep/ask-notch#privacy | plugin.json `privacyPolicyUrl` |
+| Keywords | notch, macos, mod, questions, AskUserQuestion | plugin.json `keywords` |
+| Category | if asked: **Developer tools**, then **Productivity** | portal |
+| Supported surfaces | Claude Code only (macOS). Hooks are "Ignored" in Chat. | derived |
 
-### Short description, alternatives if you want a different one (edit plugin.json `description`)
+## Three working examples (Directory Policy 3.E, also in the README)
 
-- Current: "Claude's questions drop from your Mac's notch as a native card. Pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual."
-- Shorter: "Answer Claude Code's questions from a native card at your Mac's notch."
-
-### Long description
-
-This is the README. Its sections: what it does (with screenshot) · Try it for one session · Keep it · Settings ·
-Examples (3 use cases, which Directory Policy 3.E asks for) · Where it works · Troubleshooting · What it does on your
-machine · Privacy · Support · Develop.
+1. "Add a settings page to this app. Ask me which layout to use before you build it." → the card shows the
+   layouts, with Claude's pick highlighted; click one, or click the card and press 1–4 or ↵.
+2. "Clean up the old migration files, but ask me before deleting anything." → the confirmation question
+   appears at the notch while you're in another app; answer it there and Claude carries on.
+3. "Help me name this CLI tool and ask me to choose." → click the card's text box, type your own name and
+   press ↵; Claude receives exactly what you typed.
 
 ## Data handling step (answer in the form)
 
 | Question | Answer |
 | --- | --- |
-| Does the plugin read or store personal data? | **No.** It reads the text of Claude's `AskUserQuestion` call to draw the card. It stores only the `/notch` setting (on/off, notch/cursor) in Claude Code's local mod storage. |
-| Does it send data to services other than its declared connectors? | **No.** It has no connectors and makes no network requests. `helper/sb-card` is a local, one-shot window that prints the answer to stdout. |
-| How long does it keep data? | It keeps no data. The setting stays until the plugin is uninstalled. |
+| Does the plugin read or store personal data? | **No.** It reads the text of Claude's `AskUserQuestion` call to draw the card. It stores only the `/notch` settings (on/off, notch/cursor, companion) in Claude Code's local mod storage. |
+| Does it send data to services other than its declared connectors? | **No.** It has no connectors and makes no network requests. The card is `osascript` running `helper/card.js`, a local one-shot window that prints the answer to stdout. |
+| How long does it keep data? | It keeps no data. The settings stay until the plugin is uninstalled. |
 | Is it intended for people under 18? | **No.** |
+
+## Privacy (the README's Privacy section, for reference)
+
+Ask Notch collects nothing. The question, its options and your answer pass only between Claude Code and
+`osascript` running `helper/card.js` on your Mac. No network access, no analytics, no account. The only thing
+saved is your `/notch` settings, in Claude Code's local storage for this plugin; uninstalling removes it.
 
 ## Compliance step
 
-1. Check that the prefilled contact email is one you read. Anthropic emails it about the submission.
-   Security contact: sameeeeeeep@gmail.com (also in the README Support section).
+1. Check that the prefilled contact email is one you read. Security contact: sameeeeeeep@gmail.com.
 2. Select all four acknowledgements (Directory Terms and Directory Policy).
 
 ## Review and submit step
 
-- **How new versions reach the directory**: keep **GitHub push webhook**, then select **Set up push updates**
-  (needs admin on the mirror repo). `./publish.sh` pushes to `main`, so each publish becomes a new directory version.
-- **Auto-publish passing versions**: leave it off for the first submission. A reviewer publishes the first version anyway.
+- **How new versions reach the directory**: keep **GitHub push webhook**, then **Set up push updates**
+  (needs admin on `sameeeeeeep/ask-notch`). `./publish.sh` pushes to `main`.
+- **Auto-publish passing versions**: leave off for the first submission.
 - Select **Submit for review**.
 
-## Reviewer notes (paste if the form has a notes box, or keep for a reply to a hold)
+## Reviewer notes (paste if the form has a notes box)
 
-> Switchboard Notch is a Claude Code mod (hooks/register.js, Claude Code v2.1.287+) that handles only the
-> `AskUserQuestion` tool call. For single-choice questions it runs `helper/sb-card`, a native macOS window,
-> and returns the picked label in the same shape as Claude Code's own dialog. Esc, a 9-minute timeout,
-> multi-select, or any helper failure falls through to Claude Code's own dialog (`next(e)`), so a question is
-> never lost. `helper/sb-card` is a universal Mach-O built from `helper/sb-card.swift` (in the repo, about 230
-> lines, AppKit + SwiftUI). It is signed with Developer ID (STAYOFT VENTURES PRIVATE LIMITED, 55354KFTHU) and
-> notarized. You can rebuild it with `./build.sh`. It makes no network requests and writes no files.
-> `claude plugin validate` lists every hook and call. No test account is needed. To test: install,
-> run `/notch test` on a Mac, or ask Claude "ask me which layout to use for a settings page".
+> Ask Notch is a Claude Code mod (hooks/register.js, Claude Code v2.1.287+) that handles only the
+> `AskUserQuestion` tool call. For single-choice questions it runs macOS's built-in
+> `/usr/bin/osascript -l JavaScript helper/card.js '<json>'`, a readable script (JavaScript for Automation,
+> AppKit bridge) that draws one window and prints the picked label, which the mod returns in the same shape as
+> Claude Code's own dialog. Esc, a 9-minute timeout, multi-select, or any card failure falls through to Claude
+> Code's own dialog (`next(e)`), so a question is never lost. The plugin ships no compiled code. The card makes
+> no network requests, writes no files, reads no environment and needs no permissions; it appears without
+> activating and refuses the keyboard until clicked. Optional `/notch companion cat` shows small PNGs from
+> `assets/companion/cat/` (the author's own painted art). `claude plugin validate` lists every hook and call.
+> No test account is needed. To test: install, run `/notch test` on a Mac, or ask Claude "ask me which layout
+> to use for a settings page". This replaces our earlier submission switchboard-notch (withdrawn).
 
-## Three working examples (Directory Policy 3.E, also in the README)
+## Owner's portal checklist
 
-1. "Add a settings page to this app. Ask me which layout to use before you build it." → the card shows the layouts, with Claude's pick highlighted.
-2. "Clean up the old migration files, but ask me before deleting anything." → the confirmation question appears at the notch while you're in another app.
-3. "Help me name this CLI tool and ask me to choose." → type your own name in the card's text box and press ↵.
+Nothing below has been run. In order:
 
-## Assets in this folder
+1. Review and merge branch `ask-notch-0.2.0` in `sameeeeeeep/switchboard` (relay repo).
+2. Human test card on your Mac (the one thing not automated): `claude --plugin-dir "$PWD"` in
+   `packages/notch-mod`, run `/notch test`; while typing in another app the card must not take keys; click
+   an option (answers in one click); run it again, click the card, press `2`; again, click the text box and type
+   `2 apples` ↵; again with `/notch cursor` and `/notch companion cat`. Optional: `sh tests/card-selftest.sh`.
+3. Create the mirror: `gh repo create sameeeeeeep/ask-notch --public` (enable Issues).
+4. `cd packages/notch-mod && ./build.sh && ./publish.sh` (pushes the mirror, creates release v0.2.0 with
+   `ask-notch.zip`).
+5. Portal → switchboard-notch submission `ce733ea6-f8b8-4e94-bcbf-836559d96e85` → **Withdraw**.
+6. Portal → **Submit new** → **Plugin bundle** → repository `sameeeeeeep/ask-notch`, then the steps above
+   (data handling, compliance, push webhook, reviewer notes) → **Submit for review**.
+7. Optional: archive `sameeeeeeep/switchboard-notch` or point its README at ask-notch.
 
-- `card-light.png`, `card-dark.png`: 880×624 captures of the real card (`SB_CARD_APPEARANCE=light|dark helper/sb-card ...`).
-  Plugin listings don't take screenshots in the current docs; only MCP Apps have a carousel. The light one is
-  embedded in the README from `assets/card-light.png`, which is the published copy.
-- The icon is `../assets/icon.png`, rendered from `landing/public/favicon.svg`.
+## Assets in this folder (not shipped in the plugin)
+
+- `card-light.png`, `card-dark.png`: 880×624 renders of the card (also `../assets/card-*.png`, the README image).
+- `card-cat-light.png`, `card-cat-dark.png`: the card with `/notch companion cat`.
+- `compare-0.2.0.jpg`: old sb-card vs new card.js, light and dark, the pixel difference, the cat, and two real
+  on-screen window captures (notch + cat, cursor mode).
+- `render-card.js`: paints the card to a PNG with card.js's own painter, without opening a window.
+- `make-companion.py`: builds `../assets/companion/cat/` from the painted orange cat.
