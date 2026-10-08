@@ -1,14 +1,14 @@
 {
-  "name": "switchboard-notch",
-  "version": "0.1.4",
-  "description": "Claude's questions drop from your Mac's notch as a native card. Pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual.",
+  "name": "ask-notch",
+  "version": "0.3.0",
+  "description": "Claude's questions drop from your Mac's notch as a card. Click an option, pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual.",
   "author": {
     "name": "sameeeeeeep",
     "url": "https://github.com/sameeeeeeep/switchboard"
   },
-  "displayName": "Switchboard Notch",
-  "homepage": "https://thelastprompt.ai/switchboard",
-  "repository": "https://github.com/sameeeeeeep/switchboard-notch",
+  "displayName": "Ask Notch",
+  "homepage": "https://github.com/sameeeeeeep/ask-notch",
+  "repository": "https://github.com/sameeeeeeep/ask-notch",
   "license": "MIT",
   "keywords": [
     "notch",
@@ -18,7 +18,7 @@
     "AskUserQuestion"
   ],
   "icon": "./assets/icon.png",
-  "documentationUrl": "https://github.com/sameeeeeeep/switchboard-notch#readme",
-  "supportUrl": "https://github.com/sameeeeeeep/switchboard-notch/issues",
-  "privacyPolicyUrl": "https://github.com/sameeeeeeep/switchboard-notch#privacy"
+  "documentationUrl": "https://github.com/sameeeeeeep/ask-notch#readme",
+  "supportUrl": "https://github.com/sameeeeeeep/ask-notch/issues",
+  "privacyPolicyUrl": "https://github.com/sameeeeeeep/ask-notch#privacy"
 }
