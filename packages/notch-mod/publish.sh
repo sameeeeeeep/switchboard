@@ -24,7 +24,7 @@ cd - >/dev/null
 
 # Plugin files, plus a marketplace file so the repo is its own marketplace.
 # build.sh, publish.sh and listing/ stay here: they are the maintainer's release tools.
-cp -R .claude-plugin hooks helper assets README.md .gitignore "$TMP/repo/"
+cp -R .claude-plugin hooks helper skills assets README.md .gitignore "$TMP/repo/"
 mkdir -p "$TMP/repo/tests" && cp tests/notch.test.ts "$TMP/repo/tests/"   # the real-window self-test stays here (maintainer tool)
 rm -rf "$TMP/repo/.claude-plugin/types"
 rm -rf "$TMP/repo/assets/companion/clawd"   # placeholder slot, no art until the owner decides
