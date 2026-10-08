@@ -1,6 +1,6 @@
 {
   "name": "ask-notch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude's questions drop from your Mac's notch as a card. Click an option, pick with 1-4, type your own answer, or press esc to answer in Claude Code as usual.",
   "author": {
     "name": "sameeeeeeep",

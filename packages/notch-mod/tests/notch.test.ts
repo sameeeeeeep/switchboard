@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 const ask = {
   tool: 'AskUserQuestion',
@@ -98,10 +98,49 @@ test('/notch companion off and unknown companions', async ($, on) => {
   let stdin = ''
   on('process.run', (_$, e) => { argv = e.argv; stdin = e.init?.stdin ?? ''; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
   on('tool.call', () => ({ result: 'DIALOG' }))
-  expect((await $.command.run({ command: 'notch', args: 'companion dragon' })).text).toContain('Companion is cat')
   await $.command.run({ command: 'notch', args: 'companion off' })
   await $.tool.call(ask as any)
   const spec = JSON.parse(stdin)
   expect(spec.companion).toBeUndefined()
   expect(spec.at).toBe('cursor')
+})
+
+test('/notch in plain words is handed to Claude, who changes it through the settings tool', async ($, on) => {
+  base(on)
+  const clock = mock.clock(on)
+  let asked = ''
+  let stdin = ''
+  on('prompt.submit', (_$: any, e: any) => { asked = e.text; return { drop: 'captured by the test' } })
+  on('process.run', (_$, e) => { stdin = e.init?.stdin ?? ''; return { value: { exitCode: 0, stdout: '{"answer":"Compact","index":1}\n', stderr: '' } } })
+  on('tool.call', () => ({ result: 'DIALOG' }))
+
+  const { text } = await $.command.run({ command: 'notch', args: 'put it by my mouse and bring the kitty' })
+  expect(text).toContain('asking Claude')
+  await clock.advance(60)
+  expect(asked).toContain('/notch put it by my mouse and bring the kitty')
+  expect(asked).toContain('mcp__ask-notch__settings')
+
+  // What Claude would then call: the change lands on the next card.
+  const r = await $.tool.call({ tool: 'mcp__ask-notch__settings', at: 'cursor', companion: 'cat' } as any)
+  expect(String(r.result)).toContain('at cursor · companion cat')
+  await $.tool.call(ask as any)
+  const spec = JSON.parse(stdin)
+  expect(spec.at).toBe('cursor')
+  expect(spec.companion.name).toBe('cat')
+})
+
+test('bare /notch reads the settings and the tool with no fields changes nothing', async ($, on) => {
+  base(on, { on: false, at: 'notch', companion: 'off' })
+  on('tool.call', () => ({ result: 'DIALOG' }))
+  expect((await $.command.run({ command: 'notch', args: '' })).text).toContain('Notch cards off')
+  expect(String((await $.tool.call({ tool: 'mcp__ask-notch__settings' } as any)).result)).toContain('Notch cards off · at notch')
+})
+
+test('while cards are on, Claude is told to ask its choices at the notch; off, it is not', async ($, on) => {
+  base(on)
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' }] }))
+  const ids = async () => (await $.prompt.compose({ model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as any)).sections.map((x: any) => x.id)
+  expect(await ids()).toEqual(['intro', 'ask-notch:choices'])
+  await $.command.run({ command: 'notch', args: 'off' })
+  expect(await ids()).toEqual(['intro'])
 })

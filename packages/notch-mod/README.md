@@ -39,6 +39,10 @@ Updates: `claude plugin update ask-notch@ask-notch`.
 
 ## Settings
 
+Say what you want after `/notch`, in your own words: `/notch put it by my mouse`, `/notch pause for now`,
+`/notch bring the cat`, `/notch show me one`. Claude reads it and changes the setting. On its own, `/notch`
+shows the current settings. The words below skip Claude and take effect instantly:
+
 | Command | Effect |
 | --- | --- |
 | `/notch cursor` | Open cards beside the pointer instead of at the notch |
@@ -49,6 +53,13 @@ Updates: `claude plugin update ask-notch@ask-notch`.
 | `/notch test` | Show a test card |
 
 Multi-select, free-text and number questions always use Claude Code's own form.
+
+## Choices come to you
+
+While cards are on, Claude asks with `AskUserQuestion` whenever it would otherwise list options in its reply
+("A or B?", "go ahead?"), so those choices arrive as a card at the notch. The plugin adds one short paragraph saying
+so to Claude's system prompt while cards are on (none while they're off), and ships the same guidance as a skill,
+`ask-at-the-notch`.
 
 ## Examples
 
@@ -109,6 +120,14 @@ plugin ships no compiled code.
   credentials or environment variables read.
 - **Standing in for a tool.** The mod answers `AskUserQuestion` in place of Claude Code's dialog
   only when you answer on the card; every other case calls through to Claude Code's own dialog.
+- **Settings in plain words.** `/notch` followed by words it doesn't recognise sends Claude one
+  prompt that quotes them. Claude then changes the setting through the plugin's own tool,
+  `mcp__ask-notch__settings` (on/off, notch/cursor, companion, test card). The tool reads and writes
+  only the settings below.
+- **The system prompt note and the skill.** While cards are on, the mod adds one fixed paragraph to
+  Claude's system prompt (`CHOICES_NOTE` in `hooks/register.js`) asking it to put choices to you
+  with `AskUserQuestion`. `skills/ask-at-the-notch/SKILL.md` says the same at length. Both are plain
+  text and run nothing.
 - **What it stores.** Only your `/notch` settings (on or off, notch or cursor, companion), in
   Claude Code's local storage for this plugin.
 
